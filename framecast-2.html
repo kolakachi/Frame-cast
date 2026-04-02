@@ -1,10 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
+<html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Framecast - AI Video Engine</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&amp;family=Space+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
 <style>
 :root {
   --bg-deep: #0a0a0f;
@@ -155,6 +153,52 @@ button {
   justify-content: center;
   font-size: 13px;
   font-weight: 700;
+}
+
+.user-popover {
+  position: absolute;
+  bottom: 52px;
+  left: 12px;
+  width: 200px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-active);
+  border-radius: 10px;
+  padding: 12px;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.user-popover-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.user-popover-email {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.user-popover-divider {
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+}
+
+.user-popover-action {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--red);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.user-popover-action:hover {
+  color: #fca5a5;
 }
 
 .main {
@@ -653,7 +697,6 @@ button {
 .caption-word { font-size:22px; font-weight:700; display:inline; line-height:1.4; }
 .caption-word.highlight { color:var(--accent); }
 .caption-word.normal { color:#fff; }
-.preview-cta { position:absolute; bottom:72px; left:16px; right:16px; text-align:center; font-weight:700; font-size:15px; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,0.7); letter-spacing:0.01em; }
 .preview-watermark { position:absolute; top:16px; left:16px; font-family:'Space Mono',monospace; font-size:10px; color:rgba(255,255,255,0.3); }
 .preview-timer { position:absolute; top:16px; right:16px; font-family:'Space Mono',monospace; font-size:11px; color:rgba(255,255,255,0.5); background:rgba(0,0,0,0.4); padding:3px 8px; border-radius:4px; }
 .playback-controls { display:flex; align-items:center; gap:16px; margin-top:24px; }
@@ -678,6 +721,14 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
+.panel-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
 .panel-label {
   font-size: 11px;
   color: var(--text-muted);
@@ -685,6 +736,123 @@ button {
   letter-spacing: 0.08em;
   margin-bottom: 10px;
   font-weight: 500;
+}
+
+.panel-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.panel-badge.warn {
+  background: var(--yellow-bg);
+  color: var(--yellow);
+}
+
+.panel-chevron {
+  color: var(--text-muted);
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+.panel-section.collapsed .panel-chevron {
+  transform: rotate(-90deg);
+}
+
+.panel-section-body {
+  display: block;
+  margin-top: 12px;
+}
+
+.panel-section.collapsed .panel-section-header {
+  margin-bottom: 0;
+}
+
+.panel-section.collapsed .panel-section-body {
+  display: none;
+}
+
+.panel-inline-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.rewrite-trigger {
+  border-radius: var(--radius-sm);
+}
+
+.rewrite-tools {
+  margin-top: 10px;
+}
+
+.rewrite-custom {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.rewrite-custom-input {
+  flex: 1;
+  padding: 5px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.rewrite-custom-input:focus {
+  outline: none;
+  border-color: rgba(255, 107, 53, 0.45);
+}
+
+.rewrite-note {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.rewrite-preview {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  background: rgba(167, 139, 250, 0.08);
+}
+
+.rewrite-preview-title {
+  font-size: 11px;
+  color: var(--purple);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.rewrite-preview-copy {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.rewrite-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+#rewriteTools .chip {
+  border-radius: var(--radius-sm);
 }
 
 .detail-card {
@@ -1687,9 +1855,287 @@ textarea.input-field {
 .form-hint{font-size:11px;color:var(--text-muted);margin-top:4px;}
 .danger-zone{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);}
 .danger-zone-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;}
+
+/* ── Auth ── */
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at top right, rgba(255,107,53,0.09), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(96,165,250,0.08), transparent 24%),
+    var(--bg-deep);
+}
+
+.auth-screen.hidden { display: none; }
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 40px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+}
+
+.auth-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+  color: #fff;
+  margin-bottom: 28px;
+}
+
+.auth-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.auth-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+
+.auth-field {
+  margin-bottom: 14px;
+}
+
+.auth-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  display: block;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.auth-input:focus {
+  outline: none;
+  border-color: rgba(255,107,53,0.5);
+}
+
+.auth-btn-primary {
+  width: 100%;
+  padding: 11px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-top: 6px;
+}
+
+.auth-btn-primary:hover { background: var(--accent-hover); }
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.auth-btn-secondary {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.auth-btn-secondary:hover {
+  border-color: var(--border-active);
+  color: var(--text-primary);
+}
+
+.auth-footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.auth-link {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.auth-link:hover { color: var(--accent-hover); }
+
+.auth-state { display: none; }
+.auth-state.active { display: block; }
+
+.auth-magic-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent-glow);
+  border: 1px solid rgba(255,107,53,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin: 0 auto 24px;
+}
+
+.auth-email-highlight {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.auth-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 16px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.auth-password-section { display: none; }
+.auth-password-section.visible { display: block; }
 </style>
 </head>
 <body>
+
+<!-- ════════════════════════════════════════════════════════
+     AUTH SCREEN
+════════════════════════════════════════════════════════ -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card">
+
+    <!-- Login -->
+    <div class="auth-state" id="authLogin">
+      <div class="auth-logo">F</div>
+      <div class="auth-title">Welcome back</div>
+      <div class="auth-subtitle">Enter your email to receive a magic link, or sign in with your password.</div>
+
+      <div class="auth-field">
+        <label class="auth-label">Email</label>
+        <input class="auth-input" type="email" id="loginEmail" placeholder="you@example.com">
+      </div>
+
+      <button class="auth-btn-primary" onclick="sendMagicLink()">✦ Send Magic Link</button>
+
+      <div class="auth-divider">or</div>
+
+      <div class="auth-password-section" id="passwordSection">
+        <div class="auth-field">
+          <label class="auth-label">Password</label>
+          <input class="auth-input" type="password" placeholder="········">
+        </div>
+        <button class="auth-btn-primary" onclick="hideAuth()" style="margin-top:0;">Sign In</button>
+        <div style="text-align:center; margin-top:12px;">
+          <span class="auth-link" style="font-size:12px;" onclick="sendMagicLink()">Forgot password? Use magic link</span>
+        </div>
+      </div>
+
+      <button class="auth-btn-secondary" id="togglePasswordBtn" onclick="togglePassword()">Sign in with password</button>
+
+      <div class="auth-footer">
+        Don't have an account? <span class="auth-link" onclick="showAuthState('authRegister')">Create one</span>
+      </div>
+    </div>
+
+    <!-- Magic Link Sent -->
+    <div class="auth-state" id="authMagicSent">
+      <div class="auth-magic-icon">✉</div>
+      <div class="auth-title" style="text-align:center;">Check your email</div>
+      <div class="auth-subtitle" style="text-align:center;">
+        We sent a magic link to<br>
+        <span class="auth-email-highlight" id="magicLinkEmail">you@example.com</span>
+      </div>
+
+      <div class="auth-note">
+        The link expires in 15 minutes and can only be used once.<br><br>
+        Didn't get it? <span class="auth-link" onclick="sendMagicLink()">Resend</span>
+      </div>
+
+      <div class="auth-footer" style="margin-top:20px;">
+        <span class="auth-link" onclick="showAuthState('authLogin')">← Back to login</span>
+      </div>
+
+      <!-- Demo only: simulate link click -->
+      <div style="margin-top:16px; padding:10px 12px; background:var(--bg-elevated); border-radius:8px; border:1px solid var(--border); text-align:center;">
+        <span style="font-size:11px; color:var(--text-muted);">Demo: </span>
+        <span class="auth-link" style="font-size:12px;" onclick="hideAuth()">Simulate clicking the link →</span>
+      </div>
+    </div>
+
+    <!-- Register -->
+    <div class="auth-state active" id="authRegister">
+      <div class="auth-logo">F</div>
+      <div class="auth-title">Create your account</div>
+      <div class="auth-subtitle">Set up your Framecast workspace. Takes 30 seconds.</div>
+
+      <div class="auth-field">
+        <label class="auth-label">Full name</label>
+        <input class="auth-input" type="text" placeholder="Korede A.">
+      </div>
+
+      <div class="auth-field">
+        <label class="auth-label">Email</label>
+        <input class="auth-input" type="email" id="registerEmail" placeholder="you@example.com">
+      </div>
+
+      <div class="auth-field">
+        <label class="auth-label">Password <span style="color:var(--text-muted); font-size:11px;">(optional — you can use magic link only)</span></label>
+        <input class="auth-input" type="password" placeholder="Min. 8 characters">
+      </div>
+
+      <button class="auth-btn-primary" onclick="sendMagicLink('register')">Create Account</button>
+
+      <div class="auth-footer">
+        Already have an account? <span class="auth-link" onclick="showAuthState('authLogin')">Sign in</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <nav class="sidebar">
   <div class="sidebar-logo">F</div>
   <div class="sidebar-nav">
@@ -1707,7 +2153,13 @@ textarea.input-field {
     </div>
   </div>
   <div class="sidebar-bottom">
-    <div class="avatar">K</div>
+    <div class="avatar" onclick="toggleUserPopover()" style="cursor:pointer;" title="Account">K</div>
+    <div class="user-popover hidden" id="userPopover">
+      <div class="user-popover-name">Korede A.</div>
+      <div class="user-popover-email">korede@framecast.io</div>
+      <div class="user-popover-divider"></div>
+      <button class="user-popover-action" onclick="showAuth()">Log out</button>
+    </div>
   </div>
 </nav>
 
@@ -1887,7 +2339,7 @@ textarea.input-field {
         <div class="add-scene-panel" id="addScenePanel">
           <div class="panel-title">Add New Scene <span class="close-x" onclick="closeAddScene()">×</span></div>
           <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Scene type</div>
-          <div class="scene-type-chips"><div class="scene-type-chip selected">Narration</div><div class="scene-type-chip">Hook</div><div class="scene-type-chip">CTA</div><div class="scene-type-chip">Transition</div><div class="scene-type-chip">Text Card</div></div>
+          <div class="scene-type-chips"><div class="scene-type-chip selected">Narration</div><div class="scene-type-chip">Hook</div><div class="scene-type-chip">Transition</div><div class="scene-type-chip">Text Card</div><div class="scene-type-chip">Quote</div></div>
           <textarea class="add-scene-textarea" placeholder="Write your scene script, or click 'AI Generate' to create one..."></textarea>
           <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Visual source</div>
           <div class="add-scene-visual-row"><div class="add-scene-visual-opt selected"><div class="ico">🎬</div>Stock Clip</div><div class="add-scene-visual-opt"><div class="ico">🔁</div>BG Loop</div><div class="add-scene-visual-opt"><div class="ico">🖼</div>AI Image</div><div class="add-scene-visual-opt"><div class="ico">Aa</div>Text Only</div></div>
@@ -1901,7 +2353,7 @@ textarea.input-field {
         <div class="add-scene-divider"><div class="add-scene-trigger" onclick="toggleAddScene('after3')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg> Insert</div></div>
         <div class="scene-item" onclick="selectScene(this)"><div class="scene-number">Scene 4</div><div class="scene-text">Habit three: Track your net worth monthly. What gets measured gets managed.</div><div class="scene-meta"><span class="scene-tag">text card</span><span>5.9s</span></div></div>
         <div class="add-scene-divider"><div class="add-scene-trigger" onclick="toggleAddScene('after4')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg> Insert</div></div>
-        <div class="scene-item" onclick="selectScene(this)"><div class="scene-number">Scene 5 · CTA</div><div class="scene-text">Follow for more money tips that actually work.</div><div class="scene-meta"><span class="scene-tag">bg loop</span><span>3.5s</span></div></div>
+        <div class="scene-item" onclick="selectScene(this)"><div class="scene-number">Scene 5</div><div class="scene-text">Follow for more money tips that actually work.</div><div class="scene-meta"><span class="scene-tag">bg loop</span><span>3.5s</span></div></div>
         <div class="add-scene-divider always-visible"><div class="add-scene-trigger" onclick="toggleAddScene('end')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg> Insert</div></div>
       </div>
     </div>
@@ -1916,10 +2368,6 @@ textarea.input-field {
             <span class="caption-word highlight">never build </span>
             <span class="caption-word normal">wealth.</span>
           </div>
-          <!-- Safe zone indicator — shows where platform UI sits -->
-          <div style="position:absolute;bottom:0;left:0;right:0;height:56px;border-top:1px dashed rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:9px;color:rgba(255,255,255,0.2);letter-spacing:0.08em;text-transform:uppercase;">Platform UI zone</span>
-          </div>
         </div>
       </div>
       <div class="playback-controls">
@@ -1932,61 +2380,119 @@ textarea.input-field {
     <div class="editor-right">
 
       <!-- Script / Caption Text -->
-      <div class="panel-section">
-        <div class="panel-label">Scene Script</div>
-        <textarea class="add-scene-textarea" style="min-height:72px; margin-bottom:0;">Most people will never build wealth. Here's why — and how to fix it.</textarea>
-        <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">This text is spoken by the voice and rendered as captions.</div>
+      <div class="panel-section" data-panel-section="">
+        <div class="panel-section-header" onclick="togglePanelSection(this.parentElement)">
+          <div class="panel-label-row">
+            <div class="panel-label" style="margin-bottom:0;">Scene Script</div>
+            <span class="panel-badge warn">Voice outdated</span>
+          </div>
+          <div class="panel-chevron">▾</div>
+        </div>
+        <div class="panel-section-body">
+          <textarea class="add-scene-textarea" id="sceneScriptInput" style="min-height:72px; margin-bottom:0;">Most people will never build wealth. Here's why — and how to fix it.</textarea>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">This text is spoken by the voice and rendered as captions.</div>
+          <div class="panel-inline-actions">
+            <button class="btn btn-ghost btn-sm rewrite-trigger" onclick="showRewriteTools()">✦ Rewrite with AI</button>
+          </div>
+          <div class="rewrite-tools hidden" id="rewriteTools">
+            <div class="chips" style="gap:6px; margin-top:0;">
+              <div class="chip" onclick="submitRewrite(this)">Shorten</div>
+              <div class="chip" onclick="submitRewrite(this)">Expand</div>
+              <div class="chip" onclick="submitRewrite(this)">Stronger hook</div>
+              <div class="chip" onclick="submitRewrite(this)">More punchy</div>
+              <div class="chip" onclick="submitRewrite(this)">More educational</div>
+              <div class="chip" onclick="submitRewrite(this)">Simplify</div>
+            </div>
+            <div class="rewrite-custom">
+              <input class="rewrite-custom-input" id="rewriteCustomInput" placeholder="Custom instruction…">
+              <button class="btn btn-ghost btn-sm" onclick="submitRewriteCustom()">Apply</button>
+            </div>
+            <div class="rewrite-note">Applies to this scene only · Preserves locked facts</div>
+          </div>
+          <div class="rewrite-preview hidden" id="rewritePreview">
+            <div class="rewrite-preview-title">AI Rewrite Candidate</div>
+            <div class="rewrite-preview-copy" id="rewritePreviewCopy">Most people stay broke because they never set up simple systems that build wealth automatically.</div>
+            <div class="rewrite-preview-actions">
+              <button class="btn btn-ghost btn-sm" onclick="hideRewritePreview()">Reject</button>
+              <button class="btn btn-primary btn-sm" onclick="acceptRewrite()">Accept Rewrite</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Visual Source -->
-      <div class="panel-section">
-        <div class="panel-label">Visual Source</div>
-        <div class="control-row"><span class="control-name">Type</span><select class="control-value"><option>Stock Clip</option><option>Background Loop</option><option>AI Image</option><option>Text Card</option><option>Waveform</option></select></div>
-        <div class="control-row"><span class="control-name">Query</span><input class="control-value" value="city night timelapse" style="width:140px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-family:inherit;padding:4px 8px;border-radius:4px;"></div>
-        <button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;justify-content:center;">↻ Swap Visual</button>
+      <div class="panel-section" data-panel-section="">
+        <div class="panel-section-header" onclick="togglePanelSection(this.parentElement)">
+          <div class="panel-label" style="margin-bottom:0;">Visual Source</div>
+          <div class="panel-chevron">▾</div>
+        </div>
+        <div class="panel-section-body">
+          <div class="control-row"><span class="control-name">Type</span><select class="control-value"><option>Stock Clip</option><option>Background Loop</option><option>AI Image</option><option>Text Card</option><option>Waveform</option></select></div>
+          <div class="control-row"><span class="control-name">Query</span><input class="control-value" value="city night timelapse" style="width:140px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-family:inherit;padding:4px 8px;border-radius:4px;"></div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;justify-content:center;">↻ Swap Visual</button>
+        </div>
       </div>
 
       <!-- Voice -->
-      <div class="panel-section">
-        <div class="panel-label">Voice</div>
-        <div class="voice-preview">
-          <div class="voice-avatar">🎙</div>
-          <div class="voice-info">
-            <div class="voice-name">Marcus — Authority</div>
-            <div class="voice-desc">Deep male · EN-US · 1.0x</div>
+      <div class="panel-section" data-panel-section="">
+        <div class="panel-section-header" onclick="togglePanelSection(this.parentElement)">
+          <div class="panel-label-row">
+            <div class="panel-label" style="margin-bottom:0;">Voice</div>
+            <span class="panel-badge warn">Outdated</span>
           </div>
-          <div class="voice-play">▶</div>
+          <div class="panel-chevron">▾</div>
         </div>
-        <div class="control-row" style="margin-top:10px;"><span class="control-name">Speed</span><select class="control-value"><option>0.8x</option><option selected>1.0x</option><option>1.1x</option><option>1.2x</option></select></div>
-        <div class="control-row"><span class="control-name">Stability</span><select class="control-value"><option>Low</option><option selected>Medium</option><option>High</option></select></div>
-        <div style="margin-top:10px;padding:8px 10px;background:var(--yellow-bg);border:1px solid rgba(251,191,36,0.2);border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-          <span style="font-size:11px;color:var(--yellow);">Script changed — voice outdated</span>
-          <button class="btn btn-sm" style="background:var(--yellow);color:#000;font-weight:600;padding:4px 10px;font-size:11px;">Regenerate</button>
+        <div class="panel-section-body">
+          <div class="voice-preview">
+            <div class="voice-avatar">🎙</div>
+            <div class="voice-info">
+              <div class="voice-name">Marcus — Authority</div>
+              <div class="voice-desc">Deep male · EN-US · 1.0x</div>
+            </div>
+            <div class="voice-play">▶</div>
+          </div>
+          <div class="control-row" style="margin-top:10px;"><span class="control-name">Speed</span><select class="control-value"><option>0.8x</option><option selected="">1.0x</option><option>1.1x</option><option>1.2x</option></select></div>
+          <div class="control-row"><span class="control-name">Stability</span><select class="control-value"><option>Low</option><option selected="">Medium</option><option>High</option></select></div>
+          <div style="margin-top:10px;padding:8px 10px;background:var(--yellow-bg);border:1px solid rgba(251,191,36,0.2);border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <span style="font-size:11px;color:var(--yellow);">Script changed — voice outdated</span>
+            <button class="btn btn-sm" style="background:var(--yellow);color:#000;font-weight:600;padding:4px 10px;font-size:11px;" onclick="regenerateSceneVoice()">Regenerate</button>
+          </div>
         </div>
       </div>
 
       <!-- Captions -->
-      <div class="panel-section">
-        <div class="panel-label" style="display:flex;align-items:center;justify-content:space-between;">
-          Captions
-          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);cursor:pointer;">
-            <input type="checkbox" checked style="accent-color:var(--accent);"> On
-          </label>
+      <div class="panel-section" data-panel-section="">
+        <div class="panel-section-header" onclick="togglePanelSection(this.parentElement)">
+          <div class="panel-label" style="margin-bottom:0;">Captions</div>
+          <div class="panel-chevron">▾</div>
         </div>
-        <div class="caption-style-grid">
-          <div class="caption-style-opt active"><div class="preview-text" style="color:var(--accent);">BOLD</div><div class="style-name">Impact</div></div>
-          <div class="caption-style-opt"><div class="preview-text" style="color:#fff; font-style:italic;">SERIF</div><div class="style-name">Editorial</div></div>
-          <div class="caption-style-opt"><div class="preview-text" style="color:var(--yellow); font-family:'Space Mono', monospace;">MONO</div><div class="style-name">Hacker</div></div>
+        <div class="panel-section-body">
+          <div class="panel-label" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span></span>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);cursor:pointer;">
+              <input type="checkbox" checked="" style="accent-color:var(--accent);"> On
+            </label>
+          </div>
+          <div class="caption-style-grid">
+            <div class="caption-style-opt active"><div class="preview-text" style="color:var(--accent);">BOLD</div><div class="style-name">Impact</div></div>
+            <div class="caption-style-opt"><div class="preview-text" style="color:#fff; font-style:italic;">SERIF</div><div class="style-name">Editorial</div></div>
+            <div class="caption-style-opt"><div class="preview-text" style="color:var(--yellow); font-family:'Space Mono', monospace;">MONO</div><div class="style-name">Hacker</div></div>
+          </div>
+          <div class="control-row" style="margin-top:10px;"><span class="control-name">Highlight</span><select class="control-value"><option selected="">Keywords</option><option>Word-by-word</option><option>Line-by-line</option><option>None</option></select></div>
+          <div class="control-row"><span class="control-name">Position</span><select class="control-value"><option selected="">Bottom third</option><option>Center</option><option>Top third</option></select></div>
         </div>
-        <div class="control-row" style="margin-top:10px;"><span class="control-name">Highlight</span><select class="control-value"><option selected>Keywords</option><option>Word-by-word</option><option>Line-by-line</option><option>None</option></select></div>
-        <div class="control-row"><span class="control-name">Position</span><select class="control-value"><option selected>Bottom third</option><option>Center</option><option>Top third</option></select></div>
       </div>
 
       <!-- Brand Kit -->
-      <div class="panel-section">
-        <div class="panel-label">Brand Kit</div>
-        <div class="control-row"><span class="control-name">Channel</span><select class="control-value"><option>Finance Tips</option><option>Tech Explainer</option><option>Motivation</option></select></div>
-        <div class="control-row"><span class="control-name">Template</span><select class="control-value"><option>Explainer — 60s</option><option>Listicle — 30s</option><option>Quote — 15s</option></select></div>
+      <div class="panel-section" data-panel-section="">
+        <div class="panel-section-header" onclick="togglePanelSection(this.parentElement)">
+          <div class="panel-label" style="margin-bottom:0;">Brand Kit</div>
+          <div class="panel-chevron">▾</div>
+        </div>
+        <div class="panel-section-body">
+          <div class="control-row"><span class="control-name">Channel</span><select class="control-value"><option>Finance Tips</option><option>Tech Explainer</option><option>Motivation</option></select></div>
+          <div class="control-row"><span class="control-name">Template</span><select class="control-value"><option>Explainer — 60s</option><option>Listicle — 30s</option><option>Quote — 15s</option></select></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1997,7 +2503,7 @@ textarea.input-field {
         <div class="section-header">
           <div>
             <div class="section-title">Variant Factory</div>
-            <div class="section-subtitle">Hooks, CTAs, voices, and languages laid out with the same hierarchy as the dashboard.</div>
+            <div class="section-subtitle">Hooks, voices, and languages laid out with the same hierarchy as the dashboard.</div>
           </div>
           <div style="display:flex; gap:8px;">
             <button class="btn btn-ghost btn-sm">Select All</button>
@@ -2165,11 +2671,11 @@ textarea.input-field {
         <div class="settings-pane active" id="settingsPane-channels">
           <div class="section-title">Channels</div>
           <div class="settings-section-desc">This now reads as a proper management surface instead of a detached tab strip.</div>
-          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #0f2027, #2c5364);">$</div><div class="channel-info"><div class="channel-name-row">Faceless Finance Tips</div><div class="channel-detail">TikTok · Reels · Shorts · EN · 18 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openModal('channelModal')">Edit</button></div>
-          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #1a0a2e, #3d1a6e);">AI</div><div class="channel-info"><div class="channel-name-row">Tech Explainer</div><div class="channel-detail">YouTube Shorts · EN · ES · PT · 12 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openModal('channelModal')">Edit</button></div>
-          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #2a1a10, #4a3020);">M</div><div class="channel-info"><div class="channel-name-row">Daily Motivation</div><div class="channel-detail">TikTok · Reels · EN · 42 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openModal('channelModal')">Edit</button></div>
-          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #1a2a1a, #2a4a2a);">AD</div><div class="channel-info"><div class="channel-name-row">UGC Ads</div><div class="channel-detail">Instagram · Facebook · EN · 8 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openModal('channelModal')">Edit</button></div>
-          <button class="btn btn-ghost" style="margin-top:8px;">Add Channel</button>
+          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #0f2027, #2c5364);">$</div><div class="channel-info"><div class="channel-name-row">Faceless Finance Tips</div><div class="channel-detail">TikTok · Reels · Shorts · EN · 18 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openChannelModal('edit')">Edit</button></div>
+          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #1a0a2e, #3d1a6e);">AI</div><div class="channel-info"><div class="channel-name-row">Tech Explainer</div><div class="channel-detail">YouTube Shorts · EN · ES · PT · 12 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openChannelModal('edit')">Edit</button></div>
+          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #2a1a10, #4a3020);">M</div><div class="channel-info"><div class="channel-name-row">Daily Motivation</div><div class="channel-detail">TikTok · Reels · EN · 42 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openChannelModal('edit')">Edit</button></div>
+          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #1a2a1a, #2a4a2a);">AD</div><div class="channel-info"><div class="channel-name-row">UGC Ads</div><div class="channel-detail">Instagram · Facebook · EN · 8 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openChannelModal('edit')">Edit</button></div>
+          <button class="btn btn-ghost" style="margin-top:8px;" onclick="openChannelModal('create')">+ New Channel</button>
         </div>
 
         <div class="settings-pane" id="settingsPane-brand">
@@ -2186,10 +2692,6 @@ textarea.input-field {
           <div class="settings-row">
             <div class="settings-row-label"><div class="label-main">Default Voice</div><div class="label-hint">Applied to new scenes</div></div>
             <div class="settings-row-control"><select class="settings-select"><option>Marcus - Authority (EN-US)</option><option>Sofia - Warm (ES)</option><option>Luna - Energetic (EN-US)</option></select></div>
-          </div>
-          <div class="settings-row">
-            <div class="settings-row-label"><div class="label-main">Default CTA</div><div class="label-hint">Last scene copy</div></div>
-            <div class="settings-row-control"><input class="settings-input" value="Follow for daily money tips ->"></div>
           </div>
         </div>
 
@@ -2538,18 +3040,7 @@ Habit 3: Track your net worth monthly.</textarea>
           <div class="dim-desc">Generate alternate opening hooks</div>
           <div class="dim-sub">
             <div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">Number of hooks</div>
-            <select class="count-select" onchange="updateBatchSummary()"><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
-          </div>
-        </div>
-      </div>
-      <div class="dim-row" onclick="toggleDim(this)">
-        <div class="dim-checkbox"></div>
-        <div class="dim-text">
-          <div class="dim-label">CTA</div>
-          <div class="dim-desc">Generate alternate calls to action</div>
-          <div class="dim-sub">
-            <div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">Number of CTAs</div>
-            <select class="count-select" onchange="updateBatchSummary()"><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+            <select class="count-select" onchange="updateBatchSummary()"><option>2</option><option selected="">3</option><option>4</option><option>5</option></select>
           </div>
         </div>
       </div>
@@ -2772,8 +3263,8 @@ Habit 3: Track your net worth monthly.</textarea>
 ════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="channelModal" onclick="if(event.target===this)closeModal('channelModal')">
   <div class="modal" style="max-width:560px;">
-    <div class="modal-title">Edit Channel</div>
-    <div class="modal-subtitle" style="margin-bottom:20px;">Faceless Finance Tips</div>
+    <div class="modal-title" id="channelModalTitle">Edit Channel</div>
+    <div class="modal-subtitle" id="channelModalSubtitle" style="margin-bottom:20px;">Faceless Finance Tips</div>
 
     <div class="form-grid-2" style="margin-bottom:14px;">
       <div class="input-group" style="margin:0;">
@@ -2782,7 +3273,7 @@ Habit 3: Track your net worth monthly.</textarea>
       </div>
       <div class="input-group" style="margin:0;">
         <label class="input-label">Default Language</label>
-        <select class="input-field"><option selected>English (en-US)</option><option>Spanish (es)</option><option>Portuguese (pt-BR)</option></select>
+        <select class="input-field"><option selected="">English (en-US)</option><option>Spanish (es)</option><option>Portuguese (pt-BR)</option></select>
       </div>
     </div>
 
@@ -2805,31 +3296,26 @@ Habit 3: Track your net worth monthly.</textarea>
     <div class="form-grid-2" style="margin-bottom:14px;">
       <div class="input-group" style="margin:0;">
         <label class="input-label">Default Voice Profile</label>
-        <select class="input-field"><option selected>Marcus · EN · Deep</option><option>Luna · EN · Warm</option><option>Sofia · ES · Neutral</option></select>
+        <select class="input-field"><option selected="">Marcus · EN · Deep</option><option>Luna · EN · Warm</option><option>Sofia · ES · Neutral</option></select>
       </div>
       <div class="input-group" style="margin:0;">
         <label class="input-label">Brand Kit</label>
-        <select class="input-field"><option selected>Finance Brand</option><option>Minimal Dark</option><option>+ New Brand Kit</option></select>
+        <select class="input-field"><option selected="">Finance Brand</option><option>Minimal Dark</option><option>+ New Brand Kit</option></select>
       </div>
-    </div>
-
-    <div class="input-group">
-      <label class="input-label">Default CTA Text</label>
-      <input class="input-field" type="text" value="Follow for daily finance tips">
     </div>
 
     <div style="font-size:12px; color:var(--text-muted); padding:10px 12px; background:var(--bg-elevated); border-radius:8px; border:1px solid var(--border); margin-bottom:4px;">
       Changing defaults does not update existing projects that use this channel.
     </div>
 
-    <div class="danger-zone">
+    <div class="danger-zone" id="channelDangerZone">
       <div class="danger-zone-label">Danger Zone</div>
       <button class="btn btn-ghost btn-sm" style="border-color:rgba(248,113,113,0.3); color:var(--red);" onclick="closeModal('channelModal'); openModal('deleteModal')">Archive Channel</button>
     </div>
 
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('channelModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="closeModal('channelModal'); showToast('success','Saved','Channel updated successfully.')">Save Changes</button>
+      <button class="btn btn-primary" id="channelModalSaveBtn" onclick="saveChannel()">Save Changes</button>
     </div>
   </div>
 </div>
@@ -2929,6 +3415,59 @@ function toggleAddScene(position) {
 
 function closeAddScene() {
   document.getElementById("addScenePanel").classList.remove("open");
+}
+
+function togglePanelSection(section) {
+  if (!section) return;
+  section.classList.toggle("collapsed");
+}
+
+function showRewriteTools() {
+  var tools = document.getElementById("rewriteTools");
+  if (!tools) return;
+  if (!tools.classList.contains("hidden")) {
+    hideRewritePreview();
+    return;
+  }
+  tools.classList.remove("hidden");
+  document.getElementById("rewritePreview").classList.add("hidden");
+}
+
+function submitRewrite(chip) {
+  document.querySelectorAll("#rewriteTools .chip").forEach(function(c) { c.classList.remove("selected"); });
+  chip.classList.add("selected");
+  document.getElementById("rewriteCustomInput").value = "";
+  document.getElementById("rewritePreview").classList.remove("hidden");
+}
+
+function submitRewriteCustom() {
+  var input = document.getElementById("rewriteCustomInput");
+  if (!input || !input.value.trim()) return;
+  document.querySelectorAll("#rewriteTools .chip").forEach(function(c) { c.classList.remove("selected"); });
+  document.getElementById("rewritePreview").classList.remove("hidden");
+}
+
+function hideRewritePreview() {
+  document.getElementById("rewriteTools").classList.add("hidden");
+  document.getElementById("rewritePreview").classList.add("hidden");
+  document.getElementById("rewriteCustomInput").value = "";
+  document.querySelectorAll("#rewriteTools .chip").forEach(function(c) { c.classList.remove("selected"); });
+}
+
+function acceptRewrite() {
+  var input = document.getElementById("sceneScriptInput");
+  var previewCopy = document.getElementById("rewritePreviewCopy");
+  if (input && previewCopy) {
+    input.value = previewCopy.textContent.trim();
+  }
+  hideRewritePreview();
+}
+
+function regenerateSceneVoice() {
+  var buttons = document.querySelectorAll(".panel-badge.warn");
+  buttons.forEach(function(badge) {
+    badge.classList.add("hidden");
+  });
 }
 
 function filterAssets(element) {
@@ -3121,6 +3660,86 @@ function showView(view) {
 }
 
 /* ── Queue detail tab filter ── */
+function showAuthState(stateId) {
+  document.querySelectorAll(".auth-state").forEach(function(s) { s.classList.remove("active"); });
+  var target = document.getElementById(stateId);
+  if (target) target.classList.add("active");
+}
+
+function sendMagicLink(context) {
+  var emailInput = context === "register"
+    ? document.getElementById("registerEmail")
+    : document.getElementById("loginEmail");
+  var email = (emailInput && emailInput.value.trim()) ? emailInput.value.trim() : "you@example.com";
+  var el = document.getElementById("magicLinkEmail");
+  if (el) el.textContent = email;
+  showAuthState("authMagicSent");
+}
+
+function togglePassword() {
+  var section = document.getElementById("passwordSection");
+  var btn = document.getElementById("togglePasswordBtn");
+  var visible = section.classList.toggle("visible");
+  btn.textContent = visible ? "Use magic link instead" : "Sign in with password";
+}
+
+function hideAuth() {
+  document.getElementById("authScreen").classList.add("hidden");
+  document.getElementById("userPopover").classList.add("hidden");
+}
+
+function showAuth() {
+  document.getElementById("authScreen").classList.remove("hidden");
+  showAuthState("authLogin");
+  document.getElementById("passwordSection").classList.remove("visible");
+  document.getElementById("togglePasswordBtn").textContent = "Sign in with password";
+}
+
+function openChannelModal(mode) {
+  var title = document.getElementById("channelModalTitle");
+  var subtitle = document.getElementById("channelModalSubtitle");
+  var dangerZone = document.getElementById("channelDangerZone");
+  var saveBtn = document.getElementById("channelModalSaveBtn");
+  if (mode === "create") {
+    title.textContent = "New Channel";
+    subtitle.textContent = "Set up a new publishing lane";
+    dangerZone.style.display = "none";
+    saveBtn.textContent = "Create Channel";
+    saveBtn.onclick = function() {
+      closeModal("channelModal");
+      showToast("success", "Channel created", "Your new channel is ready.");
+    };
+  } else {
+    title.textContent = "Edit Channel";
+    subtitle.textContent = "Faceless Finance Tips";
+    dangerZone.style.display = "";
+    saveBtn.textContent = "Save Changes";
+    saveBtn.onclick = function() {
+      closeModal("channelModal");
+      showToast("success", "Saved", "Channel updated successfully.");
+    };
+  }
+  openModal("channelModal");
+}
+
+function saveChannel() {
+  closeModal("channelModal");
+  showToast("success", "Saved", "Channel updated successfully.");
+}
+
+function toggleUserPopover() {
+  var popover = document.getElementById("userPopover");
+  if (popover) popover.classList.toggle("hidden");
+}
+
+document.addEventListener("click", function(e) {
+  var popover = document.getElementById("userPopover");
+  if (!popover || popover.classList.contains("hidden")) return;
+  if (!popover.contains(e.target) && !e.target.closest(".avatar")) {
+    popover.classList.add("hidden");
+  }
+});
+
 function filterQueueTab(el) {
   document.querySelectorAll(".filter-tab-btn").forEach(function(t) { t.classList.remove("active"); });
   el.classList.add("active");
@@ -3161,5 +3780,6 @@ document.addEventListener("DOMContentLoaded", function() {
   }, 1200);
 });
 </script>
-</body>
-</html>
+
+
+</body></html>
