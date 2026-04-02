@@ -1,0 +1,32 @@
+services:
+  api:
+    build:
+      context: ./api
+    command: php-fpm
+
+  worker:
+    build:
+      context: ./api
+    command: php artisan queue:work redis --queue=default,generation,tts,visual,translation,rendering --tries=1
+
+  scheduler:
+    build:
+      context: ./api
+    command: php artisan schedule:work
+
+  reverb:
+    build:
+      context: ./api
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+
+  horizon:
+    build:
+      context: ./api
+    command: php artisan horizon
+
+  web:
+    build:
+      context: ./web
+      target: production
+    ports:
+      - "8081:80"
