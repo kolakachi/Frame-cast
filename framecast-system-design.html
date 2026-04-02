@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Framecast — System Design & Cost Economics</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d0d12;
+  --bg-card: #14141c;
+  --border: #25253a;
+  --text: #e0e0e8;
+  --text-dim: #888898;
+  --accent: #ff6b35;
+  --green: #34d399;
+  --blue: #60a5fa;
+  --purple: #a78bfa;
+  --yellow: #fbbf24;
+  --red: #f87171;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'DM Sans', sans-serif; background:var(--bg); color:var(--text); line-height:1.7; }
+.container { max-width:960px; margin:0 auto; padding:48px 32px; }
+h1 { font-size:32px; font-weight:700; margin-bottom:4px; }
+.subtitle { color:var(--text-dim); font-size:15px; margin-bottom:48px; }
+h2 { font-size:22px; font-weight:700; margin-top:56px; margin-bottom:16px; color:var(--accent); border-bottom:1px solid var(--border); padding-bottom:8px; }
+h3 { font-size:17px; font-weight:600; margin-top:28px; margin-bottom:10px; }
+p { margin-bottom:14px; color:var(--text); font-size:15px; }
+strong { color:#fff; }
+.mono { font-family:'Space Mono', monospace; font-size:13px; }
+
+/* Architecture Box Diagrams */
+.arch-diagram {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  margin: 20px 0 28px;
+  overflow-x: auto;
+}
+.arch-row {
+  display: flex; gap: 12px; justify-content: center;
+  margin-bottom: 16px; flex-wrap: wrap;
+}
+.arch-box {
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  min-width: 130px;
+  border: 1px solid;
+}
+.arch-box.client { background: rgba(96,165,250,0.1); border-color: rgba(96,165,250,0.3); color: var(--blue); }
+.arch-box.api { background: rgba(255,107,53,0.1); border-color: rgba(255,107,53,0.3); color: var(--accent); }
+.arch-box.worker { background: rgba(167,139,250,0.1); border-color: rgba(167,139,250,0.3); color: var(--purple); }
+.arch-box.storage { background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.3); color: var(--green); }
+.arch-box.ext { background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.3); color: var(--yellow); }
+.arch-arrow {
+  text-align: center; color: var(--text-dim); font-size: 12px;
+  margin: 6px 0;
+}
+.arch-label {
+  text-align: center; font-size: 11px; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0 24px;
+  font-size: 14px;
+}
+th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid var(--border);
+  background: var(--bg-card);
+}
+td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+tr:hover td { background: rgba(255,255,255,0.02); }
+.cost { font-family:'Space Mono', monospace; color: var(--green); }
+.cost-high { font-family:'Space Mono', monospace; color: var(--yellow); }
+.cost-crit { font-family:'Space Mono', monospace; color: var(--red); }
+
+/* Callout boxes */
+.callout {
+  background: var(--bg-card);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  padding: 16px 20px;
+  margin: 16px 0;
+  font-size: 14px;
+}
+.callout.green { border-left-color: var(--green); }
+.callout.blue { border-left-color: var(--blue); }
+.callout.yellow { border-left-color: var(--yellow); }
+
+/* Lists */
+ul, ol { margin: 8px 0 16px 24px; font-size: 14px; }
+li { margin-bottom: 6px; }
+
+/* Badge */
+.badge {
+  display: inline-block; padding: 2px 8px;
+  border-radius: 4px; font-size: 11px; font-weight: 600;
+}
+.badge-mvp { background: rgba(52,211,153,0.15); color: var(--green); }
+.badge-v2 { background: rgba(96,165,250,0.15); color: var(--blue); }
+.badge-v3 { background: rgba(167,139,250,0.15); color: var(--purple); }
+
+/* Summary card grid */
+.summary-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+  margin: 20px 0 28px;
+}
+.summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+}
+.summary-number {
+  font-family: 'Space Mono', monospace;
+  font-size: 28px; font-weight: 700;
+  margin-bottom: 4px;
+}
+.summary-label { font-size: 12px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Framecast — System Design & Cost Economics</h1>
+<p class="subtitle">AI Video Publishing Platform for Faceless Creators · Architecture, Infrastructure, and Unit Economics</p>
+
+<!-- ============================================ -->
+<h2>1. High-Level Architecture</h2>
+
+<p>The system is designed as an <strong>async-first, queue-driven pipeline</strong>. Video generation is not real-time — the user submits a project, the system processes it through multiple AI stages, assembles the result, renders to video, and delivers. This lets us optimize for throughput and cost rather than latency.</p>
+
+<div class="arch-diagram">
+  <div class="arch-label">Client Layer</div>
+  <div class="arch-row">
+    <div class="arch-box client">SPA Frontend<br><small>React / Next.js</small></div>
+    <div class="arch-box client">Mobile Web<br><small>PWA</small></div>
+  </div>
+  <div class="arch-arrow">↓ HTTPS / WebSocket</div>
+  <div class="arch-label">API & Orchestration Layer</div>
+  <div class="arch-row">
+    <div class="arch-box api">API Gateway<br><small>Laravel / Node.js</small></div>
+    <div class="arch-box api">SSE Service<br><small>Node.js</small></div>
+    <div class="arch-box api">Auth / Billing<br><small>Laravel + Stripe</small></div>
+  </div>
+  <div class="arch-arrow">↓ Redis Queues / Events</div>
+  <div class="arch-label">Worker Layer (Async Pipeline)</div>
+  <div class="arch-row">
+    <div class="arch-box worker">Script Worker<br><small>LLM calls</small></div>
+    <div class="arch-box worker">TTS Worker<br><small>ElevenLabs / Fish</small></div>
+    <div class="arch-box worker">Visual Worker<br><small>Stock / AI Gen</small></div>
+    <div class="arch-box worker">Caption Worker<br><small>Whisper / align</small></div>
+    <div class="arch-box worker">Render Worker<br><small>FFmpeg / Remotion</small></div>
+  </div>
+  <div class="arch-arrow">↓ Read / Write</div>
+  <div class="arch-label">Data & Storage Layer</div>
+  <div class="arch-row">
+    <div class="arch-box storage">PostgreSQL<br><small>Projects, users</small></div>
+    <div class="arch-box storage">Redis<br><small>Queues, cache</small></div>
+    <div class="arch-box storage">S3 / R2<br><small>Assets, renders</small></div>
+    <div class="arch-box storage">CDN<br><small>Delivery</small></div>
+  </div>
+  <div class="arch-arrow">↕ External APIs</div>
+  <div class="arch-label">Third-Party Services</div>
+  <div class="arch-row">
+    <div class="arch-box ext">OpenAI / Claude<br><small>Script gen</small></div>
+    <div class="arch-box ext">ElevenLabs<br><small>TTS / Clone</small></div>
+    <div class="arch-box ext">Pexels / Pixabay<br><small>Stock footage</small></div>
+    <div class="arch-box ext">DeepL / GPT<br><small>Translation</small></div>
+    <div class="arch-box ext">Replicate / FAL<br><small>AI Image Gen</small></div>
+  </div>
+</div>
+
+<div class="callout">
+  <strong>Key architectural decision:</strong> SSE for real-time progress is routed exclusively through Node.js to avoid PHP-FPM worker exhaustion — the same pattern used in Lumio. Laravel handles API logic; Node handles long-lived connections.
+</div>
+
+<!-- ============================================ -->
+<h2>2. Video Generation Pipeline</h2>
+
+<p>Each video project flows through a <strong>5-stage pipeline</strong>, where each stage is an independent queue job. This allows partial retries, parallel processing of variants, and cost isolation per step.</p>
+
+<div class="arch-diagram">
+  <div class="arch-row">
+    <div class="arch-box api" style="min-width:100px;">① Script<br><small>LLM</small></div>
+    <div style="display:flex; align-items:center; color:var(--text-dim);">→</div>
+    <div class="arch-box ext" style="min-width:100px;">② Voice<br><small>TTS API</small></div>
+    <div style="display:flex; align-items:center; color:var(--text-dim);">→</div>
+    <div class="arch-box worker" style="min-width:100px;">③ Visuals<br><small>Stock / AI</small></div>
+    <div style="display:flex; align-items:center; color:var(--text-dim);">→</div>
+    <div class="arch-box client" style="min-width:100px;">④ Captions<br><small>Alignment</small></div>
+    <div style="display:flex; align-items:center; color:var(--text-dim);">→</div>
+    <div class="arch-box storage" style="min-width:100px;">⑤ Render<br><small>FFmpeg</small></div>
+  </div>
+</div>
+
+<h3>Stage Details</h3>
+<table>
+  <thead>
+    <tr><th>Stage</th><th>Process</th><th>Duration</th><th>Parallelizable</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>① Script</strong></td><td>LLM generates/refines script, splits into scenes, generates hooks/CTAs</td><td>3-8s</td><td>Yes (variants)</td></tr>
+    <tr><td><strong>② Voice</strong></td><td>TTS API converts each scene to audio, applies speed/emphasis</td><td>5-15s per scene</td><td>Yes (per scene)</td></tr>
+    <tr><td><strong>③ Visuals</strong></td><td>Fetch stock clips or generate AI images, match to scene durations</td><td>2-10s per scene</td><td>Yes (per scene)</td></tr>
+    <tr><td><strong>④ Captions</strong></td><td>Whisper alignment on TTS output, word-level timestamps, styling</td><td>2-5s</td><td>Yes</td></tr>
+    <tr><td><strong>⑤ Render</strong></td><td>Remotion or FFmpeg composites video, captions, audio, CTA</td><td>15-60s per video</td><td>Batch queue</td></tr>
+  </tbody>
+</table>
+
+<div class="callout blue">
+  <strong>End-to-end for one 30s video:</strong> ~45-90 seconds with parallelized scene processing. A 10-variant batch takes ~3-5 minutes (most stages share base assets).
+</div>
+
+<!-- ============================================ -->
+<h2>3. Cost Economics Per Video</h2>
+
+<p>This is the make-or-break math. AI video platforms burn cash if cost-per-render isn't managed. Here's the breakdown for a <strong>typical 30-second, 5-scene video</strong>.</p>
+
+<h3>3.1 Direct API Costs Per Video</h3>
+<table>
+  <thead>
+    <tr><th>Component</th><th>Service</th><th>Usage</th><th>Unit Cost</th><th>Cost / Video</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Script generation</td>
+      <td>Claude Sonnet / GPT-4o-mini</td>
+      <td>~1,500 tokens out</td>
+      <td>$0.003/1K out</td>
+      <td class="cost">$0.005</td>
+    </tr>
+    <tr>
+      <td>Hook variants (×5)</td>
+      <td>Claude Sonnet / GPT-4o-mini</td>
+      <td>~500 tokens × 5</td>
+      <td>$0.003/1K out</td>
+      <td class="cost">$0.008</td>
+    </tr>
+    <tr>
+      <td>TTS voiceover</td>
+      <td>ElevenLabs (Scale)</td>
+      <td>~120 words ≈ 45s audio</td>
+      <td>$0.18/1K chars</td>
+      <td class="cost-high">$0.11</td>
+    </tr>
+    <tr>
+      <td>Stock footage</td>
+      <td>Pexels API (free) + Storyblocks</td>
+      <td>5 clips</td>
+      <td>Free–$0.50/clip</td>
+      <td class="cost">$0.00–$0.10</td>
+    </tr>
+    <tr>
+      <td>AI image gen (optional)</td>
+      <td>FLUX via Replicate / FAL</td>
+      <td>2 images</td>
+      <td>$0.003–$0.04/img</td>
+      <td class="cost">$0.01–$0.08</td>
+    </tr>
+    <tr>
+      <td>Caption alignment</td>
+      <td>Whisper (self-hosted)</td>
+      <td>30s audio</td>
+      <td>Compute only</td>
+      <td class="cost">$0.002</td>
+    </tr>
+    <tr>
+      <td>Translation (1 lang)</td>
+      <td>DeepL / GPT-4o-mini</td>
+      <td>~600 chars</td>
+      <td>$0.005/1K chars</td>
+      <td class="cost">$0.003</td>
+    </tr>
+    <tr>
+      <td>Dubbed TTS (1 lang)</td>
+      <td>ElevenLabs Multilingual</td>
+      <td>~45s</td>
+      <td>$0.24/1K chars</td>
+      <td class="cost-high">$0.14</td>
+    </tr>
+    <tr>
+      <td>Video render</td>
+      <td>FFmpeg on EC2/Hetzner</td>
+      <td>30s @ 1080p</td>
+      <td>Compute only</td>
+      <td class="cost">$0.01–$0.03</td>
+    </tr>
+    <tr style="background: var(--bg-card);">
+      <td colspan="4"><strong>Total — Base video (EN, stock visuals)</strong></td>
+      <td class="cost-high"><strong>$0.13–$0.18</strong></td>
+    </tr>
+    <tr style="background: var(--bg-card);">
+      <td colspan="4"><strong>Total — With 1 language dub + AI images</strong></td>
+      <td class="cost-crit"><strong>$0.30–$0.45</strong></td>
+    </tr>
+    <tr style="background: var(--bg-card);">
+      <td colspan="4"><strong>Total — 10-variant batch (mixed hooks/CTAs, same base)</strong></td>
+      <td class="cost-crit"><strong>$0.90–$1.50</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout green">
+  <strong>Key insight:</strong> TTS is the dominant cost driver (60-70% of per-video cost). Negotiating volume pricing with ElevenLabs or switching to open-source TTS (Coqui XTTS, Fish Speech) for non-premium tiers can cut this in half. The LLM costs are negligible.
+</div>
+
+<h3>3.2 Infrastructure Costs (Monthly)</h3>
+<table>
+  <thead>
+    <tr><th>Resource</th><th>Spec</th><th>Provider</th><th>Monthly Cost</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>API Server (Laravel)</td><td>2 vCPU, 4GB RAM × 2</td><td>Hetzner / AWS</td><td class="cost">$30–$80</td></tr>
+    <tr><td>SSE/WebSocket Node</td><td>1 vCPU, 2GB RAM</td><td>Hetzner / AWS</td><td class="cost">$10–$20</td></tr>
+    <tr><td>Render Workers</td><td>4 vCPU, 8GB RAM × 2-4</td><td>Hetzner (dedicated)</td><td class="cost-high">$80–$200</td></tr>
+    <tr><td>Whisper GPU Worker</td><td>T4 GPU / serverless</td><td>Replicate / RunPod</td><td class="cost">$30–$100</td></tr>
+    <tr><td>PostgreSQL</td><td>Managed, 2 vCPU</td><td>Supabase / RDS</td><td class="cost">$25–$50</td></tr>
+    <tr><td>Redis</td><td>Managed, 1GB</td><td>Upstash / ElastiCache</td><td class="cost">$10–$30</td></tr>
+    <tr><td>Object Storage (S3/R2)</td><td>~500GB assets + renders</td><td>Cloudflare R2</td><td class="cost">$8–$15</td></tr>
+    <tr><td>CDN + Bandwidth</td><td>~2TB egress/mo</td><td>Cloudflare (free tier + R2)</td><td class="cost">$0–$10</td></tr>
+    <tr><td>Monitoring / Logs</td><td>Sentry + basic APM</td><td>Sentry / Grafana Cloud</td><td class="cost">$0–$30</td></tr>
+    <tr style="background: var(--bg-card);">
+      <td colspan="3"><strong>Total Infrastructure</strong></td>
+      <td class="cost-high"><strong>$200–$550/mo</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>3.3 Unit Economics Summary</h3>
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="summary-number" style="color:var(--accent);">$0.15</div>
+    <div class="summary-label">Avg COGS per base video</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-number" style="color:var(--green);">$0.50</div>
+    <div class="summary-label">Target charge per render</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-number" style="color:var(--blue);">70%</div>
+    <div class="summary-label">Gross margin target</div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<h2>4. Pricing Model & Revenue Math</h2>
+
+<h3>Proposed Plans</h3>
+<table>
+  <thead>
+    <tr><th>Plan</th><th>Price/mo</th><th>Renders</th><th>Voice Min</th><th>Channels</th><th>Dub Langs</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Creator</strong></td><td class="cost">$29</td><td>60</td><td>30 min</td><td>2</td><td>0</td></tr>
+    <tr><td><strong>Studio</strong></td><td class="cost-high">$79</td><td>200</td><td>120 min</td><td>5</td><td>3</td></tr>
+    <tr><td><strong>Agency</strong></td><td class="cost-crit">$199</td><td>600</td><td>400 min</td><td>15</td><td>10</td></tr>
+  </tbody>
+</table>
+
+<h3>Revenue Scenario at Scale</h3>
+<table>
+  <thead>
+    <tr><th>Metric</th><th>Month 6</th><th>Month 12</th><th>Month 24</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Paying customers</td><td>80</td><td>400</td><td>1,500</td></tr>
+    <tr><td>Avg revenue / customer</td><td>$45</td><td>$55</td><td>$65</td></tr>
+    <tr><td><strong>MRR</strong></td><td class="cost">$3,600</td><td class="cost-high">$22,000</td><td class="cost-crit">$97,500</td></tr>
+    <tr><td>Total renders / month</td><td>6,000</td><td>40,000</td><td>180,000</td></tr>
+    <tr><td>API costs (variable)</td><td class="cost">$900</td><td class="cost-high">$6,000</td><td class="cost-crit">$22,000</td></tr>
+    <tr><td>Infrastructure (fixed)</td><td class="cost">$300</td><td class="cost">$550</td><td class="cost-high">$1,800</td></tr>
+    <tr><td><strong>Gross Margin</strong></td><td>67%</td><td>70%</td><td>76%</td></tr>
+  </tbody>
+</table>
+
+<div class="callout yellow">
+  <strong>Scale leverage:</strong> Infrastructure is mostly fixed. At 180K renders/mo, infrastructure is ~1% of revenue. The variable API costs (especially TTS) dominate, but improve with volume tiers and open-source alternatives.
+</div>
+
+<!-- ============================================ -->
+<h2>5. Technology Stack</h2>
+
+<table>
+  <thead>
+    <tr><th>Layer</th><th>Technology</th><th>Rationale</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Frontend</td><td>Next.js / React + Tailwind</td><td>SSR for SEO, fast dashboard rendering, component reuse</td></tr>
+    <tr><td>API</td><td>Laravel 11 (PHP 8.3)</td><td>Rapid development, mature ecosystem, Horizon for queues</td></tr>
+    <tr><td>SSE / Realtime</td><td>Node.js (Express + SSE)</td><td>Avoids PHP-FPM worker exhaustion on long-lived connections</td></tr>
+    <tr><td>Queue</td><td>Laravel Horizon + Redis</td><td>Priority queues, per-plan throughput, dashboard monitoring</td></tr>
+    <tr><td>Video Render</td><td>Remotion (Node) or FFmpeg CLI</td><td>Remotion for template-driven render; FFmpeg for raw compositing</td></tr>
+    <tr><td>Database</td><td>PostgreSQL 16</td><td>JSON columns for scene data, excellent indexing, mature</td></tr>
+    <tr><td>Cache / Pub-Sub</td><td>Redis 7</td><td>Queue backend, SSE pub-sub, rate limiting, session</td></tr>
+    <tr><td>Object Storage</td><td>Cloudflare R2</td><td>Zero egress fees, S3-compatible, paired with CDN</td></tr>
+    <tr><td>TTS</td><td>ElevenLabs (premium) + Fish Speech (economy)</td><td>Dual-tier voice: high-quality paid, open-source for free plans</td></tr>
+    <tr><td>LLM</td><td>Claude Sonnet / GPT-4o-mini</td><td>Script gen, hooks, translation — cheap at scale</td></tr>
+    <tr><td>Caption Alignment</td><td>Whisper (self-hosted on GPU)</td><td>Word-level timestamps, no per-call API cost</td></tr>
+    <tr><td>Billing</td><td>Stripe + Laravel Cashier</td><td>Usage-based billing, metering, plan management</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================ -->
+<h2>6. Database Schema (Core Models)</h2>
+
+<div class="arch-diagram" style="text-align:left; font-size:13px; font-family:'Space Mono', monospace; line-height:1.8;">
+<pre style="color:var(--text); overflow-x:auto;">
+users
+├── id, email, name, plan_id
+├── usage_this_month (renders, voice_min, dub_min)
+└── stripe_customer_id
+
+workspaces (channels)
+├── id, user_id, name, platform
+├── brand_kit_id
+└── settings (JSON: caption_style, voice_pref, cta_style)
+
+brand_kits
+├── id, workspace_id
+├── colors, fonts, logo_url
+└── voice_profile_id, caption_preset
+
+projects
+├── id, workspace_id, title, status
+├── template_id, format, duration_target
+├── source_type (script|url|prompt|csv)
+└── source_content (text)
+
+scenes
+├── id, project_id, order, scene_type
+├── script_text, visual_type, visual_url
+├── voice_id, audio_url, duration_ms
+└── caption_data (JSON: word timestamps)
+
+variants
+├── id, project_id, variant_type
+├── diff_field (hook|cta|voice|language)
+├── diff_value
+├── render_status, render_url
+└── parent_variant_id (nullable)
+
+render_jobs
+├── id, variant_id, status, priority
+├── started_at, completed_at, error_log
+├── output_url, file_size
+└── retry_count
+
+assets
+├── id, workspace_id, type
+├── url, tags[], metadata (JSON)
+└── usage_count
+</pre>
+</div>
+
+<!-- ============================================ -->
+<h2>7. Cost Optimization Strategies</h2>
+
+<h3>Phase 1 — MVP Launch</h3>
+<ul>
+  <li><strong>Use GPT-4o-mini for all LLM tasks</strong> — cheapest, fast enough for script gen ($0.15/1M input tokens)</li>
+  <li><strong>Pexels free tier for stock footage</strong> — no per-clip cost, decent quality</li>
+  <li><strong>ElevenLabs Scale plan</strong> — volume pricing kicks in at $0.18/1K chars</li>
+  <li><strong>Self-host Whisper on a single T4 GPU</strong> — $0.40/hr on RunPod, handles ~500 alignments/day</li>
+  <li><strong>Hetzner dedicated servers for render</strong> — 80% cheaper than AWS EC2 for CPU-bound FFmpeg</li>
+  <li><strong>Cloudflare R2 over AWS S3</strong> — zero egress charges saves hundreds/mo at scale</li>
+</ul>
+
+<h3>Phase 2 — Scale (>10K renders/mo)</h3>
+<ul>
+  <li><strong>Introduce open-source TTS tier</strong> (Fish Speech / Coqui XTTS) for Creator plan — cuts TTS COGS by 80%</li>
+  <li><strong>Cache reusable audio segments</strong> — CTAs, intros/outros don't need re-generation</li>
+  <li><strong>Smart stock footage caching</strong> — hash scene descriptions, reuse matched clips across projects</li>
+  <li><strong>Spot instances for render workers</strong> — non-urgent batch renders on spot/preemptible, 60-70% savings</li>
+  <li><strong>Negotiated ElevenLabs enterprise pricing</strong> at $0.10-0.12/1K chars</li>
+</ul>
+
+<h3>Phase 3 — At Scale (>100K renders/mo)</h3>
+<ul>
+  <li><strong>Self-hosted TTS models</strong> on dedicated GPU fleet — drops TTS cost to ~$0.01-0.02/video</li>
+  <li><strong>Pre-rendered template components</strong> — render common intro/outro/CTA blocks once, composite at assembly</li>
+  <li><strong>Regional render farms</strong> — co-locate render workers near heavy-use geographies</li>
+  <li><strong>Custom fine-tuned small LLM</strong> for script gen — lower latency, lower cost than API calls</li>
+</ul>
+
+<!-- ============================================ -->
+<h2>8. MVP Build Phases</h2>
+
+<table>
+  <thead>
+    <tr><th>Phase</th><th>Scope</th><th>Timeline</th><th>Infra Cost</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="badge badge-mvp">MVP</span></td>
+      <td>Script → TTS → Stock visuals → Auto captions → 9:16 render. 1 template type. Basic brand kit. Single export.</td>
+      <td>6-8 weeks</td>
+      <td class="cost">$200/mo</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-v2">V2</span></td>
+      <td>Variant factory (hooks, CTAs, voices). Batch export. Multiple templates. Workspace/channel management. Queue dashboard.</td>
+      <td>+4-6 weeks</td>
+      <td class="cost-high">$400/mo</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-v3">V3</span></td>
+      <td>Multilingual dubbing. Multi-aspect export. AI image gen. Voice cloning. Asset library. Collaboration (comments, approval).</td>
+      <td>+6-8 weeks</td>
+      <td class="cost-crit">$600+/mo</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ============================================ -->
+<h2>9. Risk Factors & Mitigations</h2>
+
+<table>
+  <thead>
+    <tr><th>Risk</th><th>Impact</th><th>Mitigation</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ElevenLabs price increase or rate limiting</td>
+      <td style="color:var(--red);">High — TTS is 60%+ of COGS</td>
+      <td>Maintain Fish Speech fallback; negotiate enterprise agreement early; build abstraction layer over TTS providers</td>
+    </tr>
+    <tr>
+      <td>Stock footage API limits / quality</td>
+      <td style="color:var(--yellow);">Medium</td>
+      <td>Multi-provider fallback (Pexels → Pixabay → Storyblocks); allow user uploads; AI image generation as alternative</td>
+    </tr>
+    <tr>
+      <td>Render compute spikes (batch exports)</td>
+      <td style="color:var(--yellow);">Medium</td>
+      <td>Queue priority by plan tier; auto-scale render workers; rate limit free tier; pre-warming for predictable loads</td>
+    </tr>
+    <tr>
+      <td>Copyright claims on stock content</td>
+      <td style="color:var(--yellow);">Medium</td>
+      <td>Only use CC0/royalty-free sources; display license info; user accepts terms per export</td>
+    </tr>
+    <tr>
+      <td>LLM hallucination in scripts</td>
+      <td style="color:var(--text-dim);">Low</td>
+      <td>Preserve user inputs; clearly mark AI-generated content; preview before render; spell-check validation</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ============================================ -->
+<h2>10. Summary</h2>
+
+<p>Framecast is architecturally a <strong>queue-driven AI pipeline with a thin editor UI</strong>. The core business challenge is managing per-video COGS (dominated by TTS at ~$0.11/video) while charging enough per render to maintain 70%+ gross margins. The technical moat comes from template systems, caption quality, and variant generation speed — not from any single AI capability.</p>
+
+<div class="callout green">
+  <strong>Bottom line:</strong> At $0.15 COGS and $0.50 effective revenue per video, with $400/mo infrastructure, you break even at ~1,200 renders/month (≈30 Studio-plan customers). The economics improve significantly with scale as infrastructure costs are largely fixed and TTS volume pricing kicks in.
+</div>
+
+</div>
+</body>
+</html>

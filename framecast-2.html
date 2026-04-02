@@ -1,0 +1,3165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Framecast - AI Video Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: #0a0a0f;
+  --bg-panel: #111118;
+  --bg-card: #17171f;
+  --bg-elevated: #1d1d28;
+  --bg-soft: #15151d;
+  --border: #2a2a36;
+  --border-active: #494960;
+  --text-primary: #ececf3;
+  --text-secondary: #a1a1b5;
+  --text-muted: #6a6a7c;
+  --accent: #ff6b35;
+  --accent-hover: #ff875a;
+  --accent-glow: rgba(255, 107, 53, 0.14);
+  --green: #34d399;
+  --green-bg: rgba(52, 211, 153, 0.12);
+  --blue: #60a5fa;
+  --blue-bg: rgba(96, 165, 250, 0.12);
+  --yellow: #fbbf24;
+  --yellow-bg: rgba(251, 191, 36, 0.12);
+  --purple: #a78bfa;
+  --purple-bg: rgba(167, 139, 250, 0.12);
+  --red: #f87171;
+  --red-bg: rgba(248, 113, 113, 0.12);
+  --radius-sm: 6px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(255, 107, 53, 0.09), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(96, 165, 250, 0.08), transparent 24%),
+    var(--bg-deep);
+  color: var(--text-primary);
+  font-family: "DM Sans", sans-serif;
+  overflow-x: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+}
+
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 72px;
+  background: rgba(17, 17, 24, 0.96);
+  border-right: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  z-index: 100;
+}
+
+.sidebar-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), #ff9b72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-family: "Space Mono", monospace;
+  font-weight: 700;
+  margin-bottom: 28px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.nav-item {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: 0.2s ease;
+}
+
+.nav-item:hover {
+  color: var(--text-secondary);
+  background: var(--bg-card);
+}
+
+.nav-item.active {
+  color: var(--accent);
+  background: var(--accent-glow);
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 53, 0.18);
+}
+
+.tooltip {
+  position: absolute;
+  left: 58px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+
+.nav-item:hover .tooltip { opacity: 1; }
+
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2a3a70, #7d3cff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.main {
+  margin-left: 72px;
+  min-height: 100vh;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  height: 64px;
+  background: rgba(17, 17, 24, 0.88);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(14px);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.topbar-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.topbar-breadcrumb {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.topbar-breadcrumb span {
+  color: var(--text-secondary);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: 0.2s ease;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 0 24px var(--accent-glow);
+}
+
+.btn-ghost {
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.btn-ghost:hover {
+  color: var(--text-primary);
+  border-color: var(--border-active);
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.view {
+  display: none;
+}
+
+.view.active {
+  display: block;
+}
+
+.dashboard,
+.batch-view,
+.asset-library-view,
+.settings-view {
+  padding: 24px;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card,
+.surface-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 100%), var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.stat-card {
+  padding: 20px;
+}
+
+.stat-label {
+  margin-bottom: 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.stat-value {
+  font-family: "Space Mono", monospace;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.stat-change {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.stat-change.up { color: var(--green); }
+
+.section-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.section-subtitle {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.project-card,
+.new-project-card,
+.variant-card,
+.asset-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: 0.22s ease;
+}
+
+.project-card:hover,
+.variant-card:hover,
+.asset-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-active);
+}
+
+.project-thumb {
+  height: 154px;
+  position: relative;
+  overflow: hidden;
+}
+
+.project-thumb::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 50%;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.35));
+}
+
+.project-thumb .aspect-badge,
+.project-thumb .duration-badge {
+  position: absolute;
+  z-index: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--text-primary);
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+}
+
+.project-thumb .aspect-badge {
+  top: 10px;
+  right: 10px;
+}
+
+.project-thumb .duration-badge {
+  right: 10px;
+  bottom: 10px;
+}
+
+.phone-frame {
+  width: 62px;
+  height: 112px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  border-radius: 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px;
+}
+
+.phone-line {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.phone-line.accent {
+  background: var(--accent);
+  opacity: 0.65;
+}
+
+.project-info {
+  padding: 14px;
+}
+
+.project-name {
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.project-meta {
+  display: flex;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.project-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.status-rendered { background: var(--green-bg); color: var(--green); }
+.status-draft { background: var(--yellow-bg); color: var(--yellow); }
+.status-rendering { background: var(--blue-bg); color: var(--blue); }
+.status-failed { background: var(--red-bg); color: var(--red); }
+
+.new-project-card {
+  min-height: 222px;
+  border-style: dashed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.new-project-card:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.queue-table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+}
+
+.queue-wrap {
+  padding: 8px 0 0;
+}
+
+.queue-table th,
+.queue-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.queue-table th {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.queue-table td {
+  font-size: 13px;
+}
+
+.queue-table tr:hover td {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.progress-bar {
+  width: 84px;
+  height: 4px;
+  background: var(--bg-elevated);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+}
+
+.editor {
+  display: none;
+}
+
+.editor.active {
+  display: flex;
+  height: calc(100vh - 56px);
+}
+
+.editor-sidebar,
+.editor-right {
+  background: var(--bg-panel);
+}
+
+.editor-sidebar {
+  width: 320px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-sidebar-header,
+.editor-right-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.editor-sidebar-title,
+.editor-right-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.editor-sidebar-subtitle,
+.editor-right-subtitle {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.scene-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.scene-item { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px; margin-bottom:4px; cursor:pointer; transition:all 0.2s; }
+.scene-item:hover { border-color:var(--border-active); }
+.scene-item.active { border-color:var(--accent); background:var(--accent-glow); }
+.scene-number { font-family:'Space Mono',monospace; font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:6px; }
+.scene-text { font-size:13px; line-height:1.5; color:var(--text-secondary); }
+.scene-meta { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:11px; color:var(--text-muted); }
+.scene-tag { padding:2px 6px; border-radius:3px; background:var(--bg-elevated); font-size:10px; }
+
+.add-scene-divider { display:flex; align-items:center; justify-content:center; height:18px; opacity:0; transition:opacity 0.15s; }
+.scene-item:hover + .add-scene-divider, .add-scene-divider:hover { opacity:1; }
+.add-scene-divider.always-visible { opacity:0.5; }
+.add-scene-trigger { display:flex; align-items:center; gap:4px; font-size:11px; color:var(--text-muted); cursor:pointer; padding:2px 10px; border-radius:10px; transition:all 0.15s; background:transparent; border:1px dashed transparent; }
+.add-scene-trigger:hover { color:var(--accent); border-color:var(--accent); background:var(--accent-glow); }
+.add-scene-panel { background:var(--bg-card); border:1px solid var(--accent); border-radius:var(--radius); padding:14px; margin-bottom:6px; display:none; animation:slideDown 0.2s ease; }
+.add-scene-panel.open { display:block; }
+@keyframes slideDown { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+.add-scene-panel .panel-title { font-size:12px; font-weight:600; color:var(--accent); margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; }
+.add-scene-panel .close-x { cursor:pointer; color:var(--text-muted); font-size:16px; line-height:1; padding:2px; }
+.add-scene-panel .close-x:hover { color:var(--text-primary); }
+
+.scene-type-chips,
+.chips,
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.scene-type-chip { padding:4px 10px; border-radius:4px; background:var(--bg-elevated); border:1px solid var(--border); font-size:11px; cursor:pointer; transition:all 0.15s; color:var(--text-secondary); }
+.scene-type-chip:hover { border-color:var(--border-active); }
+.scene-type-chip.selected { border-color:var(--accent); background:var(--accent-glow); color:var(--accent); }
+
+.chip,
+.filter-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: 0.15s ease;
+}
+
+.chip:hover,
+.filter-chip:hover { border-color: var(--border-active); }
+
+.chip.selected,
+.filter-chip.active { background: var(--accent-glow); border-color: rgba(255, 107, 53, 0.35); color: var(--accent); }
+
+.add-scene-textarea,
+.input-field,
+.settings-input,
+.search-box,
+.settings-select,
+.field-input {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.add-scene-textarea,
+.input-field,
+.settings-input,
+.settings-select,
+.field-input {
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.add-scene-textarea { width:100%; padding:8px 10px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-primary); font-family:inherit; font-size:12px; resize:vertical; min-height:52px; margin-bottom:8px; }
+
+.add-scene-textarea:focus,
+.input-field:focus,
+.settings-input:focus,
+.search-box:focus,
+.settings-select:focus,
+.field-input:focus {
+  outline: none;
+  border-color: rgba(255, 107, 53, 0.45);
+}
+
+.add-scene-visual-row { display:flex; gap:8px; margin-bottom:10px; }
+.add-scene-visual-opt { flex:1; padding:8px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-sm); text-align:center; cursor:pointer; font-size:11px; color:var(--text-secondary); transition:all 0.15s; }
+.add-scene-visual-opt:hover { border-color:var(--border-active); }
+.add-scene-visual-opt.selected { border-color:var(--accent); background:var(--accent-glow); color:var(--accent); }
+.add-scene-visual-opt .ico { font-size:16px; margin-bottom:2px; }
+.add-scene-actions { display:flex; gap:8px; justify-content:flex-end; }
+
+.editor-canvas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-deep);
+  position: relative;
+}
+
+.preview-container { width:270px; height:480px; background:#000; border-radius:16px; overflow:hidden; position:relative; box-shadow:0 20px 60px rgba(0,0,0,0.5); }
+.preview-video-bg { width:100%; height:100%; background:linear-gradient(180deg,#1a1a3e 0%,#0d0d2b 40%,#1a0a2e 100%); position:relative; }
+.preview-caption { position:absolute; bottom:100px; left:16px; right:16px; text-align:center; }
+.caption-word { font-size:22px; font-weight:700; display:inline; line-height:1.4; }
+.caption-word.highlight { color:var(--accent); }
+.caption-word.normal { color:#fff; }
+.preview-cta { position:absolute; bottom:72px; left:16px; right:16px; text-align:center; font-weight:700; font-size:15px; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,0.7); letter-spacing:0.01em; }
+.preview-watermark { position:absolute; top:16px; left:16px; font-family:'Space Mono',monospace; font-size:10px; color:rgba(255,255,255,0.3); }
+.preview-timer { position:absolute; top:16px; right:16px; font-family:'Space Mono',monospace; font-size:11px; color:rgba(255,255,255,0.5); background:rgba(0,0,0,0.4); padding:3px 8px; border-radius:4px; }
+.playback-controls { display:flex; align-items:center; gap:16px; margin-top:24px; }
+.play-btn { width:44px; height:44px; border-radius:50%; background:var(--accent); border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#fff; font-size:18px; transition:all 0.2s; }
+.play-btn:hover { transform:scale(1.05); box-shadow:0 0 24px var(--accent-glow); }
+
+.time-display {
+  font-family: "Space Mono", monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.editor-right {
+  width: 300px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.panel-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+.detail-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.control-row:last-child {
+  margin-bottom: 0;
+}
+
+.control-name {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.control-value {
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-family: inherit;
+}
+
+select.control-value {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 24px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b8b9e'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+.asset-mini {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.asset-mini-thumb {
+  width: 46px;
+  height: 56px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #24365f, #121b33);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.asset-mini-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.asset-mini-copy {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.voice-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+}
+
+.voice-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg,var(--blue),var(--purple));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.voice-info {
+  flex: 1;
+}
+
+.voice-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.voice-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.voice-play {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.caption-style-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.caption-style-opt {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.caption-style-opt.active {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.preview-text {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+
+.style-name {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.batch-view-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+}
+
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 16px;
+}
+
+.variant-thumb {
+  height: 126px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.variant-mini-phone {
+  width: 44px;
+  height: 74px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+}
+
+.variant-info {
+  padding: 12px;
+}
+
+.variant-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.variant-diff {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.variant-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.checkbox.checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.automation-card {
+  padding: 18px;
+}
+
+.automation-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.automation-copy {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.stack-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.stack-item {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.stack-item strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+
+.stack-item span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.asset-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+}
+
+.search-wrap svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+}
+
+.search-box {
+  padding: 10px 14px 10px 36px;
+  font-size: 13px;
+}
+
+.asset-overview {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+
+.asset-summary-card,
+.asset-activity-card {
+  padding: 18px;
+}
+
+.summary-kicker {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.summary-big {
+  margin-top: 10px;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.summary-copy {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.mini-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.mini-metric {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mini-metric strong {
+  display: block;
+  font-size: 15px;
+}
+
+.mini-metric span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.asset-preview {
+  position: relative;
+  height: 118px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.asset-type-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge-video { background: var(--blue-bg); color: var(--blue); }
+.badge-audio { background: var(--purple-bg); color: var(--purple); }
+.badge-image { background: var(--green-bg); color: var(--green); }
+.badge-template { background: var(--yellow-bg); color: var(--yellow); }
+.badge-voice { background: var(--red-bg); color: var(--red); }
+
+.asset-icon {
+  font-size: 28px;
+  opacity: 0.6;
+}
+
+.asset-details {
+  padding: 12px;
+}
+
+.asset-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.asset-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.asset-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.asset-tag {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.asset-card.featured {
+  border-color: rgba(255, 107, 53, 0.28);
+}
+
+.settings-shell {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  gap: 22px;
+  align-items: start;
+}
+
+.settings-menu,
+.settings-content-card {
+  padding: 18px;
+}
+
+.settings-menu-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.settings-nav {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.settings-tab {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+
+.settings-tab:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.settings-tab.active {
+  color: var(--accent);
+  background: var(--accent-glow);
+  border-color: rgba(255, 107, 53, 0.28);
+}
+
+.settings-content-card .section-title {
+  margin-bottom: 4px;
+}
+
+.settings-section-desc {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: 22px;
+}
+
+.settings-pane {
+  display: none;
+}
+
+.settings-pane.active {
+  display: block;
+}
+
+.channel-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+
+.channel-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.channel-info {
+  flex: 1;
+}
+
+.channel-name-row {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.channel-detail {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.settings-row,
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+
+.settings-row:first-child,
+.toggle-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.settings-row-label {
+  width: 180px;
+  flex-shrink: 0;
+}
+
+.label-main {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.label-hint {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.settings-row-control {
+  flex: 1;
+}
+
+.toggle-row > div:first-child {
+  flex: 1;
+}
+
+.toggle {
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--border);
+  position: relative;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: 0.15s ease;
+}
+
+.toggle.on {
+  background: var(--accent);
+}
+
+.toggle.on::after {
+  transform: translateX(18px);
+}
+
+.color-swatches {
+  display: flex;
+  gap: 8px;
+}
+
+.color-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.color-swatch.selected {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.4);
+}
+
+.usage-bar-container {
+  margin-bottom: 14px;
+}
+
+.usage-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.usage-label {
+  color: var(--text-secondary);
+}
+
+.usage-count {
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+}
+
+.usage-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.usage-fill {
+  height: 100%;
+}
+
+.table-clean {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table-clean th,
+.table-clean td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table-clean th {
+  text-align: left;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 200;
+}
+
+.modal-overlay.show {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.modal {
+  width: min(580px, calc(100vw - 32px));
+  max-height: 82vh;
+  overflow-y: auto;
+  padding: 28px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+
+.modal-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.modal-subtitle {
+  margin-top: 4px;
+  margin-bottom: 22px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.input-group {
+  margin-bottom: 16px;
+}
+
+.input-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+textarea.input-field {
+  min-height: 86px;
+  resize: vertical;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.hidden {
+  display: none !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+@media (max-width: 1250px) {
+  .canvas-stage {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .scene-context {
+    width: min(100%, 420px);
+  }
+
+  .asset-overview,
+  .batch-view-grid,
+  .settings-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 980px) {
+  .stats-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .editor.active {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .editor-sidebar,
+  .editor-right {
+    width: 100%;
+  }
+
+  .editor-canvas {
+    min-height: 720px;
+  }
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    width: 100%;
+    height: 66px;
+    inset: auto 0 0 0;
+    flex-direction: row;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-right: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .sidebar-logo,
+  .sidebar-bottom {
+    display: none;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .main {
+    margin-left: 0;
+    padding-bottom: 80px;
+  }
+
+  .topbar {
+    height: auto;
+    padding: 16px;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .dashboard,
+  .batch-view,
+  .asset-library-view,
+  .settings-view {
+    padding: 16px;
+  }
+
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
+
+  .projects-grid,
+  .asset-grid,
+  .variant-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .caption-style-grid,
+  .mini-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .visual-picker {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ── Generation Progress Overlay ── */
+.gen-overlay{position:fixed;inset:0;background:rgba(10,10,15,0.97);z-index:200;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);opacity:0;pointer-events:none;transition:opacity 0.25s;}
+.gen-overlay.show{opacity:1;pointer-events:all;}
+.gen-panel{width:500px;}
+.gen-header{margin-bottom:32px;}
+.gen-title{font-size:22px;font-weight:700;margin-bottom:6px;}
+.gen-subtitle{color:var(--text-muted);font-size:14px;}
+.gen-progress{height:4px;border-radius:999px;background:var(--bg-elevated);margin-bottom:32px;overflow:hidden;}
+.gen-progress-fill{height:100%;background:var(--accent);border-radius:999px;transition:width 0.7s ease;}
+.gen-stages{display:grid;gap:10px;margin-bottom:32px;}
+.gen-stage{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);transition:border-color 0.2s,background 0.2s;}
+.gen-stage.active{border-color:rgba(255,107,53,0.35);background:rgba(255,107,53,0.05);}
+.gen-stage.complete{border-color:rgba(52,211,153,0.25);}
+.gen-stage.failed{border-color:rgba(248,113,113,0.3);}
+.gen-stage-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+.gen-stage.pending .gen-stage-icon{background:var(--bg-elevated);color:var(--text-muted);}
+.gen-stage.active .gen-stage-icon{background:var(--accent-glow);color:var(--accent);}
+.gen-stage.complete .gen-stage-icon{background:var(--green-bg);color:var(--green);}
+.gen-stage.failed .gen-stage-icon{background:var(--red-bg);color:var(--red);}
+.gen-stage-info{flex:1;}
+.gen-stage-name{font-size:14px;font-weight:500;}
+.gen-stage-status{font-size:12px;color:var(--text-muted);margin-top:2px;}
+.gen-stage.active .gen-stage-status{color:var(--accent);}
+.gen-stage.complete .gen-stage-status{color:var(--green);}
+.gen-stage.failed .gen-stage-status{color:var(--red);}
+.gen-actions{display:flex;gap:10px;justify-content:flex-end;}
+
+/* ── Drawer (shared: variants + notifications) ── */
+.drawer-backdrop{position:fixed;inset:0;z-index:149;background:rgba(0,0,0,0);pointer-events:none;transition:background 0.25s;}
+.drawer-backdrop.open{background:rgba(0,0,0,0.35);pointer-events:all;}
+.drawer{position:fixed;top:0;right:0;bottom:0;background:var(--bg-panel);border-left:1px solid var(--border);z-index:150;transform:translateX(100%);transition:transform 0.25s ease;display:flex;flex-direction:column;}
+.drawer.open{transform:translateX(0);}
+.drawer-variants{width:400px;}
+.drawer-notif{width:360px;}
+.drawer-header{display:flex;align-items:center;justify-content:space-between;padding:20px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.drawer-title{font-size:15px;font-weight:600;}
+.drawer-close-btn{width:30px;height:30px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:16px;transition:0.15s;}
+.drawer-close-btn:hover{color:var(--text-primary);}
+.drawer-body{padding:20px;overflow-y:auto;flex:1;}
+.drawer-footer{padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0;}
+.drawer-section{margin-bottom:24px;}
+.drawer-section-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;font-weight:500;}
+
+/* ── Variants Drawer ── */
+.dim-row{display:flex;align-items:flex-start;gap:12px;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);margin-bottom:8px;cursor:pointer;transition:border-color 0.15s,background 0.15s;}
+.dim-row.checked{border-color:rgba(255,107,53,0.4);background:rgba(255,107,53,0.06);}
+.dim-checkbox{width:18px;height:18px;border-radius:4px;border:1px solid var(--border);background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;font-size:11px;color:transparent;transition:0.15s;}
+.dim-row.checked .dim-checkbox{background:var(--accent);border-color:var(--accent);color:#fff;}
+.dim-text{flex:1;}
+.dim-label{font-size:13px;font-weight:500;}
+.dim-desc{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.dim-sub{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:none;}
+.dim-row.checked .dim-sub{display:block;}
+.count-select{padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-primary);font-size:12px;}
+.lock-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);}
+.lock-row:last-child{border-bottom:none;}
+.lock-label{font-size:13px;color:var(--text-secondary);}
+.lock-tag{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--bg-elevated);color:var(--text-muted);}
+.lock-tag.locked{background:rgba(96,165,250,0.12);color:var(--blue);}
+.batch-summary-box{padding:14px 16px;background:var(--accent-glow);border:1px solid rgba(255,107,53,0.25);border-radius:10px;margin-bottom:20px;font-size:13px;color:var(--accent);font-weight:500;text-align:center;line-height:1.5;}
+
+/* ── Notification Bell ── */
+.notif-bell-btn{position:relative;width:36px;height:36px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:0.15s;}
+.notif-bell-btn:hover{color:var(--text-primary);border-color:var(--border-active);}
+.notif-badge{position:absolute;top:-5px;right:-5px;width:17px;height:17px;border-radius:50%;background:var(--accent);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg-deep);}
+
+/* ── Notification Drawer ── */
+.notif-item{display:flex;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s;}
+.notif-item:hover{background:rgba(255,255,255,0.02);}
+.notif-item.unread{background:rgba(255,107,53,0.04);}
+.notif-icon-wrap{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.notif-icon-wrap.success{background:var(--green-bg);}
+.notif-icon-wrap.error{background:var(--red-bg);}
+.notif-icon-wrap.warning{background:var(--yellow-bg);}
+.notif-icon-wrap.info{background:var(--blue-bg);}
+.notif-body{flex:1;}
+.notif-msg{font-size:13px;line-height:1.4;}
+.notif-time{font-size:11px;color:var(--text-muted);margin-top:4px;}
+.notif-unread-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:7px;}
+.notif-empty{padding:48px 20px;text-align:center;color:var(--text-muted);font-size:13px;}
+.mark-read-btn{font-size:12px;color:var(--text-muted);cursor:pointer;background:none;border:none;padding:0;transition:color 0.15s;}
+.mark-read-btn:hover{color:var(--accent);}
+
+/* ── Toast Notifications ── */
+.toast-container{position:fixed;bottom:24px;right:24px;z-index:400;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
+.toast{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-radius:10px;border:1px solid var(--border);background:var(--bg-elevated);box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:300px;max-width:380px;pointer-events:all;animation:toastIn 0.2s ease;}
+.toast.removing{animation:toastOut 0.18s ease forwards;}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+@keyframes toastOut{to{opacity:0;transform:translateY(8px);}}
+.toast-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px;}
+.toast.success .toast-dot{background:var(--green);}
+.toast.error .toast-dot{background:var(--red);}
+.toast.warning .toast-dot{background:var(--yellow);}
+.toast.info .toast-dot{background:var(--blue);}
+.toast-content{flex:1;}
+.toast-msg{font-size:13px;line-height:1.4;}
+.toast-link{font-size:12px;color:var(--accent);margin-top:4px;display:block;cursor:pointer;}
+.toast-close-btn{color:var(--text-muted);cursor:pointer;font-size:18px;line-height:1;flex-shrink:0;background:none;border:none;}
+
+/* ── Modal extensions ── */
+.modal-sm{max-width:400px;}
+.modal-section{margin-bottom:18px;}
+.modal-section-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;font-weight:500;}
+.job-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.job-row:last-child{border-bottom:none;}
+.job-row-label{color:var(--text-muted);}
+.job-row-val{font-family:'Space Mono',monospace;font-size:11px;}
+.error-log-block{background:var(--bg-deep);border:1px solid rgba(248,113,113,0.2);border-radius:8px;padding:12px;font-family:'Space Mono',monospace;font-size:11px;color:var(--red);line-height:1.7;max-height:130px;overflow-y:auto;margin-top:8px;}
+.retry-warn{padding:10px 12px;background:var(--yellow-bg);border:1px solid rgba(251,191,36,0.2);border-radius:8px;font-size:12px;color:var(--yellow);margin-top:12px;}
+.usage-bar{height:6px;border-radius:999px;background:var(--bg-elevated);margin:8px 0;}
+.usage-fill{height:100%;border-radius:999px;}
+.usage-fill.critical{background:var(--red);}
+.usage-fill.warning{background:var(--yellow);}
+.limit-block{padding:16px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);margin-bottom:16px;}
+.limit-block-name{font-size:13px;font-weight:600;margin-bottom:2px;}
+.limit-block-nums{font-family:'Space Mono',monospace;font-size:12px;color:var(--text-muted);}
+.btn-danger{background:var(--red);color:#fff;}
+.btn-danger:hover{background:#ef4444;}
+.dep-warn{padding:10px 12px;background:var(--red-bg);border:1px solid rgba(248,113,113,0.2);border-radius:8px;font-size:12px;color:var(--red);margin:12px 0;}
+
+/* ── Source type panels in modal ── */
+.source-panel{display:none;}
+.source-panel.active{display:block;}
+.upload-zone{border:1px dashed var(--border);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:0.15s;background:var(--bg-elevated);margin-bottom:12px;}
+.upload-zone:hover{border-color:var(--accent);}
+.upload-icon{font-size:28px;margin-bottom:8px;opacity:0.5;}
+.upload-label{font-size:13px;font-weight:500;margin-bottom:4px;}
+.upload-hint{font-size:11px;color:var(--text-muted);}
+.upload-progress{margin-top:10px;}
+.upload-file-name{font-size:13px;font-weight:500;margin-bottom:6px;}
+.upload-file-meta{font-size:11px;color:var(--text-muted);}
+
+/* ── Queue Detail View ── */
+.queue-detail-view{padding:24px;}
+.queue-detail-header{display:flex;align-items:center;gap:16px;margin-bottom:22px;}
+.back-btn{display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);font-size:13px;cursor:pointer;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;transition:0.15s;}
+.back-btn:hover{color:var(--text-primary);border-color:var(--border-active);}
+.batch-stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px;}
+.batch-stat{padding:16px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);}
+.batch-stat-val{font-family:'Space Mono',monospace;font-size:22px;font-weight:700;}
+.batch-stat-label{font-size:11px;color:var(--text-muted);margin-top:4px;}
+.filter-tabs{display:flex;gap:6px;margin-bottom:16px;}
+.filter-tab-btn{padding:6px 14px;border-radius:6px;font-size:12px;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;background:transparent;transition:0.15s;}
+.filter-tab-btn.active{border-color:var(--accent);color:var(--accent);background:var(--accent-glow);}
+.detail-table{width:100%;border-collapse:collapse;}
+.detail-table th,.detail-table td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--border);}
+.detail-table th{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;}
+.detail-table td{font-size:13px;}
+.detail-table tr:hover td{background:rgba(255,255,255,0.01);}
+
+/* ── Channel Form ── */
+.form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.platform-checks{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
+.platform-check{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-elevated);cursor:pointer;font-size:12px;color:var(--text-secondary);transition:0.15s;}
+.platform-check.on{border-color:rgba(255,107,53,0.4);background:var(--accent-glow);color:var(--accent);}
+.form-hint{font-size:11px;color:var(--text-muted);margin-top:4px;}
+.danger-zone{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);}
+.danger-zone-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <div class="sidebar-logo">F</div>
+  <div class="sidebar-nav">
+    <div class="nav-item active" onclick="showView('dashboard')">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
+      <span class="tooltip">Dashboard</span>
+    </div>
+    <div class="nav-item" onclick="showView('assets')">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"></path></svg>
+      <span class="tooltip">Asset Library</span>
+    </div>
+    <div class="nav-item" onclick="showView('settings')">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      <span class="tooltip">Settings</span>
+    </div>
+  </div>
+  <div class="sidebar-bottom">
+    <div class="avatar">K</div>
+  </div>
+</nav>
+
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-title" id="topbarTitle">Dashboard</div>
+      <div class="topbar-breadcrumb" id="topbarBreadcrumb"><span>Faceless Finance Tips</span> · 24 videos</div>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-ghost" onclick="document.getElementById('newProjectModal').classList.add('show')">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+        New Video
+      </button>
+      <button class="btn btn-primary">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+        Export
+      </button>
+      <button class="notif-bell-btn" onclick="toggleNotifDrawer()" title="Notifications">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+        <span class="notif-badge">3</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="dashboard view active" id="dashboardView">
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Videos This Month</div>
+        <div class="stat-value">147</div>
+        <div class="stat-change up">↑ 23% vs last month</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Render Minutes Used</div>
+        <div class="stat-value">482</div>
+        <div class="stat-change">of 600 min (Studio plan)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active Channels</div>
+        <div class="stat-value">5</div>
+        <div class="stat-change">3 languages · 5 niches</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Queued Renders</div>
+        <div class="stat-value">12</div>
+        <div class="stat-change">~18 min remaining</div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <div>
+        <div class="section-title">Recent Projects</div>
+      </div>
+      <button class="btn btn-ghost btn-sm">View All</button>
+    </div>
+
+    <div class="projects-grid">
+      <div class="new-project-card" onclick="document.getElementById('newProjectModal').classList.add('show')">
+        <div style="text-align:center;">
+          <div style="font-size:30px; margin-bottom:8px;">+</div>
+          <div style="font-size:13px; font-weight:600;">New Video</div>
+        </div>
+      </div>
+
+      <div class="project-card" onclick="showView('editor')">
+        <div class="project-thumb" style="background:linear-gradient(135deg, #0f2027, #203a43, #2c5364);">
+          <div class="phone-frame"><div class="phone-line"></div><div class="phone-line accent"></div><div class="phone-line"></div><div class="phone-line"></div></div>
+          <span class="aspect-badge">9:16</span>
+          <span class="duration-badge">0:32</span>
+        </div>
+        <div class="project-info">
+          <div class="project-name">5 Money Habits That Changed My Life</div>
+          <div class="project-meta"><span>Finance Tips</span><span>3 variants</span></div>
+          <div class="project-status status-rendered">● Rendered</div>
+        </div>
+      </div>
+
+      <div class="project-card">
+        <div class="project-thumb" style="background:linear-gradient(135deg, #1a0a2e, #3d1a6e);">
+          <div class="phone-frame"><div class="phone-line"></div><div class="phone-line"></div><div class="phone-line accent"></div><div class="phone-line"></div></div>
+          <span class="aspect-badge">9:16</span>
+          <span class="duration-badge">0:58</span>
+        </div>
+        <div class="project-info">
+          <div class="project-name">AI Will Replace These 10 Jobs</div>
+          <div class="project-meta"><span>Tech Explainer</span><span>EN · ES · PT</span></div>
+          <div class="project-status status-rendering">◌ Rendering 2/3</div>
+        </div>
+      </div>
+
+      <div class="project-card">
+        <div class="project-thumb" style="background:linear-gradient(135deg, #2d1810, #4a2520);">
+          <div class="phone-frame"><div class="phone-line accent"></div><div class="phone-line"></div><div class="phone-line"></div></div>
+          <span class="aspect-badge">1:1</span>
+          <span class="duration-badge">0:15</span>
+        </div>
+        <div class="project-info">
+          <div class="project-name">Product Launch — Vitamin D3+K2</div>
+          <div class="project-meta"><span>UGC Ad</span><span>8 variants</span></div>
+          <div class="project-status status-draft">◯ Draft</div>
+        </div>
+      </div>
+
+      <div class="project-card">
+        <div class="project-thumb" style="background:linear-gradient(135deg, #0a1628, #1a3a5c);">
+          <div class="phone-frame"><div class="phone-line"></div><div class="phone-line"></div><div class="phone-line accent"></div></div>
+          <span class="aspect-badge">9:16</span>
+          <span class="duration-badge">0:45</span>
+        </div>
+        <div class="project-info">
+          <div class="project-name">Stoic Quote #142 — Marcus Aurelius</div>
+          <div class="project-meta"><span>Quote Series</span><span>Daily</span></div>
+          <div class="project-status status-rendered">● Rendered</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="surface-card queue-wrap">
+      <div class="section-header" style="padding: 16px 18px 0;">
+          <div>
+            <div class="section-title">Render Queue</div>
+          </div>
+        <button class="btn btn-ghost btn-sm">Manage</button>
+      </div>
+      <table class="queue-table">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Channel</th>
+            <th>Variants</th>
+            <th>Status</th>
+            <th>Progress</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:500;">AI Will Replace These 10 Jobs</td>
+            <td style="color:var(--text-muted);">Tech Explainer</td>
+            <td>3</td>
+            <td><span class="project-status status-rendering" style="margin:0;">◌ Rendering</span></td>
+            <td><div class="progress-bar"><div class="progress-fill" style="width:66%; background:var(--blue);"></div></div></td>
+          </tr>
+          <tr>
+            <td style="font-weight:500;">Crypto Tax Guide 2026</td>
+            <td style="color:var(--text-muted);">Finance Tips</td>
+            <td>5</td>
+            <td><span class="project-status status-draft" style="margin:0;">◯ Queued</span></td>
+            <td><div class="progress-bar"><div class="progress-fill" style="width:0%;"></div></div></td>
+          </tr>
+          <tr>
+            <td style="font-weight:500;">Morning Routine — Hook Batch</td>
+            <td style="color:var(--text-muted);">Motivation</td>
+            <td>12</td>
+            <td><span class="project-status status-rendered" style="margin:0;">● Done</span></td>
+            <td><div class="progress-bar"><div class="progress-fill" style="width:100%; background:var(--green);"></div></div></td>
+          </tr>
+          <tr style="cursor:pointer;" onclick="showView('queueDetail')">
+            <td style="font-weight:500;">Collagen Serum — Ad Set A</td>
+            <td style="color:var(--text-muted);">UGC Ads</td>
+            <td>8</td>
+            <td><span class="project-status status-failed" style="margin:0;">✕ 2 Failed</span></td>
+            <td><div class="progress-bar"><div class="progress-fill" style="width:75%; background:var(--red);"></div></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="editor" id="editorView">
+    <div class="editor-sidebar">
+      <div class="editor-sidebar-header">
+        <div class="editor-sidebar-title">Scenes</div>
+        <button class="btn btn-ghost btn-sm" onclick="toggleAddScene('top')">+ Add</button>
+      </div>
+
+      <div class="scene-list" id="sceneList">
+        <div class="add-scene-panel" id="addScenePanel">
+          <div class="panel-title">Add New Scene <span class="close-x" onclick="closeAddScene()">×</span></div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Scene type</div>
+          <div class="scene-type-chips"><div class="scene-type-chip selected">Narration</div><div class="scene-type-chip">Hook</div><div class="scene-type-chip">CTA</div><div class="scene-type-chip">Transition</div><div class="scene-type-chip">Text Card</div></div>
+          <textarea class="add-scene-textarea" placeholder="Write your scene script, or click 'AI Generate' to create one..."></textarea>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Visual source</div>
+          <div class="add-scene-visual-row"><div class="add-scene-visual-opt selected"><div class="ico">🎬</div>Stock Clip</div><div class="add-scene-visual-opt"><div class="ico">🔁</div>BG Loop</div><div class="add-scene-visual-opt"><div class="ico">🖼</div>AI Image</div><div class="add-scene-visual-opt"><div class="ico">Aa</div>Text Only</div></div>
+          <div class="add-scene-actions"><button class="btn btn-ghost btn-sm" onclick="closeAddScene()">Cancel</button><button class="btn btn-ghost btn-sm" style="color:var(--purple);border-color:var(--purple);">✦ AI Generate</button><button class="btn btn-primary btn-sm" onclick="closeAddScene()">Add Scene</button></div>
+        </div>
+        <div class="scene-item active" onclick="selectScene(this)"><div class="scene-number">Scene 1 · Hook <span style="font-size:9px;padding:2px 6px;border-radius:3px;background:var(--yellow-bg);color:var(--yellow);font-weight:600;margin-left:4px;">Voice outdated</span></div><div class="scene-text">Most people will never build wealth. Here's why — and how to fix it.</div><div class="scene-meta"><span class="scene-tag">stock clip</span><span>5.2s</span></div></div>
+        <div class="add-scene-divider"><div class="add-scene-trigger" onclick="toggleAddScene('after1')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg> Insert</div></div>
+        <div class="scene-item" onclick="selectScene(this)"><div class="scene-number">Scene 2</div><div class="scene-text">Habit number one: Pay yourself first. Before rent, before food, 20% goes into investments.</div><div class="scene-meta"><span class="scene-tag">bg loop</span><span>7.8s</span></div></div>
+        <div class="add-scene-divider"><div class="add-scene-trigger" onclick="toggleAddScene('after2')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg> Insert</div></div>
+        <div class="scene-item" onclick="selectScene(this)"><div class="scene-number">Scene 3</div><div class="scene-text">Habit number two: Automate everything. If you have to think about it, you won't do it.</div><div class="scene-meta"><span class="scene-tag">stock clip</span><span>6.4s</span></div></div>
+        <div class="add-scene-divider"><div class="add-scene-trigger" onclick="toggleAddScene('after3')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg> Insert</div></div>
+        <div class="scene-item" onclick="selectScene(this)"><div class="scene-number">Scene 4</div><div class="scene-text">Habit three: Track your net worth monthly. What gets measured gets managed.</div><div class="scene-meta"><span class="scene-tag">text card</span><span>5.9s</span></div></div>
+        <div class="add-scene-divider"><div class="add-scene-trigger" onclick="toggleAddScene('after4')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg> Insert</div></div>
+        <div class="scene-item" onclick="selectScene(this)"><div class="scene-number">Scene 5 · CTA</div><div class="scene-text">Follow for more money tips that actually work.</div><div class="scene-meta"><span class="scene-tag">bg loop</span><span>3.5s</span></div></div>
+        <div class="add-scene-divider always-visible"><div class="add-scene-trigger" onclick="toggleAddScene('end')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg> Insert</div></div>
+      </div>
+    </div>
+
+    <div class="editor-canvas">
+      <div class="preview-container">
+        <div class="preview-video-bg">
+          <div class="preview-watermark">FRAMECAST</div>
+          <div class="preview-timer">0:05 / 0:32</div>
+          <div class="preview-caption">
+            <span class="caption-word normal">Most people will </span>
+            <span class="caption-word highlight">never build </span>
+            <span class="caption-word normal">wealth.</span>
+          </div>
+          <!-- Safe zone indicator — shows where platform UI sits -->
+          <div style="position:absolute;bottom:0;left:0;right:0;height:56px;border-top:1px dashed rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:9px;color:rgba(255,255,255,0.2);letter-spacing:0.08em;text-transform:uppercase;">Platform UI zone</span>
+          </div>
+        </div>
+      </div>
+      <div class="playback-controls">
+        <div class="time-display">00:05</div>
+        <button class="play-btn">▶</button>
+        <div class="time-display">00:32</div>
+      </div>
+    </div>
+
+    <div class="editor-right">
+
+      <!-- Script / Caption Text -->
+      <div class="panel-section">
+        <div class="panel-label">Scene Script</div>
+        <textarea class="add-scene-textarea" style="min-height:72px; margin-bottom:0;">Most people will never build wealth. Here's why — and how to fix it.</textarea>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">This text is spoken by the voice and rendered as captions.</div>
+      </div>
+
+      <!-- Visual Source -->
+      <div class="panel-section">
+        <div class="panel-label">Visual Source</div>
+        <div class="control-row"><span class="control-name">Type</span><select class="control-value"><option>Stock Clip</option><option>Background Loop</option><option>AI Image</option><option>Text Card</option><option>Waveform</option></select></div>
+        <div class="control-row"><span class="control-name">Query</span><input class="control-value" value="city night timelapse" style="width:140px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-family:inherit;padding:4px 8px;border-radius:4px;"></div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;justify-content:center;">↻ Swap Visual</button>
+      </div>
+
+      <!-- Voice -->
+      <div class="panel-section">
+        <div class="panel-label">Voice</div>
+        <div class="voice-preview">
+          <div class="voice-avatar">🎙</div>
+          <div class="voice-info">
+            <div class="voice-name">Marcus — Authority</div>
+            <div class="voice-desc">Deep male · EN-US · 1.0x</div>
+          </div>
+          <div class="voice-play">▶</div>
+        </div>
+        <div class="control-row" style="margin-top:10px;"><span class="control-name">Speed</span><select class="control-value"><option>0.8x</option><option selected>1.0x</option><option>1.1x</option><option>1.2x</option></select></div>
+        <div class="control-row"><span class="control-name">Stability</span><select class="control-value"><option>Low</option><option selected>Medium</option><option>High</option></select></div>
+        <div style="margin-top:10px;padding:8px 10px;background:var(--yellow-bg);border:1px solid rgba(251,191,36,0.2);border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <span style="font-size:11px;color:var(--yellow);">Script changed — voice outdated</span>
+          <button class="btn btn-sm" style="background:var(--yellow);color:#000;font-weight:600;padding:4px 10px;font-size:11px;">Regenerate</button>
+        </div>
+      </div>
+
+      <!-- Captions -->
+      <div class="panel-section">
+        <div class="panel-label" style="display:flex;align-items:center;justify-content:space-between;">
+          Captions
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);cursor:pointer;">
+            <input type="checkbox" checked style="accent-color:var(--accent);"> On
+          </label>
+        </div>
+        <div class="caption-style-grid">
+          <div class="caption-style-opt active"><div class="preview-text" style="color:var(--accent);">BOLD</div><div class="style-name">Impact</div></div>
+          <div class="caption-style-opt"><div class="preview-text" style="color:#fff; font-style:italic;">SERIF</div><div class="style-name">Editorial</div></div>
+          <div class="caption-style-opt"><div class="preview-text" style="color:var(--yellow); font-family:'Space Mono', monospace;">MONO</div><div class="style-name">Hacker</div></div>
+        </div>
+        <div class="control-row" style="margin-top:10px;"><span class="control-name">Highlight</span><select class="control-value"><option selected>Keywords</option><option>Word-by-word</option><option>Line-by-line</option><option>None</option></select></div>
+        <div class="control-row"><span class="control-name">Position</span><select class="control-value"><option selected>Bottom third</option><option>Center</option><option>Top third</option></select></div>
+      </div>
+
+      <!-- Brand Kit -->
+      <div class="panel-section">
+        <div class="panel-label">Brand Kit</div>
+        <div class="control-row"><span class="control-name">Channel</span><select class="control-value"><option>Finance Tips</option><option>Tech Explainer</option><option>Motivation</option></select></div>
+        <div class="control-row"><span class="control-name">Template</span><select class="control-value"><option>Explainer — 60s</option><option>Listicle — 30s</option><option>Quote — 15s</option></select></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="batch-view view" id="batchView">
+    <div class="batch-view-grid">
+      <div class="surface-card" style="padding:18px;">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Variant Factory</div>
+            <div class="section-subtitle">Hooks, CTAs, voices, and languages laid out with the same hierarchy as the dashboard.</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-ghost btn-sm">Select All</button>
+            <button class="btn btn-primary btn-sm">Export 6</button>
+          </div>
+        </div>
+
+        <div class="variant-grid">
+          <div class="variant-card">
+            <div class="variant-thumb" style="background:linear-gradient(135deg, #0f2027, #2c5364);"><div class="variant-mini-phone"></div></div>
+            <div class="variant-info"><div class="variant-label">Original</div><div class="variant-diff">Base · EN · Hook A</div><div class="variant-check"><div class="checkbox checked">✓</div><span style="font-size:11px; color:var(--text-muted);">Selected</span></div></div>
+          </div>
+          <div class="variant-card">
+            <div class="variant-thumb" style="background:linear-gradient(135deg, #1a0a2e, #3d1a6e);"><div class="variant-mini-phone"></div></div>
+            <div class="variant-info"><div class="variant-label">Hook B - Question</div><div class="variant-diff">Alt hook · EN</div><div class="variant-check"><div class="checkbox checked">✓</div><span style="font-size:11px; color:var(--text-muted);">Selected</span></div></div>
+          </div>
+          <div class="variant-card">
+            <div class="variant-thumb" style="background:linear-gradient(135deg, #2d1810, #4a2520);"><div class="variant-mini-phone"></div></div>
+            <div class="variant-info"><div class="variant-label">Hook C - Shock</div><div class="variant-diff">Alt hook · EN</div><div class="variant-check"><div class="checkbox checked">✓</div><span style="font-size:11px; color:var(--text-muted);">Selected</span></div></div>
+          </div>
+          <div class="variant-card">
+            <div class="variant-thumb" style="background:linear-gradient(135deg, #0a2818, #1a5c3a);"><div class="variant-mini-phone"></div></div>
+            <div class="variant-info"><div class="variant-label">Spanish</div><div class="variant-diff">Localized · Sofia voice</div><div class="variant-check"><div class="checkbox checked">✓</div><span style="font-size:11px; color:var(--text-muted);">Selected</span></div></div>
+          </div>
+          <div class="variant-card">
+            <div class="variant-thumb" style="background:linear-gradient(135deg, #28200a, #5c4a1a);"><div class="variant-mini-phone"></div></div>
+            <div class="variant-info"><div class="variant-label">Portuguese</div><div class="variant-diff">Localized · Lucas voice</div><div class="variant-check"><div class="checkbox checked">✓</div><span style="font-size:11px; color:var(--text-muted);">Selected</span></div></div>
+          </div>
+          <div class="variant-card">
+            <div class="variant-thumb" style="background:linear-gradient(135deg, #1a1a3e, #3a1a5e);"><div class="variant-mini-phone"></div></div>
+            <div class="variant-info"><div class="variant-label">Luna Voice</div><div class="variant-diff">Voice swap · EN</div><div class="variant-check"><div class="checkbox checked">✓</div><span style="font-size:11px; color:var(--text-muted);">Selected</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="surface-card" style="padding:18px; align-self:start;">
+        <div class="section-title" style="margin-bottom:4px;">Batch Controls</div>
+        <div class="section-subtitle" style="margin-bottom:18px;">Configure and generate new variants from this project.</div>
+        <button class="btn btn-primary" style="width:100%; margin-bottom:12px;" onclick="openVariantsDrawer()">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+          Generate Variants
+        </button>
+        <button class="btn btn-ghost" style="width:100%;">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+          Export Selected
+        </button>
+        <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+          <div class="panel-label">Base Project</div>
+          <div class="detail-card" style="margin-top:8px;">
+            <div style="font-size:13px; font-weight:600; margin-bottom:4px;">5 Money Habits That Changed My Life</div>
+            <div style="font-size:11px; color:var(--text-muted);">Finance Tips · EN · 9:16 · 0:32</div>
+          </div>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="panel-label">Generation Stats</div>
+          <div style="display:grid; gap:8px; margin-top:8px;">
+            <div class="job-row"><span class="job-row-label">Total variants</span><span class="job-row-val">6</span></div>
+            <div class="job-row"><span class="job-row-label">Rendered</span><span class="job-row-val" style="color:var(--green);">4</span></div>
+            <div class="job-row"><span class="job-row-label">Queued</span><span class="job-row-val" style="color:var(--blue);">2</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="asset-library-view view" id="assetsView">
+    <div class="asset-overview">
+      <div class="surface-card asset-summary-card">
+        <div class="summary-kicker">Asset Library</div>
+        <div class="summary-big">42 assets</div>
+        <div class="summary-copy">Rebuilt as a proper system view instead of just a big grid, so it reads as part of the product and not a detached page.</div>
+      </div>
+      <div class="surface-card asset-activity-card">
+        <div class="section-title">What is used most</div>
+        <div class="mini-metrics">
+          <div class="mini-metric"><strong>18</strong><span>Saved clips in finance motion set</span></div>
+          <div class="mini-metric"><strong>7</strong><span>Reusable scene templates</span></div>
+          <div class="mini-metric"><strong>5</strong><span>Brand voices across channels</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <div>
+        <div class="section-title">Library Contents</div>
+        <div class="section-subtitle">Search, filter, and quick-scan cards share the same spacing and tone as the rest of the app.</div>
+      </div>
+      <button class="btn btn-primary btn-sm">Upload</button>
+    </div>
+
+    <div class="asset-toolbar">
+      <div class="search-wrap">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+        <input class="search-box" placeholder="Search assets by name, tag, or type">
+      </div>
+      <div class="filter-chips">
+        <div class="filter-chip active" onclick="filterAssets(this)">All</div>
+        <div class="filter-chip" onclick="filterAssets(this)">Video</div>
+        <div class="filter-chip" onclick="filterAssets(this)">Audio</div>
+        <div class="filter-chip" onclick="filterAssets(this)">Images</div>
+        <div class="filter-chip" onclick="filterAssets(this)">Voices</div>
+        <div class="filter-chip" onclick="filterAssets(this)">Templates</div>
+      </div>
+    </div>
+
+    <div class="asset-grid">
+      <div class="asset-card featured">
+        <div class="asset-preview" style="background:linear-gradient(135deg, #0f2027, #2c5364);"><span class="asset-type-badge badge-video">Video</span><div class="asset-icon">🎬</div></div>
+        <div class="asset-details"><div class="asset-title">City Night Timelapse Loop</div><div class="asset-meta-row"><span>1080p · 12s</span><span>2.4 MB</span></div><div class="asset-tags"><span class="asset-tag">city</span><span class="asset-tag">night</span><span class="asset-tag">loop</span></div></div>
+      </div>
+      <div class="asset-card">
+        <div class="asset-preview" style="background:linear-gradient(135deg, #1a2a1a, #2a4a2a);"><span class="asset-type-badge badge-video">Video</span><div class="asset-icon">🎬</div></div>
+        <div class="asset-details"><div class="asset-title">Stock Market Ticker Overlay</div><div class="asset-meta-row"><span>1080p · 8s</span><span>1.8 MB</span></div><div class="asset-tags"><span class="asset-tag">finance</span><span class="asset-tag">overlay</span></div></div>
+      </div>
+      <div class="asset-card">
+        <div class="asset-preview" style="background:linear-gradient(135deg, #2a1a30, #4a2a50);"><span class="asset-type-badge badge-audio">Audio</span><div class="asset-icon">🎵</div></div>
+        <div class="asset-details"><div class="asset-title">Lo-fi Ambient Bed — 60s</div><div class="asset-meta-row"><span>MP3 · 60s</span><span>980 KB</span></div><div class="asset-tags"><span class="asset-tag">music</span><span class="asset-tag">chill</span><span class="asset-tag">bg</span></div></div>
+      </div>
+      <div class="asset-card">
+        <div class="asset-preview" style="background:linear-gradient(135deg, #2a201a, #4a3a2a);"><span class="asset-type-badge badge-audio">Audio</span><div class="asset-icon">🎵</div></div>
+        <div class="asset-details"><div class="asset-title">Dramatic Riser SFX</div><div class="asset-meta-row"><span>WAV · 3s</span><span>420 KB</span></div><div class="asset-tags"><span class="asset-tag">sfx</span><span class="asset-tag">transition</span></div></div>
+      </div>
+      <div class="asset-card">
+        <div class="asset-preview" style="background:linear-gradient(135deg, #1a1a30, #3a2a50);"><span class="asset-type-badge badge-voice">Voice</span><div class="asset-icon">🎙</div></div>
+        <div class="asset-details"><div class="asset-title">Marcus — Authority (Cloned)</div><div class="asset-meta-row"><span>ElevenLabs</span><span>Brand voice</span></div><div class="asset-tags"><span class="asset-tag">male</span><span class="asset-tag">deep</span><span class="asset-tag">en-us</span></div></div>
+      </div>
+      <div class="asset-card">
+        <div class="asset-preview" style="background:linear-gradient(135deg, #301a2a, #502a4a);"><span class="asset-type-badge badge-voice">Voice</span><div class="asset-icon">🎙</div></div>
+        <div class="asset-details"><div class="asset-title">Sofia — Warm Narrator</div><div class="asset-meta-row"><span>ElevenLabs</span><span>ES channel</span></div><div class="asset-tags"><span class="asset-tag">female</span><span class="asset-tag">warm</span><span class="asset-tag">es</span></div></div>
+      </div>
+      <div class="asset-card">
+        <div class="asset-preview" style="background:linear-gradient(135deg, #1a2a20, #2a4a30);"><span class="asset-type-badge badge-image">Image</span><div class="asset-icon">🖼</div></div>
+        <div class="asset-details"><div class="asset-title">Finance Tips Logo (PNG)</div><div class="asset-meta-row"><span>512×512</span><span>84 KB</span></div><div class="asset-tags"><span class="asset-tag">logo</span><span class="asset-tag">brand</span></div></div>
+      </div>
+      <div class="asset-card">
+        <div class="asset-preview" style="background:linear-gradient(135deg, #2a2a1a, #4a4a2a);"><span class="asset-type-badge badge-template">Template</span><div class="asset-icon">📐</div></div>
+        <div class="asset-details"><div class="asset-title">Standard Outro — Subscribe CTA</div><div class="asset-meta-row"><span>Scene block</span><span>Used 38×</span></div><div class="asset-tags"><span class="asset-tag">outro</span><span class="asset-tag">cta</span><span class="asset-tag">reusable</span></div></div>
+      </div>
+      <div class="asset-card">
+        <div class="asset-preview" style="background:linear-gradient(135deg, #1a1a2a, #2a3a4a);"><span class="asset-type-badge badge-template">Template</span><div class="asset-icon">📐</div></div>
+        <div class="asset-details"><div class="asset-title">Motivational Intro — Gold Particles</div><div class="asset-meta-row"><span>Scene block</span><span>Used 22×</span></div><div class="asset-tags"><span class="asset-tag">intro</span><span class="asset-tag">motion</span></div></div>
+      </div>
+      <div class="asset-card" style="border-style:dashed;display:flex;align-items:center;justify-content:center;min-height:170px;cursor:pointer;">
+        <div style="text-align:center;color:var(--text-muted);">
+          <div style="font-size:24px;margin-bottom:4px;">+</div>
+          <div style="font-size:12px;">Upload Asset</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-view view" id="settingsView">
+    <div class="settings-shell">
+      <div class="surface-card settings-menu">
+        <div class="settings-menu-title">Settings</div>
+        <div class="settings-nav">
+          <div class="settings-tab active" onclick="switchSettingsTab(this, 'channels')">Channels</div>
+          <div class="settings-tab" onclick="switchSettingsTab(this, 'brand')">Brand Kits</div>
+          <div class="settings-tab" onclick="switchSettingsTab(this, 'account')">Account</div>
+          <div class="settings-tab" onclick="switchSettingsTab(this, 'usage')">Usage and Billing</div>
+        </div>
+      </div>
+
+      <div class="surface-card settings-content-card">
+        <div class="settings-pane active" id="settingsPane-channels">
+          <div class="section-title">Channels</div>
+          <div class="settings-section-desc">This now reads as a proper management surface instead of a detached tab strip.</div>
+          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #0f2027, #2c5364);">$</div><div class="channel-info"><div class="channel-name-row">Faceless Finance Tips</div><div class="channel-detail">TikTok · Reels · Shorts · EN · 18 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openModal('channelModal')">Edit</button></div>
+          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #1a0a2e, #3d1a6e);">AI</div><div class="channel-info"><div class="channel-name-row">Tech Explainer</div><div class="channel-detail">YouTube Shorts · EN · ES · PT · 12 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openModal('channelModal')">Edit</button></div>
+          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #2a1a10, #4a3020);">M</div><div class="channel-info"><div class="channel-name-row">Daily Motivation</div><div class="channel-detail">TikTok · Reels · EN · 42 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openModal('channelModal')">Edit</button></div>
+          <div class="channel-card"><div class="channel-avatar" style="background:linear-gradient(135deg, #1a2a1a, #2a4a2a);">AD</div><div class="channel-info"><div class="channel-name-row">UGC Ads</div><div class="channel-detail">Instagram · Facebook · EN · 8 videos</div></div><button class="btn btn-ghost btn-sm" onclick="openModal('channelModal')">Edit</button></div>
+          <button class="btn btn-ghost" style="margin-top:8px;">Add Channel</button>
+        </div>
+
+        <div class="settings-pane" id="settingsPane-brand">
+          <div class="section-title">Brand Kit Defaults</div>
+          <div class="settings-section-desc">Make the global kit obvious, with clear form rows and less visual noise.</div>
+          <div class="settings-row">
+            <div class="settings-row-label"><div class="label-main">Brand Colors</div><div class="label-hint">Primary, secondary, accent</div></div>
+            <div class="settings-row-control"><div class="color-swatches"><div class="color-swatch selected" style="background:#ff6b35;"></div><div class="color-swatch" style="background:#1a1a3e;"></div><div class="color-swatch" style="background:#ececf3;"></div><div class="color-swatch" style="background:#34d399;"></div></div></div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-label"><div class="label-main">Fonts</div><div class="label-hint">Caption and overlay defaults</div></div>
+            <div class="settings-row-control"><select class="settings-select"><option>DM Sans Bold</option><option>Montserrat Bold</option><option>Bebas Neue</option><option>Poppins Black</option></select></div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-label"><div class="label-main">Default Voice</div><div class="label-hint">Applied to new scenes</div></div>
+            <div class="settings-row-control"><select class="settings-select"><option>Marcus - Authority (EN-US)</option><option>Sofia - Warm (ES)</option><option>Luna - Energetic (EN-US)</option></select></div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-label"><div class="label-main">Default CTA</div><div class="label-hint">Last scene copy</div></div>
+            <div class="settings-row-control"><input class="settings-input" value="Follow for daily money tips ->"></div>
+          </div>
+        </div>
+
+        <div class="settings-pane" id="settingsPane-account">
+          <div class="section-title">Account</div>
+          <div class="settings-section-desc">Personal defaults and workspace behavior.</div>
+          <div class="settings-row">
+            <div class="settings-row-label"><div class="label-main">Name</div></div>
+            <div class="settings-row-control"><input class="settings-input" value="Kolawole"></div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-label"><div class="label-main">Email</div></div>
+            <div class="settings-row-control"><input class="settings-input" value="kola@example.com"></div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-label"><div class="label-main">Timezone</div></div>
+            <div class="settings-row-control"><select class="settings-select"><option>Africa/Lagos (WAT)</option><option>America/New_York</option><option>Europe/London</option></select></div>
+          </div>
+
+          <div style="margin-top:26px;">
+            <div class="section-title" style="font-size:15px;">Preferences</div>
+            <div class="settings-section-desc" style="margin-bottom:16px;">Defaults for new projects and exports.</div>
+            <div class="toggle-row"><div><div class="label-main">Auto-generate captions</div><div class="label-hint">Always add burned-in captions</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+            <div class="toggle-row"><div><div class="label-main">Preview before render</div><div class="label-hint">Require manual approval before queue</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+            <div class="toggle-row"><div><div class="label-main">Auto music</div><div class="label-hint">Select background music by tone</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+            <div class="toggle-row"><div><div class="label-main">Watermark on free exports</div><div class="label-hint">Show Framecast branding on free tier</div></div><div class="toggle" onclick="this.classList.toggle('on')"></div></div>
+          </div>
+        </div>
+
+        <div class="settings-pane" id="settingsPane-usage">
+          <div class="section-title">Usage and Billing</div>
+          <div class="settings-section-desc">Billing status and plan usage stay readable inside the same card system.</div>
+          <div class="usage-bar-container"><div class="usage-label-row"><span class="usage-label">Renders</span><span class="usage-count" style="color:var(--green);">147 / 200</span></div><div class="usage-bar"><div class="usage-fill" style="width:73.5%; background:var(--green);"></div></div></div>
+          <div class="usage-bar-container"><div class="usage-label-row"><span class="usage-label">Voice Minutes</span><span class="usage-count" style="color:var(--blue);">82 / 120 min</span></div><div class="usage-bar"><div class="usage-fill" style="width:68%; background:var(--blue);"></div></div></div>
+          <div class="usage-bar-container"><div class="usage-label-row"><span class="usage-label">Dub Languages</span><span class="usage-count" style="color:var(--purple);">2 / 3</span></div><div class="usage-bar"><div class="usage-fill" style="width:66%; background:var(--purple);"></div></div></div>
+          <div class="usage-bar-container"><div class="usage-label-row"><span class="usage-label">Active Channels</span><span class="usage-count" style="color:var(--yellow);">5 / 5</span></div><div class="usage-bar"><div class="usage-fill" style="width:100%; background:var(--yellow);"></div></div></div>
+          <div style="display:flex; gap:10px; margin:16px 0 22px;"><button class="btn btn-primary">Upgrade to Agency</button><button class="btn btn-ghost">Manage Billing</button></div>
+          <table class="table-clean">
+            <thead><tr><th>Feature</th><th>Creator</th><th>Studio</th><th>Agency</th></tr></thead>
+            <tbody>
+              <tr><td>Renders / mo</td><td>60</td><td style="color:var(--accent);">200</td><td>600</td></tr>
+              <tr><td>Voice min</td><td>30</td><td style="color:var(--accent);">120</td><td>400</td></tr>
+              <tr><td>Channels</td><td>2</td><td style="color:var(--accent);">5</td><td>15</td></tr>
+              <tr><td>Dub languages</td><td>-</td><td style="color:var(--accent);">3</td><td>10</td></tr>
+              <tr><td>Voice cloning</td><td>-</td><td style="color:var(--accent);">2 voices</td><td>10 voices</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="queue-detail-view view" id="queueDetailView">
+    <div class="queue-detail-header">
+      <button class="back-btn" onclick="showView('dashboard')">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"></path></svg>
+        Back to Dashboard
+      </button>
+      <div>
+        <div class="section-title">Batch · Collagen Serum Ad Set A</div>
+        <div class="section-subtitle">Batch Export · 8 variants · Finance Tips</div>
+      </div>
+    </div>
+    <div class="batch-stat-row">
+      <div class="batch-stat"><div class="batch-stat-val">8</div><div class="batch-stat-label">Requested</div></div>
+      <div class="batch-stat"><div class="batch-stat-val" style="color:var(--green);">6</div><div class="batch-stat-label">Completed</div></div>
+      <div class="batch-stat"><div class="batch-stat-val" style="color:var(--red);">2</div><div class="batch-stat-label">Failed</div></div>
+      <div class="batch-stat"><div class="batch-stat-val" style="color:var(--yellow);">75%</div><div class="batch-stat-label">Progress</div></div>
+    </div>
+    <div class="filter-tabs">
+      <button class="filter-tab-btn active" onclick="filterQueueTab(this)">All (8)</button>
+      <button class="filter-tab-btn" onclick="filterQueueTab(this)">Completed (6)</button>
+      <button class="filter-tab-btn" onclick="filterQueueTab(this)">Failed (2)</button>
+    </div>
+    <div class="surface-card" style="overflow:hidden;">
+      <table class="detail-table">
+        <thead>
+          <tr><th>Variant</th><th>Format</th><th>Status</th><th>Duration</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          <tr><td style="font-weight:500;">Original · EN · Hook A</td><td style="color:var(--text-muted);">9:16</td><td><span class="project-status status-rendered" style="margin:0;">● Complete</span></td><td style="color:var(--text-muted);font-size:12px;">0:32</td><td><button class="btn btn-ghost btn-sm">Download</button></td></tr>
+          <tr><td style="font-weight:500;">Hook B · Question · EN</td><td style="color:var(--text-muted);">9:16</td><td><span class="project-status status-rendered" style="margin:0;">● Complete</span></td><td style="color:var(--text-muted);font-size:12px;">0:34</td><td><button class="btn btn-ghost btn-sm">Download</button></td></tr>
+          <tr><td style="font-weight:500;">Hook C · Shock · EN</td><td style="color:var(--text-muted);">9:16</td><td><span class="project-status status-rendered" style="margin:0;">● Complete</span></td><td style="color:var(--text-muted);font-size:12px;">0:30</td><td><button class="btn btn-ghost btn-sm">Download</button></td></tr>
+          <tr><td style="font-weight:500;">Spanish · Sofia Voice</td><td style="color:var(--text-muted);">9:16</td><td><span class="project-status status-rendered" style="margin:0;">● Complete</span></td><td style="color:var(--text-muted);font-size:12px;">0:36</td><td><button class="btn btn-ghost btn-sm">Download</button></td></tr>
+          <tr><td style="font-weight:500;">Portuguese · Lucas Voice</td><td style="color:var(--text-muted);">9:16</td><td><span class="project-status status-rendered" style="margin:0;">● Complete</span></td><td style="color:var(--text-muted);font-size:12px;">0:35</td><td><button class="btn btn-ghost btn-sm">Download</button></td></tr>
+          <tr><td style="font-weight:500;">Luna Voice · EN</td><td style="color:var(--text-muted);">9:16</td><td><span class="project-status status-rendered" style="margin:0;">● Complete</span></td><td style="color:var(--text-muted);font-size:12px;">0:31</td><td><button class="btn btn-ghost btn-sm">Download</button></td></tr>
+          <tr>
+            <td style="font-weight:500;">Square · 1:1 · EN</td><td style="color:var(--text-muted);">1:1</td>
+            <td><span class="project-status status-failed" style="margin:0;">✕ Failed</span></td>
+            <td style="color:var(--text-muted);font-size:12px;">—</td>
+            <td style="display:flex;gap:6px;">
+              <button class="btn btn-ghost btn-sm" onclick="openModal('failedJobModal')">Details</button>
+              <button class="btn btn-ghost btn-sm" onclick="openModal('retryModal')">Retry</button>
+            </td>
+          </tr>
+          <tr>
+            <td style="font-weight:500;">Square · 1:1 · ES</td><td style="color:var(--text-muted);">1:1</td>
+            <td><span class="project-status status-failed" style="margin:0;">✕ Failed</span></td>
+            <td style="color:var(--text-muted);font-size:12px;">—</td>
+            <td style="display:flex;gap:6px;">
+              <button class="btn btn-ghost btn-sm" onclick="openModal('failedJobModal')">Details</button>
+              <button class="btn btn-ghost btn-sm" onclick="openModal('retryModal')">Retry</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="openModal('retryModal')">Retry All Failed (2)</button>
+      <button class="btn btn-primary btn-sm">Download All Completed (6)</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="newProjectModal" onclick="if (event.target === this) this.classList.remove('show')">
+  <div class="modal">
+    <div class="modal-title">Create New Video</div>
+    <div class="modal-subtitle">Start from a script, URL, prompt, or topic list.</div>
+
+    <div class="input-group">
+      <label class="input-label">Start From</label>
+      <div class="chips" id="sourceTypeChips">
+        <div class="chip selected" onclick="switchSource('script',this)">Script</div>
+        <div class="chip" onclick="switchSource('url',this)">URL / Article</div>
+        <div class="chip" onclick="switchSource('prompt',this)">Prompt</div>
+        <div class="chip" onclick="switchSource('csv',this)">CSV Topics</div>
+        <div class="chip" onclick="switchSource('product',this)">Product</div>
+        <div class="chip" onclick="switchSource('audio',this)">Existing Audio</div>
+        <div class="chip" onclick="switchSource('video',this)">Existing Video</div>
+      </div>
+    </div>
+
+    <!-- Script panel -->
+    <div class="source-panel active" id="panel-script">
+      <div class="input-group">
+        <label class="input-label">Script / Content</label>
+        <textarea class="input-field" rows="5">Most people will never build wealth. Here's why.
+
+Habit 1: Pay yourself first. 20% goes into investments.
+Habit 2: Automate everything. If you have to think about it, you will not do it.
+Habit 3: Track your net worth monthly.</textarea>
+      </div>
+    </div>
+
+    <!-- URL panel -->
+    <div class="source-panel" id="panel-url">
+      <div class="input-group">
+        <label class="input-label">Article URL</label>
+        <input class="input-field" type="url" placeholder="https://example.com/article">
+      </div>
+    </div>
+
+    <!-- Prompt panel -->
+    <div class="source-panel" id="panel-prompt">
+      <div class="input-group">
+        <label class="input-label">Your Idea or Prompt</label>
+        <textarea class="input-field" rows="3" placeholder="e.g. 5 habits that wealthy people have in common..."></textarea>
+      </div>
+    </div>
+
+    <!-- CSV Topics panel -->
+    <div class="source-panel" id="panel-csv">
+      <div class="input-group">
+        <label class="input-label">Upload CSV Topic List</label>
+        <div class="upload-zone" onclick="this.querySelector('input').click()">
+          <div class="upload-icon">📄</div>
+          <div class="upload-label">Drop your CSV or click to browse</div>
+          <div class="upload-hint">One topic per row. Max 100 rows.</div>
+          <input type="file" accept=".csv" style="display:none">
+        </div>
+      </div>
+    </div>
+
+    <!-- Product Description panel -->
+    <div class="source-panel" id="panel-product">
+      <div class="input-group">
+        <label class="input-label">Product Name</label>
+        <input class="input-field" type="text" placeholder="e.g. Vitamin D3+K2 Supplement">
+      </div>
+      <div class="input-group">
+        <label class="input-label">Product Description</label>
+        <textarea class="input-field" rows="4" placeholder="Describe what it is, who it's for, and key benefits..."></textarea>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Product URL <span style="color:var(--text-muted);font-size:11px;">(optional)</span></label>
+        <input class="input-field" type="url" placeholder="https://...">
+      </div>
+    </div>
+
+    <!-- Existing Audio panel -->
+    <div class="source-panel" id="panel-audio">
+      <div class="input-group">
+        <label class="input-label">Upload Audio File</label>
+        <div class="upload-zone" id="audioDropZone" onclick="this.querySelector('input').click()">
+          <div class="upload-icon">🎙️</div>
+          <div class="upload-label">Drop audio or click to browse</div>
+          <div class="upload-hint">MP3, WAV, M4A · Max 100 MB</div>
+          <input type="file" accept=".mp3,.wav,.m4a" style="display:none" onchange="showFileUploaded(this,'audioDropZone')">
+        </div>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Transcript</label>
+        <div class="chips" style="margin-bottom:10px;">
+          <div class="chip selected">Auto-transcribe</div>
+          <div class="chip">I'll provide a script</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Existing Video panel -->
+    <div class="source-panel" id="panel-video">
+      <div class="input-group">
+        <label class="input-label">Upload Video File</label>
+        <div class="upload-zone" id="videoDropZone" onclick="this.querySelector('input').click()">
+          <div class="upload-icon">🎬</div>
+          <div class="upload-label">Drop video or click to browse</div>
+          <div class="upload-hint">MP4, MOV, WEBM · Max 500 MB</div>
+          <input type="file" accept=".mp4,.mov,.webm" style="display:none" onchange="showFileUploaded(this,'videoDropZone')">
+        </div>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Processing Mode</label>
+        <div class="chips">
+          <div class="chip selected">Use full video</div>
+          <div class="chip">Extract audio only</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Channel / Brand</label>
+      <select class="input-field">
+        <option>Faceless Finance Tips</option>
+        <option>Tech Explainer</option>
+        <option>Daily Motivation</option>
+        <option>+ New Channel</option>
+      </select>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div class="input-group">
+        <label class="input-label">Format</label>
+        <select class="input-field">
+          <option>Explainer (30-60s)</option>
+          <option>Listicle / Facts</option>
+          <option>Quote / Motivation</option>
+          <option>UGC Ad</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Platform</label>
+        <select class="input-field">
+          <option>TikTok / Reels (9:16)</option>
+          <option>YouTube Shorts (9:16)</option>
+          <option>Instagram (1:1)</option>
+          <option>YouTube (16:9)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Tone</label>
+      <div class="chips">
+        <div class="chip selected">Authority</div>
+        <div class="chip">Educational</div>
+        <div class="chip">Dramatic</div>
+        <div class="chip">Casual</div>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Languages</label>
+      <div class="chips">
+        <div class="chip selected">English</div>
+        <div class="chip">Spanish</div>
+        <div class="chip">Portuguese</div>
+        <div class="chip">+ More</div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="document.getElementById('newProjectModal').classList.remove('show')">Cancel</button>
+      <button class="btn btn-primary" id="generateBtn">Generate Video</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     QUEUE DETAIL VIEW
+════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════
+     GENERATION PROGRESS OVERLAY
+════════════════════════════════════════════════════════ -->
+<div class="gen-overlay" id="genOverlay">
+  <div class="gen-panel">
+    <div class="gen-header">
+      <div class="gen-title">Generating your video…</div>
+      <div class="gen-subtitle">5 Money Habits That Changed My Life · Finance Tips · EN · 9:16</div>
+    </div>
+    <div class="gen-progress"><div class="gen-progress-fill" id="genProgressFill" style="width:40%;"></div></div>
+    <div class="gen-stages">
+      <div class="gen-stage complete">
+        <div class="gen-stage-icon">✓</div>
+        <div class="gen-stage-info"><div class="gen-stage-name">Writing script</div><div class="gen-stage-status">Done</div></div>
+      </div>
+      <div class="gen-stage complete">
+        <div class="gen-stage-icon">✓</div>
+        <div class="gen-stage-info"><div class="gen-stage-name">Breaking into scenes</div><div class="gen-stage-status">5 scenes created</div></div>
+      </div>
+      <div class="gen-stage active">
+        <div class="gen-stage-icon">⟳</div>
+        <div class="gen-stage-info"><div class="gen-stage-name">Matching visuals</div><div class="gen-stage-status">Searching stock library…</div></div>
+      </div>
+      <div class="gen-stage pending">
+        <div class="gen-stage-icon">○</div>
+        <div class="gen-stage-info"><div class="gen-stage-name">Generating voice</div><div class="gen-stage-status">Waiting</div></div>
+      </div>
+      <div class="gen-stage pending">
+        <div class="gen-stage-icon">○</div>
+        <div class="gen-stage-info"><div class="gen-stage-name">Assembling preview</div><div class="gen-stage-status">Waiting</div></div>
+      </div>
+    </div>
+    <div class="gen-actions">
+      <button class="btn btn-ghost" onclick="closeModal('genOverlay');document.getElementById('genOverlay').classList.remove('show');">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     VARIANTS CREATION DRAWER
+════════════════════════════════════════════════════════ -->
+<div class="drawer-backdrop" id="variantDrawerBackdrop" onclick="closeVariantsDrawer()"></div>
+<div class="drawer drawer-variants" id="variantDrawer">
+  <div class="drawer-header">
+    <div class="drawer-title">Generate Variants</div>
+    <button class="drawer-close-btn" onclick="closeVariantsDrawer()">×</button>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-section">
+      <div class="drawer-section-label">What to vary</div>
+      <div class="dim-row checked" onclick="toggleDim(this)">
+        <div class="dim-checkbox">✓</div>
+        <div class="dim-text">
+          <div class="dim-label">Hook</div>
+          <div class="dim-desc">Generate alternate opening hooks</div>
+          <div class="dim-sub">
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">Number of hooks</div>
+            <select class="count-select" onchange="updateBatchSummary()"><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="dim-row" onclick="toggleDim(this)">
+        <div class="dim-checkbox"></div>
+        <div class="dim-text">
+          <div class="dim-label">CTA</div>
+          <div class="dim-desc">Generate alternate calls to action</div>
+          <div class="dim-sub">
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">Number of CTAs</div>
+            <select class="count-select" onchange="updateBatchSummary()"><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="dim-row checked" onclick="toggleDim(this)">
+        <div class="dim-checkbox">✓</div>
+        <div class="dim-text">
+          <div class="dim-label">Language</div>
+          <div class="dim-desc">Produce translated versions</div>
+          <div class="dim-sub">
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">Target languages</div>
+            <div class="chips" style="gap:6px;">
+              <div class="chip selected" style="font-size:11px; padding:4px 10px;">Spanish</div>
+              <div class="chip selected" style="font-size:11px; padding:4px 10px;">Portuguese</div>
+              <div class="chip" style="font-size:11px; padding:4px 10px;">French</div>
+              <div class="chip" style="font-size:11px; padding:4px 10px;">+ More</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dim-row" onclick="toggleDim(this)">
+        <div class="dim-checkbox"></div>
+        <div class="dim-text">
+          <div class="dim-label">Voice</div>
+          <div class="dim-desc">Swap narrator voice</div>
+          <div class="dim-sub">
+            <div class="chips" style="gap:6px;">
+              <div class="chip selected" style="font-size:11px; padding:4px 10px;">Luna</div>
+              <div class="chip" style="font-size:11px; padding:4px 10px;">Marcus</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dim-row" onclick="toggleDim(this)">
+        <div class="dim-checkbox"></div>
+        <div class="dim-text">
+          <div class="dim-label">Visual</div>
+          <div class="dim-desc">Swap scene visuals</div>
+        </div>
+      </div>
+      <div class="dim-row" onclick="toggleDim(this)">
+        <div class="dim-checkbox"></div>
+        <div class="dim-text">
+          <div class="dim-label">Format</div>
+          <div class="dim-desc">Change aspect ratio</div>
+          <div class="dim-sub">
+            <div class="chips" style="gap:6px;">
+              <div class="chip selected" style="font-size:11px; padding:4px 10px;">9:16</div>
+              <div class="chip selected" style="font-size:11px; padding:4px 10px;">1:1</div>
+              <div class="chip" style="font-size:11px; padding:4px 10px;">16:9</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-section-label">What stays fixed</div>
+      <div class="lock-row"><span class="lock-label">Brand kit</span><span class="lock-tag locked">Locked</span></div>
+      <div class="lock-row"><span class="lock-label">Template</span><span class="lock-tag locked">Locked</span></div>
+      <div class="lock-row"><span class="lock-label">Scene text</span><span class="lock-tag">Unlocked</span></div>
+      <div class="lock-row"><span class="lock-label">Captions</span><span class="lock-tag">Unlocked</span></div>
+    </div>
+
+    <div class="batch-summary-box" id="batchSummaryBox">
+      3 hooks × 2 languages = <strong>6 variants</strong>
+    </div>
+  </div>
+  <div class="drawer-footer">
+    <button class="btn btn-ghost" style="flex:1;" onclick="closeVariantsDrawer()">Cancel</button>
+    <button class="btn btn-primary" style="flex:2;" onclick="closeVariantsDrawer(); showView('batch');">Generate Variants</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     NOTIFICATION DRAWER
+════════════════════════════════════════════════════════ -->
+<div class="drawer-backdrop" id="notifBackdrop" onclick="toggleNotifDrawer()"></div>
+<div class="drawer drawer-notif" id="notifDrawer">
+  <div class="drawer-header">
+    <div class="drawer-title">Notifications</div>
+    <button class="mark-read-btn">Mark all read</button>
+  </div>
+  <div class="notif-item unread" onclick="showView('editor')">
+    <div class="notif-icon-wrap success">✓</div>
+    <div class="notif-body">
+      <div class="notif-msg">"5 Money Habits" is ready to review</div>
+      <div class="notif-time">2 minutes ago</div>
+    </div>
+    <div class="notif-unread-dot"></div>
+  </div>
+  <div class="notif-item unread" onclick="showView('queueDetail')">
+    <div class="notif-icon-wrap warning">⚠</div>
+    <div class="notif-body">
+      <div class="notif-msg">Batch done: 6 succeeded, 2 failed</div>
+      <div class="notif-time">18 minutes ago</div>
+    </div>
+    <div class="notif-unread-dot"></div>
+  </div>
+  <div class="notif-item unread">
+    <div class="notif-icon-wrap success">↑</div>
+    <div class="notif-body">
+      <div class="notif-msg">Asset "Finance BG Loop v3.mp4" uploaded</div>
+      <div class="notif-time">1 hour ago</div>
+    </div>
+    <div class="notif-unread-dot"></div>
+  </div>
+  <div class="notif-item">
+    <div class="notif-icon-wrap error">✕</div>
+    <div class="notif-body">
+      <div class="notif-msg">Export failed for "AI Will Replace These 10 Jobs"</div>
+      <div class="notif-time">3 hours ago</div>
+    </div>
+  </div>
+  <div class="notif-item">
+    <div class="notif-icon-wrap success">✓</div>
+    <div class="notif-body">
+      <div class="notif-msg">Export ready: stoic_quote_142_en_9x16_20260402.mp4</div>
+      <div class="notif-time">5 hours ago</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TOAST CONTAINER
+════════════════════════════════════════════════════════ -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ═══════════════════════════════════════════════════════
+     FAILED JOB DETAIL MODAL
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="failedJobModal" onclick="if(event.target===this)closeModal('failedJobModal')">
+  <div class="modal">
+    <div class="modal-title">Failed Job Detail</div>
+    <div class="modal-subtitle" style="margin-bottom:18px;">Export · Square 1:1 · EN</div>
+    <div class="modal-section">
+      <div class="modal-section-label">Job Info</div>
+      <div class="detail-card">
+        <div class="job-row"><span class="job-row-label">Job ID</span><span class="job-row-val">job_01hx9k2p...</span></div>
+        <div class="job-row"><span class="job-row-label">Project</span><span class="job-row-val">Collagen Serum Ad Set A</span></div>
+        <div class="job-row"><span class="job-row-label">Channel</span><span class="job-row-val">UGC Ads</span></div>
+        <div class="job-row"><span class="job-row-label">Queued at</span><span class="job-row-val">2026-04-02 14:22:08</span></div>
+        <div class="job-row"><span class="job-row-label">Started at</span><span class="job-row-val">2026-04-02 14:23:01</span></div>
+        <div class="job-row"><span class="job-row-label">Failed at</span><span class="job-row-val">2026-04-02 14:24:17</span></div>
+        <div class="job-row"><span class="job-row-label">Attempts</span><span class="job-row-val">1 of 3</span></div>
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-label">Failure Reason</div>
+      <div class="error-log-block">FFmpeg error: visual asset 'pexels_clip_8821432.mp4' returned 403 on fetch. Asset URL expired or provider quota exceeded. Stage: asset_resolution. Exit code: 1.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('failedJobModal')">Close</button>
+      <button class="btn btn-primary" onclick="closeModal('failedJobModal'); openModal('retryModal');">Retry Job</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     RETRY CONFIRMATION MODAL
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="retryModal" onclick="if(event.target===this)closeModal('retryModal')">
+  <div class="modal modal-sm">
+    <div class="modal-title">Retry this job?</div>
+    <div style="font-size:13px; color:var(--text-secondary); margin:12px 0 6px;">
+      Export — Square 1:1 · EN · <span style="color:var(--text-muted);">Collagen Serum Ad Set A</span>
+    </div>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">A new job will be created. The failed job record is preserved.</div>
+    <div class="retry-warn">This job has failed 1 time. Check the failure reason before retrying.</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('retryModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="closeModal('retryModal'); showToast('info','Retry queued','New job created and added to the queue.')">Confirm Retry</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     OVER-LIMIT MODAL
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="overLimitModal" onclick="if(event.target===this)closeModal('overLimitModal')">
+  <div class="modal modal-sm">
+    <div class="modal-title">Render limit reached</div>
+    <div style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">You're on the <strong style="color:var(--text-primary);">Starter plan</strong>. Resets May 1, 2026.</div>
+    <div class="limit-block">
+      <div class="limit-block-name">Monthly renders</div>
+      <div class="usage-bar"><div class="usage-fill critical" style="width:100%;"></div></div>
+      <div class="limit-block-nums">30 of 30 used</div>
+    </div>
+    <div class="limit-block">
+      <div class="limit-block-name">Voice minutes</div>
+      <div class="usage-bar"><div class="usage-fill warning" style="width:78%;"></div></div>
+      <div class="limit-block-nums">47 of 60 min used</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('overLimitModal')">Not Now</button>
+      <button class="btn btn-primary" onclick="closeModal('overLimitModal'); showToast('success','Upgrade','Redirecting to billing...')">Upgrade Plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     DELETE CONFIRMATION MODAL
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="deleteModal" onclick="if(event.target===this)closeModal('deleteModal')">
+  <div class="modal modal-sm">
+    <div class="modal-title">Archive project?</div>
+    <div style="font-size:13px; color:var(--text-secondary); margin:12px 0 8px;">
+      <strong style="color:var(--text-primary);">"5 Money Habits That Changed My Life"</strong> will be archived.
+    </div>
+    <div class="dep-warn">This project has 6 variants and 8 export jobs. All will be archived.</div>
+    <div style="font-size:12px; color:var(--text-muted);">Archived projects are not deleted. You can restore them from your archive at any time.</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('deleteModal')">Cancel</button>
+      <button class="btn btn-danger" onclick="closeModal('deleteModal'); showToast('info','Archived','\u201c5 Money Habits\u201d has been archived.')">Archive</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     CHANNEL CREATE / EDIT MODAL
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="channelModal" onclick="if(event.target===this)closeModal('channelModal')">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title">Edit Channel</div>
+    <div class="modal-subtitle" style="margin-bottom:20px;">Faceless Finance Tips</div>
+
+    <div class="form-grid-2" style="margin-bottom:14px;">
+      <div class="input-group" style="margin:0;">
+        <label class="input-label">Channel Name</label>
+        <input class="input-field" type="text" value="Faceless Finance Tips">
+      </div>
+      <div class="input-group" style="margin:0;">
+        <label class="input-label">Default Language</label>
+        <select class="input-field"><option selected>English (en-US)</option><option>Spanish (es)</option><option>Portuguese (pt-BR)</option></select>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Description</label>
+      <input class="input-field" type="text" value="Personal finance tips for everyday people">
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Platform Targets</label>
+      <div class="platform-checks">
+        <div class="platform-check on" onclick="this.classList.toggle('on')">TikTok</div>
+        <div class="platform-check on" onclick="this.classList.toggle('on')">Reels</div>
+        <div class="platform-check on" onclick="this.classList.toggle('on')">Shorts</div>
+        <div class="platform-check" onclick="this.classList.toggle('on')">Instagram Square</div>
+        <div class="platform-check" onclick="this.classList.toggle('on')">YouTube</div>
+      </div>
+    </div>
+
+    <div class="form-grid-2" style="margin-bottom:14px;">
+      <div class="input-group" style="margin:0;">
+        <label class="input-label">Default Voice Profile</label>
+        <select class="input-field"><option selected>Marcus · EN · Deep</option><option>Luna · EN · Warm</option><option>Sofia · ES · Neutral</option></select>
+      </div>
+      <div class="input-group" style="margin:0;">
+        <label class="input-label">Brand Kit</label>
+        <select class="input-field"><option selected>Finance Brand</option><option>Minimal Dark</option><option>+ New Brand Kit</option></select>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Default CTA Text</label>
+      <input class="input-field" type="text" value="Follow for daily finance tips">
+    </div>
+
+    <div style="font-size:12px; color:var(--text-muted); padding:10px 12px; background:var(--bg-elevated); border-radius:8px; border:1px solid var(--border); margin-bottom:4px;">
+      Changing defaults does not update existing projects that use this channel.
+    </div>
+
+    <div class="danger-zone">
+      <div class="danger-zone-label">Danger Zone</div>
+      <button class="btn btn-ghost btn-sm" style="border-color:rgba(248,113,113,0.3); color:var(--red);" onclick="closeModal('channelModal'); openModal('deleteModal')">Archive Channel</button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('channelModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="closeModal('channelModal'); showToast('success','Saved','Channel updated successfully.')">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll(".chips").forEach(function(group) {
+  group.querySelectorAll(".chip").forEach(function(chip) {
+    chip.addEventListener("click", function() {
+      var label = group.closest(".input-group") && group.closest(".input-group").querySelector(".input-label");
+      if (label && label.textContent.trim() === "Languages") {
+        chip.classList.toggle("selected");
+        return;
+      }
+      group.querySelectorAll(".chip").forEach(function(node) {
+        node.classList.remove("selected");
+      });
+      chip.classList.add("selected");
+    });
+  });
+});
+
+document.querySelectorAll(".checkbox").forEach(function(box) {
+  box.addEventListener("click", function() {
+    box.classList.toggle("checked");
+  });
+});
+
+document.querySelectorAll(".caption-style-opt").forEach(function(option) {
+  option.addEventListener("click", function() {
+    document.querySelectorAll(".caption-style-opt").forEach(function(node) {
+      node.classList.remove("active");
+    });
+    option.classList.add("active");
+  });
+});
+
+document.querySelectorAll(".scene-type-chip").forEach(function(chip) {
+  chip.addEventListener("click", function() {
+    document.querySelectorAll(".scene-type-chip").forEach(function(node) {
+      node.classList.remove("selected");
+    });
+    chip.classList.add("selected");
+  });
+});
+
+document.querySelectorAll(".add-scene-visual-opt").forEach(function(option) {
+  option.addEventListener("click", function() {
+    document.querySelectorAll(".add-scene-visual-opt").forEach(function(node) {
+      node.classList.remove("selected");
+    });
+    option.classList.add("selected");
+  });
+});
+
+document.querySelectorAll(".color-swatch").forEach(function(swatch) {
+  swatch.addEventListener("click", function() {
+    document.querySelectorAll(".color-swatch").forEach(function(node) {
+      node.classList.remove("selected");
+    });
+    swatch.classList.add("selected");
+  });
+});
+
+function selectScene(element) {
+  document.querySelectorAll(".scene-item").forEach(function(scene) {
+    scene.classList.remove("active");
+  });
+  element.classList.add("active");
+}
+
+function toggleAddScene(position) {
+  var panel = document.getElementById("addScenePanel");
+  var sceneList = document.getElementById("sceneList");
+  if (panel.classList.contains("open")) {
+    panel.classList.remove("open");
+    return;
+  }
+  panel.classList.remove("open");
+  if (position === "top") {
+    sceneList.insertBefore(panel, sceneList.children[0]);
+  } else {
+    var divs = sceneList.querySelectorAll(".add-scene-divider");
+    var index = position === "end" ? divs.length - 1 : position === "after1" ? 0 : position === "after2" ? 1 : position === "after3" ? 2 : position === "after4" ? 3 : 0;
+    var target = divs[index];
+    if (target && target.nextElementSibling) {
+      sceneList.insertBefore(panel, target.nextElementSibling);
+    } else {
+      sceneList.appendChild(panel);
+    }
+  }
+  requestAnimationFrame(function() {
+    panel.classList.add("open");
+    var textarea = panel.querySelector("textarea");
+    if (textarea) textarea.focus();
+  });
+}
+
+function closeAddScene() {
+  document.getElementById("addScenePanel").classList.remove("open");
+}
+
+function filterAssets(element) {
+  document.querySelectorAll(".filter-chip").forEach(function(chip) {
+    chip.classList.remove("active");
+  });
+  element.classList.add("active");
+}
+
+function switchSettingsTab(element, pane) {
+  document.querySelectorAll(".settings-tab").forEach(function(tab) {
+    tab.classList.remove("active");
+  });
+  element.classList.add("active");
+  document.querySelectorAll(".settings-pane").forEach(function(node) {
+    node.classList.remove("active");
+  });
+  document.getElementById("settingsPane-" + pane).classList.add("active");
+}
+
+/* ── Modal helpers ── */
+function openModal(id) { document.getElementById(id).classList.add("show"); }
+function closeModal(id) { document.getElementById(id).classList.remove("show"); }
+
+/* ── Generation Progress ── */
+function showGenProgress() {
+  document.getElementById("genOverlay").classList.add("show");
+}
+
+/* ── Variants Drawer ── */
+function openVariantsDrawer() {
+  document.getElementById("variantDrawer").classList.add("open");
+  document.getElementById("variantDrawerBackdrop").classList.add("open");
+}
+function closeVariantsDrawer() {
+  document.getElementById("variantDrawer").classList.remove("open");
+  document.getElementById("variantDrawerBackdrop").classList.remove("open");
+}
+function toggleDim(row) {
+  row.classList.toggle("checked");
+  var cb = row.querySelector(".dim-checkbox");
+  cb.textContent = row.classList.contains("checked") ? "✓" : "";
+  updateBatchSummary();
+}
+function updateBatchSummary() {
+  var checked = document.querySelectorAll("#variantDrawer .dim-row.checked");
+  var parts = [];
+  checked.forEach(function(row) {
+    var label = row.querySelector(".dim-label").textContent;
+    var sel = row.querySelector(".count-select");
+    if (sel) parts.push(sel.value + " " + label.toLowerCase() + "s");
+    else {
+      var chips = row.querySelectorAll(".dim-sub .chip.selected");
+      if (chips.length) parts.push(chips.length + " " + label.toLowerCase() + "s");
+    }
+  });
+  var total = 1;
+  checked.forEach(function(row) {
+    var sel = row.querySelector(".count-select");
+    if (sel) total *= parseInt(sel.value);
+    else {
+      var chips = row.querySelectorAll(".dim-sub .chip.selected");
+      if (chips.length) total *= chips.length;
+    }
+  });
+  var box = document.getElementById("batchSummaryBox");
+  if (parts.length === 0) {
+    box.innerHTML = "Select at least one dimension to vary";
+    box.style.color = "var(--text-muted)";
+  } else {
+    box.innerHTML = parts.join(" × ") + " = <strong>" + total + " variant" + (total !== 1 ? "s" : "") + "</strong>";
+    box.style.color = "var(--accent)";
+  }
+}
+
+/* ── Notification Drawer ── */
+function toggleNotifDrawer() {
+  var drawer = document.getElementById("notifDrawer");
+  var backdrop = document.getElementById("notifBackdrop");
+  var isOpen = drawer.classList.contains("open");
+  drawer.classList.toggle("open");
+  backdrop.classList.toggle("open");
+}
+
+/* ── Toast Notifications ── */
+function showToast(type, title, message, link) {
+  var container = document.getElementById("toastContainer");
+  var t = document.createElement("div");
+  t.className = "toast " + type;
+  t.innerHTML = '<div class="toast-dot"></div><div class="toast-content"><div class="toast-msg"><strong>' + title + '</strong>' + (message ? ' — ' + message : '') + '</div>' + (link ? '<span class="toast-link">' + link + '</span>' : '') + '</div><button class="toast-close-btn" onclick="removeToast(this.parentElement)">×</button>';
+  container.appendChild(t);
+  if (type !== "error") {
+    setTimeout(function() { removeToast(t); }, 5000);
+  }
+}
+function removeToast(el) {
+  if (!el || !el.parentElement) return;
+  el.classList.add("removing");
+  setTimeout(function() { if (el.parentElement) el.parentElement.removeChild(el); }, 200);
+}
+
+/* ── Source Type Switcher (New Video Modal) ── */
+function switchSource(type, chipEl) {
+  document.querySelectorAll("#sourceTypeChips .chip").forEach(function(c) { c.classList.remove("selected"); });
+  chipEl.classList.add("selected");
+  document.querySelectorAll(".source-panel").forEach(function(p) { p.classList.remove("active"); });
+  var panel = document.getElementById("panel-" + type);
+  if (panel) panel.classList.add("active");
+}
+
+/* ── File upload feedback ── */
+function showFileUploaded(input, zoneId) {
+  if (!input.files || !input.files[0]) return;
+  var zone = document.getElementById(zoneId);
+  var file = input.files[0];
+  var sizeMB = (file.size / 1024 / 1024).toFixed(1);
+  zone.innerHTML = '<div class="upload-icon">✓</div><div class="upload-label">' + file.name + '</div><div class="upload-hint">' + sizeMB + ' MB · <span style="color:var(--accent);cursor:pointer;">Replace</span></div>';
+  zone.style.borderColor = "var(--green)";
+  zone.style.background = "var(--green-bg)";
+}
+
+/* ── View Router ── */
+function showView(view) {
+  var config = {
+    dashboard: {
+      id: "dashboardView",
+      title: "Dashboard",
+      breadcrumb: "<span>Faceless Finance Tips</span> · 24 videos",
+      navIndex: 0
+    },
+    editor: {
+      id: "editorView",
+      title: "Editor",
+      breadcrumb: "<span>5 Money Habits</span> · Scenes, preview, and brand controls",
+      navIndex: -1
+    },
+    batch: {
+      id: "batchView",
+      title: "Variants",
+      breadcrumb: "<span>5 Money Habits</span> · 6 export-ready variations",
+      navIndex: -1
+    },
+    assets: {
+      id: "assetsView",
+      title: "Asset Library",
+      breadcrumb: "<span>All Workspaces</span> · 42 reusable assets",
+      navIndex: 1
+    },
+    settings: {
+      id: "settingsView",
+      title: "Settings",
+      breadcrumb: "<span>Studio Plan</span> · Channels, brand kits, and billing",
+      navIndex: 2
+    },
+    queueDetail: {
+      id: "queueDetailView",
+      title: "Queue Detail",
+      breadcrumb: "<span>Collagen Serum Ad Set A</span> · Batch Export · 8 jobs",
+      navIndex: 0
+    }
+  };
+
+  Object.keys(config).forEach(function(key) {
+    var el = document.getElementById(config[key].id);
+    if (el) el.classList.remove("active");
+  });
+  document.querySelectorAll(".nav-item").forEach(function(item) {
+    item.classList.remove("active");
+  });
+
+  var current = config[view];
+  if (!current) return;
+  var el = document.getElementById(current.id);
+  if (el) {
+    el.classList.add("active");
+    /* Fix editor flex layout when activated via .active */
+    if (view === "editor") el.style.display = "flex";
+    else el.style.display = "";
+  }
+  if (current.navIndex >= 0) {
+    document.querySelectorAll(".nav-item")[current.navIndex].classList.add("active");
+  }
+  document.getElementById("topbarTitle").textContent = current.title;
+  document.getElementById("topbarBreadcrumb").innerHTML = current.breadcrumb;
+
+  /* Close any open drawers when navigating */
+  closeVariantsDrawer();
+  document.getElementById("notifDrawer").classList.remove("open");
+  document.getElementById("notifBackdrop").classList.remove("open");
+}
+
+/* ── Queue detail tab filter ── */
+function filterQueueTab(el) {
+  document.querySelectorAll(".filter-tab-btn").forEach(function(t) { t.classList.remove("active"); });
+  el.classList.add("active");
+}
+
+/* ── Wire up dashboard queue row → queue detail ── */
+document.addEventListener("DOMContentLoaded", function() {
+  var failedRow = document.querySelector(".queue-table tbody tr:last-child");
+  if (failedRow) {
+    failedRow.style.cursor = "pointer";
+    failedRow.addEventListener("click", function() { showView("queueDetail"); });
+  }
+
+  /* Generate Video button → show progress overlay */
+  var genBtn = document.getElementById("generateBtn");
+  if (genBtn) {
+    genBtn.addEventListener("click", function() {
+      document.getElementById("newProjectModal").classList.remove("show");
+      document.getElementById("genProgressFill").style.width = "40%";
+      document.getElementById("genOverlay").classList.add("show");
+      setTimeout(function() {
+        document.getElementById("genProgressFill").style.width = "80%";
+      }, 900);
+      setTimeout(function() {
+        document.getElementById("genProgressFill").style.width = "100%";
+      }, 1800);
+      setTimeout(function() {
+        document.getElementById("genOverlay").classList.remove("show");
+        showView("editor");
+        showToast("success", "Ready to review", '"5 Money Habits" has been generated.', "Open Editor");
+      }, 2800);
+    });
+  }
+
+  /* Demo toasts on load */
+  setTimeout(function() {
+    showToast("success", "Export ready", "stoic_quote_142_en_9x16_20260402.mp4", "Download");
+  }, 1200);
+});
+</script>
+</body>
+</html>

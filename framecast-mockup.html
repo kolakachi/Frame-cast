@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Framecast — AI Video Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: #0a0a0f;
+  --bg-panel: #111118;
+  --bg-card: #17171f;
+  --bg-elevated: #1e1e28;
+  --border: #2a2a36;
+  --border-active: #4a4a5a;
+  --text-primary: #e8e8ec;
+  --text-secondary: #8b8b9e;
+  --text-muted: #5a5a6e;
+  --accent: #ff6b35;
+  --accent-glow: rgba(255, 107, 53, 0.15);
+  --accent-hover: #ff8555;
+  --green: #34d399;
+  --green-bg: rgba(52, 211, 153, 0.1);
+  --blue: #60a5fa;
+  --blue-bg: rgba(96, 165, 250, 0.1);
+  --purple: #a78bfa;
+  --purple-bg: rgba(167, 139, 250, 0.1);
+  --yellow: #fbbf24;
+  --yellow-bg: rgba(251, 191, 36, 0.1);
+  --red: #f87171;
+  --red-bg: rgba(248, 113, 113, 0.1);
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* SIDEBAR */
+.sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0;
+  width: 64px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 16px 0;
+  z-index: 100;
+}
+.sidebar-logo {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, var(--accent), #ff9566);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Space Mono', monospace;
+  font-weight: 700; font-size: 16px;
+  color: #fff; margin-bottom: 28px;
+}
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex:1; }
+.nav-item {
+  width: 40px; height: 40px;
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer; transition: all 0.2s;
+  position: relative;
+  font-size: 18px;
+}
+.nav-item:hover { color: var(--text-secondary); background: var(--bg-card); }
+.nav-item.active { color: var(--accent); background: var(--accent-glow); }
+.nav-item .tooltip {
+  position: absolute; left: 56px; top: 50%; transform: translateY(-50%);
+  background: var(--bg-elevated); color: var(--text-primary);
+  padding: 5px 10px; border-radius: var(--radius-sm);
+  font-size: 12px; white-space: nowrap;
+  opacity: 0; pointer-events: none; transition: opacity 0.15s;
+  border: 1px solid var(--border);
+}
+.nav-item:hover .tooltip { opacity: 1; }
+.sidebar-bottom { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--purple), var(--blue));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+
+/* MAIN LAYOUT */
+.main { margin-left: 64px; }
+
+/* TOP BAR */
+.topbar {
+  height: 56px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+  position: sticky; top: 0; z-index: 90;
+}
+.topbar-left { display: flex; align-items: center; gap: 16px; }
+.topbar-title { font-weight: 600; font-size: 15px; }
+.topbar-breadcrumb { color: var(--text-muted); font-size: 13px; }
+.topbar-breadcrumb span { color: var(--text-secondary); }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.btn {
+  padding: 7px 16px; border-radius: var(--radius-sm);
+  font-family: inherit; font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s; border: none;
+  display: flex; align-items: center; gap: 6px;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); box-shadow: 0 0 20px var(--accent-glow); }
+.btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--border-active); color: var(--text-primary); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* TABS */
+.tabs-container {
+  display: flex; align-items: center; gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  background: var(--bg-panel);
+}
+.tab {
+  padding: 12px 20px; font-size: 13px; font-weight: 500;
+  color: var(--text-muted); cursor: pointer; transition: all 0.2s;
+  border-bottom: 2px solid transparent; position: relative;
+}
+.tab:hover { color: var(--text-secondary); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* DASHBOARD VIEW */
+.dashboard { padding: 24px; display: none; }
+.dashboard.active { display: block; }
+
+.stats-row {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.stat-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.stat-value { font-size: 28px; font-weight: 700; font-family: 'Space Mono', monospace; }
+.stat-change { font-size: 12px; margin-top: 4px; }
+.stat-change.up { color: var(--green); }
+.stat-change.down { color: var(--red); }
+
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.section-title { font-size: 16px; font-weight: 600; }
+
+/* PROJECT CARDS */
+.projects-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;
+  margin-bottom: 32px;
+}
+.project-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.project-card:hover { border-color: var(--border-active); transform: translateY(-2px); box-shadow: var(--shadow); }
+.project-thumb {
+  height: 150px;
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  position: relative; overflow: hidden;
+}
+.project-thumb .aspect-badge {
+  position: absolute; top: 10px; right: 10px;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+  padding: 3px 8px; border-radius: 4px;
+  font-size: 10px; font-family: 'Space Mono', monospace;
+  color: var(--text-secondary);
+}
+.project-thumb .duration-badge {
+  position: absolute; bottom: 10px; right: 10px;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+  padding: 3px 8px; border-radius: 4px;
+  font-size: 10px; font-family: 'Space Mono', monospace;
+  color: var(--text-primary);
+}
+.phone-frame {
+  width: 60px; height: 110px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 8px;
+}
+.phone-line { width: 80%; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.1); }
+.phone-line.accent { background: var(--accent); opacity: 0.5; }
+.project-info { padding: 14px; }
+.project-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.project-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 12px; }
+.project-status {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-top: 8px;
+}
+.status-rendered { background: var(--green-bg); color: var(--green); }
+.status-draft { background: var(--yellow-bg); color: var(--yellow); }
+.status-rendering { background: var(--blue-bg); color: var(--blue); }
+.status-failed { background: var(--red-bg); color: var(--red); }
+
+/* NEW PROJECT CARD */
+.new-project-card {
+  background: var(--bg-card);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  min-height: 220px; cursor: pointer;
+  transition: all 0.25s;
+  color: var(--text-muted);
+}
+.new-project-card:hover { border-color: var(--accent); color: var(--accent); }
+.new-project-icon { font-size: 32px; margin-bottom: 8px; }
+.new-project-label { font-size: 13px; font-weight: 500; }
+
+/* EDITOR VIEW */
+.editor { display: none; padding: 0; }
+.editor.active { display: flex; height: calc(100vh - 56px); }
+
+.editor-sidebar {
+  width: 320px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+.editor-sidebar-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.editor-sidebar-title { font-weight: 600; font-size: 14px; }
+
+.scene-list { padding: 12px; flex: 1; overflow-y: auto; }
+.scene-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer; transition: all 0.2s;
+}
+.scene-item:hover { border-color: var(--border-active); }
+.scene-item.active { border-color: var(--accent); background: var(--accent-glow); }
+.scene-number {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  margin-bottom: 6px;
+}
+.scene-text { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+.scene-meta {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 8px; font-size: 11px; color: var(--text-muted);
+}
+.scene-tag {
+  padding: 2px 6px; border-radius: 3px;
+  background: var(--bg-elevated); font-size: 10px;
+}
+
+.editor-canvas {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: var(--bg-deep);
+  position: relative;
+}
+.preview-container {
+  width: 270px; height: 480px;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.preview-video-bg {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #1a1a3e 0%, #0d0d2b 40%, #1a0a2e 100%);
+  position: relative;
+}
+.preview-caption {
+  position: absolute; bottom: 100px; left: 16px; right: 16px;
+  text-align: center;
+}
+.caption-word {
+  font-size: 22px; font-weight: 700; display: inline;
+  line-height: 1.4;
+}
+.caption-word.highlight { color: var(--accent); }
+.caption-word.normal { color: #fff; }
+.preview-cta {
+  position: absolute; bottom: 40px; left: 20px; right: 20px;
+  background: var(--accent);
+  padding: 10px; border-radius: 8px;
+  text-align: center; font-weight: 600; font-size: 13px;
+  color: #fff;
+}
+.preview-watermark {
+  position: absolute; top: 16px; left: 16px;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px; color: rgba(255,255,255,0.3);
+}
+.preview-timer {
+  position: absolute; top: 16px; right: 16px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px; color: rgba(255,255,255,0.5);
+  background: rgba(0,0,0,0.4); padding: 3px 8px;
+  border-radius: 4px;
+}
+.playback-controls {
+  display: flex; align-items: center; gap: 16px;
+  margin-top: 24px;
+}
+.play-btn {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--accent); border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #fff; font-size: 18px;
+  transition: all 0.2s;
+}
+.play-btn:hover { transform: scale(1.05); box-shadow: 0 0 24px var(--accent-glow); }
+.time-display {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px; color: var(--text-muted);
+}
+
+/* EDITOR RIGHT PANEL */
+.editor-right {
+  width: 300px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
+.panel-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-label {
+  font-size: 11px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 10px; font-weight: 500;
+}
+.control-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.control-name { font-size: 13px; color: var(--text-secondary); }
+.control-value {
+  font-size: 12px; color: var(--text-primary);
+  background: var(--bg-card); padding: 4px 10px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  font-family: inherit;
+}
+select.control-value {
+  appearance: none; cursor: pointer;
+  padding-right: 24px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b8b9e'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+.voice-preview {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px;
+}
+.voice-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), var(--purple));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+}
+.voice-info { flex:1; }
+.voice-name { font-size: 13px; font-weight: 500; }
+.voice-desc { font-size: 11px; color: var(--text-muted); }
+.voice-play {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text-secondary); font-size: 12px;
+}
+
+.caption-style-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.caption-style-opt {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px;
+  text-align: center; cursor: pointer; transition: all 0.2s;
+}
+.caption-style-opt:hover { border-color: var(--border-active); }
+.caption-style-opt.active { border-color: var(--accent); background: var(--accent-glow); }
+.caption-style-opt .preview-text { font-size: 11px; font-weight: 700; line-height: 1.3; margin-bottom: 4px; }
+.caption-style-opt .style-name { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* BATCH VIEW */
+.batch-view { display: none; padding: 24px; }
+.batch-view.active { display: block; }
+
+.variant-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;
+  margin-top: 16px;
+}
+.variant-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: all 0.2s;
+}
+.variant-card:hover { border-color: var(--border-active); }
+.variant-thumb {
+  height: 120px;
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  display: flex; align-items: center; justify-content: center;
+}
+.variant-mini-phone {
+  width: 40px; height: 70px;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+}
+.variant-info { padding: 12px; }
+.variant-label { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+.variant-diff { font-size: 11px; color: var(--text-muted); }
+.variant-check {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 8px;
+}
+.checkbox {
+  width: 16px; height: 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; font-size: 10px; color: transparent;
+}
+.checkbox.checked { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* QUEUE TABLE */
+.queue-table {
+  width: 100%; border-collapse: collapse;
+  margin-top: 16px;
+}
+.queue-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px; font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border);
+}
+.queue-table td {
+  padding: 12px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.queue-table tr:hover td { background: var(--bg-card); }
+.progress-bar {
+  width: 80px; height: 4px;
+  background: var(--bg-elevated);
+  border-radius: 2px; overflow: hidden;
+}
+.progress-fill { height: 100%; border-radius: 2px; }
+
+/* MODAL OVERLAY */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s;
+}
+.modal-overlay.show { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 560px; max-height: 80vh;
+  overflow-y: auto; padding: 32px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+  transform: translateY(10px); transition: transform 0.25s;
+}
+.modal-overlay.show .modal { transform: translateY(0); }
+.modal-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.modal-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
+
+.input-group { margin-bottom: 16px; }
+.input-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+.input-field {
+  width: 100%; padding: 10px 14px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary); font-family: inherit; font-size: 13px;
+  transition: border-color 0.2s;
+}
+.input-field:focus { outline: none; border-color: var(--accent); }
+textarea.input-field { resize: vertical; min-height: 80px; }
+.input-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.chip {
+  padding: 6px 14px; border-radius: 20px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  font-size: 12px; cursor: pointer; transition: all 0.2s;
+  color: var(--text-secondary);
+}
+.chip:hover { border-color: var(--border-active); }
+.chip.selected { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+
+.modal-actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  margin-top: 24px; padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+
+/* ANIMATIONS */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.fade-in { animation: fadeIn 0.4s ease both; }
+.fade-in-d1 { animation-delay: 0.05s; }
+.fade-in-d2 { animation-delay: 0.1s; }
+.fade-in-d3 { animation-delay: 0.15s; }
+.fade-in-d4 { animation-delay: 0.2s; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.pulse { animation: pulse 2s ease-in-out infinite; }
+
+/* RESPONSIVE */
+@media (max-width: 1200px) {
+  .editor-right { width: 260px; }
+  .editor-sidebar { width: 280px; }
+}
+@media (max-width: 900px) {
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-logo">F</div>
+  <div class="sidebar-nav">
+    <div class="nav-item active" onclick="showView('dashboard')">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="tooltip">Dashboard</span>
+    </div>
+    <div class="nav-item" onclick="showView('editor')">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      <span class="tooltip">Editor</span>
+    </div>
+    <div class="nav-item" onclick="showView('batch')">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8l-2 4h12l-2-4z"/></svg>
+      <span class="tooltip">Variants & Queue</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 002-2V8a2 2 0 00-2-2h-7.93a2 2 0 01-1.66-.9l-.82-1.2A2 2 0 007.93 3H4a2 2 0 00-2 2v13a2 2 0 002 2z"/></svg>
+      <span class="tooltip">Asset Library</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span class="tooltip">Settings</span>
+    </div>
+  </div>
+  <div class="sidebar-bottom">
+    <div class="avatar">K</div>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-title" id="topbarTitle">Dashboard</div>
+      <div class="topbar-breadcrumb" id="topbarBreadcrumb">
+        <span>Faceless Finance Tips</span> · 24 videos
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-ghost" onclick="document.getElementById('newProjectModal').classList.add('show')">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        New Video
+      </button>
+      <button class="btn btn-primary" id="renderBtn">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Export
+      </button>
+    </div>
+  </div>
+
+  <!-- ========== DASHBOARD VIEW ========== -->
+  <div class="dashboard active" id="dashboardView">
+    <div class="stats-row">
+      <div class="stat-card fade-in">
+        <div class="stat-label">Videos This Month</div>
+        <div class="stat-value">147</div>
+        <div class="stat-change up">↑ 23% vs last month</div>
+      </div>
+      <div class="stat-card fade-in fade-in-d1">
+        <div class="stat-label">Render Minutes Used</div>
+        <div class="stat-value">482</div>
+        <div class="stat-change">of 600 min (Studio plan)</div>
+      </div>
+      <div class="stat-card fade-in fade-in-d2">
+        <div class="stat-label">Active Channels</div>
+        <div class="stat-value">5</div>
+        <div class="stat-change">3 languages · 5 niches</div>
+      </div>
+      <div class="stat-card fade-in fade-in-d3">
+        <div class="stat-label">Queued Renders</div>
+        <div class="stat-value">12</div>
+        <div class="stat-change">~18 min remaining</div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <div class="section-title">Recent Projects</div>
+      <button class="btn btn-ghost btn-sm">View All</button>
+    </div>
+    <div class="projects-grid">
+      <div class="new-project-card" onclick="document.getElementById('newProjectModal').classList.add('show')">
+        <div class="new-project-icon">+</div>
+        <div class="new-project-label">New Video</div>
+      </div>
+      <div class="project-card fade-in" onclick="showView('editor')">
+        <div class="project-thumb" style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);">
+          <div class="phone-frame">
+            <div class="phone-line"></div>
+            <div class="phone-line accent"></div>
+            <div class="phone-line"></div>
+            <div class="phone-line"></div>
+          </div>
+          <span class="aspect-badge">9:16</span>
+          <span class="duration-badge">0:32</span>
+        </div>
+        <div class="project-info">
+          <div class="project-name">5 Money Habits That Changed My Life</div>
+          <div class="project-meta">
+            <span>Finance Tips</span>
+            <span>3 variants</span>
+          </div>
+          <div class="project-status status-rendered">● Rendered</div>
+        </div>
+      </div>
+      <div class="project-card fade-in fade-in-d1">
+        <div class="project-thumb" style="background: linear-gradient(135deg, #1a0a2e, #3d1a6e);">
+          <div class="phone-frame">
+            <div class="phone-line"></div>
+            <div class="phone-line"></div>
+            <div class="phone-line accent"></div>
+            <div class="phone-line"></div>
+          </div>
+          <span class="aspect-badge">9:16</span>
+          <span class="duration-badge">0:58</span>
+        </div>
+        <div class="project-info">
+          <div class="project-name">AI Will Replace These 10 Jobs</div>
+          <div class="project-meta">
+            <span>Tech Explainer</span>
+            <span>EN · ES · PT</span>
+          </div>
+          <div class="project-status status-rendering">◌ Rendering 2/3</div>
+        </div>
+      </div>
+      <div class="project-card fade-in fade-in-d2">
+        <div class="project-thumb" style="background: linear-gradient(135deg, #2d1810, #4a2520);">
+          <div class="phone-frame">
+            <div class="phone-line accent"></div>
+            <div class="phone-line"></div>
+            <div class="phone-line"></div>
+          </div>
+          <span class="aspect-badge">1:1</span>
+          <span class="duration-badge">0:15</span>
+        </div>
+        <div class="project-info">
+          <div class="project-name">Product Launch — Vitamin D3+K2</div>
+          <div class="project-meta">
+            <span>UGC Ad</span>
+            <span>8 variants</span>
+          </div>
+          <div class="project-status status-draft">◯ Draft</div>
+        </div>
+      </div>
+      <div class="project-card fade-in fade-in-d3">
+        <div class="project-thumb" style="background: linear-gradient(135deg, #0a1628, #1a3a5c);">
+          <div class="phone-frame">
+            <div class="phone-line"></div>
+            <div class="phone-line"></div>
+            <div class="phone-line accent"></div>
+          </div>
+          <span class="aspect-badge">9:16</span>
+          <span class="duration-badge">0:45</span>
+        </div>
+        <div class="project-info">
+          <div class="project-name">Stoic Quote #142 — Marcus Aurelius</div>
+          <div class="project-meta">
+            <span>Quote Series</span>
+            <span>Daily</span>
+          </div>
+          <div class="project-status status-rendered">● Rendered</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Queue Section -->
+    <div class="section-header" style="margin-top:16px;">
+      <div class="section-title">Render Queue</div>
+      <button class="btn btn-ghost btn-sm">Manage Queue</button>
+    </div>
+    <table class="queue-table">
+      <thead>
+        <tr>
+          <th>Project</th>
+          <th>Channel</th>
+          <th>Variants</th>
+          <th>Status</th>
+          <th>Progress</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="font-weight:500;">AI Will Replace These 10 Jobs</td>
+          <td style="color:var(--text-muted);">Tech Explainer</td>
+          <td>3</td>
+          <td><span class="project-status status-rendering" style="margin:0;">◌ Rendering</span></td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:66%; background:var(--blue);"></div></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="font-weight:500;">Crypto Tax Guide 2026</td>
+          <td style="color:var(--text-muted);">Finance Tips</td>
+          <td>5</td>
+          <td><span class="project-status status-draft" style="margin:0;">◯ Queued</span></td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%;"></div></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="font-weight:500;">Morning Routine — Hook Batch</td>
+          <td style="color:var(--text-muted);">Motivation</td>
+          <td>12</td>
+          <td><span class="project-status status-rendered" style="margin:0;">● Done</span></td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:100%; background:var(--green);"></div></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="font-weight:500;">Collagen Serum — Ad Set A</td>
+          <td style="color:var(--text-muted);">UGC Ads</td>
+          <td>8</td>
+          <td><span class="project-status status-failed" style="margin:0;">✕ 2 Failed</span></td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:75%; background:var(--red);"></div></div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ========== EDITOR VIEW ========== -->
+  <div class="editor" id="editorView">
+    <!-- Scene Sidebar -->
+    <div class="editor-sidebar">
+      <div class="editor-sidebar-header">
+        <div class="editor-sidebar-title">Scenes</div>
+        <button class="btn btn-ghost btn-sm">+ Add</button>
+      </div>
+      <div class="scene-list">
+        <div class="scene-item active">
+          <div class="scene-number">Scene 1 · Hook</div>
+          <div class="scene-text">Most people will never build wealth. Here's why — and how to fix it.</div>
+          <div class="scene-meta">
+            <span class="scene-tag">stock clip</span>
+            <span>5.2s</span>
+          </div>
+        </div>
+        <div class="scene-item">
+          <div class="scene-number">Scene 2</div>
+          <div class="scene-text">Habit number one: Pay yourself first. Before rent, before food, 20% goes into investments.</div>
+          <div class="scene-meta">
+            <span class="scene-tag">bg loop</span>
+            <span>7.8s</span>
+          </div>
+        </div>
+        <div class="scene-item">
+          <div class="scene-number">Scene 3</div>
+          <div class="scene-text">Habit number two: Automate everything. If you have to think about it, you won't do it.</div>
+          <div class="scene-meta">
+            <span class="scene-tag">stock clip</span>
+            <span>6.4s</span>
+          </div>
+        </div>
+        <div class="scene-item">
+          <div class="scene-number">Scene 4</div>
+          <div class="scene-text">Habit three: Track your net worth monthly. What gets measured gets managed.</div>
+          <div class="scene-meta">
+            <span class="scene-tag">text card</span>
+            <span>5.9s</span>
+          </div>
+        </div>
+        <div class="scene-item">
+          <div class="scene-number">Scene 5 · CTA</div>
+          <div class="scene-text">Follow for more money tips that actually work.</div>
+          <div class="scene-meta">
+            <span class="scene-tag">bg loop</span>
+            <span>3.5s</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Canvas / Preview -->
+    <div class="editor-canvas">
+      <div class="preview-container">
+        <div class="preview-video-bg">
+          <div class="preview-watermark">FRAMECAST</div>
+          <div class="preview-timer">0:05 / 0:32</div>
+          <div class="preview-caption">
+            <span class="caption-word normal">Most people will </span>
+            <span class="caption-word highlight">never build </span>
+            <span class="caption-word normal">wealth.</span>
+          </div>
+          <div class="preview-cta">Follow for daily money tips →</div>
+        </div>
+      </div>
+      <div class="playback-controls">
+        <div class="time-display">00:05</div>
+        <button class="play-btn">▶</button>
+        <div class="time-display">00:32</div>
+      </div>
+    </div>
+
+    <!-- Right Panel: Properties -->
+    <div class="editor-right">
+      <div class="panel-section">
+        <div class="panel-label">Visual Source</div>
+        <div class="control-row">
+          <span class="control-name">Type</span>
+          <select class="control-value">
+            <option>Stock Clip</option>
+            <option>Background Loop</option>
+            <option>AI Image</option>
+            <option>Text Card</option>
+            <option>Waveform</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <span class="control-name">Query</span>
+          <input class="control-value" value="city night timelapse" style="width:140px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); font-family:inherit; padding:4px 8px; border-radius:4px;">
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:8px; width:100%; justify-content:center;">↻ Swap Visual</button>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-label">Voice</div>
+        <div class="voice-preview">
+          <div class="voice-avatar">🎙</div>
+          <div class="voice-info">
+            <div class="voice-name">Marcus — Authority</div>
+            <div class="voice-desc">Deep male · EN-US · 1.0x</div>
+          </div>
+          <div class="voice-play">▶</div>
+        </div>
+        <div class="control-row" style="margin-top:10px;">
+          <span class="control-name">Speed</span>
+          <select class="control-value">
+            <option>0.8x</option>
+            <option selected>1.0x</option>
+            <option>1.1x</option>
+            <option>1.2x</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <span class="control-name">Stability</span>
+          <select class="control-value">
+            <option>Low</option>
+            <option selected>Medium</option>
+            <option>High</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-label">Caption Style</div>
+        <div class="caption-style-grid">
+          <div class="caption-style-opt active">
+            <div class="preview-text" style="color:var(--accent);">BOLD</div>
+            <div class="style-name">Impact</div>
+          </div>
+          <div class="caption-style-opt">
+            <div class="preview-text" style="color:#fff; font-style:italic;">Serif</div>
+            <div class="style-name">Editorial</div>
+          </div>
+          <div class="caption-style-opt">
+            <div class="preview-text" style="color:var(--yellow); font-family:'Space Mono', monospace;">MONO</div>
+            <div class="style-name">Hacker</div>
+          </div>
+        </div>
+        <div class="control-row" style="margin-top:10px;">
+          <span class="control-name">Highlight</span>
+          <select class="control-value">
+            <option selected>Keywords</option>
+            <option>Word-by-word</option>
+            <option>Line-by-line</option>
+            <option>None</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-label">Brand Kit</div>
+        <div class="control-row">
+          <span class="control-name">Channel</span>
+          <select class="control-value">
+            <option>Finance Tips</option>
+            <option>Tech Explainer</option>
+            <option>Motivation</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <span class="control-name">Template</span>
+          <select class="control-value">
+            <option>Explainer — 60s</option>
+            <option>Listicle — 30s</option>
+            <option>Quote — 15s</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== BATCH / VARIANTS VIEW ========== -->
+  <div class="batch-view" id="batchView">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Variant Factory</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">5 Money Habits — Generate hook, CTA, voice, and language variants</div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-ghost">Select All</button>
+        <button class="btn btn-primary">Export Selected (6)</button>
+      </div>
+    </div>
+    <div class="variant-grid">
+      <div class="variant-card">
+        <div class="variant-thumb" style="background:linear-gradient(135deg, #0f2027, #2c5364);">
+          <div class="variant-mini-phone"></div>
+        </div>
+        <div class="variant-info">
+          <div class="variant-label">Original</div>
+          <div class="variant-diff">Base · EN · Hook A</div>
+          <div class="variant-check">
+            <div class="checkbox checked">✓</div>
+            <span style="font-size:11px; color:var(--text-muted);">Selected</span>
+          </div>
+        </div>
+      </div>
+      <div class="variant-card">
+        <div class="variant-thumb" style="background:linear-gradient(135deg, #1a0a2e, #3d1a6e);">
+          <div class="variant-mini-phone"></div>
+        </div>
+        <div class="variant-info">
+          <div class="variant-label">Hook B — Question</div>
+          <div class="variant-diff">Alt hook · EN · Same voice</div>
+          <div class="variant-check">
+            <div class="checkbox checked">✓</div>
+            <span style="font-size:11px; color:var(--text-muted);">Selected</span>
+          </div>
+        </div>
+      </div>
+      <div class="variant-card">
+        <div class="variant-thumb" style="background:linear-gradient(135deg, #2d1810, #4a2520);">
+          <div class="variant-mini-phone"></div>
+        </div>
+        <div class="variant-info">
+          <div class="variant-label">Hook C — Shock</div>
+          <div class="variant-diff">Alt hook · EN · Same voice</div>
+          <div class="variant-check">
+            <div class="checkbox checked">✓</div>
+            <span style="font-size:11px; color:var(--text-muted);">Selected</span>
+          </div>
+        </div>
+      </div>
+      <div class="variant-card">
+        <div class="variant-thumb" style="background:linear-gradient(135deg, #0a2818, #1a5c3a);">
+          <div class="variant-mini-phone"></div>
+        </div>
+        <div class="variant-info">
+          <div class="variant-label">Spanish (ES)</div>
+          <div class="variant-diff">Translated · ES · Sofia voice</div>
+          <div class="variant-check">
+            <div class="checkbox checked">✓</div>
+            <span style="font-size:11px; color:var(--text-muted);">Selected</span>
+          </div>
+        </div>
+      </div>
+      <div class="variant-card">
+        <div class="variant-thumb" style="background:linear-gradient(135deg, #28200a, #5c4a1a);">
+          <div class="variant-mini-phone"></div>
+        </div>
+        <div class="variant-info">
+          <div class="variant-label">Portuguese (PT-BR)</div>
+          <div class="variant-diff">Translated · PT · Lucas voice</div>
+          <div class="variant-check">
+            <div class="checkbox checked">✓</div>
+            <span style="font-size:11px; color:var(--text-muted);">Selected</span>
+          </div>
+        </div>
+      </div>
+      <div class="variant-card">
+        <div class="variant-thumb" style="background:linear-gradient(135deg, #1a1a3e, #3a1a5e);">
+          <div class="variant-mini-phone"></div>
+        </div>
+        <div class="variant-info">
+          <div class="variant-label">Female Voice — Luna</div>
+          <div class="variant-diff">Voice swap · EN · Hook A</div>
+          <div class="variant-check">
+            <div class="checkbox checked">✓</div>
+            <span style="font-size:11px; color:var(--text-muted);">Selected</span>
+          </div>
+        </div>
+      </div>
+      <div class="variant-card" style="border-style:dashed; display:flex; align-items:center; justify-content:center; min-height:200px; cursor:pointer;">
+        <div style="text-align:center; color:var(--text-muted);">
+          <div style="font-size:24px; margin-bottom:4px;">+</div>
+          <div style="font-size:12px;">Add Variant</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NEW PROJECT MODAL -->
+<div class="modal-overlay" id="newProjectModal" onclick="if(event.target===this)this.classList.remove('show')">
+  <div class="modal">
+    <div class="modal-title">Create New Video</div>
+    <div class="modal-subtitle">Start from a script, URL, prompt, or topic list.</div>
+
+    <div class="input-group">
+      <label class="input-label">Start From</label>
+      <div class="chips">
+        <div class="chip selected">Script</div>
+        <div class="chip">URL / Article</div>
+        <div class="chip">Prompt</div>
+        <div class="chip">CSV Topics</div>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Script / Content</label>
+      <textarea class="input-field" placeholder="Paste your script, or describe what you want the video to be about...">Most people will never build wealth. Here's why.
+
+Habit 1: Pay yourself first. Before rent, before food, 20% goes into investments.
+Habit 2: Automate everything. If you have to think about it, you won't do it.
+Habit 3: Track your net worth monthly. What gets measured gets managed.</textarea>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Channel / Brand</label>
+      <select class="input-field">
+        <option>Faceless Finance Tips</option>
+        <option>Tech Explainer</option>
+        <option>Daily Motivation</option>
+        <option>+ New Channel</option>
+      </select>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div class="input-group">
+        <label class="input-label">Format</label>
+        <select class="input-field">
+          <option>Explainer (30-60s)</option>
+          <option>Listicle / Facts</option>
+          <option>Quote / Motivation</option>
+          <option>UGC Ad</option>
+          <option>News Summary</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Platform</label>
+        <select class="input-field">
+          <option>TikTok / Reels (9:16)</option>
+          <option>YouTube Shorts (9:16)</option>
+          <option>Instagram (1:1)</option>
+          <option>YouTube (16:9)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Tone</label>
+      <div class="chips">
+        <div class="chip selected">Authority</div>
+        <div class="chip">Educational</div>
+        <div class="chip">Dramatic</div>
+        <div class="chip">Casual</div>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Languages</label>
+      <div class="chips">
+        <div class="chip selected">English</div>
+        <div class="chip">Spanish</div>
+        <div class="chip">Portuguese</div>
+        <div class="chip">+ More</div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="document.getElementById('newProjectModal').classList.remove('show')">Cancel</button>
+      <button class="btn btn-primary" onclick="document.getElementById('newProjectModal').classList.remove('show'); showView('editor');">Generate Video →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Chip selection
+document.querySelectorAll('.chips').forEach(group => {
+  group.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      // For Languages, allow multi-select
+      if (group.closest('.input-group')?.querySelector('.input-label')?.textContent.trim() === 'Languages') {
+        chip.classList.toggle('selected');
+      } else {
+        group.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+        chip.classList.add('selected');
+      }
+    });
+  });
+});
+
+// Checkbox toggle
+document.querySelectorAll('.checkbox').forEach(cb => {
+  cb.addEventListener('click', () => cb.classList.toggle('checked'));
+});
+
+// Caption style selection
+document.querySelectorAll('.caption-style-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('.caption-style-opt').forEach(o => o.classList.remove('active'));
+    opt.classList.add('active');
+  });
+});
+
+// Scene selection
+document.querySelectorAll('.scene-item').forEach(s => {
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.scene-item').forEach(si => si.classList.remove('active'));
+    s.classList.add('active');
+  });
+});
+
+// View switching
+function showView(view) {
+  document.getElementById('dashboardView').classList.remove('active');
+  document.getElementById('editorView').classList.remove('active');
+  document.getElementById('batchView').classList.remove('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  if (view === 'dashboard') {
+    document.getElementById('dashboardView').classList.add('active');
+    document.querySelectorAll('.nav-item')[0].classList.add('active');
+    document.getElementById('topbarTitle').textContent = 'Dashboard';
+  } else if (view === 'editor') {
+    document.getElementById('editorView').classList.add('active');
+    document.querySelectorAll('.nav-item')[1].classList.add('active');
+    document.getElementById('topbarTitle').textContent = 'Editor';
+  } else if (view === 'batch') {
+    document.getElementById('batchView').classList.add('active');
+    document.querySelectorAll('.nav-item')[2].classList.add('active');
+    document.getElementById('topbarTitle').textContent = 'Variants & Queue';
+  }
+
+  // Remove tabs if not needed
+  document.querySelector('.tabs-container')?.classList.toggle('hidden', true);
+}
+</script>
+</body>
+</html>
