@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -13,8 +14,27 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        //
+        $middleware->alias([
+            'auth.jwt' => \App\Http\Middleware\AuthenticateWithJwt::class,
+        ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'api/*',
+            'broadcasting/auth',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        $exceptions->render(function (\Illuminate\Validation\ValidationException $exception, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            return response()->json([
+                'error' => [
+                    'code' => 'validation_error',
+                    'message' => 'The given data was invalid.',
+                    'details' => $exception->errors(),
+                ],
+            ], 422);
+        });
     })->create();

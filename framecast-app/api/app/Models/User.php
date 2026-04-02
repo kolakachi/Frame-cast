@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
@@ -18,9 +19,13 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
+        'workspace_id',
         'name',
         'email',
-        'password',
+        'password_hash',
+        'timezone',
+        'role',
+        'status',
     ];
 
     /**
@@ -29,8 +34,7 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $hidden = [
-        'password',
-        'remember_token',
+        'password_hash',
     ];
 
     /**
@@ -41,8 +45,18 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'created_at' => 'datetime',
+            'updated_at' => 'datetime',
         ];
+    }
+
+    public function getAuthPassword(): string
+    {
+        return $this->password_hash ?? '';
+    }
+
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
     }
 }

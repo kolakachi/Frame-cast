@@ -33,9 +33,9 @@ Exit gate: A user can register, receive a magic link, log in, receive a JWT, and
 
 - [x] Monorepo initialised — `/api` (Laravel 11) and `/web` (Vue 3 + Vite)
 - [~] Docker Compose — all services running locally (api, worker, scheduler, reverb, web, postgres, redis)
-- [ ] Database migrations — all entities from `DATA_MODEL.md` created
-- [ ] Auth — AuthSession, MagicLinkToken, JWT middleware implemented
-- [ ] Auth endpoints — all 6 routes working (`/login`, `/magic-link`, `/magic-link/verify`, `/refresh`, `/logout`, `/logout-all`)
+- [~] Database migrations — all entities from `DATA_MODEL.md` created
+- [~] Auth — AuthSession, MagicLinkToken, JWT middleware implemented
+- [~] Auth endpoints — all 6 routes working (`/login`, `/magic-link`, `/magic-link/verify`, `/refresh`, `/logout`, `/logout-all`)
 - [x] Vue SPA — router, Pinia auth store, Axios interceptor with token refresh
 - [~] Reverb — connection from Vue to Reverb established, private channel auth working
 - [~] Horizon — running, accessible at `/horizon`
@@ -51,6 +51,7 @@ Exit gate: A user can register, receive a magic link, log in, receive a JWT, and
 - Added phase 0 package baseline: Horizon, Reverb, Flysystem S3 adapter for B2, JWT library, Redis client, Vue Router, Pinia, Axios, Echo, Pusher, and Tailwind v4.
 - Added initial Dockerfiles and `docker-compose.yml` / `docker-compose.prod.yml` scaffolding for api, worker, scheduler, reverb, horizon, web, postgres, and redis.
 - Added versioned API routing with a JSON health endpoint and replaced the default Vue starter with a router/auth/realtime shell.
+- Added the full auth route surface and first-pass backend implementation for login, magic-link request/verify, refresh rotation, logout, logout-all, JWT verification middleware, and `MagicLinkMail`.
 - Remaining phase 0 work is still substantial: full domain migrations, JWT issuance and refresh flow, magic-link auth, broadcasting auth, Horizon/Reverb runtime verification in Docker, and B2/mail end-to-end tests.
 
 ---
