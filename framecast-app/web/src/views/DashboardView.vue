@@ -1,8 +1,9 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
+import { getEcho } from '../services/echo'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -28,6 +29,10 @@ const contentGoal = ref('')
 const tone = ref('')
 const title = ref('')
 const durationTargetSeconds = ref('')
+const notificationDrawerOpen = ref(false)
+const notifications = ref([])
+const notificationToasts = ref([])
+let workspaceChannelName = null
 
 const sourceOptions = [
   { value: 'prompt', label: 'Prompt input' },
@@ -52,9 +57,79 @@ async function loadMe() {
     const response = await api.get('/me')
     mePayload.value = response.data.data.user
     meState.value = 'success'
+    await loadNotifications()
+    subscribeWorkspaceNotifications()
   } catch (error) {
     meState.value = 'error'
     meError.value = error.response?.data?.error?.message ?? 'Protected user lookup failed.'
+  }
+}
+
+async function loadNotifications() {
+  try {
+    const response = await api.get('/notifications')
+    notifications.value = response.data?.data?.notifications ?? []
+  } catch {
+    notifications.value = []
+  }
+}
+
+async function markNotificationRead(notificationId) {
+  try {
+    await api.post(`/notifications/${notificationId}/read`)
+    notifications.value = notifications.value.map((item) => (
+      item.id === notificationId
+        ? { ...item, is_read: true }
+        : item
+    ))
+  } catch {
+    // no-op for shell
+  }
+}
+
+function pushToast(notification) {
+  notificationToasts.value = [notification, ...notificationToasts.value].slice(0, 3)
+  window.setTimeout(() => {
+    notificationToasts.value = notificationToasts.value.filter((toast) => toast.id !== notification.id)
+  }, 4500)
+}
+
+function subscribeWorkspaceNotifications() {
+  const echo = getEcho()
+  const workspaceId = mePayload.value?.workspace_id
+
+  if (!echo || !workspaceId) {
+    return
+  }
+
+  if (workspaceChannelName) {
+    echo.leave(workspaceChannelName)
+  }
+
+  workspaceChannelName = `workspace.${workspaceId}`
+
+  echo.private(workspaceChannelName).listen('.notification.created', (payload) => {
+    const normalized = {
+      id: payload.id,
+      workspace_id: payload.workspace_id,
+      type: payload.type,
+      title: payload.title,
+      message: payload.message,
+      payload: payload.payload,
+      is_read: payload.is_read,
+      created_at: payload.created_at,
+    }
+
+    notifications.value = [normalized, ...notifications.value].slice(0, 50)
+    pushToast(normalized)
+  })
+}
+
+function unsubscribeWorkspaceNotifications() {
+  const echo = getEcho()
+
+  if (echo && workspaceChannelName) {
+    echo.leave(workspaceChannelName)
   }
 }
 
@@ -141,6 +216,10 @@ async function submitProject() {
 onMounted(() => {
   loadMe()
 })
+
+onBeforeUnmount(() => {
+  unsubscribeWorkspaceNotifications()
+})
 </script>
 
 <template>
@@ -155,6 +234,17 @@ onMounted(() => {
           </p>
         </div>
         <div class="flex items-center gap-3">
+          <button
+            class="relative rounded-md border border-border px-4 py-2 text-sm font-medium text-text-secondary transition hover:border-border-active hover:text-text-primary"
+            type="button"
+            @click="notificationDrawerOpen = !notificationDrawerOpen"
+          >
+            Notifications
+            <span
+              v-if="notifications.some((item) => !item.is_read)"
+              class="ml-2 inline-flex h-2 w-2 rounded-full bg-accent"
+            />
+          </button>
           <button
             class="rounded-md border border-border px-4 py-2 text-sm font-medium text-text-secondary transition hover:border-border-active hover:text-text-primary"
             type="button"
@@ -298,6 +388,56 @@ onMounted(() => {
           </div>
         </article>
       </section>
+    </div>
+
+    <aside
+      v-if="notificationDrawerOpen"
+      class="fixed right-0 top-0 z-40 h-full w-full max-w-md border-l border-border bg-bg-panel p-5"
+    >
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Notifications</h2>
+        <button
+          class="rounded-md border border-border px-3 py-1 text-xs text-text-secondary"
+          type="button"
+          @click="notificationDrawerOpen = false"
+        >
+          Close
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-3">
+        <article
+          v-for="item in notifications"
+          :key="item.id"
+          class="rounded-md border border-border bg-bg-card p-3"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-medium" :class="item.is_read ? 'text-text-secondary' : 'text-text-primary'">{{ item.title }}</p>
+              <p class="mt-1 text-xs text-text-muted">{{ item.message }}</p>
+            </div>
+            <button
+              v-if="!item.is_read"
+              class="rounded border border-border px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-text-muted"
+              type="button"
+              @click="markNotificationRead(item.id)"
+            >
+              Read
+            </button>
+          </div>
+        </article>
+      </div>
+    </aside>
+
+    <div class="fixed bottom-5 right-5 z-50 flex w-full max-w-sm flex-col gap-3">
+      <article
+        v-for="toast in notificationToasts"
+        :key="toast.id"
+        class="rounded-md border border-border bg-bg-panel p-3 shadow-xl"
+      >
+        <p class="text-sm font-medium text-text-primary">{{ toast.title }}</p>
+        <p class="mt-1 text-xs text-text-secondary">{{ toast.message }}</p>
+      </article>
     </div>
 
     <div

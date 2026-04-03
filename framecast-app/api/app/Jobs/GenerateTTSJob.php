@@ -6,6 +6,7 @@ use App\Events\GenerationProgressed;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Services\Notification\NotificationService;
 use App\Services\Generation\TTS\TTSAdapter;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -21,7 +22,7 @@ class GenerateTTSJob implements ShouldQueue
         $this->onQueue('generation');
     }
 
-    public function handle(TTSAdapter $tts): void
+    public function handle(TTSAdapter $tts, NotificationService $notifications): void
     {
         GenerationProgressed::dispatch($this->projectId, 'tts', 'processing');
 
@@ -81,6 +82,18 @@ class GenerateTTSJob implements ShouldQueue
                 'status' => 'ready_for_review',
             ])->save();
         });
+
+        $notifications->create(
+            workspaceId: (int) $project->workspace_id,
+            title: 'Generation complete',
+            message: 'Project #'.$project->getKey().' is ready for review.',
+            type: 'success',
+            userId: $project->created_by_user_id ? (int) $project->created_by_user_id : null,
+            payload: [
+                'project_id' => $project->getKey(),
+                'status' => 'ready_for_review',
+            ],
+        );
 
         GenerationProgressed::dispatch($this->projectId, 'tts', 'completed');
     }
