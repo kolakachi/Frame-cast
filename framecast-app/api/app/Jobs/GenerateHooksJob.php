@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Events\GenerationProgressed;
+use App\Jobs\MatchVisualsJob;
 use App\Models\Project;
 use App\Models\ProjectHookOption;
 use App\Services\Generation\AI\AIGenerationAdapter;
@@ -21,6 +23,8 @@ class GenerateHooksJob implements ShouldQueue
 
     public function handle(AIGenerationAdapter $aiGeneration): void
     {
+        GenerationProgressed::dispatch($this->projectId, 'hooks', 'processing');
+
         $project = Project::query()->find($this->projectId);
 
         if (! $project || ! $project->script_text) {
@@ -45,10 +49,10 @@ class GenerateHooksJob implements ShouldQueue
                 ]);
             }
 
-            $project->forceFill([
-                'status' => 'ready_for_review',
-            ])->save();
         });
+
+        GenerationProgressed::dispatch($this->projectId, 'hooks', 'completed');
+        MatchVisualsJob::dispatch($project->getKey());
     }
 
     public function failed(\Throwable $exception): void
@@ -58,6 +62,8 @@ class GenerateHooksJob implements ShouldQueue
             ->update([
                 'status' => 'failed',
             ]);
+
+        GenerationProgressed::dispatch($this->projectId, 'hooks', 'failed', $exception->getMessage());
     }
 
     /**

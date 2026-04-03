@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Events\GenerationProgressed;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
@@ -22,6 +23,8 @@ class GenerateTTSJob implements ShouldQueue
 
     public function handle(TTSAdapter $tts): void
     {
+        GenerationProgressed::dispatch($this->projectId, 'tts', 'processing');
+
         $project = Project::query()->find($this->projectId);
 
         if (! $project) {
@@ -78,6 +81,8 @@ class GenerateTTSJob implements ShouldQueue
                 'status' => 'ready_for_review',
             ])->save();
         });
+
+        GenerationProgressed::dispatch($this->projectId, 'tts', 'completed');
     }
 
     public function failed(\Throwable $exception): void
@@ -87,5 +92,7 @@ class GenerateTTSJob implements ShouldQueue
             ->update([
                 'status' => 'failed',
             ]);
+
+        GenerationProgressed::dispatch($this->projectId, 'tts', 'failed', $exception->getMessage());
     }
 }

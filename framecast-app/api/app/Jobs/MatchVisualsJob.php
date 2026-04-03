@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Events\GenerationProgressed;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
@@ -22,6 +23,8 @@ class MatchVisualsJob implements ShouldQueue
 
     public function handle(VisualProviderAdapter $visualProvider): void
     {
+        GenerationProgressed::dispatch($this->projectId, 'visual_match', 'processing');
+
         $project = Project::query()->find($this->projectId);
 
         if (! $project) {
@@ -70,6 +73,7 @@ class MatchVisualsJob implements ShouldQueue
             }
         });
 
+        GenerationProgressed::dispatch($this->projectId, 'visual_match', 'completed');
         GenerateTTSJob::dispatch($project->getKey());
     }
 
@@ -80,6 +84,8 @@ class MatchVisualsJob implements ShouldQueue
             ->update([
                 'status' => 'failed',
             ]);
+
+        GenerationProgressed::dispatch($this->projectId, 'visual_match', 'failed', $exception->getMessage());
     }
 
     private function buildPrompt(Scene $scene, Project $project): string

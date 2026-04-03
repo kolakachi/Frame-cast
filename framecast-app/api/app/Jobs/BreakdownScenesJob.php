@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Events\GenerationProgressed;
 use App\Jobs\GenerateHooksJob;
 use App\Models\Project;
 use App\Models\Scene;
@@ -22,6 +23,8 @@ class BreakdownScenesJob implements ShouldQueue
 
     public function handle(AIGenerationAdapter $aiGeneration): void
     {
+        GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'processing');
+
         $project = Project::query()->find($this->projectId);
 
         if (! $project || ! $project->script_text) {
@@ -52,6 +55,7 @@ class BreakdownScenesJob implements ShouldQueue
 
         });
 
+        GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'completed');
         GenerateHooksJob::dispatch($project->getKey());
     }
 
@@ -62,6 +66,8 @@ class BreakdownScenesJob implements ShouldQueue
             ->update([
                 'status' => 'failed',
             ]);
+
+        GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'failed', $exception->getMessage());
     }
 
     /**

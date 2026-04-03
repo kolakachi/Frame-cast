@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Jobs\BreakdownScenesJob;
+use App\Events\GenerationProgressed;
 use App\Models\Project;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -20,6 +21,8 @@ class GenerateScriptJob implements ShouldQueue
 
     public function handle(AIGenerationAdapter $aiGeneration): void
     {
+        GenerationProgressed::dispatch($this->projectId, 'script', 'processing');
+
         $project = Project::query()->find($this->projectId);
 
         if (! $project) {
@@ -39,6 +42,7 @@ class GenerateScriptJob implements ShouldQueue
             'script_text' => $result['content'],
         ])->save();
 
+        GenerationProgressed::dispatch($this->projectId, 'script', 'completed');
         BreakdownScenesJob::dispatch($project->getKey());
     }
 
@@ -49,5 +53,7 @@ class GenerateScriptJob implements ShouldQueue
             ->update([
                 'status' => 'failed',
             ]);
+
+        GenerationProgressed::dispatch($this->projectId, 'script', 'failed', $exception->getMessage());
     }
 }
