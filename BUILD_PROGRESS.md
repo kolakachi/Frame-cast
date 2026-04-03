@@ -71,7 +71,7 @@ Exit gate: User submits a script → watches generation progress in real time �
 - [x] Workspace CRUD endpoints
 - [x] Channel CRUD endpoints
 - [x] BrandKit CRUD endpoints
-- [ ] VoiceProfile model — seeded with OpenAI TTS voices
+- [x] VoiceProfile model — seeded with OpenAI TTS voices
 - [ ] CaptionPreset model — seeded with 3 default presets
 - [ ] Template model — seeded with 2 default templates (Explainer, Listicle)
 - [ ] Project creation endpoint — validates per `INTERACTIONS_AND_RULES.md`
@@ -92,6 +92,7 @@ Exit gate: User submits a script → watches generation progress in real time �
 - Added authenticated Workspace CRUD API endpoints under `/api/v1/workspaces` with workspace scoping and archive-on-delete behavior.
 - Added authenticated Channel CRUD API endpoints under `/api/v1/channels` scoped to the authenticated user's workspace.
 - Added authenticated BrandKit CRUD API endpoints under `/api/v1/brand-kits` scoped to the authenticated user's workspace.
+- Added `VoiceProfile` model and `VoiceProfileSeeder` with default OpenAI TTS voices (global records) wired into `DatabaseSeeder`.
 
 ---
 

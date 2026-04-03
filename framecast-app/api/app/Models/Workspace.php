@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Channel;
 use App\Models\BrandKit;
+use App\Models\VoiceProfile;
 
 class Workspace extends Model
 {
@@ -38,5 +39,10 @@ class Workspace extends Model
     public function brandKits(): HasMany
     {
         return $this->hasMany(BrandKit::class);
+    }
+
+    public function voiceProfiles(): HasMany
+    {
+        return $this->hasMany(VoiceProfile::class);
     }
 }
