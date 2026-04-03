@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             VoiceProfileSeeder::class,
             CaptionPresetSeeder::class,
+            TemplateSeeder::class,
         ]);
 
         // User::factory(10)->create();

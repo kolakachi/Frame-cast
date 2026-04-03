@@ -10,6 +10,7 @@ use App\Models\Channel;
 use App\Models\BrandKit;
 use App\Models\VoiceProfile;
 use App\Models\CaptionPreset;
+use App\Models\Template;
 
 class Workspace extends Model
 {
@@ -50,5 +51,10 @@ class Workspace extends Model
     public function captionPresets(): HasMany
     {
         return $this->hasMany(CaptionPreset::class);
+    }
+
+    public function templates(): HasMany
+    {
+        return $this->hasMany(Template::class);
     }
 }
