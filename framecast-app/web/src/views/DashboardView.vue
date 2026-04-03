@@ -9,6 +9,7 @@ const authStore = useAuthStore()
 const meState = ref('idle')
 const meError = ref('')
 const mePayload = ref(null)
+const projectIdInput = ref('1')
 const storageState = ref('idle')
 const storageError = ref('')
 const storagePayload = ref(null)
@@ -44,6 +45,16 @@ async function runStorageSmoke() {
     storageState.value = 'error'
     storageError.value = error.response?.data?.error?.message ?? 'B2 smoke test failed.'
   }
+}
+
+function openGenerationProgress() {
+  const id = String(projectIdInput.value || '').trim()
+
+  if (!id) {
+    return
+  }
+
+  router.push({ name: 'generation-progress', params: { projectId: id } })
 }
 
 onMounted(() => {
@@ -92,6 +103,36 @@ onMounted(() => {
       </section>
 
       <section class="grid gap-4 lg:grid-cols-2">
+        <article class="rounded-lg border border-border bg-bg-panel p-6">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-sm text-text-secondary">Generation Pipeline</p>
+              <h2 class="mt-2 text-xl font-semibold">`project.{id}` Reverb stream</h2>
+            </div>
+            <button
+              class="rounded-md border border-border px-4 py-2 text-sm font-medium text-text-secondary transition hover:border-border-active hover:text-text-primary"
+              type="button"
+              @click="openGenerationProgress"
+            >
+              Open
+            </button>
+          </div>
+
+          <p class="mt-3 text-sm text-text-muted">
+            Subscribe to `generation.progress` events emitted by each generation job stage on the private project channel.
+          </p>
+
+          <div class="mt-5 rounded-lg border border-border bg-bg-card p-4">
+            <label class="text-xs uppercase tracking-[0.2em] text-text-muted">Project id</label>
+            <input
+              v-model="projectIdInput"
+              class="mt-2 w-full rounded-md border border-border bg-bg-deep px-3 py-2 text-sm text-text-primary outline-none transition focus:border-border-active"
+              inputmode="numeric"
+              type="text"
+            >
+          </div>
+        </article>
+
         <article class="rounded-lg border border-border bg-bg-panel p-6">
           <div class="flex items-center justify-between gap-4">
             <div>

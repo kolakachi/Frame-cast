@@ -37,3 +37,7 @@ export function disconnectEcho() {
   echoInstance.disconnect()
   echoInstance = null
 }
+
+export function getEcho() {
+  return echoInstance
+}
