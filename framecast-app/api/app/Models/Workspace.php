@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Channel;
 use App\Models\BrandKit;
 use App\Models\VoiceProfile;
+use App\Models\CaptionPreset;
 
 class Workspace extends Model
 {
@@ -44,5 +45,10 @@ class Workspace extends Model
     public function voiceProfiles(): HasMany
     {
         return $this->hasMany(VoiceProfile::class);
+    }
+
+    public function captionPresets(): HasMany
+    {
+        return $this->hasMany(CaptionPreset::class);
     }
 }
