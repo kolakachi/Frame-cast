@@ -82,7 +82,7 @@ Exit gate: User submits a script → watches generation progress in real time �
 - [x] `GenerateTTSJob` — TTS adapter per scene, stores audio asset
 - [x] Reverb events — `generation.progress` emitted from each job on `project.{id}`
 - [x] Generation Progress screen (Vue) — consumes Reverb events, 5-stage pipeline
-- [ ] New Video modal (Vue) — all 7 source types with conditional panels
+- [x] New Video modal (Vue) — all 7 source types with conditional panels
 - [ ] Notification system — Notification records, Reverb delivery, toast + bell drawer (Vue)
 
 **Phase 1 exit gate passed:** [ ]
@@ -103,6 +103,7 @@ Exit gate: User submits a script → watches generation progress in real time �
 - Added queued `GenerateTTSJob` and TTS adapter layer, persisting per-scene audio assets and storing voice generation metadata in `voice_settings_json`.
 - Added `GenerationProgressed` Reverb event (`generation.progress`) and stage-level emission across generation pipeline jobs on `project.{id}` private channel.
 - Added Vue `GenerationProgressView` route (`/projects/:projectId/generation`) subscribing to `generation.progress` and rendering a 5-stage pipeline status UI.
+- Added dashboard `New Video` modal wired to `POST /api/v1/projects` with all 7 source type panels and direct navigation to generation progress on success.
 
 ---
 

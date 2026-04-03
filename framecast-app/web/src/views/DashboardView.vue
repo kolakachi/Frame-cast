@@ -13,6 +13,31 @@ const projectIdInput = ref('1')
 const storageState = ref('idle')
 const storageError = ref('')
 const storagePayload = ref(null)
+const showCreateModal = ref(false)
+const createState = ref('idle')
+const createError = ref('')
+const sourceType = ref('prompt')
+const sourceContent = ref('')
+const languageSelections = ref(['en'])
+const platformTarget = ref('tiktok')
+const aspectRatio = ref('9:16')
+const channelId = ref('')
+const templateId = ref('')
+const brandKitId = ref('')
+const contentGoal = ref('')
+const tone = ref('')
+const title = ref('')
+const durationTargetSeconds = ref('')
+
+const sourceOptions = [
+  { value: 'prompt', label: 'Prompt input' },
+  { value: 'script', label: 'Script input' },
+  { value: 'url', label: 'URL/article' },
+  { value: 'product_description', label: 'Product description' },
+  { value: 'csv_topic', label: 'CSV topic list' },
+  { value: 'audio_upload', label: 'Existing audio' },
+  { value: 'video_upload', label: 'Existing video' },
+]
 
 async function logout() {
   await authStore.logout()
@@ -57,6 +82,62 @@ function openGenerationProgress() {
   router.push({ name: 'generation-progress', params: { projectId: id } })
 }
 
+function toggleLanguage(language) {
+  if (languageSelections.value.includes(language)) {
+    languageSelections.value = languageSelections.value.filter((item) => item !== language)
+    return
+  }
+
+  languageSelections.value = [...languageSelections.value, language]
+}
+
+function openCreateModal() {
+  showCreateModal.value = true
+  createState.value = 'idle'
+  createError.value = ''
+}
+
+function closeCreateModal() {
+  if (createState.value === 'loading') {
+    return
+  }
+
+  showCreateModal.value = false
+}
+
+async function submitProject() {
+  createState.value = 'loading'
+  createError.value = ''
+
+  try {
+    const response = await api.post('/projects', {
+      source_type: sourceType.value,
+      source_content_raw: sourceContent.value,
+      languages: languageSelections.value,
+      platform_target: platformTarget.value,
+      aspect_ratio: aspectRatio.value,
+      ...(channelId.value ? { channel_id: Number(channelId.value) } : {}),
+      ...(templateId.value ? { template_id: Number(templateId.value) } : {}),
+      ...(brandKitId.value ? { brand_kit_id: Number(brandKitId.value) } : {}),
+      ...(contentGoal.value ? { content_goal: contentGoal.value } : {}),
+      ...(tone.value ? { tone: tone.value } : {}),
+      ...(title.value ? { title: title.value } : {}),
+      ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
+    })
+
+    const projectId = response.data?.data?.project?.id
+    createState.value = 'success'
+    showCreateModal.value = false
+
+    if (projectId) {
+      router.push({ name: 'generation-progress', params: { projectId } })
+    }
+  } catch (error) {
+    createState.value = 'error'
+    createError.value = error.response?.data?.error?.message ?? 'Project creation failed.'
+  }
+}
+
 onMounted(() => {
   loadMe()
 })
@@ -68,18 +149,27 @@ onMounted(() => {
       <header class="flex items-end justify-between gap-4 rounded-lg border border-border bg-bg-panel p-6">
         <div>
           <p class="font-mono text-sm uppercase tracking-[0.3em] text-accent">Framecast</p>
-          <h1 class="mt-3 text-4xl font-semibold">Phase 0 workspace shell</h1>
+          <h1 class="mt-3 text-4xl font-semibold">Phase 1 generation shell</h1>
           <p class="mt-2 max-w-2xl text-sm text-text-secondary">
-            Router, auth store, Axios refresh flow, and Reverb client wiring are in place. Domain flows come next.
+            Core generation backend is now wired: script, scene breakdown, hooks, visuals, and TTS pipeline with live Reverb progress events.
           </p>
         </div>
-        <button
-          class="rounded-md border border-border px-4 py-2 text-sm font-medium text-text-secondary transition hover:border-border-active hover:text-text-primary"
-          type="button"
-          @click="logout"
-        >
-          Log out
-        </button>
+        <div class="flex items-center gap-3">
+          <button
+            class="rounded-md border border-border px-4 py-2 text-sm font-medium text-text-secondary transition hover:border-border-active hover:text-text-primary"
+            type="button"
+            @click="openCreateModal"
+          >
+            New Video
+          </button>
+          <button
+            class="rounded-md border border-border px-4 py-2 text-sm font-medium text-text-secondary transition hover:border-border-active hover:text-text-primary"
+            type="button"
+            @click="logout"
+          >
+            Log out
+          </button>
+        </div>
       </header>
 
       <section class="grid gap-4 md:grid-cols-3">
@@ -208,6 +298,165 @@ onMounted(() => {
           </div>
         </article>
       </section>
+    </div>
+
+    <div
+      v-if="showCreateModal"
+      class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-10"
+      @click.self="closeCreateModal"
+    >
+      <div class="w-full max-w-3xl rounded-lg border border-border bg-bg-panel p-6">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs uppercase tracking-[0.2em] text-text-muted">New Video</p>
+            <h2 class="mt-2 text-2xl font-semibold">Create project</h2>
+            <p class="mt-2 text-sm text-text-secondary">All 7 source types are available for Phase 1 creation.</p>
+          </div>
+          <button
+            class="rounded-md border border-border px-3 py-1 text-sm text-text-secondary hover:border-border-active hover:text-text-primary"
+            type="button"
+            @click="closeCreateModal"
+          >
+            Close
+          </button>
+        </div>
+
+        <div v-if="createError" class="mt-4 rounded-md border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-300">
+          {{ createError }}
+        </div>
+
+        <div class="mt-5 grid gap-4 md:grid-cols-2">
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">Source type</span>
+            <select v-model="sourceType" class="w-full rounded-md border border-border bg-bg-deep px-3 py-2">
+              <option v-for="option in sourceOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+          </label>
+
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">Platform target</span>
+            <select v-model="platformTarget" class="w-full rounded-md border border-border bg-bg-deep px-3 py-2">
+              <option value="tiktok">TikTok</option>
+              <option value="reels">Instagram Reels</option>
+              <option value="shorts">YouTube Shorts</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="mt-4">
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">Source content</span>
+            <textarea
+              v-model="sourceContent"
+              class="h-32 w-full rounded-md border border-border bg-bg-deep px-3 py-2"
+              :placeholder="`Provide content for ${sourceType}.`"
+            />
+          </label>
+        </div>
+
+        <div class="mt-3 rounded-md border border-border bg-bg-card p-3 text-xs text-text-muted">
+          <p v-if="sourceType === 'prompt'">Prompt panel: describe the outcome and style you want.</p>
+          <p v-else-if="sourceType === 'script'">Script panel: paste your full narration/script text.</p>
+          <p v-else-if="sourceType === 'url'">URL panel: provide a valid article URL to transform.</p>
+          <p v-else-if="sourceType === 'product_description'">Product Description panel: paste product details and value props.</p>
+          <p v-else-if="sourceType === 'csv_topic'">CSV Topic panel: provide CSV rows of topics to expand.</p>
+          <p v-else-if="sourceType === 'audio_upload'">Existing Audio panel: use upload path or storage URL as source content.</p>
+          <p v-else-if="sourceType === 'video_upload'">Existing Video panel: use upload path or storage URL as source content.</p>
+        </div>
+
+        <div class="mt-4 grid gap-4 md:grid-cols-2">
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">Aspect ratio</span>
+            <select v-model="aspectRatio" class="w-full rounded-md border border-border bg-bg-deep px-3 py-2">
+              <option value="9:16">9:16</option>
+              <option value="1:1">1:1</option>
+              <option value="16:9">16:9</option>
+            </select>
+          </label>
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">Duration target (seconds)</span>
+            <input v-model="durationTargetSeconds" class="w-full rounded-md border border-border bg-bg-deep px-3 py-2" inputmode="numeric" type="text">
+          </label>
+        </div>
+
+        <div class="mt-4 grid gap-4 md:grid-cols-3">
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">Channel ID (optional)</span>
+            <input v-model="channelId" class="w-full rounded-md border border-border bg-bg-deep px-3 py-2" inputmode="numeric" type="text">
+          </label>
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">Template ID (optional)</span>
+            <input v-model="templateId" class="w-full rounded-md border border-border bg-bg-deep px-3 py-2" inputmode="numeric" type="text">
+          </label>
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">BrandKit ID (optional)</span>
+            <input v-model="brandKitId" class="w-full rounded-md border border-border bg-bg-deep px-3 py-2" inputmode="numeric" type="text">
+          </label>
+        </div>
+
+        <div class="mt-4 grid gap-4 md:grid-cols-2">
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">Content goal</span>
+            <input v-model="contentGoal" class="w-full rounded-md border border-border bg-bg-deep px-3 py-2" type="text">
+          </label>
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">Tone</span>
+            <input v-model="tone" class="w-full rounded-md border border-border bg-bg-deep px-3 py-2" type="text">
+          </label>
+        </div>
+
+        <div class="mt-4">
+          <label class="space-y-2 text-sm">
+            <span class="text-text-muted">Title (optional)</span>
+            <input v-model="title" class="w-full rounded-md border border-border bg-bg-deep px-3 py-2" type="text">
+          </label>
+        </div>
+
+        <div class="mt-4">
+          <p class="text-sm text-text-muted">Languages</p>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button
+              :class="`rounded-md border px-3 py-1 text-xs uppercase tracking-[0.12em] ${languageSelections.includes('en') ? 'border-border-active text-text-primary' : 'border-border text-text-muted'}`"
+              type="button"
+              @click="toggleLanguage('en')"
+            >
+              English
+            </button>
+            <button
+              :class="`rounded-md border px-3 py-1 text-xs uppercase tracking-[0.12em] ${languageSelections.includes('es') ? 'border-border-active text-text-primary' : 'border-border text-text-muted'}`"
+              type="button"
+              @click="toggleLanguage('es')"
+            >
+              Spanish
+            </button>
+            <button
+              :class="`rounded-md border px-3 py-1 text-xs uppercase tracking-[0.12em] ${languageSelections.includes('fr') ? 'border-border-active text-text-primary' : 'border-border text-text-muted'}`"
+              type="button"
+              @click="toggleLanguage('fr')"
+            >
+              French
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            class="rounded-md border border-border px-4 py-2 text-sm text-text-secondary transition hover:border-border-active hover:text-text-primary"
+            type="button"
+            @click="closeCreateModal"
+          >
+            Cancel
+          </button>
+          <button
+            class="rounded-md border border-border-active bg-accent/10 px-4 py-2 text-sm text-accent transition hover:bg-accent/20"
+            :disabled="createState === 'loading'"
+            type="button"
+            @click="submitProject"
+          >
+            {{ createState === 'loading' ? 'Creating…' : 'Create & Start Generation' }}
+          </button>
+        </div>
+      </div>
     </div>
   </main>
 </template>
