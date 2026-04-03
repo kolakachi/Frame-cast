@@ -3,7 +3,7 @@ FROM node:22-alpine AS dev
 WORKDIR /app
 
 COPY package.json yarn.lock ./
-RUN yarn install --ignore-optional
+RUN yarn install --ignore-platform
 
 COPY . .
 
@@ -14,7 +14,7 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 COPY package.json yarn.lock ./
-RUN yarn install --ignore-optional
+RUN yarn install --ignore-platform
 
 COPY . .
 RUN yarn build
@@ -23,3 +23,8 @@ FROM nginx:alpine AS production
 
 COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
+
+FROM nginx:alpine AS static
+
+COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY dist /usr/share/nginx/html

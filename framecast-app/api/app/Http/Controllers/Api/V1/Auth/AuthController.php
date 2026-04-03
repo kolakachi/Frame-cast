@@ -32,7 +32,10 @@ class AuthController extends Controller
             'password' => ['required', 'string', 'min:8'],
         ]);
 
-        $user = User::query()->with('workspace')->where('email', $validated['email'])->first();
+        $user = User::query()
+            ->with('workspace')
+            ->where('email', $validated['email'])
+            ->first();
 
         if (! $user || ! $user->password_hash || ! Hash::check($validated['password'], $user->password_hash)) {
             return $this->error('invalid_credentials', 'Invalid email or password.', 422);
@@ -46,13 +49,30 @@ class AuthController extends Controller
         $validated = $request->validate([
             'email' => ['required', 'email'],
             'name' => ['nullable', 'string', 'max:255'],
+            'password' => ['nullable', 'string', 'min:8'],
         ]);
 
         $user = DB::transaction(function () use ($validated) {
-            $existingUser = User::query()->where('email', $validated['email'])->first();
+            $existingUser = User::query()
+                ->where('email', $validated['email'])
+                ->first();
 
             if ($existingUser) {
-                return $existingUser->load('workspace');
+                $updates = [];
+
+                if (! empty($validated['name']) && ! $existingUser->name) {
+                    $updates['name'] = $validated['name'];
+                }
+
+                if (! empty($validated['password']) && ! $existingUser->password_hash) {
+                    $updates['password_hash'] = Hash::make($validated['password']);
+                }
+
+                if ($updates !== []) {
+                    $existingUser->fill($updates)->save();
+                }
+
+                return $existingUser->fresh('workspace');
             }
 
             $workspace = Workspace::query()->create([
@@ -65,12 +85,15 @@ class AuthController extends Controller
                 'workspace_id' => $workspace->getKey(),
                 'name' => $validated['name'] ?? Str::of($validated['email'])->before('@')->headline()->value(),
                 'email' => $validated['email'],
+                'password_hash' => ! empty($validated['password']) ? Hash::make($validated['password']) : null,
                 'timezone' => 'UTC',
                 'role' => 'owner',
                 'status' => 'active',
             ]);
 
-            $workspace->forceFill(['owner_user_id' => $user->getKey()])->save();
+            $workspace->forceFill([
+                'owner_user_id' => $user->getKey(),
+            ])->save();
 
             return $user->load('workspace');
         });
@@ -119,7 +142,9 @@ class AuthController extends Controller
             return $this->error('invalid_magic_link', 'Magic link is invalid or expired.', 422);
         }
 
-        $magicLinkToken->forceFill(['used_at' => CarbonImmutable::now()])->save();
+        $magicLinkToken->forceFill([
+            'used_at' => CarbonImmutable::now(),
+        ])->save();
 
         return $this->issueSessionResponse($magicLinkToken->user, $request);
     }
@@ -165,6 +190,7 @@ class AuthController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+
         $this->authSessionService->revokeAllForUser($user);
 
         return $this->clearRefreshCookie(response()->json([

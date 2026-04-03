@@ -1,4 +1,4 @@
-FROM php:8.3-fpm-bookworm AS base
+FROM php:8.4-fpm-bookworm AS base
 
 ARG WWWUSER=1000
 ARG WWWGROUP=1000
@@ -27,6 +27,21 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 RUN groupadd -g ${WWWGROUP} framecast \
     && useradd -u ${WWWUSER} -g framecast -ms /bin/bash framecast
+
+COPY composer.json composer.lock ./
+
+RUN composer install \
+    --no-dev \
+    --prefer-dist \
+    --no-interaction \
+    --optimize-autoloader \
+    --no-scripts
+
+COPY . .
+
+RUN composer dump-autoload --optimize \
+    && php artisan package:discover --ansi \
+    && chown -R framecast:framecast /var/www/html
 
 USER framecast
 

@@ -1,11 +1,57 @@
+<script setup>
+import { onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
+
+const state = ref('verifying') // 'verifying' | 'expired' | 'error'
+
+onMounted(async () => {
+  const token = route.query.token
+
+  if (!token) {
+    state.value = 'expired'
+    return
+  }
+
+  try {
+    await authStore.verifyMagicLink(token)
+    router.replace({ name: 'dashboard' })
+  } catch (err) {
+    const code = err.response?.data?.error?.code
+    state.value = code === 'invalid_magic_link' ? 'expired' : 'error'
+  }
+})
+</script>
+
 <template>
-  <main class="flex min-h-screen items-center justify-center bg-bg-deep px-6 py-16 text-text-primary">
-    <section class="max-w-lg rounded-lg border border-border bg-bg-panel p-8 text-center shadow-2xl">
-      <p class="font-mono text-sm uppercase tracking-[0.3em] text-accent">Auth callback</p>
-      <h1 class="mt-4 text-3xl font-semibold">Magic link verification placeholder</h1>
-      <p class="mt-3 text-sm text-text-secondary">
-        Phase 0 still needs the token verification endpoint and JWT session exchange.
-      </p>
-    </section>
+  <main class="auth-screen auth-bg">
+    <div class="auth-card auth-card-centered">
+      <template v-if="state === 'verifying'">
+        <div class="auth-magic-icon auth-magic-icon-pulse">✦</div>
+        <h1 class="auth-title centered">Signing you in…</h1>
+        <p class="auth-subtitle auth-subtitle-compact centered">Verifying your magic link.</p>
+      </template>
+
+      <template v-else-if="state === 'expired'">
+        <div class="auth-magic-icon auth-magic-icon-danger">✕</div>
+        <h1 class="auth-title centered">Link expired</h1>
+        <p class="auth-subtitle centered">
+          This magic link has already been used or has expired.<br>
+          Links are valid for 15 minutes and can only be used once.
+        </p>
+        <router-link class="auth-btn-primary auth-btn-link" :to="{ name: 'login' }">Request a new link</router-link>
+      </template>
+
+      <template v-else>
+        <div class="auth-magic-icon auth-magic-icon-warning">⚠</div>
+        <h1 class="auth-title centered">Something went wrong</h1>
+        <p class="auth-subtitle centered">We couldn't verify your link. Please try again.</p>
+        <router-link class="auth-btn-primary auth-btn-link" :to="{ name: 'login' }">Back to login</router-link>
+      </template>
+    </div>
   </main>
 </template>

@@ -1,14 +1,21 @@
 import axios from 'axios'
 
 const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const defaultHeaders = {
+  Accept: 'application/json',
+  'Content-Type': 'application/json',
+}
 
 const api = axios.create({
   baseURL: `${baseURL}/api/v1`,
   withCredentials: true,
-  headers: {
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
-  },
+  headers: defaultHeaders,
+})
+
+const refreshApi = axios.create({
+  baseURL: `${baseURL}/api/v1`,
+  withCredentials: true,
+  headers: defaultHeaders,
 })
 
 let refreshPromise = null
@@ -35,9 +42,14 @@ export function configureApiClient(authStore) {
         return Promise.reject(error)
       }
 
+      if (originalRequest?.url?.includes('/auth/refresh')) {
+        authStore.clearSession()
+        return Promise.reject(error)
+      }
+
       originalRequest._retry = true
 
-      refreshPromise ??= authStore.refreshAccessToken().finally(() => {
+      refreshPromise ??= authStore.refreshAccessToken(refreshApi).finally(() => {
         refreshPromise = null
       })
 
@@ -53,4 +65,5 @@ export function configureApiClient(authStore) {
   )
 }
 
+export { refreshApi }
 export default api

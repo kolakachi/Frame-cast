@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import api from '../services/api'
+import api, { refreshApi } from '../services/api'
 
 const STORAGE_KEY = 'framecast.auth'
 
@@ -52,12 +52,34 @@ export const useAuthStore = defineStore('auth', {
       window.localStorage.removeItem(STORAGE_KEY)
     },
 
-    async requestMagicLink(email) {
-      await api.post('/auth/magic-link', { email })
+    async requestMagicLink(email, name = null, password = null) {
+      await api.post('/auth/magic-link', {
+        email,
+        ...(name ? { name } : {}),
+        ...(password ? { password } : {}),
+      })
     },
 
-    async refreshAccessToken() {
-      const response = await api.post('/auth/refresh')
+    async login(email, password) {
+      const response = await api.post('/auth/login', { email, password })
+      this._applySessionData(response.data.data)
+    },
+
+    async verifyMagicLink(token) {
+      const response = await api.get('/auth/magic-link/verify', { params: { token } })
+      this._applySessionData(response.data.data)
+    },
+
+    async logout() {
+      try {
+        await api.post('/auth/logout')
+      } finally {
+        this.clearSession()
+      }
+    },
+
+    async refreshAccessToken(client = refreshApi) {
+      const response = await client.post('/auth/refresh')
       const accessToken = response.data?.data?.access_token ?? null
 
       this.setSession({
@@ -66,6 +88,13 @@ export const useAuthStore = defineStore('auth', {
       })
 
       return accessToken
+    },
+
+    _applySessionData(data) {
+      this.setSession({
+        accessToken: data.access_token ?? null,
+        user: data.user ?? null,
+      })
     },
   },
 })

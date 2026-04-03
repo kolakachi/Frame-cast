@@ -2,12 +2,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 import DashboardView from '../views/DashboardView.vue'
 import LoginView from '../views/LoginView.vue'
 import MagicLinkView from '../views/MagicLinkView.vue'
+import RegisterView from '../views/RegisterView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
   { path: '/', redirect: '/dashboard' },
   { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
-  { path: '/auth/magic', name: 'magic-link', component: MagicLinkView, meta: { guestOnly: true } },
+  { path: '/register', name: 'register', component: RegisterView, meta: { guestOnly: true } },
+  { path: '/auth/magic', name: 'magic-link', component: MagicLinkView },
   { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
 ]
 

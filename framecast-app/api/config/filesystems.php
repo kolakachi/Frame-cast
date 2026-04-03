@@ -62,10 +62,10 @@ return [
 
         'b2' => [
             'driver' => 's3',
-            'key' => env('B2_KEY'),
-            'secret' => env('B2_SECRET'),
+            'key' => env('B2_KEY_ID'),
+            'secret' => env('B2_APP_KEY'),
             'region' => env('B2_REGION'),
-            'bucket' => env('B2_BUCKET'),
+            'bucket' => env('B2_BUCKET_NAME'),
             'endpoint' => env('B2_ENDPOINT'),
             'use_path_style_endpoint' => true,
             'throw' => false,

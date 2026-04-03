@@ -33,5 +33,18 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => authStore.isAuthenticated,
+  (isAuthenticated) => {
+    if (isAuthenticated) {
+      return
+    }
+
+    if (router.currentRoute.value.meta.requiresAuth) {
+      router.push({ name: 'login' })
+    }
+  },
+)
+
 app.use(router)
 app.mount('#app')

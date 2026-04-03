@@ -7,15 +7,15 @@ use App\Models\User;
 use App\Models\Workspace;
 use DateInterval;
 use DateTimeImmutable;
-use Lcobucci\Clock\SystemClock;
 use Lcobucci\JWT\Configuration;
-use Lcobucci\JWT\Encoding\ChainedFormatter;
+use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Signer\Hmac\Sha256;
 use Lcobucci\JWT\Signer\Key\InMemory;
 use Lcobucci\JWT\Token\Parser;
 use Lcobucci\JWT\Validation\Constraint\LooseValidAt;
 use Lcobucci\JWT\Validation\Constraint\SignedWith;
 use RuntimeException;
+use Symfony\Component\Clock\NativeClock;
 
 class JwtService
 {
@@ -44,7 +44,7 @@ class JwtService
      */
     public function parse(string $token): array
     {
-        $parser = new Parser(new ChainedFormatter());
+        $parser = new Parser(new JoseEncoder());
         $parsed = $parser->parse($token);
 
         $workspaceId = (int) $parsed->claims()->get('workspace_id');
@@ -53,7 +53,7 @@ class JwtService
 
         $constraints = [
             new SignedWith($configuration->signer(), $configuration->verificationKey()),
-            new LooseValidAt(SystemClock::fromUTC()),
+            new LooseValidAt(new NativeClock('UTC')),
         ];
 
         if (! $configuration->validator()->validate($parsed, ...$constraints)) {
