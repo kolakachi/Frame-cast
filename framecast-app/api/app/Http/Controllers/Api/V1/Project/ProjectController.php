@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Project;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateScriptJob;
 use App\Models\Channel;
 use App\Models\Project;
 use App\Models\Template;
@@ -110,9 +111,11 @@ class ProjectController extends Controller
             'tone' => $validated['tone'] ?? null,
             'primary_language' => $validated['languages'][0],
             'title' => $validated['title'] ?? null,
-            'status' => 'draft',
+            'status' => 'generating',
             'created_by_user_id' => $user->getKey(),
         ]);
+
+        GenerateScriptJob::dispatch($project->getKey());
 
         return response()->json([
             'data' => [
