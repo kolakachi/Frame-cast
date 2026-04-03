@@ -24,6 +24,10 @@ class PromptTemplateRegistry
                 'system' => 'You split scripts into scenes. Return JSON only in this shape: {"scenes":[{"scene_type":"hook|narration|transition|text_card|quote","label":"...","script_text":"...","duration_seconds":number}]}',
                 'user' => "Break this script into 1-20 scenes for short-form video.\nLanguage: {{language}}\nScript:\n{{script_text}}",
             ],
+            'hook_options' => [
+                'system' => 'Generate hook options for a short-form video. Return JSON only in this shape: {"hooks":[{"text":"..."}]} with 3 to 10 options.',
+                'user' => "Generate 3-10 hook options from this script.\nLanguage: {{language}}\nScript:\n{{script_text}}",
+            ],
             default => throw new InvalidArgumentException("Unknown prompt template key: {$key}"),
         };
     }

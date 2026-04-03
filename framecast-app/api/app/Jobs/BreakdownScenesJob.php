@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\GenerateHooksJob;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Services\Generation\AI\AIGenerationAdapter;
@@ -49,10 +50,9 @@ class BreakdownScenesJob implements ShouldQueue
                 ]);
             }
 
-            $project->forceFill([
-                'status' => 'ready_for_review',
-            ])->save();
         });
+
+        GenerateHooksJob::dispatch($project->getKey());
     }
 
     public function failed(\Throwable $exception): void

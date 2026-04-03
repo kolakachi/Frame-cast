@@ -70,6 +70,10 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
             return $this->fallbackSceneBreakdown($variables);
         }
 
+        if ($promptTemplateKey === 'hook_options') {
+            return $this->fallbackHookOptions($variables);
+        }
+
         return $this->fallbackScript($variables);
     }
 
@@ -121,5 +125,24 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
         }
 
         return (string) json_encode(['scenes' => $scenes], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * @param  array<string, mixed>  $variables
+     */
+    private function fallbackHookOptions(array $variables): string
+    {
+        $scriptText = trim((string) ($variables['script_text'] ?? ''));
+        $lead = mb_substr($scriptText, 0, 70);
+
+        $hooks = [
+            ['text' => 'Stop scrolling: '.$lead],
+            ['text' => 'This one shift changes your outcome fast.'],
+            ['text' => 'Most people miss this until it is too late.'],
+            ['text' => 'Use this framework for your next short.'],
+            ['text' => 'Here is the simplest way to get started.'],
+        ];
+
+        return (string) json_encode(['hooks' => $hooks], JSON_UNESCAPED_SLASHES);
     }
 }
