@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Channel;
+use App\Models\BrandKit;
 
 class Workspace extends Model
 {
@@ -32,5 +33,10 @@ class Workspace extends Model
     public function channels(): HasMany
     {
         return $this->hasMany(Channel::class);
+    }
+
+    public function brandKits(): HasMany
+    {
+        return $this->hasMany(BrandKit::class);
     }
 }

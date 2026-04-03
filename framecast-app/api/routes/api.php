@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
+use App\Http\Controllers\Api\V1\BrandKit\BrandKitController;
 use App\Http\Controllers\Api\V1\Channel\ChannelController;
 use App\Http\Controllers\Api\V1\System\HealthCheckController;
 use App\Http\Controllers\Api\V1\System\VerificationController;
@@ -40,6 +41,14 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{channelId}', [ChannelController::class, 'show'])->whereNumber('channelId');
             Route::patch('/{channelId}', [ChannelController::class, 'update'])->whereNumber('channelId');
             Route::delete('/{channelId}', [ChannelController::class, 'destroy'])->whereNumber('channelId');
+        });
+
+        Route::prefix('/brand-kits')->group(function (): void {
+            Route::get('/', [BrandKitController::class, 'index']);
+            Route::post('/', [BrandKitController::class, 'store']);
+            Route::get('/{brandKitId}', [BrandKitController::class, 'show'])->whereNumber('brandKitId');
+            Route::patch('/{brandKitId}', [BrandKitController::class, 'update'])->whereNumber('brandKitId');
+            Route::delete('/{brandKitId}', [BrandKitController::class, 'destroy'])->whereNumber('brandKitId');
         });
     });
 });
