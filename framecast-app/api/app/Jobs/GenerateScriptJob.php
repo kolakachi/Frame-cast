@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\BreakdownScenesJob;
 use App\Models\Project;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -36,8 +37,9 @@ class GenerateScriptJob implements ShouldQueue
 
         $project->forceFill([
             'script_text' => $result['content'],
-            'status' => 'ready_for_review',
         ])->save();
+
+        BreakdownScenesJob::dispatch($project->getKey());
     }
 
     public function failed(\Throwable $exception): void

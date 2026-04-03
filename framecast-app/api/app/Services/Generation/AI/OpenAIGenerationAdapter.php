@@ -23,7 +23,7 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
 
         if ($apiKey === '') {
             return [
-                'content' => $this->fallbackScript($variables),
+                'content' => $this->fallbackContent($promptTemplateKey, $variables),
                 'provider_key' => 'openai',
                 'model' => $model,
                 'tokens_used' => 0,
@@ -64,6 +64,18 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
     /**
      * @param  array<string, mixed>  $variables
      */
+    private function fallbackContent(string $promptTemplateKey, array $variables): string
+    {
+        if ($promptTemplateKey === 'scene_breakdown') {
+            return $this->fallbackSceneBreakdown($variables);
+        }
+
+        return $this->fallbackScript($variables);
+    }
+
+    /**
+     * @param  array<string, mixed>  $variables
+     */
     private function fallbackScript(array $variables): string
     {
         $source = trim((string) ($variables['source_content'] ?? ''));
@@ -73,5 +85,41 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
         return "Hook: Here is a quick {$tone} take.\n\n"
             ."Body: {$source}\n\n"
             ."CTA: Follow for more {$goal} content.";
+    }
+
+    /**
+     * @param  array<string, mixed>  $variables
+     */
+    private function fallbackSceneBreakdown(array $variables): string
+    {
+        $scriptText = trim((string) ($variables['script_text'] ?? ''));
+        $chunks = preg_split('/\n{2,}/', $scriptText) ?: [];
+        $scenes = [];
+
+        foreach (array_slice($chunks, 0, 8) as $index => $chunk) {
+            $text = trim($chunk);
+
+            if ($text === '') {
+                continue;
+            }
+
+            $scenes[] = [
+                'scene_type' => $index === 0 ? 'hook' : 'narration',
+                'label' => 'Scene '.($index + 1),
+                'script_text' => $text,
+                'duration_seconds' => 6,
+            ];
+        }
+
+        if ($scenes === []) {
+            $scenes[] = [
+                'scene_type' => 'narration',
+                'label' => 'Scene 1',
+                'script_text' => $scriptText,
+                'duration_seconds' => 6,
+            ];
+        }
+
+        return (string) json_encode(['scenes' => $scenes], JSON_UNESCAPED_SLASHES);
     }
 }

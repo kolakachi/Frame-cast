@@ -20,6 +20,10 @@ class PromptTemplateRegistry
                 'system' => 'You are a short-form video script writer. Rewrite source material into plain script text only.',
                 'user' => "Rewrite this URL-derived content into a short-form video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nSource: {{source_content}}",
             ],
+            'scene_breakdown' => [
+                'system' => 'You split scripts into scenes. Return JSON only in this shape: {"scenes":[{"scene_type":"hook|narration|transition|text_card|quote","label":"...","script_text":"...","duration_seconds":number}]}',
+                'user' => "Break this script into 1-20 scenes for short-form video.\nLanguage: {{language}}\nScript:\n{{script_text}}",
+            ],
             default => throw new InvalidArgumentException("Unknown prompt template key: {$key}"),
         };
     }
