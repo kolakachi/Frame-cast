@@ -11,6 +11,7 @@ use App\Models\BrandKit;
 use App\Models\VoiceProfile;
 use App\Models\CaptionPreset;
 use App\Models\Template;
+use App\Models\Project;
 
 class Workspace extends Model
 {
@@ -56,5 +57,10 @@ class Workspace extends Model
     public function templates(): HasMany
     {
         return $this->hasMany(Template::class);
+    }
+
+    public function projects(): HasMany
+    {
+        return $this->hasMany(Project::class);
     }
 }

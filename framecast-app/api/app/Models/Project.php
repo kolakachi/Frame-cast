@@ -1,0 +1,48 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Project extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'workspace_id',
+        'channel_id',
+        'brand_kit_id',
+        'template_id',
+        'source_type',
+        'source_content_raw',
+        'source_content_normalized',
+        'content_goal',
+        'platform_target',
+        'duration_target_seconds',
+        'aspect_ratio',
+        'tone',
+        'primary_language',
+        'title',
+        'script_text',
+        'status',
+        'current_revision_id',
+        'family_id',
+        'created_by_user_id',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'duration_target_seconds' => 'integer',
+            'created_at' => 'datetime',
+            'updated_at' => 'datetime',
+        ];
+    }
+
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
+    }
+}

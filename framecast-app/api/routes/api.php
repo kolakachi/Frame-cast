@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\BrandKit\BrandKitController;
 use App\Http\Controllers\Api\V1\Channel\ChannelController;
+use App\Http\Controllers\Api\V1\Project\ProjectController;
 use App\Http\Controllers\Api\V1\System\HealthCheckController;
 use App\Http\Controllers\Api\V1\System\VerificationController;
 use App\Http\Controllers\Api\V1\Workspace\WorkspaceController;
@@ -49,6 +50,10 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{brandKitId}', [BrandKitController::class, 'show'])->whereNumber('brandKitId');
             Route::patch('/{brandKitId}', [BrandKitController::class, 'update'])->whereNumber('brandKitId');
             Route::delete('/{brandKitId}', [BrandKitController::class, 'destroy'])->whereNumber('brandKitId');
+        });
+
+        Route::prefix('/projects')->group(function (): void {
+            Route::post('/', [ProjectController::class, 'store']);
         });
     });
 });
