@@ -51,4 +51,9 @@ class Project extends Model
     {
         return $this->hasMany(ProjectHookOption::class);
     }
+
+    public function scenes(): HasMany
+    {
+        return $this->hasMany(Scene::class);
+    }
 }
