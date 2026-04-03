@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import DashboardView from '../views/DashboardView.vue'
+import EditorView from '../views/EditorView.vue'
 import GenerationProgressView from '../views/GenerationProgressView.vue'
 import LoginView from '../views/LoginView.vue'
 import MagicLinkView from '../views/MagicLinkView.vue'
@@ -13,6 +14,7 @@ const routes = [
   { path: '/auth/magic', name: 'magic-link', component: MagicLinkView },
   { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/generation', name: 'generation-progress', component: GenerationProgressView, meta: { requiresAuth: true } },
+  { path: '/projects/:projectId/editor', name: 'project-editor', component: EditorView, meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({

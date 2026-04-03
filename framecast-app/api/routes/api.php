@@ -57,6 +57,7 @@ Route::prefix('v1')->group(function (): void {
 
         Route::prefix('/projects')->group(function (): void {
             Route::post('/', [ProjectController::class, 'store']);
+            Route::get('/{projectId}', [ProjectController::class, 'show'])->whereNumber('projectId');
         });
     });
 });

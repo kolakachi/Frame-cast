@@ -8,6 +8,7 @@ const router = useRouter()
 const projectId = computed(() => route.params.projectId)
 const connected = ref(false)
 const lastMessage = ref('Waiting for generation events…')
+const isTransitioningToEditor = ref(false)
 
 const stages = ref([
   { key: 'script', label: 'Generate Script', status: 'pending' },
@@ -35,6 +36,17 @@ function updateStage(payload) {
 
   target.status = payload.status
   lastMessage.value = payload.message || `${target.label}: ${payload.status}`
+
+  const completed = stages.value.every((stage) => stage.status === 'completed')
+
+  if (completed && !isTransitioningToEditor.value) {
+    isTransitioningToEditor.value = true
+    lastMessage.value = 'Generation complete. Opening editor…'
+
+    window.setTimeout(() => {
+      router.push({ name: 'project-editor', params: { projectId: projectId.value } })
+    }, 1200)
+  }
 }
 
 function subscribe() {

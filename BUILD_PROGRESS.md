@@ -21,7 +21,7 @@ This is the execution record for the Framecast build. It mirrors the phases in `
 
 ## Current State
 
-**Active phase:** Phase 1 — Project Creation and Generation  
+**Active phase:** Phase 2 — Editor  
 **Last updated:** 2026-04-03  
 **Last updated by:** Codex
 
@@ -85,7 +85,7 @@ Exit gate: User submits a script → watches generation progress in real time �
 - [x] New Video modal (Vue) — all 7 source types with conditional panels
 - [x] Notification system — Notification records, Reverb delivery, toast + bell drawer (Vue)
 
-**Phase 1 exit gate passed:** [ ]
+**Phase 1 exit gate passed:** [x]
 
 **Notes:**
 
@@ -106,6 +106,8 @@ Exit gate: User submits a script → watches generation progress in real time �
 - Added dashboard `New Video` modal wired to `POST /api/v1/projects` with all 7 source type panels and direct navigation to generation progress on success.
 - Added workspace notification backend (`workspace_notifications` table, `NotificationService`, notification list/read endpoints) with Reverb broadcast event `notification.created` on `workspace.{id}` private channels.
 - Added dashboard notification bell, right-side notification drawer, and live toast stack in Vue, including API hydration and mark-as-read actions.
+- Added authenticated `GET /api/v1/projects/{projectId}` endpoint returning project + ordered scenes + hook options, including resolved visual/audio assets for editor hydration.
+- Added Vue `EditorView` route (`/projects/:projectId/editor`) and wired generation progress completion to auto-navigate into the project editor.
 
 ---
 

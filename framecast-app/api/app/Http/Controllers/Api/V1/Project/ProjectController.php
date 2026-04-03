@@ -4,16 +4,79 @@ namespace App\Http\Controllers\Api\V1\Project;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateScriptJob;
+use App\Models\Asset;
 use App\Models\Channel;
 use App\Models\Project;
+use App\Models\ProjectHookOption;
+use App\Models\Scene;
 use App\Models\Template;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
+    public function show(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $scenes = Scene::query()
+            ->where('project_id', $project->getKey())
+            ->orderBy('scene_order')
+            ->get();
+
+        $hookOptions = ProjectHookOption::query()
+            ->where('project_id', $project->getKey())
+            ->orderBy('sort_order')
+            ->get();
+
+        $assetIds = $scenes
+            ->flatMap(function (Scene $scene): array {
+                $ids = [];
+
+                if ($scene->visual_asset_id) {
+                    $ids[] = (int) $scene->visual_asset_id;
+                }
+
+                $audioAssetId = data_get($scene->voice_settings_json, 'audio_asset_id');
+
+                if ($audioAssetId) {
+                    $ids[] = (int) $audioAssetId;
+                }
+
+                return $ids;
+            })
+            ->unique()
+            ->values();
+
+        /** @var Collection<int, Asset> $assetMap */
+        $assetMap = Asset::query()
+            ->whereIn('id', $assetIds)
+            ->get()
+            ->keyBy('id');
+
+        return response()->json([
+            'data' => [
+                'project' => $this->serializeProject($project),
+                'scenes' => $scenes->map(fn (Scene $scene): array => $this->serializeScene($scene, $assetMap))->all(),
+                'hook_options' => $hookOptions->map(fn (ProjectHookOption $option): array => $this->serializeHookOption($option))->all(),
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         /** @var User $user */
@@ -170,6 +233,70 @@ class ProjectController extends Controller
     private function normalizeSource(string $source): string
     {
         return trim(preg_replace('/\s+/', ' ', $source) ?? '');
+    }
+
+    /**
+     * @param  Collection<int, Asset>  $assetMap
+     * @return array<string, mixed>
+     */
+    private function serializeScene(Scene $scene, Collection $assetMap): array
+    {
+        $visualAsset = $scene->visual_asset_id ? $assetMap->get((int) $scene->visual_asset_id) : null;
+        $audioAssetId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
+        $audioAsset = $audioAssetId > 0 ? $assetMap->get($audioAssetId) : null;
+
+        return [
+            'id' => $scene->getKey(),
+            'project_id' => $scene->project_id,
+            'scene_order' => $scene->scene_order,
+            'scene_type' => $scene->scene_type,
+            'label' => $scene->label,
+            'script_text' => $scene->script_text,
+            'duration_seconds' => $scene->duration_seconds,
+            'voice_profile_id' => $scene->voice_profile_id,
+            'voice_settings' => $scene->voice_settings_json,
+            'caption_settings' => $scene->caption_settings_json,
+            'visual_type' => $scene->visual_type,
+            'visual_asset_id' => $scene->visual_asset_id,
+            'visual_prompt' => $scene->visual_prompt,
+            'transition_rule' => $scene->transition_rule,
+            'status' => $scene->status,
+            'locked_fields' => $scene->locked_fields_json,
+            'visual_asset' => $visualAsset ? $this->serializeAsset($visualAsset) : null,
+            'audio_asset' => $audioAsset ? $this->serializeAsset($audioAsset) : null,
+            'created_at' => $scene->created_at?->toIso8601String(),
+            'updated_at' => $scene->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeAsset(Asset $asset): array
+    {
+        return [
+            'id' => $asset->getKey(),
+            'asset_type' => $asset->asset_type,
+            'title' => $asset->title,
+            'storage_url' => $asset->storage_url,
+            'thumbnail_url' => $asset->thumbnail_url,
+            'duration_seconds' => $asset->duration_seconds,
+            'mime_type' => $asset->mime_type,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeHookOption(ProjectHookOption $option): array
+    {
+        return [
+            'id' => $option->getKey(),
+            'project_id' => $option->project_id,
+            'sort_order' => $option->sort_order,
+            'hook_text' => $option->hook_text,
+            'created_at' => $option->created_at?->toIso8601String(),
+        ];
     }
 
     /**
