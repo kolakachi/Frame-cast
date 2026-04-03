@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
+use App\Http\Controllers\Api\V1\Channel\ChannelController;
 use App\Http\Controllers\Api\V1\System\HealthCheckController;
 use App\Http\Controllers\Api\V1\System\VerificationController;
 use App\Http\Controllers\Api\V1\Workspace\WorkspaceController;
@@ -31,6 +32,14 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{workspaceId}', [WorkspaceController::class, 'show'])->whereNumber('workspaceId');
             Route::patch('/{workspaceId}', [WorkspaceController::class, 'update'])->whereNumber('workspaceId');
             Route::delete('/{workspaceId}', [WorkspaceController::class, 'destroy'])->whereNumber('workspaceId');
+        });
+
+        Route::prefix('/channels')->group(function (): void {
+            Route::get('/', [ChannelController::class, 'index']);
+            Route::post('/', [ChannelController::class, 'store']);
+            Route::get('/{channelId}', [ChannelController::class, 'show'])->whereNumber('channelId');
+            Route::patch('/{channelId}', [ChannelController::class, 'update'])->whereNumber('channelId');
+            Route::delete('/{channelId}', [ChannelController::class, 'destroy'])->whereNumber('channelId');
         });
     });
 });

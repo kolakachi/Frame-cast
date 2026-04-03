@@ -69,7 +69,7 @@ Exit gate: A user can register, receive a magic link, log in, receive a JWT, and
 Exit gate: User submits a script → watches generation progress in real time → lands in Editor with scenes, visuals, and audio populated.
 
 - [x] Workspace CRUD endpoints
-- [ ] Channel CRUD endpoints
+- [x] Channel CRUD endpoints
 - [ ] BrandKit CRUD endpoints
 - [ ] VoiceProfile model — seeded with OpenAI TTS voices
 - [ ] CaptionPreset model — seeded with 3 default presets
@@ -90,6 +90,7 @@ Exit gate: User submits a script → watches generation progress in real time �
 **Notes:**
 
 - Added authenticated Workspace CRUD API endpoints under `/api/v1/workspaces` with workspace scoping and archive-on-delete behavior.
+- Added authenticated Channel CRUD API endpoints under `/api/v1/channels` scoped to the authenticated user's workspace.
 
 ---
 

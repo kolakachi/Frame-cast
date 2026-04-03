@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Channel;
 
 class Workspace extends Model
 {
@@ -26,5 +27,10 @@ class Workspace extends Model
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    public function channels(): HasMany
+    {
+        return $this->hasMany(Channel::class);
     }
 }
