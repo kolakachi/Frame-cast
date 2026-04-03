@@ -21,8 +21,8 @@ This is the execution record for the Framecast build. It mirrors the phases in `
 
 ## Current State
 
-**Active phase:** Phase 0 — Foundation  
-**Last updated:** 2026-04-02  
+**Active phase:** Phase 1 — Project Creation and Generation  
+**Last updated:** 2026-04-03  
 **Last updated by:** Codex
 
 ---
@@ -32,17 +32,17 @@ This is the execution record for the Framecast build. It mirrors the phases in `
 Exit gate: A user can register, receive a magic link, log in, receive a JWT, and make an authenticated API request.
 
 - [x] Monorepo initialised — `/api` (Laravel 11) and `/web` (Vue 3 + Vite)
-- [~] Docker Compose — all services running locally (api, worker, scheduler, reverb, web, postgres, redis)
-- [~] Database migrations — all entities from `DATA_MODEL.md` created
-- [~] Auth — AuthSession, MagicLinkToken, JWT middleware implemented
-- [~] Auth endpoints — all 6 routes working (`/login`, `/magic-link`, `/magic-link/verify`, `/refresh`, `/logout`, `/logout-all`)
+- [x] Docker Compose — all services running locally (api, worker, scheduler, reverb, web, postgres, redis)
+- [x] Database migrations — all entities from `DATA_MODEL.md` created
+- [x] Auth — AuthSession, MagicLinkToken, JWT middleware implemented
+- [x] Auth endpoints — all 6 routes working (`/login`, `/magic-link`, `/magic-link/verify`, `/refresh`, `/logout`, `/logout-all`)
 - [x] Vue SPA — router, Pinia auth store, Axios interceptor with token refresh
-- [~] Reverb — connection from Vue to Reverb established, private channel auth working
-- [~] Horizon — running, accessible at `/horizon`
-- [~] B2 storage — Flysystem adapter configured, test upload + signed URL working
-- [~] Mail — `log` driver in dev, `MagicLinkMail` mailable sending
+- [x] Reverb — connection from Vue to Reverb established, private channel auth working
+- [x] Horizon — running, accessible at `/horizon`
+- [x] B2 storage — Flysystem adapter configured, test upload + signed URL working
+- [x] Mail — `MagicLinkMail` mailable sending (local env currently uses SMTP/Mailtrap)
 
-**Phase 0 exit gate passed:** [ ]
+**Phase 0 exit gate passed:** [x]
 
 **Notes:**
 
@@ -52,7 +52,15 @@ Exit gate: A user can register, receive a magic link, log in, receive a JWT, and
 - Added initial Dockerfiles and `docker-compose.yml` / `docker-compose.prod.yml` scaffolding for api, worker, scheduler, reverb, horizon, web, postgres, and redis.
 - Added versioned API routing with a JSON health endpoint and replaced the default Vue starter with a router/auth/realtime shell.
 - Added the full auth route surface and first-pass backend implementation for login, magic-link request/verify, refresh rotation, logout, logout-all, JWT verification middleware, and `MagicLinkMail`.
-- Remaining phase 0 work is still substantial: full domain migrations, JWT issuance and refresh flow, magic-link auth, broadcasting auth, Horizon/Reverb runtime verification in Docker, and B2/mail end-to-end tests.
+- Resolved JWT middleware compatibility issues with `lcobucci/jwt` v5 (`Parser` decoder + clock usage) so protected API calls and refresh recovery work reliably.
+- Verified runtime checks in Docker on 2026-04-03:
+- Auth login returns JWT and `/api/v1/me` succeeds.
+- Refresh token rotation via `/api/v1/auth/refresh` returns a new access token and authenticated follow-up call succeeds.
+- Magic-link verification endpoint returns a valid session payload.
+- Reverb private channel auth endpoint (`/api/v1/broadcasting/auth`) returns auth signature with JWT.
+- B2 smoke endpoint (`/api/v1/verification/storage-smoke`) succeeds and returns temporary URL.
+- Horizon responds at `/horizon` (HTTP 200).
+- Switched local Docker workflow to source bind mounts for API and web services to avoid rebuilds during development.
 
 ---
 
@@ -60,7 +68,7 @@ Exit gate: A user can register, receive a magic link, log in, receive a JWT, and
 
 Exit gate: User submits a script → watches generation progress in real time → lands in Editor with scenes, visuals, and audio populated.
 
-- [ ] Workspace CRUD endpoints
+- [x] Workspace CRUD endpoints
 - [ ] Channel CRUD endpoints
 - [ ] BrandKit CRUD endpoints
 - [ ] VoiceProfile model — seeded with OpenAI TTS voices
@@ -80,6 +88,8 @@ Exit gate: User submits a script → watches generation progress in real time �
 **Phase 1 exit gate passed:** [ ]
 
 **Notes:**
+
+- Added authenticated Workspace CRUD API endpoints under `/api/v1/workspaces` with workspace scoping and archive-on-delete behavior.
 
 ---
 
