@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\BrandKit\BrandKitController;
 use App\Http\Controllers\Api\V1\Channel\ChannelController;
 use App\Http\Controllers\Api\V1\Project\ProjectController;
+use App\Http\Controllers\Api\V1\Scene\SceneController;
 use App\Http\Controllers\Api\V1\System\HealthCheckController;
 use App\Http\Controllers\Api\V1\System\NotificationController;
 use App\Http\Controllers\Api\V1\System\VerificationController;
@@ -58,6 +59,13 @@ Route::prefix('v1')->group(function (): void {
         Route::prefix('/projects')->group(function (): void {
             Route::post('/', [ProjectController::class, 'store']);
             Route::get('/{projectId}', [ProjectController::class, 'show'])->whereNumber('projectId');
+        });
+
+        Route::prefix('/scenes')->group(function (): void {
+            Route::patch('/reorder', [SceneController::class, 'reorder']);
+            Route::patch('/{sceneId}', [SceneController::class, 'update'])->whereNumber('sceneId');
+            Route::post('/{sceneId}/duplicate', [SceneController::class, 'duplicate'])->whereNumber('sceneId');
+            Route::delete('/{sceneId}', [SceneController::class, 'destroy'])->whereNumber('sceneId');
         });
     });
 });

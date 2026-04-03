@@ -115,7 +115,7 @@ Exit gate: User submits a script → watches generation progress in real time �
 
 Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 
-- [ ] Scene CRUD endpoints (update, reorder, delete, duplicate)
+- [x] Scene CRUD endpoints (update, reorder, delete, duplicate)
 - [ ] Scene rewrite endpoint — `scene_rewrite` prompt, respects `locked_fields_json`
 - [ ] Voice override per scene — saves `voice_settings_json`
 - [ ] Visual swap per scene — calls visual adapter, updates `visual_asset_id`
@@ -131,6 +131,8 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 **Phase 2 exit gate passed:** [ ]
 
 **Notes:**
+
+- Added authenticated Scene CRUD endpoints under `/api/v1/scenes` for update, reorder, duplicate, and delete with strict workspace scoping through project ownership.
 
 ---
 
