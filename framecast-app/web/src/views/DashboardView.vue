@@ -185,6 +185,17 @@ function formatDurationLabel(seconds) {
   return `${mins}:${String(secs).padStart(2, '0')}`
 }
 
+function openProject(project) {
+  if (!project?.id) return
+
+  if (project.status === 'generating') {
+    router.push({ name: 'generation-progress', params: { projectId: project.id } })
+    return
+  }
+
+  router.push({ name: 'project-editor', params: { projectId: project.id } })
+}
+
 function queueRowsFromProjects(projectList) {
   return projectList
     .filter((project) => ['generating', 'ready_for_review', 'failed'].includes(project.status))
@@ -491,9 +502,9 @@ onBeforeUnmount(() => {
             v-for="project in projects.slice(0, 4)"
             :key="project.id"
             class="project-card"
-            @click="router.push({ name: 'project-editor', params: { projectId: project.id } })"
-            @keydown.enter="router.push({ name: 'project-editor', params: { projectId: project.id } })"
-            @keydown.space.prevent="router.push({ name: 'project-editor', params: { projectId: project.id } })"
+            @click="openProject(project)"
+            @keydown.enter="openProject(project)"
+            @keydown.space.prevent="openProject(project)"
             tabindex="0"
             role="button"
           >
@@ -556,7 +567,12 @@ onBeforeUnmount(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in queueRows" :key="row.id">
+              <tr
+                v-for="row in queueRows"
+                :key="row.id"
+                class="queue-row"
+                @click="openProject({ id: row.id, status: row.projectStatus })"
+              >
                 <td class="queue-primary">{{ row.project }}</td>
                 <td class="queue-muted">{{ row.channel }}</td>
                 <td>{{ row.variants }}</td>

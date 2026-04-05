@@ -48,7 +48,8 @@ class OpenAITTSAdapter implements TTSAdapter
             'ContentType' => 'audio/mpeg',
         ]);
 
-        $audioUrl = Storage::disk('b2')->temporaryUrl($path, now()->addYear());
+        // S3 v4 presigned URLs must expire within 7 days.
+        $audioUrl = Storage::disk('b2')->temporaryUrl($path, now()->addDays(6));
 
         return [
             'audio_url' => $audioUrl,

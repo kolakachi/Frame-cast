@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "../services/api";
+import { getEcho } from "../services/echo";
 import { useAuthStore } from "../stores/auth";
 
 const route = useRoute();
@@ -17,6 +18,10 @@ const hookOptions = ref([]);
 const mePayload = ref(null);
 const activeSceneId = ref(null);
 const showUserPopover = ref(false);
+const notificationDrawerOpen = ref(false);
+const notifications = ref([]);
+const notificationToasts = ref([]);
+let workspaceChannelName = null;
 
 const audioRef = ref(null);
 const isAudioPlaying = ref(false);
@@ -59,6 +64,9 @@ const activeSceneIndex = computed(() =>
 );
 const projectTitle = computed(
   () => project.value?.title || `Project #${projectId.value}`
+);
+const unreadCount = computed(() =>
+  notifications.value.filter((item) => !item.is_read).length
 );
 
 const sceneTypeOptions = [
@@ -152,6 +160,17 @@ const previewTimer = computed(() => {
   };
 });
 
+function formatNotifTime(value) {
+  if (!value) return "now";
+  const ts = new Date(value).getTime();
+  const delta = Math.floor((Date.now() - ts) / 60000);
+  if (delta < 1) return "now";
+  if (delta < 60) return `${delta} min ago`;
+  const hrs = Math.floor(delta / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
 async function loadProject() {
   loading.value = true;
   error.value = "";
@@ -174,8 +193,78 @@ async function loadMe() {
   try {
     const response = await api.get("/me");
     mePayload.value = response.data?.data?.user ?? null;
+    await loadNotifications();
+    subscribeWorkspaceNotifications();
   } catch {
     mePayload.value = null;
+  }
+}
+
+async function loadNotifications() {
+  try {
+    const response = await api.get("/notifications");
+    notifications.value = response.data?.data?.notifications ?? [];
+  } catch {
+    notifications.value = [];
+  }
+}
+
+async function markNotificationRead(notificationId) {
+  try {
+    await api.post(`/notifications/${notificationId}/read`);
+    notifications.value = notifications.value.map((item) =>
+      item.id === notificationId ? { ...item, is_read: true } : item
+    );
+  } catch {
+    // no-op
+  }
+}
+
+async function markAllRead() {
+  const unread = notifications.value.filter((item) => !item.is_read);
+  await Promise.all(unread.map((item) => markNotificationRead(item.id)));
+}
+
+function pushToast(notification) {
+  notificationToasts.value = [notification, ...notificationToasts.value].slice(0, 3);
+  window.setTimeout(() => {
+    notificationToasts.value = notificationToasts.value.filter((toast) => toast.id !== notification.id);
+  }, 5000);
+}
+
+function subscribeWorkspaceNotifications() {
+  const echo = getEcho();
+  const workspaceId = mePayload.value?.workspace_id;
+
+  if (!echo || !workspaceId) return;
+
+  if (workspaceChannelName) {
+    echo.leave(workspaceChannelName);
+  }
+
+  workspaceChannelName = `workspace.${workspaceId}`;
+
+  echo.private(workspaceChannelName).listen(".notification.created", (payload) => {
+    const normalized = {
+      id: payload.id,
+      type: payload.type,
+      title: payload.title,
+      message: payload.message,
+      payload: payload.payload,
+      is_read: payload.is_read,
+      created_at: payload.created_at,
+    };
+
+    notifications.value = [normalized, ...notifications.value].slice(0, 50);
+    pushToast(normalized);
+  });
+}
+
+function unsubscribeWorkspaceNotifications() {
+  const echo = getEcho();
+
+  if (echo && workspaceChannelName) {
+    echo.leave(workspaceChannelName);
   }
 }
 
@@ -272,6 +361,10 @@ onMounted(() => {
   loadMe();
   loadProject();
 });
+
+onBeforeUnmount(() => {
+  unsubscribeWorkspaceNotifications();
+});
 </script>
 
 <template>
@@ -311,7 +404,7 @@ onMounted(() => {
             <span class="tooltip">Dashboard</span>
           </button>
 
-          <button class="nav-item active" type="button">
+          <button class="nav-item" type="button">
             <svg
               width="18"
               height="18"
@@ -324,13 +417,13 @@ onMounted(() => {
                 d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"
               ></path>
             </svg>
-            <span class="tooltip">Editor</span>
+            <span class="tooltip">Asset Library</span>
           </button>
 
           <button
-            class="nav-item"
+            class="nav-item active"
             type="button"
-            @click="router.push({ name: 'dashboard' })"
+            aria-current="page"
           >
             <svg
               width="18"
@@ -340,30 +433,10 @@ onMounted(() => {
               stroke-width="1.8"
               viewBox="0 0 24 24"
             >
-              <path d="M12 20h9"></path>
-              <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
-            <span class="tooltip">Variants</span>
-          </button>
-
-          <button
-            class="nav-item"
-            type="button"
-            @click="router.push({ name: 'dashboard' })"
-          >
-            <svg
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <path d="M7 10l5 5 5-5"></path>
-              <path d="M12 15V3"></path>
-            </svg>
-            <span class="tooltip">Assets</span>
+            <span class="tooltip">Settings</span>
           </button>
         </div>
 
@@ -398,15 +471,12 @@ onMounted(() => {
           </div>
 
           <div class="topbar-right">
-            <button
-              class="btn btn-ghost"
-              type="button"
-              @click="router.push({ name: 'dashboard' })"
-            >
-              + New Video
-            </button>
+            <button class="btn btn-ghost" type="button" @click="router.push({ name: 'dashboard' })">+ New Video</button>
             <button class="btn btn-primary" type="button">Export</button>
-            <button class="notif-bell-btn" type="button">
+            <button class="btn btn-ghost btn-back" type="button" @click="router.push({ name: 'dashboard' })">
+              Back to Dashboard
+            </button>
+            <button class="notif-bell-btn" type="button" title="Notifications" @click="notificationDrawerOpen = !notificationDrawerOpen">
               <svg
                 width="16"
                 height="16"
@@ -418,7 +488,7 @@ onMounted(() => {
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
                 <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
               </svg>
-              <span class="notif-badge">3</span>
+              <span v-if="unreadCount > 0" class="notif-badge">{{ unreadCount }}</span>
             </button>
           </div>
         </header>
@@ -511,13 +581,9 @@ onMounted(() => {
                   @keydown.space.prevent="selectScene(scene.id)"
                 >
                   <div class="scene-number">
-                    Scene {{ scene.scene_order
-                    }}<span v-if="index === 0">
-                      · {{ sceneTypeLabel(index) }}</span
-                    >
-                    <span v-if="index === 0" class="inline-warn"
-                      >Voice outdated</span
-                    >
+                    Scene {{ scene.scene_order }}
+                    <span v-if="index === 0"> · {{ sceneTypeLabel(index) }}</span>
+                    <span v-if="index === 0" class="inline-warn">Voice outdated</span>
                   </div>
                   <div class="scene-text">{{ scene.script_text }}</div>
                   <div class="scene-meta">
@@ -834,9 +900,7 @@ onMounted(() => {
                   </select>
                 </div>
                 <div class="voice-warning-row">
-                  <span class="voice-warning-copy"
-                    >Script changed — voice outdated</span
-                  >
+                  <span class="voice-warning-copy">Script changed — voice outdated</span>
                   <button class="regen-btn" type="button">Regenerate</button>
                 </div>
               </div>
@@ -935,6 +999,40 @@ onMounted(() => {
       </div>
     </template>
 
+    <div :class="`drawer-backdrop ${notificationDrawerOpen ? 'open' : ''}`" @click="notificationDrawerOpen = false"></div>
+    <aside :class="`drawer drawer-notif ${notificationDrawerOpen ? 'open' : ''}`">
+      <div class="drawer-header">
+        <div class="drawer-title">Notifications</div>
+        <button class="mark-read-btn" type="button" @click="markAllRead">Mark all read</button>
+      </div>
+      <div v-if="notifications.length === 0" class="notif-empty">No notifications yet</div>
+      <article
+        v-for="item in notifications"
+        :key="item.id"
+        :class="`notif-item ${item.is_read ? '' : 'unread'}`"
+        @click="!item.is_read && markNotificationRead(item.id)"
+      >
+        <div :class="`notif-icon-wrap ${item.type === 'success' ? 'success' : item.type === 'error' ? 'error' : 'warning'}`">
+          {{ item.type === 'success' ? '✓' : item.type === 'error' ? '✕' : '•' }}
+        </div>
+        <div class="notif-body">
+          <div class="notif-msg">{{ item.title }}</div>
+          <div class="notif-time">{{ formatNotifTime(item.created_at) }}</div>
+          <div class="notif-detail">{{ item.message }}</div>
+        </div>
+        <div v-if="!item.is_read" class="notif-unread-dot"></div>
+      </article>
+    </aside>
+
+    <div class="toast-container">
+      <div v-for="toast in notificationToasts" :key="toast.id" class="toast">
+        <div class="toast-dot"></div>
+        <div class="toast-content">
+          <div class="toast-msg"><strong>{{ toast.title }}</strong> — {{ toast.message }}</div>
+        </div>
+      </div>
+    </div>
+
     <audio
       v-if="activeSceneAudioUrl"
       ref="audioRef"
@@ -1019,6 +1117,12 @@ textarea {
 button {
   background: none;
   border: none;
+}
+
+.sidebar-logo,
+.avatar,
+.user-popover-action {
+  cursor: pointer;
 }
 
 .sidebar {
@@ -1190,6 +1294,10 @@ button {
   gap: 10px;
 }
 
+.btn-back {
+  white-space: nowrap;
+}
+
 .topbar-title {
   font-size: 16px;
   font-weight: 600;
@@ -1261,6 +1369,171 @@ button {
 .notif-bell-btn:hover {
   color: var(--text-primary);
   border-color: var(--border-active);
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 5, 10, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 180;
+}
+
+.drawer-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  height: 100vh;
+  background: rgba(17, 17, 24, 0.98);
+  border-left: 1px solid var(--border);
+  transform: translateX(100%);
+  transition: transform 0.24s ease;
+  z-index: 190;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.drawer.open {
+  transform: translateX(0);
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.drawer-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.mark-read-btn {
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.notif-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.notif-item {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.notif-item:first-of-type {
+  border-top: 0;
+}
+
+.notif-item.unread .notif-msg {
+  color: var(--text-primary);
+}
+
+.notif-icon-wrap {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.notif-icon-wrap.success {
+  background: rgba(52, 211, 153, 0.12);
+  color: #34d399;
+}
+
+.notif-icon-wrap.error {
+  background: rgba(248, 113, 113, 0.12);
+  color: #f87171;
+}
+
+.notif-icon-wrap.warning {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+}
+
+.notif-body {
+  min-width: 0;
+}
+
+.notif-msg {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.notif-time,
+.notif-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.notif-detail {
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+.notif-unread-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.toast-container {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: grid;
+  gap: 12px;
+  z-index: 220;
+}
+
+.toast {
+  display: flex;
+  gap: 10px;
+  min-width: 280px;
+  max-width: 360px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(17, 17, 24, 0.96);
+  box-shadow: var(--shadow);
+}
+
+.toast-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.toast-msg {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
 }
 
 .notif-badge {
