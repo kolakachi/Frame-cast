@@ -46,10 +46,9 @@ class OpenAITTSAdapter implements TTSAdapter
         \Illuminate\Support\Facades\Storage::disk('b2')->put($path, $response->body(), [
             'ContentType' => 'audio/mpeg',
         ]);
-        $audioUrl = $this->objectUrl($path);
 
         return [
-            'audio_url' => $audioUrl,
+            'audio_url' => 'b2://'.$path,
             'duration_seconds' => $this->estimateDuration($text, $speed),
             'provider_key' => 'openai',
             'provider_voice_id' => $safeVoice,
@@ -63,17 +62,5 @@ class OpenAITTSAdapter implements TTSAdapter
         $seconds = ($wordCount / $wpm) * 60.0;
 
         return max(2.0, round($seconds, 2));
-    }
-
-    private function objectUrl(string $path): string
-    {
-        $endpoint = rtrim((string) config('filesystems.disks.b2.endpoint'), '/');
-        $bucket = trim((string) config('filesystems.disks.b2.bucket'));
-
-        if ($endpoint === '' || $bucket === '') {
-            throw new RuntimeException('B2 endpoint or bucket is not configured.');
-        }
-
-        return sprintf('%s/%s/%s', $endpoint, $bucket, ltrim($path, '/'));
     }
 }

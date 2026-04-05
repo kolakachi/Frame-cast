@@ -36,6 +36,15 @@ class AssetController extends Controller
             ], 422);
         }
 
+        if (! Storage::disk('b2')->exists($path)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'asset_missing',
+                    'message' => 'Asset file not found in storage.',
+                ],
+            ], 404);
+        }
+
         $stream = Storage::disk('b2')->readStream($path);
 
         if (! is_resource($stream)) {

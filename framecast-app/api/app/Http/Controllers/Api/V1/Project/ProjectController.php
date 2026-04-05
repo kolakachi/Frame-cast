@@ -344,7 +344,7 @@ class ProjectController extends Controller
 
         if ($this->isB2Url($storageUrl)) {
             return URL::temporarySignedRoute(
-                'api.v1.assets.content',
+                'media.assets.content',
                 now()->addHours(6),
                 ['assetId' => $asset->getKey()],
             );

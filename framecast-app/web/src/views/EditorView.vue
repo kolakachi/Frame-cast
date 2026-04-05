@@ -25,6 +25,14 @@ let workspaceChannelName = null;
 
 const audioRef = ref(null);
 const isAudioPlaying = ref(false);
+const isAudioLoading = ref(false);
+const currentVisualUrl = ref(null);
+const visualLoadFailed = ref(false);
+const mediaCache = ref({
+  visual: {},
+  audio: {},
+});
+const mediaPreloaders = new Map();
 
 const addScenePanelPosition = ref("");
 const selectedSceneType = ref("Narration");
@@ -49,9 +57,24 @@ const activeScene = computed(
 const activeSceneVisualUrl = computed(
   () => activeScene.value?.visual_asset?.storage_url ?? null
 );
+const activeSceneVisualAsset = computed(() => activeScene.value?.visual_asset ?? null);
+const activeSceneVisualIsVideo = computed(() => {
+  const asset = activeSceneVisualAsset.value;
+  if (!asset) return false;
+  return asset.asset_type === "video" || String(asset.mime_type || "").startsWith("video/");
+});
 const activeSceneAudioUrl = computed(
   () => activeScene.value?.audio_asset?.storage_url ?? null
 );
+const activeSceneVisualLoaded = computed(() => {
+  const sceneId = activeSceneId.value;
+  if (!sceneId || !activeSceneVisualUrl.value) return false;
+  return Boolean(mediaCache.value.visual[sceneId]?.loaded);
+});
+const isVisualLoading = computed(() => {
+  if (!activeSceneVisualUrl.value) return false;
+  return !activeSceneVisualLoaded.value && !visualLoadFailed.value;
+});
 const activeVoiceName = computed(() => {
   const voiceId = activeScene.value?.voice_settings?.voice_id;
   return voiceId ? voiceId.charAt(0).toUpperCase() + voiceId.slice(1) : "Default";
@@ -93,11 +116,19 @@ watch(
     rewriteCustomInstruction.value = "";
     if (audioRef.value) {
       audioRef.value.pause();
+      audioRef.value.load();
       isAudioPlaying.value = false;
     }
+    isAudioLoading.value = false;
+    visualLoadFailed.value = false;
+    syncActiveSceneMedia(scene);
   },
   { immediate: true }
 );
+
+watch(activeSceneVisualUrl, () => {
+  visualLoadFailed.value = false;
+});
 
 function sceneTypeLabel(index) {
   if (index === 0) return "Hook";
@@ -171,6 +202,178 @@ function formatNotifTime(value) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function updateVisualCache(sceneId, value) {
+  mediaCache.value = {
+    ...mediaCache.value,
+    visual: {
+      ...mediaCache.value.visual,
+      [sceneId]: {
+        ...(mediaCache.value.visual[sceneId] || {}),
+        ...value,
+      },
+    },
+  };
+}
+
+function updateAudioCache(sceneId, value) {
+  mediaCache.value = {
+    ...mediaCache.value,
+    audio: {
+      ...mediaCache.value.audio,
+      [sceneId]: {
+        ...(mediaCache.value.audio[sceneId] || {}),
+        ...value,
+      },
+    },
+  };
+}
+
+function syncActiveSceneMedia(scene) {
+  const sceneId = scene?.id;
+  if (!sceneId) {
+    currentVisualUrl.value = null;
+    return;
+  }
+
+  const visualUrl = scene.visual_asset?.storage_url ?? null;
+  const cachedVisual = mediaCache.value.visual[sceneId];
+
+  if (!visualUrl) {
+    currentVisualUrl.value = null;
+  } else if (cachedVisual?.loaded) {
+    currentVisualUrl.value = visualUrl;
+  } else {
+    currentVisualUrl.value = null;
+  }
+
+  if (visualUrl) {
+    preloadSceneVisual(scene);
+  }
+
+  if (scene.audio_asset?.storage_url) {
+    preloadSceneAudio(scene);
+  }
+}
+
+function preloadSceneVisual(scene) {
+  const sceneId = scene?.id;
+  const asset = scene?.visual_asset;
+  const url = asset?.storage_url;
+
+  if (!sceneId || !url) return;
+
+  const cached = mediaCache.value.visual[sceneId];
+  if (cached?.loaded && cached.url === url) {
+    if (activeSceneId.value === sceneId) {
+      currentVisualUrl.value = url;
+    }
+    return;
+  }
+
+  const preloadKey = `visual:${sceneId}:${url}`;
+  if (mediaPreloaders.has(preloadKey)) return;
+
+  updateVisualCache(sceneId, { url, loaded: false, failed: false });
+
+  const isVideo =
+    asset?.asset_type === "video" ||
+    String(asset?.mime_type || "").startsWith("video/");
+
+  if (isVideo) {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    const clear = () => mediaPreloaders.delete(preloadKey);
+
+    video.onloadeddata = () => {
+      updateVisualCache(sceneId, { url, loaded: true, failed: false });
+      if (activeSceneId.value === sceneId) {
+        currentVisualUrl.value = url;
+      }
+      clear();
+    };
+    video.onerror = () => {
+      updateVisualCache(sceneId, { url, loaded: false, failed: true });
+      if (activeSceneId.value === sceneId) {
+        visualLoadFailed.value = true;
+        currentVisualUrl.value = null;
+      }
+      clear();
+    };
+
+    mediaPreloaders.set(preloadKey, video);
+    video.src = url;
+    video.load();
+    return;
+  }
+
+  const image = new Image();
+  image.onload = () => {
+    updateVisualCache(sceneId, { url, loaded: true, failed: false });
+    if (activeSceneId.value === sceneId) {
+      currentVisualUrl.value = url;
+    }
+    mediaPreloaders.delete(preloadKey);
+  };
+  image.onerror = () => {
+    updateVisualCache(sceneId, { url, loaded: false, failed: true });
+    if (activeSceneId.value === sceneId) {
+      visualLoadFailed.value = true;
+      currentVisualUrl.value = null;
+    }
+    mediaPreloaders.delete(preloadKey);
+  };
+
+  mediaPreloaders.set(preloadKey, image);
+  image.src = url;
+}
+
+function preloadSceneAudio(scene) {
+  const sceneId = scene?.id;
+  const url = scene?.audio_asset?.storage_url;
+
+  if (!sceneId || !url) return;
+
+  const cached = mediaCache.value.audio[sceneId];
+  if (cached?.loaded && cached.url === url) return;
+
+  const preloadKey = `audio:${sceneId}:${url}`;
+  if (mediaPreloaders.has(preloadKey)) return;
+
+  updateAudioCache(sceneId, { url, loaded: false, failed: false });
+
+  const audio = new Audio();
+  audio.preload = "metadata";
+  const clear = () => mediaPreloaders.delete(preloadKey);
+
+  audio.onloadeddata = () => {
+    updateAudioCache(sceneId, { url, loaded: true, failed: false });
+    if (activeSceneId.value === sceneId) {
+      isAudioLoading.value = false;
+    }
+    clear();
+  };
+  audio.oncanplaythrough = () => {
+    updateAudioCache(sceneId, { url, loaded: true, failed: false });
+    if (activeSceneId.value === sceneId) {
+      isAudioLoading.value = false;
+    }
+    clear();
+  };
+  audio.onerror = () => {
+    updateAudioCache(sceneId, { url, loaded: false, failed: true });
+    if (activeSceneId.value === sceneId) {
+      isAudioLoading.value = false;
+    }
+    clear();
+  };
+
+  mediaPreloaders.set(preloadKey, audio);
+  audio.src = url;
+  audio.load();
+}
+
 async function loadProject() {
   loading.value = true;
   error.value = "";
@@ -181,6 +384,10 @@ async function loadProject() {
     scenes.value = response.data?.data?.scenes ?? [];
     hookOptions.value = response.data?.data?.hook_options ?? [];
     activeSceneId.value = scenes.value[0]?.id ?? null;
+    scenes.value.forEach((scene) => {
+      preloadSceneVisual(scene);
+      preloadSceneAudio(scene);
+    });
   } catch (requestError) {
     error.value =
       requestError.response?.data?.error?.message ?? "Project load failed.";
@@ -347,12 +554,16 @@ function acceptRewrite() {
 
 function toggleAudioPlayback() {
   if (!audioRef.value || !activeSceneAudioUrl.value) return;
+  isAudioLoading.value = true;
+  preloadSceneAudio(activeScene.value);
   if (isAudioPlaying.value) {
     audioRef.value.pause();
+    isAudioLoading.value = false;
   } else {
     audioRef.value.currentTime = 0;
     audioRef.value.play().catch(() => {
       isAudioPlaying.value = false;
+      isAudioLoading.value = false;
     });
   }
 }
@@ -363,6 +574,13 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  mediaPreloaders.forEach((media) => {
+    media.onload = null;
+    media.onerror = null;
+    media.onloadeddata = null;
+    media.oncanplaythrough = null;
+  });
+  mediaPreloaders.clear();
   unsubscribeWorkspaceNotifications();
 });
 </script>
@@ -372,7 +590,7 @@ onBeforeUnmount(() => {
     <section v-if="loading" class="state-card">Loading project...</section>
     <section v-else-if="error" class="state-card error">{{ error }}</section>
 
-    <template v-else>
+    <div v-else class="editor-shell">
       <aside class="sidebar">
         <button
           class="sidebar-logo"
@@ -689,12 +907,18 @@ onBeforeUnmount(() => {
             <div class="preview-container">
               <div class="preview-video-bg">
                 <img
-                  v-if="activeSceneVisualUrl"
-                  :src="activeSceneVisualUrl"
+                  v-if="currentVisualUrl"
+                  :src="currentVisualUrl"
                   class="preview-image"
                   alt=""
                 />
                 <div v-else class="preview-fallback"></div>
+                <div v-if="isVisualLoading" class="preview-loading">
+                  Loading scene media...
+                </div>
+                <div v-else-if="visualLoadFailed" class="preview-loading error">
+                  Media unavailable
+                </div>
                 <div class="preview-watermark">FRAMECAST</div>
                 <div class="preview-timer">
                   {{ previewTimer.elapsed }} / {{ previewTimer.total }}
@@ -879,7 +1103,7 @@ onBeforeUnmount(() => {
                     :title="activeSceneAudioUrl ? '' : 'No audio generated'"
                     @click="toggleAudioPlayback"
                   >
-                    {{ isAudioPlaying ? "⏸" : "▶" }}
+                    {{ isAudioLoading ? "…" : isAudioPlaying ? "⏸" : "▶" }}
                   </div>
                 </div>
                 <div class="control-row top-space">
@@ -902,6 +1126,9 @@ onBeforeUnmount(() => {
                 <div class="voice-warning-row">
                   <span class="voice-warning-copy">Script changed — voice outdated</span>
                   <button class="regen-btn" type="button">Regenerate</button>
+                </div>
+                <div v-if="isAudioLoading" class="voice-loading-copy">
+                  Loading audio...
                 </div>
               </div>
             </div>
@@ -997,7 +1224,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-    </template>
+    </div>
 
     <div :class="`drawer-backdrop ${notificationDrawerOpen ? 'open' : ''}`" @click="notificationDrawerOpen = false"></div>
     <aside :class="`drawer drawer-notif ${notificationDrawerOpen ? 'open' : ''}`">
@@ -1037,9 +1264,14 @@ onBeforeUnmount(() => {
       v-if="activeSceneAudioUrl"
       ref="audioRef"
       :src="activeSceneAudioUrl"
+      preload="metadata"
+      @loadstart="isAudioLoading = true"
+      @canplay="isAudioLoading = false"
+      @loadeddata="isAudioLoading = false"
       @ended="isAudioPlaying = false"
       @play="isAudioPlaying = true"
       @pause="isAudioPlaying = false"
+      @error="isAudioLoading = false"
     ></audio>
   </main>
 </template>
@@ -1907,6 +2139,23 @@ button {
   background: linear-gradient(180deg, #1a1a3e 0%, #0d0d2b 40%, #1a0a2e 100%);
 }
 
+.preview-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 15, 0.46);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.preview-loading.error {
+  color: #fca5a5;
+}
+
 .preview-caption {
   position: absolute;
   bottom: 100px;
@@ -2227,6 +2476,12 @@ select.control-value {
 .voice-warning-copy {
   font-size: 11px;
   color: var(--yellow);
+}
+
+.voice-loading-copy {
+  margin-top: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .regen-btn {
