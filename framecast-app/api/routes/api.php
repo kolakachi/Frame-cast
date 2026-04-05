@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
+use App\Http\Controllers\Api\V1\Asset\AssetController;
 use App\Http\Controllers\Api\V1\BrandKit\BrandKitController;
 use App\Http\Controllers\Api\V1\Channel\ChannelController;
 use App\Http\Controllers\Api\V1\Project\ProjectController;
@@ -14,6 +15,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
     Route::get('/health', HealthCheckController::class);
+    Route::get('/assets/{assetId}/content', [AssetController::class, 'content'])
+        ->whereNumber('assetId')
+        ->middleware('signed')
+        ->name('api.v1.assets.content');
 
     Route::prefix('/auth')->group(function (): void {
         Route::post('/login', [AuthController::class, 'login']);
@@ -31,7 +36,6 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/verification/storage-smoke', [VerificationController::class, 'storageSmoke']);
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
-
         Route::prefix('/workspaces')->group(function (): void {
             Route::get('/', [WorkspaceController::class, 'index']);
             Route::post('/', [WorkspaceController::class, 'store']);

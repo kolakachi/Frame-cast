@@ -14,6 +14,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
@@ -326,11 +327,48 @@ class ProjectController extends Controller
             'id' => $asset->getKey(),
             'asset_type' => $asset->asset_type,
             'title' => $asset->title,
-            'storage_url' => $asset->storage_url,
+            'storage_url' => $this->assetUrl($asset),
             'thumbnail_url' => $asset->thumbnail_url,
             'duration_seconds' => $asset->duration_seconds,
             'mime_type' => $asset->mime_type,
         ];
+    }
+
+    private function assetUrl(Asset $asset): ?string
+    {
+        $storageUrl = trim((string) $asset->storage_url);
+
+        if ($storageUrl === '') {
+            return null;
+        }
+
+        if ($this->isB2Url($storageUrl)) {
+            return URL::temporarySignedRoute(
+                'api.v1.assets.content',
+                now()->addHours(6),
+                ['assetId' => $asset->getKey()],
+            );
+        }
+
+        return $storageUrl;
+    }
+
+    private function isB2Url(string $url): bool
+    {
+        if (str_starts_with($url, 'b2://')) {
+            return true;
+        }
+
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $bucket = strtolower((string) config('filesystems.disks.b2.bucket'));
+
+        if ($host !== '' && str_contains($host, 'backblazeb2.com')) {
+            return true;
+        }
+
+        $path = strtolower(trim((string) parse_url($url, PHP_URL_PATH), '/'));
+
+        return $bucket !== '' && str_starts_with($path, $bucket.'/');
     }
 
     /**

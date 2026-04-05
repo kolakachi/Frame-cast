@@ -3,7 +3,6 @@
 namespace App\Services\Generation\TTS;
 
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -44,12 +43,10 @@ class OpenAITTSAdapter implements TTSAdapter
 
         $path = 'audio/tts/'.Str::uuid().'.mp3';
 
-        Storage::disk('b2')->put($path, $response->body(), [
+        \Illuminate\Support\Facades\Storage::disk('b2')->put($path, $response->body(), [
             'ContentType' => 'audio/mpeg',
         ]);
-
-        // S3 v4 presigned URLs must expire within 7 days.
-        $audioUrl = Storage::disk('b2')->temporaryUrl($path, now()->addDays(6));
+        $audioUrl = $this->objectUrl($path);
 
         return [
             'audio_url' => $audioUrl,
@@ -66,5 +63,17 @@ class OpenAITTSAdapter implements TTSAdapter
         $seconds = ($wordCount / $wpm) * 60.0;
 
         return max(2.0, round($seconds, 2));
+    }
+
+    private function objectUrl(string $path): string
+    {
+        $endpoint = rtrim((string) config('filesystems.disks.b2.endpoint'), '/');
+        $bucket = trim((string) config('filesystems.disks.b2.bucket'));
+
+        if ($endpoint === '' || $bucket === '') {
+            throw new RuntimeException('B2 endpoint or bucket is not configured.');
+        }
+
+        return sprintf('%s/%s/%s', $endpoint, $bucket, ltrim($path, '/'));
     }
 }
