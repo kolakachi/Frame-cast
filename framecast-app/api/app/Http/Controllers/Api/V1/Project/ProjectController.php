@@ -18,6 +18,29 @@ use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
+    public function index(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $projects = Project::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->withCount('scenes')
+            ->orderByDesc('id')
+            ->limit(30)
+            ->get();
+
+        return response()->json([
+            'data' => [
+                'projects' => $projects->map(fn (Project $project): array => [
+                    ...$this->serializeProject($project),
+                    'scenes_count' => (int) ($project->scenes_count ?? 0),
+                ])->all(),
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function show(Request $request, int $projectId): JsonResponse
     {
         /** @var User $user */
@@ -193,6 +216,31 @@ class ProjectController extends Controller
             ],
             'meta' => [],
         ], 201);
+    }
+
+    public function destroy(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $project->delete();
+
+        return response()->json([
+            'data' => [
+                'deleted' => true,
+                'project_id' => $projectId,
+            ],
+            'meta' => [],
+        ]);
     }
 
     /**

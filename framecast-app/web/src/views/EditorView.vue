@@ -18,6 +18,9 @@ const mePayload = ref(null);
 const activeSceneId = ref(null);
 const showUserPopover = ref(false);
 
+const audioRef = ref(null);
+const isAudioPlaying = ref(false);
+
 const addScenePanelPosition = ref("");
 const selectedSceneType = ref("Narration");
 const selectedVisualSource = ref("Stock Clip");
@@ -37,6 +40,19 @@ const sceneScriptDraft = ref("");
 
 const activeScene = computed(
   () => scenes.value.find((scene) => scene.id === activeSceneId.value) ?? null
+);
+const activeSceneVisualUrl = computed(
+  () => activeScene.value?.visual_asset?.storage_url ?? null
+);
+const activeSceneAudioUrl = computed(
+  () => activeScene.value?.audio_asset?.storage_url ?? null
+);
+const activeVoiceName = computed(() => {
+  const voiceId = activeScene.value?.voice_settings?.voice_id;
+  return voiceId ? voiceId.charAt(0).toUpperCase() + voiceId.slice(1) : "Default";
+});
+const activeVoiceSpeed = computed(
+  () => activeScene.value?.voice_settings?.speed ?? 1.0
 );
 const activeSceneIndex = computed(() =>
   scenes.value.findIndex((scene) => scene.id === activeSceneId.value)
@@ -67,6 +83,10 @@ watch(
     rewritePreviewVisible.value = false;
     rewritePreviewCopy.value = "";
     rewriteCustomInstruction.value = "";
+    if (audioRef.value) {
+      audioRef.value.pause();
+      isAudioPlaying.value = false;
+    }
   },
   { immediate: true }
 );
@@ -234,6 +254,18 @@ function acceptRewrite() {
   sceneScriptDraft.value = rewritePreviewCopy.value;
   activeScene.value.script_text = rewritePreviewCopy.value;
   rewritePreviewVisible.value = false;
+}
+
+function toggleAudioPlayback() {
+  if (!audioRef.value || !activeSceneAudioUrl.value) return;
+  if (isAudioPlaying.value) {
+    audioRef.value.pause();
+  } else {
+    audioRef.value.currentTime = 0;
+    audioRef.value.play().catch(() => {
+      isAudioPlaying.value = false;
+    });
+  }
 }
 
 onMounted(() => {
@@ -590,6 +622,13 @@ onMounted(() => {
           <div class="editor-canvas">
             <div class="preview-container">
               <div class="preview-video-bg">
+                <img
+                  v-if="activeSceneVisualUrl"
+                  :src="activeSceneVisualUrl"
+                  class="preview-image"
+                  alt=""
+                />
+                <div v-else class="preview-fallback"></div>
                 <div class="preview-watermark">FRAMECAST</div>
                 <div class="preview-timer">
                   {{ previewTimer.elapsed }} / {{ previewTimer.total }}
@@ -762,10 +801,20 @@ onMounted(() => {
                 <div class="voice-preview">
                   <div class="voice-avatar">🎙</div>
                   <div class="voice-info">
-                    <div class="voice-name">Marcus — Authority</div>
-                    <div class="voice-desc">Deep male · EN-US · 1.0x</div>
+                    <div class="voice-name">{{ activeVoiceName }}</div>
+                    <div class="voice-desc">
+                      {{ activeScene?.voice_settings?.language?.toUpperCase() || "EN" }} ·
+                      {{ activeVoiceSpeed }}x
+                    </div>
                   </div>
-                  <div class="voice-play">▶</div>
+                  <div
+                    class="voice-play"
+                    :class="{ disabled: !activeSceneAudioUrl }"
+                    :title="activeSceneAudioUrl ? '' : 'No audio generated'"
+                    @click="toggleAudioPlayback"
+                  >
+                    {{ isAudioPlaying ? "⏸" : "▶" }}
+                  </div>
                 </div>
                 <div class="control-row top-space">
                   <span class="control-name">Speed</span>
@@ -885,6 +934,15 @@ onMounted(() => {
         </div>
       </div>
     </template>
+
+    <audio
+      v-if="activeSceneAudioUrl"
+      ref="audioRef"
+      :src="activeSceneAudioUrl"
+      @ended="isAudioPlaying = false"
+      @play="isAudioPlaying = true"
+      @pause="isAudioPlaying = false"
+    ></audio>
   </main>
 </template>
 
@@ -1867,6 +1925,18 @@ select.control-value {
   justify-content: center;
   font-size: 12px;
   cursor: pointer;
+  transition: 0.15s;
+  flex-shrink: 0;
+}
+
+.voice-play:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.voice-play.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .voice-warning-row {

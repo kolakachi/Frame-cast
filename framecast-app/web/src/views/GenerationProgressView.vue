@@ -1,51 +1,117 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import api from '../services/api'
 import { getEcho } from '../services/echo'
 
 const route = useRoute()
 const router = useRouter()
 const projectId = computed(() => route.params.projectId)
 const connected = ref(false)
-const lastMessage = ref('Waiting for generation events…')
 const isTransitioningToEditor = ref(false)
+const subtitle = ref(`Project #${projectId.value}`)
+let channelName = null
+let pollTimer = null
 
 const stages = ref([
-  { key: 'script', label: 'Generate Script', status: 'pending' },
-  { key: 'scene_breakdown', label: 'Breakdown Scenes', status: 'pending' },
-  { key: 'hooks', label: 'Generate Hooks', status: 'pending' },
-  { key: 'visual_match', label: 'Match Visuals', status: 'pending' },
-  { key: 'tts', label: 'Generate TTS', status: 'pending' },
+  { key: 'script', label: 'Writing script', status: 'pending', statusText: 'Waiting' },
+  { key: 'scene_breakdown', label: 'Breaking into scenes', status: 'pending', statusText: 'Waiting' },
+  { key: 'visual_match', label: 'Matching visuals', status: 'pending', statusText: 'Waiting' },
+  { key: 'tts', label: 'Generating voice', status: 'pending', statusText: 'Waiting' },
+  { key: 'preview_assembly', label: 'Assembling preview', status: 'pending', statusText: 'Waiting' },
 ])
 
-let channelName = null
+const progressPercent = computed(() => {
+  const completeCount = stages.value.filter((stage) => stage.status === 'complete').length
+  const activeBonus = stages.value.some((stage) => stage.status === 'active') ? 0.5 : 0
+  return Math.round(((completeCount + activeBonus) / stages.value.length) * 100)
+})
 
-function statusClass(status) {
-  if (status === 'completed') return 'border-emerald-400/60 bg-emerald-500/10 text-emerald-300'
-  if (status === 'processing') return 'border-amber-400/60 bg-amber-500/10 text-amber-200'
-  if (status === 'failed') return 'border-red-400/60 bg-red-500/10 text-red-300'
-  return 'border-border bg-bg-card text-text-muted'
+function stageByKey(key) {
+  return stages.value.find((stage) => stage.key === key)
 }
 
-function updateStage(payload) {
-  const target = stages.value.find((stage) => stage.key === payload.stage)
+function markStage(key, status, statusText = '') {
+  const target = stageByKey(key)
+  if (!target) return
 
-  if (!target) {
+  target.status = status
+  target.statusText = statusText || (
+    status === 'complete' ? 'Done' : status === 'active' ? 'In progress' : status === 'failed' ? 'Failed' : 'Waiting'
+  )
+}
+
+function applyPipelineState(projectStatus) {
+  if (projectStatus === 'ready_for_review') {
+    stages.value.forEach((stage) => markStage(stage.key, 'complete', 'Done'))
+    maybeOpenEditor()
     return
   }
 
-  target.status = payload.status
-  lastMessage.value = payload.message || `${target.label}: ${payload.status}`
+  if (projectStatus === 'failed') {
+    const active = stages.value.find((stage) => stage.status === 'active') ?? stages.value[0]
+    markStage(active.key, 'failed', 'Failed')
+    return
+  }
 
-  const completed = stages.value.every((stage) => stage.status === 'completed')
+  if (projectStatus === 'generating' && stages.value.every((stage) => stage.status === 'pending')) {
+    markStage('script', 'active', 'Processing')
+  }
+}
 
-  if (completed && !isTransitioningToEditor.value) {
-    isTransitioningToEditor.value = true
-    lastMessage.value = 'Generation complete. Opening editor…'
+function maybeOpenEditor() {
+  if (isTransitioningToEditor.value) return
+  isTransitioningToEditor.value = true
 
-    window.setTimeout(() => {
-      router.push({ name: 'project-editor', params: { projectId: projectId.value } })
-    }, 1200)
+  window.setTimeout(() => {
+    router.push({ name: 'project-editor', params: { projectId: projectId.value } })
+  }, 1200)
+}
+
+function updateStageFromEvent(payload) {
+  const stageMap = {
+    script: 'script',
+    scene_breakdown: 'scene_breakdown',
+    visual_match: 'visual_match',
+    tts: 'tts',
+    hooks: 'preview_assembly',
+  }
+
+  const mappedKey = stageMap[payload.stage]
+  if (!mappedKey) return
+
+  if (payload.status === 'processing') {
+    markStage(mappedKey, 'active', payload.message || 'Processing')
+    return
+  }
+
+  if (payload.status === 'completed') {
+    markStage(mappedKey, 'complete', payload.message || 'Done')
+
+    if (mappedKey === 'tts') {
+      markStage('preview_assembly', 'complete', 'Done')
+      maybeOpenEditor()
+    }
+
+    return
+  }
+
+  if (payload.status === 'failed') {
+    markStage(mappedKey, 'failed', payload.message || 'Failed')
+  }
+}
+
+async function loadProjectStatus() {
+  try {
+    const response = await api.get(`/projects/${projectId.value}`)
+    const project = response.data?.data?.project
+
+    if (!project) return
+
+    subtitle.value = `${project.title || `Project #${project.id}`} · ${project.primary_language?.toUpperCase?.() || 'EN'} · ${project.aspect_ratio || '9:16'}`
+    applyPipelineState(project.status)
+  } catch {
+    // no-op
   }
 }
 
@@ -60,7 +126,7 @@ function subscribe() {
   channelName = `project.${projectId.value}`
   echo.private(channelName).listen('.generation.progress', (payload) => {
     connected.value = true
-    updateStage(payload)
+    updateStageFromEvent(payload)
   })
 }
 
@@ -72,54 +138,97 @@ function unsubscribe() {
   }
 }
 
-onMounted(() => {
+function startPolling() {
+  pollTimer = window.setInterval(() => {
+    loadProjectStatus()
+  }, 3000)
+}
+
+function stopPolling() {
+  if (!pollTimer) return
+  window.clearInterval(pollTimer)
+  pollTimer = null
+}
+
+onMounted(async () => {
+  await loadProjectStatus()
   subscribe()
+  startPolling()
 })
 
 onBeforeUnmount(() => {
   unsubscribe()
+  stopPolling()
 })
 </script>
 
 <template>
-  <main class="min-h-screen bg-bg-deep px-6 py-10 text-text-primary">
-    <div class="mx-auto max-w-4xl space-y-6">
-      <header class="rounded-lg border border-border bg-bg-panel p-6">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <p class="font-mono text-xs uppercase tracking-[0.25em] text-accent">Generation Progress</p>
-            <h1 class="mt-2 text-3xl font-semibold">Project #{{ projectId }}</h1>
-            <p class="mt-2 text-sm text-text-secondary">
-              Live pipeline status from Reverb `generation.progress` events.
-            </p>
-          </div>
-          <button
-            class="rounded-md border border-border px-4 py-2 text-sm text-text-secondary transition hover:border-border-active hover:text-text-primary"
-            type="button"
-            @click="router.push({ name: 'dashboard' })"
-          >
-            Back
-          </button>
+  <main class="gen-overlay show">
+    <div class="gen-panel">
+      <div class="gen-header">
+        <div class="gen-title">Generating your video…</div>
+        <div class="gen-subtitle">{{ subtitle }}</div>
+        <div class="gen-connection">
+          Socket: <span :class="connected ? 'ok' : 'waiting'">{{ connected ? 'Connected' : 'Waiting for events' }}</span>
         </div>
-      </header>
+      </div>
 
-      <section class="rounded-lg border border-border bg-bg-panel p-6">
-        <p class="text-sm text-text-muted">Socket status: <span :class="connected ? 'text-emerald-300' : 'text-amber-200'">{{ connected ? 'Connected' : 'Waiting for events' }}</span></p>
-        <p class="mt-2 text-sm text-text-secondary">{{ lastMessage }}</p>
-      </section>
+      <div class="gen-progress">
+        <div class="gen-progress-fill" :style="{ width: `${progressPercent}%` }"></div>
+      </div>
 
-      <section class="grid gap-3">
-        <article
+      <div class="gen-stages">
+        <div
           v-for="stage in stages"
           :key="stage.key"
-          :class="`rounded-lg border p-4 transition ${statusClass(stage.status)}`"
+          :class="`gen-stage ${stage.status}`"
         >
-          <div class="flex items-center justify-between">
-            <h2 class="text-base font-medium">{{ stage.label }}</h2>
-            <span class="text-xs uppercase tracking-[0.2em]">{{ stage.status }}</span>
+          <div class="gen-stage-icon">
+            {{ stage.status === 'complete' ? '✓' : stage.status === 'active' ? '⟳' : stage.status === 'failed' ? '✕' : '○' }}
           </div>
-        </article>
-      </section>
+          <div class="gen-stage-info">
+            <div class="gen-stage-name">{{ stage.label }}</div>
+            <div class="gen-stage-status">{{ stage.statusText }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gen-actions">
+        <button class="btn btn-ghost" type="button" @click="router.push({ name: 'dashboard' })">Back to Dashboard</button>
+      </div>
     </div>
   </main>
 </template>
+
+<style scoped>
+.gen-overlay { position: fixed; inset: 0; background: rgba(10,10,15,0.97); z-index: 200; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
+.gen-panel { width: 500px; max-width: calc(100vw - 32px); }
+.gen-header { margin-bottom: 32px; }
+.gen-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: var(--color-text-primary); }
+.gen-subtitle { color: var(--color-text-muted); font-size: 14px; }
+.gen-connection { margin-top: 8px; font-size: 12px; color: var(--color-text-muted); }
+.gen-connection .ok { color: #34d399; }
+.gen-connection .waiting { color: #fbbf24; }
+.gen-progress { height: 4px; border-radius: 999px; background: var(--color-bg-elevated); margin-bottom: 32px; overflow: hidden; }
+.gen-progress-fill { height: 100%; background: var(--color-accent); border-radius: 999px; transition: width 0.7s ease; }
+.gen-stages { display: grid; gap: 10px; margin-bottom: 32px; }
+.gen-stage { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--color-border); background: var(--color-bg-card); transition: border-color 0.2s, background 0.2s; }
+.gen-stage.active { border-color: rgba(255,107,53,0.35); background: rgba(255,107,53,0.05); }
+.gen-stage.complete { border-color: rgba(52,211,153,0.25); }
+.gen-stage.failed { border-color: rgba(248,113,113,0.3); }
+.gen-stage-icon { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.gen-stage.pending .gen-stage-icon { background: var(--color-bg-elevated); color: var(--color-text-muted); }
+.gen-stage.active .gen-stage-icon { background: rgba(255,107,53,0.14); color: var(--color-accent); }
+.gen-stage.complete .gen-stage-icon { background: rgba(52,211,153,0.12); color: #34d399; }
+.gen-stage.failed .gen-stage-icon { background: rgba(248,113,113,0.12); color: #f87171; }
+.gen-stage-info { flex: 1; }
+.gen-stage-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
+.gen-stage-status { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+.gen-stage.active .gen-stage-status { color: var(--color-accent); }
+.gen-stage.complete .gen-stage-status { color: #34d399; }
+.gen-stage.failed .gen-stage-status { color: #f87171; }
+.gen-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s ease; font-size: 13px; font-weight: 500; border: 1px solid transparent; }
+.btn-ghost { color: var(--color-text-secondary); background: transparent; border-color: var(--color-border); }
+.btn-ghost:hover { color: var(--color-text-primary); border-color: var(--color-border-active); }
+</style>

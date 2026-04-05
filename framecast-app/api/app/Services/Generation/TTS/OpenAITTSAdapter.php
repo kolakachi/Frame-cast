@@ -2,19 +2,59 @@
 
 namespace App\Services\Generation\TTS;
 
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class OpenAITTSAdapter implements TTSAdapter
 {
     public function synthesize(string $text, string $language, string $voiceId, float $speed = 1.0): array
     {
-        $seed = rawurlencode(Str::slug(mb_substr($text, 0, 40)).'-'.Str::random(6));
+        $apiKey = (string) config('services.openai.api_key');
+
+        if ($apiKey === '') {
+            $seed = rawurlencode(Str::slug(mb_substr($text, 0, 40)).'-'.Str::random(6));
+
+            return [
+                'audio_url' => "https://example.com/audio/{$seed}.mp3",
+                'duration_seconds' => $this->estimateDuration($text, $speed),
+                'provider_key' => 'openai',
+                'provider_voice_id' => $voiceId ?: 'alloy',
+            ];
+        }
+
+        $safeVoice = in_array($voiceId, ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'], true)
+            ? $voiceId
+            : 'alloy';
+
+        $response = Http::timeout(60)
+            ->withToken($apiKey)
+            ->post('https://api.openai.com/v1/audio/speech', [
+                'model' => 'tts-1',
+                'input' => $text ?: ' ',
+                'voice' => $safeVoice,
+                'speed' => max(0.25, min(4.0, $speed)),
+                'response_format' => 'mp3',
+            ]);
+
+        if (! $response->ok()) {
+            throw new RuntimeException('OpenAI TTS request failed with status '.$response->status().': '.$response->body());
+        }
+
+        $path = 'audio/tts/'.Str::uuid().'.mp3';
+
+        Storage::disk('b2')->put($path, $response->body(), [
+            'ContentType' => 'audio/mpeg',
+        ]);
+
+        $audioUrl = Storage::disk('b2')->temporaryUrl($path, now()->addYear());
 
         return [
-            'audio_url' => "https://example.com/audio/{$seed}.mp3",
+            'audio_url' => $audioUrl,
             'duration_seconds' => $this->estimateDuration($text, $speed),
             'provider_key' => 'openai',
-            'provider_voice_id' => $voiceId,
+            'provider_voice_id' => $safeVoice,
         ];
     }
 

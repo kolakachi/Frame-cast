@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Scene;
 use App\Http\Controllers\Controller;
 use App\Models\Scene;
 use App\Models\User;
+use App\Services\Generation\AI\AIGenerationAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -127,6 +128,73 @@ class SceneController extends Controller
         ], 201);
     }
 
+    public function rewrite(Request $request, int $sceneId, AIGenerationAdapter $ai): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $validated = $request->validate([
+            'mode' => ['required', 'string', 'in:shorten,expand,stronger_hook,more_punchy,more_educational,more_salesy,simplify'],
+            'apply' => ['nullable', 'boolean'],
+        ]);
+
+        $lockedFields = is_array($scene->locked_fields_json) ? $scene->locked_fields_json : [];
+
+        if (in_array('script_text', $lockedFields, true)) {
+            return $this->error('scene_locked', 'Scene script is locked and cannot be rewritten.', 422);
+        }
+
+        $generation = $ai->generate(
+            promptTemplateKey: 'scene_rewrite',
+            variables: [
+                'mode' => $validated['mode'],
+                'language' => (string) ($scene->project?->primary_language ?: 'en'),
+                'script_text' => (string) ($scene->script_text ?: ''),
+            ],
+            maxTokens: 450,
+            temperature: 0.55,
+        );
+
+        $candidate = trim((string) ($generation['content'] ?? ''));
+        $apply = (bool) ($validated['apply'] ?? false);
+
+        if ($candidate === '') {
+            return $this->error('rewrite_failed', 'Scene rewrite returned empty content.', 422);
+        }
+
+        if ($apply) {
+            $voiceSettings = is_array($scene->voice_settings_json) ? $scene->voice_settings_json : [];
+            $voiceSettings['is_outdated'] = true;
+
+            $scene->forceFill([
+                'script_text' => $candidate,
+                'status' => 'edited',
+                'voice_settings_json' => $voiceSettings,
+            ])->save();
+        }
+
+        return response()->json([
+            'data' => [
+                'rewrite' => [
+                    'mode' => $validated['mode'],
+                    'candidate' => $candidate,
+                    'provider_key' => $generation['provider_key'],
+                    'model' => $generation['model'],
+                    'tokens_used' => $generation['tokens_used'],
+                    'applied' => $apply,
+                ],
+                'scene' => $this->serializeScene($scene->fresh()),
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function destroy(Request $request, int $sceneId): JsonResponse
     {
         /** @var User $user */
@@ -161,6 +229,7 @@ class SceneController extends Controller
     private function resolveScene(int $sceneId, User $user): ?Scene
     {
         return Scene::query()
+            ->with('project')
             ->whereKey($sceneId)
             ->whereHas('project', function ($query) use ($user): void {
                 $query->where('workspace_id', $user->workspace_id);
