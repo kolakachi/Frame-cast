@@ -86,6 +86,9 @@ const activeVoiceName = computed(() => {
 const activeVoiceSpeed = computed(
   () => activeScene.value?.voice_settings?.speed ?? 1.0
 );
+const activeVoiceOutdated = computed(
+  () => Boolean(activeScene.value?.voice_settings?.is_outdated)
+);
 const activeSceneIndex = computed(() =>
   scenes.value.findIndex((scene) => scene.id === activeSceneId.value)
 );
@@ -164,6 +167,10 @@ function sceneVisualLabel(scene) {
   if (scene?.visual_asset?.asset_type === "video") return "stock clip";
   if (scene?.visual_asset?.asset_type === "image") return "ai image";
   return "bg loop";
+}
+
+function sceneVoiceOutdated(scene) {
+  return Boolean(scene?.voice_settings?.is_outdated);
 }
 
 function formatSceneDuration(value) {
@@ -613,6 +620,10 @@ async function acceptRewrite() {
 
   sceneScriptDraft.value = rewritePreviewCopy.value;
   activeScene.value.script_text = rewritePreviewCopy.value;
+  activeScene.value.voice_settings = {
+    ...(activeScene.value.voice_settings || {}),
+    is_outdated: true,
+  };
   rewritePreviewVisible.value = false;
 }
 
@@ -865,7 +876,9 @@ onBeforeUnmount(() => {
                   <div class="scene-number">
                     Scene {{ scene.scene_order }}
                     <span v-if="index === 0"> · {{ sceneTypeLabel(index) }}</span>
-                    <span v-if="index === 0" class="inline-warn">Voice outdated</span>
+                    <span :class="sceneVoiceOutdated(scene) ? 'inline-warn' : 'inline-warn state-hidden'">
+                      Voice outdated
+                    </span>
                   </div>
                   <div class="scene-text">{{ scene.script_text }}</div>
                   <div class="scene-meta">
@@ -1017,7 +1030,9 @@ onBeforeUnmount(() => {
               <div class="panel-section-header" @click="togglePanel('script')">
                 <div class="panel-label-row">
                   <div class="panel-label panel-label-tight">Scene Script</div>
-                  <span class="panel-badge warn">Voice outdated</span>
+                  <span :class="activeVoiceOutdated ? 'panel-badge warn' : 'panel-badge warn state-hidden'">
+                    Voice outdated
+                  </span>
                 </div>
                 <div class="panel-chevron">▾</div>
               </div>
@@ -1141,7 +1156,9 @@ onBeforeUnmount(() => {
               <div class="panel-section-header" @click="togglePanel('voice')">
                 <div class="panel-label-row">
                   <div class="panel-label panel-label-tight">Voice</div>
-                  <span class="panel-badge warn">Outdated</span>
+                  <span :class="activeVoiceOutdated ? 'panel-badge warn' : 'panel-badge warn state-hidden'">
+                    Outdated
+                  </span>
                 </div>
                 <div class="panel-chevron">▾</div>
               </div>
@@ -1181,7 +1198,7 @@ onBeforeUnmount(() => {
                     <option>High</option>
                   </select>
                 </div>
-                <div class="voice-warning-row">
+                <div :class="activeVoiceOutdated ? 'voice-warning-row' : 'voice-warning-row state-hidden'">
                   <span class="voice-warning-copy">Script changed — voice outdated</span>
                   <button class="regen-btn" type="button">Regenerate</button>
                 </div>
@@ -1916,6 +1933,10 @@ button {
   color: var(--yellow);
   font-weight: 600;
   margin-left: 4px;
+}
+
+.state-hidden {
+  display: none !important;
 }
 
 .scene-text {
