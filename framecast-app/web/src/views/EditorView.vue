@@ -42,6 +42,10 @@ const rewriteToolsVisible = ref(false);
 const rewritePreviewVisible = ref(false);
 const rewritePreviewCopy = ref("");
 const rewriteCustomInstruction = ref("");
+const rewriteMode = ref("");
+const rewritePending = ref(false);
+const rewriteApplyPending = ref(false);
+const rewriteError = ref("");
 const panelState = ref({
   script: false,
   visual: false,
@@ -105,6 +109,22 @@ const visualSourceOptions = [
   { label: "AI Image", icon: "🖼" },
   { label: "Text Only", icon: "Aa" },
 ];
+const rewriteOptions = [
+  "Shorten",
+  "Expand",
+  "Stronger hook",
+  "More punchy",
+  "More educational",
+  "Simplify",
+];
+const rewriteModeMap = {
+  Shorten: "shorten",
+  Expand: "expand",
+  "Stronger hook": "stronger_hook",
+  "More punchy": "more_punchy",
+  "More educational": "more_educational",
+  Simplify: "simplify",
+};
 
 watch(
   activeScene,
@@ -114,6 +134,8 @@ watch(
     rewritePreviewVisible.value = false;
     rewritePreviewCopy.value = "";
     rewriteCustomInstruction.value = "";
+    rewriteMode.value = "";
+    rewriteError.value = "";
     if (audioRef.value) {
       audioRef.value.pause();
       audioRef.value.load();
@@ -502,32 +524,39 @@ function toggleRewriteTools() {
   if (!rewriteToolsVisible.value) {
     rewritePreviewVisible.value = false;
     rewritePreviewCopy.value = "";
+    rewriteMode.value = "";
+    rewriteError.value = "";
   }
 }
 
-function submitRewrite(mode) {
-  const source =
-    sceneScriptDraft.value.trim() || activeScene.value?.script_text || "";
-  if (!source) return;
+async function submitRewrite(modeLabel) {
+  if (!activeScene.value) return;
 
-  const transformations = {
-    Shorten: source
-      .split(/(?<=[.!?])\s+/)
-      .slice(0, 1)
-      .join(" "),
-    Expand: `${source} The key is turning this into a repeatable system instead of relying on motivation.`,
-    "Stronger hook": `Stop scrolling: ${source
-      .charAt(0)
-      .toLowerCase()}${source.slice(1)}`,
-    "More punchy": source.replace(/\.\s+/g, ". ").replace(/,/g, " -"),
-    "More educational": `${source} This works because consistent systems compound faster than one-off effort.`,
-    Simplify: source
-      .replace(/investments/gi, "assets")
-      .replace(/automate/gi, "set up"),
-  };
+  const mode = rewriteModeMap[modeLabel];
+  if (!mode) return;
 
-  rewritePreviewCopy.value = transformations[mode] || source;
-  rewritePreviewVisible.value = true;
+  rewritePending.value = true;
+  rewriteError.value = "";
+  rewriteMode.value = mode;
+
+  try {
+    const response = await api.post(`/scenes/${activeScene.value.id}/rewrite`, {
+      mode,
+      apply: false,
+    });
+
+    rewritePreviewCopy.value =
+      response.data?.data?.rewrite?.candidate || "";
+    rewritePreviewVisible.value = Boolean(rewritePreviewCopy.value);
+  } catch (requestError) {
+    rewriteError.value =
+      requestError.response?.data?.error?.message ||
+      requestError.response?.data?.message ||
+      "Rewrite failed.";
+    rewritePreviewVisible.value = false;
+  } finally {
+    rewritePending.value = false;
+  }
 }
 
 function submitRewriteCustom() {
@@ -536,16 +565,51 @@ function submitRewriteCustom() {
   if (!source) return;
 
   const suffix = rewriteCustomInstruction.value.trim();
+  rewriteMode.value = "custom";
+  rewriteError.value = "";
   rewritePreviewCopy.value = suffix ? `${source} ${suffix}.` : source;
   rewritePreviewVisible.value = true;
 }
 
 function hideRewritePreview() {
   rewritePreviewVisible.value = false;
+  rewriteError.value = "";
 }
 
-function acceptRewrite() {
+async function acceptRewrite() {
   if (!activeScene.value) return;
+
+  if (rewriteMode.value && rewriteMode.value !== "custom") {
+    rewriteApplyPending.value = true;
+    rewriteError.value = "";
+
+    try {
+      const response = await api.post(`/scenes/${activeScene.value.id}/rewrite`, {
+        mode: rewriteMode.value,
+        apply: true,
+      });
+
+      const updatedScene = response.data?.data?.scene ?? null;
+      if (updatedScene) {
+        scenes.value = scenes.value.map((scene) =>
+          scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
+        );
+        activeSceneId.value = updatedScene.id;
+        sceneScriptDraft.value = updatedScene.script_text || "";
+      }
+
+      rewritePreviewVisible.value = false;
+      return;
+    } catch (requestError) {
+      rewriteError.value =
+        requestError.response?.data?.error?.message ||
+        requestError.response?.data?.message ||
+        "Failed to apply rewrite.";
+      return;
+    } finally {
+      rewriteApplyPending.value = false;
+    }
+  }
 
   sceneScriptDraft.value = rewritePreviewCopy.value;
   activeScene.value.script_text = rewritePreviewCopy.value;
@@ -971,32 +1035,21 @@ onBeforeUnmount(() => {
                     type="button"
                     @click.stop="toggleRewriteTools"
                   >
-                    ✦ Rewrite with AI
+                    {{ rewritePending ? "Working..." : "✦ Rewrite with AI" }}
                   </button>
                 </div>
                 <div v-if="rewriteToolsVisible" class="rewrite-tools">
                   <div class="chips chips-tight">
-                    <div class="chip" @click="submitRewrite('Shorten')">
-                      Shorten
-                    </div>
-                    <div class="chip" @click="submitRewrite('Expand')">
-                      Expand
-                    </div>
-                    <div class="chip" @click="submitRewrite('Stronger hook')">
-                      Stronger hook
-                    </div>
-                    <div class="chip" @click="submitRewrite('More punchy')">
-                      More punchy
-                    </div>
-                    <div
+                    <button
+                      v-for="option in rewriteOptions"
+                      :key="option"
                       class="chip"
-                      @click="submitRewrite('More educational')"
+                      :class="{ disabled: rewritePending }"
+                      type="button"
+                      @click="submitRewrite(option)"
                     >
-                      More educational
-                    </div>
-                    <div class="chip" @click="submitRewrite('Simplify')">
-                      Simplify
-                    </div>
+                      {{ option }}
+                    </button>
                   </div>
                   <div class="rewrite-custom">
                     <input
@@ -1007,6 +1060,7 @@ onBeforeUnmount(() => {
                     <button
                       class="btn btn-ghost btn-sm"
                       type="button"
+                      :disabled="rewritePending"
                       @click="submitRewriteCustom"
                     >
                       Apply
@@ -1014,6 +1068,9 @@ onBeforeUnmount(() => {
                   </div>
                   <div class="rewrite-note">
                     Applies to this scene only · Preserves locked facts
+                  </div>
+                  <div v-if="rewriteError" class="rewrite-error">
+                    {{ rewriteError }}
                   </div>
                 </div>
                 <div v-if="rewritePreviewVisible" class="rewrite-preview">
@@ -1032,9 +1089,10 @@ onBeforeUnmount(() => {
                     <button
                       class="btn btn-primary btn-sm"
                       type="button"
+                      :disabled="rewriteApplyPending"
                       @click="acceptRewrite"
                     >
-                      Accept Rewrite
+                      {{ rewriteApplyPending ? "Applying..." : "Accept Rewrite" }}
                     </button>
                   </div>
                 </div>
@@ -2022,6 +2080,12 @@ button {
   border-color: var(--border-active);
 }
 
+.chip.disabled {
+  opacity: 0.45;
+  cursor: wait;
+  pointer-events: none;
+}
+
 .add-scene-textarea,
 .rewrite-custom-input,
 .control-value {
@@ -2300,6 +2364,12 @@ button {
 .rewrite-note {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.rewrite-error {
+  margin-top: 8px;
+  color: #fca5a5;
+  font-size: 12px;
 }
 
 .helper-copy {
