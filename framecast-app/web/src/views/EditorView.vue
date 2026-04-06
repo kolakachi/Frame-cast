@@ -46,6 +46,10 @@ const rewriteMode = ref("");
 const rewritePending = ref(false);
 const rewriteApplyPending = ref(false);
 const rewriteError = ref("");
+const voiceRegeneratePending = ref(false);
+const voiceRegenerateError = ref("");
+const scriptSaveState = ref("idle");
+const scriptSaveError = ref("");
 const panelState = ref({
   script: false,
   visual: false,
@@ -54,6 +58,7 @@ const panelState = ref({
   brand: false,
 });
 const sceneScriptDraft = ref("");
+let scriptSaveTimer = null;
 
 const activeScene = computed(
   () => scenes.value.find((scene) => scene.id === activeSceneId.value) ?? null
@@ -132,7 +137,13 @@ const rewriteModeMap = {
 watch(
   activeScene,
   (scene) => {
+    if (scriptSaveTimer) {
+      window.clearTimeout(scriptSaveTimer);
+      scriptSaveTimer = null;
+    }
     sceneScriptDraft.value = scene?.script_text || "";
+    scriptSaveState.value = "idle";
+    scriptSaveError.value = "";
     rewriteToolsVisible.value = false;
     rewritePreviewVisible.value = false;
     rewritePreviewCopy.value = "";
@@ -155,6 +166,37 @@ watch(activeSceneVisualUrl, () => {
   visualLoadFailed.value = false;
 });
 
+watch(sceneScriptDraft, (draft) => {
+  const scene = activeScene.value;
+
+  if (!scene) return;
+
+  const savedScript = scene.script_text || "";
+
+  if (draft === savedScript) {
+    if (scriptSaveTimer) {
+      window.clearTimeout(scriptSaveTimer);
+      scriptSaveTimer = null;
+    }
+    if (scriptSaveState.value !== "saved") {
+      scriptSaveState.value = "idle";
+    }
+    scriptSaveError.value = "";
+    return;
+  }
+
+  if (scriptSaveTimer) {
+    window.clearTimeout(scriptSaveTimer);
+  }
+
+  scriptSaveState.value = "pending";
+  scriptSaveError.value = "";
+
+  scriptSaveTimer = window.setTimeout(() => {
+    persistSceneScript(scene.id, draft);
+  }, 700);
+});
+
 function sceneTypeLabel(index) {
   if (index === 0) return "Hook";
   if (index === scenes.value.length - 1) return "CTA";
@@ -171,6 +213,25 @@ function sceneVisualLabel(scene) {
 
 function sceneVoiceOutdated(scene) {
   return Boolean(scene?.voice_settings?.is_outdated);
+}
+
+function normalizeScenePayload(scene) {
+  if (!scene) return null;
+
+  return {
+    ...scene,
+    voice_settings: scene.voice_settings ?? scene.voice_settings_json ?? null,
+    caption_settings: scene.caption_settings ?? scene.caption_settings_json ?? null,
+    locked_fields: scene.locked_fields ?? scene.locked_fields_json ?? null,
+  };
+}
+
+function scriptSaveCopy() {
+  if (scriptSaveState.value === "pending") return "Unsaved changes";
+  if (scriptSaveState.value === "saving") return "Saving...";
+  if (scriptSaveState.value === "saved") return "Saved";
+  if (scriptSaveState.value === "error") return scriptSaveError.value || "Save failed";
+  return "";
 }
 
 function formatSceneDuration(value) {
@@ -598,11 +659,12 @@ async function acceptRewrite() {
 
       const updatedScene = response.data?.data?.scene ?? null;
       if (updatedScene) {
+        const normalizedScene = normalizeScenePayload(updatedScene);
         scenes.value = scenes.value.map((scene) =>
-          scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
+          scene.id === normalizedScene.id ? { ...scene, ...normalizedScene } : scene
         );
-        activeSceneId.value = updatedScene.id;
-        sceneScriptDraft.value = updatedScene.script_text || "";
+        activeSceneId.value = normalizedScene.id;
+        sceneScriptDraft.value = normalizedScene.script_text || "";
       }
 
       rewritePreviewVisible.value = false;
@@ -619,12 +681,92 @@ async function acceptRewrite() {
   }
 
   sceneScriptDraft.value = rewritePreviewCopy.value;
-  activeScene.value.script_text = rewritePreviewCopy.value;
   activeScene.value.voice_settings = {
     ...(activeScene.value.voice_settings || {}),
     is_outdated: true,
   };
   rewritePreviewVisible.value = false;
+}
+
+async function regenerateVoice() {
+  if (!activeScene.value || voiceRegeneratePending.value) return;
+
+  voiceRegeneratePending.value = true;
+  voiceRegenerateError.value = "";
+  isAudioPlaying.value = false;
+  isAudioLoading.value = true;
+
+  try {
+    const response = await api.post(`/scenes/${activeScene.value.id}/regenerate-voice`);
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+
+    if (!updatedScene) {
+      throw new Error("Voice regeneration returned no scene payload.");
+    }
+
+    scenes.value = scenes.value.map((scene) =>
+      scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
+    );
+    activeSceneId.value = updatedScene.id;
+    preloadSceneAudio(updatedScene);
+  } catch (requestError) {
+    voiceRegenerateError.value =
+      requestError.response?.data?.error?.message ||
+      requestError.response?.data?.message ||
+      requestError.message ||
+      "Voice regeneration failed.";
+    isAudioLoading.value = false;
+  } finally {
+    voiceRegeneratePending.value = false;
+  }
+}
+
+async function persistSceneScript(sceneId, scriptText) {
+  scriptSaveTimer = null;
+  scriptSaveState.value = "saving";
+  scriptSaveError.value = "";
+
+  const currentScene = scenes.value.find((scene) => scene.id === sceneId);
+  const voiceSettings = {
+    ...((currentScene?.voice_settings || currentScene?.voice_settings_json || {}) ?? {}),
+    is_outdated: true,
+  };
+
+  try {
+    const response = await api.patch(`/scenes/${sceneId}`, {
+      script_text: scriptText,
+      status: "edited",
+      voice_settings_json: voiceSettings,
+    });
+
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+
+    if (!updatedScene) {
+      throw new Error("Scene save returned no payload.");
+    }
+
+    scenes.value = scenes.value.map((scene) =>
+      scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
+    );
+
+    if (activeSceneId.value === updatedScene.id) {
+      sceneScriptDraft.value = updatedScene.script_text || "";
+    }
+
+    scriptSaveState.value = "saved";
+    window.setTimeout(() => {
+      if (scriptSaveState.value === "saved") {
+        scriptSaveState.value = "idle";
+      }
+    }, 1200);
+  } catch (requestError) {
+    scriptSaveState.value = "error";
+    scriptSaveError.value =
+      requestError.response?.data?.error?.message ||
+      requestError.response?.data?.message ||
+      requestError.message ||
+      "Save failed.";
+  }
 }
 
 function toggleAudioPlayback() {
@@ -1044,6 +1186,9 @@ onBeforeUnmount(() => {
                 <div class="helper-copy">
                   This text is spoken by the voice and rendered as captions.
                 </div>
+                <div v-if="scriptSaveCopy()" :class="scriptSaveState === 'error' ? 'script-save-copy error' : 'script-save-copy'">
+                  {{ scriptSaveCopy() }}
+                </div>
                 <div class="panel-inline-actions">
                   <button
                     class="btn btn-ghost btn-sm rewrite-trigger"
@@ -1200,7 +1345,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div :class="activeVoiceOutdated ? 'voice-warning-row' : 'voice-warning-row state-hidden'">
                   <span class="voice-warning-copy">Script changed — voice outdated</span>
-                  <button class="regen-btn" type="button">Regenerate</button>
+                  <button class="regen-btn" type="button" @click="regenerateVoice">Regenerate</button>
                 </div>
                 <div v-if="isAudioLoading" class="voice-loading-copy">
                   Loading audio...
@@ -2385,6 +2530,16 @@ button {
 .rewrite-note {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.script-save-copy {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.script-save-copy.error {
+  color: #fca5a5;
 }
 
 .rewrite-error {

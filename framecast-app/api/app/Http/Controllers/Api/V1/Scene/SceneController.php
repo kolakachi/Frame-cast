@@ -7,6 +7,7 @@ use App\Models\Asset;
 use App\Models\Scene;
 use App\Models\User;
 use App\Services\Generation\AI\AIGenerationAdapter;
+use App\Services\Generation\TTS\TTSAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -229,6 +230,73 @@ class SceneController extends Controller
         ]);
     }
 
+    public function regenerateVoice(Request $request, int $sceneId, TTSAdapter $tts): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $project = $scene->project;
+
+        if (! $project) {
+            return $this->error('invalid_scene_scope', 'Scene is missing its project context.', 422);
+        }
+
+        $voiceId = (string) data_get($scene->voice_settings_json, 'voice_id', 'alloy');
+        $speed = (float) data_get($scene->voice_settings_json, 'speed', 1.0);
+        $language = (string) data_get($scene->voice_settings_json, 'language', $project->primary_language ?: 'en');
+        $sceneText = trim((string) ($scene->script_text ?: ''));
+
+        if ($sceneText === '') {
+            return $this->error('invalid_scene_state', 'Scene script is required before regenerating voice.', 422);
+        }
+
+        DB::transaction(function () use ($scene, $project, $tts, $voiceId, $speed, $language, $sceneText): void {
+            $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed);
+
+            $asset = Asset::query()->create([
+                'workspace_id' => $project->workspace_id,
+                'channel_id' => $project->channel_id,
+                'asset_type' => 'audio',
+                'title' => 'TTS audio for project '.$project->getKey().' scene '.$scene->scene_order,
+                'description' => mb_substr($sceneText, 0, 180),
+                'storage_url' => $audio['audio_url'],
+                'duration_seconds' => $audio['duration_seconds'],
+                'mime_type' => 'audio/mpeg',
+                'tags' => ['tts', $audio['provider_key']],
+                'usage_count' => 1,
+                'status' => 'active',
+                'created_by_user_id' => $project->created_by_user_id,
+            ]);
+
+            $voiceSettings = is_array($scene->voice_settings_json) ? $scene->voice_settings_json : [];
+            $voiceSettings['provider_key'] = $audio['provider_key'];
+            $voiceSettings['voice_id'] = $audio['provider_voice_id'];
+            $voiceSettings['speed'] = $speed;
+            $voiceSettings['language'] = $language;
+            $voiceSettings['audio_asset_id'] = $asset->getKey();
+            $voiceSettings['is_outdated'] = false;
+
+            $scene->forceFill([
+                'duration_seconds' => $audio['duration_seconds'],
+                'voice_settings_json' => $voiceSettings,
+                'status' => 'edited',
+            ])->save();
+        });
+
+        return response()->json([
+            'data' => [
+                'scene' => $this->serializeScene($scene->fresh()),
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function destroy(Request $request, int $sceneId): JsonResponse
     {
         /** @var User $user */
@@ -276,6 +344,15 @@ class SceneController extends Controller
      */
     private function serializeScene(Scene $scene): array
     {
+        $visualAsset = $scene->visual_asset_id
+            ? Asset::query()->whereKey($scene->visual_asset_id)->first()
+            : null;
+
+        $audioAssetId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
+        $audioAsset = $audioAssetId > 0
+            ? Asset::query()->whereKey($audioAssetId)->first()
+            : null;
+
         return [
             'id' => $scene->getKey(),
             'project_id' => $scene->project_id,
@@ -285,16 +362,37 @@ class SceneController extends Controller
             'script_text' => $scene->script_text,
             'duration_seconds' => $scene->duration_seconds,
             'voice_profile_id' => $scene->voice_profile_id,
+            'voice_settings' => $scene->voice_settings_json,
             'voice_settings_json' => $scene->voice_settings_json,
+            'caption_settings' => $scene->caption_settings_json,
             'caption_settings_json' => $scene->caption_settings_json,
             'visual_type' => $scene->visual_type,
             'visual_asset_id' => $scene->visual_asset_id,
             'visual_prompt' => $scene->visual_prompt,
             'transition_rule' => $scene->transition_rule,
             'status' => $scene->status,
+            'locked_fields' => $scene->locked_fields_json,
             'locked_fields_json' => $scene->locked_fields_json,
+            'visual_asset' => $visualAsset ? $this->serializeAsset($visualAsset) : null,
+            'audio_asset' => $audioAsset ? $this->serializeAsset($audioAsset) : null,
             'created_at' => $scene->created_at?->toIso8601String(),
             'updated_at' => $scene->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeAsset(Asset $asset): array
+    {
+        return [
+            'id' => $asset->getKey(),
+            'asset_type' => $asset->asset_type,
+            'title' => $asset->title,
+            'storage_url' => $this->assetUrl($asset),
+            'thumbnail_url' => $asset->thumbnail_url,
+            'duration_seconds' => $asset->duration_seconds,
+            'mime_type' => $asset->mime_type,
         ];
     }
 
