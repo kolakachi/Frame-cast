@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api\V1\Scene;
 
 use App\Http\Controllers\Controller;
+use App\Models\Asset;
 use App\Models\Scene;
 use App\Models\User;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 
 class SceneController extends Controller
 {
@@ -195,6 +197,38 @@ class SceneController extends Controller
         ]);
     }
 
+    public function preview(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $visualAsset = $scene->visual_asset_id
+            ? Asset::query()->whereKey($scene->visual_asset_id)->first()
+            : null;
+
+        $audioAssetId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
+        $audioAsset = $audioAssetId > 0
+            ? Asset::query()->whereKey($audioAssetId)->first()
+            : null;
+
+        return response()->json([
+            'data' => [
+                'scene' => $this->serializeScene($scene),
+                'preview' => [
+                    'visual_url' => $visualAsset ? $this->assetUrl($visualAsset) : null,
+                    'audio_url' => $audioAsset ? $this->assetUrl($audioAsset) : null,
+                ],
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function destroy(Request $request, int $sceneId): JsonResponse
     {
         /** @var User $user */
@@ -262,6 +296,43 @@ class SceneController extends Controller
             'created_at' => $scene->created_at?->toIso8601String(),
             'updated_at' => $scene->updated_at?->toIso8601String(),
         ];
+    }
+
+    private function assetUrl(Asset $asset): ?string
+    {
+        $storageUrl = trim((string) $asset->storage_url);
+
+        if ($storageUrl === '') {
+            return null;
+        }
+
+        if ($this->isB2Url($storageUrl)) {
+            return URL::temporarySignedRoute(
+                'media.assets.content',
+                now()->addHours(6),
+                ['assetId' => $asset->getKey()],
+            );
+        }
+
+        return $storageUrl;
+    }
+
+    private function isB2Url(string $url): bool
+    {
+        if (str_starts_with($url, 'b2://')) {
+            return true;
+        }
+
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $bucket = strtolower((string) config('filesystems.disks.b2.bucket'));
+
+        if ($host !== '' && str_contains($host, 'backblazeb2.com')) {
+            return true;
+        }
+
+        $path = strtolower(trim((string) parse_url($url, PHP_URL_PATH), '/'));
+
+        return $bucket !== '' && str_starts_with($path, $bucket.'/');
     }
 
     private function error(string $code, string $message, int $status): JsonResponse

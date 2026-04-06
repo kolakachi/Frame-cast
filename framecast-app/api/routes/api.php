@@ -65,6 +65,7 @@ Route::prefix('v1')->group(function (): void {
         Route::prefix('/scenes')->group(function (): void {
             Route::patch('/reorder', [SceneController::class, 'reorder']);
             Route::patch('/{sceneId}', [SceneController::class, 'update'])->whereNumber('sceneId');
+            Route::get('/{sceneId}/preview', [SceneController::class, 'preview'])->whereNumber('sceneId');
             Route::post('/{sceneId}/rewrite', [SceneController::class, 'rewrite'])->whereNumber('sceneId');
             Route::post('/{sceneId}/duplicate', [SceneController::class, 'duplicate'])->whereNumber('sceneId');
             Route::delete('/{sceneId}', [SceneController::class, 'destroy'])->whereNumber('sceneId');
