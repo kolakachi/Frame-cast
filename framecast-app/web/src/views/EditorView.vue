@@ -48,6 +48,12 @@ const rewriteApplyPending = ref(false);
 const rewriteError = ref("");
 const voiceRegeneratePending = ref(false);
 const voiceRegenerateError = ref("");
+const voiceProfiles = ref([]);
+const voiceProfileKey = ref("alloy");
+const voiceSpeedDraft = ref("1.0");
+const voiceStabilityDraft = ref("medium");
+const voiceSaveState = ref("idle");
+const voiceSaveError = ref("");
 const scriptSaveState = ref("idle");
 const scriptSaveError = ref("");
 const panelState = ref({
@@ -59,6 +65,7 @@ const panelState = ref({
 });
 const sceneScriptDraft = ref("");
 let scriptSaveTimer = null;
+let voiceSaveTimer = null;
 
 const activeScene = computed(
   () => scenes.value.find((scene) => scene.id === activeSceneId.value) ?? null
@@ -86,6 +93,10 @@ const isVisualLoading = computed(() => {
 });
 const activeVoiceName = computed(() => {
   const voiceId = activeScene.value?.voice_settings?.voice_id;
+  const match = voiceProfiles.value.find(
+    (profile) => profile.provider_voice_key === voiceId
+  );
+  if (match?.name) return match.name;
   return voiceId ? voiceId.charAt(0).toUpperCase() + voiceId.slice(1) : "Default";
 });
 const activeVoiceSpeed = computed(
@@ -141,7 +152,16 @@ watch(
       window.clearTimeout(scriptSaveTimer);
       scriptSaveTimer = null;
     }
+    if (voiceSaveTimer) {
+      window.clearTimeout(voiceSaveTimer);
+      voiceSaveTimer = null;
+    }
     sceneScriptDraft.value = scene?.script_text || "";
+    voiceProfileKey.value = scene?.voice_settings?.voice_id || "alloy";
+    voiceSpeedDraft.value = String(scene?.voice_settings?.speed ?? 1.0);
+    voiceStabilityDraft.value = String(scene?.voice_settings?.stability ?? "medium");
+    voiceSaveState.value = "idle";
+    voiceSaveError.value = "";
     scriptSaveState.value = "idle";
     scriptSaveError.value = "";
     rewriteToolsVisible.value = false;
@@ -164,6 +184,45 @@ watch(
 
 watch(activeSceneVisualUrl, () => {
   visualLoadFailed.value = false;
+});
+
+watch([voiceProfileKey, voiceSpeedDraft, voiceStabilityDraft], () => {
+  const scene = activeScene.value;
+
+  if (!scene) return;
+
+  const savedVoice = scene.voice_settings || {};
+  const nextSettings = {
+    voice_id: voiceProfileKey.value,
+    speed: Number(voiceSpeedDraft.value || 1),
+    stability: voiceStabilityDraft.value,
+  };
+
+  if (
+    String(savedVoice.voice_id || "alloy") === nextSettings.voice_id &&
+    Number(savedVoice.speed ?? 1) === nextSettings.speed &&
+    String(savedVoice.stability || "medium") === nextSettings.stability
+  ) {
+    if (voiceSaveTimer) {
+      window.clearTimeout(voiceSaveTimer);
+      voiceSaveTimer = null;
+    }
+    if (voiceSaveState.value !== "saved") {
+      voiceSaveState.value = "idle";
+    }
+    voiceSaveError.value = "";
+    return;
+  }
+
+  if (voiceSaveTimer) {
+    window.clearTimeout(voiceSaveTimer);
+  }
+
+  voiceSaveState.value = "pending";
+  voiceSaveError.value = "";
+  voiceSaveTimer = window.setTimeout(() => {
+    persistVoiceSettings(scene.id, nextSettings);
+  }, 500);
 });
 
 watch(sceneScriptDraft, (draft) => {
@@ -231,6 +290,14 @@ function scriptSaveCopy() {
   if (scriptSaveState.value === "saving") return "Saving...";
   if (scriptSaveState.value === "saved") return "Saved";
   if (scriptSaveState.value === "error") return scriptSaveError.value || "Save failed";
+  return "";
+}
+
+function voiceSaveCopy() {
+  if (voiceSaveState.value === "pending") return "Unsaved voice changes";
+  if (voiceSaveState.value === "saving") return "Saving voice...";
+  if (voiceSaveState.value === "saved") return "Voice saved";
+  if (voiceSaveState.value === "error") return voiceSaveError.value || "Voice save failed";
   return "";
 }
 
@@ -490,10 +557,21 @@ async function loadMe() {
   try {
     const response = await api.get("/me");
     mePayload.value = response.data?.data?.user ?? null;
+    await loadVoiceProfiles();
     await loadNotifications();
     subscribeWorkspaceNotifications();
   } catch {
     mePayload.value = null;
+    voiceProfiles.value = [];
+  }
+}
+
+async function loadVoiceProfiles() {
+  try {
+    const response = await api.get("/voice-profiles");
+    voiceProfiles.value = response.data?.data?.voice_profiles ?? [];
+  } catch {
+    voiceProfiles.value = [];
   }
 }
 
@@ -769,6 +847,53 @@ async function persistSceneScript(sceneId, scriptText) {
   }
 }
 
+async function persistVoiceSettings(sceneId, nextSettings) {
+  voiceSaveTimer = null;
+  voiceSaveState.value = "saving";
+  voiceSaveError.value = "";
+
+  const currentScene = scenes.value.find((scene) => scene.id === sceneId);
+  const currentVoice = currentScene?.voice_settings || {};
+  const mergedSettings = {
+    ...currentVoice,
+    voice_id: nextSettings.voice_id,
+    speed: nextSettings.speed,
+    stability: nextSettings.stability,
+    is_outdated: true,
+  };
+
+  try {
+    const response = await api.patch(`/scenes/${sceneId}`, {
+      voice_settings_json: mergedSettings,
+      status: "edited",
+    });
+
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+
+    if (!updatedScene) {
+      throw new Error("Voice save returned no payload.");
+    }
+
+    scenes.value = scenes.value.map((scene) =>
+      scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
+    );
+
+    voiceSaveState.value = "saved";
+    window.setTimeout(() => {
+      if (voiceSaveState.value === "saved") {
+        voiceSaveState.value = "idle";
+      }
+    }, 1200);
+  } catch (requestError) {
+    voiceSaveState.value = "error";
+    voiceSaveError.value =
+      requestError.response?.data?.error?.message ||
+      requestError.response?.data?.message ||
+      requestError.message ||
+      "Voice save failed.";
+  }
+}
+
 function toggleAudioPlayback() {
   if (!audioRef.value || !activeSceneAudioUrl.value) return;
   isAudioLoading.value = true;
@@ -791,6 +916,12 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (scriptSaveTimer) {
+    window.clearTimeout(scriptSaveTimer);
+  }
+  if (voiceSaveTimer) {
+    window.clearTimeout(voiceSaveTimer);
+  }
   mediaPreloaders.forEach((media) => {
     media.onload = null;
     media.onerror = null;
@@ -1328,24 +1459,35 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="control-row top-space">
                   <span class="control-name">Speed</span>
-                  <select class="control-value">
-                    <option>0.8x</option>
-                    <option selected>1.0x</option>
-                    <option>1.1x</option>
-                    <option>1.2x</option>
+                  <select v-model="voiceSpeedDraft" class="control-value">
+                    <option value="0.8">0.8x</option>
+                    <option value="1.0">1.0x</option>
+                    <option value="1.1">1.1x</option>
+                    <option value="1.2">1.2x</option>
                   </select>
                 </div>
                 <div class="control-row">
                   <span class="control-name">Stability</span>
-                  <select class="control-value">
-                    <option>Low</option>
-                    <option selected>Medium</option>
-                    <option>High</option>
+                  <select v-model="voiceStabilityDraft" class="control-value">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div class="control-row">
+                  <span class="control-name">Voice</span>
+                  <select v-model="voiceProfileKey" class="control-value">
+                    <option v-for="profile in voiceProfiles" :key="profile.id" :value="profile.provider_voice_key">
+                      {{ profile.name }}
+                    </option>
                   </select>
                 </div>
                 <div :class="activeVoiceOutdated ? 'voice-warning-row' : 'voice-warning-row state-hidden'">
                   <span class="voice-warning-copy">Script changed — voice outdated</span>
                   <button class="regen-btn" type="button" @click="regenerateVoice">Regenerate</button>
+                </div>
+                <div v-if="voiceSaveCopy()" :class="voiceSaveState === 'error' ? 'script-save-copy error' : 'script-save-copy'">
+                  {{ voiceSaveCopy() }}
                 </div>
                 <div v-if="isAudioLoading" class="voice-loading-copy">
                   Loading audio...

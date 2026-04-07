@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Scene\SceneController;
 use App\Http\Controllers\Api\V1\System\HealthCheckController;
 use App\Http\Controllers\Api\V1\System\NotificationController;
 use App\Http\Controllers\Api\V1\System\VerificationController;
+use App\Http\Controllers\Api\V1\VoiceProfile\VoiceProfileController;
 use App\Http\Controllers\Api\V1\Workspace\WorkspaceController;
 use Illuminate\Broadcasting\BroadcastController;
 use Illuminate\Support\Facades\Route;
@@ -31,6 +32,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/verification/storage-smoke', [VerificationController::class, 'storageSmoke']);
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
+        Route::get('/voice-profiles', [VoiceProfileController::class, 'index']);
         Route::prefix('/workspaces')->group(function (): void {
             Route::get('/', [WorkspaceController::class, 'index']);
             Route::post('/', [WorkspaceController::class, 'store']);
