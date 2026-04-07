@@ -54,6 +54,9 @@ const voiceSpeedDraft = ref("1.0");
 const voiceStabilityDraft = ref("medium");
 const voiceSaveState = ref("idle");
 const voiceSaveError = ref("");
+const visualQueryDraft = ref("");
+const visualSwapPending = ref(false);
+const visualSwapError = ref("");
 const scriptSaveState = ref("idle");
 const scriptSaveError = ref("");
 const panelState = ref({
@@ -160,6 +163,9 @@ watch(
     voiceProfileKey.value = scene?.voice_settings?.voice_id || "alloy";
     voiceSpeedDraft.value = String(scene?.voice_settings?.speed ?? 1.0);
     voiceStabilityDraft.value = String(scene?.voice_settings?.stability ?? "medium");
+    visualQueryDraft.value = scene?.visual_prompt || "";
+    visualSwapPending.value = false;
+    visualSwapError.value = "";
     voiceSaveState.value = "idle";
     voiceSaveError.value = "";
     scriptSaveState.value = "idle";
@@ -894,6 +900,44 @@ async function persistVoiceSettings(sceneId, nextSettings) {
   }
 }
 
+async function swapVisual() {
+  if (!activeScene.value || visualSwapPending.value) return;
+
+  visualSwapPending.value = true;
+  visualSwapError.value = "";
+  visualLoadFailed.value = false;
+  currentVisualUrl.value = null;
+
+  try {
+    const response = await api.post(`/scenes/${activeScene.value.id}/swap-visual`, {
+      query: visualQueryDraft.value || activeScene.value.visual_prompt || "",
+      visual_type: activeScene.value.visual_type || "image_montage",
+    });
+
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+
+    if (!updatedScene) {
+      throw new Error("Visual swap returned no payload.");
+    }
+
+    scenes.value = scenes.value.map((scene) =>
+      scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
+    );
+
+    visualQueryDraft.value = updatedScene.visual_prompt || "";
+    preloadSceneVisual(updatedScene);
+  } catch (requestError) {
+    visualSwapError.value =
+      requestError.response?.data?.error?.message ||
+      requestError.response?.data?.message ||
+      requestError.message ||
+      "Visual swap failed.";
+    visualLoadFailed.value = true;
+  } finally {
+    visualSwapPending.value = false;
+  }
+}
+
 function toggleAudioPlayback() {
   if (!audioRef.value || !activeSceneAudioUrl.value) return;
   isAudioLoading.value = true;
@@ -1411,15 +1455,14 @@ onBeforeUnmount(() => {
                 <div class="control-row">
                   <span class="control-name">Query</span>
                   <input
+                    v-model="visualQueryDraft"
                     class="control-value query-input"
-                    :value="
-                      activeScene?.visual_prompt || 'city night timelapse'
-                    "
                   />
                 </div>
                 <button
                   class="btn btn-ghost btn-sm panel-full-btn"
                   type="button"
+                  @click="swapVisual"
                 >
                   ↻ Swap Visual
                 </button>
