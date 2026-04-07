@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Project;
 use App\Events\ExportProgressed;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateScriptJob;
+use App\Jobs\ProcessExportJob;
 use App\Models\Asset;
 use App\Models\Channel;
 use App\Models\ExportJob;
@@ -315,6 +316,8 @@ class ProjectController extends Controller
             0,
             'Export queued.'
         );
+
+        ProcessExportJob::dispatch((int) $exportJob->getKey());
 
         return response()->json([
             'data' => [
