@@ -21,6 +21,7 @@ const showUserPopover = ref(false);
 const notificationDrawerOpen = ref(false);
 const notifications = ref([]);
 const notificationToasts = ref([]);
+const exportJobs = ref([]);
 let workspaceChannelName = null;
 
 const audioRef = ref(null);
@@ -553,6 +554,7 @@ async function loadProject() {
       preloadSceneVisual(scene);
       preloadSceneAudio(scene);
     });
+    await loadExportJobs();
   } catch (requestError) {
     error.value =
       requestError.response?.data?.error?.message ?? "Project load failed.";
@@ -589,6 +591,17 @@ async function loadNotifications() {
     notifications.value = response.data?.data?.notifications ?? [];
   } catch {
     notifications.value = [];
+  }
+}
+
+async function loadExportJobs() {
+  if (!projectId.value) return;
+
+  try {
+    const response = await api.get(`/projects/${projectId.value}/exports`);
+    exportJobs.value = response.data?.data?.export_jobs ?? [];
+  } catch {
+    exportJobs.value = [];
   }
 }
 
@@ -955,6 +968,7 @@ async function queueExport() {
 
     const exportJob = response.data?.data?.export_job ?? null;
     exportState.value = "saved";
+    await loadExportJobs();
     pushToast({
       id: `export-${exportJob?.id || Date.now()}`,
       title: "Export queued",
