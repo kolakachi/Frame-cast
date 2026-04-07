@@ -332,6 +332,48 @@ class ProjectController extends Controller
         ], 201);
     }
 
+    public function exports(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $exportJobs = ExportJob::query()
+            ->where('project_id', $project->getKey())
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get();
+
+        $outputAssetIds = $exportJobs
+            ->pluck('output_asset_id')
+            ->filter()
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->values();
+
+        /** @var Collection<int, Asset> $assetMap */
+        $assetMap = Asset::query()
+            ->whereIn('id', $outputAssetIds)
+            ->get()
+            ->keyBy('id');
+
+        return response()->json([
+            'data' => [
+                'export_jobs' => $exportJobs
+                    ->map(fn (ExportJob $exportJob): array => $this->serializeExportJob($exportJob, $assetMap))
+                    ->all(),
+            ],
+            'meta' => [],
+        ]);
+    }
+
     /**
      * @return list<string>
      */
@@ -470,6 +512,35 @@ class ProjectController extends Controller
             'sort_order' => $option->sort_order,
             'hook_text' => $option->hook_text,
             'created_at' => $option->created_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @param Collection<int, Asset> $assetMap
+     */
+    private function serializeExportJob(ExportJob $exportJob, Collection $assetMap): array
+    {
+        $outputAsset = $exportJob->output_asset_id
+            ? $assetMap->get((int) $exportJob->output_asset_id)
+            : null;
+
+        return [
+            'id' => $exportJob->getKey(),
+            'workspace_id' => $exportJob->workspace_id,
+            'project_id' => $exportJob->project_id,
+            'variant_id' => $exportJob->variant_id,
+            'aspect_ratio' => $exportJob->aspect_ratio,
+            'language' => $exportJob->language,
+            'file_name' => $exportJob->file_name,
+            'watermark_enabled' => (bool) $exportJob->watermark_enabled,
+            'status' => $exportJob->status,
+            'progress_percent' => (int) $exportJob->progress_percent,
+            'failure_reason' => $exportJob->failure_reason,
+            'priority' => (int) $exportJob->priority,
+            'queued_at' => $exportJob->queued_at?->toIso8601String(),
+            'started_at' => $exportJob->started_at?->toIso8601String(),
+            'completed_at' => $exportJob->completed_at?->toIso8601String(),
+            'output_asset' => $outputAsset ? $this->serializeAsset($outputAsset) : null,
         ];
     }
 
