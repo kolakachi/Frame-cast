@@ -57,6 +57,8 @@ const voiceSaveError = ref("");
 const visualQueryDraft = ref("");
 const visualSwapPending = ref(false);
 const visualSwapError = ref("");
+const exportPending = ref(false);
+const exportState = ref("idle");
 const scriptSaveState = ref("idle");
 const scriptSaveError = ref("");
 const panelState = ref({
@@ -938,6 +940,49 @@ async function swapVisual() {
   }
 }
 
+async function queueExport() {
+  if (!project.value || exportPending.value) return;
+
+  exportPending.value = true;
+  exportState.value = "saving";
+
+  try {
+    const response = await api.post(`/projects/${project.value.id}/export`, {
+      aspect_ratio: project.value.aspect_ratio || "9:16",
+      language: project.value.primary_language || "en",
+      watermark_enabled: false,
+    });
+
+    const exportJob = response.data?.data?.export_job ?? null;
+    exportState.value = "saved";
+    pushToast({
+      id: `export-${exportJob?.id || Date.now()}`,
+      title: "Export queued",
+      message: exportJob?.file_name || "Your export job has been queued.",
+      created_at: new Date().toISOString(),
+    });
+    window.setTimeout(() => {
+      if (exportState.value === "saved") {
+        exportState.value = "idle";
+      }
+    }, 2500);
+  } catch (requestError) {
+    exportState.value = "error";
+    const message =
+      requestError.response?.data?.error?.message ||
+      requestError.response?.data?.message ||
+      "Export failed.";
+    pushToast({
+      id: `export-error-${Date.now()}`,
+      title: "Export failed",
+      message,
+      created_at: new Date().toISOString(),
+    });
+  } finally {
+    exportPending.value = false;
+  }
+}
+
 function toggleAudioPlayback() {
   if (!audioRef.value || !activeSceneAudioUrl.value) return;
   isAudioLoading.value = true;
@@ -1082,7 +1127,9 @@ onBeforeUnmount(() => {
 
           <div class="topbar-right">
             <button class="btn btn-ghost" type="button" @click="router.push({ name: 'dashboard' })">+ New Video</button>
-            <button class="btn btn-primary" type="button">Export</button>
+            <button class="btn btn-primary" type="button" :disabled="exportPending" @click="queueExport">
+              {{ exportPending ? "Exporting..." : "Export" }}
+            </button>
             <button class="btn btn-ghost btn-back" type="button" @click="router.push({ name: 'dashboard' })">
               Back to Dashboard
             </button>

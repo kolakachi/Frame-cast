@@ -117,13 +117,13 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 
 - [x] Scene CRUD endpoints (update, reorder, delete, duplicate)
 - [x] Scene rewrite endpoint — `scene_rewrite` prompt, respects `locked_fields_json`
-- [ ] Voice override per scene — saves `voice_settings_json`
-- [ ] Visual swap per scene — calls visual adapter, updates `visual_asset_id`
+- [x] Voice override per scene — saves `voice_settings_json`
+- [x] Visual swap per scene — calls visual adapter, updates `visual_asset_id`
 - [ ] Caption settings per scene — saves `caption_settings_json`
 - [x] Preview endpoint — returns scene audio + visual URLs
 - [~] Voice regenerate per scene — refreshes TTS asset and clears outdated state
 - [~] Auto-save — debounced PATCH, optimistic UI
-- [ ] Export flow — validates per rules, creates ExportJob record
+- [~] Export flow — validates per rules, creates ExportJob record
 - [ ] FFmpeg rendering job — full pipeline from `PROVIDERS.md`, uploads to B2
 - [ ] Export Reverb events — `export.progress`, `export.complete`, `export.failed`
 - [~] Editor screen (Vue) — scene sidebar, preview canvas, controls panel
@@ -138,6 +138,9 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 - Added authenticated scene rewrite endpoint and editor wiring for AI rewrite preview/apply, including `voice_settings_json.is_outdated` when a rewrite changes script text.
 - Added authenticated scene preview endpoint returning resolved scene audio + visual URLs for editor consumption.
 - Added scene-level voice regeneration endpoint and editor wiring to refresh TTS for one scene and clear the outdated state.
+- Added per-scene voice override controls in the editor backed by `GET /api/v1/voice-profiles` and debounced `PATCH /api/v1/scenes/{sceneId}` persistence.
+- Added scene-level visual swap endpoint and editor wiring to rematch a single scene visual from the active query.
+- Added project export queue endpoint and editor export button wiring to validate export readiness and create an `export_jobs` record.
 - Added debounced script autosave in the editor with save-state feedback (`Unsaved changes`, `Saving...`, `Saved`) backed by `PATCH /api/v1/scenes/{sceneId}`.
 - Current editor UI pass is still partial. Voice override, visual swap, caption persistence, export flow, and fully finished editor interactions remain before Phase 2 can be marked complete.
 
