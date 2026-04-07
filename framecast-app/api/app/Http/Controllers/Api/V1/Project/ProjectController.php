@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Project;
 
+use App\Events\ExportProgressed;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateScriptJob;
 use App\Models\Asset;
@@ -306,6 +307,14 @@ class ProjectController extends Controller
             'priority' => 0,
             'queued_at' => now(),
         ]);
+
+        ExportProgressed::dispatch(
+            (int) $project->getKey(),
+            (int) $exportJob->getKey(),
+            'queued',
+            0,
+            'Export queued.'
+        );
 
         return response()->json([
             'data' => [
