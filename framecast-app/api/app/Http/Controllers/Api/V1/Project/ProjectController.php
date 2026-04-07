@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\GenerateScriptJob;
 use App\Models\Asset;
 use App\Models\Channel;
+use App\Models\ExportJob;
 use App\Models\Project;
 use App\Models\ProjectHookOption;
 use App\Models\Scene;
@@ -15,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
@@ -242,6 +244,92 @@ class ProjectController extends Controller
             ],
             'meta' => [],
         ]);
+    }
+
+    public function export(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $validated = $request->validate([
+            'aspect_ratio' => ['nullable', Rule::in(['9:16', '1:1', '16:9'])],
+            'language' => ['nullable', 'string', 'max:16'],
+            'watermark_enabled' => ['nullable', 'boolean'],
+        ]);
+
+        $scenes = Scene::query()
+            ->where('project_id', $project->getKey())
+            ->orderBy('scene_order')
+            ->get();
+
+        if ($scenes->isEmpty()) {
+            return $this->error('export_blocked', 'At least one scene is required before export.', 422);
+        }
+
+        foreach ($scenes as $scene) {
+            if (trim((string) $scene->script_text) === '') {
+                return $this->error('export_blocked', 'All scenes must have script content before export.', 422);
+            }
+
+            if (! $scene->visual_asset_id) {
+                return $this->error('export_blocked', 'Missing visual blocks export.', 422);
+            }
+
+            if (! data_get($scene->voice_settings_json, 'audio_asset_id')) {
+                return $this->error('export_blocked', 'Missing voice blocks export.', 422);
+            }
+        }
+
+        $aspectRatio = (string) ($validated['aspect_ratio'] ?? $project->aspect_ratio ?? '9:16');
+        $language = (string) ($validated['language'] ?? $project->primary_language ?? 'en');
+        $titleSlug = Str::slug((string) ($project->title ?: 'framecast-project'));
+
+        $exportJob = ExportJob::query()->create([
+            'workspace_id' => $project->workspace_id,
+            'project_id' => $project->getKey(),
+            'variant_id' => null,
+            'aspect_ratio' => $aspectRatio,
+            'language' => $language,
+            'file_name' => "{$titleSlug}-{$aspectRatio}-{$language}.mp4",
+            'watermark_enabled' => (bool) ($validated['watermark_enabled'] ?? false),
+            'status' => 'queued',
+            'progress_percent' => 0,
+            'priority' => 0,
+            'queued_at' => now(),
+        ]);
+
+        return response()->json([
+            'data' => [
+                'export_job' => [
+                    'id' => $exportJob->getKey(),
+                    'workspace_id' => $exportJob->workspace_id,
+                    'project_id' => $exportJob->project_id,
+                    'variant_id' => $exportJob->variant_id,
+                    'aspect_ratio' => $exportJob->aspect_ratio,
+                    'language' => $exportJob->language,
+                    'file_name' => $exportJob->file_name,
+                    'watermark_enabled' => $exportJob->watermark_enabled,
+                    'status' => $exportJob->status,
+                    'progress_percent' => $exportJob->progress_percent,
+                    'failure_reason' => $exportJob->failure_reason,
+                    'output_asset_id' => $exportJob->output_asset_id,
+                    'priority' => $exportJob->priority,
+                    'queued_at' => $exportJob->queued_at?->toIso8601String(),
+                    'started_at' => $exportJob->started_at?->toIso8601String(),
+                    'completed_at' => $exportJob->completed_at?->toIso8601String(),
+                ],
+            ],
+            'meta' => [],
+        ], 201);
     }
 
     /**

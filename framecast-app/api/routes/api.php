@@ -61,6 +61,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/', [ProjectController::class, 'index']);
             Route::post('/', [ProjectController::class, 'store']);
             Route::get('/{projectId}', [ProjectController::class, 'show'])->whereNumber('projectId');
+            Route::post('/{projectId}/export', [ProjectController::class, 'export'])->whereNumber('projectId');
             Route::delete('/{projectId}', [ProjectController::class, 'destroy'])->whereNumber('projectId');
         });
 
