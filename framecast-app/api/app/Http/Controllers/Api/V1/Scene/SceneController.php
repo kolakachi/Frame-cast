@@ -8,6 +8,7 @@ use App\Models\Scene;
 use App\Models\User;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use App\Services\Generation\TTS\TTSAdapter;
+use App\Services\Generation\Visual\VisualProviderAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -288,6 +289,74 @@ class SceneController extends Controller
                 'status' => 'edited',
             ])->save();
         });
+
+        return response()->json([
+            'data' => [
+                'scene' => $this->serializeScene($scene->fresh()),
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    public function swapVisual(Request $request, int $sceneId, VisualProviderAdapter $visualProvider): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $project = $scene->project;
+
+        if (! $project) {
+            return $this->error('invalid_scene_scope', 'Scene is missing its project context.', 422);
+        }
+
+        $validated = $request->validate([
+            'query' => ['sometimes', 'nullable', 'string'],
+            'visual_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+        ]);
+
+        $prompt = trim((string) ($validated['query'] ?? $scene->visual_prompt ?? ''));
+
+        if ($prompt === '') {
+            $sceneLabel = $scene->label ?: 'scene';
+            $sceneText = mb_substr(trim((string) $scene->script_text), 0, 160);
+            $tone = $project->tone ?: 'neutral';
+            $prompt = trim("{$sceneLabel}, {$tone} style, {$sceneText}");
+        }
+
+        $match = $visualProvider->match($prompt, 'portrait');
+
+        $asset = Asset::query()->create([
+            'workspace_id' => $project->workspace_id,
+            'channel_id' => $project->channel_id,
+            'asset_type' => 'image',
+            'title' => 'Matched visual for project '.$project->getKey(),
+            'description' => $prompt,
+            'storage_url' => $match['asset_url'],
+            'thumbnail_url' => $match['thumbnail_url'],
+            'duration_seconds' => $match['duration_seconds'],
+            'dimensions_json' => [
+                'width' => $match['width'],
+                'height' => $match['height'],
+            ],
+            'mime_type' => 'image/jpeg',
+            'tags' => ['matched_visual', $match['provider_key']],
+            'usage_count' => 1,
+            'status' => 'active',
+            'created_by_user_id' => $project->created_by_user_id,
+        ]);
+
+        $scene->forceFill([
+            'visual_type' => $validated['visual_type'] ?? 'image_montage',
+            'visual_asset_id' => $asset->getKey(),
+            'visual_prompt' => $prompt,
+            'status' => 'edited',
+        ])->save();
 
         return response()->json([
             'data' => [

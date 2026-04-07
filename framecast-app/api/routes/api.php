@@ -69,6 +69,7 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/{sceneId}', [SceneController::class, 'update'])->whereNumber('sceneId');
             Route::get('/{sceneId}/preview', [SceneController::class, 'preview'])->whereNumber('sceneId');
             Route::post('/{sceneId}/regenerate-voice', [SceneController::class, 'regenerateVoice'])->whereNumber('sceneId');
+            Route::post('/{sceneId}/swap-visual', [SceneController::class, 'swapVisual'])->whereNumber('sceneId');
             Route::post('/{sceneId}/rewrite', [SceneController::class, 'rewrite'])->whereNumber('sceneId');
             Route::post('/{sceneId}/duplicate', [SceneController::class, 'duplicate'])->whereNumber('sceneId');
             Route::delete('/{sceneId}', [SceneController::class, 'destroy'])->whereNumber('sceneId');
