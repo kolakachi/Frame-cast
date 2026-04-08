@@ -271,8 +271,10 @@ class ProcessExportJob implements ShouldQueue
         $monoFont = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf';
 
         $filters = [
+            // setpts=PTS-STARTPTS normalises non-zero start PTS from stock clips so
+            // audio and video start at exactly the same moment within the segment.
             sprintf(
-                'scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d',
+                'setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d',
                 $dimensions['width'],
                 $dimensions['height'],
                 $dimensions['width'],
@@ -330,13 +332,20 @@ class ProcessExportJob implements ShouldQueue
                 array_push($command, '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo');
             }
 
+            // Only cap duration with -t when there is no real audio asset.
+            // For scenes with audio, rely solely on -shortest so the segment
+            // ends when the actual MP3 finishes — not at the DB estimate which
+            // can differ and would cut the audio early.
+            if (! $audioAsset) {
+                array_push($command, '-t', (string) $duration);
+            }
+
             array_push(
                 $command,
-                '-t',
-                (string) $duration,
                 '-r', '30',
                 '-vf',
                 $filter,
+                '-af', 'asetpts=PTS-STARTPTS',
                 '-c:v',
                 'libx264',
                 '-pix_fmt',
@@ -373,35 +382,38 @@ class ProcessExportJob implements ShouldQueue
             throw new \RuntimeException('No rendered scene segments available.');
         }
 
-        $concatFile = $tempDir.'/segments.txt';
-        $concatBody = implode(
-            PHP_EOL,
-            array_map(
-                static fn (string $path): string => "file '".str_replace("'", "'\\''", $path)."'",
-                $segmentPaths
-            )
-        );
-        file_put_contents($concatFile, $concatBody.PHP_EOL);
+        // Use the concat filter (not the concat demuxer) so FFmpeg re-encodes
+        // the join, guaranteeing audio and video stay frame-perfectly aligned at
+        // every scene boundary with no accumulated PTS drift.
+        $n = count($segmentPaths);
 
-        $process = new Process([
-            'ffmpeg',
-            '-y',
-            '-f',
-            'concat',
-            '-safe',
-            '0',
-            '-i',
-            $concatFile,
-            '-c',
-            'copy',
-            '-movflags',
-            '+faststart',
+        $filterInputs = implode('', array_map(
+            static fn (int $i): string => "[{$i}:v][{$i}:a]",
+            range(0, $n - 1)
+        ));
+        $filterComplex = "{$filterInputs}concat=n={$n}:v=1:a=1[outv][outa]";
+
+        $command = ['ffmpeg', '-y'];
+
+        foreach ($segmentPaths as $path) {
+            array_push($command, '-i', $path);
+        }
+
+        array_push(
+            $command,
+            '-filter_complex', $filterComplex,
+            '-map', '[outv]',
+            '-map', '[outa]',
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-movflags', '+faststart',
             $outputFile,
-        ]);
-        $process->setTimeout(240);
-        $process->mustRun();
+        );
 
-        @unlink($concatFile);
+        $process = new Process($command);
+        $process->setTimeout(600);
+        $process->mustRun();
     }
 
     private function materializeAsset(Asset $asset, string $tempDir, string $prefix): string

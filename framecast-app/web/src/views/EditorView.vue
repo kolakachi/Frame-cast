@@ -1414,9 +1414,23 @@ onBeforeUnmount(() => {
           <div class="topbar-right">
             <div
               v-if="latestExportJob"
-              class="export-pill"
+              :class="['export-pill', `export-pill-${latestExportJob.status}`]"
             >
               {{ exportStatusCopy(latestExportJob) }}
+              <template v-if="latestExportJob.status === 'completed' && latestExportDownloadUrl">
+                <span class="export-pill-sep">·</span>
+                <a
+                  :href="latestExportDownloadUrl"
+                  target="_blank"
+                  rel="noopener"
+                  class="export-pill-link"
+                >Open ↗</a>
+                <a
+                  :href="latestExportDownloadUrl"
+                  :download="latestExportJob.file_name || 'export.mp4'"
+                  class="export-pill-link"
+                >Download ↓</a>
+              </template>
             </div>
             <button class="btn btn-ghost" type="button" @click="router.push({ name: 'dashboard' })">+ New Video</button>
             <button class="btn btn-primary" type="button" :disabled="exportPending" @click="queueExport">
@@ -2339,6 +2353,10 @@ button {
 .export-pill-failed {
   color: #ff8f8f;
   border-color: rgba(255, 107, 107, 0.3);
+}
+
+.export-pill-sep {
+  color: var(--border);
 }
 
 .export-pill-link {
