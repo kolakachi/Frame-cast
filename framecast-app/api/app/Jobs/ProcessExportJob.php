@@ -257,52 +257,57 @@ class ProcessExportJob implements ShouldQueue
         float $elapsedSeconds,
         float $totalSeconds
     ): string {
-        $duration = max(
-            1.0,
-            (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0)
-        );
+        $duration = max(1.0, (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0));
         $segmentPath = sprintf('%s/segment-%03d.mp4', $tempDir, $index + 1);
         $captionSettings = is_array($scene->caption_settings_json) ? $scene->caption_settings_json : [];
         $captionEnabled = ($captionSettings['enabled'] ?? true) !== false;
         $captionStyle = (string) ($captionSettings['style_key'] ?? 'impact');
         $captionPosition = (string) ($captionSettings['position'] ?? 'bottom_third');
         $captionText = (string) ($scene->script_text ?: $scene->label ?: 'Framecast');
+        $durationForFilter = $this->formatFilterDuration($duration);
 
         $monoFont = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf';
 
-        $filters = [
-            // setpts=PTS-STARTPTS normalises non-zero start PTS from stock clips so
-            // audio and video start at exactly the same moment within the segment.
-            sprintf(
-                'setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d',
-                $dimensions['width'],
-                $dimensions['height'],
-                $dimensions['width'],
-                $dimensions['height']
-            ),
-            "drawtext=fontfile={$monoFont}:text='FRAMECAST':fontcolor=white@0.3:fontsize=20:x=16:y=20",
-            sprintf(
-                "drawtext=fontfile={$monoFont}:text='%s':fontcolor=white@0.5:fontsize=22:x=w-text_w-16:y=18:box=1:boxcolor=black@0.4:boxborderw=12",
-                $this->escapeDrawtext($this->formatClock($elapsedSeconds).' / '.$this->formatClock($totalSeconds))
-            ),
-        ];
-
-        $assFile = null;
-        if ($captionEnabled && trim($captionText) !== '') {
-            $assFile = sprintf('%s/caption-%03d.ass', $tempDir, $index);
-            $this->buildASSCaption($captionText, $captionStyle, $captionPosition, $duration, $dimensions, $assFile);
-            $filters[] = "subtitles={$assFile}";
-        }
-
-        $filter = implode(',', $filters);
-
         $command = ['ffmpeg', '-y'];
         $cleanupPaths = [];
-        if ($assFile !== null) {
-            $cleanupPaths[] = $assFile;
-        }
 
         try {
+            $audioPath = null;
+            if ($audioAsset) {
+                $audioPath = $this->materializeAsset($audioAsset, $tempDir, 'audio-'.$index);
+                $cleanupPaths[] = $audioPath;
+                $duration = max(0.1, $this->probeMediaDuration($audioPath) ?? $duration);
+                $durationForFilter = $this->formatFilterDuration($duration);
+            }
+
+            $filters = [
+                // setpts=PTS-STARTPTS normalises non-zero start PTS from stock clips so
+                // audio and video start at exactly the same moment within the segment.
+                sprintf(
+                    'setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,trim=duration=%s',
+                    $dimensions['width'],
+                    $dimensions['height'],
+                    $dimensions['width'],
+                    $dimensions['height'],
+                    $durationForFilter
+                ),
+                "drawtext=fontfile={$monoFont}:text='FRAMECAST':fontcolor=white@0.3:fontsize=20:x=16:y=20",
+                sprintf(
+                    "drawtext=fontfile={$monoFont}:text='%s':fontcolor=white@0.5:fontsize=22:x=w-text_w-16:y=18:box=1:boxcolor=black@0.4:boxborderw=12",
+                    $this->escapeDrawtext($this->formatClock($elapsedSeconds).' / '.$this->formatClock($totalSeconds))
+                ),
+            ];
+
+            $assFile = null;
+            if ($captionEnabled && trim($captionText) !== '') {
+                $assFile = sprintf('%s/caption-%03d.ass', $tempDir, $index);
+                $this->buildASSCaption($captionText, $captionStyle, $captionPosition, $duration, $dimensions, $assFile);
+                $filters[] = "subtitles={$assFile}";
+                $cleanupPaths[] = $assFile;
+            }
+
+            $filter = implode(',', $filters);
+
             if ($visualAsset) {
                 $visualPath = $this->materializeAsset($visualAsset, $tempDir, 'visual-'.$index);
                 $cleanupPaths[] = $visualPath;
@@ -324,9 +329,7 @@ class ProcessExportJob implements ShouldQueue
                 );
             }
 
-            if ($audioAsset) {
-                $audioPath = $this->materializeAsset($audioAsset, $tempDir, 'audio-'.$index);
-                $cleanupPaths[] = $audioPath;
+            if ($audioPath !== null) {
                 array_push($command, '-i', $audioPath);
             } else {
                 array_push($command, '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo');
@@ -351,7 +354,7 @@ class ProcessExportJob implements ShouldQueue
                 '-map', '1:a:0',
                 '-vf',
                 $filter,
-                '-af', 'aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS',
+                '-af', 'atrim=duration='.$durationForFilter.',aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS',
                 '-c:v',
                 'libx264',
                 '-pix_fmt',
@@ -420,6 +423,36 @@ class ProcessExportJob implements ShouldQueue
         $process = new Process($command);
         $process->setTimeout(600);
         $process->mustRun();
+    }
+
+    private function probeMediaDuration(string $path): ?float
+    {
+        $process = new Process([
+            'ffprobe',
+            '-v',
+            'error',
+            '-show_entries',
+            'format=duration',
+            '-of',
+            'default=noprint_wrappers=1:nokey=1',
+            $path,
+        ]);
+        $process->setTimeout(30);
+
+        try {
+            $process->mustRun();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $duration = (float) trim($process->getOutput());
+
+        return $duration > 0 ? $duration : null;
+    }
+
+    private function formatFilterDuration(float $duration): string
+    {
+        return sprintf('%.3F', max(0.1, $duration));
     }
 
     private function materializeAsset(Asset $asset, string $tempDir, string $prefix): string

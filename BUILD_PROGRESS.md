@@ -124,7 +124,7 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 - [~] Voice regenerate per scene — refreshes TTS asset and clears outdated state
 - [~] Auto-save — debounced PATCH, optimistic UI
 - [x] Export flow — validates per rules, creates ExportJob record
-- [~] FFmpeg rendering job — placeholder MP4 render/uploads complete; full scene composition still pending
+- [x] FFmpeg rendering job — scene composition, captions, and audio/visual sync fixes shipped
 - [~] Export Reverb events — backend emits export progress; editor still relies on polling/open flow
 - [~] Editor screen (Vue) — scene sidebar, preview canvas, controls panel
 - [~] Scene sidebar — scene list, active state, add-scene panel, overflow menu
@@ -145,7 +145,8 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 - Added caption-settings persistence plumbing in the editor for enabled/highlight/position controls backed by `PATCH /api/v1/scenes/{sceneId}` and `caption_settings_json`.
 - Added editor export-status polling so queued/processing exports keep updating in-place and completed renders open the finished MP4 automatically.
 - Upgraded export rendering from a placeholder file to a real scene-based FFmpeg composition that stitches scene visuals, audio, and caption text into a downloadable MP4 uploaded to B2.
-- Remaining polish after the Phase 2 gate: caption style selection UI, richer export progress UX, and higher-fidelity render composition.
+- Fixed segment stream mapping and exact per-scene trim timing so narration and scene boundaries stay aligned through concat.
+- Remaining polish after the Phase 2 gate: caption style selection UI, richer export progress UX, and editor/state cleanup on the still in-progress items below.
 
 ---
 
