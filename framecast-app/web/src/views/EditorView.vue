@@ -62,6 +62,12 @@ const exportPending = ref(false);
 const exportState = ref("idle");
 const scriptSaveState = ref("idle");
 const scriptSaveError = ref("");
+const captionEnabledDraft = ref(true);
+const captionStyleDraft = ref("impact");
+const captionHighlightDraft = ref("keywords");
+const captionPositionDraft = ref("bottom_third");
+const captionSaveState = ref("idle");
+const captionSaveError = ref("");
 const panelState = ref({
   script: false,
   visual: false,
@@ -72,6 +78,7 @@ const panelState = ref({
 const sceneScriptDraft = ref("");
 let scriptSaveTimer = null;
 let voiceSaveTimer = null;
+let captionSaveTimer = null;
 
 const activeScene = computed(
   () => scenes.value.find((scene) => scene.id === activeSceneId.value) ?? null
@@ -120,6 +127,9 @@ const projectTitle = computed(
 const unreadCount = computed(() =>
   notifications.value.filter((item) => !item.is_read).length
 );
+const activeCaptionSettings = computed(
+  () => activeScene.value?.caption_settings ?? activeScene.value?.caption_settings_json ?? {}
+);
 
 const sceneTypeOptions = [
   "Narration",
@@ -162,17 +172,28 @@ watch(
       window.clearTimeout(voiceSaveTimer);
       voiceSaveTimer = null;
     }
+    if (captionSaveTimer) {
+      window.clearTimeout(captionSaveTimer);
+      captionSaveTimer = null;
+    }
     sceneScriptDraft.value = scene?.script_text || "";
     voiceProfileKey.value = scene?.voice_settings?.voice_id || "alloy";
     voiceSpeedDraft.value = String(scene?.voice_settings?.speed ?? 1.0);
     voiceStabilityDraft.value = String(scene?.voice_settings?.stability ?? "medium");
     visualQueryDraft.value = scene?.visual_prompt || "";
+    const captionSettings = scene?.caption_settings || scene?.caption_settings_json || {};
+    captionEnabledDraft.value = captionSettings.enabled !== false;
+    captionStyleDraft.value = String(captionSettings.style_key || "impact");
+    captionHighlightDraft.value = String(captionSettings.highlight_mode || "keywords");
+    captionPositionDraft.value = String(captionSettings.position || "bottom_third");
     visualSwapPending.value = false;
     visualSwapError.value = "";
     voiceSaveState.value = "idle";
     voiceSaveError.value = "";
     scriptSaveState.value = "idle";
     scriptSaveError.value = "";
+    captionSaveState.value = "idle";
+    captionSaveError.value = "";
     rewriteToolsVisible.value = false;
     rewritePreviewVisible.value = false;
     rewritePreviewCopy.value = "";
@@ -265,6 +286,49 @@ watch(sceneScriptDraft, (draft) => {
   }, 700);
 });
 
+watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPositionDraft], () => {
+  const scene = activeScene.value;
+
+  if (!scene) return;
+
+  const savedCaptions = activeCaptionSettings.value || {};
+  const nextSettings = {
+    enabled: captionEnabledDraft.value,
+    style_key: captionStyleDraft.value,
+    highlight_mode: captionHighlightDraft.value,
+    position: captionPositionDraft.value,
+    highlight_color: savedCaptions.highlight_color || "#ff6b35",
+    preset_id: savedCaptions.preset_id || null,
+  };
+
+  if (
+    (savedCaptions.enabled !== false) === nextSettings.enabled &&
+    String(savedCaptions.style_key || "impact") === nextSettings.style_key &&
+    String(savedCaptions.highlight_mode || "keywords") === nextSettings.highlight_mode &&
+    String(savedCaptions.position || "bottom_third") === nextSettings.position
+  ) {
+    if (captionSaveTimer) {
+      window.clearTimeout(captionSaveTimer);
+      captionSaveTimer = null;
+    }
+    if (captionSaveState.value !== "saved") {
+      captionSaveState.value = "idle";
+    }
+    captionSaveError.value = "";
+    return;
+  }
+
+  if (captionSaveTimer) {
+    window.clearTimeout(captionSaveTimer);
+  }
+
+  captionSaveState.value = "pending";
+  captionSaveError.value = "";
+  captionSaveTimer = window.setTimeout(() => {
+    persistCaptionSettings(scene.id, nextSettings);
+  }, 500);
+});
+
 function sceneTypeLabel(index) {
   if (index === 0) return "Hook";
   if (index === scenes.value.length - 1) return "CTA";
@@ -307,6 +371,14 @@ function voiceSaveCopy() {
   if (voiceSaveState.value === "saving") return "Saving voice...";
   if (voiceSaveState.value === "saved") return "Voice saved";
   if (voiceSaveState.value === "error") return voiceSaveError.value || "Voice save failed";
+  return "";
+}
+
+function captionSaveCopy() {
+  if (captionSaveState.value === "pending") return "Unsaved captions";
+  if (captionSaveState.value === "saving") return "Saving captions...";
+  if (captionSaveState.value === "saved") return "Captions saved";
+  if (captionSaveState.value === "error") return captionSaveError.value || "Caption save failed";
   return "";
 }
 
@@ -912,6 +984,31 @@ async function persistVoiceSettings(sceneId, nextSettings) {
       requestError.response?.data?.message ||
       requestError.message ||
       "Voice save failed.";
+  }
+}
+
+async function persistCaptionSettings(sceneId, nextSettings) {
+  captionSaveState.value = "saving";
+  captionSaveError.value = "";
+
+  try {
+    const response = await api.patch(`/scenes/${sceneId}`, {
+      caption_settings_json: nextSettings,
+    });
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene);
+
+    if (!updatedScene) {
+      throw new Error("Caption update returned no scene payload.");
+    }
+
+    scenes.value = scenes.value.map((scene) =>
+      scene.id === sceneId ? updatedScene : scene
+    );
+    captionSaveState.value = "saved";
+  } catch (requestError) {
+    captionSaveState.value = "error";
+    captionSaveError.value =
+      requestError.response?.data?.error?.message ?? "Caption save failed";
   }
 }
 
@@ -1613,7 +1710,7 @@ onBeforeUnmount(() => {
                 <div class="caption-toggle-row">
                   <span></span>
                   <label class="caption-toggle">
-                    <input checked type="checkbox" />
+                    <input v-model="captionEnabledDraft" type="checkbox" />
                     <span>On</span>
                   </label>
                 </div>
@@ -1633,19 +1730,19 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="control-row top-space">
                   <span class="control-name">Highlight</span>
-                  <select class="control-value">
-                    <option selected>Keywords</option>
-                    <option>Word-by-word</option>
-                    <option>Line-by-line</option>
-                    <option>None</option>
+                  <select v-model="captionHighlightDraft" class="control-value">
+                    <option value="keywords">Keywords</option>
+                    <option value="word_by_word">Word-by-word</option>
+                    <option value="line_by_line">Line-by-line</option>
+                    <option value="none">None</option>
                   </select>
                 </div>
                 <div class="control-row">
                   <span class="control-name">Position</span>
-                  <select class="control-value">
-                    <option selected>Bottom third</option>
-                    <option>Center</option>
-                    <option>Top third</option>
+                  <select v-model="captionPositionDraft" class="control-value">
+                    <option value="bottom_third">Bottom third</option>
+                    <option value="center">Center</option>
+                    <option value="top_third">Top third</option>
                   </select>
                 </div>
               </div>
