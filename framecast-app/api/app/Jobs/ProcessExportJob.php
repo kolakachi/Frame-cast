@@ -343,9 +343,15 @@ class ProcessExportJob implements ShouldQueue
             array_push(
                 $command,
                 '-r', '30',
+                // Explicitly bind segment outputs to the scene's visual stream and
+                // narration stream. Without this, FFmpeg can auto-select embedded
+                // audio from stock clips, which shifts voice playback across scene
+                // boundaries after concatenation.
+                '-map', '0:v:0',
+                '-map', '1:a:0',
                 '-vf',
                 $filter,
-                '-af', 'asetpts=PTS-STARTPTS',
+                '-af', 'aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS',
                 '-c:v',
                 'libx264',
                 '-pix_fmt',
@@ -513,7 +519,7 @@ class ProcessExportJob implements ShouldQueue
 
     private function buildHighlightedCaption(string $text, string $captionStyle): string
     {
-        return $this->escapeDrawtext($text, preserveNewlines: true);
+        return $this->escapeDrawtext($text, true);
     }
 
     private function captionFontColor(string $captionStyle): string
