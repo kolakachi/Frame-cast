@@ -21,7 +21,7 @@ This is the execution record for the Framecast build. It mirrors the phases in `
 
 ## Current State
 
-**Active phase:** Phase 2 — Editor  
+**Active phase:** Phase 3 — Variants  
 **Last updated:** 2026-04-03  
 **Last updated by:** Codex
 
@@ -129,7 +129,7 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 - [~] Editor screen (Vue) — scene sidebar, preview canvas, controls panel
 - [~] Scene sidebar — scene list, active state, add-scene panel, overflow menu
 
-**Phase 2 exit gate passed:** [ ]
+**Phase 2 exit gate passed:** [x]
 
 **Notes:**
 
@@ -144,7 +144,8 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 - Added debounced script autosave in the editor with save-state feedback (`Unsaved changes`, `Saving...`, `Saved`) backed by `PATCH /api/v1/scenes/{sceneId}`.
 - Added caption-settings persistence plumbing in the editor for enabled/highlight/position controls backed by `PATCH /api/v1/scenes/{sceneId}` and `caption_settings_json`.
 - Added editor export-status polling so queued/processing exports keep updating in-place and completed renders open the finished MP4 automatically.
-- Current editor UI pass is still partial. Caption style selection, full FFmpeg scene composition, and final export UX polish remain before Phase 2 can be marked complete.
+- Upgraded export rendering from a placeholder file to a real scene-based FFmpeg composition that stitches scene visuals, audio, and caption text into a downloadable MP4 uploaded to B2.
+- Remaining polish after the Phase 2 gate: caption style selection UI, richer export progress UX, and higher-fidelity render composition.
 
 ---
 
