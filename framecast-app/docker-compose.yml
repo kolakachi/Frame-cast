@@ -8,6 +8,8 @@ services:
     environment:
       REVERB_HOST: reverb
     working_dir: /var/www/html
+    volumes:
+      - ./api:/var/www/html
     ports:
       - "8000:8000"
     depends_on:
@@ -17,12 +19,14 @@ services:
   worker:
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=default,generation,tts,visual,translation,rendering --tries=1
+    command: php artisan queue:work redis --queue=exports,default,generation,tts,visual,translation,rendering --tries=1
     env_file:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
     working_dir: /var/www/html
+    volumes:
+      - ./api:/var/www/html
     depends_on:
       - postgres
       - redis
@@ -36,6 +40,8 @@ services:
     environment:
       REVERB_HOST: reverb
     working_dir: /var/www/html
+    volumes:
+      - ./api:/var/www/html
     depends_on:
       - postgres
       - redis
@@ -49,6 +55,8 @@ services:
     environment:
       REVERB_HOST: reverb
     working_dir: /var/www/html
+    volumes:
+      - ./api:/var/www/html
     ports:
       - "8080:8080"
     depends_on:
@@ -63,6 +71,8 @@ services:
     environment:
       REVERB_HOST: reverb
     working_dir: /var/www/html
+    volumes:
+      - ./api:/var/www/html
     depends_on:
       - postgres
       - redis

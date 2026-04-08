@@ -44,7 +44,7 @@ class ProcessExportJob implements ShouldQueue
             'started_at' => now(),
         ])->save();
 
-        ExportProgressed::dispatch(
+        $this->dispatchProgress(
             (int) $exportJob->project_id,
             (int) $exportJob->getKey(),
             'processing',
@@ -128,7 +128,7 @@ class ProcessExportJob implements ShouldQueue
                     'progress_percent' => $progress,
                 ])->save();
 
-                ExportProgressed::dispatch(
+                $this->dispatchProgress(
                     (int) $exportJob->project_id,
                     (int) $exportJob->getKey(),
                     'processing',
@@ -187,7 +187,7 @@ class ProcessExportJob implements ShouldQueue
             'output_asset_id' => $asset->getKey(),
         ])->save();
 
-        ExportProgressed::dispatch(
+        $this->dispatchProgress(
             (int) $exportJob->project_id,
             (int) $exportJob->getKey(),
             'completed',
@@ -209,7 +209,7 @@ class ProcessExportJob implements ShouldQueue
             'failure_reason' => $exception->getMessage(),
         ])->save();
 
-        ExportProgressed::dispatch(
+        $this->dispatchProgress(
             (int) $exportJob->project_id,
             (int) $exportJob->getKey(),
             'failed',
@@ -419,5 +419,23 @@ class ProcessExportJob implements ShouldQueue
             ['\\\\', '\:', "\\'", '\%', '\[', '\]', '\,'],
             $shortened
         );
+    }
+
+    private function dispatchProgress(
+        int $projectId,
+        int $exportJobId,
+        string $status,
+        int $progressPercent,
+        ?string $message = null
+    ): void {
+        rescue(static function () use ($projectId, $exportJobId, $status, $progressPercent, $message): void {
+            ExportProgressed::dispatch(
+                $projectId,
+                $exportJobId,
+                $status,
+                $progressPercent,
+                $message
+            );
+        }, report: false);
     }
 }

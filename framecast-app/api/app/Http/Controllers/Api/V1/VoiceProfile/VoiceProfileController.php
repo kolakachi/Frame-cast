@@ -10,6 +10,54 @@ use Illuminate\Http\Request;
 
 class VoiceProfileController extends Controller
 {
+    /**
+     * @return list<array{id:int,workspace_id:null,provider:string,name:string,language:string,accent:?string,gender_label:string,voice_type:string,is_cloned:bool,provider_voice_key:string,status:string}>
+     */
+    private function fallbackVoices(): array
+    {
+        return [
+            [
+                'id' => 0,
+                'workspace_id' => null,
+                'provider' => 'openai',
+                'name' => 'Alloy',
+                'language' => 'en',
+                'accent' => null,
+                'gender_label' => 'Neutral',
+                'voice_type' => 'synthetic',
+                'is_cloned' => false,
+                'provider_voice_key' => 'alloy',
+                'status' => 'active',
+            ],
+            [
+                'id' => 0,
+                'workspace_id' => null,
+                'provider' => 'openai',
+                'name' => 'Nova',
+                'language' => 'en',
+                'accent' => null,
+                'gender_label' => 'Female',
+                'voice_type' => 'synthetic',
+                'is_cloned' => false,
+                'provider_voice_key' => 'nova',
+                'status' => 'active',
+            ],
+            [
+                'id' => 0,
+                'workspace_id' => null,
+                'provider' => 'openai',
+                'name' => 'Onyx',
+                'language' => 'en',
+                'accent' => null,
+                'gender_label' => 'Male',
+                'voice_type' => 'synthetic',
+                'is_cloned' => false,
+                'provider_voice_key' => 'onyx',
+                'status' => 'active',
+            ],
+        ];
+    }
+
     public function index(Request $request): JsonResponse
     {
         /** @var User $user */
@@ -40,6 +88,10 @@ class VoiceProfileController extends Controller
             ])
             ->values()
             ->all();
+
+        if ($voices === []) {
+            $voices = $this->fallbackVoices();
+        }
 
         return response()->json([
             'data' => [

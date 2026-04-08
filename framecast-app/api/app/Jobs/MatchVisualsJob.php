@@ -43,12 +43,13 @@ class MatchVisualsJob implements ShouldQueue
         DB::transaction(function () use ($project, $scenes, $visualProvider): void {
             foreach ($scenes as $scene) {
                 $prompt = $this->buildPrompt($scene, $project);
-                $match = $visualProvider->match($prompt, 'portrait');
+                $orientation = in_array((string) ($project->aspect_ratio ?? ''), ['16:9'], true) ? 'landscape' : 'portrait';
+                $match = $visualProvider->match($prompt, $orientation, 'stock_clip');
 
                 $asset = Asset::query()->create([
                     'workspace_id' => $project->workspace_id,
                     'channel_id' => $project->channel_id,
-                    'asset_type' => 'image',
+                    'asset_type' => $match['asset_type'],
                     'title' => 'Matched visual for project '.$project->getKey(),
                     'description' => $prompt,
                     'storage_url' => $match['asset_url'],
@@ -58,7 +59,7 @@ class MatchVisualsJob implements ShouldQueue
                         'width' => $match['width'],
                         'height' => $match['height'],
                     ],
-                    'mime_type' => 'image/jpeg',
+                    'mime_type' => $match['mime_type'],
                     'tags' => ['matched_visual', $match['provider_key']],
                     'usage_count' => 1,
                     'status' => 'active',
@@ -66,7 +67,7 @@ class MatchVisualsJob implements ShouldQueue
                 ]);
 
                 $scene->forceFill([
-                    'visual_type' => 'image_montage',
+                    'visual_type' => 'stock_clip',
                     'visual_asset_id' => $asset->getKey(),
                     'visual_prompt' => $prompt,
                 ])->save();

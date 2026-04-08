@@ -320,6 +320,26 @@ class SceneController extends Controller
             'visual_type' => ['sometimes', 'nullable', 'string', 'max:64'],
         ]);
 
+        $requestedType = trim((string) ($validated['visual_type'] ?? $scene->visual_type ?? 'image_montage'));
+        $noMediaTypes = ['text_card', 'waveform'];
+
+        if (in_array($requestedType, $noMediaTypes, true)) {
+            $prompt = trim((string) ($validated['query'] ?? $scene->visual_prompt ?? $scene->script_text ?? $scene->label ?? ''));
+            $scene->forceFill([
+                'visual_type' => $requestedType,
+                'visual_asset_id' => null,
+                'visual_prompt' => $prompt !== '' ? $prompt : null,
+                'status' => 'edited',
+            ])->save();
+
+            return response()->json([
+                'data' => [
+                    'scene' => $this->serializeScene($scene->fresh()),
+                ],
+                'meta' => [],
+            ]);
+        }
+
         $prompt = trim((string) ($validated['query'] ?? $scene->visual_prompt ?? ''));
 
         if ($prompt === '') {
@@ -329,12 +349,13 @@ class SceneController extends Controller
             $prompt = trim("{$sceneLabel}, {$tone} style, {$sceneText}");
         }
 
-        $match = $visualProvider->match($prompt, 'portrait');
+        $orientation = in_array((string) ($project->aspect_ratio ?? ''), ['16:9'], true) ? 'landscape' : 'portrait';
+        $match = $visualProvider->match($prompt, $orientation, $requestedType);
 
         $asset = Asset::query()->create([
             'workspace_id' => $project->workspace_id,
             'channel_id' => $project->channel_id,
-            'asset_type' => 'image',
+            'asset_type' => $match['asset_type'],
             'title' => 'Matched visual for project '.$project->getKey(),
             'description' => $prompt,
             'storage_url' => $match['asset_url'],
@@ -344,7 +365,7 @@ class SceneController extends Controller
                 'width' => $match['width'],
                 'height' => $match['height'],
             ],
-            'mime_type' => 'image/jpeg',
+            'mime_type' => $match['mime_type'],
             'tags' => ['matched_visual', $match['provider_key']],
             'usage_count' => 1,
             'status' => 'active',
@@ -352,7 +373,7 @@ class SceneController extends Controller
         ]);
 
         $scene->forceFill([
-            'visual_type' => $validated['visual_type'] ?? 'image_montage',
+            'visual_type' => $requestedType,
             'visual_asset_id' => $asset->getKey(),
             'visual_prompt' => $prompt,
             'status' => 'edited',

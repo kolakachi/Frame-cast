@@ -10,10 +10,12 @@ interface VisualProviderAdapter
      *   provider_asset_id:string,
      *   asset_url:string,
      *   thumbnail_url:string,
+     *   asset_type:string,
+     *   mime_type:string,
      *   duration_seconds:float|null,
      *   width:int|null,
      *   height:int|null
      * }
      */
-    public function match(string $query, string $orientation = 'portrait'): array;
+    public function match(string $query, string $orientation = 'portrait', string $visualType = 'image_montage'): array;
 }

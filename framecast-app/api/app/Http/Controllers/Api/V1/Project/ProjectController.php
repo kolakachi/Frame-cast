@@ -309,13 +309,15 @@ class ProjectController extends Controller
             'queued_at' => now(),
         ]);
 
-        ExportProgressed::dispatch(
-            (int) $project->getKey(),
-            (int) $exportJob->getKey(),
-            'queued',
-            0,
-            'Export queued.'
-        );
+        rescue(static function () use ($project, $exportJob): void {
+            ExportProgressed::dispatch(
+                (int) $project->getKey(),
+                (int) $exportJob->getKey(),
+                'queued',
+                0,
+                'Export queued.'
+            );
+        }, report: false);
 
         ProcessExportJob::dispatch((int) $exportJob->getKey());
 

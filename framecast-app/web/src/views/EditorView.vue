@@ -37,7 +37,8 @@ const mediaPreloaders = new Map();
 
 const addScenePanelPosition = ref("");
 const selectedSceneType = ref("Narration");
-const selectedVisualSource = ref("Stock Clip");
+const selectedAddSceneVisualSource = ref("Stock Clip");
+const selectedSwapVisualSource = ref("Stock Clip");
 const newSceneScript = ref("");
 const rewriteToolsVisible = ref(false);
 const rewritePreviewVisible = ref(false);
@@ -89,6 +90,9 @@ const activeSceneVisualUrl = computed(
   () => activeScene.value?.visual_asset?.storage_url ?? null
 );
 const activeSceneVisualAsset = computed(() => activeScene.value?.visual_asset ?? null);
+const activeSceneVisualType = computed(
+  () => String(activeScene.value?.visual_type || "")
+);
 const activeSceneVisualIsVideo = computed(() => {
   const asset = activeSceneVisualAsset.value;
   if (!asset) return false;
@@ -106,6 +110,15 @@ const isVisualLoading = computed(() => {
   if (!activeSceneVisualUrl.value) return false;
   return !activeSceneVisualLoaded.value && !visualLoadFailed.value;
 });
+const showTextCardPreview = computed(
+  () => !currentVisualUrl.value && activeSceneVisualType.value === "text_card"
+);
+const showWaveformPreview = computed(
+  () => !currentVisualUrl.value && activeSceneVisualType.value === "waveform"
+);
+const waveformBars = computed(() =>
+  [0.28, 0.52, 0.34, 0.76, 0.42, 0.88, 0.48, 0.66, 0.31, 0.58, 0.4, 0.72]
+);
 const activeVoiceName = computed(() => {
   const voiceId = activeScene.value?.voice_settings?.voice_id;
   const match = voiceProfiles.value.find(
@@ -133,6 +146,19 @@ const latestExportJob = computed(() => exportJobs.value[0] ?? null);
 const latestExportDownloadUrl = computed(
   () => latestExportJob.value?.output_asset?.storage_url ?? null
 );
+const captionPreviewClass = computed(() => {
+  if (!captionEnabledDraft.value) return "caption-hidden";
+  if (captionStyleDraft.value === "editorial") return "caption-style-editorial";
+  if (captionStyleDraft.value === "hacker") return "caption-style-hacker";
+  return "caption-style-impact";
+});
+const captionPositionStyle = computed(() => {
+  if (captionPositionDraft.value === "center")
+    return { top: "50%", transform: "translateY(-50%)", bottom: "auto" };
+  if (captionPositionDraft.value === "top_third")
+    return { top: "80px", bottom: "auto" };
+  return {};
+});
 const activeCaptionSettings = computed(
   () => activeScene.value?.caption_settings ?? activeScene.value?.caption_settings_json ?? {}
 );
@@ -149,7 +175,23 @@ const visualSourceOptions = [
   { label: "BG Loop", icon: "🔁" },
   { label: "AI Image", icon: "🖼" },
   { label: "Text Only", icon: "Aa" },
+  { label: "Waveform", icon: "〰" },
 ];
+const visualSourceTypeMap = {
+  "Stock Clip": "stock_clip",
+  "BG Loop": "background_loop",
+  "AI Image": "ai_image",
+  "Text Only": "text_card",
+  Waveform: "waveform",
+};
+const visualTypeLabelMap = {
+  image_montage: "Stock Clip",
+  stock_clip: "Stock Clip",
+  background_loop: "BG Loop",
+  ai_image: "AI Image",
+  text_card: "Text Only",
+  waveform: "Waveform",
+};
 const rewriteOptions = [
   "Shorten",
   "Expand",
@@ -187,6 +229,8 @@ watch(
     voiceSpeedDraft.value = String(scene?.voice_settings?.speed ?? 1.0);
     voiceStabilityDraft.value = String(scene?.voice_settings?.stability ?? "medium");
     visualQueryDraft.value = scene?.visual_prompt || "";
+    selectedSwapVisualSource.value =
+      visualTypeLabelMap[String(scene?.visual_type || "")] || "Stock Clip";
     const captionSettings = scene?.caption_settings || scene?.caption_settings_json || {};
     captionEnabledDraft.value = captionSettings.enabled !== false;
     captionStyleDraft.value = String(captionSettings.style_key || "impact");
@@ -338,9 +382,12 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
 watch(
   exportJobs,
   (jobs) => {
-    const hasActiveExport = jobs.some((job) =>
-      ["queued", "processing"].includes(String(job.status || ""))
-    );
+    const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
+    const hasActiveExport = jobs.some((job) => {
+      if (!["queued", "processing"].includes(String(job.status || ""))) return false;
+      const queuedAt = job.queued_at ? new Date(job.queued_at).getTime() : 0;
+      return queuedAt > thirtyMinutesAgo;
+    });
 
     if (hasActiveExport && !exportPollTimer) {
       exportPollTimer = window.setInterval(() => {
@@ -408,10 +455,17 @@ function sceneTypeLabel(index) {
 
 function sceneVisualLabel(scene) {
   if (scene?.visual_type === "text_card") return "text card";
+  if (scene?.visual_type === "waveform") return "waveform";
   if (scene?.visual_type === "ai_image") return "ai image";
+  if (scene?.visual_type === "background_loop") return "bg loop";
+  if (scene?.visual_type === "stock_clip") return "stock clip";
   if (scene?.visual_asset?.asset_type === "video") return "stock clip";
   if (scene?.visual_asset?.asset_type === "image") return "ai image";
   return "bg loop";
+}
+
+function selectedVisualType() {
+  return visualSourceTypeMap[selectedSwapVisualSource.value] || "stock_clip";
 }
 
 function sceneVoiceOutdated(scene) {
@@ -707,6 +761,7 @@ async function loadProject() {
       preloadSceneAudio(scene);
     });
     await loadExportJobs();
+    subscribeProjectChannel();
   } catch (requestError) {
     error.value =
       requestError.response?.data?.error?.message ?? "Project load failed.";
@@ -1103,7 +1158,7 @@ async function swapVisual() {
   try {
     const response = await api.post(`/scenes/${activeScene.value.id}/swap-visual`, {
       query: visualQueryDraft.value || activeScene.value.visual_prompt || "",
-      visual_type: activeScene.value.visual_type || "image_montage",
+      visual_type: selectedVisualType(),
     });
 
     const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
@@ -1175,6 +1230,38 @@ async function queueExport() {
   }
 }
 
+let projectChannelName = null;
+
+function subscribeProjectChannel() {
+  const echo = getEcho();
+  if (!echo || !projectId.value) return;
+
+  projectChannelName = `project.${projectId.value}`;
+
+  echo.private(projectChannelName).listen(".export.progress", (payload) => {
+    const jobId = Number(payload.export_job_id);
+    const idx = exportJobs.value.findIndex((j) => j.id === jobId);
+
+    if (idx >= 0) {
+      exportJobs.value = exportJobs.value.map((job) =>
+        job.id === jobId
+          ? { ...job, status: payload.status, progress_percent: payload.progress_percent }
+          : job
+      );
+    } else {
+      loadExportJobs();
+    }
+  });
+}
+
+function unsubscribeProjectChannel() {
+  const echo = getEcho();
+  if (echo && projectChannelName) {
+    echo.leave(projectChannelName);
+    projectChannelName = null;
+  }
+}
+
 function toggleAudioPlayback() {
   if (!audioRef.value || !activeSceneAudioUrl.value) return;
   isAudioLoading.value = true;
@@ -1217,6 +1304,7 @@ onBeforeUnmount(() => {
   });
   mediaPreloaders.clear();
   unsubscribeWorkspaceNotifications();
+  unsubscribeProjectChannel();
 });
 </script>
 
@@ -1401,9 +1489,9 @@ onBeforeUnmount(() => {
                     v-for="option in visualSourceOptions"
                     :key="option.label"
                     :class="`add-scene-visual-opt ${
-                      selectedVisualSource === option.label ? 'selected' : ''
+                      selectedAddSceneVisualSource === option.label ? 'selected' : ''
                     }`"
-                    @click="selectedVisualSource = option.label"
+                    @click="selectedAddSceneVisualSource = option.label"
                   >
                     <div class="ico">{{ option.icon }}</div>
                     {{ option.label }}
@@ -1513,9 +1601,9 @@ onBeforeUnmount(() => {
                       v-for="option in visualSourceOptions"
                       :key="`${scene.id}-${option.label}`"
                       :class="`add-scene-visual-opt ${
-                        selectedVisualSource === option.label ? 'selected' : ''
+                        selectedAddSceneVisualSource === option.label ? 'selected' : ''
                       }`"
-                      @click="selectedVisualSource = option.label"
+                      @click="selectedAddSceneVisualSource = option.label"
                     >
                       <div class="ico">{{ option.icon }}</div>
                       {{ option.label }}
@@ -1551,12 +1639,42 @@ onBeforeUnmount(() => {
           <div class="editor-canvas">
             <div class="preview-container">
               <div class="preview-video-bg">
+                <video
+                  v-if="currentVisualUrl && activeSceneVisualIsVideo"
+                  :src="currentVisualUrl"
+                  class="preview-image"
+                  autoplay
+                  loop
+                  muted
+                  playsinline
+                ></video>
                 <img
-                  v-if="currentVisualUrl"
+                  v-else-if="currentVisualUrl"
                   :src="currentVisualUrl"
                   class="preview-image"
                   alt=""
                 />
+                <div v-else-if="showTextCardPreview" class="preview-fallback preview-fallback-text">
+                  <div class="text-only-card">
+                    <div class="text-only-label">TEXT CARD</div>
+                    <div class="text-only-copy">
+                      {{ sceneScriptDraft || activeScene?.script_text || activeScene?.label }}
+                    </div>
+                  </div>
+                </div>
+                <div v-else-if="showWaveformPreview" class="preview-fallback preview-fallback-waveform">
+                  <div class="waveform-shell">
+                    <div class="waveform-label">WAVEFORM</div>
+                    <div class="waveform-bars">
+                      <span
+                        v-for="(bar, index) in waveformBars"
+                        :key="`wave-${index}`"
+                        class="waveform-bar"
+                        :style="{ height: `${Math.round(bar * 100)}%` }"
+                      ></span>
+                    </div>
+                  </div>
+                </div>
                 <div v-else class="preview-fallback"></div>
                 <div v-if="isVisualLoading" class="preview-loading">
                   Loading scene media...
@@ -1568,15 +1686,17 @@ onBeforeUnmount(() => {
                 <div class="preview-timer">
                   {{ previewTimer.elapsed }} / {{ previewTimer.total }}
                 </div>
-                <div class="preview-caption">
+                <div
+                  class="preview-caption"
+                  :class="captionPreviewClass"
+                  :style="captionPositionStyle"
+                >
                   <span
                     v-for="(word, index) in previewWords(
                       sceneScriptDraft || activeScene?.script_text
                     )"
                     :key="`${index}-${word.text}`"
-                    :class="`caption-word ${
-                      word.highlighted ? 'highlight' : 'normal'
-                    }`"
+                    :class="`caption-word ${word.highlighted ? 'highlight' : 'normal'}`"
                   >
                     {{ word.text }}
                   </span>
@@ -1695,12 +1815,12 @@ onBeforeUnmount(() => {
               <div class="panel-section-body">
                 <div class="control-row">
                   <span class="control-name">Type</span>
-                  <select class="control-value">
-                    <option>Stock Clip</option>
-                    <option>Background Loop</option>
-                    <option>AI Image</option>
-                    <option>Text Card</option>
-                    <option>Waveform</option>
+                  <select v-model="selectedSwapVisualSource" class="control-value">
+                    <option value="Stock Clip">Stock Clip</option>
+                    <option value="BG Loop">BG Loop</option>
+                    <option value="AI Image">AI Image</option>
+                    <option value="Text Only">Text Only</option>
+                    <option value="Waveform">Waveform</option>
                   </select>
                 </div>
                 <div class="control-row">
@@ -1808,15 +1928,24 @@ onBeforeUnmount(() => {
                   </label>
                 </div>
                 <div class="caption-style-grid">
-                  <div class="caption-style-opt active">
+                  <div
+                    :class="['caption-style-opt', captionStyleDraft === 'impact' ? 'active' : '']"
+                    @click="captionStyleDraft = 'impact'"
+                  >
                     <div class="preview-text accent-text">BOLD</div>
                     <div class="style-name">Impact</div>
                   </div>
-                  <div class="caption-style-opt">
+                  <div
+                    :class="['caption-style-opt', captionStyleDraft === 'editorial' ? 'active' : '']"
+                    @click="captionStyleDraft = 'editorial'"
+                  >
                     <div class="preview-text serif-text">SERIF</div>
                     <div class="style-name">Editorial</div>
                   </div>
-                  <div class="caption-style-opt">
+                  <div
+                    :class="['caption-style-opt', captionStyleDraft === 'hacker' ? 'active' : '']"
+                    @click="captionStyleDraft = 'hacker'"
+                  >
                     <div class="preview-text mono-text">MONO</div>
                     <div class="style-name">Hacker</div>
                   </div>
@@ -2845,6 +2974,76 @@ button {
   background: linear-gradient(180deg, #1a1a3e 0%, #0d0d2b 40%, #1a0a2e 100%);
 }
 
+.preview-fallback-text,
+.preview-fallback-waveform {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.text-only-card {
+  width: 100%;
+  height: 100%;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top left, rgba(255, 107, 53, 0.22), transparent 35%),
+    linear-gradient(180deg, rgba(30, 30, 44, 0.96), rgba(12, 12, 21, 0.96));
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+}
+
+.text-only-label,
+.waveform-label {
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.text-only-copy {
+  font-size: 28px;
+  line-height: 1.28;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+}
+
+.waveform-shell {
+  width: 100%;
+  height: 100%;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at bottom right, rgba(85, 114, 255, 0.22), transparent 30%),
+    linear-gradient(180deg, rgba(14, 15, 24, 0.96), rgba(20, 16, 38, 0.98));
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 28px;
+}
+
+.waveform-bars {
+  height: 220px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+}
+
+.waveform-bar {
+  width: 18px;
+  min-height: 18%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff6b35 0%, #ffbe55 100%);
+  box-shadow: 0 0 18px rgba(255, 107, 53, 0.24);
+}
+
 .preview-loading {
   position: absolute;
   inset: 0;
@@ -2883,6 +3082,38 @@ button {
 
 .caption-word.normal {
   color: #fff;
+}
+
+.caption-hidden {
+  display: none !important;
+}
+
+/* Editorial style — italic, serif highlight */
+.caption-style-editorial .caption-word {
+  font-style: italic;
+  font-weight: 400;
+}
+.caption-style-editorial .caption-word.highlight {
+  color: #fff;
+  font-style: italic;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.caption-style-editorial .caption-word.normal {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Hacker style — monospace, yellow highlight */
+.caption-style-hacker .caption-word {
+  font-family: "Space Mono", monospace;
+  font-size: 16px;
+  font-weight: 400;
+}
+.caption-style-hacker .caption-word.highlight {
+  color: var(--yellow);
+}
+.caption-style-hacker .caption-word.normal {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .preview-watermark {
