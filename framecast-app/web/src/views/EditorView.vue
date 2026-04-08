@@ -60,6 +60,7 @@ const visualSwapPending = ref(false);
 const visualSwapError = ref("");
 const exportPending = ref(false);
 const exportState = ref("idle");
+const queuedExportJobId = ref(null);
 const scriptSaveState = ref("idle");
 const scriptSaveError = ref("");
 const captionEnabledDraft = ref(true);
@@ -79,6 +80,7 @@ const sceneScriptDraft = ref("");
 let scriptSaveTimer = null;
 let voiceSaveTimer = null;
 let captionSaveTimer = null;
+let exportPollTimer = null;
 
 const activeScene = computed(
   () => scenes.value.find((scene) => scene.id === activeSceneId.value) ?? null
@@ -126,6 +128,10 @@ const projectTitle = computed(
 );
 const unreadCount = computed(() =>
   notifications.value.filter((item) => !item.is_read).length
+);
+const latestExportJob = computed(() => exportJobs.value[0] ?? null);
+const latestExportDownloadUrl = computed(
+  () => latestExportJob.value?.output_asset?.storage_url ?? null
 );
 const activeCaptionSettings = computed(
   () => activeScene.value?.caption_settings ?? activeScene.value?.caption_settings_json ?? {}
@@ -329,6 +335,71 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
   }, 500);
 });
 
+watch(
+  exportJobs,
+  (jobs) => {
+    const hasActiveExport = jobs.some((job) =>
+      ["queued", "processing"].includes(String(job.status || ""))
+    );
+
+    if (hasActiveExport && !exportPollTimer) {
+      exportPollTimer = window.setInterval(() => {
+        loadExportJobs();
+      }, 3000);
+      return;
+    }
+
+    if (!hasActiveExport && exportPollTimer) {
+      window.clearInterval(exportPollTimer);
+      exportPollTimer = null;
+    }
+  },
+  { deep: true, immediate: true }
+);
+
+watch(
+  [exportJobs, queuedExportJobId],
+  ([jobs, pendingJobId]) => {
+    if (!pendingJobId) return;
+
+    const matchingJob = jobs.find((job) => job.id === pendingJobId);
+
+    if (!matchingJob) return;
+
+    if (
+      matchingJob.status === "completed" &&
+      matchingJob.output_asset?.storage_url
+    ) {
+      pushToast({
+        id: `export-complete-${matchingJob.id}`,
+        title: "Export ready",
+        message: matchingJob.file_name || "Your rendered MP4 is ready.",
+        created_at: new Date().toISOString(),
+      });
+      window.open(
+        matchingJob.output_asset.storage_url,
+        "_blank",
+        "noopener,noreferrer"
+      );
+      queuedExportJobId.value = null;
+      exportState.value = "idle";
+      return;
+    }
+
+    if (matchingJob.status === "failed") {
+      pushToast({
+        id: `export-failed-${matchingJob.id}`,
+        title: "Export failed",
+        message: matchingJob.failure_reason || "Export failed.",
+        created_at: new Date().toISOString(),
+      });
+      queuedExportJobId.value = null;
+      exportState.value = "error";
+    }
+  },
+  { deep: true }
+);
+
 function sceneTypeLabel(index) {
   if (index === 0) return "Hook";
   if (index === scenes.value.length - 1) return "CTA";
@@ -380,6 +451,15 @@ function captionSaveCopy() {
   if (captionSaveState.value === "saved") return "Captions saved";
   if (captionSaveState.value === "error") return captionSaveError.value || "Caption save failed";
   return "";
+}
+
+function exportStatusCopy(job) {
+  if (!job) return "";
+  if (job.status === "completed") return "Export ready";
+  if (job.status === "failed") return job.failure_reason || "Export failed";
+  if (job.status === "processing") return `Exporting ${job.progress_percent || 0}%`;
+  if (job.status === "queued") return "Export queued";
+  return `Export ${job.status}`;
 }
 
 function formatSceneDuration(value) {
@@ -1064,6 +1144,7 @@ async function queueExport() {
     });
 
     const exportJob = response.data?.data?.export_job ?? null;
+    queuedExportJobId.value = exportJob?.id ?? null;
     exportState.value = "saved";
     await loadExportJobs();
     pushToast({
@@ -1121,6 +1202,12 @@ onBeforeUnmount(() => {
   }
   if (voiceSaveTimer) {
     window.clearTimeout(voiceSaveTimer);
+  }
+  if (captionSaveTimer) {
+    window.clearTimeout(captionSaveTimer);
+  }
+  if (exportPollTimer) {
+    window.clearInterval(exportPollTimer);
   }
   mediaPreloaders.forEach((media) => {
     media.onload = null;
@@ -1237,6 +1324,12 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="topbar-right">
+            <div
+              v-if="latestExportJob"
+              class="export-pill"
+            >
+              {{ exportStatusCopy(latestExportJob) }}
+            </div>
             <button class="btn btn-ghost" type="button" @click="router.push({ name: 'dashboard' })">+ New Video</button>
             <button class="btn btn-primary" type="button" :disabled="exportPending" @click="queueExport">
               {{ exportPending ? "Exporting..." : "Export" }}
@@ -2087,6 +2180,46 @@ button {
 
 .topbar-right {
   gap: 10px;
+}
+
+.export-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(19, 19, 28, 0.92);
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.export-pill-queued,
+.export-pill-processing {
+  color: #f6c453;
+  border-color: rgba(246, 196, 83, 0.25);
+}
+
+.export-pill-completed {
+  color: #9fe3b5;
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.export-pill-failed {
+  color: #ff8f8f;
+  border-color: rgba(255, 107, 107, 0.3);
+}
+
+.export-pill-link {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.export-pill-link:hover {
+  color: var(--accent);
 }
 
 .btn-back {
