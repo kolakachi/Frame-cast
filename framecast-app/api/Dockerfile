@@ -8,6 +8,7 @@ WORKDIR /var/www/html
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
+        ffmpeg \
         git \
         libicu-dev \
         libpq-dev \
