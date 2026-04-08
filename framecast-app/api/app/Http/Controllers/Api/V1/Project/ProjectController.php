@@ -262,6 +262,8 @@ class ProjectController extends Controller
             return $this->error('not_found', 'Project not found.', 404);
         }
 
+        $this->reconcileStaleExports((int) $project->getKey());
+
         $validated = $request->validate([
             'aspect_ratio' => ['nullable', Rule::in(['9:16', '1:1', '16:9'])],
             'language' => ['nullable', 'string', 'max:16'],
@@ -359,6 +361,8 @@ class ProjectController extends Controller
         if (! $project) {
             return $this->error('not_found', 'Project not found.', 404);
         }
+
+        $this->reconcileStaleExports((int) $project->getKey());
 
         $exportJobs = ExportJob::query()
             ->where('project_id', $project->getKey())
@@ -556,6 +560,20 @@ class ProjectController extends Controller
             'completed_at' => $exportJob->completed_at?->toIso8601String(),
             'output_asset' => $outputAsset ? $this->serializeAsset($outputAsset) : null,
         ];
+    }
+
+    private function reconcileStaleExports(int $projectId): void
+    {
+        ExportJob::query()
+            ->where('project_id', $projectId)
+            ->where('status', 'queued')
+            ->whereNull('started_at')
+            ->where('queued_at', '<', now()->subMinutes(2))
+            ->update([
+                'status' => 'failed',
+                'failure_reason' => 'Stale — export queue job disappeared',
+                'completed_at' => now(),
+            ]);
     }
 
     /**

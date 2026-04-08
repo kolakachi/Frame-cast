@@ -25,6 +25,8 @@ class ProcessExportJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
+    public int $timeout = 300;
+
     public function __construct(public readonly int $exportJobId)
     {
         $this->onQueue('exports');
@@ -101,6 +103,11 @@ class ProcessExportJob implements ShouldQueue
             ->keyBy('id');
 
         $segmentPaths = [];
+        $totalDuration = max(
+            1.0,
+            (float) $scenes->sum(fn (Scene $scene): float => (float) ($scene->duration_seconds ?: 0))
+        );
+        $elapsedDuration = 0.0;
 
         try {
             foreach ($scenes->values() as $index => $scene) {
@@ -116,7 +123,14 @@ class ProcessExportJob implements ShouldQueue
                     $audioAsset,
                     $dimensions,
                     $tempDir,
-                    $index
+                    $index,
+                    $elapsedDuration,
+                    $totalDuration
+                );
+
+                $elapsedDuration += max(
+                    1.0,
+                    (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0)
                 );
 
                 $progress = min(
@@ -239,25 +253,52 @@ class ProcessExportJob implements ShouldQueue
         ?Asset $audioAsset,
         array $dimensions,
         string $tempDir,
-        int $index
+        int $index,
+        float $elapsedSeconds,
+        float $totalSeconds
     ): string {
         $duration = max(
             1.0,
             (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0)
         );
         $segmentPath = sprintf('%s/segment-%03d.mp4', $tempDir, $index + 1);
-        $captionText = $this->escapeDrawtext((string) ($scene->script_text ?: $scene->label ?: 'Framecast'));
-        $filter = sprintf(
-            "scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,drawtext=text='%s':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-th-120:box=1:boxcolor=black@0.45:boxborderw=24",
-            $dimensions['width'],
-            $dimensions['height'],
-            $dimensions['width'],
-            $dimensions['height'],
-            $captionText
-        );
+        $captionSettings = is_array($scene->caption_settings_json) ? $scene->caption_settings_json : [];
+        $captionEnabled = ($captionSettings['enabled'] ?? true) !== false;
+        $captionStyle = (string) ($captionSettings['style_key'] ?? 'impact');
+        $captionPosition = (string) ($captionSettings['position'] ?? 'bottom_third');
+        $captionText = (string) ($scene->script_text ?: $scene->label ?: 'Framecast');
+
+        $monoFont = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf';
+
+        $filters = [
+            sprintf(
+                'scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d',
+                $dimensions['width'],
+                $dimensions['height'],
+                $dimensions['width'],
+                $dimensions['height']
+            ),
+            "drawtext=fontfile={$monoFont}:text='FRAMECAST':fontcolor=white@0.3:fontsize=20:x=16:y=20",
+            sprintf(
+                "drawtext=fontfile={$monoFont}:text='%s':fontcolor=white@0.5:fontsize=22:x=w-text_w-16:y=18:box=1:boxcolor=black@0.4:boxborderw=12",
+                $this->escapeDrawtext($this->formatClock($elapsedSeconds).' / '.$this->formatClock($totalSeconds))
+            ),
+        ];
+
+        $assFile = null;
+        if ($captionEnabled && trim($captionText) !== '') {
+            $assFile = sprintf('%s/caption-%03d.ass', $tempDir, $index);
+            $this->buildASSCaption($captionText, $captionStyle, $captionPosition, $duration, $dimensions, $assFile);
+            $filters[] = "subtitles={$assFile}";
+        }
+
+        $filter = implode(',', $filters);
 
         $command = ['ffmpeg', '-y'];
         $cleanupPaths = [];
+        if ($assFile !== null) {
+            $cleanupPaths[] = $assFile;
+        }
 
         try {
             if ($visualAsset) {
@@ -293,6 +334,7 @@ class ProcessExportJob implements ShouldQueue
                 $command,
                 '-t',
                 (string) $duration,
+                '-r', '30',
                 '-vf',
                 $filter,
                 '-c:v',
@@ -301,6 +343,7 @@ class ProcessExportJob implements ShouldQueue
                 'yuv420p',
                 '-c:a',
                 'aac',
+                '-ar', '44100',
                 '-shortest',
                 '-movflags',
                 '+faststart',
@@ -349,12 +392,8 @@ class ProcessExportJob implements ShouldQueue
             '0',
             '-i',
             $concatFile,
-            '-c:v',
-            'libx264',
-            '-pix_fmt',
-            'yuv420p',
-            '-c:a',
-            'aac',
+            '-c',
+            'copy',
             '-movflags',
             '+faststart',
             $outputFile,
@@ -398,27 +437,259 @@ class ProcessExportJob implements ShouldQueue
             return $targetPath;
         }
 
-        $response = Http::timeout(60)->get($storageUrl);
+        try {
+            $response = Http::connectTimeout(10)
+                ->timeout(20)
+                ->retry(1, 250)
+                ->withOptions(['allow_redirects' => true])
+                ->get($storageUrl);
 
-        if (! $response->successful()) {
-            throw new \RuntimeException('Unable to download asset from source URL.');
+            if (! $response->successful()) {
+                throw new \RuntimeException('Unable to download asset from source URL.');
+            }
+
+            file_put_contents($targetPath, $response->body());
+
+            return $targetPath;
+        } catch (\Throwable $exception) {
+            return $this->fallbackAssetFile($asset, $tempDir, $prefix);
         }
-
-        file_put_contents($targetPath, $response->body());
-
-        return $targetPath;
     }
 
-    private function escapeDrawtext(string $text): string
+    private function escapeDrawtext(string $text, bool $preserveNewlines = false): string
     {
-        $normalized = preg_replace("/[\r\n]+/", ' ', trim($text)) ?: 'Framecast';
+        $normalized = $preserveNewlines
+            ? trim(str_replace(["\r\n", "\r"], "\n", $text))
+            : (preg_replace("/[\r\n]+/", ' ', trim($text)) ?: 'Framecast');
         $shortened = mb_substr($normalized, 0, 140);
 
         return str_replace(
-            ['\\', ':', "'", '%', '[', ']', ','],
-            ['\\\\', '\:', "\\'", '\%', '\[', '\]', '\,'],
+            ['\\', ':', "'", '%', '[', ']', ',', "\n"],
+            ['\\\\', '\:', "\\'", '\%', '\[', '\]', '\,', '\n'],
             $shortened
         );
+    }
+
+    private function wrapCaptionText(string $text, int $lineLength = 16): string
+    {
+        $normalized = trim(preg_replace("/[\r\n]+/", ' ', $text) ?: '');
+        if ($normalized === '') {
+            return '';
+        }
+
+        $words = preg_split('/\s+/', $normalized) ?: [];
+        $lines = [];
+        $current = '';
+
+        foreach ($words as $word) {
+            $candidate = trim($current === '' ? $word : $current.' '.$word);
+            if (mb_strlen($candidate) > $lineLength && $current !== '') {
+                $lines[] = $current;
+                $current = $word;
+                continue;
+            }
+
+            $current = $candidate;
+        }
+
+        if ($current !== '') {
+            $lines[] = $current;
+        }
+
+        return implode("\n", array_slice($lines, 0, 5));
+    }
+
+    private function buildHighlightedCaption(string $text, string $captionStyle): string
+    {
+        return $this->escapeDrawtext($text, preserveNewlines: true);
+    }
+
+    private function captionFontColor(string $captionStyle): string
+    {
+        return match ($captionStyle) {
+            'editorial' => 'white@0.85',
+            'hacker' => 'white@0.9',
+            default => 'white',
+        };
+    }
+
+    private function captionFontSize(string $captionStyle): int
+    {
+        return match ($captionStyle) {
+            'hacker' => 34,
+            'editorial' => 42,
+            default => 64,
+        };
+    }
+
+    /**
+     * @param array{width:int,height:int} $dimensions
+     */
+    private function buildASSCaption(
+        string $text,
+        string $captionStyle,
+        string $captionPosition,
+        float $duration,
+        array $dimensions,
+        string $outputPath
+    ): void {
+        $playResX = $dimensions['width'];
+        $playResY = $dimensions['height'];
+        $endTime = $this->formatASSTime($duration);
+
+        // Numpad alignment: 2=bottom-center, 5=middle-center, 8=top-center
+        $alignment = match ($captionPosition) {
+            'center' => 5,
+            'top_third' => 8,
+            default => 2,
+        };
+
+        // Mirror preview: bottom:100px on 480px canvas = 20.8% → 400px on 1920px video
+        $marginV = match ($captionPosition) {
+            'center' => 0,
+            'top_third' => (int) round(80 * $playResY / 1920),
+            default => (int) round(400 * $playResY / 1920),
+        };
+        $marginLR = (int) round(60 * $playResX / 1080);
+
+        // Mirror preview font sizing: 22px on 480px canvas scaled to export resolution
+        [$fontName, $fontSize, $bold, $italic] = match ($captionStyle) {
+            'editorial' => ['DejaVu Serif', (int) round(22 * $playResY / 480), 0, 1],
+            'hacker' => ['DejaVu Sans Mono', (int) round(16 * $playResY / 480), -1, 0],
+            default => ['DejaVu Sans', (int) round(22 * $playResY / 480), -1, 0],
+        };
+
+        $styledText = $this->buildASSStyledText($text, $captionStyle);
+
+        $content = implode("\n", [
+            '[Script Info]',
+            'ScriptType: v4.00+',
+            "PlayResX: {$playResX}",
+            "PlayResY: {$playResY}",
+            'WrapStyle: 0',
+            'ScaledBorderAndShadow: yes',
+            '',
+            '[V4+ Styles]',
+            'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+            "Style: Default,{$fontName},{$fontSize},&H00FFFFFF&,&H000000FF&,&H00000000&,&H80000000&,{$bold},{$italic},0,0,100,100,0,0,1,3,2,{$alignment},{$marginLR},{$marginLR},{$marginV},1",
+            '',
+            '[Events]',
+            'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+            "Dialogue: 0,0:00:00.00,{$endTime},Default,,0,0,0,,{$styledText}",
+        ]);
+
+        file_put_contents($outputPath, $content);
+    }
+
+    private function buildASSStyledText(string $text, string $captionStyle): string
+    {
+        $normalized = trim(preg_replace('/[\r\n]+/', ' ', $text));
+        $words = array_values(array_filter(preg_split('/\s+/', $normalized) ?: []));
+
+        if (count($words) === 0) {
+            return '';
+        }
+
+        // Match preview previewWords(): highlight indices 1 and 2 (2nd and 3rd words)
+        $highlightStart = min(1, count($words) - 1);
+        $highlightEnd = min(count($words), $highlightStart + 2);
+
+        // ASS color override format: {\c&HAABBGGRR&} (note: BGR order, not RGB)
+        // Orange #FF6B35 → BB=35, GG=6B, RR=FF → &H00356BFF&
+        // Yellow #FFFF00 → BB=00, GG=FF, RR=FF → &H0000FFFF&
+        $highlightCode = match ($captionStyle) {
+            'hacker' => '\c&H0000FFFF&',
+            'editorial' => '\c&H00CCCCFF&\u1',
+            default => '\c&H00356BFF&',
+        };
+
+        $result = '';
+        foreach ($words as $i => $word) {
+            if ($i > 0) {
+                $result .= ' ';
+            }
+            $escaped = $this->escapeASSText($word);
+            if ($i >= $highlightStart && $i < $highlightEnd) {
+                $result .= '{' . $highlightCode . '}' . $escaped . '{\r}';
+            } else {
+                $result .= $escaped;
+            }
+        }
+
+        return $result;
+    }
+
+    private function escapeASSText(string $text): string
+    {
+        return str_replace(['{', '}', "\n", "\r"], ['\{', '\}', '\N', ''], $text);
+    }
+
+    private function formatASSTime(float $seconds): string
+    {
+        $cs = (int) round($seconds * 100);
+        $h = intdiv($cs, 360000);
+        $cs %= 360000;
+        $m = intdiv($cs, 6000);
+        $cs %= 6000;
+        $s = intdiv($cs, 100);
+        $cs %= 100;
+
+        return sprintf('%d:%02d:%02d.%02d', $h, $m, $s, $cs);
+    }
+
+    private function formatClock(float $seconds): string
+    {
+        $whole = max(0, (int) round($seconds));
+        $mins = intdiv($whole, 60);
+        $secs = $whole % 60;
+
+        return sprintf('%02d:%02d', $mins, $secs);
+    }
+
+    private function fallbackAssetFile(Asset $asset, string $tempDir, string $prefix): string
+    {
+        $extension = str_starts_with((string) $asset->mime_type, 'video/') ? 'mp4' : 'png';
+        $targetPath = sprintf('%s/%s-fallback-%s.%s', $tempDir, $prefix, Str::uuid(), $extension);
+
+        if (str_starts_with((string) $asset->mime_type, 'video/')) {
+            $process = new Process([
+                'ffmpeg',
+                '-y',
+                '-f',
+                'lavfi',
+                '-i',
+                'color=c=#111111:s=1080x1920:d=3',
+                '-vf',
+                "drawtext=text='MEDIA UNAVAILABLE':fontcolor=white@0.65:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2",
+                '-c:v',
+                'libx264',
+                '-pix_fmt',
+                'yuv420p',
+                $targetPath,
+            ]);
+            $process->setTimeout(60);
+            $process->mustRun();
+
+            return $targetPath;
+        }
+
+        $process = new Process([
+            'ffmpeg',
+            '-y',
+            '-f',
+            'lavfi',
+            '-i',
+            'color=c=#111111:s=1080x1920',
+            '-frames:v',
+            '1',
+            '-vf',
+            "drawtext=text='MEDIA UNAVAILABLE':fontcolor=white@0.65:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2",
+            $targetPath,
+        ]);
+        $process->setTimeout(60);
+        $process->mustRun();
+
+        return $targetPath;
     }
 
     private function dispatchProgress(
