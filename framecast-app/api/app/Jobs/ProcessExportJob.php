@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Events\ExportProgressed;
 use App\Models\Asset;
+use App\Models\BatchJob;
 use App\Models\ExportJob;
 use App\Models\Project;
 use App\Models\Scene;
@@ -46,9 +47,10 @@ class ProcessExportJob implements ShouldQueue
             'started_at' => now(),
         ])->save();
 
+        $this->syncBatchJob($exportJob);
+
         $this->dispatchProgress(
-            (int) $exportJob->project_id,
-            (int) $exportJob->getKey(),
+            $exportJob,
             'processing',
             5,
             'Export processing started.'
@@ -143,8 +145,7 @@ class ProcessExportJob implements ShouldQueue
                 ])->save();
 
                 $this->dispatchProgress(
-                    (int) $exportJob->project_id,
-                    (int) $exportJob->getKey(),
+                    $exportJob,
                     'processing',
                     $progress,
                     'Rendered scene '.($index + 1).' of '.$scenes->count().'.'
@@ -201,9 +202,10 @@ class ProcessExportJob implements ShouldQueue
             'output_asset_id' => $asset->getKey(),
         ])->save();
 
+        $this->syncBatchJob($exportJob->fresh());
+
         $this->dispatchProgress(
-            (int) $exportJob->project_id,
-            (int) $exportJob->getKey(),
+            $exportJob,
             'completed',
             100,
             'Export complete.'
@@ -223,9 +225,10 @@ class ProcessExportJob implements ShouldQueue
             'failure_reason' => $exception->getMessage(),
         ])->save();
 
+        $this->syncBatchJob($exportJob->fresh());
+
         $this->dispatchProgress(
-            (int) $exportJob->project_id,
-            (int) $exportJob->getKey(),
+            $exportJob,
             'failed',
             (int) $exportJob->progress_percent,
             $exception->getMessage()
@@ -744,20 +747,63 @@ class ProcessExportJob implements ShouldQueue
     }
 
     private function dispatchProgress(
-        int $projectId,
-        int $exportJobId,
+        ExportJob $exportJob,
         string $status,
         int $progressPercent,
         ?string $message = null
     ): void {
-        rescue(static function () use ($projectId, $exportJobId, $status, $progressPercent, $message): void {
+        rescue(static function () use ($exportJob, $status, $progressPercent, $message): void {
             ExportProgressed::dispatch(
-                $projectId,
-                $exportJobId,
+                (int) $exportJob->project_id,
+                (int) $exportJob->getKey(),
                 $status,
                 $progressPercent,
-                $message
+                $message,
+                (string) $exportJob->file_name,
+                $exportJob->failure_reason
             );
-        }, report: false);
+        }, false);
+    }
+
+    private function syncBatchJob(?ExportJob $exportJob): void
+    {
+        if (! $exportJob || ! $exportJob->batch_job_id) {
+            return;
+        }
+
+        $batchJob = BatchJob::query()->find((int) $exportJob->batch_job_id);
+
+        if (! $batchJob) {
+            return;
+        }
+
+        $children = ExportJob::query()
+            ->where('batch_job_id', $batchJob->getKey())
+            ->get();
+
+        $completedCount = $children->where('status', 'completed')->count();
+        $failedCount = $children->where('status', 'failed')->count();
+        $queuedCount = $children->whereIn('status', ['queued', 'processing'])->count();
+
+        $status = 'processing';
+
+        if ($queuedCount === 0) {
+            if ($completedCount > 0 && $failedCount > 0) {
+                $status = 'partial_success';
+            } elseif ($completedCount > 0) {
+                $status = 'completed';
+            } else {
+                $status = 'failed';
+            }
+        }
+
+        $batchJob->forceFill([
+            'completed_count' => $completedCount,
+            'failed_count' => $failedCount,
+            'status' => $status,
+            'failure_summary_json' => $failedCount > 0
+                ? ['failed_export_job_ids' => $children->where('status', 'failed')->pluck('id')->values()->all()]
+                : null,
+        ])->save();
     }
 }

@@ -20,6 +20,8 @@ class ExportProgressed implements ShouldBroadcastNow
         public readonly string $status,
         public readonly int $progressPercent,
         public readonly ?string $message = null,
+        public readonly ?string $fileName = null,
+        public readonly ?string $failureReason = null,
     ) {
     }
 
@@ -36,7 +38,7 @@ class ExportProgressed implements ShouldBroadcastNow
     }
 
     /**
-     * @return array{project_id:int,export_job_id:int,status:string,progress_percent:int,message:?string}
+     * @return array{project_id:int,export_job_id:int,status:string,progress_percent:int,message:?string,file_name:?string,failure_reason:?string}
      */
     public function broadcastWith(): array
     {
@@ -46,6 +48,8 @@ class ExportProgressed implements ShouldBroadcastNow
             'status' => $this->status,
             'progress_percent' => $this->progressPercent,
             'message' => $this->message,
+            'file_name' => $this->fileName,
+            'failure_reason' => $this->failureReason,
         ];
     }
 }

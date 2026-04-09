@@ -8,8 +8,6 @@ services:
     environment:
       REVERB_HOST: reverb
     working_dir: /var/www/html
-    volumes:
-      - ./api:/var/www/html
     ports:
       - "8000:8000"
     depends_on:
@@ -25,8 +23,6 @@ services:
     environment:
       REVERB_HOST: reverb
     working_dir: /var/www/html
-    volumes:
-      - ./api:/var/www/html
     depends_on:
       - postgres
       - redis
@@ -40,8 +36,6 @@ services:
     environment:
       REVERB_HOST: reverb
     working_dir: /var/www/html
-    volumes:
-      - ./api:/var/www/html
     depends_on:
       - postgres
       - redis
@@ -55,8 +49,6 @@ services:
     environment:
       REVERB_HOST: reverb
     working_dir: /var/www/html
-    volumes:
-      - ./api:/var/www/html
     ports:
       - "8080:8080"
     depends_on:
@@ -71,8 +63,6 @@ services:
     environment:
       REVERB_HOST: reverb
     working_dir: /var/www/html
-    volumes:
-      - ./api:/var/www/html
     depends_on:
       - postgres
       - redis

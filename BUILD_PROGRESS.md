@@ -119,15 +119,15 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 - [x] Scene rewrite endpoint — `scene_rewrite` prompt, respects `locked_fields_json`
 - [x] Voice override per scene — saves `voice_settings_json`
 - [x] Visual swap per scene — calls visual adapter, updates `visual_asset_id`
-- [~] Caption settings per scene — saves `caption_settings_json`
+- [x] Caption settings per scene — persistence, style presets, highlight mode, and position controls shipped
 - [x] Preview endpoint — returns scene audio + visual URLs
-- [~] Voice regenerate per scene — refreshes TTS asset and clears outdated state
-- [~] Auto-save — debounced PATCH, optimistic UI
+- [x] Voice regenerate per scene — regeneration, outdated-state handling, and pre-regenerate draft flush shipped
+- [x] Auto-save — debounced PATCH, draft flush on scene switch/export/regenerate, and unload protection shipped
 - [x] Export flow — validates per rules, creates ExportJob record
 - [x] FFmpeg rendering job — scene composition, captions, and audio/visual sync fixes shipped
-- [~] Export Reverb events — backend emits export progress; editor still relies on polling/open flow
-- [~] Editor screen (Vue) — scene sidebar, preview canvas, controls panel
-- [~] Scene sidebar — scene list, active state, add-scene panel, overflow menu
+- [x] Export Reverb events — editor now updates from Reverb events and fetches once on terminal states
+- [x] Editor screen (Vue) — phase 2 editor interactions and save/export flows shipped
+- [x] Scene sidebar — add scene, reorder, duplicate, delete, and outdated-state cleanup shipped
 
 **Phase 2 exit gate passed:** [x]
 
@@ -146,7 +146,10 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 - Added editor export-status polling so queued/processing exports keep updating in-place and completed renders open the finished MP4 automatically.
 - Upgraded export rendering from a placeholder file to a real scene-based FFmpeg composition that stitches scene visuals, audio, and caption text into a downloadable MP4 uploaded to B2.
 - Fixed segment stream mapping and exact per-scene trim timing so narration and scene boundaries stay aligned through concat.
-- Remaining polish after the Phase 2 gate: caption style selection UI, richer export progress UX, and editor/state cleanup on the still in-progress items below.
+- Added real scene insertion support in the API and editor sidebar, plus reorder, duplicate, and delete controls in the Vue editor.
+- Removed editor export polling in favor of Reverb-driven status updates with terminal refresh.
+- Added active-draft flush before scene switch, voice regenerate, visual swap, and export so autosave cannot silently drop changes.
+- Phase 2 declared complete and closed before starting variants work.
 
 ---
 
@@ -154,11 +157,11 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 
 Exit gate: User generates 5+ variants, selects a subset, exports as batch, retries failures independently.
 
-- [ ] VariantSet and Variant models, creation endpoint
-- [ ] Variant generation job chain — respects `lock_rules_json`
+- [x] VariantSet and Variant models, creation endpoint
+- [~] Variant generation job chain — respects `lock_rules_json`
 - [ ] Variants creation drawer (Vue) — dimension picker, lock controls, batch summary
 - [ ] Variant cards grid — status per card, selection checkboxes
-- [ ] Batch export — one ExportJob per selected variant, BatchJob parent
+- [~] Batch export — one ExportJob per selected variant, BatchJob parent
 - [ ] Queue Detail screen (Vue)
 - [ ] Failed Job Detail modal (Vue)
 - [ ] Retry Confirmation modal (Vue)
@@ -167,6 +170,11 @@ Exit gate: User generates 5+ variants, selects a subset, exports as batch, retri
 **Phase 3 exit gate passed:** [ ]
 
 **Notes:**
+
+- Added backend Phase 3 foundations: `VariantSet`, `Variant`, and `BatchJob` models; `GET/POST /api/v1/projects/{projectId}/variants`; `POST /api/v1/variant-sets/{variantSetId}/export`.
+- Added `GenerateVariantSetJob` to clone derived projects/scenes and generate hook, voice, visual, and format variants from one base project.
+- Added `batch_job_id` to `export_jobs` and batch status rollup in `ProcessExportJob` so batch export can move toward queue-detail support.
+- Current variant generation intentionally rejects `language` as a dimension until Phase 5 localization work lands.
 
 ---
 

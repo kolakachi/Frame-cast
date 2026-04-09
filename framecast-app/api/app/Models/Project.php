@@ -56,4 +56,9 @@ class Project extends Model
     {
         return $this->hasMany(Scene::class);
     }
+
+    public function variantSets(): HasMany
+    {
+        return $this->hasMany(VariantSet::class, 'base_project_id');
+    }
 }

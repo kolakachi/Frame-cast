@@ -84,12 +84,12 @@ class GenerateTTSJob implements ShouldQueue
         });
 
         $notifications->create(
-            workspaceId: (int) $project->workspace_id,
-            title: 'Generation complete',
-            message: 'Project #'.$project->getKey().' is ready for review.',
-            type: 'success',
-            userId: $project->created_by_user_id ? (int) $project->created_by_user_id : null,
-            payload: [
+            (int) $project->workspace_id,
+            'Generation complete',
+            'Project #'.$project->getKey().' is ready for review.',
+            'success',
+            $project->created_by_user_id ? (int) $project->created_by_user_id : null,
+            [
                 'project_id' => $project->getKey(),
                 'status' => 'ready_for_review',
             ],

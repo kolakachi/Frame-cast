@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Scene\SceneController;
 use App\Http\Controllers\Api\V1\System\HealthCheckController;
 use App\Http\Controllers\Api\V1\System\NotificationController;
 use App\Http\Controllers\Api\V1\System\VerificationController;
+use App\Http\Controllers\Api\V1\Variant\VariantController;
 use App\Http\Controllers\Api\V1\VoiceProfile\VoiceProfileController;
 use App\Http\Controllers\Api\V1\Workspace\WorkspaceController;
 use Illuminate\Broadcasting\BroadcastController;
@@ -62,11 +63,19 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/', [ProjectController::class, 'store']);
             Route::get('/{projectId}', [ProjectController::class, 'show'])->whereNumber('projectId');
             Route::get('/{projectId}/exports', [ProjectController::class, 'exports'])->whereNumber('projectId');
+            Route::get('/{projectId}/variants', [VariantController::class, 'index'])->whereNumber('projectId');
+            Route::post('/{projectId}/variants', [VariantController::class, 'store'])->whereNumber('projectId');
             Route::post('/{projectId}/export', [ProjectController::class, 'export'])->whereNumber('projectId');
             Route::delete('/{projectId}', [ProjectController::class, 'destroy'])->whereNumber('projectId');
         });
 
+        Route::prefix('/variant-sets')->group(function (): void {
+            Route::post('/{variantSetId}/export', [VariantController::class, 'export'])->whereNumber('variantSetId');
+        });
+
         Route::prefix('/scenes')->group(function (): void {
+            Route::post('/', [SceneController::class, 'store']);
+            Route::post('/generate-draft', [SceneController::class, 'generateDraft']);
             Route::patch('/reorder', [SceneController::class, 'reorder']);
             Route::patch('/{sceneId}', [SceneController::class, 'update'])->whereNumber('sceneId');
             Route::get('/{sceneId}/preview', [SceneController::class, 'preview'])->whereNumber('sceneId');

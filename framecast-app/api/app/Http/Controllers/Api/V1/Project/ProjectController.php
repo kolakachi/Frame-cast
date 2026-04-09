@@ -317,9 +317,11 @@ class ProjectController extends Controller
                 (int) $exportJob->getKey(),
                 'queued',
                 0,
-                'Export queued.'
+                'Export queued.',
+                (string) $exportJob->file_name,
+                $exportJob->failure_reason
             );
-        }, report: false);
+        }, false);
 
         ProcessExportJob::dispatch((int) $exportJob->getKey());
 

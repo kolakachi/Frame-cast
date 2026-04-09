@@ -16,6 +16,7 @@ class ExportJob extends Model
         'workspace_id',
         'project_id',
         'variant_id',
+        'batch_job_id',
         'aspect_ratio',
         'language',
         'file_name',
@@ -45,5 +46,15 @@ class ExportJob extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(Variant::class);
+    }
+
+    public function batchJob(): BelongsTo
+    {
+        return $this->belongsTo(BatchJob::class);
     }
 }

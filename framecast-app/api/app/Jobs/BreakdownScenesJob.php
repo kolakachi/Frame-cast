@@ -34,7 +34,7 @@ class BreakdownScenesJob implements ShouldQueue
         $result = $aiGeneration->generate('scene_breakdown', [
             'script_text' => $project->script_text,
             'language' => $project->primary_language ?: 'en',
-        ], maxTokens: 1100, temperature: 0.2);
+        ], 1100, 0.2);
 
         $scenes = $this->extractScenes($result['content'], $project->script_text);
 

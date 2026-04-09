@@ -74,6 +74,14 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
             return $this->fallbackHookOptions($variables);
         }
 
+        if ($promptTemplateKey === 'scene_rewrite') {
+            return $this->fallbackSceneRewrite($variables);
+        }
+
+        if ($promptTemplateKey === 'scene_insert') {
+            return $this->fallbackSceneInsert($variables);
+        }
+
         return $this->fallbackScript($variables);
     }
 
@@ -144,5 +152,52 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
         ];
 
         return (string) json_encode(['hooks' => $hooks], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * @param  array<string, mixed>  $variables
+     */
+    private function fallbackSceneRewrite(array $variables): string
+    {
+        $scriptText = trim((string) ($variables['script_text'] ?? ''));
+        $mode = (string) ($variables['mode'] ?? 'simplify');
+
+        if ($scriptText === '') {
+            return '';
+        }
+
+        return match ($mode) {
+            'shorten' => mb_substr($scriptText, 0, max(20, (int) floor(mb_strlen($scriptText) * 0.7))),
+            'expand' => $scriptText.' This is the part most people overlook.',
+            'stronger_hook' => 'Stop scrolling: '.$scriptText,
+            'more_punchy' => preg_replace('/\s+/', ' ', $scriptText).' Period.',
+            'more_educational' => $scriptText.' Here is why it matters.',
+            'more_salesy' => $scriptText.' This is your cue to act now.',
+            default => $scriptText,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $variables
+     */
+    private function fallbackSceneInsert(array $variables): string
+    {
+        $seed = trim((string) ($variables['current_text'] ?? ''));
+        $previous = trim((string) ($variables['previous_scene'] ?? ''));
+        $next = trim((string) ($variables['next_scene'] ?? ''));
+        $sceneType = (string) ($variables['scene_type'] ?? 'narration');
+        $projectTitle = trim((string) ($variables['project_title'] ?? 'this topic'));
+
+        $basis = $seed !== '' ? $seed : ($previous !== '' ? $previous : ($next !== '' ? $next : $projectTitle));
+
+        return match ($sceneType) {
+            'hook' => 'Stop scrolling: '.$basis,
+            'transition' => 'That leads directly to the next point: '.$basis,
+            'text_card' => mb_substr($basis, 0, 80),
+            'quote' => '"'.trim($basis, "\" \n\r\t").'"',
+            default => $next !== ''
+                ? 'Here is the bridge into the next idea: '.$next
+                : 'Here is the key point about '.$basis.'.',
+        };
     }
 }

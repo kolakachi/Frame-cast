@@ -50,6 +50,11 @@ const rewriteApplyPending = ref(false);
 const rewriteError = ref("");
 const voiceRegeneratePending = ref(false);
 const voiceRegenerateError = ref("");
+const addSceneGeneratePending = ref(false);
+const addSceneGenerateError = ref("");
+const sceneReorderPendingId = ref(null);
+const deleteScenePending = ref(false);
+const deleteSceneTarget = ref(null);
 const voiceProfiles = ref([]);
 const voiceProfileKey = ref("alloy");
 const voiceSpeedDraft = ref("1.0");
@@ -81,7 +86,7 @@ const sceneScriptDraft = ref("");
 let scriptSaveTimer = null;
 let voiceSaveTimer = null;
 let captionSaveTimer = null;
-let exportPollTimer = null;
+let beforeUnloadHandler = null;
 
 const activeScene = computed(
   () => scenes.value.find((scene) => scene.id === activeSceneId.value) ?? null
@@ -380,31 +385,6 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
 });
 
 watch(
-  exportJobs,
-  (jobs) => {
-    const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
-    const hasActiveExport = jobs.some((job) => {
-      if (!["queued", "processing"].includes(String(job.status || ""))) return false;
-      const queuedAt = job.queued_at ? new Date(job.queued_at).getTime() : 0;
-      return queuedAt > thirtyMinutesAgo;
-    });
-
-    if (hasActiveExport && !exportPollTimer) {
-      exportPollTimer = window.setInterval(() => {
-        loadExportJobs();
-      }, 3000);
-      return;
-    }
-
-    if (!hasActiveExport && exportPollTimer) {
-      window.clearInterval(exportPollTimer);
-      exportPollTimer = null;
-    }
-  },
-  { deep: true, immediate: true }
-);
-
-watch(
   [exportJobs, queuedExportJobId],
   ([jobs, pendingJobId]) => {
     if (!pendingJobId) return;
@@ -447,10 +427,14 @@ watch(
   { deep: true }
 );
 
-function sceneTypeLabel(index) {
-  if (index === 0) return "Hook";
-  if (index === scenes.value.length - 1) return "CTA";
-  return "Narration";
+function humanizeSceneType(sceneType) {
+  return String(sceneType || "narration")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function sceneTypeLabel(scene) {
+  return humanizeSceneType(scene?.scene_type);
 }
 
 function sceneVisualLabel(scene) {
@@ -481,6 +465,61 @@ function normalizeScenePayload(scene) {
     caption_settings: scene.caption_settings ?? scene.caption_settings_json ?? null,
     locked_fields: scene.locked_fields ?? scene.locked_fields_json ?? null,
   };
+}
+
+function sortScenesByOrder(nextScenes) {
+  return [...nextScenes].sort(
+    (left, right) => Number(left.scene_order || 0) - Number(right.scene_order || 0)
+  );
+}
+
+function replaceSceneInCollection(updatedScene) {
+  scenes.value = sortScenesByOrder(
+    scenes.value.map((scene) =>
+      scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
+    )
+  );
+}
+
+function buildSceneLabel(sceneType) {
+  const label = humanizeSceneType(sceneType);
+  return label === "Narration" ? `Scene ${scenes.value.length + 1}` : label;
+}
+
+function resetAddSceneDrafts() {
+  selectedSceneType.value = "Narration";
+  selectedAddSceneVisualSource.value = "Stock Clip";
+  newSceneScript.value = "";
+}
+
+async function generateNewSceneDraft() {
+  if (!project.value || addSceneGeneratePending.value) return;
+
+  addSceneGeneratePending.value = true;
+  addSceneGenerateError.value = "";
+
+  let insertAfterSceneId = null;
+  if (addScenePanelPosition.value.startsWith("after-")) {
+    insertAfterSceneId = Number(addScenePanelPosition.value.replace("after-", "")) || null;
+  }
+
+  try {
+    const response = await api.post("/scenes/generate-draft", {
+      project_id: project.value.id,
+      insert_after_scene_id: insertAfterSceneId,
+      scene_type: String(selectedSceneType.value || "Narration").toLowerCase().replace(/\s+/g, "_"),
+      current_text: newSceneScript.value.trim(),
+    });
+
+    newSceneScript.value = response.data?.data?.draft?.candidate || newSceneScript.value;
+  } catch (requestError) {
+    addSceneGenerateError.value =
+      requestError.response?.data?.error?.message ||
+      requestError.response?.data?.message ||
+      "AI draft failed.";
+  } finally {
+    addSceneGeneratePending.value = false;
+  }
 }
 
 function scriptSaveCopy() {
@@ -877,7 +916,12 @@ async function logout() {
 }
 
 function selectScene(sceneId) {
-  activeSceneId.value = sceneId;
+  if (sceneId === activeSceneId.value) return;
+
+  flushActiveSceneDrafts().then((flushed) => {
+    if (flushed === false) return;
+    activeSceneId.value = sceneId;
+  });
 }
 
 function togglePanel(name) {
@@ -891,6 +935,8 @@ function toggleAddScene(position) {
 
 function closeAddScene() {
   addScenePanelPosition.value = "";
+  resetAddSceneDrafts();
+  addSceneGenerateError.value = "";
 }
 
 function toggleRewriteTools() {
@@ -997,6 +1043,9 @@ async function acceptRewrite() {
 async function regenerateVoice() {
   if (!activeScene.value || voiceRegeneratePending.value) return;
 
+  const flushed = await flushActiveSceneDrafts();
+  if (flushed === false) return;
+
   voiceRegeneratePending.value = true;
   voiceRegenerateError.value = "";
   isAudioPlaying.value = false;
@@ -1010,9 +1059,7 @@ async function regenerateVoice() {
       throw new Error("Voice regeneration returned no scene payload.");
     }
 
-    scenes.value = scenes.value.map((scene) =>
-      scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
-    );
+    replaceSceneInCollection(updatedScene);
     activeSceneId.value = updatedScene.id;
     preloadSceneAudio(updatedScene);
   } catch (requestError) {
@@ -1051,9 +1098,7 @@ async function persistSceneScript(sceneId, scriptText) {
       throw new Error("Scene save returned no payload.");
     }
 
-    scenes.value = scenes.value.map((scene) =>
-      scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
-    );
+    replaceSceneInCollection(updatedScene);
 
     if (activeSceneId.value === updatedScene.id) {
       sceneScriptDraft.value = updatedScene.script_text || "";
@@ -1123,6 +1168,7 @@ async function persistVoiceSettings(sceneId, nextSettings) {
 }
 
 async function persistCaptionSettings(sceneId, nextSettings) {
+  captionSaveTimer = null;
   captionSaveState.value = "saving";
   captionSaveError.value = "";
 
@@ -1136,10 +1182,13 @@ async function persistCaptionSettings(sceneId, nextSettings) {
       throw new Error("Caption update returned no scene payload.");
     }
 
-    scenes.value = scenes.value.map((scene) =>
-      scene.id === sceneId ? updatedScene : scene
-    );
+    replaceSceneInCollection(updatedScene);
     captionSaveState.value = "saved";
+    window.setTimeout(() => {
+      if (captionSaveState.value === "saved") {
+        captionSaveState.value = "idle";
+      }
+    }, 1200);
   } catch (requestError) {
     captionSaveState.value = "error";
     captionSaveError.value =
@@ -1149,6 +1198,9 @@ async function persistCaptionSettings(sceneId, nextSettings) {
 
 async function swapVisual() {
   if (!activeScene.value || visualSwapPending.value) return;
+
+  const flushed = await flushActiveSceneDrafts();
+  if (flushed === false) return;
 
   visualSwapPending.value = true;
   visualSwapError.value = "";
@@ -1167,9 +1219,7 @@ async function swapVisual() {
       throw new Error("Visual swap returned no payload.");
     }
 
-    scenes.value = scenes.value.map((scene) =>
-      scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
-    );
+    replaceSceneInCollection(updatedScene);
 
     visualQueryDraft.value = updatedScene.visual_prompt || "";
     preloadSceneVisual(updatedScene);
@@ -1188,6 +1238,9 @@ async function swapVisual() {
 async function queueExport() {
   if (!project.value || exportPending.value) return;
 
+  const flushed = await flushActiveSceneDrafts();
+  if (flushed === false) return;
+
   exportPending.value = true;
   exportState.value = "saving";
 
@@ -1200,8 +1253,13 @@ async function queueExport() {
 
     const exportJob = response.data?.data?.export_job ?? null;
     queuedExportJobId.value = exportJob?.id ?? null;
+    if (exportJob) {
+      exportJobs.value = [
+        exportJob,
+        ...exportJobs.value.filter((job) => job.id !== exportJob.id),
+      ];
+    }
     exportState.value = "saved";
-    await loadExportJobs();
     pushToast({
       id: `export-${exportJob?.id || Date.now()}`,
       title: "Export queued",
@@ -1241,14 +1299,26 @@ function subscribeProjectChannel() {
   echo.private(projectChannelName).listen(".export.progress", (payload) => {
     const jobId = Number(payload.export_job_id);
     const idx = exportJobs.value.findIndex((j) => j.id === jobId);
+    const nextJob = {
+      ...(idx >= 0 ? exportJobs.value[idx] : {}),
+      id: jobId,
+      status: payload.status,
+      progress_percent: payload.progress_percent,
+      failure_reason: payload.failure_reason ?? payload.message ?? null,
+      file_name: payload.file_name ?? (idx >= 0 ? exportJobs.value[idx]?.file_name : null),
+    };
 
     if (idx >= 0) {
       exportJobs.value = exportJobs.value.map((job) =>
         job.id === jobId
-          ? { ...job, status: payload.status, progress_percent: payload.progress_percent }
+          ? nextJob
           : job
       );
     } else {
+      exportJobs.value = [nextJob, ...exportJobs.value];
+    }
+
+    if (["completed", "failed"].includes(String(payload.status || ""))) {
       loadExportJobs();
     }
   });
@@ -1260,6 +1330,263 @@ function unsubscribeProjectChannel() {
     echo.leave(projectChannelName);
     projectChannelName = null;
   }
+}
+
+async function createScene(insertAfterSceneId = null) {
+  if (!project.value) return;
+
+  const scriptText = newSceneScript.value.trim();
+  const sceneType = String(selectedSceneType.value || "Narration")
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+  const visualType =
+    visualSourceTypeMap[selectedAddSceneVisualSource.value] || "stock_clip";
+  const visualQuery = scriptText || buildSceneLabel(sceneType);
+
+  try {
+    const response = await api.post("/scenes", {
+      project_id: project.value.id,
+      insert_after_scene_id: insertAfterSceneId,
+      scene_type: sceneType,
+      label: buildSceneLabel(sceneType),
+      script_text: scriptText,
+      duration_seconds: scriptText
+        ? Math.max(
+            3,
+            Math.min(12, Math.ceil(scriptText.split(/\s+/).filter(Boolean).length / 3))
+          )
+        : 3,
+      visual_type: visualType,
+      visual_prompt: scriptText || null,
+    });
+
+    const createdScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+    if (!createdScene) {
+      throw new Error("Scene create returned no payload.");
+    }
+
+    let nextScene = createdScene;
+
+    if (!["text_card", "waveform"].includes(visualType)) {
+      const visualResponse = await api.post(`/scenes/${createdScene.id}/swap-visual`, {
+        query: visualQuery,
+        visual_type: visualType,
+      });
+      nextScene = normalizeScenePayload(visualResponse.data?.data?.scene ?? null) || createdScene;
+    }
+
+    scenes.value = sortScenesByOrder([
+      ...scenes.value.filter((scene) => scene.id !== nextScene.id),
+      nextScene,
+    ]);
+    preloadSceneVisual(nextScene);
+    closeAddScene();
+    activeSceneId.value = nextScene.id;
+  } catch (requestError) {
+    pushToast({
+      id: `scene-create-error-${Date.now()}`,
+      title: "Could not add scene",
+      message:
+        requestError.response?.data?.error?.message ||
+        requestError.response?.data?.message ||
+        requestError.message ||
+        "Scene create failed.",
+      created_at: new Date().toISOString(),
+    });
+  }
+}
+
+async function duplicateScene(sceneId) {
+  try {
+    const response = await api.post(`/scenes/${sceneId}/duplicate`);
+    const duplicatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+
+    if (!duplicatedScene) {
+      throw new Error("Scene duplicate returned no payload.");
+    }
+
+    scenes.value = sortScenesByOrder([...scenes.value, duplicatedScene]);
+    activeSceneId.value = duplicatedScene.id;
+  } catch (requestError) {
+    pushToast({
+      id: `scene-duplicate-error-${sceneId}`,
+      title: "Could not duplicate scene",
+      message:
+        requestError.response?.data?.error?.message ||
+        requestError.response?.data?.message ||
+        "Scene duplicate failed.",
+      created_at: new Date().toISOString(),
+    });
+  }
+}
+
+function promptDeleteScene(sceneId) {
+  if (scenes.value.length <= 1) {
+    pushToast({
+      id: `scene-delete-blocked-${sceneId}`,
+      title: "Cannot delete scene",
+      message: "Projects must keep at least one scene.",
+      created_at: new Date().toISOString(),
+    });
+    return;
+  }
+
+  deleteSceneTarget.value = scenes.value.find((scene) => scene.id === sceneId) ?? null;
+}
+
+function closeDeleteSceneModal() {
+  if (deleteScenePending.value) return;
+  deleteSceneTarget.value = null;
+}
+
+async function confirmDeleteScene() {
+  const sceneId = deleteSceneTarget.value?.id;
+  if (!sceneId || deleteScenePending.value) return;
+
+  deleteScenePending.value = true;
+
+  try {
+    await api.delete(`/scenes/${sceneId}`);
+    const remaining = scenes.value
+      .filter((scene) => scene.id !== sceneId)
+      .map((scene, index) => ({ ...scene, scene_order: index + 1 }));
+    scenes.value = remaining;
+
+    if (activeSceneId.value === sceneId) {
+      activeSceneId.value = remaining[0]?.id ?? null;
+    }
+    deleteSceneTarget.value = null;
+  } catch (requestError) {
+    pushToast({
+      id: `scene-delete-error-${sceneId}`,
+      title: "Could not delete scene",
+      message:
+        requestError.response?.data?.error?.message ||
+        requestError.response?.data?.message ||
+        "Scene delete failed.",
+      created_at: new Date().toISOString(),
+    });
+  } finally {
+    deleteScenePending.value = false;
+  }
+}
+
+async function moveScene(sceneId, direction) {
+  if (sceneReorderPendingId.value !== null) return;
+
+  const index = scenes.value.findIndex((scene) => scene.id === sceneId);
+  if (index < 0) return;
+
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= scenes.value.length) return;
+
+  const previousScenes = [...scenes.value];
+  const reordered = [...scenes.value];
+  const [movedScene] = reordered.splice(index, 1);
+  reordered.splice(targetIndex, 0, movedScene);
+  scenes.value = reordered.map((scene, orderIndex) => ({
+    ...scene,
+    scene_order: orderIndex + 1,
+  }));
+  sceneReorderPendingId.value = sceneId;
+
+  try {
+    const response = await api.patch("/scenes/reorder", {
+      project_id: project.value.id,
+      scene_ids: reordered.map((scene) => scene.id),
+    });
+
+    scenes.value = sortScenesByOrder(
+      (response.data?.data?.scenes ?? [])
+        .map((scene) => normalizeScenePayload(scene))
+        .filter(Boolean)
+    );
+  } catch (requestError) {
+    scenes.value = previousScenes;
+    pushToast({
+      id: `scene-reorder-error-${sceneId}`,
+      title: "Could not reorder scenes",
+      message:
+        requestError.response?.data?.error?.message ||
+        requestError.response?.data?.message ||
+        "Scene reorder failed.",
+      created_at: new Date().toISOString(),
+    });
+  } finally {
+    sceneReorderPendingId.value = null;
+  }
+}
+
+async function flushActiveSceneDrafts() {
+  const scene = activeScene.value;
+  if (!scene) return true;
+
+  try {
+    if (scriptSaveTimer || scriptSaveState.value === "pending") {
+      if (scriptSaveTimer) {
+        window.clearTimeout(scriptSaveTimer);
+        scriptSaveTimer = null;
+      }
+
+      if (sceneScriptDraft.value !== (scene.script_text || "")) {
+        await persistSceneScript(scene.id, sceneScriptDraft.value);
+      }
+    }
+
+    const savedVoice = scene.voice_settings || {};
+    const nextVoice = {
+      voice_id: voiceProfileKey.value,
+      speed: Number(voiceSpeedDraft.value || 1),
+      stability: voiceStabilityDraft.value,
+    };
+
+    if (
+      voiceSaveTimer ||
+      String(savedVoice.voice_id || "alloy") !== nextVoice.voice_id ||
+      Number(savedVoice.speed ?? 1) !== nextVoice.speed ||
+      String(savedVoice.stability || "medium") !== nextVoice.stability
+    ) {
+      if (voiceSaveTimer) {
+        window.clearTimeout(voiceSaveTimer);
+        voiceSaveTimer = null;
+      }
+
+      await persistVoiceSettings(scene.id, nextVoice);
+    }
+
+    const savedCaptions = activeCaptionSettings.value || {};
+    const nextCaptions = {
+      enabled: captionEnabledDraft.value,
+      style_key: captionStyleDraft.value,
+      highlight_mode: captionHighlightDraft.value,
+      position: captionPositionDraft.value,
+      highlight_color: savedCaptions.highlight_color || "#ff6b35",
+      preset_id: savedCaptions.preset_id || null,
+    };
+
+    if (
+      captionSaveTimer ||
+      (savedCaptions.enabled !== false) !== nextCaptions.enabled ||
+      String(savedCaptions.style_key || "impact") !== nextCaptions.style_key ||
+      String(savedCaptions.highlight_mode || "keywords") !== nextCaptions.highlight_mode ||
+      String(savedCaptions.position || "bottom_third") !== nextCaptions.position
+    ) {
+      if (captionSaveTimer) {
+        window.clearTimeout(captionSaveTimer);
+        captionSaveTimer = null;
+      }
+
+      await persistCaptionSettings(scene.id, nextCaptions);
+    }
+  } catch {
+    return false;
+  }
+
+  return (
+    scriptSaveState.value !== "error" &&
+    voiceSaveState.value !== "error" &&
+    captionSaveState.value !== "error"
+  );
 }
 
 function toggleAudioPlayback() {
@@ -1279,6 +1606,20 @@ function toggleAudioPlayback() {
 }
 
 onMounted(() => {
+  beforeUnloadHandler = (event) => {
+    if (
+      scriptSaveState.value === "pending" ||
+      scriptSaveState.value === "saving" ||
+      voiceSaveState.value === "pending" ||
+      voiceSaveState.value === "saving" ||
+      captionSaveState.value === "pending" ||
+      captionSaveState.value === "saving"
+    ) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  };
+  window.addEventListener("beforeunload", beforeUnloadHandler);
   loadMe();
   loadProject();
 });
@@ -1293,9 +1634,6 @@ onBeforeUnmount(() => {
   if (captionSaveTimer) {
     window.clearTimeout(captionSaveTimer);
   }
-  if (exportPollTimer) {
-    window.clearInterval(exportPollTimer);
-  }
   mediaPreloaders.forEach((media) => {
     media.onload = null;
     media.onerror = null;
@@ -1305,6 +1643,9 @@ onBeforeUnmount(() => {
   mediaPreloaders.clear();
   unsubscribeWorkspaceNotifications();
   unsubscribeProjectChannel();
+  if (beforeUnloadHandler) {
+    window.removeEventListener("beforeunload", beforeUnloadHandler);
+  }
 });
 </script>
 
@@ -1519,13 +1860,13 @@ onBeforeUnmount(() => {
                   >
                     Cancel
                   </button>
-                  <button class="btn btn-ghost btn-sm purple-btn" type="button">
-                    ✦ AI Generate
+                  <button class="btn btn-ghost btn-sm purple-btn" type="button" :disabled="addSceneGeneratePending" @click="generateNewSceneDraft">
+                    {{ addSceneGeneratePending ? "Generating..." : "✦ AI Generate" }}
                   </button>
                   <button
                     class="btn btn-primary btn-sm"
                     type="button"
-                    @click="closeAddScene"
+                    @click="createScene()"
                   >
                     Add Scene
                   </button>
@@ -1545,7 +1886,7 @@ onBeforeUnmount(() => {
                 >
                   <div class="scene-number">
                     Scene {{ scene.scene_order }}
-                    <span v-if="index === 0"> · {{ sceneTypeLabel(index) }}</span>
+                    <span> · {{ sceneTypeLabel(scene) }}</span>
                     <span :class="sceneVoiceOutdated(scene) ? 'inline-warn' : 'inline-warn state-hidden'">
                       Voice outdated
                     </span>
@@ -1556,6 +1897,39 @@ onBeforeUnmount(() => {
                     <span>{{
                       formatSceneDuration(scene.duration_seconds)
                     }}</span>
+                  </div>
+                  <div class="scene-actions" @click.stop>
+                    <button
+                      class="scene-action-btn"
+                      type="button"
+                      :disabled="index === 0 || sceneReorderPendingId !== null"
+                      @click="moveScene(scene.id, 'up')"
+                    >
+                      {{ sceneReorderPendingId === scene.id ? "…" : "↑" }}
+                    </button>
+                    <button
+                      class="scene-action-btn"
+                      type="button"
+                      :disabled="index === scenes.length - 1 || sceneReorderPendingId !== null"
+                      @click="moveScene(scene.id, 'down')"
+                    >
+                      {{ sceneReorderPendingId === scene.id ? "…" : "↓" }}
+                    </button>
+                    <button
+                      class="scene-action-btn"
+                      type="button"
+                      @click="duplicateScene(scene.id)"
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      class="scene-action-btn danger"
+                      type="button"
+                      :disabled="sceneReorderPendingId !== null || deleteScenePending"
+                      @click="promptDeleteScene(scene.id)"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
 
@@ -1622,8 +1996,11 @@ onBeforeUnmount(() => {
                       <div class="ico">{{ option.icon }}</div>
                       {{ option.label }}
                     </div>
-                  </div>
-                  <div class="add-scene-actions">
+                </div>
+                <div v-if="addSceneGenerateError" class="rewrite-error">
+                  {{ addSceneGenerateError }}
+                </div>
+                <div class="add-scene-actions">
                     <button
                       class="btn btn-ghost btn-sm"
                       type="button"
@@ -1634,16 +2011,21 @@ onBeforeUnmount(() => {
                     <button
                       class="btn btn-ghost btn-sm purple-btn"
                       type="button"
+                      :disabled="addSceneGeneratePending"
+                      @click="generateNewSceneDraft"
                     >
-                      ✦ AI Generate
+                      {{ addSceneGeneratePending ? "Generating..." : "✦ AI Generate" }}
                     </button>
                     <button
                       class="btn btn-primary btn-sm"
                       type="button"
-                      @click="closeAddScene"
+                      @click="createScene(scene.id)"
                     >
                       Add Scene
                     </button>
+                  </div>
+                  <div v-if="addSceneGenerateError" class="rewrite-error">
+                    {{ addSceneGenerateError }}
                   </div>
                 </div>
               </template>
@@ -1912,7 +2294,9 @@ onBeforeUnmount(() => {
                 </div>
                 <div :class="activeVoiceOutdated ? 'voice-warning-row' : 'voice-warning-row state-hidden'">
                   <span class="voice-warning-copy">Script changed — voice outdated</span>
-                  <button class="regen-btn" type="button" @click="regenerateVoice">Regenerate</button>
+                  <button class="regen-btn" type="button" :disabled="voiceRegeneratePending" @click="regenerateVoice">
+                    {{ voiceRegeneratePending ? "Regenerating..." : "Regenerate" }}
+                  </button>
                 </div>
                 <div v-if="voiceSaveCopy()" :class="voiceSaveState === 'error' ? 'script-save-copy error' : 'script-save-copy'">
                   {{ voiceSaveCopy() }}
@@ -2055,6 +2439,29 @@ onBeforeUnmount(() => {
         <div class="toast-dot"></div>
         <div class="toast-content">
           <div class="toast-msg"><strong>{{ toast.title }}</strong> — {{ toast.message }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      :class="`modal-backdrop ${deleteSceneTarget ? 'open' : ''}`"
+      @click="closeDeleteSceneModal"
+    ></div>
+    <div v-if="deleteSceneTarget" class="modal-shell" role="dialog" aria-modal="true">
+      <div class="confirm-modal">
+        <div class="confirm-modal-title">Delete this scene?</div>
+        <div class="confirm-modal-copy">
+          This removes
+          <strong>{{ deleteSceneTarget.label || `Scene ${deleteSceneTarget.scene_order}` }}</strong>
+          from the project timeline.
+        </div>
+        <div class="confirm-modal-actions">
+          <button class="btn btn-ghost" type="button" :disabled="deleteScenePending" @click="closeDeleteSceneModal">
+            Cancel
+          </button>
+          <button class="btn btn-primary danger-btn" type="button" :disabled="deleteScenePending" @click="confirmDeleteScene">
+            {{ deleteScenePending ? "Deleting..." : "Delete Scene" }}
+          </button>
         </div>
       </div>
     </div>
@@ -2461,6 +2868,68 @@ button {
   pointer-events: auto;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 5, 10, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 210;
+}
+
+.modal-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 211;
+}
+
+.confirm-modal {
+  width: min(420px, 100%);
+  border: 1px solid var(--border-active);
+  border-radius: 16px;
+  background: rgba(17, 17, 24, 0.98);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.confirm-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.confirm-modal-copy {
+  margin-top: 10px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.danger-btn {
+  background: #e15c5c;
+}
+
+.danger-btn:hover {
+  background: #f06c6c;
+  box-shadow: none;
+}
+
 .drawer {
   position: fixed;
   top: 0;
@@ -2722,6 +3191,38 @@ button {
   color: var(--text-muted);
 }
 
+.scene-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.scene-action-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(10, 10, 15, 0.55);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.scene-action-btn:hover:not(:disabled) {
+  border-color: var(--border-active);
+  color: var(--text-primary);
+}
+
+.scene-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.scene-action-btn.danger {
+  color: #ff9d9d;
+}
+
 .scene-tag {
   padding: 2px 6px;
   border-radius: 3px;
@@ -2913,20 +3414,27 @@ button {
 }
 
 .add-scene-visual-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 10px;
 }
 
 .add-scene-visual-opt {
-  flex: 1;
-  padding: 8px;
+  min-width: 0;
+  min-height: 88px;
+  padding: 8px 6px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   text-align: center;
   font-size: 11px;
   color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .add-scene-visual-opt.selected {
@@ -3462,6 +3970,12 @@ select.control-value {
   padding: 4px 10px;
   font-size: 11px;
   border-radius: 6px;
+  cursor: pointer;
+}
+
+.regen-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .caption-toggle-row {

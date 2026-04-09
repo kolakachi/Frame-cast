@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Scene;
 
 use App\Http\Controllers\Controller;
 use App\Models\Asset;
+use App\Models\Project;
 use App\Models\Scene;
 use App\Models\User;
 use App\Services\Generation\AI\AIGenerationAdapter;
@@ -16,6 +17,102 @@ use Illuminate\Support\Facades\URL;
 
 class SceneController extends Controller
 {
+    public function store(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'project_id' => ['required', 'integer'],
+            'insert_after_scene_id' => ['sometimes', 'nullable', 'integer'],
+            'scene_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'label' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'script_text' => ['sometimes', 'nullable', 'string'],
+            'duration_seconds' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:600'],
+            'visual_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'visual_prompt' => ['sometimes', 'nullable', 'string'],
+        ]);
+
+        $project = Project::query()
+            ->whereKey($validated['project_id'])
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $insertAfterScene = null;
+        if (! empty($validated['insert_after_scene_id'])) {
+            $insertAfterScene = Scene::query()
+                ->whereKey($validated['insert_after_scene_id'])
+                ->where('project_id', $project->getKey())
+                ->first();
+
+            if (! $insertAfterScene) {
+                return $this->error('invalid_scene_scope', 'Insert target scene was not found in this project.', 422);
+            }
+        }
+
+        $scene = DB::transaction(function () use ($validated, $project, $insertAfterScene): Scene {
+            $existingSceneIds = Scene::query()
+                ->where('project_id', $project->getKey())
+                ->orderBy('scene_order')
+                ->pluck('id')
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->all();
+
+            $scene = Scene::query()->create([
+                'project_id' => $project->getKey(),
+                'scene_order' => count($existingSceneIds) + 1,
+                'scene_type' => $validated['scene_type'] ?? 'narration',
+                'label' => $validated['label'] ?? null,
+                'script_text' => $validated['script_text'] ?? null,
+                'duration_seconds' => $validated['duration_seconds'] ?? 3.0,
+                'voice_profile_id' => null,
+                'voice_settings_json' => [
+                    'voice_id' => 'alloy',
+                    'speed' => 1.0,
+                    'stability' => 'medium',
+                    'language' => (string) ($project->primary_language ?: 'en'),
+                    'is_outdated' => true,
+                ],
+                'caption_settings_json' => [
+                    'enabled' => true,
+                    'style_key' => 'impact',
+                    'highlight_mode' => 'keywords',
+                    'position' => 'bottom_third',
+                    'highlight_color' => '#ff6b35',
+                    'preset_id' => null,
+                ],
+                'visual_type' => $validated['visual_type'] ?? 'stock_clip',
+                'visual_asset_id' => null,
+                'visual_prompt' => $validated['visual_prompt'] ?? null,
+                'transition_rule' => null,
+                'status' => 'draft',
+                'locked_fields_json' => [],
+            ]);
+
+            $insertIndex = count($existingSceneIds);
+            if ($insertAfterScene) {
+                $existingIndex = array_search((int) $insertAfterScene->getKey(), $existingSceneIds, true);
+                $insertIndex = $existingIndex === false ? $insertIndex : $existingIndex + 1;
+            }
+
+            array_splice($existingSceneIds, $insertIndex, 0, [(int) $scene->getKey()]);
+            $this->syncSceneOrder($project->getKey(), $existingSceneIds);
+
+            return $scene->fresh();
+        });
+
+        return response()->json([
+            'data' => [
+                'scene' => $this->serializeScene($scene),
+            ],
+            'meta' => [],
+        ], 201);
+    }
+
     public function update(Request $request, int $sceneId): JsonResponse
     {
         /** @var User $user */
@@ -53,6 +150,76 @@ class SceneController extends Controller
         ]);
     }
 
+    public function generateDraft(Request $request, AIGenerationAdapter $ai): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'project_id' => ['required', 'integer'],
+            'insert_after_scene_id' => ['sometimes', 'nullable', 'integer'],
+            'scene_type' => ['required', 'string', 'max:64'],
+            'current_text' => ['sometimes', 'nullable', 'string'],
+        ]);
+
+        $project = Project::query()
+            ->whereKey($validated['project_id'])
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $scenes = Scene::query()
+            ->where('project_id', $project->getKey())
+            ->orderBy('scene_order')
+            ->get();
+
+        $insertAfterSceneId = ! empty($validated['insert_after_scene_id'])
+            ? (int) $validated['insert_after_scene_id']
+            : null;
+
+        if ($insertAfterSceneId !== null && ! $scenes->firstWhere('id', $insertAfterSceneId)) {
+            return $this->error('invalid_scene_scope', 'Insert target scene was not found in this project.', 422);
+        }
+
+        $context = $this->sceneContext($scenes, $insertAfterSceneId);
+        $generation = $ai->generate(
+            'scene_insert',
+            [
+                'project_title' => (string) ($project->title ?: 'Untitled project'),
+                'language' => (string) ($project->primary_language ?: 'en'),
+                'tone' => (string) ($project->tone ?: 'neutral'),
+                'scene_type' => (string) $validated['scene_type'],
+                'current_text' => trim((string) ($validated['current_text'] ?? '')),
+                'previous_scene' => $context['previous'],
+                'next_scene' => $context['next'],
+                'scene_outline' => $context['outline'],
+            ],
+            220,
+            0.6
+        );
+
+        $candidate = trim((string) ($generation['content'] ?? ''));
+
+        if ($candidate === '') {
+            return $this->error('draft_generation_failed', 'Scene draft generation returned empty content.', 422);
+        }
+
+        return response()->json([
+            'data' => [
+                'draft' => [
+                    'candidate' => $candidate,
+                    'provider_key' => $generation['provider_key'],
+                    'model' => $generation['model'],
+                    'tokens_used' => $generation['tokens_used'],
+                ],
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function reorder(Request $request): JsonResponse
     {
         /** @var User $user */
@@ -77,13 +244,7 @@ class SceneController extends Controller
         }
 
         DB::transaction(function () use ($validated): void {
-            foreach ($validated['scene_ids'] as $index => $sceneId) {
-                Scene::query()
-                    ->whereKey($sceneId)
-                    ->update([
-                        'scene_order' => $index + 1,
-                    ]);
-            }
+            $this->syncSceneOrder((int) $validated['project_id'], array_map('intval', $validated['scene_ids']));
         });
 
         $reordered = Scene::query()
@@ -111,17 +272,24 @@ class SceneController extends Controller
         }
 
         $duplicate = DB::transaction(function () use ($scene): Scene {
-            Scene::query()
-                ->where('project_id', $scene->project_id)
-                ->where('scene_order', '>', $scene->scene_order)
-                ->increment('scene_order');
-
             $copy = $scene->replicate();
-            $copy->scene_order = $scene->scene_order + 1;
+            $orderedSceneIds = Scene::query()
+                ->where('project_id', $scene->project_id)
+                ->orderBy('scene_order')
+                ->pluck('id')
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->all();
+
+            $copy->scene_order = count($orderedSceneIds) + 1;
             $copy->status = 'draft';
             $copy->save();
 
-            return $copy;
+            $insertIndex = array_search((int) $scene->getKey(), $orderedSceneIds, true);
+            $insertIndex = $insertIndex === false ? count($orderedSceneIds) : $insertIndex + 1;
+            array_splice($orderedSceneIds, $insertIndex, 0, [(int) $copy->getKey()]);
+            $this->syncSceneOrder((int) $scene->project_id, $orderedSceneIds);
+
+            return $copy->fresh();
         });
 
         return response()->json([
@@ -154,15 +322,22 @@ class SceneController extends Controller
             return $this->error('scene_locked', 'Scene script is locked and cannot be rewritten.', 422);
         }
 
+        $context = $this->sceneContextForScene($scene);
         $generation = $ai->generate(
-            promptTemplateKey: 'scene_rewrite',
-            variables: [
+            'scene_rewrite',
+            [
                 'mode' => $validated['mode'],
+                'project_title' => (string) ($scene->project?->title ?: 'Untitled project'),
                 'language' => (string) ($scene->project?->primary_language ?: 'en'),
+                'scene_type' => (string) ($scene->scene_type ?: 'narration'),
+                'scene_label' => (string) ($scene->label ?: ''),
                 'script_text' => (string) ($scene->script_text ?: ''),
+                'previous_scene' => $context['previous'],
+                'next_scene' => $context['next'],
+                'scene_outline' => $context['outline'],
             ],
-            maxTokens: 450,
-            temperature: 0.55,
+            450,
+            0.55
         );
 
         $candidate = trim((string) ($generation['content'] ?? ''));
@@ -400,14 +575,16 @@ class SceneController extends Controller
 
         DB::transaction(function () use ($scene): void {
             $projectId = $scene->project_id;
-            $sceneOrder = $scene->scene_order;
+            $remainingSceneIds = Scene::query()
+                ->where('project_id', $projectId)
+                ->whereKeyNot($scene->getKey())
+                ->orderBy('scene_order')
+                ->pluck('id')
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->all();
 
             $scene->delete();
-
-            Scene::query()
-                ->where('project_id', $projectId)
-                ->where('scene_order', '>', $sceneOrder)
-                ->decrement('scene_order');
+            $this->syncSceneOrder((int) $projectId, $remainingSceneIds);
         });
 
         return response()->json([
@@ -498,7 +675,7 @@ class SceneController extends Controller
             return URL::temporarySignedRoute(
                 'media.assets.content',
                 now()->addHours(6),
-                ['assetId' => $asset->getKey()],
+                ['assetId' => $asset->getKey()]
             );
         }
 
@@ -531,5 +708,99 @@ class SceneController extends Controller
                 'message' => $message,
             ],
         ], $status);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Scene>  $scenes
+     * @return array{previous:string,next:string,outline:string}
+     */
+    private function sceneContext($scenes, ?int $insertAfterSceneId = null): array
+    {
+        $ordered = $scenes->values();
+        $previous = '';
+        $next = '';
+
+        if ($insertAfterSceneId !== null) {
+            $index = $ordered->search(fn (Scene $scene): bool => (int) $scene->getKey() === $insertAfterSceneId);
+
+            if ($index !== false) {
+                $previous = trim((string) ($ordered->get($index)?->script_text ?: ''));
+                $next = trim((string) ($ordered->get($index + 1)?->script_text ?: ''));
+            }
+        }
+
+        $outline = $ordered
+            ->map(function (Scene $scene): string {
+                $label = trim((string) ($scene->label ?: 'Scene '.$scene->scene_order));
+                $text = mb_substr(trim((string) ($scene->script_text ?: '')), 0, 90);
+
+                return "{$label}: {$text}";
+            })
+            ->implode("\n");
+
+        return [
+            'previous' => $previous,
+            'next' => $next,
+            'outline' => $outline,
+        ];
+    }
+
+    /**
+     * @return array{previous:string,next:string,outline:string}
+     */
+    private function sceneContextForScene(Scene $scene): array
+    {
+        $scenes = Scene::query()
+            ->where('project_id', $scene->project_id)
+            ->orderBy('scene_order')
+            ->get();
+        $ordered = $scenes->values();
+        $index = $ordered->search(fn (Scene $row): bool => (int) $row->getKey() === (int) $scene->getKey());
+
+        return [
+            'previous' => $index !== false ? trim((string) ($ordered->get($index - 1)?->script_text ?: '')) : '',
+            'next' => $index !== false ? trim((string) ($ordered->get($index + 1)?->script_text ?: '')) : '',
+            'outline' => $scenes
+                ->map(function (Scene $row): string {
+                    $label = trim((string) ($row->label ?: 'Scene '.$row->scene_order));
+                    $text = mb_substr(trim((string) ($row->script_text ?: '')), 0, 90);
+
+                    return "{$label}: {$text}";
+                })
+                ->implode("\n"),
+        ];
+    }
+
+    /**
+     * @param  list<int>  $orderedSceneIds
+     */
+    private function syncSceneOrder(int $projectId, array $orderedSceneIds): void
+    {
+        if ($orderedSceneIds === []) {
+            return;
+        }
+
+        $baseOrder = (int) Scene::query()
+            ->where('project_id', $projectId)
+            ->max('scene_order');
+        $tempOffset = max($baseOrder, count($orderedSceneIds)) + 1000;
+
+        foreach (array_values($orderedSceneIds) as $index => $sceneId) {
+            Scene::query()
+                ->where('project_id', $projectId)
+                ->whereKey($sceneId)
+                ->update([
+                    'scene_order' => $tempOffset + $index,
+                ]);
+        }
+
+        foreach (array_values($orderedSceneIds) as $index => $sceneId) {
+            Scene::query()
+                ->where('project_id', $projectId)
+                ->whereKey($sceneId)
+                ->update([
+                    'scene_order' => $index + 1,
+                ]);
+        }
     }
 }
