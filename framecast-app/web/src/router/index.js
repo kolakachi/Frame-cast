@@ -5,6 +5,7 @@ import GenerationProgressView from '../views/GenerationProgressView.vue'
 import LoginView from '../views/LoginView.vue'
 import MagicLinkView from '../views/MagicLinkView.vue'
 import RegisterView from '../views/RegisterView.vue'
+import VariantsView from '../views/VariantsView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -15,6 +16,7 @@ const routes = [
   { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/generation', name: 'generation-progress', component: GenerationProgressView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/editor', name: 'project-editor', component: EditorView, meta: { requiresAuth: true } },
+  { path: '/projects/:projectId/variants', name: 'project-variants', component: VariantsView, meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({
@@ -22,7 +24,7 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
+router.beforeEach(function (to) {
   const authStore = useAuthStore()
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {

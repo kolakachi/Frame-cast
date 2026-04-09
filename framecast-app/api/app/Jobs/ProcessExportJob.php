@@ -8,6 +8,7 @@ use App\Models\BatchJob;
 use App\Models\ExportJob;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Variant;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -202,6 +203,12 @@ class ProcessExportJob implements ShouldQueue
             'output_asset_id' => $asset->getKey(),
         ])->save();
 
+        if ($exportJob->variant_id) {
+            Variant::query()
+                ->whereKey((int) $exportJob->variant_id)
+                ->update(['status' => 'rendered']);
+        }
+
         $this->syncBatchJob($exportJob->fresh());
 
         $this->dispatchProgress(
@@ -224,6 +231,12 @@ class ProcessExportJob implements ShouldQueue
             'status' => 'failed',
             'failure_reason' => $exception->getMessage(),
         ])->save();
+
+        if ($exportJob->variant_id) {
+            Variant::query()
+                ->whereKey((int) $exportJob->variant_id)
+                ->update(['status' => 'failed']);
+        }
 
         $this->syncBatchJob($exportJob->fresh());
 

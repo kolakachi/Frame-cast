@@ -71,7 +71,10 @@ Route::prefix('v1')->group(function (): void {
 
         Route::prefix('/variant-sets')->group(function (): void {
             Route::post('/{variantSetId}/export', [VariantController::class, 'export'])->whereNumber('variantSetId');
+            Route::post('/{variantSetId}/retry-failed', [VariantController::class, 'retryFailed'])->whereNumber('variantSetId');
         });
+
+        Route::delete('/variants/{variantId}', [VariantController::class, 'destroy'])->whereNumber('variantId');
 
         Route::prefix('/scenes')->group(function (): void {
             Route::post('/', [SceneController::class, 'store']);

@@ -1774,6 +1774,7 @@ onBeforeUnmount(() => {
               </template>
             </div>
             <button class="btn btn-ghost" type="button" @click="router.push({ name: 'dashboard' })">+ New Video</button>
+            <button class="btn btn-ghost" type="button" @click="router.push({ name: 'project-variants', params: { projectId } })">Variants</button>
             <button class="btn btn-primary" type="button" :disabled="exportPending" @click="queueExport">
               {{ exportPending ? "Exporting..." : "Export" }}
             </button>

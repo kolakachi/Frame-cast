@@ -20,6 +20,12 @@ const projects = ref([])
 const queueRows = ref([])
 const deletingProjectIds = ref([])
 const deleteConfirmProject = ref(null)
+const currentPage = ref(1)
+const perPage = ref(8)
+const totalProjects = ref(0)
+const lastPage = ref(1)
+
+const perPageOptions = [4, 8, 12, 16, 24]
 
 const showCreateModal = ref(false)
 const createState = ref('idle')
@@ -48,8 +54,10 @@ const audioPath = ref('')
 const videoPath = ref('')
 
 const unreadCount = computed(() => notifications.value.filter((item) => !item.is_read).length)
-const videosThisMonth = computed(() => projects.value.length)
+const videosThisMonth = computed(() => totalProjects.value)
 const queuedRenders = computed(() => queueRows.value.filter((row) => row.status === 'queued' || row.status === 'rendering').length)
+const pageFrom = computed(() => (projects.value.length === 0 ? 0 : ((currentPage.value - 1) * perPage.value) + 1))
+const pageTo = computed(() => Math.min(totalProjects.value, ((currentPage.value - 1) * perPage.value) + projects.value.length))
 const activeChannels = computed(() => {
   const ids = new Set(projects.value.map((project) => project.channel_id).filter(Boolean))
   return ids.size
@@ -196,6 +204,11 @@ function openProject(project) {
   router.push({ name: 'project-editor', params: { projectId: project.id } })
 }
 
+function openVariants(projectId) {
+  if (!projectId) return
+  router.push({ name: 'project-variants', params: { projectId } })
+}
+
 function queueRowsFromProjects(projectList) {
   return projectList
     .filter((project) => ['generating', 'ready_for_review', 'failed'].includes(project.status))
@@ -223,7 +236,7 @@ function queueRowsFromProjects(projectList) {
         id: project.id,
         project: project.title || `Project #${project.id}`,
         channel: project.channel_id ? `Channel #${project.channel_id}` : 'No channel',
-        variants: project.primary_language ? 1 : 0,
+        variants: Number(project.variants_count || 0),
         status,
         statusLabel,
         progress,
@@ -260,6 +273,9 @@ async function confirmDeleteProject() {
   try {
     await api.delete(`/projects/${projectId}`)
     deleteConfirmProject.value = null
+    if (projects.value.length === 1 && currentPage.value > 1) {
+      currentPage.value -= 1
+    }
     await loadProjects()
   } catch {
     // no-op
@@ -270,14 +286,38 @@ async function confirmDeleteProject() {
 
 async function loadProjects() {
   try {
-    const response = await api.get('/projects')
+    const response = await api.get('/projects', {
+      params: {
+        page: currentPage.value,
+        per_page: perPage.value,
+      },
+    })
     const items = response.data?.data?.projects ?? []
+    const pagination = response.data?.meta?.pagination ?? {}
     projects.value = items
     queueRows.value = queueRowsFromProjects(items)
+    totalProjects.value = Number(pagination.total || items.length || 0)
+    lastPage.value = Math.max(1, Number(pagination.last_page || 1))
+    currentPage.value = Math.min(Math.max(1, Number(pagination.current_page || currentPage.value)), lastPage.value)
+    perPage.value = Number(pagination.per_page || perPage.value)
   } catch {
     projects.value = []
     queueRows.value = []
+    totalProjects.value = 0
+    lastPage.value = 1
   }
+}
+
+function changePerPage(nextValue) {
+  perPage.value = Number(nextValue)
+  currentPage.value = 1
+  loadProjects()
+}
+
+function goToPage(nextPage) {
+  if (nextPage < 1 || nextPage > lastPage.value || nextPage === currentPage.value) return
+  currentPage.value = nextPage
+  loadProjects()
 }
 
 function startDashboardPolling() {
@@ -488,6 +528,17 @@ onBeforeUnmount(() => {
 
         <div class="section-header">
           <div class="section-title">Recent Projects</div>
+          <div class="projects-toolbar">
+            <label class="page-size-control">
+              <span>Per page</span>
+              <select class="field-input page-size-select" :value="perPage" @change="changePerPage($event.target.value)">
+                <option v-for="option in perPageOptions" :key="option" :value="option">{{ option }}</option>
+              </select>
+            </label>
+            <div class="projects-summary">
+              Showing {{ pageFrom }}-{{ pageTo }} of {{ totalProjects }}
+            </div>
+          </div>
         </div>
 
         <div class="projects-grid">
@@ -499,7 +550,7 @@ onBeforeUnmount(() => {
           </button>
 
           <article
-            v-for="project in projects.slice(0, 4)"
+            v-for="project in projects"
             :key="project.id"
             class="project-card"
             @click="openProject(project)"
@@ -510,11 +561,10 @@ onBeforeUnmount(() => {
           >
             <div class="project-thumb">
               <button
-                v-if="project.status === 'failed'"
                 class="project-delete-btn"
                 type="button"
                 :disabled="isDeletingProject(project.id)"
-                title="Delete failed video"
+                title="Delete video"
                 @click.stop="requestDeleteProject(project.id)"
               >
                 <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
@@ -538,10 +588,21 @@ onBeforeUnmount(() => {
               <div class="project-meta">
                 <span>{{ project.channel_id ? `Channel #${project.channel_id}` : 'No channel' }}</span>
                 <span>{{ project.primary_language || 'en' }}</span>
+                <span>{{ Number(project.variants_count || 0) }} variants</span>
               </div>
               <div :class="`project-status ${mapProjectStatus(project.status).className}`">{{ mapProjectStatus(project.status).label }}</div>
+              <div class="project-actions">
+                <button class="btn btn-ghost btn-sm" type="button" @click.stop="openVariants(project.id)">Variants</button>
+                <button class="btn btn-ghost btn-sm" type="button" @click.stop="openProject(project)">Open</button>
+              </div>
             </div>
           </article>
+        </div>
+
+        <div v-if="lastPage > 1" class="pagination-row">
+          <button class="btn btn-ghost btn-sm" type="button" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">Previous</button>
+          <div class="pagination-copy">Page {{ currentPage }} of {{ lastPage }}</div>
+          <button class="btn btn-ghost btn-sm" type="button" :disabled="currentPage >= lastPage" @click="goToPage(currentPage + 1)">Next</button>
         </div>
 
         <div v-if="projects.length === 0" class="empty-row">
@@ -776,6 +837,8 @@ onBeforeUnmount(() => {
 .nav-item { width: 44px; height: 44px; border-radius: 10px; color: var(--color-text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.2s ease; }
 .nav-item:hover { color: var(--color-text-secondary); background: var(--color-bg-card); }
 .nav-item.active { color: var(--color-accent); background: rgba(255, 107, 53, 0.14); box-shadow: inset 0 0 0 1px rgba(255, 107, 53, 0.18); }
+.nav-item:disabled { opacity: 0.4; cursor: default; }
+.nav-item:disabled:hover { color: var(--color-text-muted); background: transparent; }
 .tooltip { position: absolute; left: 58px; top: 50%; transform: translateY(-50%); opacity: 0; pointer-events: none; background: var(--color-bg-elevated); color: var(--color-text-primary); font-size: 12px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--color-border); white-space: nowrap; transition: opacity 0.15s ease; }
 .nav-item:hover .tooltip { opacity: 1; }
 .btn svg,
@@ -812,6 +875,10 @@ onBeforeUnmount(() => {
 .stat-change { margin-top: 4px; font-size: 12px; color: var(--color-text-secondary); }
 .section-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .section-title { font-size: 16px; font-weight: 600; }
+.projects-toolbar { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.page-size-control { display: inline-flex; align-items: center; gap: 8px; color: var(--color-text-muted); font-size: 12px; }
+.page-size-select { min-width: 72px; padding: 6px 10px; }
+.projects-summary { color: var(--color-text-muted); font-size: 12px; }
 .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 16px; }
 .new-project-card { min-height: 222px; border: 1px dashed var(--color-border); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); cursor: pointer; background: var(--color-bg-card); }
 .project-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; transition: 0.22s ease; text-align: left; }
@@ -836,10 +903,13 @@ onBeforeUnmount(() => {
 .project-name { margin-bottom: 4px; font-size: 14px; font-weight: 600; }
 .project-meta { display: flex; gap: 12px; color: var(--color-text-muted); font-size: 12px; }
 .project-status { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+.project-actions { display: flex; gap: 8px; margin-top: 10px; }
 .status-rendered { background: rgba(52,211,153,0.12); color: #34d399; }
 .status-draft { background: rgba(251,191,36,0.12); color: #fbbf24; }
 .status-rendering { background: rgba(96,165,250,0.12); color: #60a5fa; }
 .status-failed { background: rgba(248,113,113,0.12); color: #f87171; }
+.pagination-row { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 0 0 20px; }
+.pagination-copy { min-width: 90px; text-align: center; color: var(--color-text-muted); font-size: 12px; }
 .empty-row { margin-bottom: 24px; color: var(--color-text-muted); font-size: 13px; }
 .empty-actions { margin-top: 8px; display: flex; gap: 8px; }
 .queue-wrap { padding: 8px 0 0; }
@@ -912,6 +982,6 @@ label { display: grid; gap: 6px; font-size: 12px; color: var(--color-text-second
 .lang-row { margin-top: 8px; display: flex; gap: 8px; }
 .modal-error { padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(248,113,113,0.25); color: #f87171; font-size: 12px; background: rgba(248,113,113,0.1); }
 .modal-actions { margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px; }
-@media (max-width: 980px) { .stats-row { grid-template-columns: 1fr 1fr; } .form-grid { grid-template-columns: 1fr; } }
-@media (max-width: 800px) { .sidebar { display: none; } .main { margin-left: 0; } .topbar { height: auto; padding: 12px; gap: 10px; align-items: flex-start; flex-direction: column; } .stats-row { grid-template-columns: 1fr; } .empty-actions { flex-direction: column; } }
+@media (max-width: 980px) { .stats-row { grid-template-columns: 1fr 1fr; } .form-grid { grid-template-columns: 1fr; } .section-header { align-items: flex-start; flex-direction: column; } .projects-toolbar { margin-left: 0; flex-wrap: wrap; } .pagination-row { justify-content: space-between; } }
+@media (max-width: 800px) { .sidebar { display: none; } .main { margin-left: 0; } .topbar { height: auto; padding: 12px; gap: 10px; align-items: flex-start; flex-direction: column; } .stats-row { grid-template-columns: 1fr; } .empty-actions { flex-direction: column; } .projects-toolbar { width: 100%; justify-content: space-between; } .projects-summary { width: 100%; } }
 </style>

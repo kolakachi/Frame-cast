@@ -159,8 +159,8 @@ Exit gate: User generates 5+ variants, selects a subset, exports as batch, retri
 
 - [x] VariantSet and Variant models, creation endpoint
 - [~] Variant generation job chain — respects `lock_rules_json`
-- [ ] Variants creation drawer (Vue) — dimension picker, lock controls, batch summary
-- [ ] Variant cards grid — status per card, selection checkboxes
+- [~] Variants creation drawer (Vue) — dimension picker, lock controls, batch summary
+- [~] Variant cards grid — status per card, selection checkboxes
 - [~] Batch export — one ExportJob per selected variant, BatchJob parent
 - [ ] Queue Detail screen (Vue)
 - [ ] Failed Job Detail modal (Vue)
@@ -174,6 +174,7 @@ Exit gate: User generates 5+ variants, selects a subset, exports as batch, retri
 - Added backend Phase 3 foundations: `VariantSet`, `Variant`, and `BatchJob` models; `GET/POST /api/v1/projects/{projectId}/variants`; `POST /api/v1/variant-sets/{variantSetId}/export`.
 - Added `GenerateVariantSetJob` to clone derived projects/scenes and generate hook, voice, visual, and format variants from one base project.
 - Added `batch_job_id` to `export_jobs` and batch status rollup in `ProcessExportJob` so batch export can move toward queue-detail support.
+- Added first-pass Vue Variants screen at `/projects/{id}/variants` with generation drawer, variant cards grid, selection state, and batch export actions wired to the new API.
 - Current variant generation intentionally rejects `language` as a dimension until Phase 5 localization work lands.
 
 ---

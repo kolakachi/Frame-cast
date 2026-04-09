@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Variant;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateVariantJob;
 use App\Jobs\GenerateVariantSetJob;
 use App\Jobs\ProcessExportJob;
 use App\Models\Asset;
@@ -10,10 +11,12 @@ use App\Models\BatchJob;
 use App\Models\ExportJob;
 use App\Models\Project;
 use App\Models\ProjectHookOption;
+use App\Models\Scene;
 use App\Models\User;
 use App\Models\Variant;
 use App\Models\VariantSet;
 use App\Models\VoiceProfile;
+use App\Services\VariantGeneration\VariantGenerationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -93,6 +96,8 @@ class VariantController extends Controller
             'generation_dimensions.voice' => ['sometimes', 'array'],
             'generation_dimensions.voice.voice_profile_ids' => ['sometimes', 'array', 'min:1'],
             'generation_dimensions.voice.voice_profile_ids.*' => ['integer'],
+            'generation_dimensions.voice.provider_voice_keys' => ['sometimes', 'array', 'min:1'],
+            'generation_dimensions.voice.provider_voice_keys.*' => ['string'],
             'generation_dimensions.visual' => ['sometimes', 'array'],
             'generation_dimensions.visual.enabled' => ['sometimes', 'boolean'],
             'generation_dimensions.format' => ['sometimes', 'array'],
@@ -113,8 +118,9 @@ class VariantController extends Controller
             'captions' => false,
         ], $validated['lock_rules_json'] ?? []);
 
-        if (($lockRules['scene_text'] ?? false) && isset($validated['generation_dimensions']['hook'])) {
-            return $this->error('invalid_lock_rules', 'Hook variants require scene text to remain editable across variants.', 422);
+        // Hook variants must be able to change scene text — silently override the lock.
+        if (isset($validated['generation_dimensions']['hook'])) {
+            $lockRules['scene_text'] = false;
         }
 
         $plan = $this->buildVariantPlan($project, $validated['generation_dimensions'], $user);
@@ -282,48 +288,72 @@ class VariantController extends Controller
                 ->get();
 
             if ($hooks->isEmpty()) {
-                return null;
+                unset($dimensions['hook']);
+            } else {
+                $dimensionOptions['hook'] = $hooks->values()->map(
+                    fn (ProjectHookOption $hook, int $index): array => [
+                        'label' => 'Hook '.($index + 1),
+                        'value' => [
+                            'hook_text' => $hook->hook_text,
+                            'sort_order' => $hook->sort_order,
+                        ],
+                    ]
+                )->all();
             }
-
-            $dimensionOptions['hook'] = $hooks->values()->map(
-                fn (ProjectHookOption $hook, int $index): array => [
-                    'label' => 'Hook '.($index + 1),
-                    'value' => [
-                        'hook_text' => $hook->hook_text,
-                        'sort_order' => $hook->sort_order,
-                    ],
-                ]
-            )->all();
         }
 
         if (isset($dimensions['voice'])) {
+            $providerKeys = collect($dimensions['voice']['provider_voice_keys'] ?? [])
+                ->map(static fn (mixed $k): string => (string) $k)
+                ->filter()
+                ->unique()
+                ->values();
+
             $voiceIds = collect($dimensions['voice']['voice_profile_ids'] ?? [])
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->unique()
                 ->values();
 
             $voices = VoiceProfile::query()
-                ->whereIn('id', $voiceIds)
+                ->where(function ($q) use ($voiceIds, $providerKeys): void {
+                    if ($voiceIds->isNotEmpty()) {
+                        $q->orWhereIn('id', $voiceIds);
+                    }
+                    if ($providerKeys->isNotEmpty()) {
+                        $q->orWhereIn('provider_voice_key', $providerKeys);
+                    }
+                })
                 ->where(function ($query) use ($user): void {
                     $query->whereNull('workspace_id')
                         ->orWhere('workspace_id', $user->workspace_id);
                 })
                 ->get();
 
-            if ($voices->isEmpty()) {
+            if ($voices->isEmpty() && $providerKeys->isNotEmpty()) {
+                $dimensionOptions['voice'] = $providerKeys->values()->map(
+                    static fn (string $providerKey): array => [
+                        'label' => 'Voice '.ucfirst($providerKey),
+                        'value' => [
+                            'voice_profile_id' => null,
+                            'provider_voice_key' => $providerKey,
+                            'name' => ucfirst($providerKey),
+                        ],
+                    ]
+                )->all();
+            } elseif ($voices->isEmpty()) {
                 return null;
+            } else {
+                $dimensionOptions['voice'] = $voices->values()->map(
+                    fn (VoiceProfile $voice): array => [
+                        'label' => 'Voice '.$voice->name,
+                        'value' => [
+                            'voice_profile_id' => $voice->getKey(),
+                            'provider_voice_key' => $voice->provider_voice_key,
+                            'name' => $voice->name,
+                        ],
+                    ]
+                )->all();
             }
-
-            $dimensionOptions['voice'] = $voices->values()->map(
-                fn (VoiceProfile $voice): array => [
-                    'label' => 'Voice '.$voice->name,
-                    'value' => [
-                        'voice_profile_id' => $voice->getKey(),
-                        'provider_voice_key' => $voice->provider_voice_key,
-                        'name' => $voice->name,
-                    ],
-                ]
-            )->all();
         }
 
         if ((bool) data_get($dimensions, 'visual.enabled', false)) {
@@ -489,5 +519,107 @@ class VariantController extends Controller
             'created_at' => $batchJob->created_at?->toIso8601String(),
             'updated_at' => $batchJob->updated_at?->toIso8601String(),
         ];
+    }
+
+    private function error(string $code, string $message, int $status): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => $code,
+                'message' => $message,
+            ],
+            'meta' => [],
+        ], $status);
+    }
+
+    public function retryFailed(Request $request, int $variantSetId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $variantSet = VariantSet::query()
+            ->whereKey($variantSetId)
+            ->whereHas('baseProject', function ($query) use ($user): void {
+                $query->where('workspace_id', $user->workspace_id);
+            })
+            ->with(['variants', 'baseProject'])
+            ->first();
+
+        if (! $variantSet || ! $variantSet->baseProject) {
+            return $this->error('not_found', 'Variant set not found.', 404);
+        }
+
+        $failedVariants = $variantSet->variants
+            ->where('status', 'failed')
+            ->values();
+
+        if ($failedVariants->isEmpty()) {
+            return $this->error('no_failed_variants', 'There are no failed variants to retry.', 422);
+        }
+
+        foreach ($failedVariants as $variant) {
+            $variant->forceFill(['status' => 'pending'])->save();
+            GenerateVariantJob::dispatch((int) $variant->getKey());
+        }
+
+        $variantSet->forceFill(['status' => 'generating'])->save();
+
+        return response()->json([
+            'data' => [
+                'variant_set' => $this->serializeVariantSet($variantSet->fresh('variants'), collect(), collect()),
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    public function destroy(Request $request, int $variantId, VariantGenerationService $generationService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $variant = Variant::query()
+            ->whereKey($variantId)
+            ->whereHas('baseProject', function ($query) use ($user): void {
+                $query->where('workspace_id', $user->workspace_id);
+            })
+            ->with(['variantSet', 'derivedProject'])
+            ->first();
+
+        if (! $variant || ! $variant->variantSet) {
+            return $this->error('not_found', 'Variant not found.', 404);
+        }
+
+        if (in_array($variant->status, ['pending', 'generating', 'queued'], true)) {
+            return $this->error('variant_busy', 'Wait for this variant to finish before deleting it.', 422);
+        }
+
+        $variantSetId = (int) $variant->variant_set_id;
+
+        DB::transaction(function () use ($variant): void {
+            ExportJob::query()->where('variant_id', $variant->getKey())->delete();
+
+            if ($variant->derived_project_id) {
+                Scene::query()->where('project_id', $variant->derived_project_id)->delete();
+                Project::query()->whereKey($variant->derived_project_id)->delete();
+            }
+
+            $variant->delete();
+        });
+
+        $remainingCount = Variant::query()->where('variant_set_id', $variantSetId)->count();
+
+        if ($remainingCount === 0) {
+            VariantSet::query()->whereKey($variantSetId)->delete();
+        } else {
+            $generationService->refreshVariantSetStatus($variantSetId);
+        }
+
+        return response()->json([
+            'data' => [
+                'deleted_variant_id' => $variantId,
+                'variant_set_deleted' => $remainingCount === 0,
+            ],
+            'meta' => [],
+        ]);
     }
 }

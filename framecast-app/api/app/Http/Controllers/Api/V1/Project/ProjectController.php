@@ -17,6 +17,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -28,21 +29,46 @@ class ProjectController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $projects = Project::query()
+        $validated = $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', Rule::in([4, 8, 12, 16, 24])],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 8);
+        $page = (int) ($validated['page'] ?? 1);
+
+        $paginator = Project::query()
             ->where('workspace_id', $user->workspace_id)
             ->withCount('scenes')
+            ->addSelect([
+                'variants_count' => DB::table('variants')
+                    ->join('variant_sets', 'variant_sets.id', '=', 'variants.variant_set_id')
+                    ->whereColumn('variant_sets.base_project_id', 'projects.id')
+                    ->selectRaw('count(*)'),
+            ])
             ->orderByDesc('id')
-            ->limit(30)
-            ->get();
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $projects = $paginator->getCollection();
 
         return response()->json([
             'data' => [
                 'projects' => $projects->map(fn (Project $project): array => [
                     ...$this->serializeProject($project),
                     'scenes_count' => (int) ($project->scenes_count ?? 0),
+                    'variants_count' => (int) ($project->variants_count ?? 0),
                 ])->all(),
             ],
-            'meta' => [],
+            'meta' => [
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+            ],
         ]);
     }
 
@@ -597,6 +623,7 @@ class ProjectController extends Controller
      *     title:?string,
      *     script_text:?string,
      *     status:string,
+     *     variants_count?:int,
      *     created_by_user_id:?int,
      *     created_at:?string,
      *     updated_at:?string
@@ -622,6 +649,7 @@ class ProjectController extends Controller
             'title' => $project->title,
             'script_text' => $project->script_text,
             'status' => $project->status,
+            'variants_count' => isset($project->variants_count) ? (int) $project->variants_count : 0,
             'created_by_user_id' => $project->created_by_user_id,
             'created_at' => $project->created_at?->toIso8601String(),
             'updated_at' => $project->updated_at?->toIso8601String(),

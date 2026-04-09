@@ -19,11 +19,16 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
             return $this->fallback($normalizedQuery, $orientation);
         }
 
-        if (in_array($visualType, self::VIDEO_TYPES, true)) {
-            return $this->matchVideo($normalizedQuery, $orientation, $apiKey, $visualType);
-        }
+        try {
+            if (in_array($visualType, self::VIDEO_TYPES, true)) {
+                return $this->matchVideo($normalizedQuery, $orientation, $apiKey, $visualType);
+            }
 
-        return $this->matchPhoto($normalizedQuery, $orientation, $apiKey);
+            return $this->matchPhoto($normalizedQuery, $orientation, $apiKey);
+        } catch (\Throwable $exception) {
+            report($exception);
+            return $this->fallback($normalizedQuery, $orientation);
+        }
     }
 
     private function matchPhoto(string $query, string $orientation, string $apiKey): array
