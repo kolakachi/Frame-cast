@@ -55,6 +55,13 @@ class VariantController extends Controller
             ->get()
             ->groupBy('variant_id');
 
+        $batchJobs = BatchJob::query()
+            ->where('source_entity_type', 'variant_set')
+            ->whereIn('source_entity_id', $variantSets->pluck('id'))
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('source_entity_id');
+
         $outputAssetIds = $exportJobs
             ->flatten()
             ->pluck('output_asset_id')
@@ -71,7 +78,12 @@ class VariantController extends Controller
         return response()->json([
             'data' => [
                 'variant_sets' => $variantSets->map(
-                    fn (VariantSet $variantSet): array => $this->serializeVariantSet($variantSet, $exportJobs, $assetMap)
+                    fn (VariantSet $variantSet): array => $this->serializeVariantSet(
+                        $variantSet,
+                        $exportJobs,
+                        $assetMap,
+                        $batchJobs->get($variantSet->getKey(), collect())
+                    )
                 )->all(),
             ],
             'meta' => [],
@@ -161,7 +173,7 @@ class VariantController extends Controller
 
         return response()->json([
             'data' => [
-                'variant_set' => $this->serializeVariantSet($variantSet->load('variants'), collect(), collect()),
+                'variant_set' => $this->serializeVariantSet($variantSet->load('variants'), collect(), collect(), collect()),
             ],
             'meta' => [],
         ], 201);
@@ -426,10 +438,13 @@ class VariantController extends Controller
     /**
      * @param Collection<int, Collection<int, ExportJob>> $exportJobsByVariant
      * @param Collection<int, Asset> $assetMap
+     * @param Collection<int, BatchJob> $batchJobs
      * @return array<string, mixed>
      */
-    private function serializeVariantSet(VariantSet $variantSet, Collection $exportJobsByVariant, Collection $assetMap): array
+    private function serializeVariantSet(VariantSet $variantSet, Collection $exportJobsByVariant, Collection $assetMap, Collection $batchJobs): array
     {
+        $latestBatchJob = $batchJobs->first();
+
         return [
             'id' => $variantSet->getKey(),
             'base_project_id' => $variantSet->base_project_id,
@@ -437,6 +452,7 @@ class VariantController extends Controller
             'variant_count_requested' => (int) $variantSet->variant_count_requested,
             'lock_rules' => $variantSet->lock_rules_json,
             'status' => $variantSet->status,
+            'latest_batch_job' => $latestBatchJob ? $this->serializeBatchJob($latestBatchJob) : null,
             'created_by_user_id' => $variantSet->created_by_user_id,
             'created_at' => $variantSet->created_at?->toIso8601String(),
             'updated_at' => $variantSet->updated_at?->toIso8601String(),
@@ -566,7 +582,7 @@ class VariantController extends Controller
 
         return response()->json([
             'data' => [
-                'variant_set' => $this->serializeVariantSet($variantSet->fresh('variants'), collect(), collect()),
+                'variant_set' => $this->serializeVariantSet($variantSet->fresh('variants'), collect(), collect(), collect()),
             ],
             'meta' => [],
         ]);

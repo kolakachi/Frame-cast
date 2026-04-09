@@ -24,8 +24,13 @@ const currentPage = ref(1)
 const perPage = ref(8)
 const totalProjects = ref(0)
 const lastPage = ref(1)
+const queuePage = ref(1)
+const queuePerPage = ref(10)
+const totalQueueRows = ref(0)
+const queueLastPage = ref(1)
 
 const perPageOptions = [4, 8, 12, 16, 24]
+const queuePerPageOptions = [5, 10, 20]
 
 const showCreateModal = ref(false)
 const createState = ref('idle')
@@ -58,6 +63,8 @@ const videosThisMonth = computed(() => totalProjects.value)
 const queuedRenders = computed(() => queueRows.value.filter((row) => row.status === 'queued' || row.status === 'rendering').length)
 const pageFrom = computed(() => (projects.value.length === 0 ? 0 : ((currentPage.value - 1) * perPage.value) + 1))
 const pageTo = computed(() => Math.min(totalProjects.value, ((currentPage.value - 1) * perPage.value) + projects.value.length))
+const queueFrom = computed(() => (queueRows.value.length === 0 ? 0 : ((queuePage.value - 1) * queuePerPage.value) + 1))
+const queueTo = computed(() => Math.min(totalQueueRows.value, ((queuePage.value - 1) * queuePerPage.value) + queueRows.value.length))
 const activeChannels = computed(() => {
   const ids = new Set(projects.value.map((project) => project.channel_id).filter(Boolean))
   return ids.size
@@ -210,39 +217,36 @@ function openVariants(projectId) {
 }
 
 function queueRowsFromProjects(projectList) {
-  return projectList
-    .filter((project) => ['generating', 'ready_for_review', 'failed'].includes(project.status))
-    .slice(0, 6)
-    .map((project) => {
-      let status = 'queued'
-      let progress = 0
-      let statusLabel = '◯ Queued'
+  return projectList.map((project) => {
+    let status = 'queued'
+    let progress = 0
+    let statusLabel = '◯ Queued'
 
-      if (project.status === 'generating') {
-        status = 'rendering'
-        progress = Math.min(95, Math.max(10, (project.scenes_count || 0) * 12))
-        statusLabel = '◌ Generating'
-      } else if (project.status === 'ready_for_review') {
-        status = 'rendered'
-        progress = 100
-        statusLabel = '● Done'
-      } else if (project.status === 'failed') {
-        status = 'failed'
-        progress = 100
-        statusLabel = '✕ Failed'
-      }
+    if (project.status === 'generating') {
+      status = 'rendering'
+      progress = Math.min(95, Math.max(10, (project.scenes_count || 0) * 12))
+      statusLabel = '◌ Generating'
+    } else if (project.status === 'ready_for_review') {
+      status = 'rendered'
+      progress = 100
+      statusLabel = '● Done'
+    } else if (project.status === 'failed') {
+      status = 'failed'
+      progress = 100
+      statusLabel = '✕ Failed'
+    }
 
-      return {
-        id: project.id,
-        project: project.title || `Project #${project.id}`,
-        channel: project.channel_id ? `Channel #${project.channel_id}` : 'No channel',
-        variants: Number(project.variants_count || 0),
-        status,
-        statusLabel,
-        progress,
-        projectStatus: project.status,
-      }
-    })
+    return {
+      id: project.id,
+      project: project.title || `Project #${project.id}`,
+      channel: project.channel_id ? `Channel #${project.channel_id}` : 'No channel',
+      variants: Number(project.variants_count || 0),
+      status,
+      statusLabel,
+      progress,
+      projectStatus: project.status,
+    }
+  })
 }
 
 function isDeletingProject(projectId) {
@@ -276,7 +280,10 @@ async function confirmDeleteProject() {
     if (projects.value.length === 1 && currentPage.value > 1) {
       currentPage.value -= 1
     }
-    await loadProjects()
+    if (queueRows.value.length === 1 && queuePage.value > 1) {
+      queuePage.value -= 1
+    }
+    await Promise.all([loadProjects(), loadQueue()])
   } catch {
     // no-op
   } finally {
@@ -295,16 +302,36 @@ async function loadProjects() {
     const items = response.data?.data?.projects ?? []
     const pagination = response.data?.meta?.pagination ?? {}
     projects.value = items
-    queueRows.value = queueRowsFromProjects(items)
     totalProjects.value = Number(pagination.total || items.length || 0)
     lastPage.value = Math.max(1, Number(pagination.last_page || 1))
     currentPage.value = Math.min(Math.max(1, Number(pagination.current_page || currentPage.value)), lastPage.value)
     perPage.value = Number(pagination.per_page || perPage.value)
   } catch {
     projects.value = []
-    queueRows.value = []
     totalProjects.value = 0
     lastPage.value = 1
+  }
+}
+
+async function loadQueue() {
+  try {
+    const response = await api.get('/projects/queue', {
+      params: {
+        page: queuePage.value,
+        per_page: queuePerPage.value,
+      },
+    })
+    const items = response.data?.data?.queue_rows ?? []
+    const pagination = response.data?.meta?.pagination ?? {}
+    queueRows.value = queueRowsFromProjects(items)
+    totalQueueRows.value = Number(pagination.total || items.length || 0)
+    queueLastPage.value = Math.max(1, Number(pagination.last_page || 1))
+    queuePage.value = Math.min(Math.max(1, Number(pagination.current_page || queuePage.value)), queueLastPage.value)
+    queuePerPage.value = Number(pagination.per_page || queuePerPage.value)
+  } catch {
+    queueRows.value = []
+    totalQueueRows.value = 0
+    queueLastPage.value = 1
   }
 }
 
@@ -320,6 +347,18 @@ function goToPage(nextPage) {
   loadProjects()
 }
 
+function changeQueuePerPage(nextValue) {
+  queuePerPage.value = Number(nextValue)
+  queuePage.value = 1
+  loadQueue()
+}
+
+function goToQueuePage(nextPage) {
+  if (nextPage < 1 || nextPage > queueLastPage.value || nextPage === queuePage.value) return
+  queuePage.value = nextPage
+  loadQueue()
+}
+
 function startDashboardPolling() {
   if (dashboardPollTimer) {
     window.clearInterval(dashboardPollTimer)
@@ -327,6 +366,7 @@ function startDashboardPolling() {
 
   dashboardPollTimer = window.setInterval(() => {
     loadProjects()
+    loadQueue()
   }, 5000)
 }
 
@@ -341,7 +381,7 @@ async function loadMe() {
   try {
     const response = await api.get('/me')
     mePayload.value = response.data?.data?.user ?? null
-    await loadProjects()
+    await Promise.all([loadProjects(), loadQueue()])
     await loadNotifications()
     subscribeWorkspaceNotifications()
     startDashboardPolling()
@@ -616,6 +656,17 @@ onBeforeUnmount(() => {
         <div class="surface-card queue-wrap">
           <div class="section-header queue-header">
             <div class="section-title">Render Queue</div>
+            <div class="projects-toolbar">
+              <label class="page-size-control">
+                <span>Per page</span>
+                <select class="field-input page-size-select" :value="queuePerPage" @change="changeQueuePerPage($event.target.value)">
+                  <option v-for="option in queuePerPageOptions" :key="option" :value="option">{{ option }}</option>
+                </select>
+              </label>
+              <div class="projects-summary">
+                Showing {{ queueFrom }}-{{ queueTo }} of {{ totalQueueRows }}
+              </div>
+            </div>
           </div>
           <table v-if="queueRows.length > 0" class="queue-table">
             <thead>
@@ -664,6 +715,11 @@ onBeforeUnmount(() => {
             </tbody>
           </table>
           <div v-else class="queue-empty">No jobs in queue.</div>
+          <div v-if="queueLastPage > 1" class="pagination-row queue-pagination-row">
+            <button class="btn btn-ghost btn-sm" type="button" :disabled="queuePage <= 1" @click="goToQueuePage(queuePage - 1)">Previous</button>
+            <div class="pagination-copy">Page {{ queuePage }} of {{ queueLastPage }}</div>
+            <button class="btn btn-ghost btn-sm" type="button" :disabled="queuePage >= queueLastPage" @click="goToQueuePage(queuePage + 1)">Next</button>
+          </div>
         </div>
       </div>
     </div>
@@ -876,7 +932,8 @@ onBeforeUnmount(() => {
 .section-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .section-title { font-size: 16px; font-weight: 600; }
 .projects-toolbar { display: flex; align-items: center; gap: 12px; margin-left: auto; }
-.page-size-control { display: inline-flex; align-items: center; gap: 8px; color: var(--color-text-muted); font-size: 12px; }
+.page-size-control { display: inline-flex; align-items: center; gap: 8px; color: var(--color-text-muted); font-size: 12px; white-space: nowrap; }
+.page-size-control span { white-space: nowrap; }
 .page-size-select { min-width: 72px; padding: 6px 10px; }
 .projects-summary { color: var(--color-text-muted); font-size: 12px; }
 .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 16px; }
@@ -914,6 +971,7 @@ onBeforeUnmount(() => {
 .empty-actions { margin-top: 8px; display: flex; gap: 8px; }
 .queue-wrap { padding: 8px 0 0; }
 .queue-header { padding: 16px 18px 0; }
+.queue-pagination-row { padding: 14px 18px 18px; margin-bottom: 0; }
 .queue-table { width: 100%; border-collapse: collapse; overflow: hidden; }
 .queue-table th,.queue-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--color-border); font-size: 13px; }
 .queue-table th { font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.08em; }

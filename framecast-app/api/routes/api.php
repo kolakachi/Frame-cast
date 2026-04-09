@@ -60,6 +60,7 @@ Route::prefix('v1')->group(function (): void {
 
         Route::prefix('/projects')->group(function (): void {
             Route::get('/', [ProjectController::class, 'index']);
+            Route::get('/queue', [ProjectController::class, 'queue']);
             Route::post('/', [ProjectController::class, 'store']);
             Route::get('/{projectId}', [ProjectController::class, 'show'])->whereNumber('projectId');
             Route::get('/{projectId}/exports', [ProjectController::class, 'exports'])->whereNumber('projectId');

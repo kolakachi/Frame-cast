@@ -39,6 +39,11 @@ class ProjectController extends Controller
 
         $paginator = Project::query()
             ->where('workspace_id', $user->workspace_id)
+            ->whereNotExists(function ($query): void {
+                $query->selectRaw('1')
+                    ->from('variants')
+                    ->whereColumn('variants.derived_project_id', 'projects.id');
+            })
             ->withCount('scenes')
             ->addSelect([
                 'variants_count' => DB::table('variants')
@@ -128,6 +133,55 @@ class ProjectController extends Controller
                 'hook_options' => $hookOptions->map(fn (ProjectHookOption $option): array => $this->serializeHookOption($option))->all(),
             ],
             'meta' => [],
+        ]);
+    }
+
+    public function queue(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', Rule::in([5, 10, 20])],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 10);
+        $page = (int) ($validated['page'] ?? 1);
+
+        $paginator = Project::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->whereIn('status', ['generating', 'ready_for_review', 'failed'])
+            ->withCount('scenes')
+            ->addSelect([
+                'variants_count' => DB::table('variants')
+                    ->join('variant_sets', 'variant_sets.id', '=', 'variants.variant_set_id')
+                    ->whereColumn('variant_sets.base_project_id', 'projects.id')
+                    ->selectRaw('count(*)'),
+            ])
+            ->orderByDesc('updated_at')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $projects = $paginator->getCollection();
+
+        return response()->json([
+            'data' => [
+                'queue_rows' => $projects->map(fn (Project $project): array => [
+                    ...$this->serializeProject($project),
+                    'scenes_count' => (int) ($project->scenes_count ?? 0),
+                    'variants_count' => (int) ($project->variants_count ?? 0),
+                ])->all(),
+            ],
+            'meta' => [
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+            ],
         ]);
     }
 

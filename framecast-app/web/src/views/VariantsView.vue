@@ -22,9 +22,12 @@ const exportPending = ref(false)
 const exportError = ref('')
 const retryPending = ref(false)
 const retryError = ref('')
+const retryConfirmOpen = ref(false)
 const deletePending = ref(false)
 const deleteError = ref('')
 const deleteVariantTarget = ref(null)
+const failedDetailTarget = ref(null)
+const queueDetailOpen = ref(false)
 
 const varyHook = ref(true)
 const hookCount = ref(3)
@@ -77,6 +80,46 @@ const failedVariantSetIds = computed(() =>
   )),
 )
 
+const partialSuccessSets = computed(() =>
+  variantSets.value.filter((variantSet) => variantSet.status === 'partial_success'),
+)
+
+const activeBatchJobs = computed(() =>
+  variantSets.value
+    .map((variantSet) => ({
+      variant_set_id: variantSet.id,
+      status: variantSet.status,
+      batch_job: variantSet.latest_batch_job ?? null,
+    }))
+    .filter((row) => row.batch_job),
+)
+
+const queueDetailRows = computed(() =>
+  [...variantCards.value]
+    .sort((left, right) => {
+      const order = { failed: 0, generating: 1, queued: 2, pending: 3, ready_for_review: 4, rendered: 5 }
+      return (order[left.status] ?? 99) - (order[right.status] ?? 99)
+    })
+    .map((variant) => {
+      const exportJob = variant.latest_export_job
+      const batchJob = variantSets.value.find((item) => item.id === variant.variant_set_id)?.latest_batch_job ?? null
+
+      return {
+        id: variant.id,
+        label: variant.variant_label,
+        changed: changedDimensionText(variant),
+        status: variant.status,
+        statusCopy: variantStatusCopy(variant.status),
+        progress: exportJob?.progress_percent ?? (['rendered', 'ready_for_review'].includes(variant.status) ? 100 : ['pending', 'queued', 'generating'].includes(variant.status) ? 24 : 0),
+        exportStatus: exportJob?.status ?? null,
+        exportFailureReason: exportJob?.failure_reason ?? null,
+        batchStatus: batchJob?.status ?? null,
+        batchFailureSummary: batchJob?.failure_summary ?? null,
+        variant,
+      }
+    }),
+)
+
 const stats = computed(() => {
   const cards = variantCards.value
 
@@ -104,6 +147,12 @@ const retryFailedLabel = computed(() => {
   }
 
   return stats.value.failed > 0 ? `Retry Failed (${stats.value.failed})` : 'Retry Failed'
+})
+
+const partialSuccessCopy = computed(() => {
+  if (partialSuccessSets.value.length === 0) return ''
+  if (partialSuccessSets.value.length === 1) return 'One variant batch completed with partial success. Review failed items before export.'
+  return `${partialSuccessSets.value.length} variant batches completed with partial success. Review failed items before export.`
 })
 
 const baseProjectMeta = computed(() => {
@@ -177,6 +226,36 @@ function closeDrawer() {
   drawerOpen.value = false
 }
 
+function openQueueDetail() {
+  queueDetailOpen.value = true
+}
+
+function closeQueueDetail() {
+  queueDetailOpen.value = false
+}
+
+function openFailedDetail(variant) {
+  failedDetailTarget.value = variant
+}
+
+function closeFailedDetail() {
+  failedDetailTarget.value = null
+}
+
+function openRetryConfirm() {
+  if (failedVariantSetIds.value.length === 0 || retryPending.value) {
+    return
+  }
+
+  retryError.value = ''
+  retryConfirmOpen.value = true
+}
+
+function closeRetryConfirm() {
+  if (retryPending.value) return
+  retryConfirmOpen.value = false
+}
+
 function promptDeleteVariant(variant) {
   if (['pending', 'generating', 'queued'].includes(variant.status)) {
     return
@@ -202,6 +281,14 @@ function variantStatusCopy(status) {
 
 function variantStatusClass(status) {
   return `status-${status}`
+}
+
+function batchStatusCopy(status) {
+  if (status === 'partial_success') return 'Partial Success'
+  if (status === 'processing') return 'Processing'
+  if (status === 'completed') return 'Completed'
+  if (status === 'failed') return 'Failed'
+  return 'Queued'
 }
 
 function variantCardTone(variant) {
@@ -429,6 +516,7 @@ async function retryFailedVariants() {
       await api.post(`/variant-sets/${variantSetId}/retry-failed`)
     }
 
+    retryConfirmOpen.value = false
     await loadData({ silent: true })
   } catch (error) {
     retryError.value = error.response?.data?.error?.message ?? 'Could not retry failed variants.'
@@ -557,6 +645,7 @@ onBeforeUnmount(() => {
             <div v-if="exportError" class="banner error">{{ exportError }}</div>
             <div v-if="retryError" class="banner error">{{ retryError }}</div>
             <div v-if="deleteError" class="banner error">{{ deleteError }}</div>
+            <div v-if="partialSuccessSets.length > 0" class="banner warning">{{ partialSuccessCopy }}</div>
 
             <div v-if="variantCards.length > 0" class="variant-grid">
               <article v-for="variant in variantCards" :key="variant.id" class="variant-card">
@@ -597,6 +686,14 @@ onBeforeUnmount(() => {
                     >
                       Delete
                     </button>
+                    <button
+                      v-if="variant.status === 'failed'"
+                      class="btn btn-ghost btn-sm"
+                      type="button"
+                      @click="openFailedDetail(variant)"
+                    >
+                      Details
+                    </button>
                     <span v-if="variant.latest_export_job" class="variant-export-copy">
                       {{ variant.latest_export_job.status }} · {{ variant.latest_export_job.aspect_ratio }}
                     </span>
@@ -619,8 +716,11 @@ onBeforeUnmount(() => {
             <button class="btn btn-ghost full-width" type="button" :disabled="exportPending || selectedExportableCount === 0" @click="exportSelected">
               {{ exportPending ? 'Exporting...' : 'Export Selected' }}
             </button>
-            <button class="btn btn-ghost full-width" type="button" :disabled="retryPending || stats.failed === 0" @click="retryFailedVariants">
+            <button class="btn btn-ghost full-width" type="button" :disabled="retryPending || stats.failed === 0" @click="openRetryConfirm">
               {{ retryFailedLabel }}
+            </button>
+            <button class="btn btn-ghost full-width" type="button" :disabled="queueDetailRows.length === 0" @click="openQueueDetail">
+              Queue Detail
             </button>
 
             <div class="side-section">
@@ -638,6 +738,18 @@ onBeforeUnmount(() => {
                 <div class="job-row"><span>Rendered</span><span class="good">{{ stats.rendered }}</span></div>
                 <div class="job-row"><span>Queued</span><span class="info">{{ stats.queued }}</span></div>
                 <div class="job-row"><span>Failed</span><span class="bad">{{ stats.failed }}</span></div>
+              </div>
+            </div>
+
+            <div v-if="activeBatchJobs.length > 0" class="side-section">
+              <div class="panel-label">Batch Status</div>
+              <div class="stats-list">
+                <div v-for="entry in activeBatchJobs" :key="entry.variant_set_id" class="job-row">
+                  <span>Set #{{ entry.variant_set_id }}</span>
+                  <span :class="entry.status === 'partial_success' ? 'warn' : entry.status === 'failed' ? 'bad' : 'info'">
+                    {{ batchStatusCopy(entry.batch_job.status || entry.status) }}
+                  </span>
+                </div>
               </div>
             </div>
           </aside>
@@ -773,6 +885,69 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
+
+    <div v-if="retryConfirmOpen" class="drawer-backdrop open" @click="closeRetryConfirm"></div>
+    <div v-if="retryConfirmOpen" class="confirm-modal">
+      <div class="confirm-title">Retry Failed Variants?</div>
+      <div class="confirm-copy">
+        This will retry {{ stats.failed }} failed variant{{ stats.failed === 1 ? '' : 's' }} and keep all successful variants unchanged.
+      </div>
+      <div v-if="retryError" class="banner error">{{ retryError }}</div>
+      <div class="confirm-actions">
+        <button class="btn btn-ghost" type="button" :disabled="retryPending" @click="closeRetryConfirm">Cancel</button>
+        <button class="btn btn-primary" type="button" :disabled="retryPending" @click="retryFailedVariants">
+          {{ retryPending ? 'Retrying...' : 'Retry Failed' }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="failedDetailTarget" class="drawer-backdrop open" @click="closeFailedDetail"></div>
+    <div v-if="failedDetailTarget" class="confirm-modal detail-modal">
+      <div class="confirm-title">Failed Variant Detail</div>
+      <div class="confirm-copy">
+        <strong>{{ failedDetailTarget.variant_label }}</strong> failed during generation or export.
+      </div>
+      <div class="detail-grid">
+        <div class="detail-line"><span>Status</span><strong class="bad">{{ variantStatusCopy(failedDetailTarget.status) }}</strong></div>
+        <div class="detail-line"><span>Changed</span><strong>{{ changedDimensionText(failedDetailTarget) }}</strong></div>
+        <div class="detail-line" v-if="failedDetailTarget.latest_export_job?.failure_reason">
+          <span>Export error</span><strong>{{ failedDetailTarget.latest_export_job.failure_reason }}</strong>
+        </div>
+        <div class="detail-line" v-else>
+          <span>Failure reason</span><strong>Generation failed before a render artifact was produced.</strong>
+        </div>
+      </div>
+      <div class="confirm-actions">
+        <button class="btn btn-ghost" type="button" @click="closeFailedDetail">Close</button>
+      </div>
+    </div>
+
+    <div v-if="queueDetailOpen" class="drawer-backdrop open" @click="closeQueueDetail"></div>
+    <div v-if="queueDetailOpen" class="queue-detail-modal">
+      <div class="drawer-header">
+        <div class="drawer-title">Queue Detail</div>
+        <button class="drawer-close" type="button" @click="closeQueueDetail">×</button>
+      </div>
+      <div class="queue-detail-body">
+        <div v-for="row in queueDetailRows" :key="row.id" class="queue-detail-row">
+          <div class="queue-detail-head">
+            <div>
+              <div class="detail-title">{{ row.label }}</div>
+              <div class="detail-meta">{{ row.changed }}</div>
+            </div>
+            <span :class="['variant-status-pill', variantStatusClass(row.status)]">{{ row.statusCopy }}</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill-bar" :style="{ width: `${row.progress}%` }"></div>
+          </div>
+          <div class="detail-grid compact">
+            <div class="detail-line"><span>Batch</span><strong>{{ row.batchStatus ? batchStatusCopy(row.batchStatus) : 'Not started' }}</strong></div>
+            <div class="detail-line"><span>Export</span><strong>{{ row.exportStatus || 'No export yet' }}</strong></div>
+            <div v-if="row.exportFailureReason" class="detail-line full"><span>Failure</span><strong class="bad">{{ row.exportFailureReason }}</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 </template>
 
@@ -807,6 +982,7 @@ onBeforeUnmount(() => {
 .full-width { width: 100%; margin-top: 12px; }
 .page-state { padding: 48px 24px; color: var(--color-text-muted); font-size: 14px; }
 .page-state.error, .banner.error { color: #fca5a5; }
+.banner.warning { color: #fbbf24; border-color: rgba(251,191,36,0.22); background: rgba(251,191,36,0.08); }
 .banner { margin-bottom: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(248,113,113,0.2); background: rgba(248,113,113,0.08); font-size: 12px; }
 .variant-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(214px, 1fr)); gap: 14px; }
 .variant-card { border: 1px solid var(--color-border); border-radius: 14px; overflow: hidden; background: rgba(14, 16, 24, 0.86); }
@@ -849,19 +1025,34 @@ onBeforeUnmount(() => {
 .good { color: #34d399; }
 .info { color: #60a5fa; }
 .bad { color: #f87171; }
+.warn { color: #fbbf24; }
 .drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); opacity: 0; pointer-events: none; transition: opacity 0.2s ease; z-index: 140; }
 .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
 .drawer { position: fixed; top: 0; right: 0; height: 100vh; width: 380px; max-width: calc(100vw - 20px); background: var(--color-bg-panel); border-left: 1px solid var(--color-border); transform: translateX(100%); transition: transform 0.2s ease; z-index: 150; overflow-y: auto; }
 .drawer.open { transform: translateX(0); }
 .confirm-modal { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 32px)); background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.4); padding: 18px; z-index: 170; }
+.detail-modal { width: min(520px, calc(100vw - 32px)); }
+.queue-detail-modal { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(780px, calc(100vw - 32px)); max-height: min(82vh, 900px); overflow: hidden; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.4); z-index: 170; }
 .confirm-title { font-size: 16px; font-weight: 600; }
 .confirm-copy { margin-top: 10px; font-size: 13px; color: var(--color-text-muted); line-height: 1.5; }
 .confirm-actions { margin-top: 16px; display: flex; justify-content: flex-end; gap: 10px; }
+.detail-grid { margin-top: 14px; display: grid; gap: 10px; }
+.detail-grid.compact { margin-top: 10px; }
+.detail-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--color-text-secondary); }
+.detail-line span { color: var(--color-text-muted); }
+.detail-line strong { color: var(--color-text-primary); text-align: right; }
+.detail-line.full { display: grid; gap: 6px; }
+.detail-line.full strong { text-align: left; }
 .drawer-header, .drawer-footer { padding: 16px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .drawer-footer { border-bottom: none; border-top: 1px solid var(--color-border); position: sticky; bottom: 0; background: var(--color-bg-panel); }
 .drawer-title { font-size: 16px; font-weight: 600; }
 .drawer-close { font-size: 22px; color: var(--color-text-muted); line-height: 1; }
 .drawer-body { padding: 16px; display: grid; gap: 16px; }
+.queue-detail-body { padding: 16px; display: grid; gap: 12px; max-height: calc(82vh - 68px); overflow: auto; }
+.queue-detail-row { padding: 14px; border-radius: 12px; border: 1px solid var(--color-border); background: rgba(255,255,255,0.02); }
+.queue-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.progress-track { margin-top: 10px; width: 100%; height: 6px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.progress-fill-bar { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ff6b35, #34d399); }
 .drawer-section { display: grid; gap: 10px; }
 .drawer-section-label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); }
 .dim-row { padding: 12px; border-radius: 10px; border: 1px solid var(--color-border); background: rgba(255,255,255,0.02); }
@@ -907,5 +1098,6 @@ onBeforeUnmount(() => {
   .main { margin-left: 0; }
   .topbar { flex-direction: column; align-items: flex-start; }
   .variants-page { padding: 16px; }
+  .queue-detail-modal { width: calc(100vw - 20px); }
 }
 </style>

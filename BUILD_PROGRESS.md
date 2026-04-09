@@ -158,14 +158,14 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 Exit gate: User generates 5+ variants, selects a subset, exports as batch, retries failures independently.
 
 - [x] VariantSet and Variant models, creation endpoint
-- [~] Variant generation job chain — respects `lock_rules_json`
-- [~] Variants creation drawer (Vue) — dimension picker, lock controls, batch summary
-- [~] Variant cards grid — status per card, selection checkboxes
-- [~] Batch export — one ExportJob per selected variant, BatchJob parent
-- [ ] Queue Detail screen (Vue)
-- [ ] Failed Job Detail modal (Vue)
-- [ ] Retry Confirmation modal (Vue)
-- [ ] `partial_success` state handling throughout
+- [x] Variant generation job chain — respects `lock_rules_json`
+- [x] Variants creation drawer (Vue) — dimension picker, lock controls, batch summary
+- [x] Variant cards grid — status per card, selection checkboxes
+- [x] Batch export — one ExportJob per selected variant, BatchJob parent
+- [x] Queue Detail screen (Vue)
+- [x] Failed Job Detail modal (Vue)
+- [x] Retry Confirmation modal (Vue)
+- [x] `partial_success` state handling throughout
 
 **Phase 3 exit gate passed:** [ ]
 
@@ -176,6 +176,9 @@ Exit gate: User generates 5+ variants, selects a subset, exports as batch, retri
 - Added `batch_job_id` to `export_jobs` and batch status rollup in `ProcessExportJob` so batch export can move toward queue-detail support.
 - Added first-pass Vue Variants screen at `/projects/{id}/variants` with generation drawer, variant cards grid, selection state, and batch export actions wired to the new API.
 - Current variant generation intentionally rejects `language` as a dimension until Phase 5 localization work lands.
+- Refactored variant generation into one child job per variant, added retry-failed flow, and added visual fallback behavior so one slow or failing variant no longer blocks the whole batch.
+- Added variant deletion with confirmation and safe blocking for in-flight variants.
+- Added queue detail, failed-detail, retry-confirmation, and `partial_success` UI states to the Variants view using latest batch-job and export-job data.
 
 ---
 
