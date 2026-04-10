@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AssetController extends Controller
@@ -17,6 +18,17 @@ class AssetController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+
+        $validated = $request->validate([
+            'q' => ['nullable', 'string'],
+            'asset_type' => ['nullable', 'string', 'max:64'],
+            'collection_id' => ['nullable', 'integer'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', Rule::in([6, 12, 18, 24])],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 12);
+        $page = (int) ($validated['page'] ?? 1);
 
         $query = Asset::query()
             ->where('workspace_id', $user->workspace_id)
@@ -37,13 +49,23 @@ class AssetController extends Controller
             })
             ->orderByDesc('updated_at');
 
-        $assets = $query->get();
+        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
+        $assets = $paginator->getCollection();
 
         return response()->json([
             'data' => [
                 'assets' => $assets->map(fn (Asset $asset): array => $this->serializeAsset($asset))->all(),
             ],
-            'meta' => [],
+            'meta' => [
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+            ],
         ]);
     }
 

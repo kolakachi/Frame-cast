@@ -16,6 +16,7 @@ const voices    = ref([])
 const loading   = ref(true)
 const saveError = ref('')
 const saveState = ref('idle')
+const brandSavePending = ref(false)
 
 // ── Channel modal ─────────────────────────────────────────
 const channelModal = ref({ open: false, mode: 'create' })
@@ -48,7 +49,7 @@ function openEditChannel(channel) {
     default_language: channel.default_language || 'en',
     default_voice_profile_id: channel.default_voice_profile_id || '',
     brand_kit_id: channel.brand_kit_id || '',
-    platforms: channel.platforms ? [...channel.platforms] : [],
+    platforms: channel.platform_targets ? [...channel.platform_targets] : [],
   }
   channelModal.value = { open: true, mode: 'edit' }
 }
@@ -66,7 +67,21 @@ const watermarkEnabled     = ref(false)
 const accountForm = ref({ name: '', timezone: 'UTC' })
 
 // ── Brand Kit ─────────────────────────────────────────────
-const activeBrandKit = computed(() => brandKits.value[0] || null)
+const activeBrandKitId = ref(null)
+const brandKitForm = ref({
+  id: null,
+  name: '',
+  primary_color: '#ff6b35',
+  secondary_color: '#1a1a3e',
+  accent_color: '#ececf3',
+  font_primary: 'DM Sans Bold',
+  font_secondary: 'Space Mono',
+  default_voice_profile_id: '',
+})
+
+const activeBrandKit = computed(() =>
+  brandKits.value.find((kit) => kit.id === activeBrandKitId.value) || brandKits.value[0] || null
+)
 
 // ── Active nav ────────────────────────────────────────────
 const activeSection = ref('channels')
@@ -81,6 +96,29 @@ const avatarGradients = [
 ]
 function channelGradient(i) { return avatarGradients[i % avatarGradients.length] }
 function channelInitials(name) { return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() }
+
+function hydrateBrandKitForm(brandKit) {
+  brandKitForm.value = {
+    id: brandKit?.id || null,
+    name: brandKit?.name || '',
+    primary_color: brandKit?.primary_color || '#ff6b35',
+    secondary_color: brandKit?.secondary_color || '#1a1a3e',
+    accent_color: brandKit?.accent_color || '#ececf3',
+    font_primary: brandKit?.font_primary || 'DM Sans Bold',
+    font_secondary: brandKit?.font_secondary || 'Space Mono',
+    default_voice_profile_id: brandKit?.default_voice_profile_id || '',
+  }
+}
+
+function selectBrandKit(brandKit) {
+  activeBrandKitId.value = brandKit.id
+  hydrateBrandKitForm(brandKit)
+}
+
+function openNewBrandKit() {
+  activeBrandKitId.value = null
+  hydrateBrandKitForm(null)
+}
 
 // ── Usage bars ────────────────────────────────────────────
 const usageProgress = computed(() => {
@@ -108,6 +146,14 @@ async function loadSettings() {
     brandKits.value = brandKitsRes.data.data.brand_kits || []
     voices.value    = voicesRes.data.data.voice_profiles || []
     accountForm.value = { name: mePayload.value?.name || '', timezone: mePayload.value?.timezone || 'UTC' }
+    if (brandKits.value.length > 0) {
+      if (!brandKits.value.some((kit) => kit.id === activeBrandKitId.value)) {
+        activeBrandKitId.value = brandKits.value[0].id
+      }
+      hydrateBrandKitForm(brandKits.value.find((kit) => kit.id === activeBrandKitId.value) || brandKits.value[0])
+    } else {
+      openNewBrandKit()
+    }
   } catch (err) {
     saveError.value = err?.response?.data?.error?.message || 'Could not load settings.'
   } finally {
@@ -136,6 +182,8 @@ async function saveChannel() {
       description: channelForm.value.description || null,
       default_language: channelForm.value.default_language || null,
       default_voice_profile_id: channelForm.value.default_voice_profile_id || null,
+      brand_kit_id: channelForm.value.brand_kit_id || null,
+      platform_targets: channelForm.value.platforms.length ? channelForm.value.platforms : null,
     }
     if (channelForm.value.id) {
       await api.patch(`/channels/${channelForm.value.id}`, payload)
@@ -148,6 +196,38 @@ async function saveChannel() {
   } catch (err) {
     saveError.value = err?.response?.data?.error?.message || 'Could not save channel.'
     saveState.value = 'error'
+  }
+}
+
+async function saveBrandKit() {
+  brandSavePending.value = true
+  saveError.value = ''
+  saveState.value = 'saving'
+
+  try {
+    const payload = {
+      name: brandKitForm.value.name,
+      primary_color: brandKitForm.value.primary_color || null,
+      secondary_color: brandKitForm.value.secondary_color || null,
+      accent_color: brandKitForm.value.accent_color || null,
+      font_primary: brandKitForm.value.font_primary || null,
+      font_secondary: brandKitForm.value.font_secondary || null,
+      default_voice_profile_id: brandKitForm.value.default_voice_profile_id || null,
+    }
+
+    if (brandKitForm.value.id) {
+      await api.patch(`/brand-kits/${brandKitForm.value.id}`, payload)
+    } else {
+      await api.post('/brand-kits', payload)
+    }
+
+    await loadSettings()
+    saveState.value = 'saved'
+  } catch (err) {
+    saveError.value = err?.response?.data?.error?.message || 'Could not save brand kit.'
+    saveState.value = 'error'
+  } finally {
+    brandSavePending.value = false
   }
 }
 
@@ -217,17 +297,53 @@ onMounted(loadSettings)
             <div class="section-title">Brand Kit Defaults</div>
             <div class="settings-section-desc">Make the global kit obvious, with clear form rows and less visual noise.</div>
 
+            <div class="brand-kit-list">
+              <button
+                v-for="brandKit in brandKits"
+                :key="brandKit.id"
+                :class="['brand-kit-chip', activeBrandKit?.id === brandKit.id ? 'active' : '']"
+                type="button"
+                @click="selectBrandKit(brandKit)"
+              >
+                {{ brandKit.name }}
+              </button>
+              <button class="brand-kit-chip" type="button" @click="openNewBrandKit">+ New Kit</button>
+            </div>
+
             <div class="settings-row settings-row--first">
+              <div class="settings-row-label">
+                <div class="label-main">Brand Kit Name</div>
+                <div class="label-hint">The preset applied across series and channels</div>
+              </div>
+              <div class="settings-row-control">
+                <input v-model="brandKitForm.name" class="settings-input" type="text" placeholder="Finance Authority">
+              </div>
+            </div>
+
+            <div class="settings-row">
               <div class="settings-row-label">
                 <div class="label-main">Brand Colors</div>
                 <div class="label-hint">Primary, secondary, accent</div>
               </div>
               <div class="settings-row-control">
+                <div class="brand-color-grid">
+                  <label class="field-inline">
+                    <span>Primary</span>
+                    <input v-model="brandKitForm.primary_color" class="settings-input" type="text">
+                  </label>
+                  <label class="field-inline">
+                    <span>Secondary</span>
+                    <input v-model="brandKitForm.secondary_color" class="settings-input" type="text">
+                  </label>
+                  <label class="field-inline">
+                    <span>Accent</span>
+                    <input v-model="brandKitForm.accent_color" class="settings-input" type="text">
+                  </label>
+                </div>
                 <div class="color-swatches">
-                  <div class="color-swatch selected" :style="{ background: activeBrandKit?.primary_color || '#ff6b35' }"></div>
-                  <div class="color-swatch" :style="{ background: activeBrandKit?.secondary_color || '#1a1a3e' }"></div>
-                  <div class="color-swatch" :style="{ background: activeBrandKit?.accent_color || '#ececf3' }"></div>
-                  <div class="color-swatch" style="background:#34d399;"></div>
+                  <div class="color-swatch selected" :style="{ background: brandKitForm.primary_color || '#ff6b35' }"></div>
+                  <div class="color-swatch" :style="{ background: brandKitForm.secondary_color || '#1a1a3e' }"></div>
+                  <div class="color-swatch" :style="{ background: brandKitForm.accent_color || '#ececf3' }"></div>
                 </div>
               </div>
             </div>
@@ -238,12 +354,16 @@ onMounted(loadSettings)
                 <div class="label-hint">Caption and overlay defaults</div>
               </div>
               <div class="settings-row-control">
-                <select class="settings-select">
-                  <option>DM Sans Bold</option>
-                  <option>Montserrat Bold</option>
-                  <option>Bebas Neue</option>
-                  <option>Poppins Black</option>
-                </select>
+                <div class="brand-font-grid">
+                  <label class="field-inline">
+                    <span>Primary</span>
+                    <input v-model="brandKitForm.font_primary" class="settings-input" type="text">
+                  </label>
+                  <label class="field-inline">
+                    <span>Secondary</span>
+                    <input v-model="brandKitForm.font_secondary" class="settings-input" type="text">
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -253,11 +373,17 @@ onMounted(loadSettings)
                 <div class="label-hint">Applied to new scenes</div>
               </div>
               <div class="settings-row-control">
-                <select class="settings-select">
+                <select v-model="brandKitForm.default_voice_profile_id" class="settings-select">
                   <option value="">No default</option>
                   <option v-for="voice in voices" :key="voice.id" :value="voice.id">{{ voice.name }}</option>
                 </select>
               </div>
+            </div>
+
+            <div class="modal-actions no-border">
+              <button class="btn btn-primary" type="button" @click="saveBrandKit">
+                {{ brandSavePending ? 'Saving…' : brandKitForm.id ? 'Save Brand Kit' : 'Create Brand Kit' }}
+              </button>
             </div>
           </template>
 
@@ -496,6 +622,30 @@ onMounted(loadSettings)
 .section-title { font-size: 16px; font-weight: 600; }
 .settings-section-desc { color: #6a6a7c; font-size: 13px; margin-top: 4px; margin-bottom: 22px; }
 
+.brand-kit-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.brand-kit-chip {
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid #2a2a36;
+  background: #15151d;
+  color: #a1a1b5;
+  cursor: pointer;
+  font-size: 12px;
+  transition: 0.15s ease;
+}
+
+.brand-kit-chip.active {
+  border-color: rgba(255,107,53,0.4);
+  background: rgba(255,107,53,0.14);
+  color: #ff6b35;
+}
+
 /* ── Channel list ── */
 .channel-card {
   display: flex;
@@ -559,8 +709,26 @@ onMounted(loadSettings)
 .settings-select:focus { outline: none; border-color: rgba(255,107,53,0.45); }
 .settings-input:disabled { opacity: 0.45; cursor: not-allowed; }
 
+.field-inline {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  color: #a1a1b5;
+}
+
+.brand-color-grid,
+.brand-font-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.brand-font-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 /* Color swatches */
-.color-swatches { display: flex; gap: 8px; }
+.color-swatches { display: flex; gap: 8px; margin-top: 10px; }
 .color-swatch {
   width: 32px; height: 32px;
   border-radius: 8px;
@@ -740,8 +908,15 @@ textarea.input-field { min-height: 86px; resize: vertical; }
   border-top: 1px solid #2a2a36;
 }
 
+.modal-actions.no-border {
+  padding-top: 0;
+  border-top: none;
+}
+
 @media (max-width: 1000px) {
   .settings-shell { grid-template-columns: 1fr; }
   .form-grid-2 { grid-template-columns: 1fr; }
+  .brand-color-grid,
+  .brand-font-grid { grid-template-columns: 1fr; }
 }
 </style>

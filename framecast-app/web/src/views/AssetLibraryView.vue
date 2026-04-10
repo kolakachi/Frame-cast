@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
@@ -9,10 +9,10 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const mePayload = ref(null)
+const usagePayload = ref(null)
 const loading = ref(true)
 const error = ref('')
 const assets = ref([])
-const collections = ref([])
 const selectedAsset = ref(null)
 const uploadPending = ref(false)
 const uploadError = ref('')
@@ -20,11 +20,16 @@ const showUploadPanel = ref(false)
 
 const searchQuery = ref('')
 const activeFilter = ref('')
-const selectedCollection = ref('')
 const uploadTitle = ref('')
 const uploadType = ref('video')
 const uploadTags = ref('')
 const uploadFile = ref(null)
+const currentPage = ref(1)
+const perPage = ref(12)
+const totalAssets = ref(0)
+const lastPage = ref(1)
+
+const perPageOptions = [6, 12, 18, 24]
 
 const filterChips = [
   { value: '', label: 'All' },
@@ -61,14 +66,10 @@ const topUsed = computed(() =>
   [...assets.value].sort((a, b) => b.usage_count - a.usage_count).slice(0, 3)
 )
 
-const filteredAssets = computed(() =>
-  assets.value.filter(asset => {
-    const matchesType = !activeFilter.value || asset.asset_type === activeFilter.value
-    const matchesSearch = !searchQuery.value.trim() ||
-      asset.title.toLowerCase().includes(searchQuery.value.toLowerCase())
-    return matchesType && matchesSearch
-  })
-)
+const filteredAssets = computed(() => assets.value)
+const pageFrom = computed(() => (assets.value.length === 0 ? 0 : ((currentPage.value - 1) * perPage.value) + 1))
+const pageTo = computed(() => Math.min(totalAssets.value, ((currentPage.value - 1) * perPage.value) + assets.value.length))
+const summaryCount = computed(() => Number(usagePayload.value?.assets || 0))
 
 function pickAsset(asset) {
   selectedAsset.value = asset
@@ -81,25 +82,42 @@ function closeAsset() {
 async function fetchMe() {
   const { data } = await api.get('/me')
   mePayload.value = data.data.user
-}
-
-async function fetchCollections() {
-  const { data } = await api.get('/collections')
-  collections.value = data.data.collections || []
+  usagePayload.value = data.data.usage || null
 }
 
 async function fetchAssets() {
   const params = {}
-  if (selectedCollection.value) params.collection_id = selectedCollection.value
+  if (activeFilter.value) params.asset_type = activeFilter.value
+  if (searchQuery.value.trim()) params.q = searchQuery.value.trim()
+  params.page = currentPage.value
+  params.per_page = perPage.value
   const { data } = await api.get('/assets', { params })
   assets.value = data.data.assets || []
+  totalAssets.value = Number(data.meta?.pagination?.total || 0)
+  lastPage.value = Number(data.meta?.pagination?.last_page || 1)
+  if (currentPage.value > lastPage.value && lastPage.value > 0) {
+    currentPage.value = lastPage.value
+  }
 }
 
 async function refreshAll() {
   loading.value = true
   error.value = ''
   try {
-    await Promise.all([fetchMe(), fetchCollections(), fetchAssets()])
+    const [meResult, assetsResult] = await Promise.allSettled([fetchMe(), fetchAssets()])
+
+    if (meResult.status === 'rejected' && assetsResult.status === 'rejected') {
+      error.value = 'Could not load the asset library.'
+      return
+    }
+
+    if (meResult.status === 'rejected') {
+      error.value = 'Could not load your workspace profile.'
+    }
+
+    if (assetsResult.status === 'rejected') {
+      error.value = assetsResult.reason?.response?.data?.error?.message || 'Could not load the asset library.'
+    }
   } catch (err) {
     error.value = err?.response?.data?.error?.message || 'Could not load the asset library.'
   } finally {
@@ -131,8 +149,10 @@ async function uploadAsset() {
     uploadTags.value = ''
     uploadFile.value = null
     showUploadPanel.value = false
+    uploadError.value = ''
+    currentPage.value = 1
 
-    await fetchAssets()
+    await Promise.all([fetchMe(), fetchAssets()])
   } catch (err) {
     uploadError.value = err?.response?.data?.error?.message || 'Upload failed.'
   } finally {
@@ -143,7 +163,20 @@ async function uploadAsset() {
 async function archiveAsset(asset) {
   await api.delete(`/assets/${asset.id}`)
   if (selectedAsset.value?.id === asset.id) selectedAsset.value = null
-  await fetchAssets()
+  if (assets.value.length === 1 && currentPage.value > 1) {
+    currentPage.value -= 1
+  }
+  await Promise.all([fetchMe(), fetchAssets()])
+}
+
+function previousPage() {
+  if (currentPage.value <= 1) return
+  currentPage.value -= 1
+}
+
+function nextPage() {
+  if (currentPage.value >= lastPage.value) return
+  currentPage.value += 1
 }
 
 async function logout() {
@@ -152,6 +185,25 @@ async function logout() {
 }
 
 onMounted(refreshAll)
+
+let searchTimer = null
+watch([searchQuery, activeFilter], () => {
+  if (loading.value) return
+
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+  }
+
+  searchTimer = setTimeout(() => {
+    currentPage.value = 1
+    fetchAssets()
+  }, 180)
+})
+
+watch([currentPage, perPage], () => {
+  if (loading.value) return
+  fetchAssets()
+})
 </script>
 
 <template>
@@ -160,19 +212,21 @@ onMounted(refreshAll)
 
     <div class="main">
       <div v-if="error" class="banner error">{{ error }}</div>
+
       <div v-if="loading" class="page-state">Loading asset library...</div>
 
-      <template v-else>
+      <div v-else>
         <div class="asset-overview">
           <div class="surface-card asset-summary-card">
             <div class="summary-kicker">Asset Library</div>
-            <div class="summary-big">{{ assets.length }} assets</div>
-            <div class="summary-copy">Reusable media, voices, and scene blocks for your workspace.</div>
+            <div class="summary-big">{{ summaryCount }} assets</div>
+            <div class="summary-copy">Rebuilt as a proper system view instead of just a big grid, so it reads as part of the product and not a detached page.</div>
           </div>
+
           <div class="surface-card asset-activity-card">
-            <div class="section-title">Most used</div>
+            <div class="section-title">What is used most</div>
             <div class="mini-metrics">
-              <template v-if="topUsed.length > 0">
+              <template v-if="topUsed.length">
                 <div v-for="asset in topUsed" :key="asset.id" class="mini-metric">
                   <strong>{{ asset.usage_count }}</strong>
                   <span>{{ asset.title }}</span>
@@ -189,11 +243,21 @@ onMounted(refreshAll)
         <div class="section-header">
           <div>
             <div class="section-title">Library Contents</div>
-            <div class="section-subtitle">Search, filter, and reuse approved assets across your workspace.</div>
+            <div class="section-subtitle">Search, filter, and quick-scan cards share the same spacing and tone as the rest of the app.</div>
           </div>
-          <button class="btn btn-primary btn-sm" type="button" @click="showUploadPanel = !showUploadPanel">
-            {{ showUploadPanel ? 'Cancel' : 'Upload' }}
-          </button>
+
+          <div class="section-header-actions">
+            <label class="per-page-inline">
+              <span>Per page</span>
+              <select v-model="perPage" class="field-select field-select-compact">
+                <option v-for="option in perPageOptions" :key="option" :value="option">{{ option }}</option>
+              </select>
+            </label>
+
+            <button class="btn btn-primary btn-sm" type="button" @click="showUploadPanel = !showUploadPanel">
+              {{ showUploadPanel ? 'Cancel' : 'Upload' }}
+            </button>
+          </div>
         </div>
 
         <div v-if="showUploadPanel" class="upload-panel surface-card">
@@ -201,24 +265,29 @@ onMounted(refreshAll)
           <div class="upload-form-row">
             <label class="field-label">
               <span>Title</span>
-              <input v-model="uploadTitle" class="field-input" type="text" placeholder="Weekly intro loop">
+              <input v-model="uploadTitle" class="field-input" type="text" placeholder="Weekly intro loop" />
             </label>
+
             <label class="field-label">
               <span>Type</span>
               <select v-model="uploadType" class="field-select">
                 <option v-for="type in assetTypes" :key="type.value" :value="type.value">{{ type.label }}</option>
               </select>
             </label>
+
             <label class="field-label">
               <span>Tags</span>
-              <input v-model="uploadTags" class="field-input" type="text" placeholder="finance, intro, evergreen">
+              <input v-model="uploadTags" class="field-input" type="text" placeholder="finance, intro, evergreen" />
             </label>
+
             <label class="upload-zone">
-              <input type="file" hidden @change="uploadFile = $event.target.files?.[0] || null">
+              <input type="file" hidden @change="uploadFile = $event.target.files?.[0] || null" />
               <span>{{ uploadFile ? uploadFile.name : 'Choose a file' }}</span>
             </label>
           </div>
+
           <div v-if="uploadError" class="banner error">{{ uploadError }}</div>
+
           <div class="upload-form-actions">
             <button class="btn btn-ghost" type="button" @click="showUploadPanel = false">Cancel</button>
             <button class="btn btn-primary" type="button" :disabled="uploadPending" @click="uploadAsset">
@@ -230,24 +299,33 @@ onMounted(refreshAll)
         <div class="asset-toolbar">
           <div class="search-wrap">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8"></circle>
-              <path d="M21 21l-4.35-4.35"></path>
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
             </svg>
-            <input v-model="searchQuery" class="search-box" placeholder="Search assets by name, tag, or type">
+            <input v-model="searchQuery" class="search-box" placeholder="Search assets by name, tag, or type" />
           </div>
+
           <div class="filter-chips">
             <div
               v-for="chip in filterChips"
               :key="chip.value"
               :class="['filter-chip', activeFilter === chip.value ? 'active' : '']"
               @click="activeFilter = chip.value"
-            >{{ chip.label }}</div>
+            >
+              {{ chip.label }}
+            </div>
           </div>
         </div>
 
         <div v-if="filteredAssets.length === 0" class="empty-state">
           <div class="empty-title">No assets yet</div>
-          <div class="empty-copy">Upload a video, audio file, image, or reusable block to start building your workspace library.</div>
+          <div class="empty-copy">
+            {{
+              searchQuery || activeFilter
+                ? 'No assets match this search or filter yet.'
+                : 'Upload a video, audio file, image, or reusable block to start building your workspace library.'
+            }}
+          </div>
         </div>
 
         <div v-else class="asset-grid">
@@ -264,6 +342,7 @@ onMounted(refreshAll)
               </span>
               <div class="asset-icon">{{ getTypeConfig(asset.asset_type).icon }}</div>
             </div>
+
             <div class="asset-details">
               <div class="asset-title">{{ asset.title }}</div>
               <div class="asset-meta-row">
@@ -283,10 +362,19 @@ onMounted(refreshAll)
             </div>
           </div>
         </div>
-      </template>
+
+        <div v-if="totalAssets > 0" class="asset-pagination">
+          <div class="asset-pagination-copy">Showing {{ pageFrom }}-{{ pageTo }} of {{ totalAssets }} assets</div>
+          <div class="asset-pagination-actions">
+            <button class="btn btn-ghost btn-sm" type="button" :disabled="currentPage <= 1" @click="previousPage">Previous</button>
+            <button class="btn btn-ghost btn-sm" type="button" :disabled="currentPage >= lastPage" @click="nextPage">Next</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div v-if="selectedAsset" class="drawer-backdrop" @click="closeAsset"></div>
+
     <aside :class="['drawer', selectedAsset ? 'open' : '']">
       <div v-if="selectedAsset" class="drawer-inner">
         <div class="drawer-header">
@@ -312,7 +400,9 @@ onMounted(refreshAll)
 
         <div class="drawer-section">
           <div class="drawer-section-label">Usage</div>
-          <div class="detail-copy">Used {{ selectedAsset.usage_count }} time<span v-if="selectedAsset.usage_count !== 1">s</span> in this workspace.</div>
+          <div class="detail-copy">
+            Used {{ selectedAsset.usage_count }} time<span v-if="selectedAsset.usage_count !== 1">s</span> in this workspace.
+          </div>
         </div>
 
         <div class="detail-actions">
@@ -384,6 +474,23 @@ onMounted(refreshAll)
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+}
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.per-page-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #a1a1b5;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.field-select-compact {
+  min-width: 82px;
+  padding-right: 28px;
 }
 
 /* Upload panel */
@@ -472,6 +579,21 @@ onMounted(refreshAll)
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 14px;
+}
+.asset-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+.asset-pagination-copy {
+  color: #6a6a7c;
+  font-size: 12px;
+}
+.asset-pagination-actions {
+  display: flex;
+  gap: 8px;
 }
 .asset-card {
   background: #17171f;
@@ -621,5 +743,14 @@ onMounted(refreshAll)
 @media (max-width: 900px) {
   .asset-overview { grid-template-columns: 1fr; }
   .mini-metrics { grid-template-columns: repeat(2, 1fr); }
+  .section-header,
+  .asset-pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .section-header-actions,
+  .asset-pagination-actions {
+    justify-content: space-between;
+  }
 }
 </style>
