@@ -221,15 +221,19 @@ class ProcessExportJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        report($exception);
+
         $exportJob = ExportJob::query()->find($this->exportJobId);
 
         if (! $exportJob) {
             return;
         }
 
+        $userSafeFailure = $this->summarizeFailureForUser($exception);
+
         $exportJob->forceFill([
             'status' => 'failed',
-            'failure_reason' => $exception->getMessage(),
+            'failure_reason' => $userSafeFailure,
         ])->save();
 
         if ($exportJob->variant_id) {
@@ -244,7 +248,7 @@ class ProcessExportJob implements ShouldQueue
             $exportJob,
             'failed',
             (int) $exportJob->progress_percent,
-            $exception->getMessage()
+            $userSafeFailure
         );
     }
 
@@ -300,7 +304,7 @@ class ProcessExportJob implements ShouldQueue
                 // setpts=PTS-STARTPTS normalises non-zero start PTS from stock clips so
                 // audio and video start at exactly the same moment within the segment.
                 sprintf(
-                    'setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,trim=duration=%s',
+                    'setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,setsar=1,trim=duration=%s',
                     $dimensions['width'],
                     $dimensions['height'],
                     $dimensions['width'],
@@ -818,5 +822,36 @@ class ProcessExportJob implements ShouldQueue
                 ? ['failed_export_job_ids' => $children->where('status', 'failed')->pluck('id')->values()->all()]
                 : null,
         ])->save();
+    }
+
+    private function summarizeFailureForUser(\Throwable $exception): string
+    {
+        $message = trim(preg_replace('/\s+/', ' ', $exception->getMessage()) ?: '');
+
+        if ($message === '') {
+            return 'Export failed before a video could be produced.';
+        }
+
+        if (str_contains($message, 'do not match the corresponding output link') || str_contains($message, 'Failed to configure output pad on Parsed_concat')) {
+            return 'One or more rendered scenes used an incompatible video format, so the final export could not be assembled.';
+        }
+
+        if (str_contains($message, 'Could not render one or more scene segments')) {
+            return 'One or more scenes could not be rendered into export-ready video.';
+        }
+
+        if (str_contains($message, 'No such file or directory')) {
+            return 'A required media file was missing during export.';
+        }
+
+        if (str_contains($message, 'Invalid data found when processing input')) {
+            return 'One of the generated media files could not be read during export.';
+        }
+
+        if (str_contains($message, 'Conversion failed')) {
+            return 'The final video could not be assembled from the rendered scenes.';
+        }
+
+        return 'Export failed while processing the video. Please retry, or regenerate the affected scene if it continues.';
     }
 }

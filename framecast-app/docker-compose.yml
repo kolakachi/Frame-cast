@@ -14,10 +14,36 @@ services:
       - postgres
       - redis
 
-  worker:
+  worker-default:
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=exports,default,generation,tts,visual,translation,rendering --tries=1
+    command: php artisan queue:work redis --queue=default --tries=1
+    env_file:
+      - ./api/.env
+    environment:
+      REVERB_HOST: reverb
+    working_dir: /var/www/html
+    depends_on:
+      - postgres
+      - redis
+
+  worker-generation:
+    build:
+      context: ./api
+    command: php artisan queue:work redis --queue=generation,tts,visual,translation --tries=1
+    env_file:
+      - ./api/.env
+    environment:
+      REVERB_HOST: reverb
+    working_dir: /var/www/html
+    depends_on:
+      - postgres
+      - redis
+
+  worker-exports:
+    build:
+      context: ./api
+    command: php artisan queue:work redis --queue=exports,rendering --tries=1
     env_file:
       - ./api/.env
     environment:
@@ -93,6 +119,7 @@ services:
       POSTGRES_DB: framecast
       POSTGRES_USER: framecast
       POSTGRES_PASSWORD: framecast
+    command: postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
     ports:
       - "5432:5432"
     volumes:

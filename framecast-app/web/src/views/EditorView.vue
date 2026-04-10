@@ -1686,7 +1686,7 @@ onBeforeUnmount(() => {
             <span class="tooltip">Dashboard</span>
           </button>
 
-          <button class="nav-item" type="button">
+          <button class="nav-item" type="button" @click="router.push({ name: 'asset-library' })">
             <svg
               width="18"
               height="18"
@@ -1703,9 +1703,9 @@ onBeforeUnmount(() => {
           </button>
 
           <button
-            class="nav-item active"
+            class="nav-item"
             type="button"
-            aria-current="page"
+            @click="router.push({ name: 'settings' })"
           >
             <svg
               width="18"

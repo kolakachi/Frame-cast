@@ -3,6 +3,11 @@
 namespace App\Http\Controllers\Api\V1\System;
 
 use App\Http\Controllers\Controller;
+use App\Models\Asset;
+use App\Models\BrandKit;
+use App\Models\Channel;
+use App\Models\ExportJob;
+use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,14 +24,29 @@ class VerificationController extends Controller
 
         return response()->json([
             'data' => [
-                'user' => [
-                    'id' => $user->getKey(),
-                    'workspace_id' => $user->workspace_id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $user->role,
-                    'status' => $user->status,
-                ],
+                'user' => $this->serializeUser($user),
+                'usage' => $this->usageSummary($user),
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    public function updateMe(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'name' => ['sometimes', 'string', 'max:255'],
+            'timezone' => ['sometimes', 'string', 'max:64'],
+        ]);
+
+        $user->fill($validated)->save();
+
+        return response()->json([
+            'data' => [
+                'user' => $this->serializeUser($user->fresh()),
+                'usage' => $this->usageSummary($user),
             ],
             'meta' => [],
         ]);
@@ -65,5 +85,42 @@ class VerificationController extends Controller
             ],
             'meta' => [],
         ]);
+    }
+
+    /**
+     * @return array{id:int,workspace_id:?int,name:string,email:string,timezone:string,role:string,status:string}
+     */
+    private function serializeUser(User $user): array
+    {
+        return [
+            'id' => $user->getKey(),
+            'workspace_id' => $user->workspace_id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'timezone' => $user->timezone,
+            'role' => $user->role,
+            'status' => $user->status,
+        ];
+    }
+
+    /**
+     * @return array{plan:string,renders_used:int,render_limit:int,voice_minutes_used:int,voice_minutes_limit:int,active_channels:int,channel_limit:int,assets:int,brand_kits:int,projects:int}
+     */
+    private function usageSummary(User $user): array
+    {
+        $workspaceId = $user->workspace_id;
+
+        return [
+            'plan' => 'Studio',
+            'renders_used' => ExportJob::query()->whereHas('project', fn ($query) => $query->where('workspace_id', $workspaceId))->where('status', 'completed')->count(),
+            'render_limit' => 600,
+            'voice_minutes_used' => 0,
+            'voice_minutes_limit' => 300,
+            'active_channels' => Channel::query()->where('workspace_id', $workspaceId)->where('status', 'active')->count(),
+            'channel_limit' => 10,
+            'assets' => Asset::query()->where('workspace_id', $workspaceId)->where('status', 'active')->count(),
+            'brand_kits' => BrandKit::query()->where('workspace_id', $workspaceId)->count(),
+            'projects' => Project::query()->where('workspace_id', $workspaceId)->count(),
+        ];
     }
 }

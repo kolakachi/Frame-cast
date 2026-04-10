@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
+use App\Http\Controllers\Api\V1\Asset\AssetController;
+use App\Http\Controllers\Api\V1\Asset\CollectionController;
 use App\Http\Controllers\Api\V1\BrandKit\BrandKitController;
 use App\Http\Controllers\Api\V1\Channel\ChannelController;
 use App\Http\Controllers\Api\V1\Project\ProjectController;
@@ -30,10 +32,24 @@ Route::prefix('v1')->group(function (): void {
 
     Route::middleware('auth.jwt')->group(function (): void {
         Route::get('/me', [VerificationController::class, 'me']);
+        Route::patch('/me', [VerificationController::class, 'updateMe']);
         Route::post('/verification/storage-smoke', [VerificationController::class, 'storageSmoke']);
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
         Route::get('/voice-profiles', [VoiceProfileController::class, 'index']);
+        Route::prefix('/assets')->group(function (): void {
+            Route::get('/', [AssetController::class, 'index']);
+            Route::post('/', [AssetController::class, 'store']);
+            Route::get('/{assetId}', [AssetController::class, 'show'])->whereNumber('assetId');
+            Route::patch('/{assetId}', [AssetController::class, 'update'])->whereNumber('assetId');
+            Route::delete('/{assetId}', [AssetController::class, 'destroy'])->whereNumber('assetId');
+        });
+        Route::prefix('/collections')->group(function (): void {
+            Route::get('/', [CollectionController::class, 'index']);
+            Route::post('/', [CollectionController::class, 'store']);
+            Route::patch('/{collectionId}', [CollectionController::class, 'update'])->whereNumber('collectionId');
+            Route::delete('/{collectionId}', [CollectionController::class, 'destroy'])->whereNumber('collectionId');
+        });
         Route::prefix('/workspaces')->group(function (): void {
             Route::get('/', [WorkspaceController::class, 'index']);
             Route::post('/', [WorkspaceController::class, 'store']);

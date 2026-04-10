@@ -108,11 +108,12 @@ const queueDetailRows = computed(() =>
         id: variant.id,
         label: variant.variant_label,
         changed: changedDimensionText(variant),
-        status: variant.status,
-        statusCopy: variantStatusCopy(variant.status),
-        progress: exportJob?.progress_percent ?? (['rendered', 'ready_for_review'].includes(variant.status) ? 100 : ['pending', 'queued', 'generating'].includes(variant.status) ? 24 : 0),
+        status: displayVariantStatus(variant),
+        statusCopy: variantStatusCopy(displayVariantStatus(variant)),
+        progress: exportJob?.progress_percent ?? (['rendered', 'ready_for_review'].includes(displayVariantStatus(variant)) ? 100 : ['pending', 'queued', 'generating', 'processing'].includes(displayVariantStatus(variant)) ? 24 : 0),
         exportStatus: exportJob?.status ?? null,
         exportFailureReason: exportJob?.failure_reason ?? null,
+        exportFailureSummary: summarizeFailureReason(exportJob?.failure_reason ?? null),
         batchStatus: batchJob?.status ?? null,
         batchFailureSummary: batchJob?.failure_summary ?? null,
         variant,
@@ -125,9 +126,9 @@ const stats = computed(() => {
 
   return {
     total: cards.length,
-    rendered: cards.filter((card) => card.status === 'rendered').length,
-    queued: cards.filter((card) => ['pending', 'generating', 'queued'].includes(card.status)).length,
-    failed: cards.filter((card) => card.status === 'failed').length,
+    rendered: cards.filter((card) => displayVariantStatus(card) === 'rendered').length,
+    queued: cards.filter((card) => ['pending', 'generating', 'queued', 'processing'].includes(displayVariantStatus(card))).length,
+    failed: cards.filter((card) => displayVariantStatus(card) === 'failed').length,
   }
 })
 
@@ -213,6 +214,16 @@ function openEditor(projectTargetId) {
   router.push({ name: 'project-editor', params: { projectId: projectTargetId } })
 }
 
+function downloadVariant(variant) {
+  const url = variant?.latest_export_job?.output_asset?.storage_url
+
+  if (!url) {
+    return
+  }
+
+  window.open(url, '_blank', 'noopener')
+}
+
 function openDrawer() {
   createError.value = ''
   lockSceneText.value = false
@@ -273,6 +284,7 @@ function closeDeleteModal() {
 function variantStatusCopy(status) {
   if (status === 'rendered') return 'Rendered'
   if (status === 'ready_for_review') return 'Ready'
+  if (status === 'processing') return 'Processing'
   if (status === 'queued') return 'Queued'
   if (status === 'generating') return 'Generating'
   if (status === 'failed') return 'Failed'
@@ -283,12 +295,59 @@ function variantStatusClass(status) {
   return `status-${status}`
 }
 
+function displayVariantStatus(variant) {
+  const exportStatus = variant.latest_export_job?.status
+
+  if (exportStatus === 'processing') return 'processing'
+  if (exportStatus === 'queued') return 'queued'
+  if (exportStatus === 'completed') return 'rendered'
+  if (exportStatus === 'failed') return 'failed'
+
+  return variant.status
+}
+
 function batchStatusCopy(status) {
   if (status === 'partial_success') return 'Partial Success'
   if (status === 'processing') return 'Processing'
   if (status === 'completed') return 'Completed'
   if (status === 'failed') return 'Failed'
   return 'Queued'
+}
+
+function normalizeFailureReason(reason) {
+  return String(reason || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function summarizeFailureReason(reason) {
+  const normalized = normalizeFailureReason(reason)
+
+  if (!normalized) {
+    return 'Export failed before a file could be produced.'
+  }
+
+  if (normalized.includes('Could not render one or more scene segments')) {
+    return 'One or more scene segments could not be rendered into the final video.'
+  }
+
+  if (normalized.includes('No such file or directory')) {
+    return 'A required media file could not be found during export.'
+  }
+
+  if (normalized.includes('Invalid data found when processing input')) {
+    return 'One of the generated media files is invalid or unreadable.'
+  }
+
+  if (normalized.includes('Input/output error')) {
+    return 'Export failed while reading or writing media files.'
+  }
+
+  if (normalized.includes('Conversion failed')) {
+    return 'FFmpeg could not combine the scene media into a final export.'
+  }
+
+  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized
 }
 
 function variantCardTone(variant) {
@@ -591,14 +650,14 @@ onBeforeUnmount(() => {
           <span class="tooltip">Dashboard</span>
         </button>
 
-        <button class="nav-item" type="button">
+        <button class="nav-item" type="button" @click="router.push({ name: 'asset-library' })">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
             <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"></path>
           </svg>
           <span class="tooltip">Asset Library</span>
         </button>
 
-        <button class="nav-item" type="button">
+        <button class="nav-item" type="button" @click="router.push({ name: 'settings' })">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -666,7 +725,7 @@ onBeforeUnmount(() => {
                       {{ selectedVariantIds.includes(variant.id) ? '✓' : '' }}
                     </button>
                     <span class="variant-footer-copy">
-                      {{ exportableVariantIds.includes(variant.id) ? 'Selected for batch export' : variant.status === 'failed' ? 'Retry from batch controls' : 'Not exportable yet' }}
+                      {{ exportableVariantIds.includes(variant.id) ? 'Selected for batch export' : displayVariantStatus(variant) === 'failed' ? 'Retry from batch controls' : displayVariantStatus(variant) === 'processing' ? 'Export in progress' : 'Not exportable yet' }}
                     </span>
                   </div>
                   <div class="variant-actions">
@@ -679,9 +738,17 @@ onBeforeUnmount(() => {
                       Open
                     </button>
                     <button
+                      v-if="variant.latest_export_job?.output_asset?.storage_url"
                       class="btn btn-ghost btn-sm"
                       type="button"
-                      :disabled="['pending', 'generating', 'queued'].includes(variant.status)"
+                      @click="downloadVariant(variant)"
+                    >
+                      Download
+                    </button>
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      type="button"
+                      :disabled="['pending', 'generating', 'queued', 'processing'].includes(displayVariantStatus(variant))"
                       @click="promptDeleteVariant(variant)"
                     >
                       Delete
@@ -694,8 +761,10 @@ onBeforeUnmount(() => {
                     >
                       Details
                     </button>
-                    <span v-if="variant.latest_export_job" class="variant-export-copy">
-                      {{ variant.latest_export_job.status }} · {{ variant.latest_export_job.aspect_ratio }}
+                  </div>
+                  <div v-if="variant.latest_export_job" class="variant-export-meta">
+                    <span class="variant-export-copy">
+                      {{ variantStatusCopy(displayVariantStatus(variant)) }} · {{ variant.latest_export_job.aspect_ratio }}
                     </span>
                   </div>
                 </div>
@@ -911,7 +980,7 @@ onBeforeUnmount(() => {
         <div class="detail-line"><span>Status</span><strong class="bad">{{ variantStatusCopy(failedDetailTarget.status) }}</strong></div>
         <div class="detail-line"><span>Changed</span><strong>{{ changedDimensionText(failedDetailTarget) }}</strong></div>
         <div class="detail-line" v-if="failedDetailTarget.latest_export_job?.failure_reason">
-          <span>Export error</span><strong>{{ failedDetailTarget.latest_export_job.failure_reason }}</strong>
+          <span>Export error</span><strong>{{ summarizeFailureReason(failedDetailTarget.latest_export_job.failure_reason) }}</strong>
         </div>
         <div class="detail-line" v-else>
           <span>Failure reason</span><strong>Generation failed before a render artifact was produced.</strong>
@@ -943,7 +1012,7 @@ onBeforeUnmount(() => {
           <div class="detail-grid compact">
             <div class="detail-line"><span>Batch</span><strong>{{ row.batchStatus ? batchStatusCopy(row.batchStatus) : 'Not started' }}</strong></div>
             <div class="detail-line"><span>Export</span><strong>{{ row.exportStatus || 'No export yet' }}</strong></div>
-            <div v-if="row.exportFailureReason" class="detail-line full"><span>Failure</span><strong class="bad">{{ row.exportFailureReason }}</strong></div>
+            <div v-if="row.exportFailureReason" class="detail-line full"><span>Failure</span><strong class="bad">{{ row.exportFailureSummary }}</strong></div>
           </div>
         </div>
       </div>
@@ -1006,8 +1075,9 @@ onBeforeUnmount(() => {
 .checkbox { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--color-border-active); background: transparent; color: transparent; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
 .checkbox.checked { background: rgba(255,107,53,0.14); color: var(--color-accent); border-color: rgba(255,107,53,0.35); }
 .variant-footer-copy { font-size: 11px; color: var(--color-text-muted); }
-.variant-actions { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.variant-export-copy { font-size: 11px; color: var(--color-text-muted); }
+.variant-actions { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.variant-export-meta { margin-top: 8px; }
+.variant-export-copy { display: inline-block; font-size: 11px; color: var(--color-text-muted); }
 .status-rendered { color: #34d399; }
 .status-ready_for_review { color: #60a5fa; }
 .status-queued, .status-generating, .status-pending { color: #fbbf24; }
@@ -1030,8 +1100,8 @@ onBeforeUnmount(() => {
 .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
 .drawer { position: fixed; top: 0; right: 0; height: 100vh; width: 380px; max-width: calc(100vw - 20px); background: var(--color-bg-panel); border-left: 1px solid var(--color-border); transform: translateX(100%); transition: transform 0.2s ease; z-index: 150; overflow-y: auto; }
 .drawer.open { transform: translateX(0); }
-.confirm-modal { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 32px)); background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.4); padding: 18px; z-index: 170; }
-.detail-modal { width: min(520px, calc(100vw - 32px)); }
+.confirm-modal { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 32px)); max-height: min(78vh, 760px); overflow: auto; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.4); padding: 18px; z-index: 170; }
+.detail-modal { width: min(520px, calc(100vw - 32px)); max-height: min(78vh, 760px); }
 .queue-detail-modal { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(780px, calc(100vw - 32px)); max-height: min(82vh, 900px); overflow: hidden; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.4); z-index: 170; }
 .confirm-title { font-size: 16px; font-weight: 600; }
 .confirm-copy { margin-top: 10px; font-size: 13px; color: var(--color-text-muted); line-height: 1.5; }
@@ -1040,7 +1110,7 @@ onBeforeUnmount(() => {
 .detail-grid.compact { margin-top: 10px; }
 .detail-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--color-text-secondary); }
 .detail-line span { color: var(--color-text-muted); }
-.detail-line strong { color: var(--color-text-primary); text-align: right; }
+.detail-line strong { color: var(--color-text-primary); text-align: right; max-width: 70%; line-height: 1.45; overflow-wrap: anywhere; }
 .detail-line.full { display: grid; gap: 6px; }
 .detail-line.full strong { text-align: left; }
 .drawer-header, .drawer-footer { padding: 16px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; gap: 8px; }

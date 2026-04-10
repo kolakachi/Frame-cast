@@ -477,7 +477,7 @@ onBeforeUnmount(() => {
     <nav class="sidebar">
       <div class="sidebar-logo">F</div>
       <div class="sidebar-nav">
-        <div class="nav-item active">
+        <button class="nav-item active" type="button" aria-current="page">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
             <rect x="3" y="3" width="7" height="7" rx="1"></rect>
             <rect x="14" y="3" width="7" height="7" rx="1"></rect>
@@ -485,20 +485,20 @@ onBeforeUnmount(() => {
             <rect x="14" y="14" width="7" height="7" rx="1"></rect>
           </svg>
           <span class="tooltip">Dashboard</span>
-        </div>
-        <div class="nav-item">
+        </button>
+        <button class="nav-item" type="button" @click="router.push({ name: 'asset-library' })">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
             <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"></path>
           </svg>
           <span class="tooltip">Asset Library</span>
-        </div>
-        <div class="nav-item">
+        </button>
+        <button class="nav-item" type="button" @click="router.push({ name: 'settings' })">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
           </svg>
           <span class="tooltip">Settings</span>
-        </div>
+        </button>
       </div>
       <div class="sidebar-bottom">
         <button class="avatar" type="button" @click="showUserPopover = !showUserPopover">

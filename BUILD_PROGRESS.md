@@ -21,8 +21,8 @@ This is the execution record for the Framecast build. It mirrors the phases in `
 
 ## Current State
 
-**Active phase:** Phase 3 — Variants  
-**Last updated:** 2026-04-03  
+**Active phase:** Phase 4 — Asset Library and Settings  
+**Last updated:** 2026-04-09  
 **Last updated by:** Codex
 
 ---
@@ -186,14 +186,14 @@ Exit gate: User generates 5+ variants, selects a subset, exports as batch, retri
 
 Exit gate: User creates a channel with brand kit, produces a project using presets, reuses them on a second project.
 
-- [ ] Asset library endpoints (list, upload, search, filter, tag)
-- [ ] Collection model, CRUD
-- [ ] Asset library screen (Vue)
-- [ ] Asset detail drawer (Vue)
-- [ ] Channel create/edit form (Vue)
-- [ ] Brand kit create/edit form (Vue)
-- [ ] Account settings (Vue)
-- [ ] Usage and billing display (Vue)
+- [~] Asset library endpoints (list, upload, search, filter, tag)
+- [~] Collection model, CRUD
+- [~] Asset library screen (Vue)
+- [~] Asset detail drawer (Vue)
+- [~] Channel create/edit form (Vue)
+- [~] Brand kit create/edit form (Vue)
+- [~] Account settings (Vue)
+- [~] Usage and billing display (Vue)
 - [ ] Over-limit / paywall modal (Vue)
 - [ ] Delete confirmation modal (Vue)
 - [ ] Thumbnail generation job on asset upload
@@ -201,6 +201,14 @@ Exit gate: User creates a channel with brand kit, produces a project using prese
 **Phase 4 exit gate passed:** [ ]
 
 **Notes:**
+
+- Activated Phase 4 after variants work and started replacing the dead sidebar placeholders with real `/assets` and `/settings` screens in Vue.
+- Added authenticated asset-library API surface under `/api/v1/assets` with list/show/upload/update/archive behavior and workspace scoping.
+- Added authenticated collections API surface under `/api/v1/collections` with list/create/update/delete to support asset grouping.
+- Added first-pass `AssetLibraryView` with search, type filter, collection filter, upload panel, asset grid, and asset detail drawer.
+- Added first-pass `SettingsView` with Channels, Brand Kits, Account, and Usage & Billing sections wired to live API data.
+- Added `PATCH /api/v1/me` and enriched `/api/v1/me` with timezone + usage summary so the Settings screen has a real account/usage source.
+- Phase 4 is intentionally marked in progress rather than complete until the new screens are runtime-tested and over-limit/delete/thumbnail flows are finished.
 
 ---
 

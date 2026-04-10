@@ -21,6 +21,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -506,13 +507,50 @@ class VariantController extends Controller
             'failure_reason' => $exportJob->failure_reason,
             'output_asset' => $outputAsset ? [
                 'id' => $outputAsset->getKey(),
-                'storage_url' => $outputAsset->storage_url,
+                'storage_url' => $this->assetUrl($outputAsset),
                 'mime_type' => $outputAsset->mime_type,
             ] : null,
             'queued_at' => $exportJob->queued_at?->toIso8601String(),
             'started_at' => $exportJob->started_at?->toIso8601String(),
             'completed_at' => $exportJob->completed_at?->toIso8601String(),
         ];
+    }
+
+    private function assetUrl(Asset $asset): ?string
+    {
+        $storageUrl = trim((string) $asset->storage_url);
+
+        if ($storageUrl === '') {
+            return null;
+        }
+
+        if ($this->isB2Url($storageUrl)) {
+            return URL::temporarySignedRoute(
+                'media.assets.content',
+                now()->addHours(6),
+                ['assetId' => $asset->getKey()],
+            );
+        }
+
+        return $storageUrl;
+    }
+
+    private function isB2Url(string $url): bool
+    {
+        if (str_starts_with($url, 'b2://')) {
+            return true;
+        }
+
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $bucket = strtolower((string) config('filesystems.disks.b2.bucket'));
+
+        if ($host !== '' && str_contains($host, 'backblazeb2.com')) {
+            return true;
+        }
+
+        $path = strtolower(trim((string) parse_url($url, PHP_URL_PATH), '/'));
+
+        return $bucket !== '' && str_starts_with($path, $bucket.'/');
     }
 
     /**
@@ -574,6 +612,26 @@ class VariantController extends Controller
         }
 
         foreach ($failedVariants as $variant) {
+            $latestFailedExport = ExportJob::query()
+                ->where('variant_id', $variant->getKey())
+                ->where('status', 'failed')
+                ->latest('id')
+                ->first();
+
+            if ($variant->derived_project_id && $latestFailedExport) {
+                $latestFailedExport->forceFill([
+                    'status' => 'queued',
+                    'progress_percent' => 0,
+                    'failure_reason' => null,
+                    'started_at' => null,
+                    'completed_at' => null,
+                ])->save();
+
+                $variant->forceFill(['status' => 'queued'])->save();
+                ProcessExportJob::dispatch((int) $latestFailedExport->getKey());
+                continue;
+            }
+
             $variant->forceFill(['status' => 'pending'])->save();
             GenerateVariantJob::dispatch((int) $variant->getKey());
         }
