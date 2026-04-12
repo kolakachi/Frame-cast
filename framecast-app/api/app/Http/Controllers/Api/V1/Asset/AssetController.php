@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api\V1\Asset;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateAssetThumbnailJob;
 use App\Models\Asset;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -134,9 +136,11 @@ class AssetController extends Controller
             'created_by_user_id' => $user->getKey(),
         ]);
 
+        GenerateAssetThumbnailJob::dispatch($asset->getKey())->onQueue('default');
+
         return response()->json([
             'data' => [
-                'asset' => $this->serializeAsset($asset),
+                'asset' => $this->serializeAsset($asset->fresh()),
             ],
             'meta' => [],
         ], 201);
@@ -293,7 +297,7 @@ class AssetController extends Controller
             'asset_type' => $asset->asset_type,
             'title' => $asset->title,
             'description' => $asset->description,
-            'storage_url' => $asset->storage_url ? url('/media/assets/'.$asset->getKey()) : null,
+            'storage_url' => $asset->storage_url ? $this->signedAssetUrl($asset) : null,
             'thumbnail_url' => $asset->thumbnail_url,
             'duration_seconds' => $asset->duration_seconds !== null ? (float) $asset->duration_seconds : null,
             'dimensions_json' => $asset->dimensions_json,
@@ -352,6 +356,15 @@ class AssetController extends Controller
         };
 
         return trim((string) $safeTitle, '-').'.'.$extension;
+    }
+
+    private function signedAssetUrl(Asset $asset): string
+    {
+        return URL::temporarySignedRoute(
+            'media.assets.content',
+            now()->addMinutes(30),
+            ['assetId' => $asset->getKey()],
+        );
     }
 
     private function error(string $code, string $message, int $status): JsonResponse

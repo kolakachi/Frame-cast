@@ -186,17 +186,17 @@ Exit gate: User generates 5+ variants, selects a subset, exports as batch, retri
 
 Exit gate: User creates a channel with brand kit, produces a project using presets, reuses them on a second project.
 
-- [~] Asset library endpoints (list, upload, search, filter, tag)
+- [x] Asset library endpoints (list, upload, search, filter, tag)
 - [~] Collection model, CRUD
-- [~] Asset library screen (Vue)
-- [~] Asset detail drawer (Vue)
-- [~] Channel create/edit form (Vue)
-- [~] Brand kit create/edit form (Vue)
-- [~] Account settings (Vue)
-- [~] Usage and billing display (Vue)
-- [ ] Over-limit / paywall modal (Vue)
-- [ ] Delete confirmation modal (Vue)
-- [ ] Thumbnail generation job on asset upload
+- [x] Asset library screen (Vue)
+- [x] Asset detail drawer (Vue)
+- [x] Channel create/edit form (Vue)
+- [x] Brand kit create/edit form (Vue)
+- [x] Account settings (Vue)
+- [x] Usage and billing display (Vue)
+- [x] Over-limit / paywall modal (Vue)
+- [x] Delete confirmation modal (Vue)
+- [x] Thumbnail generation job on asset upload
 
 **Phase 4 exit gate passed:** [ ]
 
@@ -208,7 +208,8 @@ Exit gate: User creates a channel with brand kit, produces a project using prese
 - Added first-pass `AssetLibraryView` with search, type filter, collection filter, upload panel, asset grid, and asset detail drawer.
 - Added first-pass `SettingsView` with Channels, Brand Kits, Account, and Usage & Billing sections wired to live API data.
 - Added `PATCH /api/v1/me` and enriched `/api/v1/me` with timezone + usage summary so the Settings screen has a real account/usage source.
-- Phase 4 is intentionally marked in progress rather than complete until the new screens are runtime-tested and over-limit/delete/thumbnail flows are finished.
+- Added channel-limit enforcement in the API, a Settings paywall modal, shared archive/delete confirmation modals, and a queued asset-thumbnail job on upload.
+- Phase 4 is intentionally marked in progress rather than complete until the preset reuse exit flow is runtime-tested end to end and collection CRUD is either fully surfaced or explicitly deferred.
 
 ---
 

@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api\V1\Channel;
 use App\Http\Controllers\Controller;
 use App\Models\Channel;
 use App\Models\User;
+use App\Services\WorkspaceUsageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ChannelController extends Controller
 {
+    public function __construct(private readonly WorkspaceUsageService $usageService) {}
+
     public function index(Request $request): JsonResponse
     {
         /** @var User $user */
@@ -35,6 +38,14 @@ class ChannelController extends Controller
 
         if (! $user->workspace_id) {
             return $this->error('workspace_required', 'User is not assigned to a workspace.', 422);
+        }
+
+        if ($this->usageService->hasReachedChannelLimit($user)) {
+            return $this->error(
+                'channel_limit_reached',
+                'You have reached the active channel limit for the current plan. Upgrade to add more channels.',
+                422,
+            );
         }
 
         $validated = $request->validate($this->rules());

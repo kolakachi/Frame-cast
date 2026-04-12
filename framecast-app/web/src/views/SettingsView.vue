@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import LimitModal from '../components/LimitModal.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -17,6 +19,10 @@ const loading   = ref(true)
 const saveError = ref('')
 const saveState = ref('idle')
 const brandSavePending = ref(false)
+const limitModalOpen = ref(false)
+const limitModalContext = ref('usage')
+const deleteTarget = ref(null)
+const deletePending = ref(false)
 
 // ── Channel modal ─────────────────────────────────────────
 const channelModal = ref({ open: false, mode: 'create' })
@@ -37,6 +43,11 @@ function togglePlatform(p) {
 }
 
 function openNewChannel() {
+  if ((usage.value?.active_channels || 0) >= (usage.value?.channel_limit || 0)) {
+    limitModalContext.value = 'channels'
+    limitModalOpen.value = true
+    return
+  }
   channelForm.value = { id: null, name: '', description: '', default_language: 'en', default_voice_profile_id: '', brand_kit_id: '', platforms: [] }
   channelModal.value = { open: true, mode: 'create' }
 }
@@ -132,6 +143,26 @@ const usageProgress = computed(() => {
   ]
 })
 
+const limitRows = computed(() => {
+  const rows = usageProgress.value.filter((row) => row.pct >= 100)
+  return rows.length > 0 ? rows : usageProgress.value
+})
+
+const deleteDialogTitle = computed(() =>
+  deleteTarget.value?.kind === 'channel' ? 'Archive Channel?' : 'Delete Brand Kit?'
+)
+
+const deleteDialogMessage = computed(() => deleteTarget.value?.message || '')
+const deleteDialogConfirmLabel = computed(() => deleteTarget.value?.confirmLabel || 'Confirm')
+const limitModalTitle = computed(() =>
+  limitModalContext.value === 'channels' ? 'Channel limit reached' : 'Usage is approaching your plan limits'
+)
+const limitModalSubtitle = computed(() =>
+  limitModalContext.value === 'channels'
+    ? 'This workspace is already at the maximum active channels for the current plan. Upgrade to add another lane.'
+    : 'Upgrade before your next batch so channels, renders, and voice capacity do not block production.'
+)
+
 // ── API calls ─────────────────────────────────────────────
 async function loadSettings() {
   loading.value = true
@@ -194,6 +225,10 @@ async function saveChannel() {
     closeChannelModal()
     saveState.value = 'saved'
   } catch (err) {
+    if (err?.response?.data?.error?.code === 'channel_limit_reached') {
+      limitModalContext.value = 'channels'
+      limitModalOpen.value = true
+    }
     saveError.value = err?.response?.data?.error?.message || 'Could not save channel.'
     saveState.value = 'error'
   }
@@ -231,14 +266,52 @@ async function saveBrandKit() {
   }
 }
 
-async function archiveChannel() {
+function requestArchiveChannel() {
   if (!channelForm.value.id) return
+  deleteTarget.value = {
+    kind: 'channel',
+    id: channelForm.value.id,
+    message: `"${channelForm.value.name}" will be archived and removed from the active channel list.`,
+    confirmLabel: 'Archive Channel',
+  }
+}
+
+function requestDeleteBrandKit() {
+  if (!brandKitForm.value.id) return
+  deleteTarget.value = {
+    kind: 'brand-kit',
+    id: brandKitForm.value.id,
+    message: `"${brandKitForm.value.name}" will be deleted from this workspace. Channels using it will need a new default kit.`,
+    confirmLabel: 'Delete Brand Kit',
+  }
+}
+
+function closeDeleteConfirm() {
+  if (deletePending.value) return
+  deleteTarget.value = null
+}
+
+async function confirmDeleteTarget() {
+  if (!deleteTarget.value) return
+
+  deletePending.value = true
+
   try {
-    await api.delete(`/channels/${channelForm.value.id}`)
+    if (deleteTarget.value.kind === 'channel') {
+      await api.delete(`/channels/${deleteTarget.value.id}`)
+      closeChannelModal()
+    }
+
+    if (deleteTarget.value.kind === 'brand-kit') {
+      await api.delete(`/brand-kits/${deleteTarget.value.id}`)
+    }
+
     await loadSettings()
-    closeChannelModal()
+    deleteTarget.value = null
   } catch (err) {
-    saveError.value = err?.response?.data?.error?.message || 'Could not archive channel.'
+    saveError.value = err?.response?.data?.error?.message || 'Could not complete this action.'
+  } finally {
+    deletePending.value = false
   }
 }
 
@@ -276,7 +349,7 @@ onMounted(loadSettings)
         <div class="surface-card settings-content-card">
 
           <!-- Channels -->
-          <template v-if="activeSection === 'channels'">
+          <div v-if="activeSection === 'channels'">
             <div class="section-title">Channels</div>
             <div class="settings-section-desc">This now reads as a proper management surface instead of a detached tab strip.</div>
 
@@ -290,10 +363,10 @@ onMounted(loadSettings)
             </div>
 
             <button class="btn btn-ghost new-channel-btn" type="button" @click="openNewChannel">+ New Channel</button>
-          </template>
+          </div>
 
           <!-- Brand Kits -->
-          <template v-else-if="activeSection === 'brand'">
+          <div v-else-if="activeSection === 'brand'">
             <div class="section-title">Brand Kit Defaults</div>
             <div class="settings-section-desc">Make the global kit obvious, with clear form rows and less visual noise.</div>
 
@@ -381,14 +454,15 @@ onMounted(loadSettings)
             </div>
 
             <div class="modal-actions no-border">
+              <button v-if="brandKitForm.id" class="btn btn-ghost btn-danger" type="button" @click="requestDeleteBrandKit">Delete Brand Kit</button>
               <button class="btn btn-primary" type="button" @click="saveBrandKit">
                 {{ brandSavePending ? 'Saving…' : brandKitForm.id ? 'Save Brand Kit' : 'Create Brand Kit' }}
               </button>
             </div>
-          </template>
+          </div>
 
           <!-- Account -->
-          <template v-else-if="activeSection === 'account'">
+          <div v-else-if="activeSection === 'account'">
             <div class="section-title">Account</div>
             <div class="settings-section-desc">Personal defaults and workspace behavior.</div>
 
@@ -439,14 +513,14 @@ onMounted(loadSettings)
                 {{ saveState === 'saving' ? 'Saving…' : 'Save Account' }}
               </button>
             </div>
-          </template>
+          </div>
 
           <!-- Usage & Billing -->
-          <template v-else>
+          <div v-else>
             <div class="section-title">Usage and Billing</div>
             <div class="settings-section-desc">Billing status and plan usage stay readable inside the same card system.</div>
 
-            <template v-if="usage">
+            <div v-if="usage">
               <div v-for="row in usageProgress" :key="row.label" class="usage-bar-container">
                 <div class="usage-label-row">
                   <span class="usage-label">{{ row.label }}</span>
@@ -456,10 +530,10 @@ onMounted(loadSettings)
                   <div class="usage-fill" :style="{ width: row.pct + '%', background: row.color }"></div>
                 </div>
               </div>
-            </template>
+            </div>
 
             <div style="display:flex; gap:10px; margin:16px 0 22px;">
-              <button class="btn btn-primary" type="button">Upgrade to Agency</button>
+              <button class="btn btn-primary" type="button" @click="limitModalOpen = true">Upgrade to Agency</button>
               <button class="btn btn-ghost" type="button">Manage Billing</button>
             </div>
 
@@ -473,7 +547,7 @@ onMounted(loadSettings)
                 <tr><td>Voice cloning</td><td>-</td><td class="col-accent">2 voices</td><td>10 voices</td></tr>
               </tbody>
             </table>
-          </template>
+          </div>
 
         </div>
       </div>
@@ -540,7 +614,7 @@ onMounted(loadSettings)
 
         <div v-if="channelModal.mode === 'edit'" class="danger-zone">
           <div class="danger-zone-label">Danger Zone</div>
-          <button class="btn btn-ghost btn-sm btn-danger" type="button" @click="archiveChannel">Archive Channel</button>
+          <button class="btn btn-ghost btn-sm btn-danger" type="button" @click="requestArchiveChannel">Archive Channel</button>
         </div>
 
         <div class="modal-actions">
@@ -551,6 +625,25 @@ onMounted(loadSettings)
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      :open="Boolean(deleteTarget)"
+      :title="deleteDialogTitle"
+      :message="deleteDialogMessage"
+      :confirm-label="deleteDialogConfirmLabel"
+      :pending="deletePending"
+      destructive
+      @close="closeDeleteConfirm"
+      @confirm="confirmDeleteTarget"
+    />
+
+    <LimitModal
+      :open="limitModalOpen"
+      :title="limitModalTitle"
+      :subtitle="limitModalSubtitle"
+      :rows="limitRows"
+      @close="limitModalOpen = false"
+    />
 
   </div>
 </template>

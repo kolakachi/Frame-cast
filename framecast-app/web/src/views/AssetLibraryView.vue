@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -17,6 +18,8 @@ const selectedAsset = ref(null)
 const uploadPending = ref(false)
 const uploadError = ref('')
 const showUploadPanel = ref(false)
+const archiveTarget = ref(null)
+const archivePending = ref(false)
 
 const searchQuery = ref('')
 const activeFilter = ref('')
@@ -70,6 +73,10 @@ const filteredAssets = computed(() => assets.value)
 const pageFrom = computed(() => (assets.value.length === 0 ? 0 : ((currentPage.value - 1) * perPage.value) + 1))
 const pageTo = computed(() => Math.min(totalAssets.value, ((currentPage.value - 1) * perPage.value) + assets.value.length))
 const summaryCount = computed(() => Number(usagePayload.value?.assets || 0))
+const archiveMessage = computed(() => {
+  if (!archiveTarget.value) return ''
+  return `"${archiveTarget.value.title}" will be removed from the active library and hidden from default selectors.`
+})
 
 function pickAsset(asset) {
   selectedAsset.value = asset
@@ -160,13 +167,33 @@ async function uploadAsset() {
   }
 }
 
-async function archiveAsset(asset) {
-  await api.delete(`/assets/${asset.id}`)
-  if (selectedAsset.value?.id === asset.id) selectedAsset.value = null
-  if (assets.value.length === 1 && currentPage.value > 1) {
-    currentPage.value -= 1
+function requestArchiveAsset(asset) {
+  archiveTarget.value = asset
+}
+
+function closeArchiveConfirm() {
+  if (archivePending.value) return
+  archiveTarget.value = null
+}
+
+async function archiveAsset() {
+  if (!archiveTarget.value) return
+
+  archivePending.value = true
+
+  try {
+    await api.delete(`/assets/${archiveTarget.value.id}`)
+    if (selectedAsset.value?.id === archiveTarget.value.id) selectedAsset.value = null
+    if (assets.value.length === 1 && currentPage.value > 1) {
+      currentPage.value -= 1
+    }
+    await Promise.all([fetchMe(), fetchAssets()])
+    archiveTarget.value = null
+  } catch (err) {
+    error.value = err?.response?.data?.error?.message || 'Could not archive the asset.'
+  } finally {
+    archivePending.value = false
   }
-  await Promise.all([fetchMe(), fetchAssets()])
 }
 
 function previousPage() {
@@ -226,12 +253,12 @@ watch([currentPage, perPage], () => {
           <div class="surface-card asset-activity-card">
             <div class="section-title">What is used most</div>
             <div class="mini-metrics">
-              <template v-if="topUsed.length">
+              <div v-if="topUsed.length" class="mini-metrics-grid">
                 <div v-for="asset in topUsed" :key="asset.id" class="mini-metric">
                   <strong>{{ asset.usage_count }}</strong>
                   <span>{{ asset.title }}</span>
                 </div>
-              </template>
+              </div>
               <div v-else class="mini-metric">
                 <strong>—</strong>
                 <span>No usage data yet</span>
@@ -329,13 +356,7 @@ watch([currentPage, perPage], () => {
         </div>
 
         <div v-else class="asset-grid">
-          <button
-            v-for="asset in filteredAssets"
-            :key="asset.id"
-            class="asset-card"
-            type="button"
-            @click="pickAsset(asset)"
-          >
+          <button v-for="asset in filteredAssets" :key="asset.id" class="asset-card" type="button" @click="pickAsset(asset)">
             <div class="asset-preview" :style="{ background: getTypeConfig(asset.asset_type).gradient }">
               <span :class="['asset-type-badge', getTypeConfig(asset.asset_type).badgeClass]">
                 {{ asset.asset_type.replace('_', ' ') }}
@@ -407,10 +428,21 @@ watch([currentPage, perPage], () => {
 
         <div class="detail-actions">
           <a v-if="selectedAsset.storage_url" class="btn btn-ghost" :href="selectedAsset.storage_url" target="_blank" rel="noreferrer">Open Asset</a>
-          <button class="btn btn-ghost btn-danger" type="button" @click="archiveAsset(selectedAsset)">Archive</button>
+          <button class="btn btn-ghost btn-danger" type="button" @click="requestArchiveAsset(selectedAsset)">Archive</button>
         </div>
       </div>
     </aside>
+
+    <ConfirmDialog
+      :open="Boolean(archiveTarget)"
+      title="Archive Asset?"
+      :message="archiveMessage"
+      confirm-label="Archive Asset"
+      :pending="archivePending"
+      destructive
+      @close="closeArchiveConfirm"
+      @confirm="archiveAsset"
+    />
   </div>
 </template>
 
@@ -454,9 +486,13 @@ watch([currentPage, perPage], () => {
 .section-subtitle { margin-top: 3px; font-size: 13px; color: #6a6a7c; }
 .mini-metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
   margin-top: 14px;
+}
+.mini-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
 }
 .mini-metric {
   padding: 12px;
