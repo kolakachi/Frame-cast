@@ -22,6 +22,10 @@ class Asset extends Model
         'dimensions_json',
         'file_size_bytes',
         'mime_type',
+        'transcript_text',
+        'transcription_status',
+        'transcription_error',
+        'metadata_json',
         'tags',
         'collection_ids',
         'usage_count',
@@ -35,6 +39,7 @@ class Asset extends Model
         return [
             'duration_seconds' => 'float',
             'dimensions_json' => 'array',
+            'metadata_json' => 'array',
             'tags' => 'array',
             'collection_ids' => 'array',
             'created_at' => 'datetime',

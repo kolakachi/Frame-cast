@@ -59,6 +59,8 @@ const productUrl = ref('')
 const targetAudience = ref('')
 const audioPath = ref('')
 const videoPath = ref('')
+const audioFile = ref(null)
+const videoFile = ref(null)
 
 const unreadCount = computed(() => notifications.value.filter((item) => !item.is_read).length)
 const videosThisMonth = computed(() => totalProjects.value)
@@ -125,19 +127,64 @@ function buildSourceContentRaw() {
   ].filter(Boolean).join('\n')
 }
 
+function selectedFile(event) {
+  return event.target?.files?.[0] || null
+}
+
+async function uploadMediaSource(file, assetType) {
+  const formData = new FormData()
+  formData.append('title', file.name.replace(/\.[^.]+$/, '') || `${assetType} source`)
+  formData.append('asset_type', assetType)
+  formData.append('description', `Uploaded from the create video ${assetType} source flow.`)
+  formData.append('asset_file', file)
+
+  if (channelId.value) {
+    formData.append('channel_id', String(channelId.value))
+  }
+
+  const response = await api.post('/assets', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+
+  const asset = response.data?.data?.asset
+
+  return [
+    `asset_id:${asset?.id}`,
+    `title:${asset?.title || file.name}`,
+    `mime_type:${asset?.mime_type || file.type}`,
+    `transcription_status:${asset?.transcription_status || 'queued'}`,
+  ].join('\n')
+}
+
+async function resolveSourceContentRaw() {
+  if (activeSourceType.value === 'audio_upload' && audioFile.value) {
+    return uploadMediaSource(audioFile.value, 'audio')
+  }
+
+  if (activeSourceType.value === 'video_upload' && videoFile.value) {
+    return uploadMediaSource(videoFile.value, 'video')
+  }
+
+  return buildSourceContentRaw()
+}
+
 async function submitProject() {
   createState.value = 'loading'
   createError.value = ''
 
-  const sourceContentRaw = buildSourceContentRaw()
+  let sourceContentRaw = buildSourceContentRaw()
+  const hasMediaFile = (activeSourceType.value === 'audio_upload' && audioFile.value)
+    || (activeSourceType.value === 'video_upload' && videoFile.value)
 
-  if (!sourceContentRaw) {
+  if (!sourceContentRaw && !hasMediaFile) {
     createState.value = 'error'
     createError.value = 'Source content is required.'
     return
   }
 
   try {
+    sourceContentRaw = await resolveSourceContentRaw()
+
     const response = await api.post('/projects', {
       source_type: activeSourceType.value,
       source_content_raw: sourceContentRaw,
@@ -842,13 +889,19 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="source-panel" :class="activeSourceType === 'audio_upload' ? 'active' : ''">
-          <div class="upload-zone">Upload audio file (UI shell)</div>
-          <label class="mt"><span>Storage path / URL</span><input v-model="audioPath" class="field-input" type="text"></label>
+          <label class="upload-zone upload-zone-input">
+            <span>{{ audioFile ? audioFile.name : 'Upload audio file' }}</span>
+            <input class="hidden-file-input" type="file" accept="audio/*" @change="audioFile = selectedFile($event)">
+          </label>
+          <label class="mt"><span>Or existing storage path / URL</span><input v-model="audioPath" class="field-input" type="text"></label>
         </div>
 
         <div class="source-panel" :class="activeSourceType === 'video_upload' ? 'active' : ''">
-          <div class="upload-zone">Upload video file (UI shell)</div>
-          <label class="mt"><span>Storage path / URL</span><input v-model="videoPath" class="field-input" type="text"></label>
+          <label class="upload-zone upload-zone-input">
+            <span>{{ videoFile ? videoFile.name : 'Upload video file' }}</span>
+            <input class="hidden-file-input" type="file" accept="video/*" @change="videoFile = selectedFile($event)">
+          </label>
+          <label class="mt"><span>Or existing storage path / URL</span><input v-model="videoPath" class="field-input" type="text"></label>
         </div>
 
         <div class="form-grid mt">
@@ -1093,6 +1146,9 @@ onBeforeUnmount(() => {
 .field-input { width: 100%; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-primary); padding: 9px 12px; font-size: 13px; }
 .textarea { min-height: 90px; resize: vertical; }
 .upload-zone { margin-top: 8px; border: 1px dashed var(--color-border); border-radius: 8px; padding: 16px; color: var(--color-text-muted); font-size: 13px; text-align: center; background: var(--color-bg-card); }
+.upload-zone-input { display: block; cursor: pointer; transition: 0.15s ease; }
+.upload-zone-input:hover { border-color: rgba(255, 107, 53, 0.35); color: var(--color-text-secondary); }
+.hidden-file-input { display: none; }
 label { display: grid; gap: 6px; font-size: 12px; color: var(--color-text-secondary); }
 .mt { margin-top: 12px; }
 .langs > span { font-size: 12px; color: var(--color-text-secondary); }

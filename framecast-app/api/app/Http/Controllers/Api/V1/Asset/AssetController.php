@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Asset;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateAssetThumbnailJob;
+use App\Jobs\TranscribeAssetJob;
 use App\Models\Asset;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -129,6 +130,9 @@ class AssetController extends Controller
             'thumbnail_url' => null,
             'file_size_bytes' => $file?->getSize(),
             'mime_type' => $file?->getMimeType(),
+            'transcription_status' => $this->isTranscribable((string) $validated['asset_type'], (string) $file?->getMimeType())
+                ? 'queued'
+                : 'not_requested',
             'tags' => $validated['tags'] ?? [],
             'collection_ids' => $validated['collection_ids'] ?? [],
             'restriction_scope' => 'workspace',
@@ -137,6 +141,10 @@ class AssetController extends Controller
         ]);
 
         GenerateAssetThumbnailJob::dispatch($asset->getKey())->onQueue('default');
+
+        if ($this->isTranscribable((string) $asset->asset_type, (string) $asset->mime_type)) {
+            TranscribeAssetJob::dispatch($asset->getKey())->onQueue('generation');
+        }
 
         return response()->json([
             'data' => [
@@ -279,6 +287,10 @@ class AssetController extends Controller
      *     dimensions_json:?array,
      *     file_size_bytes:?int,
      *     mime_type:?string,
+     *     transcript_text:?string,
+     *     transcription_status:string,
+     *     transcription_error:?string,
+     *     metadata_json:?array,
      *     tags:array,
      *     collection_ids:array,
      *     usage_count:int,
@@ -303,6 +315,10 @@ class AssetController extends Controller
             'dimensions_json' => $asset->dimensions_json,
             'file_size_bytes' => $asset->file_size_bytes !== null ? (int) $asset->file_size_bytes : null,
             'mime_type' => $asset->mime_type,
+            'transcript_text' => $asset->transcript_text,
+            'transcription_status' => $asset->transcription_status,
+            'transcription_error' => $asset->transcription_error,
+            'metadata_json' => $asset->metadata_json,
             'tags' => $asset->tags ?? [],
             'collection_ids' => $asset->collection_ids ?? [],
             'usage_count' => (int) $asset->usage_count,
@@ -365,6 +381,13 @@ class AssetController extends Controller
             now()->addMinutes(30),
             ['assetId' => $asset->getKey()],
         );
+    }
+
+    private function isTranscribable(string $assetType, string $mimeType): bool
+    {
+        return in_array($assetType, ['audio', 'video'], true)
+            || str_starts_with($mimeType, 'audio/')
+            || str_starts_with($mimeType, 'video/');
     }
 
     private function error(string $code, string $message, int $status): JsonResponse
