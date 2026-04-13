@@ -3,7 +3,9 @@
 namespace App\Services\Generation\AI;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Throwable;
 
 class OpenAIGenerationAdapter implements AIGenerationAdapter
 {
@@ -30,35 +32,49 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
             ];
         }
 
-        $response = Http::timeout(30)
-            ->withToken($apiKey)
-            ->post('https://api.openai.com/v1/chat/completions', [
+        try {
+            $response = Http::timeout(30)
+                ->withToken($apiKey)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model' => $model,
+                    'temperature' => $temperature,
+                    'max_tokens' => $maxTokens,
+                    'messages' => [
+                        ['role' => 'system', 'content' => $systemPrompt],
+                        ['role' => 'user', 'content' => $userPrompt],
+                    ],
+                ]);
+
+            if (! $response->ok()) {
+                throw new RuntimeException('OpenAI generation request failed.');
+            }
+
+            $json = $response->json();
+            $content = trim((string) data_get($json, 'choices.0.message.content', ''));
+
+            if ($content === '') {
+                throw new RuntimeException('OpenAI generation returned empty content.');
+            }
+
+            return [
+                'content' => $content,
+                'provider_key' => 'openai',
                 'model' => $model,
-                'temperature' => $temperature,
-                'max_tokens' => $maxTokens,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $userPrompt],
-                ],
+                'tokens_used' => (int) data_get($json, 'usage.total_tokens', 0),
+            ];
+        } catch (Throwable $exception) {
+            Log::warning('AI generation fell back to deterministic local content.', [
+                'template' => $promptTemplateKey,
+                'error' => $exception->getMessage(),
             ]);
 
-        if (! $response->ok()) {
-            throw new RuntimeException('OpenAI generation request failed.');
+            return [
+                'content' => $this->fallbackContent($promptTemplateKey, $variables),
+                'provider_key' => 'local_fallback',
+                'model' => 'deterministic',
+                'tokens_used' => 0,
+            ];
         }
-
-        $json = $response->json();
-        $content = trim((string) data_get($json, 'choices.0.message.content', ''));
-
-        if ($content === '') {
-            throw new RuntimeException('OpenAI generation returned empty content.');
-        }
-
-        return [
-            'content' => $content,
-            'provider_key' => 'openai',
-            'model' => $model,
-            'tokens_used' => (int) data_get($json, 'usage.total_tokens', 0),
-        ];
     }
 
     /**
@@ -93,10 +109,53 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
         $source = trim((string) ($variables['source_content'] ?? ''));
         $goal = trim((string) ($variables['content_goal'] ?? 'inform'));
         $tone = trim((string) ($variables['tone'] ?? 'neutral'));
+        $sourceType = trim((string) ($variables['source_type'] ?? 'prompt'));
+
+        if ($sourceType === 'csv_topic') {
+            $source = $this->fallbackCsvTopic($source);
+        }
+
+        if ($sourceType === 'product_description') {
+            return "Hook: This is for people who need a simpler way to solve a real workflow problem.\n\n"
+                ."Problem: {$source}\n\n"
+                ."Benefit: Show the viewer how this product helps them move faster without adding more complexity.\n\n"
+                ."CTA: Try it when you want a cleaner way to handle {$goal}.";
+        }
+
+        if (in_array($sourceType, ['audio_upload', 'video_upload'], true)) {
+            return "Hook: We are turning this existing {$sourceType} into a sharper short-form clip.\n\n"
+                ."Context: The source file is {$source}.\n\n"
+                ."Main point: Keep the strongest idea, add clear captions, and make the opening more direct.\n\n"
+                ."CTA: Review the generated scenes and replace this draft with the transcript when transcription is connected.";
+        }
 
         return "Hook: Here is a quick {$tone} take.\n\n"
             ."Body: {$source}\n\n"
             ."CTA: Follow for more {$goal} content.";
+    }
+
+    private function fallbackCsvTopic(string $source): string
+    {
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\R/', $source) ?: [])));
+
+        if (count($lines) < 2) {
+            return $source;
+        }
+
+        $headers = str_getcsv($lines[0]);
+        $firstRow = str_getcsv($lines[1]);
+        $row = [];
+
+        foreach ($headers as $index => $header) {
+            $row[strtolower(trim((string) $header))] = trim((string) ($firstRow[$index] ?? ''));
+        }
+
+        $topic = $row['topic'] ?? 'this topic';
+        $angle = $row['angle'] ?? 'what people need to know';
+        $audience = $row['audience'] ?? 'the viewer';
+        $cta = $row['cta'] ?? 'take one simple action today';
+
+        return "Topic: {$topic}\nAngle: {$angle}\nAudience: {$audience}\nCTA: {$cta}";
     }
 
     /**

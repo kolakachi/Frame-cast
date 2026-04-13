@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
@@ -18,6 +18,8 @@ let dashboardPollTimer = null
 
 const projects = ref([])
 const queueRows = ref([])
+const channels = ref([])
+const brandKits = ref([])
 const deletingProjectIds = ref([])
 const deleteConfirmProject = ref(null)
 const currentPage = ref(1)
@@ -69,6 +71,9 @@ const activeChannels = computed(() => {
   const ids = new Set(projects.value.map((project) => project.channel_id).filter(Boolean))
   return ids.size
 })
+const selectedChannel = computed(() =>
+  channels.value.find((channel) => String(channel.id) === String(channelId.value)) || null
+)
 
 const sourceChips = [
   { key: 'script', label: 'Script' },
@@ -160,6 +165,24 @@ async function submitProject() {
     createError.value = error.response?.data?.error?.message ?? 'Project creation failed.'
   }
 }
+
+watch(channelId, (nextChannelId, previousChannelId) => {
+  const channel = channels.value.find((item) => String(item.id) === String(nextChannelId))
+
+  if (!channel) return
+
+  if (!brandKitId.value || String(brandKitId.value) === String(channels.value.find((item) => String(item.id) === String(previousChannelId))?.brand_kit_id || '')) {
+    brandKitId.value = channel.brand_kit_id ? String(channel.brand_kit_id) : ''
+  }
+
+  if (channel.default_language && languageSelections.value.length === 1) {
+    languageSelections.value = [channel.default_language]
+  }
+
+  if (Array.isArray(channel.platform_targets) && channel.platform_targets[0]) {
+    platformTarget.value = channel.platform_targets[0]
+  }
+})
 
 function formatNotifTime(value) {
   if (!value) return 'now'
@@ -381,12 +404,30 @@ async function loadMe() {
   try {
     const response = await api.get('/me')
     mePayload.value = response.data?.data?.user ?? null
-    await Promise.all([loadProjects(), loadQueue()])
+    await Promise.all([loadProjects(), loadQueue(), loadChannels(), loadBrandKits()])
     await loadNotifications()
     subscribeWorkspaceNotifications()
     startDashboardPolling()
   } catch {
     mePayload.value = null
+  }
+}
+
+async function loadChannels() {
+  try {
+    const response = await api.get('/channels')
+    channels.value = response.data?.data?.channels ?? []
+  } catch {
+    channels.value = []
+  }
+}
+
+async function loadBrandKits() {
+  try {
+    const response = await api.get('/brand-kits')
+    brandKits.value = response.data?.data?.brand_kits ?? []
+  } catch {
+    brandKits.value = []
   }
 }
 
@@ -780,7 +821,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="source-panel" :class="activeSourceType === 'url' ? 'active' : ''">
-          <label><span>Article URL</span><input v-model="urlText" class="field-input" type="text"></label>
+          <label><span>Article URL or pasted article text</span><textarea v-model="urlText" class="field-input textarea" placeholder="https://example.com/article or paste article text here"></textarea></label>
         </div>
 
         <div class="source-panel" :class="activeSourceType === 'prompt' ? 'active' : ''">
@@ -820,8 +861,26 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="form-grid mt">
-          <label><span>Channel ID (optional for now)</span><input v-model="channelId" class="field-input" type="text"></label>
-          <label><span>Brand Kit ID</span><input v-model="brandKitId" class="field-input" type="text"></label>
+          <label><span>Channel</span>
+            <select v-model="channelId" class="field-input">
+              <option value="">No channel</option>
+              <option v-for="channel in channels" :key="channel.id" :value="String(channel.id)">
+                {{ channel.name }}
+              </option>
+            </select>
+          </label>
+          <label><span>Brand Kit</span>
+            <select v-model="brandKitId" class="field-input">
+              <option value="">No brand kit</option>
+              <option v-for="brandKit in brandKits" :key="brandKit.id" :value="String(brandKit.id)">
+                {{ brandKit.name }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div v-if="selectedChannel" class="modal-hint">
+          Channel defaults can prefill brand kit, platform, and language. You can still override them before generation.
         </div>
 
         <div class="form-grid mt">
@@ -1039,6 +1098,7 @@ label { display: grid; gap: 6px; font-size: 12px; color: var(--color-text-second
 .langs > span { font-size: 12px; color: var(--color-text-secondary); }
 .lang-row { margin-top: 8px; display: flex; gap: 8px; }
 .modal-error { padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(248,113,113,0.25); color: #f87171; font-size: 12px; background: rgba(248,113,113,0.1); }
+.modal-hint { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(96,165,250,0.18); color: var(--color-text-muted); font-size: 12px; background: rgba(96,165,250,0.08); }
 .modal-actions { margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px; }
 @media (max-width: 980px) { .stats-row { grid-template-columns: 1fr 1fr; } .form-grid { grid-template-columns: 1fr; } .section-header { align-items: flex-start; flex-direction: column; } .projects-toolbar { margin-left: 0; flex-wrap: wrap; } .pagination-row { justify-content: space-between; } }
 @media (max-width: 800px) { .sidebar { display: none; } .main { margin-left: 0; } .topbar { height: auto; padding: 12px; gap: 10px; align-items: flex-start; flex-direction: column; } .stats-row { grid-template-columns: 1fr; } .empty-actions { flex-direction: column; } .projects-toolbar { width: 100%; justify-content: space-between; } .projects-summary { width: 100%; } }

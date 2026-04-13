@@ -56,6 +56,12 @@ const sceneReorderPendingId = ref(null);
 const deleteScenePending = ref(false);
 const deleteSceneTarget = ref(null);
 const voiceProfiles = ref([]);
+const channels = ref([]);
+const brandKits = ref([]);
+const projectChannelId = ref("");
+const projectBrandKitId = ref("");
+const projectDefaultsSaveState = ref("idle");
+const projectDefaultsSaveError = ref("");
 const voiceProfileKey = ref("alloy");
 const voiceSpeedDraft = ref("1.0");
 const voiceStabilityDraft = ref("medium");
@@ -105,6 +111,9 @@ const activeSceneVisualIsVideo = computed(() => {
 });
 const activeSceneAudioUrl = computed(
   () => activeScene.value?.audio_asset?.storage_url ?? null
+);
+const selectedProjectChannel = computed(() =>
+  channels.value.find((channel) => String(channel.id) === String(projectChannelId.value)) || null
 );
 const activeSceneVisualLoaded = computed(() => {
   const sceneId = activeSceneId.value;
@@ -792,6 +801,8 @@ async function loadProject() {
   try {
     const response = await api.get(`/projects/${projectId.value}`);
     project.value = response.data?.data?.project ?? null;
+    projectChannelId.value = project.value?.channel_id ? String(project.value.channel_id) : "";
+    projectBrandKitId.value = project.value?.brand_kit_id ? String(project.value.brand_kit_id) : "";
     scenes.value = response.data?.data?.scenes ?? [];
     hookOptions.value = response.data?.data?.hook_options ?? [];
     activeSceneId.value = scenes.value[0]?.id ?? null;
@@ -813,12 +824,14 @@ async function loadMe() {
   try {
     const response = await api.get("/me");
     mePayload.value = response.data?.data?.user ?? null;
-    await loadVoiceProfiles();
+    await Promise.all([loadVoiceProfiles(), loadChannels(), loadBrandKits()]);
     await loadNotifications();
     subscribeWorkspaceNotifications();
   } catch {
     mePayload.value = null;
     voiceProfiles.value = [];
+    channels.value = [];
+    brandKits.value = [];
   }
 }
 
@@ -830,6 +843,58 @@ async function loadVoiceProfiles() {
     voiceProfiles.value = [];
   }
 }
+
+async function loadChannels() {
+  try {
+    const response = await api.get("/channels");
+    channels.value = response.data?.data?.channels ?? [];
+  } catch {
+    channels.value = [];
+  }
+}
+
+async function loadBrandKits() {
+  try {
+    const response = await api.get("/brand-kits");
+    brandKits.value = response.data?.data?.brand_kits ?? [];
+  } catch {
+    brandKits.value = [];
+  }
+}
+
+async function saveProjectDefaults() {
+  if (!project.value || projectDefaultsSaveState.value === "saving") return;
+
+  projectDefaultsSaveState.value = "saving";
+  projectDefaultsSaveError.value = "";
+
+  try {
+    const response = await api.patch(`/projects/${project.value.id}`, {
+      channel_id: projectChannelId.value ? Number(projectChannelId.value) : null,
+      brand_kit_id: projectBrandKitId.value ? Number(projectBrandKitId.value) : null,
+    });
+
+    project.value = response.data?.data?.project ?? project.value;
+    projectChannelId.value = project.value?.channel_id ? String(project.value.channel_id) : "";
+    projectBrandKitId.value = project.value?.brand_kit_id ? String(project.value.brand_kit_id) : "";
+    projectDefaultsSaveState.value = "saved";
+  } catch (requestError) {
+    projectDefaultsSaveError.value =
+      requestError.response?.data?.error?.message ?? "Could not save project defaults.";
+    projectDefaultsSaveState.value = "error";
+  }
+}
+
+watch(projectChannelId, (nextChannelId, previousChannelId) => {
+  const channel = channels.value.find((item) => String(item.id) === String(nextChannelId));
+  const previousChannel = channels.value.find((item) => String(item.id) === String(previousChannelId));
+
+  if (!channel) return;
+
+  if (!projectBrandKitId.value || String(projectBrandKitId.value) === String(previousChannel?.brand_kit_id || "")) {
+    projectBrandKitId.value = channel.brand_kit_id ? String(channel.brand_kit_id) : "";
+  }
+});
 
 async function loadNotifications() {
   try {
@@ -2379,20 +2444,29 @@ onBeforeUnmount(() => {
               <div class="panel-section-body">
                 <div class="control-row">
                   <span class="control-name">Channel</span>
-                  <select class="control-value">
-                    <option>
-                      {{ project?.channel?.name || "Finance Tips" }}
+                  <select v-model="projectChannelId" class="control-value">
+                    <option value="">No channel</option>
+                    <option v-for="channel in channels" :key="channel.id" :value="String(channel.id)">
+                      {{ channel.name }}
                     </option>
                   </select>
                 </div>
                 <div class="control-row">
-                  <span class="control-name">Template</span>
-                  <select class="control-value">
-                    <option>
-                      {{ project?.template?.name || "Explainer — 60s" }}
+                  <span class="control-name">Brand Kit</span>
+                  <select v-model="projectBrandKitId" class="control-value">
+                    <option value="">No brand kit</option>
+                    <option v-for="brandKit in brandKits" :key="brandKit.id" :value="String(brandKit.id)">
+                      {{ brandKit.name }}
                     </option>
                   </select>
                 </div>
+                <div v-if="selectedProjectChannel" class="micro-copy">
+                  Channel defaults can prefill brand kit for future changes. Existing scenes are not rewritten automatically.
+                </div>
+                <div v-if="projectDefaultsSaveError" class="micro-error">{{ projectDefaultsSaveError }}</div>
+                <button class="btn btn-ghost btn-full" type="button" @click="saveProjectDefaults">
+                  {{ projectDefaultsSaveState === "saving" ? "Saving…" : projectDefaultsSaveState === "saved" ? "Saved" : "Save Defaults" }}
+                </button>
                 <div v-if="hookOptions.length" class="hooks-block">
                   <div class="micro-label hooks-title">Generated hooks</div>
                   <div
@@ -3878,6 +3952,27 @@ select.control-value {
   margin-top: 8px;
   width: 100%;
   justify-content: center;
+}
+
+.btn-full {
+  width: 100%;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.micro-copy,
+.micro-error {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.micro-copy {
+  color: var(--text-muted);
+}
+
+.micro-error {
+  color: var(--red);
 }
 
 .voice-preview {

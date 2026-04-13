@@ -18,7 +18,23 @@ class PromptTemplateRegistry
             ],
             'script_from_url' => [
                 'system' => 'You are a short-form video script writer. Rewrite source material into plain script text only.',
-                'user' => "Rewrite this URL-derived content into a short-form video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nSource: {{source_content}}",
+                'user' => "Rewrite this URL/article-derived content into a short-form video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: preserve factual claims from the source, do not invent statistics, and use short caption-friendly lines.\nSource:\n{{source_content}}",
+            ],
+            'script_from_product' => [
+                'system' => 'You write short-form product explainer and UGC-style ad scripts. Return plain script text only.',
+                'user' => "Create a short-form product video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: use only product details provided, do not invent testimonials/pricing/guarantees, include a clear CTA.\nProduct source:\n{{source_content}}",
+            ],
+            'script_from_csv' => [
+                'system' => 'You turn CSV topic rows into short-form video scripts. Return plain script text only.',
+                'user' => "Create one short-form video script from this CSV. Use the first topic row as the primary video unless the source clearly asks for a batch. Preserve fields like topic, angle, audience, and CTA.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nCSV:\n{{source_content}}",
+            ],
+            'script_from_audio_reference' => [
+                'system' => 'You prepare a short-form repurposing draft from an existing audio reference. Return plain script text only.',
+                'user' => "Create a short-form repurposing draft for this existing audio source.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, say this is a draft based on the provided reference and keep it easy to replace once transcription is available.\nAudio reference:\n{{source_content}}",
+            ],
+            'script_from_video_reference' => [
+                'system' => 'You prepare a short-form repurposing draft from an existing video reference. Return plain script text only.',
+                'user' => "Create a short-form repurposing draft for this existing video source.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, say this is a draft based on the provided reference and keep it easy to replace once transcription is available.\nVideo reference:\n{{source_content}}",
             ],
             'scene_breakdown' => [
                 'system' => 'You split scripts into scenes. Return JSON only in this shape: {"scenes":[{"scene_type":"hook|narration|transition|text_card|quote","label":"...","script_text":"...","duration_seconds":number}]}',

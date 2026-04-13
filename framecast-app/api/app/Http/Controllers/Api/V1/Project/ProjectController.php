@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\GenerateScriptJob;
 use App\Jobs\ProcessExportJob;
 use App\Models\Asset;
+use App\Models\BrandKit;
 use App\Models\Channel;
 use App\Models\ExportJob;
 use App\Models\Project;
@@ -229,6 +230,17 @@ class ProjectController extends Controller
             }
         }
 
+        if (! empty($validated['brand_kit_id'])) {
+            $brandKitExists = BrandKit::query()
+                ->whereKey($validated['brand_kit_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->exists();
+
+            if (! $brandKitExists) {
+                return $this->error('invalid_brand_kit', 'Selected brand kit does not exist in this workspace.', 422);
+            }
+        }
+
         $template = null;
 
         if (! empty($validated['template_id'])) {
@@ -430,6 +442,57 @@ class ProjectController extends Controller
         ], 201);
     }
 
+    public function update(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $validated = $request->validate([
+            'channel_id' => ['sometimes', 'nullable', 'integer'],
+            'brand_kit_id' => ['sometimes', 'nullable', 'integer'],
+        ]);
+
+        if (array_key_exists('channel_id', $validated) && $validated['channel_id']) {
+            $channelExists = Channel::query()
+                ->whereKey($validated['channel_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->exists();
+
+            if (! $channelExists) {
+                return $this->error('invalid_channel', 'Selected channel does not exist in this workspace.', 422);
+            }
+        }
+
+        if (array_key_exists('brand_kit_id', $validated) && $validated['brand_kit_id']) {
+            $brandKitExists = BrandKit::query()
+                ->whereKey($validated['brand_kit_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->exists();
+
+            if (! $brandKitExists) {
+                return $this->error('invalid_brand_kit', 'Selected brand kit does not exist in this workspace.', 422);
+            }
+        }
+
+        $project->fill($validated)->save();
+
+        return response()->json([
+            'data' => [
+                'project' => $this->serializeProject($project->fresh()),
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function exports(Request $request, int $projectId): JsonResponse
     {
         /** @var User $user */
@@ -498,8 +561,8 @@ class ProjectController extends Controller
             return 'Source content is required for the selected source type.';
         }
 
-        if ($sourceType === 'url' && ! filter_var($trimmed, FILTER_VALIDATE_URL)) {
-            return 'URL source type requires a valid URL.';
+        if ($sourceType === 'url' && ! filter_var($trimmed, FILTER_VALIDATE_URL) && mb_strlen($trimmed) < 50) {
+            return 'URL/article source requires a valid URL or at least 50 characters of article text.';
         }
 
         if (in_array($sourceType, ['prompt', 'script', 'product_description'], true) && mb_strlen($trimmed) < 10) {
