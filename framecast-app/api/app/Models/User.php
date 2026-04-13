@@ -26,6 +26,7 @@ class User extends Authenticatable
         'timezone',
         'role',
         'status',
+        'preferences_json',
     ];
 
     /**
@@ -47,6 +48,7 @@ class User extends Authenticatable
         return [
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'preferences_json' => 'array',
         ];
     }
 

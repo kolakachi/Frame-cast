@@ -37,9 +37,24 @@ class VerificationController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'timezone' => ['sometimes', 'string', 'max:64'],
+            'preferences' => ['sometimes', 'array'],
+            'preferences.auto_generate_captions' => ['sometimes', 'boolean'],
+            'preferences.preview_before_render' => ['sometimes', 'boolean'],
+            'preferences.auto_music' => ['sometimes', 'boolean'],
+            'preferences.watermark_enabled' => ['sometimes', 'boolean'],
         ]);
 
-        $user->fill($validated)->save();
+        $user->fill(collect($validated)->except('preferences')->all());
+
+        if (array_key_exists('preferences', $validated)) {
+            $user->preferences_json = array_merge(
+                $this->defaultPreferences(),
+                $user->preferences_json ?? [],
+                $validated['preferences'],
+            );
+        }
+
+        $user->save();
 
         return response()->json([
             'data' => [
@@ -86,7 +101,7 @@ class VerificationController extends Controller
     }
 
     /**
-     * @return array{id:int,workspace_id:?int,name:string,email:string,timezone:string,role:string,status:string}
+     * @return array{id:int,workspace_id:?int,name:string,email:string,timezone:string,role:string,status:string,preferences:array<string,bool>}
      */
     private function serializeUser(User $user): array
     {
@@ -98,6 +113,20 @@ class VerificationController extends Controller
             'timezone' => $user->timezone,
             'role' => $user->role,
             'status' => $user->status,
+            'preferences' => array_merge($this->defaultPreferences(), $user->preferences_json ?? []),
+        ];
+    }
+
+    /**
+     * @return array{auto_generate_captions:bool,preview_before_render:bool,auto_music:bool,watermark_enabled:bool}
+     */
+    private function defaultPreferences(): array
+    {
+        return [
+            'auto_generate_captions' => true,
+            'preview_before_render' => true,
+            'auto_music' => true,
+            'watermark_enabled' => false,
         ];
     }
 

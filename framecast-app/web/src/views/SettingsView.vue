@@ -34,7 +34,67 @@ const channelForm  = ref({
   platforms: [],
 })
 
-const allPlatforms = ['TikTok', 'Reels', 'Shorts', 'Instagram Square', 'YouTube']
+const platformOptions = [
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'reels', label: 'Reels' },
+  { value: 'shorts', label: 'Shorts' },
+  { value: 'instagram_square', label: 'Instagram Square' },
+  { value: 'youtube', label: 'YouTube' },
+]
+
+const platformAliases = new Map([
+  ['tiktok', 'tiktok'],
+  ['tik tok', 'tiktok'],
+  ['reels', 'reels'],
+  ['instagram reels', 'reels'],
+  ['shorts', 'shorts'],
+  ['youtube shorts', 'shorts'],
+  ['instagram square', 'instagram_square'],
+  ['instagram_square', 'instagram_square'],
+  ['youtube', 'youtube'],
+])
+
+const fontOptions = [
+  'DM Sans',
+  'Space Mono',
+  'Fraunces',
+  'Sora',
+  'Archivo',
+  'Bricolage Grotesque',
+  'Outfit',
+  'Manrope',
+  'Playfair Display',
+  'IBM Plex Sans',
+]
+
+function normalizePlatformTarget(target) {
+  const key = String(target || '').trim().toLowerCase()
+  return platformAliases.get(key) || ''
+}
+
+function normalizePlatformTargets(targets) {
+  if (!Array.isArray(targets)) return []
+  return [...new Set(targets.map(normalizePlatformTarget).filter(Boolean))]
+}
+
+function platformLabel(value) {
+  return platformOptions.find((option) => option.value === normalizePlatformTarget(value))?.label || value
+}
+
+function channelPlatformLabels(channel) {
+  const normalized = normalizePlatformTargets(channel.platform_targets)
+  return normalized.length ? normalized.map(platformLabel).join(', ') : 'No platform targets'
+}
+
+function voiceName(voiceId) {
+  if (!voiceId) return 'No default voice'
+  return voices.value.find((voice) => String(voice.id) === String(voiceId))?.name || 'Unknown voice'
+}
+
+function normalizeFont(font, fallback) {
+  const normalized = String(font || '').replace(/\s+(bold|regular|medium|semibold)$/i, '').trim()
+  return fontOptions.includes(normalized) ? normalized : fallback
+}
 
 function togglePlatform(p) {
   const idx = channelForm.value.platforms.indexOf(p)
@@ -60,7 +120,7 @@ function openEditChannel(channel) {
     default_language: channel.default_language || 'en',
     default_voice_profile_id: channel.default_voice_profile_id || '',
     brand_kit_id: channel.brand_kit_id || '',
-    platforms: channel.platform_targets ? [...channel.platform_targets] : [],
+    platforms: normalizePlatformTargets(channel.platform_targets),
   }
   channelModal.value = { open: true, mode: 'edit' }
 }
@@ -77,6 +137,25 @@ const watermarkEnabled     = ref(false)
 
 const accountForm = ref({ name: '', timezone: 'UTC' })
 
+function hydratePreferences(preferences = {}) {
+  notificationsEnabled.value = preferences.auto_generate_captions ?? true
+  previewBeforeRender.value = preferences.preview_before_render ?? true
+  autoMusic.value = preferences.auto_music ?? true
+  watermarkEnabled.value = preferences.watermark_enabled ?? false
+}
+
+function accountPayload() {
+  return {
+    ...accountForm.value,
+    preferences: {
+      auto_generate_captions: notificationsEnabled.value,
+      preview_before_render: previewBeforeRender.value,
+      auto_music: autoMusic.value,
+      watermark_enabled: watermarkEnabled.value,
+    },
+  }
+}
+
 // ── Brand Kit ─────────────────────────────────────────────
 const activeBrandKitId = ref(null)
 const brandKitForm = ref({
@@ -85,7 +164,7 @@ const brandKitForm = ref({
   primary_color: '#ff6b35',
   secondary_color: '#1a1a3e',
   accent_color: '#ececf3',
-  font_primary: 'DM Sans Bold',
+  font_primary: 'DM Sans',
   font_secondary: 'Space Mono',
   default_voice_profile_id: '',
 })
@@ -115,8 +194,8 @@ function hydrateBrandKitForm(brandKit) {
     primary_color: brandKit?.primary_color || '#ff6b35',
     secondary_color: brandKit?.secondary_color || '#1a1a3e',
     accent_color: brandKit?.accent_color || '#ececf3',
-    font_primary: brandKit?.font_primary || 'DM Sans Bold',
-    font_secondary: brandKit?.font_secondary || 'Space Mono',
+    font_primary: normalizeFont(brandKit?.font_primary, 'DM Sans'),
+    font_secondary: normalizeFont(brandKit?.font_secondary, 'Space Mono'),
     default_voice_profile_id: brandKit?.default_voice_profile_id || '',
   }
 }
@@ -177,6 +256,7 @@ async function loadSettings() {
     brandKits.value = brandKitsRes.data.data.brand_kits || []
     voices.value    = voicesRes.data.data.voice_profiles || []
     accountForm.value = { name: mePayload.value?.name || '', timezone: mePayload.value?.timezone || 'UTC' }
+    hydratePreferences(mePayload.value?.preferences)
     if (brandKits.value.length > 0) {
       if (!brandKits.value.some((kit) => kit.id === activeBrandKitId.value)) {
         activeBrandKitId.value = brandKits.value[0].id
@@ -195,9 +275,10 @@ async function loadSettings() {
 async function saveAccount() {
   saveState.value = 'saving'; saveError.value = ''
   try {
-    const { data } = await api.patch('/me', accountForm.value)
+    const { data } = await api.patch('/me', accountPayload())
     mePayload.value = data.data.user
     usage.value = data.data.usage
+    hydratePreferences(mePayload.value?.preferences)
     saveState.value = 'saved'
   } catch (err) {
     saveError.value = err?.response?.data?.error?.message || 'Could not save account settings.'
@@ -357,7 +438,8 @@ onMounted(loadSettings)
               <div class="channel-avatar" :style="{ background: channelGradient(i) }">{{ channelInitials(channel.name) }}</div>
               <div class="channel-info">
                 <div class="channel-name-row">{{ channel.name }}</div>
-                <div class="channel-detail">{{ channel.default_language || 'EN' }} · {{ channel.status }}</div>
+                <div class="channel-detail">{{ channel.description || 'No description yet' }}</div>
+                <div class="channel-detail">{{ channelPlatformLabels(channel) }} · {{ voiceName(channel.default_voice_profile_id) }} · {{ channel.default_language || 'en' }}</div>
               </div>
               <button class="btn btn-ghost btn-sm" type="button" @click="openEditChannel(channel)">Edit</button>
             </div>
@@ -370,17 +452,27 @@ onMounted(loadSettings)
             <div class="section-title">Brand Kit Defaults</div>
             <div class="settings-section-desc">Make the global kit obvious, with clear form rows and less visual noise.</div>
 
-            <div class="brand-kit-list">
+            <div class="brand-kit-grid">
               <button
                 v-for="brandKit in brandKits"
                 :key="brandKit.id"
-                :class="['brand-kit-chip', activeBrandKit?.id === brandKit.id ? 'active' : '']"
+                :class="['brand-kit-card', activeBrandKit?.id === brandKit.id ? 'active' : '']"
                 type="button"
                 @click="selectBrandKit(brandKit)"
               >
-                {{ brandKit.name }}
+                <span class="brand-kit-swatches">
+                  <span class="brand-kit-swatch" :style="{ background: brandKit.primary_color || '#ff6b35' }"></span>
+                  <span class="brand-kit-swatch" :style="{ background: brandKit.secondary_color || '#1a1a3e' }"></span>
+                  <span class="brand-kit-swatch" :style="{ background: brandKit.accent_color || '#ececf3' }"></span>
+                </span>
+                <span class="brand-kit-name">{{ brandKit.name }}</span>
+                <span class="brand-kit-meta">{{ brandKit.font_primary || 'No primary font' }} · {{ voiceName(brandKit.default_voice_profile_id) }}</span>
               </button>
-              <button class="brand-kit-chip" type="button" @click="openNewBrandKit">+ New Kit</button>
+              <button class="brand-kit-card brand-kit-card-add" type="button" @click="openNewBrandKit">
+                <span class="brand-kit-plus">+</span>
+                <span class="brand-kit-name">New Kit</span>
+                <span class="brand-kit-meta">Create another reusable brand system</span>
+              </button>
             </div>
 
             <div class="settings-row settings-row--first">
@@ -402,15 +494,24 @@ onMounted(loadSettings)
                 <div class="brand-color-grid">
                   <label class="field-inline">
                     <span>Primary</span>
-                    <input v-model="brandKitForm.primary_color" class="settings-input" type="text">
+                    <span class="color-field">
+                      <input v-model="brandKitForm.primary_color" class="color-input" type="color">
+                      <input v-model="brandKitForm.primary_color" class="settings-input" type="text">
+                    </span>
                   </label>
                   <label class="field-inline">
                     <span>Secondary</span>
-                    <input v-model="brandKitForm.secondary_color" class="settings-input" type="text">
+                    <span class="color-field">
+                      <input v-model="brandKitForm.secondary_color" class="color-input" type="color">
+                      <input v-model="brandKitForm.secondary_color" class="settings-input" type="text">
+                    </span>
                   </label>
                   <label class="field-inline">
                     <span>Accent</span>
-                    <input v-model="brandKitForm.accent_color" class="settings-input" type="text">
+                    <span class="color-field">
+                      <input v-model="brandKitForm.accent_color" class="color-input" type="color">
+                      <input v-model="brandKitForm.accent_color" class="settings-input" type="text">
+                    </span>
                   </label>
                 </div>
                 <div class="color-swatches">
@@ -430,11 +531,15 @@ onMounted(loadSettings)
                 <div class="brand-font-grid">
                   <label class="field-inline">
                     <span>Primary</span>
-                    <input v-model="brandKitForm.font_primary" class="settings-input" type="text">
+                    <select v-model="brandKitForm.font_primary" class="settings-select">
+                      <option v-for="font in fontOptions" :key="font" :value="font">{{ font }}</option>
+                    </select>
                   </label>
                   <label class="field-inline">
                     <span>Secondary</span>
-                    <input v-model="brandKitForm.font_secondary" class="settings-input" type="text">
+                    <select v-model="brandKitForm.font_secondary" class="settings-select">
+                      <option v-for="font in fontOptions" :key="font" :value="font">{{ font }}</option>
+                    </select>
                   </label>
                 </div>
               </div>
@@ -585,11 +690,11 @@ onMounted(loadSettings)
           <label class="input-label">Platform Targets</label>
           <div class="platform-checks">
             <div
-              v-for="p in allPlatforms"
-              :key="p"
-              :class="['platform-check', channelForm.platforms.includes(p) ? 'on' : '']"
-              @click="togglePlatform(p)"
-            >{{ p }}</div>
+              v-for="platform in platformOptions"
+              :key="platform.value"
+              :class="['platform-check', channelForm.platforms.includes(platform.value) ? 'on' : '']"
+              @click="togglePlatform(platform.value)"
+            >{{ platform.label }}</div>
           </div>
         </div>
 
@@ -715,27 +820,75 @@ onMounted(loadSettings)
 .section-title { font-size: 16px; font-weight: 600; }
 .settings-section-desc { color: #6a6a7c; font-size: 13px; margin-top: 4px; margin-bottom: 22px; }
 
-.brand-kit-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 18px;
+.brand-kit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-bottom: 22px;
 }
 
-.brand-kit-chip {
-  padding: 7px 12px;
-  border-radius: 8px;
+.brand-kit-card {
+  display: grid;
+  gap: 8px;
+  min-height: 116px;
+  padding: 14px;
+  text-align: left;
+  border-radius: 12px;
   border: 1px solid #2a2a36;
   background: #15151d;
   color: #a1a1b5;
   cursor: pointer;
-  font-size: 12px;
   transition: 0.15s ease;
+  font: inherit;
 }
 
-.brand-kit-chip.active {
+.brand-kit-card:hover {
+  border-color: rgba(255,107,53,0.24);
+  transform: translateY(-1px);
+}
+
+.brand-kit-card.active {
   border-color: rgba(255,107,53,0.4);
   background: rgba(255,107,53,0.14);
+}
+
+.brand-kit-card-add {
+  border-style: dashed;
+  align-content: center;
+}
+
+.brand-kit-swatches {
+  display: flex;
+  gap: 6px;
+}
+
+.brand-kit-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+.brand-kit-name {
+  color: #ececf3;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.brand-kit-meta {
+  color: #6a6a7c;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.brand-kit-plus {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid #2a2a36;
   color: #ff6b35;
 }
 
@@ -818,6 +971,23 @@ onMounted(loadSettings)
 
 .brand-font-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.color-field {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.color-input {
+  width: 42px;
+  height: 38px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid #2a2a36;
+  background: #1d1d28;
+  cursor: pointer;
 }
 
 /* Color swatches */
