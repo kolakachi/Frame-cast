@@ -38,7 +38,8 @@ const mediaPreloaders = new Map();
 const addScenePanelPosition = ref("");
 const selectedSceneType = ref("Narration");
 const selectedAddSceneVisualSource = ref("Stock Clip");
-const addSceneVisualMode = ref("stock");
+const addSceneVisualMode = ref("stock_video");
+const addSceneStockSubType = ref("stock_clip");
 const addSceneVisualStyle = ref(null);
 const addSceneVisualQuery = ref("");
 const selectedSwapVisualSource = ref("Stock Clip");
@@ -88,17 +89,23 @@ const aiImagePromptOverride = ref("");
 const aiImagePending = ref(false);
 const aiImageError = ref("");
 const AI_IMAGE_STYLES = [
-  { key: "cinematic",   label: "Cinematic" },
-  { key: "dark",        label: "Dark" },
-  { key: "anime",       label: "Anime" },
-  { key: "documentary", label: "Documentary" },
-  { key: "minimalist",  label: "Minimalist" },
-  { key: "realistic",   label: "Realistic" },
-  { key: "vintage",     label: "Vintage" },
-  { key: "neon",        label: "Neon" },
+  { key: "cinematic",   label: "Cinematic",   icon: "🎬" },
+  { key: "dark",        label: "Dark",         icon: "🌑" },
+  { key: "documentary", label: "Documentary",  icon: "📽️" },
+  { key: "anime",       label: "Anime",        icon: "🌸" },
+  { key: "minimalist",  label: "Minimalist",   icon: "◽" },
+  { key: "realistic",   label: "Realistic",    icon: "📸" },
+  { key: "vintage",     label: "Vintage",      icon: "🌅" },
+  { key: "neon",        label: "Neon",         icon: "⚡" },
 ];
 const exportPending = ref(false);
 const exportState = ref("idle");
+const previewMode = ref("scene");
+const stockVideoSubType = ref("stock_clip");
+const playProgress = ref(0);
+const isPreviewPlaying = ref(false);
+let previewPlayTimer = null;
+const musicMoodFilter = ref("all");
 const queuedExportJobId = ref(null);
 const scriptSaveState = ref("idle");
 const scriptSaveError = ref("");
@@ -323,6 +330,8 @@ const sceneTypeOptions = [
 ];
 const addSceneStockTypeOptions = ["Stock Clip", "BG Loop", "Text Only", "Waveform"];
 const visualSourceTypeMap = {
+  "Stock Video": "stock_clip",
+  "Stock Image": "image_montage",
   "Stock Clip": "stock_clip",
   "BG Loop": "background_loop",
   "AI Image": "ai_image",
@@ -374,8 +383,11 @@ watch(
     voiceSpeedDraft.value = String(scene?.voice_settings?.speed ?? 1.0);
     voiceStabilityDraft.value = String(scene?.voice_settings?.stability ?? "medium");
     visualQueryDraft.value = scene?.visual_prompt || "";
-    selectedSwapVisualSource.value =
-      visualTypeLabelMap[String(scene?.visual_type || "")] || "Stock Clip";
+    const rawType = String(scene?.visual_type || "");
+    if (rawType === "ai_image") selectedSwapVisualSource.value = "AI Image";
+    else if (rawType === "image_montage") selectedSwapVisualSource.value = "Stock Image";
+    else if (rawType === "background_loop") selectedSwapVisualSource.value = "Stock Video";
+    else selectedSwapVisualSource.value = "Stock Video";
     const captionSettings = normalizeCaptionSettings(
       scene?.caption_settings || scene?.caption_settings_json
     );
@@ -658,6 +670,9 @@ function sceneVisualLabel(scene) {
 }
 
 function selectedVisualType() {
+  if (selectedSwapVisualSource.value === "Stock Video") {
+    return stockVideoSubType.value || "stock_clip";
+  }
   return visualSourceTypeMap[selectedSwapVisualSource.value] || "stock_clip";
 }
 
@@ -752,7 +767,8 @@ function buildSceneLabel(sceneType) {
 function resetAddSceneDrafts() {
   selectedSceneType.value = "Narration";
   selectedAddSceneVisualSource.value = "Stock Clip";
-  addSceneVisualMode.value = "stock";
+  addSceneVisualMode.value = "stock_video";
+  addSceneStockSubType.value = "stock_clip";
   addSceneVisualStyle.value = null;
   addSceneVisualQuery.value = "";
   newSceneScript.value = "";
@@ -859,22 +875,43 @@ function formatPreviewTime(value) {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
-const previewTimer = computed(() => {
-  const total = Number(
-    project.value?.duration_target_seconds ||
-      scenes.value.reduce(
-        (sum, scene) => sum + Number(scene.duration_seconds || 0),
-        0
-      )
-  );
-  const elapsed = scenes.value
-    .slice(0, Math.max(activeSceneIndex.value, 0))
-    .reduce((sum, scene) => sum + Number(scene.duration_seconds || 0), 0);
+const totalVideoDuration = computed(() =>
+  scenes.value.reduce((sum, s) => sum + Number(s.duration_seconds || 12), 0)
+);
 
-  return {
-    elapsed: formatPreviewTime(elapsed),
-    total: formatPreviewTime(total),
-  };
+// Cumulative scene start percentages for scrubber boundary markers (full video mode)
+const sceneBoundaryPcts = computed(() => {
+  if (scenes.value.length < 2) return [];
+  const total = totalVideoDuration.value || 1;
+  const pcts = [];
+  let cum = 0;
+  for (let i = 0; i < scenes.value.length - 1; i++) {
+    cum += Number(scenes.value[i].duration_seconds || 12);
+    pcts.push((cum / total) * 100);
+  }
+  return pcts;
+});
+
+const previewContextDuration = computed(() =>
+  previewMode.value === "full"
+    ? totalVideoDuration.value
+    : Number(activeScene.value?.duration_seconds || 12)
+);
+
+const previewElapsedSecs = computed(() =>
+  (playProgress.value / 100) * previewContextDuration.value
+);
+
+const previewTimer = computed(() => ({
+  elapsed: formatPreviewTime(previewElapsedSecs.value),
+  total: formatPreviewTime(previewContextDuration.value),
+}));
+
+const filteredMusicTracks = computed(() => {
+  if (musicMoodFilter.value === "all") return musicTracks.value;
+  return musicTracks.value.filter((t) =>
+    (t.tags ?? []).some((tag) => tag.toLowerCase() === musicMoodFilter.value)
+  );
 });
 
 function formatNotifTime(value) {
@@ -1296,10 +1333,100 @@ async function logout() {
 function selectScene(sceneId) {
   if (sceneId === activeSceneId.value) return;
 
+  stopPreviewPlay();
+  playProgress.value = 0;
   flushActiveSceneDrafts().then((flushed) => {
     if (flushed === false) return;
     activeSceneId.value = sceneId;
   });
+}
+
+function skipToScene(direction) {
+  stopPreviewPlay();
+  const idx = activeSceneIndex.value;
+  const next = scenes.value[idx + direction];
+  if (next) {
+    flushActiveSceneDrafts().then((flushed) => {
+      if (flushed === false) return;
+      activeSceneId.value = next.id;
+    });
+  }
+}
+
+function togglePreviewPlay() {
+  isPreviewPlaying.value ? stopPreviewPlay() : startPreviewPlay();
+}
+
+function startPreviewPlay() {
+  isPreviewPlaying.value = true;
+  const TICK = 50;
+  previewPlayTimer = window.setInterval(() => {
+    const dur = previewContextDuration.value || 1;
+    playProgress.value += (100 / dur) * (TICK / 1000);
+
+    if (playProgress.value >= 100) {
+      if (previewMode.value === "scene") {
+        playProgress.value = 0; // loop scene
+      } else {
+        // In full-video mode advance to next scene automatically
+        const nextIdx = activeSceneIndex.value + 1;
+        if (nextIdx < scenes.value.length) {
+          const nextScene = scenes.value[nextIdx];
+          flushActiveSceneDrafts().then((flushed) => {
+            if (flushed === false) return;
+            activeSceneId.value = nextScene.id;
+          });
+          playProgress.value = 0;
+        } else {
+          playProgress.value = 100;
+          stopPreviewPlay();
+        }
+      }
+    }
+  }, TICK);
+}
+
+function stopPreviewPlay() {
+  isPreviewPlaying.value = false;
+  if (previewPlayTimer) {
+    window.clearInterval(previewPlayTimer);
+    previewPlayTimer = null;
+  }
+}
+
+function scrubberSeek(event) {
+  const track = event.currentTarget.querySelector(".scrubber-track");
+  if (!track) return;
+  const rect = track.getBoundingClientRect();
+  playProgress.value = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
+}
+
+function moodGradient(mood) {
+  const map = {
+    dark: "linear-gradient(135deg,#1a0a2e,#0d0d2b)",
+    upbeat: "linear-gradient(135deg,#0d2e1a,#1a2e0d)",
+    calm: "linear-gradient(135deg,#0d1a2e,#1a1a0d)",
+    epic: "linear-gradient(135deg,#2e0d0d,#1a1a2e)",
+    corporate: "linear-gradient(135deg,#0d2e2e,#1a2e1a)",
+  };
+  return map[mood?.toLowerCase()] ?? "linear-gradient(135deg,#1a1a2e,#2e1a1a)";
+}
+
+function moodEmoji(mood) {
+  const map = { dark: "🌑", upbeat: "🎵", calm: "🌊", epic: "⚡", corporate: "💼" };
+  return map[mood?.toLowerCase()] ?? "🎵";
+}
+
+function trackMoodLabel(track) {
+  const mood = (track.tags ?? []).find((t) => t !== "music") ?? "music";
+  return mood.charAt(0).toUpperCase() + mood.slice(1) + " · Royalty-free";
+}
+
+function formatTrackDuration(secs) {
+  if (!secs) return "—";
+  const m = Math.floor(Number(secs) / 60);
+  const s = Math.round(Number(secs) % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function togglePanel(name) {
@@ -1319,7 +1446,6 @@ function closeAddScene() {
 
 function selectAddSceneVisualMode(mode) {
   addSceneVisualMode.value = mode;
-  selectedAddSceneVisualSource.value = mode === "ai_image" ? "AI Image" : "Stock Clip";
 }
 
 function toggleRewriteTools() {
@@ -1853,10 +1979,13 @@ async function createScene(insertAfterSceneId = null) {
   const sceneType = String(selectedSceneType.value || "Narration")
     .toLowerCase()
     .replace(/\s+/g, "_");
-  const visualType =
-    addSceneVisualMode.value === "ai_image"
-      ? "ai_image"
-      : visualSourceTypeMap[selectedAddSceneVisualSource.value] || "stock_clip";
+  const addSceneModeTypeMap = {
+    stock_video: addSceneStockSubType.value || "stock_clip",
+    stock_image: "image_montage",
+    ai_image: "ai_image",
+    assets: "stock_clip",
+  };
+  const visualType = addSceneModeTypeMap[addSceneVisualMode.value] ?? "stock_clip";
   const visualQuery = addSceneVisualQuery.value.trim() || scriptText || buildSceneLabel(sceneType);
 
   try {
@@ -2375,59 +2504,53 @@ onBeforeUnmount(() => {
                   placeholder="Write your scene script, or click 'AI Generate' to create one..."
                 ></textarea>
                 <div class="add-scene-visual-source">
-                  <div class="micro-label">Visual Style</div>
-                  <div class="visual-style-grid compact">
-                    <button
-                      v-for="s in AI_IMAGE_STYLES"
-                      :key="`top-add-style-${s.key}`"
-                      type="button"
-                      :class="['visual-style-btn', addSceneVisualStyle === s.key ? 'active' : '']"
-                      @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key"
-                    >{{ s.label }}</button>
-                  </div>
                   <div class="visual-type-tabs add-scene-tabs">
-                    <button
-                      type="button"
-                      :class="['visual-type-tab', addSceneVisualMode === 'stock' ? 'active' : '']"
-                      @click="selectAddSceneVisualMode('stock')"
-                    >Stock</button>
-                    <button
-                      type="button"
-                      :class="['visual-type-tab', addSceneVisualMode === 'ai_image' ? 'active ai' : '']"
-                      @click="selectAddSceneVisualMode('ai_image')"
-                    >✦ AI Image</button>
+                    <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_video' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_video')">Video</button>
+                    <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_image' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_image')">Image</button>
+                    <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'ai_image' ? 'active ai' : '']" @click="selectAddSceneVisualMode('ai_image')">✦ AI</button>
+                    <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'assets' ? 'active' : '']" @click="selectAddSceneVisualMode('assets')">Assets</button>
                   </div>
-                  <template v-if="addSceneVisualMode === 'stock'">
+
+                  <template v-if="addSceneVisualMode === 'stock_video'">
                     <div class="control-row add-scene-control-row">
                       <span class="control-name">Type</span>
-                      <select v-model="selectedAddSceneVisualSource" class="control-value">
-                        <option
-                          v-for="option in addSceneStockTypeOptions"
-                          :key="`top-add-type-${option}`"
-                          :value="option"
-                        >{{ option }}</option>
+                      <select v-model="addSceneStockSubType" class="control-value">
+                        <option value="stock_clip">Clip</option>
+                        <option value="background_loop">BG Loop</option>
+                        <option value="text_card">Text Only</option>
+                        <option value="waveform">Waveform</option>
                       </select>
                     </div>
-                    <div class="add-scene-control-row add-scene-prompt-row">
-                      <textarea
-                        v-model="addSceneVisualQuery"
-                        class="control-value query-input add-scene-visual-textarea"
-                        rows="3"
-                        placeholder="Search query for this scene... Leave blank to use the scene script."
-                      ></textarea>
+                    <div class="scene-query-label">Search query</div>
+                    <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="e.g. 'abandoned mansion at night' — leave blank to use scene script"></textarea>
+                  </template>
+
+                  <template v-else-if="addSceneVisualMode === 'stock_image'">
+                    <div class="scene-query-label">Search query</div>
+                    <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="e.g. 'dark forest with fog' — leave blank to use scene script"></textarea>
+                  </template>
+
+                  <template v-else-if="addSceneVisualMode === 'ai_image'">
+                    <div class="micro-label" style="margin:8px 0 6px;">Style</div>
+                    <div class="style-picker-grid">
+                      <div v-for="s in AI_IMAGE_STYLES" :key="`top-add-style-${s.key}`"
+                        :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '']"
+                        @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key">
+                        <span class="style-opt-ico">{{ s.icon }}</span>
+                        <div class="style-opt-name">{{ s.label }}</div>
+                      </div>
+                    </div>
+                    <div class="scene-query-label">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
+                    <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="Leave blank to use scene script as the generation prompt"></textarea>
+                  </template>
+
+                  <template v-else-if="addSceneVisualMode === 'assets'">
+                    <div class="panel-hint-copy" style="text-align:center;padding:16px 0;">
+                      <div style="font-size:18px;margin-bottom:6px;">📁</div>
+                      Asset picker coming soon.
                     </div>
                   </template>
-                  <template v-else>
-                    <div class="add-scene-control-row add-scene-prompt-row">
-                      <textarea
-                        v-model="addSceneVisualQuery"
-                        class="control-value query-input add-scene-visual-textarea"
-                        rows="3"
-                        placeholder="Describe the AI image... Leave blank to use the scene script."
-                      ></textarea>
-                    </div>
-                  </template>
-                  </div>
+                </div>
                 <div class="add-scene-actions">
                   <button
                     class="btn btn-ghost btn-sm"
@@ -2561,56 +2684,50 @@ onBeforeUnmount(() => {
                     placeholder="Write your scene script, or click 'AI Generate' to create one..."
                   ></textarea>
                   <div class="add-scene-visual-source">
-                    <div class="micro-label">Visual Style</div>
-                    <div class="visual-style-grid compact">
-                      <button
-                        v-for="s in AI_IMAGE_STYLES"
-                        :key="`${scene.id}-add-style-${s.key}`"
-                        type="button"
-                        :class="['visual-style-btn', addSceneVisualStyle === s.key ? 'active' : '']"
-                        @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key"
-                      >{{ s.label }}</button>
-                    </div>
                     <div class="visual-type-tabs add-scene-tabs">
-                      <button
-                        type="button"
-                        :class="['visual-type-tab', addSceneVisualMode === 'stock' ? 'active' : '']"
-                        @click="selectAddSceneVisualMode('stock')"
-                      >Stock</button>
-                      <button
-                        type="button"
-                        :class="['visual-type-tab', addSceneVisualMode === 'ai_image' ? 'active ai' : '']"
-                        @click="selectAddSceneVisualMode('ai_image')"
-                      >✦ AI Image</button>
+                      <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_video' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_video')">Video</button>
+                      <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_image' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_image')">Image</button>
+                      <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'ai_image' ? 'active ai' : '']" @click="selectAddSceneVisualMode('ai_image')">✦ AI</button>
+                      <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'assets' ? 'active' : '']" @click="selectAddSceneVisualMode('assets')">Assets</button>
                     </div>
-                    <template v-if="addSceneVisualMode === 'stock'">
+
+                    <template v-if="addSceneVisualMode === 'stock_video'">
                       <div class="control-row add-scene-control-row">
                         <span class="control-name">Type</span>
-                        <select v-model="selectedAddSceneVisualSource" class="control-value">
-                          <option
-                            v-for="option in addSceneStockTypeOptions"
-                            :key="`${scene.id}-add-type-${option}`"
-                            :value="option"
-                          >{{ option }}</option>
+                        <select v-model="addSceneStockSubType" class="control-value">
+                          <option value="stock_clip">Clip</option>
+                          <option value="background_loop">BG Loop</option>
+                          <option value="text_card">Text Only</option>
+                          <option value="waveform">Waveform</option>
                         </select>
                       </div>
-                      <div class="add-scene-control-row add-scene-prompt-row">
-                        <textarea
-                          v-model="addSceneVisualQuery"
-                          class="control-value query-input add-scene-visual-textarea"
-                          rows="3"
-                          placeholder="Search query for this scene... Leave blank to use the scene script."
-                        ></textarea>
-                      </div>
+                      <div class="scene-query-label">Search query</div>
+                      <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="e.g. 'abandoned mansion at night' — leave blank to use scene script"></textarea>
                     </template>
-                    <template v-else>
-                      <div class="add-scene-control-row add-scene-prompt-row">
-                        <textarea
-                          v-model="addSceneVisualQuery"
-                          class="control-value query-input add-scene-visual-textarea"
-                          rows="3"
-                          placeholder="Describe the AI image... Leave blank to use the scene script."
-                        ></textarea>
+
+                    <template v-else-if="addSceneVisualMode === 'stock_image'">
+                      <div class="scene-query-label">Search query</div>
+                      <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="e.g. 'dark forest with fog' — leave blank to use scene script"></textarea>
+                    </template>
+
+                    <template v-else-if="addSceneVisualMode === 'ai_image'">
+                      <div class="micro-label" style="margin:8px 0 6px;">Style</div>
+                      <div class="style-picker-grid">
+                        <div v-for="s in AI_IMAGE_STYLES" :key="`add-style-${s.key}`"
+                          :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '']"
+                          @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key">
+                          <span class="style-opt-ico">{{ s.icon }}</span>
+                          <div class="style-opt-name">{{ s.label }}</div>
+                        </div>
+                      </div>
+                      <div class="scene-query-label">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
+                      <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="Leave blank to use scene script as the generation prompt"></textarea>
+                    </template>
+
+                    <template v-else-if="addSceneVisualMode === 'assets'">
+                      <div class="panel-hint-copy" style="text-align:center;padding:16px 0;">
+                        <div style="font-size:18px;margin-bottom:6px;">📁</div>
+                        Asset picker coming soon.
                       </div>
                     </template>
                   </div>
@@ -2699,13 +2816,16 @@ onBeforeUnmount(() => {
                   Media unavailable
                 </div>
                 <div v-if="activeMusicTrack" class="preview-music-indicator">
-                  <span class="music-wave-icon">♫</span>
-                  <span class="music-wave-title">{{ activeMusicTrack.title }}</span>
+                  <div class="preview-music-waves">
+                    <div :class="['music-wave', isPreviewPlaying ? 'playing' : '']"></div>
+                    <div :class="['music-wave', isPreviewPlaying ? 'playing' : '']"></div>
+                    <div :class="['music-wave', isPreviewPlaying ? 'playing' : '']"></div>
+                    <div :class="['music-wave', isPreviewPlaying ? 'playing' : '']"></div>
+                  </div>
+                  <span class="preview-music-name">{{ activeMusicTrack.title }}</span>
                 </div>
                 <div class="preview-watermark">FRAMECAST</div>
-                <div class="preview-timer">
-                  {{ previewTimer.elapsed }} / {{ previewTimer.total }}
-                </div>
+                <div class="preview-timer">{{ previewTimer.elapsed }}</div>
                 <div
                   class="preview-caption"
                   :class="captionPreviewClass"
@@ -2725,9 +2845,30 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="playback-controls">
-              <div class="time-display">{{ previewTimer.elapsed }}</div>
-              <button class="play-btn" type="button">▶</button>
-              <div class="time-display">{{ previewTimer.total }}</div>
+              <div class="preview-mode-toggle">
+                <button :class="['preview-mode-btn', previewMode === 'scene' ? 'active' : '']" type="button" @click="previewMode = 'scene'; stopPreviewPlay(); playProgress = 0">Scene</button>
+                <button :class="['preview-mode-btn', previewMode === 'full' ? 'active' : '']" type="button" @click="previewMode = 'full'; stopPreviewPlay(); playProgress = 0">Full Video</button>
+              </div>
+              <div class="preview-scrubber" @click="scrubberSeek">
+                <div class="scrubber-track">
+                  <div class="scrubber-fill" :style="{ width: playProgress + '%' }"></div>
+                  <template v-if="previewMode === 'full'">
+                    <span v-for="pct in sceneBoundaryPcts" :key="pct" class="scrubber-marker" :style="{ left: pct + '%' }"></span>
+                  </template>
+                  <div class="scrubber-thumb" :style="{ left: playProgress + '%' }"></div>
+                </div>
+              </div>
+              <div class="playback-btns">
+                <button class="play-skip-btn" type="button" :disabled="activeSceneIndex <= 0" @click="skipToScene(-1)" title="Previous scene">⏮</button>
+                <button class="play-btn" type="button" @click="togglePreviewPlay">{{ isPreviewPlaying ? '⏸' : '▶' }}</button>
+                <button class="play-skip-btn" type="button" :disabled="activeSceneIndex >= scenes.length - 1" @click="skipToScene(1)" title="Next scene">⏭</button>
+              </div>
+              <div class="play-time-row">
+                <span class="time-display">{{ previewTimer.elapsed }}</span>
+                <span class="time-display" style="opacity:.35;">/</span>
+                <span class="time-display">{{ previewTimer.total }}</span>
+                <span class="play-scene-label">Scene {{ String(activeSceneIndex + 1).padStart(2, '0') }}</span>
+              </div>
             </div>
           </div>
 
@@ -2836,88 +2977,107 @@ onBeforeUnmount(() => {
                 <div class="panel-chevron">▾</div>
               </div>
               <div class="panel-section-body">
-                <!-- Visual style picker (applies to both stock search and AI image generation) -->
-                <div style="margin-bottom:10px;">
-                  <div class="micro-label" style="margin-bottom:5px;">
-                    Visual Style
-                    <span v-if="visualStyleSaveState === 'saved'" style="opacity:.5; font-weight:400; margin-left:4px;">saved</span>
-                  </div>
-                  <div class="visual-style-grid">
-                    <button
-                      v-for="s in AI_IMAGE_STYLES"
-                      :key="s.key"
-                      type="button"
-                      :class="['visual-style-btn', visualStyleDraft === s.key ? 'active' : '']"
-                      :title="s.key"
-                      @click="visualStyleDraft = visualStyleDraft === s.key ? null : s.key"
-                    >{{ s.label }}</button>
-                  </div>
-                  <div
-                    v-if="visualStyleDraft && activeScene?.visual_type === 'ai_image'"
-                    class="style-regen-hint"
-                  >
-                    Style changed — regenerate to apply.
-                  </div>
-                </div>
-
-                <!-- Visual type tabs -->
+                <!-- Visual type tabs — 4 options -->
                 <div class="visual-type-tabs">
-                  <button
-                    type="button"
-                    :class="['visual-type-tab', selectedSwapVisualSource !== 'AI Image' ? 'active' : '']"
-                    @click="selectedSwapVisualSource = 'Stock Clip'"
-                  >Stock</button>
-                  <button
-                    type="button"
-                    :class="['visual-type-tab', selectedSwapVisualSource === 'AI Image' ? 'active ai' : '']"
-                    @click="selectedSwapVisualSource = 'AI Image'"
-                  >✦ AI Image</button>
+                  <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Stock Video' ? 'active' : '']" @click="selectedSwapVisualSource = 'Stock Video'">Video</button>
+                  <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Stock Image' ? 'active' : '']" @click="selectedSwapVisualSource = 'Stock Image'">Image</button>
+                  <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'AI Image' ? 'active ai' : '']" @click="selectedSwapVisualSource = 'AI Image'">✦ AI</button>
+                  <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'My Assets' ? 'active' : '']" @click="selectedSwapVisualSource = 'My Assets'">Assets</button>
                 </div>
 
-                <!-- Stock / BG Loop / Text / Waveform -->
-                <template v-if="selectedSwapVisualSource !== 'AI Image'">
+                <!-- Stock Video -->
+                <template v-if="selectedSwapVisualSource === 'Stock Video'">
                   <div class="control-row" style="margin-top:10px;">
                     <span class="control-name">Type</span>
-                    <select v-model="selectedSwapVisualSource" class="control-value">
-                      <option value="Stock Clip">Stock Clip</option>
-                      <option value="BG Loop">BG Loop</option>
-                      <option value="Text Only">Text Only</option>
-                      <option value="Waveform">Waveform</option>
+                    <select v-model="stockVideoSubType" class="control-value">
+                      <option value="stock_clip">Clip</option>
+                      <option value="background_loop">BG Loop</option>
                     </select>
                   </div>
-                  <div class="control-row">
-                    <span class="control-name">Query</span>
-                    <input v-model="visualQueryDraft" class="control-value query-input" />
-                  </div>
-                  <button class="btn btn-ghost btn-sm panel-full-btn" type="button" @click="swapVisual">
-                    ↻ Swap Visual
+                  <div class="scene-query-label" style="margin-top:10px;">Search query</div>
+                  <textarea v-model="visualQueryDraft" class="scene-query-input" rows="2" placeholder="e.g. 'city skyline at sunset' — leave blank to use scene script"></textarea>
+                  <button class="btn btn-ghost btn-sm panel-full-btn" type="button" :disabled="visualSwapPending" @click="swapVisual">
+                    {{ visualSwapPending ? 'Swapping…' : '↻ Swap Visual' }}
+                  </button>
+                  <div v-if="visualSwapError" class="panel-error-copy">{{ visualSwapError }}</div>
+                </template>
+
+                <!-- Stock Image -->
+                <template v-else-if="selectedSwapVisualSource === 'Stock Image'">
+                  <div class="scene-query-label" style="margin-top:10px;">Search query</div>
+                  <textarea v-model="visualQueryDraft" class="scene-query-input" rows="2" placeholder="e.g. 'dark forest with fog' — leave blank to use scene script"></textarea>
+                  <button class="btn btn-ghost btn-sm panel-full-btn" type="button" :disabled="visualSwapPending" @click="swapVisual">
+                    {{ visualSwapPending ? 'Swapping…' : '↻ Swap Image' }}
                   </button>
                   <div v-if="visualSwapError" class="panel-error-copy">{{ visualSwapError }}</div>
                 </template>
 
                 <!-- AI Image generation -->
-                <template v-else>
-                  <div class="control-row" style="margin-top:10px; flex-direction:column; align-items:flex-start; gap:4px;">
-                    <span class="control-name">Prompt override <span style="opacity:.5;">(optional)</span></span>
-                    <textarea
-                      v-model="aiImagePromptOverride"
-                      class="control-value query-input"
-                      rows="2"
-                      placeholder="Leave blank to use scene script…"
-                      style="width:100%;resize:vertical;"
-                    ></textarea>
+                <template v-else-if="selectedSwapVisualSource === 'AI Image'">
+                  <!-- Current result preview -->
+                  <div v-if="activeScene?.visual_type === 'ai_image'" class="ai-image-result">
+                    <div class="ai-image-preview">
+                      <div class="ai-image-overlay-badge">✦ AI Generated</div>
+                      <img v-if="currentVisualUrl" :src="currentVisualUrl" style="width:100%;height:100%;object-fit:cover;" alt="" />
+                      <div v-else class="ai-image-placeholder">
+                        <div class="ai-image-ico">{{ activeSceneAIImagePending ? '⏳' : '🖼️' }}</div>
+                        <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:6px;">
+                          {{ activeSceneAIImagePending ? 'Generating…' : 'No image yet' }}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <button
-                    class="btn btn-primary btn-sm panel-full-btn"
-                    type="button"
-                    :disabled="aiImagePending"
-                    @click="generateAIImage"
-                  >
-                    {{ aiImagePending ? '✦ Generating…' : '✦ Generate Image' }}
-                  </button>
+
+                  <!-- Style picker grid -->
+                  <div class="micro-label" style="margin-bottom:6px;margin-top:10px;">
+                    Style
+                    <span v-if="visualStyleSaveState === 'saved'" style="opacity:.5; font-weight:400; margin-left:4px;">saved</span>
+                  </div>
+                  <div class="style-picker-grid">
+                    <div
+                      v-for="s in AI_IMAGE_STYLES"
+                      :key="s.key"
+                      :class="['style-opt', visualStyleDraft === s.key ? 'selected' : '']"
+                      @click="visualStyleDraft = visualStyleDraft === s.key ? null : s.key"
+                    >
+                      <span class="style-opt-ico">{{ s.icon }}</span>
+                      <div class="style-opt-name">{{ s.label }}</div>
+                    </div>
+                  </div>
+
+                  <!-- Prompt override -->
+                  <div class="micro-label" style="margin-bottom:4px;">
+                    Prompt override <span style="font-weight:400;opacity:.5;">(optional)</span>
+                  </div>
+                  <textarea
+                    v-model="aiImagePromptOverride"
+                    class="ai-prompt-area"
+                    rows="2"
+                    placeholder="Leave blank to use scene script as the generation prompt…"
+                  ></textarea>
+
+                  <div class="ai-gen-footer">
+                    <div class="ai-gen-meta">Provider: <span>DALL-E 3</span> · ~$0.04</div>
+                    <button class="btn btn-primary btn-sm" type="button" :disabled="aiImagePending" @click="generateAIImage">
+                      {{ aiImagePending ? '✦ Generating…' : '✦ Generate' }}
+                    </button>
+                  </div>
+                  <div v-if="activeScene?.visual_type === 'ai_image'" class="ai-image-actions">
+                    <button class="btn btn-ghost btn-sm" style="flex:1;" type="button" :disabled="aiImagePending" @click="generateAIImage">Regenerate</button>
+                  </div>
                   <div v-if="aiImageError" class="panel-error-copy">{{ aiImageError }}</div>
-                  <div v-if="aiImagePending" class="panel-hint-copy">Generating via DALL-E 3 — this takes ~15s</div>
-                  <div v-else class="panel-hint-copy">Uses the visual style selected above.</div>
+                  <div v-if="aiImagePending" class="panel-hint-copy">This takes ~15s</div>
+                  <div v-if="visualStyleDraft && activeScene?.visual_type === 'ai_image' && !aiImagePending" class="style-regen-hint">
+                    Style changed — regenerate to apply.
+                  </div>
+                </template>
+
+                <!-- My Assets -->
+                <template v-else-if="selectedSwapVisualSource === 'My Assets'">
+                  <div class="panel-hint-copy" style="margin-top:12px;text-align:center;padding:24px 0;">
+                    <div style="font-size:20px;margin-bottom:8px;">📁</div>
+                    Asset picker coming soon.<br>Upload assets in the Asset Library.
+                  </div>
                 </template>
               </div>
             </div>
@@ -3137,87 +3297,88 @@ onBeforeUnmount(() => {
               :class="`panel-section ${panelState.music ? 'collapsed' : ''}`"
             >
               <div class="panel-section-header" @click="togglePanel('music')">
-                <div class="panel-label panel-label-tight">Background Music</div>
+                <div class="panel-label-row">
+                  <div class="panel-label panel-label-tight">Music</div>
+                  <span class="panel-badge new">New</span>
+                </div>
                 <div class="panel-chevron">▾</div>
               </div>
               <div class="panel-section-body">
-                <div class="music-track-list">
-                  <div
-                    class="music-track-item"
-                    :class="{ 'music-track-selected': selectedMusicTrackId === null }"
-                    @click="selectedMusicTrackId = null; scheduleMusicSave()"
-                  >
-                    <span class="music-track-name">No music</span>
-                  </div>
-                  <div
-                    v-for="item in musicTrackListItems"
-                    :key="item.key"
-                    :class="item.type === 'mood' ? 'music-mood-label' : ['music-track-item', { 'music-track-selected': selectedMusicTrackId === item.track?.id }]"
-                    @click="item.type === 'track' && (selectedMusicTrackId = item.track.id) && scheduleMusicSave()"
-                  >{{ item.type === 'mood' ? item.mood : item.track?.title }}</div>
+                <div class="hint-box">
+                  Music plays under narration for the full video. Duck volume kicks in automatically during voice segments.
                 </div>
 
-                <div v-if="selectedMusicTrackId" class="music-settings">
-                  <div class="control-row">
-                    <span class="control-name">Volume</span>
-                    <div class="slider-wrap">
-                      <input
-                        v-model.number="musicVolume"
-                        type="range"
-                        min="0"
-                        max="100"
-                        class="slider"
-                        @input="scheduleMusicSave"
-                      />
-                      <span class="slider-val">{{ musicVolume }}%</span>
+                <!-- Mood filter chips -->
+                <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">
+                  <div v-for="mood in ['all','dark','upbeat','calm','epic']" :key="mood"
+                    :class="['filter-chip', musicMoodFilter === mood ? 'active' : '']"
+                    style="padding:4px 9px;font-size:11px;"
+                    @click="musicMoodFilter = mood"
+                  >{{ mood.charAt(0).toUpperCase() + mood.slice(1) }}</div>
+                </div>
+
+                <!-- Track list -->
+                <div class="music-track-list">
+                  <!-- No music option -->
+                  <div :class="['music-track', selectedMusicTrackId === null ? 'selected' : '']"
+                    @click="selectedMusicTrackId = null; scheduleMusicSave()">
+                    <div class="music-track-thumb" style="background:var(--bg-elevated);">🚫</div>
+                    <div class="music-track-info">
+                      <div class="music-track-name">No music</div>
+                      <div class="music-track-meta">Silence</div>
                     </div>
+                    <button class="music-play-btn" type="button" @click.stop>▶</button>
                   </div>
-                  <div class="control-row">
-                    <span class="control-name">Duck level</span>
-                    <div class="slider-wrap">
-                      <input
-                        v-model.number="musicDuckVolume"
-                        type="range"
-                        min="0"
-                        max="50"
-                        class="slider"
-                        @input="scheduleMusicSave"
-                      />
-                      <span class="slider-val">{{ musicDuckVolume }}%</span>
+                  <div v-for="track in filteredMusicTracks" :key="track.id"
+                    :class="['music-track', selectedMusicTrackId === track.id ? 'selected' : '']"
+                    @click="selectedMusicTrackId = track.id; scheduleMusicSave()">
+                    <div class="music-track-thumb" :style="{ background: moodGradient((track.tags ?? []).find(t => t !== 'music')) }">{{ moodEmoji((track.tags ?? []).find(t => t !== 'music')) }}</div>
+                    <div class="music-track-info">
+                      <div class="music-track-name">{{ track.title }}</div>
+                      <div class="music-track-meta">{{ trackMoodLabel(track) }}</div>
                     </div>
+                    <div class="music-track-duration">{{ formatTrackDuration(track.duration_seconds) }}</div>
+                    <button class="music-play-btn" type="button" @click.stop>▶</button>
                   </div>
-                  <div class="control-row">
-                    <span class="control-name">Fade in</span>
-                    <div class="slider-wrap">
-                      <input
-                        v-model.number="musicFadeInMs"
-                        type="range"
-                        min="0"
-                        max="3000"
-                        step="100"
-                        class="slider"
-                        @input="scheduleMusicSave"
-                      />
-                      <span class="slider-val">{{ musicFadeInMs }}ms</span>
-                    </div>
+                </div>
+
+                <!-- Music controls -->
+                <div class="music-controls">
+                  <div class="music-control-row">
+                    <span class="music-control-label">Volume</span>
+                    <input v-model.number="musicVolume" type="range" class="music-slider" min="0" max="100" @input="scheduleMusicSave" />
+                    <span class="music-slider-val">{{ musicVolume }}%</span>
                   </div>
-                  <div class="control-row">
-                    <span class="control-name">Loop track</span>
+                  <div class="music-control-row">
+                    <span class="music-control-label">Duck vol.</span>
+                    <input v-model.number="musicDuckVolume" type="range" class="music-slider" min="0" max="50" @input="scheduleMusicSave" />
+                    <span class="music-slider-val">{{ musicDuckVolume }}%</span>
+                  </div>
+                  <div class="music-control-row">
+                    <span class="music-control-label">Fade in</span>
+                    <input v-model.number="musicFadeInMs" type="range" class="music-slider" min="0" max="2000" step="100" @input="scheduleMusicSave" />
+                    <span class="music-slider-val">{{ (musicFadeInMs / 1000).toFixed(1) }}s</span>
+                  </div>
+                  <div class="music-control-row" style="margin-top:6px;">
+                    <span class="music-control-label">Loop track</span>
+                    <div style="flex:1;"></div>
                     <label class="toggle-wrap">
                       <input v-model="musicLoop" type="checkbox" class="toggle-input" @change="scheduleMusicSave" />
                       <span class="toggle-track"><span class="toggle-thumb"></span></span>
                     </label>
                   </div>
-                  <div class="control-row">
-                    <span class="control-name">Duck voice</span>
+                  <div class="music-control-row">
+                    <span class="music-control-label">Duck voice</span>
+                    <div style="flex:1;"></div>
                     <label class="toggle-wrap">
                       <input v-model="musicDuckDuringVoice" type="checkbox" class="toggle-input" @change="scheduleMusicSave" />
                       <span class="toggle-track"><span class="toggle-thumb"></span></span>
                     </label>
                   </div>
                   <div v-if="musicSaveError" class="micro-error">{{ musicSaveError }}</div>
-                  <div v-if="musicSaveState === 'saved'" class="micro-copy">Saved</div>
+                  <div v-if="musicSaveState === 'saved'" class="micro-copy" style="margin-top:4px;">Saved</div>
                 </div>
+                <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;" type="button">Browse Full Music Library →</button>
               </div>
             </div>
 
@@ -4470,11 +4631,6 @@ button {
   margin-bottom: 10px;
 }
 
-.visual-style-grid.compact {
-  margin-top: 6px;
-  margin-bottom: 10px;
-}
-
 .add-scene-tabs {
   margin-bottom: 10px;
 }
@@ -4483,22 +4639,41 @@ button {
   margin-top: 8px;
 }
 
-.add-scene-prompt-row {
-  display: block;
-  width: 100%;
+/* Prominent query input used in both add-scene and edit visual panels */
+.scene-query-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  margin-bottom: 5px;
 }
 
-.add-scene-visual-textarea {
+.scene-query-input {
   display: block;
   width: 100%;
-  max-width: none;
-  min-height: 84px;
-  resize: vertical;
-  line-height: 1.45;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: none;
+  transition: border-color 0.15s;
+  margin-bottom: 2px;
 }
 
-.add-scene-prompt-row .add-scene-visual-textarea {
-  width: 100%;
+.scene-query-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.scene-query-input:focus {
+  outline: none;
+  border-color: rgba(255, 107, 53, 0.45);
+  background: var(--bg-card);
 }
 
 .add-scene-actions {
@@ -4757,9 +4932,10 @@ button {
 
 .playback-controls {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 16px;
-  margin-top: 24px;
+  gap: 10px;
+  margin-top: 20px;
 }
 
 .play-btn {
@@ -5040,8 +5216,9 @@ select.control-value {
   background-position: right 8px center;
 }
 
-.query-input:not(.add-scene-visual-textarea) {
-  width: 140px;
+.query-input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .panel-full-btn {
@@ -5301,80 +5478,468 @@ select.control-value {
   width: 100%;
 }
 
-/* Music panel */
-.music-track-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 180px;
-  overflow-y: auto;
-  margin-bottom: 10px;
+/* Hint box */
+.hint-box {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 4px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  line-height: 1.5;
 }
 
-.music-mood-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+/* Mood filter chips */
+.filter-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
   color: var(--text-muted);
-  padding: 4px 6px 2px;
-}
-
-.music-track-item {
-  padding: 6px 8px;
-  border-radius: 4px;
   cursor: pointer;
-  transition: background 0.15s;
+  font-size: 12px;
+  transition: 0.15s;
 }
 
-.music-track-item:hover {
-  background: var(--surface-hover, rgba(255,255,255,0.05));
+.filter-chip:hover {
+  border-color: rgba(255,255,255,0.2);
 }
 
-.music-track-item.music-track-selected {
-  background: rgba(99, 102, 241, 0.18);
+.filter-chip.active {
+  background: rgba(255,107,53,0.12);
+  border-color: rgba(255,107,53,0.35);
+  color: var(--accent);
+}
+
+/* Music panel */
+.music-track-list {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.music-track {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.music-track:hover {
+  border-color: rgba(255,255,255,0.2);
+}
+
+.music-track.selected {
+  border-color: var(--accent);
+  background: rgba(255,107,53,0.08);
+}
+
+.music-track-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.music-track-info {
+  flex: 1;
+  min-width: 0;
 }
 
 .music-track-name {
   font-size: 12px;
-  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
 }
 
-.music-settings {
+.music-track-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.music-track-duration {
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.music-play-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 4px;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.music-track.selected .music-play-btn {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.music-controls {
+  padding: 12px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.music-control-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.music-control-row:last-child {
+  margin-bottom: 0;
+}
+
+.music-control-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.music-slider {
+  flex: 1;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  outline: none;
+  cursor: pointer;
+}
+
+.music-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.music-slider-val {
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 28px;
+  text-align: right;
 }
 
 /* Canvas music wave indicator */
 .preview-music-indicator {
   position: absolute;
-  bottom: 36px;
-  left: 8px;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  background: rgba(0,0,0,0.55);
-  border-radius: 4px;
-  padding: 3px 7px;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
   pointer-events: none;
 }
 
-.music-wave-icon {
-  font-size: 11px;
-  color: #a5b4fc;
+.preview-music-waves {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.music-wave-title {
+.music-wave {
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: wave 0.6s ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+
+.music-wave.playing {
+  animation-play-state: running;
+}
+
+.music-wave:nth-child(2) { animation-delay: 0.1s; }
+.music-wave:nth-child(3) { animation-delay: 0.2s; }
+.music-wave:nth-child(4) { animation-delay: 0.3s; }
+
+@keyframes wave {
+  from { height: 4px; opacity: 0.5; }
+  to   { height: 12px; opacity: 1; }
+}
+
+.preview-music-name {
   font-size: 10px;
-  color: rgba(255,255,255,0.8);
-  max-width: 120px;
+  color: rgba(255,255,255,0.7);
+  font-family: "Space Mono", monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Playback controls */
+.preview-mode-toggle {
+  display: flex;
+  gap: 3px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.preview-mode-btn {
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.preview-mode-btn.active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.preview-scrubber {
+  width: 270px;
+  position: relative;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.scrubber-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border);
+  position: relative;
+}
+
+.scrubber-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  width: 0%;
+  pointer-events: none;
+}
+
+.scrubber-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  left: 0%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.preview-scrubber:hover .scrubber-thumb {
+  opacity: 1;
+}
+
+.playback-btns {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.play-skip-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.play-skip-btn:hover:not(:disabled) {
+  border-color: var(--border-active, rgba(255,255,255,0.2));
+  color: var(--text-primary);
+}
+
+.play-skip-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.play-time-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.play-scene-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+/* Visual Source panel — style picker grid */
+.style-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.style-opt {
+  padding: 7px 4px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  text-align: center;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.style-opt:hover {
+  border-color: rgba(167,139,250,.4);
+}
+
+.style-opt.selected {
+  border-color: #a78bfa;
+  background: rgba(167,139,250,.1);
+}
+
+.style-opt-ico {
+  font-size: 14px;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.style-opt-name {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.style-opt.selected .style-opt-name {
+  color: #a78bfa;
+}
+
+/* AI image result preview */
+.ai-image-result {
+  border-radius: var(--radius-sm, 6px);
+  overflow: hidden;
+  position: relative;
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+
+.ai-image-preview {
+  width: 100%;
+  height: 120px;
+  background: linear-gradient(160deg, #1a1a3e 0%, #0d1a2e 40%, #1a0d2e 70%, #2e1a0d 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.ai-image-overlay-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(167,139,250,.25);
+  color: #a78bfa;
+  border: 1px solid rgba(167,139,250,.3);
+  backdrop-filter: blur(4px);
+  z-index: 1;
+}
+
+.ai-image-placeholder {
+  text-align: center;
+}
+
+.ai-image-ico {
+  font-size: 36px;
+  opacity: 0.35;
+}
+
+.ai-image-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* AI prompt area */
+.ai-prompt-area {
+  width: 100%;
+  min-height: 54px;
+  resize: none;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+
+.ai-prompt-area:focus {
+  outline: none;
+  border-color: rgba(167,139,250,.45);
+}
+
+.ai-gen-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ai-gen-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.ai-gen-meta span {
+  color: #a78bfa;
 }
 
 @media (max-width: 1180px) {

@@ -28,7 +28,7 @@ class AssetController extends Controller
             'asset_type' => ['nullable', 'string', 'max:64'],
             'collection_id' => ['nullable', 'integer'],
             'page' => ['nullable', 'integer', 'min:1'],
-            'per_page' => ['nullable', 'integer', Rule::in([6, 12, 18, 24])],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 12);
