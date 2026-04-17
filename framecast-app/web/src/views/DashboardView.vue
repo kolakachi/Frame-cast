@@ -39,6 +39,12 @@ const showWizardModal = ref(false)
 const wizardStep = ref(1)
 const niches = ref([])
 const selectedNicheId = ref(null)
+const customNicheSelected = ref(false)
+const customNicheName = ref('')
+const customNicheContext = ref('')
+const customNicheVisualStyle = ref('')
+const customNicheVoiceTone = ref('')
+const customNicheMusicMood = ref('')
 const wizardSourceType = ref('script')
 const wizardCreateState = ref('idle')
 const wizardCreateError = ref('')
@@ -65,6 +71,12 @@ const audioPath = ref('')
 const videoPath = ref('')
 const audioFile = ref(null)
 const videoFile = ref(null)
+const imageFiles = ref([])
+const imagePreviewItems = ref([])
+const imageContext = ref('')
+const sourceImageAssetIds = ref([])
+const imageVisualMode = ref('upload')
+const aiBrollStyle = ref('photorealistic')
 
 const unreadCount = computed(() => notifications.value.filter((item) => !item.is_read).length)
 const videosThisMonth = computed(() => totalProjects.value)
@@ -83,15 +95,48 @@ const selectedChannel = computed(() =>
 const selectedNiche = computed(() =>
   niches.value.find((n) => n.id === selectedNicheId.value) ?? null
 )
+const customNicheSummary = computed(() => {
+  const parts = [
+    customNicheName.value.trim(),
+    customNicheVisualStyle.value.trim() ? `${customNicheVisualStyle.value.trim()} visuals` : '',
+    customNicheVoiceTone.value.trim() ? `${customNicheVoiceTone.value.trim()} voice` : '',
+    customNicheMusicMood.value.trim() ? `${customNicheMusicMood.value.trim()} music` : '',
+  ].filter(Boolean)
+
+  return parts.join(', ')
+})
 
 const sourceOptions = [
   { key: 'prompt',              icon: '✍️', label: 'Write a Prompt',      hint: 'AI generates the script' },
   { key: 'script',              icon: '📄', label: 'Paste a Script',       hint: 'Your script, broken into scenes' },
   { key: 'url',                 icon: '🔗', label: 'From URL / Article',   hint: 'Paste any article link' },
+  { key: 'images',              icon: '🖼️', label: 'Upload Images',        hint: 'Your photos become scenes' },
   { key: 'product_description', icon: '📦', label: 'Product Description',  hint: 'Name, features, audience' },
   { key: 'audio_upload',        icon: '🎙️', label: 'Upload Audio',         hint: 'Transcribe and structure' },
   { key: 'video_upload',        icon: '🎬', label: 'Upload Video',         hint: 'Extract and repurpose' },
   { key: 'csv_topic',           icon: '📋', label: 'CSV Batch',            hint: 'Multiple topics at once' },
+]
+
+const durationOptions = [
+  { label: '30s', value: '30' },
+  { label: '60s', value: '60' },
+  { label: '90s', value: '90' },
+  { label: '3 min', value: '180' },
+]
+
+const aiBrollStyleOptions = [
+  { key: 'photorealistic', label: 'Photorealistic', hint: 'Cinematic real-world stills', tone: 'rgba(167,139,250,0.24)' },
+  { key: 'realistic', label: 'Realistic', hint: 'Natural people and places', tone: 'rgba(96,165,250,0.2)' },
+  { key: 'cyberpunk_80s', label: '80s Cyberpunk', hint: 'Neon retro future', tone: 'rgba(236,72,153,0.22)' },
+  { key: 'anime_80s', label: '80s Anime', hint: 'Vintage cel animation', tone: 'rgba(52,211,153,0.18)' },
+  { key: 'anime_90s', label: '90s Anime', hint: 'Painted anime worlds', tone: 'rgba(251,191,36,0.2)' },
+  { key: 'dark_fantasy', label: 'Dark Fantasy', hint: 'Gothic and ethereal', tone: 'rgba(148,163,184,0.24)' },
+  { key: 'fantasy_retro', label: 'Fantasy Retro', hint: 'Painterly storybook magic', tone: 'rgba(129,140,248,0.2)' },
+  { key: 'comic', label: 'Comic', hint: 'Bold ink and action', tone: 'rgba(248,113,113,0.22)' },
+  { key: 'film_noir', label: 'Film Noir', hint: 'Black and white shadows', tone: 'rgba(255,255,255,0.16)' },
+  { key: 'line_drawing', label: 'Line Drawing', hint: 'Clean monochrome sketch', tone: 'rgba(255,255,255,0.26)' },
+  { key: 'watercolor', label: 'Watercolor', hint: 'Soft illustrated washes', tone: 'rgba(45,212,191,0.2)' },
+  { key: 'cartoon', label: 'Cartoon', hint: 'Simple expressive art', tone: 'rgba(251,146,60,0.22)' },
 ]
 
 function nicheTagsFor(niche) {
@@ -102,27 +147,91 @@ function nicheTagsFor(niche) {
   return tags
 }
 
-function buildSourceContentRaw() {
-  if (wizardSourceType.value === 'script') return scriptText.value.trim()
-  if (wizardSourceType.value === 'url') return urlText.value.trim()
-  if (wizardSourceType.value === 'prompt') return promptText.value.trim()
-  if (wizardSourceType.value === 'csv_topic') return csvText.value.trim()
-  if (wizardSourceType.value === 'audio_upload') return audioPath.value.trim()
-  if (wizardSourceType.value === 'video_upload') return videoPath.value.trim()
+function selectSeededNiche(nicheId) {
+  selectedNicheId.value = nicheId
+  customNicheSelected.value = false
+}
+
+function selectCustomNiche() {
+  selectedNicheId.value = null
+  customNicheSelected.value = true
+}
+
+function customNichePromptBlock() {
+  if (!customNicheSelected.value) return ''
 
   return [
+    customNicheName.value.trim() ? `Custom niche: ${customNicheName.value.trim()}` : 'Custom niche selected',
+    customNicheContext.value.trim() ? `Custom niche context: ${customNicheContext.value.trim()}` : '',
+    customNicheVisualStyle.value.trim() ? `Preferred visual style: ${customNicheVisualStyle.value.trim()}` : '',
+    customNicheVoiceTone.value.trim() ? `Preferred voice tone: ${customNicheVoiceTone.value.trim()}` : '',
+    customNicheMusicMood.value.trim() ? `Preferred music mood: ${customNicheMusicMood.value.trim()}` : '',
+  ].filter(Boolean).join('\n')
+}
+
+function withCustomNicheContext(source) {
+  const customBlock = customNichePromptBlock()
+
+  if (!customBlock) return source
+
+  return [customBlock, source].filter((part) => trimString(part) !== '').join('\n\n')
+}
+
+function trimString(value) {
+  return String(value ?? '').trim()
+}
+
+function buildSourceContentRaw() {
+  if (wizardSourceType.value === 'script') return withCustomNicheContext(scriptText.value.trim())
+  if (wizardSourceType.value === 'url') return withCustomNicheContext(urlText.value.trim())
+  if (wizardSourceType.value === 'prompt') return withCustomNicheContext(promptText.value.trim())
+  if (wizardSourceType.value === 'csv_topic') return withCustomNicheContext(csvText.value.trim())
+  if (wizardSourceType.value === 'audio_upload') return withCustomNicheContext(audioPath.value.trim())
+  if (wizardSourceType.value === 'video_upload') return withCustomNicheContext(videoPath.value.trim())
+  if (wizardSourceType.value === 'images') return withCustomNicheContext(imageContext.value.trim())
+
+  return withCustomNicheContext([
     `Product Name: ${productName.value.trim()}`,
     `Product Description: ${productDescription.value.trim()}`,
     productUrl.value.trim() ? `Product URL: ${productUrl.value.trim()}` : '',
     targetAudience.value.trim() ? `Target Audience: ${targetAudience.value.trim()}` : '',
-  ].filter(Boolean).join('\n')
+  ].filter(Boolean).join('\n'))
 }
 
 function selectedFile(event) {
   return event.target?.files?.[0] || null
 }
 
+function selectedFiles(event) {
+  return Array.from(event.target?.files || []).slice(0, 15)
+}
+
+function revokeImagePreviewItems() {
+  imagePreviewItems.value.forEach((item) => URL.revokeObjectURL(item.url))
+  imagePreviewItems.value = []
+}
+
+function setImageFiles(files) {
+  revokeImagePreviewItems()
+  imageFiles.value = files.slice(0, 15)
+  imagePreviewItems.value = imageFiles.value.map((file) => ({
+    key: `${file.name}-${file.size}-${file.lastModified}`,
+    name: file.name,
+    url: URL.createObjectURL(file),
+  }))
+}
+
+function appendImageFiles(files) {
+  setImageFiles([...imageFiles.value, ...files].slice(0, 15))
+}
+
 async function uploadMediaSource(file, assetType) {
+  const asset = await uploadAssetSource(file, assetType)
+
+  return assetSummary(asset, file)
+}
+
+async function uploadAssetSource(file, assetType) {
   const formData = new FormData()
   formData.append('title', file.name.replace(/\.[^.]+$/, '') || `${assetType} source`)
   formData.append('asset_type', assetType)
@@ -139,12 +248,29 @@ async function uploadMediaSource(file, assetType) {
 
   const asset = response.data?.data?.asset
 
+  return asset
+}
+
+function assetSummary(asset, file) {
   return [
     `asset_id:${asset?.id}`,
     `title:${asset?.title || file.name}`,
     `mime_type:${asset?.mime_type || file.type}`,
     `transcription_status:${asset?.transcription_status || 'queued'}`,
   ].join('\n')
+}
+
+async function uploadImageSources() {
+  const uploadedAssets = await Promise.all(
+    imageFiles.value.map((file) => uploadAssetSource(file, 'image'))
+  )
+  sourceImageAssetIds.value = uploadedAssets.map((asset) => Number(asset?.id)).filter(Boolean)
+
+  return [
+    `image_asset_count:${uploadedAssets.length}`,
+    ...uploadedAssets.map((asset, index) => `Image ${index + 1}\n${assetSummary(asset, imageFiles.value[index])}`),
+    imageContext.value.trim() ? `context:${imageContext.value.trim()}` : '',
+  ].filter(Boolean).join('\n\n')
 }
 
 async function resolveSourceContentRaw() {
@@ -154,6 +280,10 @@ async function resolveSourceContentRaw() {
 
   if (wizardSourceType.value === 'video_upload' && videoFile.value) {
     return uploadMediaSource(videoFile.value, 'video')
+  }
+
+  if (wizardSourceType.value === 'images' && imageFiles.value.length > 0) {
+    return uploadImageSources()
   }
 
   return buildSourceContentRaw()
@@ -433,12 +563,23 @@ async function loadNiches() {
   }
 }
 
-function openWizard() {
+function openWizard(initialSourceType = 'prompt') {
   wizardStep.value = 1
   selectedNicheId.value = null
-  wizardSourceType.value = 'script'
+  customNicheSelected.value = false
+  customNicheName.value = ''
+  customNicheContext.value = ''
+  customNicheVisualStyle.value = ''
+  customNicheVoiceTone.value = ''
+  customNicheMusicMood.value = ''
+  wizardSourceType.value = initialSourceType
   wizardCreateState.value = 'idle'
   wizardCreateError.value = ''
+  durationTargetSeconds.value = '60'
+  sourceImageAssetIds.value = []
+  imageVisualMode.value = 'upload'
+  aiBrollStyle.value = 'photorealistic'
+  revokeImagePreviewItems()
   showWizardModal.value = true
 }
 
@@ -448,7 +589,7 @@ function closeWizard() {
 }
 
 function wizardNext() {
-  if (wizardStep.value === 1 && !selectedNicheId.value) return
+  if (wizardStep.value === 1 && !selectedNicheId.value && !customNicheSelected.value) return
   wizardStep.value = Math.min(3, wizardStep.value + 1)
 }
 
@@ -463,6 +604,7 @@ async function submitWizardProject() {
   const sourceContentRaw = buildSourceContentRaw()
   const hasMediaFile = (wizardSourceType.value === 'audio_upload' && audioFile.value)
     || (wizardSourceType.value === 'video_upload' && videoFile.value)
+    || (wizardSourceType.value === 'images' && imageFiles.value.length > 0)
 
   if (!sourceContentRaw && !hasMediaFile) {
     wizardCreateState.value = 'error'
@@ -475,17 +617,20 @@ async function submitWizardProject() {
 
     const response = await api.post('/projects', {
       source_type: wizardSourceType.value,
-      source_content_raw: resolvedSource,
-      languages: languageSelections.value,
-      platform_target: platformTarget.value,
-      aspect_ratio: aspectRatio.value,
-      niche_id: selectedNicheId.value,
-      ...(channelId.value ? { channel_id: Number(channelId.value) } : {}),
-      ...(brandKitId.value ? { brand_kit_id: Number(brandKitId.value) } : {}),
-      ...(contentGoal.value ? { content_goal: contentGoal.value } : {}),
-      ...(title.value ? { title: title.value } : {}),
-      ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
-    })
+	      source_content_raw: resolvedSource,
+	      languages: languageSelections.value,
+	      platform_target: platformTarget.value,
+	      aspect_ratio: aspectRatio.value,
+	      ...(selectedNicheId.value ? { niche_id: selectedNicheId.value } : {}),
+	      ...(channelId.value ? { channel_id: Number(channelId.value) } : {}),
+	      ...(brandKitId.value ? { brand_kit_id: Number(brandKitId.value) } : {}),
+	      ...(contentGoal.value ? { content_goal: contentGoal.value } : {}),
+	      ...(customNicheVoiceTone.value ? { tone: customNicheVoiceTone.value } : {}),
+	      ...(title.value ? { title: title.value } : {}),
+	      ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
+	      ...(wizardSourceType.value === 'images' && imageVisualMode.value === 'upload' ? { source_image_asset_ids: sourceImageAssetIds.value } : {}),
+	      ...(wizardSourceType.value === 'images' && imageVisualMode.value === 'ai' ? { visual_generation_mode: 'ai_images', ai_broll_style: aiBrollStyle.value } : {}),
+	    })
 
     const projectId = response.data?.data?.project?.id
     showWizardModal.value = false
@@ -577,6 +722,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  revokeImagePreviewItems()
   unsubscribeWorkspaceNotifications()
   stopDashboardPolling()
 })
@@ -751,7 +897,7 @@ onBeforeUnmount(() => {
           <p>No videos yet. Create your first project or import CSV topics.</p>
           <div class="empty-actions">
             <button class="btn btn-ghost btn-sm" type="button" @click="openWizard">Create New Video</button>
-            <button class="btn btn-ghost btn-sm" type="button" @click="wizardSourceType = 'csv_topic'; openWizard()">Import CSV Topics</button>
+            <button class="btn btn-ghost btn-sm" type="button" @click="openWizard('csv_topic')">Import CSV Topics</button>
           </div>
         </div>
 
@@ -884,32 +1030,48 @@ onBeforeUnmount(() => {
 
         <!-- Step 1: Pick Niche -->
         <div v-if="wizardStep === 1">
-          <div class="section-title">Pick your content niche</div>
-          <div class="section-subtitle">Framecast pre-configures visuals, voice, captions, and music based on your selection.</div>
+          <div class="modal-title">Quick Start</div>
+          <div class="modal-subtitle">Pick your content niche. Framecast pre-configures visuals, voice, captions, and music.</div>
           <div class="niche-grid">
             <div
               v-for="niche in niches"
               :key="niche.id"
               :class="['niche-card', selectedNicheId === niche.id ? 'selected' : '']"
-              role="button"
-              tabindex="0"
-              @click="selectedNicheId = niche.id"
-              @keydown.enter="selectedNicheId = niche.id"
-            >
-              <div class="niche-selected-check">✓</div>
-              <span class="niche-emoji">{{ niche.icon_emoji }}</span>
+	              role="button"
+	              tabindex="0"
+	              @click="selectSeededNiche(niche.id)"
+	              @keydown.enter="selectSeededNiche(niche.id)"
+	            >
+	              <div class="niche-selected-check">✓</div>
+	              <span class="niche-emoji">{{ niche.icon_emoji }}</span>
               <div class="niche-name">{{ niche.name }}</div>
               <div class="niche-desc">{{ niche.description }}</div>
               <div class="niche-tags">
-                <span v-for="tag in nicheTagsFor(niche)" :key="tag" class="niche-tag">{{ tag }}</span>
-              </div>
-            </div>
-          </div>
-          <div class="modal-actions">
-            <button class="btn btn-ghost" type="button" @click="closeWizard">Cancel</button>
-            <button class="btn btn-primary" type="button" :disabled="!selectedNicheId" @click="wizardNext">Continue →</button>
-          </div>
-        </div>
+	                <span v-for="tag in nicheTagsFor(niche)" :key="tag" class="niche-tag">{{ tag }}</span>
+	              </div>
+	            </div>
+	            <div
+	              :class="['niche-card custom-niche-card', customNicheSelected ? 'selected' : '']"
+	              role="button"
+	              tabindex="0"
+	              @click="selectCustomNiche"
+	              @keydown.enter="selectCustomNiche"
+	            >
+	              <div class="niche-selected-check">✓</div>
+	              <span class="niche-emoji">✨</span>
+	              <div class="niche-name">Other / Custom</div>
+	              <div class="niche-desc">Use your own niche and describe the style.</div>
+	              <div class="niche-tags">
+	                <span class="niche-tag">Your topic</span>
+	                <span class="niche-tag">Custom defaults</span>
+	              </div>
+	            </div>
+	          </div>
+	          <div class="modal-actions">
+	            <button class="btn btn-ghost" type="button" @click="closeWizard">Cancel</button>
+	            <button class="btn btn-primary" type="button" :disabled="!selectedNicheId && !customNicheSelected" @click="wizardNext">Continue →</button>
+	          </div>
+	        </div>
 
         <!-- Step 2: Source Type -->
         <div v-if="wizardStep === 2">
@@ -920,9 +1082,16 @@ onBeforeUnmount(() => {
             <span>Loaded <strong>{{ selectedNiche.name }}</strong>
               <template v-if="selectedNiche.default_visual_style"> — {{ selectedNiche.default_visual_style }} visuals</template>
               <template v-if="selectedNiche.default_voice_tone">, {{ selectedNiche.default_voice_tone }} voice</template>
-              <template v-if="selectedNiche.default_music_mood">, {{ selectedNiche.default_music_mood }} music</template>
-            </span>
-          </div>
+	              <template v-if="selectedNiche.default_music_mood">, {{ selectedNiche.default_music_mood }} music</template>
+	            </span>
+	          </div>
+	          <div v-else-if="customNicheSelected" class="niche-preset-banner">
+	            <span>✨</span>
+	            <span>Loaded <strong>Custom niche</strong>
+	              <template v-if="customNicheSummary"> — {{ customNicheSummary }}</template>
+	              <template v-else> — describe it on the next step</template>
+	            </span>
+	          </div>
           <div class="source-type-grid">
             <div
               v-for="opt in sourceOptions"
@@ -950,7 +1119,7 @@ onBeforeUnmount(() => {
           <div class="section-subtitle">Almost done — fill in your content and confirm settings.</div>
 
           <!-- Niche preset summary pills -->
-          <div v-if="selectedNiche" class="niche-preset-summary">
+	          <div v-if="selectedNiche" class="niche-preset-summary">
             <div v-if="selectedNiche.default_visual_style" class="preset-pill">
               <div class="preset-pill-label">Visual</div>
               <div class="preset-pill-val">{{ selectedNiche.default_visual_style }}</div>
@@ -966,10 +1135,43 @@ onBeforeUnmount(() => {
             <div v-if="selectedNiche.default_music_mood" class="preset-pill">
               <div class="preset-pill-label">Music</div>
               <div class="preset-pill-val">{{ selectedNiche.default_music_mood }}</div>
-            </div>
-          </div>
+	            </div>
+	          </div>
+	          <div v-else-if="customNicheSelected" class="custom-niche-panel">
+	            <div class="custom-niche-header">
+	              <span>✨</span>
+	              <div>
+	                <div class="custom-niche-title">Custom niche</div>
+	                <div class="custom-niche-copy">Describe the channel lane and the defaults Framecast should lean toward.</div>
+	              </div>
+	            </div>
+	            <div class="settings-2col mt">
+	              <label class="input-label-wrap">
+	                <span class="input-label">Niche name</span>
+	                <input v-model="customNicheName" class="field-input" type="text" placeholder="e.g. Luxury real estate tips" />
+	              </label>
+	              <label class="input-label-wrap">
+	                <span class="input-label">Visual style</span>
+	                <input v-model="customNicheVisualStyle" class="field-input" type="text" placeholder="e.g. cinematic, clean, premium" />
+	              </label>
+	            </div>
+	            <div class="settings-2col mt">
+	              <label class="input-label-wrap">
+	                <span class="input-label">Voice tone</span>
+	                <input v-model="customNicheVoiceTone" class="field-input" type="text" placeholder="e.g. confident, warm, expert" />
+	              </label>
+	              <label class="input-label-wrap">
+	                <span class="input-label">Music mood</span>
+	                <input v-model="customNicheMusicMood" class="field-input" type="text" placeholder="e.g. calm luxury, upbeat, dark" />
+	              </label>
+	            </div>
+	            <label class="input-label-wrap mt">
+	              <span class="input-label">Describe your niche</span>
+	              <textarea v-model="customNicheContext" class="field-input textarea" rows="3" placeholder="e.g. Short practical advice for first-time investors buying luxury apartments in Dubai. Keep it credible, aspirational, and specific."></textarea>
+	            </label>
+	          </div>
 
-          <!-- Content input by source type -->
+	          <!-- Content input by source type -->
           <div v-if="wizardSourceType === 'prompt'" class="input-group">
             <label class="input-label">What's your video about?</label>
             <textarea v-model="promptText" class="field-input textarea" rows="5" placeholder="e.g. The mysterious disappearance of the Beaumont family in 1966…"></textarea>
@@ -981,31 +1183,92 @@ onBeforeUnmount(() => {
           <div v-else-if="wizardSourceType === 'url'" class="input-group">
             <label class="input-label">Article or page URL</label>
             <input v-model="urlText" type="url" class="field-input" placeholder="https://…" />
-          </div>
+            <div class="hint-box">AI will extract the main body text and structure it into scenes matching your niche template.</div>
+	          </div>
+	          <div v-else-if="wizardSourceType === 'images'" class="input-group">
+	            <div class="image-mode-toggle">
+	              <button :class="['image-mode-btn', imageVisualMode === 'upload' ? 'active' : '']" type="button" @click="imageVisualMode = 'upload'">
+	                Upload images
+	              </button>
+	              <button :class="['image-mode-btn', imageVisualMode === 'ai' ? 'active' : '']" type="button" @click="imageVisualMode = 'ai'">
+	                Generate AI B-roll
+	              </button>
+	            </div>
+
+	            <template v-if="imageVisualMode === 'upload'">
+	              <div class="image-ai-hint">
+	                <span>✦</span>
+	                <span><strong>Vision AI</strong> analyses each image and generates matching narration. Each image becomes one scene. Upload 3-15 images for best results.</span>
+	              </div>
+	              <div v-if="imagePreviewItems.length > 0" class="image-preview-grid">
+	                <div v-for="item in imagePreviewItems" :key="item.key" class="image-preview-thumb">
+	                  <img :src="item.url" :alt="item.name" />
+	                  <div class="image-preview-name">{{ item.name }}</div>
+	                </div>
+	                <label v-if="imageFiles.length < 15" class="image-preview-add">
+	                  +
+	                  <input class="hidden-file-input" type="file" accept="image/*" multiple @change="appendImageFiles(selectedFiles($event))" />
+	                </label>
+	              </div>
+	              <label class="image-upload-zone">
+	                <div class="image-upload-zone-ico">🖼️</div>
+	                <div class="image-upload-zone-title">Drop images here or click to browse</div>
+	                <div class="image-upload-zone-hint">JPG, PNG, WEBP · max 10MB each · up to 15 images</div>
+	                <input class="hidden-file-input" type="file" accept="image/*" multiple @change="setImageFiles(selectedFiles($event))" />
+	              </label>
+	            </template>
+
+	            <template v-else>
+	              <div class="image-ai-hint">
+	                <span>✦</span>
+	                <span><strong>DALL-E B-roll</strong> generates a new image for each scene. Pick the visual style, then describe what the faceless video should be about.</span>
+	              </div>
+	              <div class="input-label" style="margin-bottom:8px;">Select the B-roll style</div>
+	              <div class="ai-broll-grid">
+	                <button
+	                  v-for="style in aiBrollStyleOptions"
+	                  :key="style.key"
+	                  :class="['ai-broll-card', aiBrollStyle === style.key ? 'selected' : '']"
+	                  :style="{ '--style-tone': style.tone }"
+	                  type="button"
+	                  @click="aiBrollStyle = style.key"
+	                >
+	                  <span class="ai-broll-art"></span>
+	                  <span class="ai-broll-label">{{ style.label }}</span>
+	                  <span class="ai-broll-hint">{{ style.hint }}</span>
+	                </button>
+	              </div>
+	            </template>
+
+	            <label class="input-label-wrap">
+	              <span class="input-label">{{ imageVisualMode === 'ai' ? 'What should the video be about?' : 'Optional context for AI narration' }}</span>
+	              <textarea v-model="imageContext" class="field-input textarea" rows="3" :placeholder="imageVisualMode === 'ai' ? 'e.g. 7 strange facts about abandoned castles in Europe, eerie but factual, with a strong opening hook.' : 'e.g. These are photos from an abandoned asylum in Kentucky. Describe the history and atmosphere…'"></textarea>
+	            </label>
+	          </div>
           <div v-else-if="wizardSourceType === 'csv_topic'" class="input-group">
             <label class="input-label">CSV Topics</label>
             <textarea v-model="csvText" class="field-input textarea" rows="5" placeholder="topic,angle,hook"></textarea>
           </div>
           <div v-else-if="wizardSourceType === 'product_description'" class="input-group">
             <div class="form-grid">
-              <label class="input-label-wrap"><span class="input-label">Product name</span><input v-model="productName" class="field-input" type="text"></label>
-              <label class="input-label-wrap"><span class="input-label">Product URL</span><input v-model="productUrl" class="field-input" type="url"></label>
+              <label class="input-label-wrap"><span class="input-label">Product name</span><input v-model="productName" class="field-input" type="text" /></label>
+              <label class="input-label-wrap"><span class="input-label">Product URL</span><input v-model="productUrl" class="field-input" type="url" /></label>
             </div>
             <label class="input-label-wrap mt"><span class="input-label">Description</span><textarea v-model="productDescription" class="field-input textarea" rows="3"></textarea></label>
-            <label class="input-label-wrap mt"><span class="input-label">Target audience</span><input v-model="targetAudience" class="field-input" type="text"></label>
+            <label class="input-label-wrap mt"><span class="input-label">Target audience</span><input v-model="targetAudience" class="field-input" type="text" /></label>
           </div>
           <div v-else-if="wizardSourceType === 'audio_upload'" class="input-group">
             <label class="input-label">Upload audio file</label>
             <label class="upload-zone upload-zone-input">
               <span>{{ audioFile ? audioFile.name : '🎙️  Drop your audio file here — MP3, WAV, M4A · max 500MB' }}</span>
-              <input class="hidden-file-input" type="file" accept="audio/*" @change="audioFile = selectedFile($event)">
+              <input class="hidden-file-input" type="file" accept="audio/*" @change="audioFile = selectedFile($event)" />
             </label>
           </div>
           <div v-else-if="wizardSourceType === 'video_upload'" class="input-group">
             <label class="input-label">Upload video file</label>
             <label class="upload-zone upload-zone-input">
               <span>{{ videoFile ? videoFile.name : '🎬  Drop your video file here — MP4, MOV · max 2GB' }}</span>
-              <input class="hidden-file-input" type="file" accept="video/*" @change="videoFile = selectedFile($event)">
+              <input class="hidden-file-input" type="file" accept="video/*" @change="videoFile = selectedFile($event)" />
             </label>
           </div>
 
@@ -1037,7 +1300,21 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <label class="input-label-wrap mt"><span class="input-label">Title <span style="opacity:.5;font-weight:400;">(optional)</span></span><input v-model="title" class="field-input" type="text"></label>
+          <div class="mt">
+            <div class="input-label" style="margin-bottom:8px;">Target length</div>
+            <div class="format-chips">
+              <div
+                v-for="option in durationOptions"
+                :key="option.value"
+                :class="['format-chip', durationTargetSeconds === option.value ? 'active' : '']"
+                @click="durationTargetSeconds = option.value"
+              >
+                {{ option.label }}
+              </div>
+            </div>
+          </div>
+
+          <label class="input-label-wrap mt"><span class="input-label">Title <span style="opacity:.5;font-weight:400;">(optional)</span></span><input v-model="title" class="field-input" type="text" /></label>
 
           <div v-if="wizardCreateError" class="modal-error mt">{{ wizardCreateError }}</div>
 
@@ -1210,7 +1487,9 @@ onBeforeUnmount(() => {
 .toast-msg strong { color: var(--color-text-primary); }
 /* ── Modals ─────────────────────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; z-index: 180; background: rgba(0,0,0,0.68); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.modal { width: min(900px,100%); max-height: 90vh; overflow-y: auto; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; }
+.modal { width: min(680px,calc(100vw - 32px)); max-height: 86vh; overflow-y: auto; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; padding: 28px; box-shadow: 0 30px 80px rgba(0,0,0,0.5); }
+.modal-title { font-size: 20px; font-weight: 700; color: var(--color-text-primary); }
+.modal-subtitle { margin-top: 4px; margin-bottom: 22px; font-size: 13px; color: var(--color-text-muted); }
 .delete-modal-overlay { z-index: 190; }
 .delete-modal { width: min(420px, 100%); background: linear-gradient(180deg, rgba(255,255,255,0.018), transparent 100%), var(--color-bg-panel); border: 1px solid rgba(248,113,113,0.18); border-radius: 16px; padding: 22px; box-shadow: 0 24px 48px rgba(0, 0, 0, 0.42); }
 .delete-modal-icon { width: 42px; height: 42px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: rgba(248,113,113,0.12); color: #f87171; border: 1px solid rgba(248,113,113,0.18); }
@@ -1221,7 +1500,7 @@ onBeforeUnmount(() => {
 .delete-btn { background: #ef4444; color: #fff; }
 .delete-btn:disabled { opacity: 0.6; cursor: default; }
 .modal-error { padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(248,113,113,0.25); color: #f87171; font-size: 12px; background: rgba(248,113,113,0.1); }
-.modal-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 8px; }
+.modal-actions { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 10px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .settings-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-input { width: 100%; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-primary); padding: 9px 12px; font-size: 13px; }
@@ -1239,13 +1518,13 @@ onBeforeUnmount(() => {
 .wizard-modal { width: min(860px,calc(100vw - 32px)); }
 
 /* Step indicator */
-.wizard-steps { display: flex; align-items: center; margin-bottom: 24px; }
+.wizard-steps { display: flex; align-items: center; gap: 0; margin-bottom: 28px; }
 .wizard-step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-muted); }
-.wizard-step-num { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--color-border); color: var(--color-text-muted); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; }
+.wizard-step-num { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 11px; font-weight: 700; font-family: "Space Mono", monospace; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; }
 .wizard-step.active .wizard-step-num { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
 .wizard-step.active { color: var(--color-text-primary); }
 .wizard-step.done .wizard-step-num { background: rgba(52,211,153,0.15); border-color: rgba(52,211,153,0.4); color: #34d399; }
-.wizard-connector { flex: 1; height: 1px; background: var(--color-border); margin: 0 10px; }
+.wizard-connector { width: 32px; height: 1px; background: var(--color-border); margin: 0 4px; flex-shrink: 0; }
 .wizard-connector.done { background: rgba(52,211,153,0.35); }
 
 /* Section headings (inside wizard steps) */
@@ -1253,24 +1532,29 @@ onBeforeUnmount(() => {
 .section-subtitle { margin-top: 4px; margin-bottom: 20px; font-size: 13px; color: var(--color-text-muted); }
 
 /* Niche grid */
-.niche-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 4px; }
-.niche-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px 12px; border-radius: 10px; border: 1.5px solid var(--color-border); background: rgba(255,255,255,0.025); cursor: pointer; text-align: left; transition: border-color 0.15s, background 0.15s; }
-.niche-card:hover { border-color: rgba(255,107,53,0.4); background: rgba(255,107,53,0.04); transform: translateY(-1px); }
+.niche-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 8px; }
+.niche-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; padding: 16px 14px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; transition: border-color 0.2s, background 0.2s, transform 0.2s; overflow: hidden; }
+.niche-card::before { content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,107,53,0.08), transparent 70%); opacity: 0; transition: opacity 0.2s; }
+.niche-card:hover { border-color: rgba(255,107,53,0.4); transform: translateY(-1px); }
+.niche-card:hover::before { opacity: 1; }
 .niche-card.selected { border-color: var(--color-accent); background: rgba(255,107,53,0.08); }
-.niche-selected-check { display: none; position: absolute; top: 8px; right: 8px; width: 18px; height: 18px; border-radius: 50%; background: var(--color-accent); color: #fff; font-size: 10px; font-weight: 700; align-items: center; justify-content: center; }
+.niche-card.selected::before { opacity: 0; }
+.custom-niche-card { border-style: dashed; }
+.custom-niche-card::before { background: linear-gradient(135deg, rgba(96,165,250,0.1), transparent 70%); }
+.niche-selected-check { display: none; position: absolute; top: 10px; right: 10px; width: 18px; height: 18px; border-radius: 50%; background: var(--color-accent); color: #fff; font-size: 10px; font-weight: 700; align-items: center; justify-content: center; z-index: 1; }
 .niche-card.selected .niche-selected-check { display: flex; }
-.niche-emoji { font-size: 24px; line-height: 1; margin-bottom: 6px; }
-.niche-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); line-height: 1.2; }
-.niche-desc { font-size: 11px; color: var(--color-text-muted); line-height: 1.45; }
-.niche-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-.niche-tag { padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 500; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-muted); }
+.niche-emoji { position: relative; z-index: 1; font-size: 26px; line-height: 1; margin-bottom: 10px; }
+.niche-name { position: relative; z-index: 1; font-size: 13px; font-weight: 600; color: var(--color-text-primary); line-height: 1.2; margin-bottom: 3px; }
+.niche-desc { position: relative; z-index: 1; font-size: 11px; color: var(--color-text-muted); line-height: 1.45; }
+.niche-tags { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.niche-tag { padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 500; background: var(--color-bg-card); border: 1px solid var(--color-border); color: var(--color-text-muted); }
 
 /* Niche preset banner (step 2) */
 .niche-preset-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; background: rgba(255,107,53,0.06); border: 1px solid rgba(255,107,53,0.2); margin-bottom: 18px; font-size: 12px; color: var(--color-text-secondary); }
 .niche-preset-banner strong { color: var(--color-text-primary); }
 
 /* Source type grid (step 2) */
-.source-type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 4px; }
+.source-type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 4px; }
 .source-type-opt { padding: 14px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: center; transition: 0.15s ease; }
 .source-type-opt:hover { border-color: rgba(255,107,53,0.35); }
 .source-type-opt.selected { border-color: var(--color-accent); background: rgba(255,107,53,0.08); }
@@ -1279,18 +1563,47 @@ onBeforeUnmount(() => {
 .source-type-hint { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
 
 /* Niche preset summary pills (step 3) */
-.niche-preset-summary { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
-.preset-pill { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); min-width: 80px; }
-.preset-pill-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); margin-bottom: 3px; }
-.preset-pill-val { font-size: 12px; font-weight: 600; color: var(--color-text-primary); text-transform: capitalize; }
+.niche-preset-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+.preset-pill { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); min-width: 0; text-align: center; }
+.preset-pill-label { font-size: 10px; color: var(--color-text-muted); margin-bottom: 2px; }
+.preset-pill-val { font-size: 11px; font-weight: 500; color: var(--color-text-primary); text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.custom-niche-panel { padding: 14px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); margin-bottom: 18px; }
+.custom-niche-header { display: flex; gap: 10px; align-items: flex-start; }
+.custom-niche-title { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.custom-niche-copy { margin-top: 2px; font-size: 12px; color: var(--color-text-muted); line-height: 1.5; }
 
 /* Format chips */
 .format-chips { display: flex; gap: 8px; }
 .format-chip { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.15s; }
 .format-chip:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }
 .format-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
+.hint-box { margin-top: 8px; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }
+.image-mode-toggle { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+.image-mode-btn { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.15s; }
+.image-mode-btn:hover { border-color: rgba(255,107,53,0.35); }
+.image-mode-btn.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
+.image-ai-hint { display: flex; gap: 10px; padding: 10px 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid rgba(255,107,53,0.2); background: rgba(255,107,53,0.08); color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; }
+.image-ai-hint strong { color: var(--color-text-primary); }
+.ai-broll-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+.ai-broll-card { min-height: 112px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; padding: 0; overflow: hidden; transition: 0.15s; }
+.ai-broll-card:hover { border-color: rgba(255,107,53,0.35); transform: translateY(-1px); }
+.ai-broll-card.selected { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px rgba(255,107,53,0.2); }
+.ai-broll-art { display: block; height: 58px; background: radial-gradient(circle at 30% 20%, var(--style-tone), transparent 34%), linear-gradient(135deg, var(--style-tone), rgba(255,255,255,0.05)); border-bottom: 1px solid var(--color-border); }
+.ai-broll-label { display: block; padding: 8px 8px 2px; color: var(--color-text-primary); font-size: 12px; font-weight: 700; }
+.ai-broll-hint { display: block; padding: 0 8px 8px; color: var(--color-text-muted); font-size: 10px; line-height: 1.3; }
+.image-upload-zone { display: block; border: 1.5px dashed var(--color-border); border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: 0.2s; background: var(--color-bg-elevated); margin-bottom: 14px; }
+.image-upload-zone:hover { border-color: var(--color-accent); background: rgba(255,107,53,0.08); }
+.image-upload-zone-ico { font-size: 32px; margin-bottom: 8px; }
+.image-upload-zone-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; color: var(--color-text-primary); }
+.image-upload-zone-hint { font-size: 11px; color: var(--color-text-muted); }
+.image-preview-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.image-preview-thumb { aspect-ratio: 1; border-radius: 8px; overflow: hidden; position: relative; border: 1px solid var(--color-border); background: var(--color-bg-elevated); }
+.image-preview-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.image-preview-name { position: absolute; inset: auto 0 0; padding: 14px 6px 6px; color: #fff; font-size: 10px; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; background: linear-gradient(180deg, transparent, rgba(0,0,0,0.72)); }
+.image-preview-add { aspect-ratio: 1; border-radius: 8px; border: 1.5px dashed var(--color-border); display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); background: var(--color-bg-elevated); cursor: pointer; font-size: 24px; }
+.image-preview-add:hover { border-color: var(--color-accent); color: var(--color-accent); }
 
-@media (max-width: 680px) { .niche-grid { grid-template-columns: repeat(2, 1fr); } .source-type-grid { grid-template-columns: repeat(2, 1fr); } .settings-2col { grid-template-columns: 1fr; } }
+@media (max-width: 680px) { .niche-grid { grid-template-columns: repeat(2, 1fr); } .source-type-grid { grid-template-columns: repeat(2, 1fr); } .settings-2col { grid-template-columns: 1fr; } .niche-preset-summary { grid-template-columns: repeat(2, 1fr); } .ai-broll-grid { grid-template-columns: repeat(2, 1fr); } }
 
 @media (max-width: 980px) { .stats-row { grid-template-columns: 1fr 1fr; } .form-grid { grid-template-columns: 1fr; } .section-header { align-items: flex-start; flex-direction: column; } .projects-toolbar { margin-left: 0; flex-wrap: wrap; } .pagination-row { justify-content: space-between; } }
 @media (max-width: 800px) { .sidebar { display: none; } .main { margin-left: 0; } .topbar { height: auto; padding: 12px; gap: 10px; align-items: flex-start; flex-direction: column; } .stats-row { grid-template-columns: 1fr; } .empty-actions { flex-direction: column; } .projects-toolbar { width: 100%; justify-content: space-between; } .projects-summary { width: 100%; } }

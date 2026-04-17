@@ -11,6 +11,7 @@ use App\Services\Generation\AI\AIGenerationAdapter;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class GenerateScriptJob implements ShouldQueue
@@ -35,6 +36,9 @@ class GenerateScriptJob implements ShouldQueue
 
         $promptTemplateKey = $this->promptTemplateKey((string) $project->source_type);
         $sourceContent = $this->sourceContentForGeneration($project, $transcriptionService);
+        $options = $project->source_type === 'images'
+            ? ['images' => $this->imageInputsForGeneration($project)]
+            : [];
 
         $result = $aiGeneration->generate($promptTemplateKey, [
             'source_type' => $project->source_type ?: 'prompt',
@@ -42,7 +46,7 @@ class GenerateScriptJob implements ShouldQueue
             'content_goal' => $project->content_goal ?: 'educational',
             'language' => $project->primary_language ?: 'en',
             'source_content' => $sourceContent,
-        ]);
+        ], 1400, 0.35, $options);
 
         $project->forceFill([
             'script_text' => $result['content'],
@@ -67,6 +71,7 @@ class GenerateScriptJob implements ShouldQueue
     {
         return match ($sourceType) {
             'url' => 'script_from_url',
+            'images' => 'script_from_images',
             'product_description' => 'script_from_product',
             'csv_topic' => 'script_from_csv',
             'audio_upload' => 'script_from_audio_reference',
@@ -83,11 +88,106 @@ class GenerateScriptJob implements ShouldQueue
             return $this->mediaSourceContent($project, $source, $transcriptionService);
         }
 
+        if ($project->source_type === 'images') {
+            return $this->imageSourceContent($project, $source);
+        }
+
         if ($project->source_type !== 'url') {
             return $source;
         }
 
         return $this->fetchUrlContent($source) ?: "URL: {$source}";
+    }
+
+    private function imageSourceContent(Project $project, string $source): string
+    {
+        $assets = $this->sourceImageAssets($project);
+        $lines = [];
+
+        foreach ($assets as $index => $asset) {
+            $lines[] = sprintf(
+                'Image %d: asset_id:%d title:%s mime_type:%s',
+                $index + 1,
+                $asset->getKey(),
+                $asset->title ?: 'Uploaded image',
+                $asset->mime_type ?: 'image/*',
+            );
+        }
+
+        if ($source !== '') {
+            $lines[] = 'User context: '.$source;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @return list<array{url:string,title:string}>
+     */
+    private function imageInputsForGeneration(Project $project): array
+    {
+        $inputs = [];
+
+        foreach ($this->sourceImageAssets($project) as $asset) {
+            $url = $this->temporaryAssetUrl($asset);
+
+            if ($url === null) {
+                continue;
+            }
+
+            $inputs[] = [
+                'url' => $url,
+                'title' => $asset->title ?: 'Uploaded image',
+            ];
+        }
+
+        return $inputs;
+    }
+
+    /**
+     * @return list<Asset>
+     */
+    private function sourceImageAssets(Project $project): array
+    {
+        $ids = array_values(array_filter(array_map(
+            static fn (mixed $id): int => (int) $id,
+            $project->source_image_asset_ids ?? [],
+        )));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $positionById = array_flip($ids);
+
+        /** @var list<Asset> $assets */
+        $assets = Asset::query()
+            ->where('workspace_id', $project->workspace_id)
+            ->where('asset_type', 'image')
+            ->whereIn('id', $ids)
+            ->get()
+            ->sortBy(static fn (Asset $asset): int => $positionById[(int) $asset->getKey()] ?? 0)
+            ->values()
+            ->all();
+
+        return $assets;
+    }
+
+    private function temporaryAssetUrl(Asset $asset): ?string
+    {
+        $storageUrl = trim((string) $asset->storage_url);
+
+        if ($storageUrl === '') {
+            return null;
+        }
+
+        if (! str_starts_with($storageUrl, 'b2://')) {
+            return $storageUrl;
+        }
+
+        $path = Str::after($storageUrl, 'b2://');
+
+        return Storage::disk('b2')->temporaryUrl($path, now()->addMinutes(30));
     }
 
     private function mediaSourceContent(Project $project, string $source, MediaTranscriptionService $transcriptionService): string

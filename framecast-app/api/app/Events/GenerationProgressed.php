@@ -19,6 +19,7 @@ class GenerationProgressed implements ShouldBroadcastNow
         public readonly string $stage,
         public readonly string $status,
         public readonly ?string $message = null,
+        public readonly array $meta = [],
     ) {
     }
 
@@ -35,7 +36,7 @@ class GenerationProgressed implements ShouldBroadcastNow
     }
 
     /**
-     * @return array{project_id:int,stage:string,status:string,message:?string}
+     * @return array<string, mixed>
      */
     public function broadcastWith(): array
     {
@@ -44,6 +45,7 @@ class GenerationProgressed implements ShouldBroadcastNow
             'stage' => $this->stage,
             'status' => $this->status,
             'message' => $this->message,
+            ...$this->meta,
         ];
     }
 }

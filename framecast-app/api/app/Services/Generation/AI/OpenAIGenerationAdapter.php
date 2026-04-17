@@ -14,7 +14,7 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
     ) {
     }
 
-    public function generate(string $promptTemplateKey, array $variables, int $maxTokens = 900, float $temperature = 0.4): array
+    public function generate(string $promptTemplateKey, array $variables, int $maxTokens = 900, float $temperature = 0.4, array $options = []): array
     {
         $template = $this->templates->template($promptTemplateKey);
         $systemPrompt = $template['system'];
@@ -33,7 +33,7 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
         }
 
         try {
-            $response = Http::timeout(30)
+            $response = Http::timeout(45)
                 ->withToken($apiKey)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model' => $model,
@@ -41,7 +41,7 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
                     'max_tokens' => $maxTokens,
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user', 'content' => $userPrompt],
+                        ['role' => 'user', 'content' => $this->userMessageContent($userPrompt, $options)],
                     ],
                 ]);
 
@@ -75,6 +75,51 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
                 'tokens_used' => 0,
             ];
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return string|list<array<string, mixed>>
+     */
+    private function userMessageContent(string $userPrompt, array $options): string|array
+    {
+        $images = $options['images'] ?? [];
+
+        if (! is_array($images) || $images === []) {
+            return $userPrompt;
+        }
+
+        $content = [
+            ['type' => 'text', 'text' => $userPrompt],
+        ];
+
+        foreach (array_slice($images, 0, 15) as $image) {
+            if (! is_array($image)) {
+                continue;
+            }
+
+            $url = trim((string) ($image['url'] ?? ''));
+
+            if ($url === '') {
+                continue;
+            }
+
+            $title = trim((string) ($image['title'] ?? ''));
+
+            if ($title !== '') {
+                $content[] = ['type' => 'text', 'text' => "Image reference: {$title}"];
+            }
+
+            $content[] = [
+                'type' => 'image_url',
+                'image_url' => [
+                    'url' => $url,
+                    'detail' => 'low',
+                ],
+            ];
+        }
+
+        return $content;
     }
 
     /**
@@ -131,6 +176,23 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
                 ."Context: The source file is {$source}.\n\n"
                 ."Main point: Keep the strongest idea, add clear captions, and make the opening more direct.\n\n"
                 ."CTA: Review the generated scenes and replace this draft with the transcript when transcription is connected.";
+        }
+
+        if ($sourceType === 'images') {
+            $lines = array_values(array_filter(array_map('trim', preg_split('/\R/', $source) ?: [])));
+            $imageLines = array_values(array_filter($lines, static fn (string $line): bool => str_starts_with($line, 'Image ')));
+
+            if ($imageLines === []) {
+                $imageLines = ['Image 1: uploaded source image'];
+            }
+
+            $beats = [];
+
+            foreach (array_slice($imageLines, 0, 15) as $index => $line) {
+                $beats[] = ($index === 0 ? 'Hook' : 'Scene '.($index + 1)).": Use this uploaded image as the visual anchor. {$line}. Add the viewer context in a concise {$tone} narration beat.";
+            }
+
+            return implode("\n\n", $beats);
         }
 
         return "Hook: Here is a quick {$tone} take.\n\n"

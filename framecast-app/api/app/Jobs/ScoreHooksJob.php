@@ -39,7 +39,7 @@ class ScoreHooksJob implements ShouldQueue
             ->get();
 
         if ($hooks->isEmpty()) {
-            MatchVisualsJob::dispatch($this->projectId);
+            $this->dispatchVisualStep($project);
 
             return;
         }
@@ -74,7 +74,7 @@ class ScoreHooksJob implements ShouldQueue
             GenerationProgressed::dispatch($this->projectId, 'hooks_scoring', 'failed', $exception->getMessage());
         } finally {
             // Always advance the generation pipeline.
-            MatchVisualsJob::dispatch($this->projectId);
+            $this->dispatchVisualStep($project);
         }
     }
 
@@ -82,6 +82,18 @@ class ScoreHooksJob implements ShouldQueue
     {
         report($exception);
         GenerationProgressed::dispatch($this->projectId, 'hooks_scoring', 'failed', $exception->getMessage());
+        $project = Project::query()->find($this->projectId);
+        $this->dispatchVisualStep($project);
+    }
+
+    private function dispatchVisualStep(?Project $project): void
+    {
+        if ($project?->visual_generation_mode === 'ai_images') {
+            GenerateProjectAIImagesJob::dispatch($this->projectId);
+
+            return;
+        }
+
         MatchVisualsJob::dispatch($this->projectId);
     }
 

@@ -358,6 +358,10 @@ class AssetController extends Controller
             return ltrim(substr($url, 5), '/');
         }
 
+        if (! str_contains($url, '://') && ! str_starts_with($url, '/')) {
+            return ltrim($url, '/');
+        }
+
         $parts = parse_url($url);
         $path = trim((string) ($parts['path'] ?? ''), '/');
         $bucket = trim((string) config('filesystems.disks.b2.bucket'), '/');

@@ -37,11 +37,14 @@ class BreakdownScenesJob implements ShouldQueue
         ], 1100, 0.2);
 
         $scenes = $this->extractScenes($result['content'], $project->script_text);
+        $sourceImageAssetIds = $this->sourceImageAssetIds($project);
 
-        DB::transaction(function () use ($project, $scenes): void {
+        DB::transaction(function () use ($project, $scenes, $sourceImageAssetIds): void {
             Scene::query()->where('project_id', $project->getKey())->delete();
 
             foreach ($scenes as $index => $scene) {
+                $sourceImageAssetId = $sourceImageAssetIds[$index] ?? null;
+
                 Scene::query()->create([
                     'project_id' => $project->getKey(),
                     'scene_order' => $index + 1,
@@ -49,6 +52,9 @@ class BreakdownScenesJob implements ShouldQueue
                     'label' => $scene['label'],
                     'script_text' => $scene['script_text'],
                     'duration_seconds' => $scene['duration_seconds'],
+                    'visual_type' => $sourceImageAssetId ? 'upload' : null,
+                    'visual_asset_id' => $sourceImageAssetId,
+                    'visual_prompt' => $sourceImageAssetId ? 'Uploaded source image #'.($index + 1) : null,
                     'status' => 'draft',
                 ]);
             }
@@ -178,5 +184,20 @@ class BreakdownScenesJob implements ShouldQueue
             'script_text' => trim($scriptText),
             'duration_seconds' => 6.0,
         ]] : $scenes;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function sourceImageAssetIds(Project $project): array
+    {
+        if ($project->source_type !== 'images') {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn (mixed $id): int => (int) $id,
+            $project->source_image_asset_ids ?? [],
+        )));
     }
 }

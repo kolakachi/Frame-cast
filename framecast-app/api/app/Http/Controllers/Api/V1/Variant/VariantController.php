@@ -541,6 +541,10 @@ class VariantController extends Controller
             return true;
         }
 
+        if (! str_contains($url, '://') && ! str_starts_with($url, '/')) {
+            return true;
+        }
+
         $host = strtolower((string) parse_url($url, PHP_URL_HOST));
         $bucket = strtolower((string) config('filesystems.disks.b2.bucket'));
 

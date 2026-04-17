@@ -5,6 +5,7 @@ namespace App\Services\Generation\Image;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 class DalleImageAdapter implements ImageGenerationAdapter
 {
@@ -23,6 +24,18 @@ class DalleImageAdapter implements ImageGenerationAdapter
         'realistic'    => 'photorealistic, highly detailed, sharp focus, natural lighting,',
         'vintage'      => 'vintage film photography, faded colors, grain texture, retro aesthetic,',
         'neon'         => 'neon lights, cyberpunk aesthetic, glowing colors, night scene,',
+        'photorealistic' => 'photorealistic cinematic still, natural skin texture, dramatic practical lighting,',
+        'cyberpunk_80s' => '1980s cyberpunk film still, neon haze, retro futurist tech,',
+        'anime_80s' => '1980s anime style, hand-painted cel animation, soft film grain,',
+        'anime_90s' => '1990s anime style, painted backgrounds, expressive cinematic framing,',
+        'dark_fantasy' => 'dark fantasy art, gothic atmosphere, ethereal lighting, dramatic shadows,',
+        'fantasy_retro' => 'retro fantasy illustration, painterly wizard-core atmosphere, storybook lighting,',
+        'comic' => 'dynamic comic book illustration, bold ink, vivid color, dramatic panel composition,',
+        'film_noir' => 'black and white film noir, hard shadows, moody cinematic lighting,',
+        'line_drawing' => 'clean pencil line drawing, monochrome sketch, minimal shading,',
+        'watercolor' => 'soft watercolor illustration, paper texture, delicate color washes,',
+        'paper_cutout' => 'paper cutout collage style, layered paper texture, graphic shapes,',
+        'cartoon' => 'modern cartoon illustration, clean shapes, expressive character style,',
     ];
 
     public function generate(
@@ -67,11 +80,13 @@ class DalleImageAdapter implements ImageGenerationAdapter
                 'revised_prompt'  => $image['revised_prompt'] ?? null,
             ];
         } catch (RequestException $e) {
+            $message = $this->friendlyExceptionMessage($e);
             Log::error('DALL-E image generation failed', [
                 'prompt' => $fullPrompt,
                 'error'  => $e->getMessage(),
+                'friendly_error' => $message,
             ]);
-            throw $e;
+            throw new RuntimeException($message, previous: $e);
         }
     }
 
@@ -92,5 +107,39 @@ class DalleImageAdapter implements ImageGenerationAdapter
             'seed'           => null,
             'revised_prompt' => "[Fallback] {$style}: {$prompt}",
         ];
+    }
+
+    private function friendlyExceptionMessage(RequestException $exception): string
+    {
+        $response = $exception->response;
+        $status = $response?->status();
+        $payload = $response?->json() ?? [];
+        $error = is_array($payload['error'] ?? null) ? $payload['error'] : [];
+        $code = strtolower((string) ($error['code'] ?? ''));
+        $type = strtolower((string) ($error['type'] ?? ''));
+        $message = strtolower((string) ($error['message'] ?? $exception->getMessage()));
+
+        if (
+            str_contains($code, 'content_policy') ||
+            str_contains($type, 'content_policy') ||
+            str_contains($message, 'safety') ||
+            str_contains($message, 'policy')
+        ) {
+            return 'This image could not be generated because the prompt may violate the image safety policy. Please revise the prompt and try again.';
+        }
+
+        if ($status === 401 || str_contains($code, 'invalid_api_key')) {
+            return 'Image generation is not configured correctly. Please contact support.';
+        }
+
+        if ($status === 429) {
+            return 'Image generation is temporarily busy. Please wait a moment and try again.';
+        }
+
+        if ($status !== null && $status >= 500) {
+            return 'The image provider is temporarily unavailable. Please try again shortly.';
+        }
+
+        return 'Image generation failed. Please revise the prompt and try again.';
     }
 }

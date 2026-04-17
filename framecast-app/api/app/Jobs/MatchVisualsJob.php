@@ -42,6 +42,10 @@ class MatchVisualsJob implements ShouldQueue
 
         DB::transaction(function () use ($project, $scenes, $visualProvider): void {
             foreach ($scenes as $scene) {
+                if ($scene->visual_asset_id) {
+                    continue;
+                }
+
                 $prompt = $this->buildPrompt($scene, $project);
                 $orientation = in_array((string) ($project->aspect_ratio ?? ''), ['16:9'], true) ? 'landscape' : 'portrait';
                 $match = $visualProvider->match($prompt, $orientation, 'stock_clip');

@@ -139,6 +139,10 @@ class MediaTranscriptionService
             return ltrim(substr($url, 5), '/');
         }
 
+        if (! str_contains($url, '://') && ! str_starts_with($url, '/')) {
+            return ltrim($url, '/');
+        }
+
         return null;
     }
 

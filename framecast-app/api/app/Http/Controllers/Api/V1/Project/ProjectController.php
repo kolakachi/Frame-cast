@@ -199,6 +199,10 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'source_type' => ['required', Rule::in($this->allowedSourceTypes())],
             'source_content_raw' => ['nullable', 'string'],
+            'source_image_asset_ids' => ['nullable', 'array', 'max:15'],
+            'source_image_asset_ids.*' => ['integer'],
+            'visual_generation_mode' => ['nullable', Rule::in(['stock', 'ai_images'])],
+            'ai_broll_style' => ['nullable', 'string', 'max:64'],
             'languages' => ['required', 'array', 'min:1'],
             'languages.*' => ['required', 'string', 'max:16'],
             'platform_target' => ['required', 'string', 'max:64'],
@@ -217,6 +221,17 @@ class ProjectController extends Controller
 
         if ($sourceError) {
             return $this->error('invalid_source_content', $sourceError, 422);
+        }
+
+        $sourceImageAssetIds = $this->resolveSourceImageAssetIds(
+            $validated['source_type'],
+            $validated['source_image_asset_ids'] ?? [],
+            $user,
+            $validated['visual_generation_mode'] ?? null,
+        );
+
+        if ($sourceImageAssetIds === null) {
+            return $this->error('invalid_source_images', 'Upload Images requires 1-15 image assets from this workspace.', 422);
         }
 
         $channel = null;
@@ -328,6 +343,9 @@ class ProjectController extends Controller
             'source_type' => $validated['source_type'],
             'source_content_raw' => $validated['source_content_raw'] ?? null,
             'source_content_normalized' => $this->normalizeSource($validated['source_content_raw'] ?? ''),
+            'source_image_asset_ids' => $sourceImageAssetIds,
+            'visual_generation_mode' => $validated['visual_generation_mode'] ?? null,
+            'ai_broll_style' => $validated['ai_broll_style'] ?? null,
             'content_goal' => $validated['content_goal'] ?? null,
             'platform_target' => $validated['platform_target'],
             'duration_target_seconds' => $validated['duration_target_seconds'] ?? null,
@@ -606,6 +624,7 @@ class ProjectController extends Controller
             'prompt',
             'script',
             'url',
+            'images',
             'product_description',
             'csv_topic',
             'audio_upload',
@@ -630,6 +649,44 @@ class ProjectController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @param  mixed  $assetIds
+     * @return list<int>|null
+     */
+    private function resolveSourceImageAssetIds(string $sourceType, mixed $assetIds, User $user, ?string $visualGenerationMode): ?array
+    {
+        if ($sourceType !== 'images') {
+            return null;
+        }
+
+        $ids = array_values(array_unique(array_map(
+            static fn (mixed $id): int => (int) $id,
+            is_array($assetIds) ? $assetIds : [],
+        )));
+
+        if ($ids === [] && $visualGenerationMode === 'ai_images') {
+            return [];
+        }
+
+        if ($ids === [] || count($ids) > 15) {
+            return null;
+        }
+
+        $foundIds = Asset::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where('asset_type', 'image')
+            ->whereIn('id', $ids)
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
+
+        if (count($foundIds) !== count($ids)) {
+            return null;
+        }
+
+        return $ids;
     }
 
     private function normalizeSource(string $source): string
@@ -709,6 +766,10 @@ class ProjectController extends Controller
     private function isB2Url(string $url): bool
     {
         if (str_starts_with($url, 'b2://')) {
+            return true;
+        }
+
+        if (! str_contains($url, '://') && ! str_starts_with($url, '/')) {
             return true;
         }
 
@@ -820,6 +881,9 @@ class ProjectController extends Controller
             'source_type' => $project->source_type,
             'source_content_raw' => $project->source_content_raw,
             'source_content_normalized' => $project->source_content_normalized,
+            'source_image_asset_ids' => $project->source_image_asset_ids,
+            'visual_generation_mode' => $project->visual_generation_mode,
+            'ai_broll_style' => $project->ai_broll_style,
             'content_goal' => $project->content_goal,
             'platform_target' => $project->platform_target,
             'duration_target_seconds' => $project->duration_target_seconds,

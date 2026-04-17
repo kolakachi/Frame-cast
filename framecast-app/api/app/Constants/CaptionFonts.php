@@ -50,11 +50,11 @@ class CaptionFonts
     ];
 
     public const CATEGORIES = [
-        'Display' => ['Bebas Neue', 'Fredoka One', 'Luckiest Guy', 'Days One', 'Passion One', 'Impact', 'New Rocker', 'Aladin'],
+        'Bold Display' => ['Bebas Neue', 'Fredoka One', 'Luckiest Guy', 'Days One', 'Passion One', 'New Rocker', 'Aladin'],
         'Sans-serif' => ['Montserrat', 'Raleway', 'Nunito', 'Lato', 'Quicksand', 'Noto Sans', 'Liberation Sans', 'Nimbus Sans'],
-        'Serif' => ['Roboto Slab', 'Libre Baskerville', 'Playfair Display', 'Liberation Serif', 'Nimbus Roman'],
+        'Serif' => ['Roboto Slab', 'Libre Baskerville', 'Playfair Display', 'Liberation Serif', 'Nimbus Roman', 'Century Schoolbook L'],
         'Script' => ['Dancing Script', 'Sacramento', 'Satisfy', 'Shadows Into Light', 'Calligraffitti'],
-        'Monospace' => ['Roboto Mono', 'Source Code Pro', 'Orbitron', 'Liberation Mono'],
+        'Mono' => ['Roboto Mono', 'Source Code Pro', 'Orbitron', 'Liberation Mono', 'Nimbus Mono PS'],
         'Handwritten' => ['Permanent Marker', 'Amatic SC', 'Indie Flower', 'Rock Salt', 'Calligraffitti'],
     ];
 }

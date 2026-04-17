@@ -38,6 +38,9 @@ const mediaPreloaders = new Map();
 const addScenePanelPosition = ref("");
 const selectedSceneType = ref("Narration");
 const selectedAddSceneVisualSource = ref("Stock Clip");
+const addSceneVisualMode = ref("stock");
+const addSceneVisualStyle = ref(null);
+const addSceneVisualQuery = ref("");
 const selectedSwapVisualSource = ref("Stock Clip");
 const newSceneScript = ref("");
 const rewriteToolsVisible = ref(false);
@@ -81,11 +84,9 @@ const visualQueryDraft = ref("");
 const visualSwapPending = ref(false);
 const visualSwapError = ref("");
 // AI Image generation
-const aiImageStyle = ref("cinematic");
 const aiImagePromptOverride = ref("");
 const aiImagePending = ref(false);
 const aiImageError = ref("");
-const aiImageStyles = ref([]);
 const AI_IMAGE_STYLES = [
   { key: "cinematic",   label: "Cinematic" },
   { key: "dark",        label: "Dark" },
@@ -105,15 +106,26 @@ const captionEnabledDraft = ref(true);
 const captionStyleDraft = ref("impact");
 const captionHighlightDraft = ref("keywords");
 const captionPositionDraft = ref("bottom_third");
-const captionFontDraft = ref("Poppins");
+const DEFAULT_CAPTION_FONT = "Bebas Neue";
+const DEFAULT_CAPTION_SETTINGS = Object.freeze({
+  enabled: true,
+  style_key: "impact",
+  highlight_mode: "keywords",
+  position: "bottom_third",
+  font: DEFAULT_CAPTION_FONT,
+  highlight_color: "#ff6b35",
+  preset_id: null,
+});
+const captionFontDraft = ref(DEFAULT_CAPTION_FONT);
+const fontDropdownOpen = ref(false);
 const captionSaveState = ref("idle");
 const captionSaveError = ref("");
 const CAPTION_FONT_GROUPS = [
-  { label: "Display", fonts: ["Bebas Neue", "Days One", "Passion One", "Fredoka One", "Luckiest Guy", "New Rocker", "Aladin"] },
-  { label: "Sans-serif", fonts: ["Montserrat", "Raleway", "Lato", "Nunito", "Quicksand", "Noto Sans", "Liberation Sans"] },
-  { label: "Serif", fonts: ["Playfair Display", "Roboto Slab", "Libre Baskerville", "Liberation Serif"] },
+  { label: "Bold Display", fonts: ["Bebas Neue", "Days One", "Passion One", "Fredoka One", "Luckiest Guy", "New Rocker", "Aladin"] },
+  { label: "Sans-serif", fonts: ["Montserrat", "Raleway", "Lato", "Nunito", "Quicksand", "Noto Sans", "Liberation Sans", "Nimbus Sans"] },
+  { label: "Serif", fonts: ["Playfair Display", "Roboto Slab", "Libre Baskerville", "Liberation Serif", "Nimbus Roman", "Century Schoolbook L"] },
   { label: "Script", fonts: ["Dancing Script", "Sacramento", "Satisfy", "Shadows Into Light"] },
-  { label: "Monospace", fonts: ["Roboto Mono", "Source Code Pro", "Orbitron", "Liberation Mono"] },
+  { label: "Mono", fonts: ["Roboto Mono", "Source Code Pro", "Orbitron", "Liberation Mono", "Nimbus Mono PS"] },
   { label: "Handwritten", fonts: ["Permanent Marker", "Amatic SC", "Indie Flower", "Rock Salt", "Calligraffitti"] },
 ];
 const motionEffectDraft = ref("zoom_in");
@@ -149,6 +161,20 @@ const activeSceneVisualAsset = computed(() => activeScene.value?.visual_asset ??
 const activeSceneVisualType = computed(
   () => String(activeScene.value?.visual_type || "")
 );
+const activeSceneAIImagePending = computed(() => {
+  const scene = activeScene.value;
+  if (!scene || String(scene.visual_type || "") !== "ai_image") return false;
+  if (scene.visual_asset) return false;
+  return !scene.image_generation_settings?.needs_visual;
+});
+const activeSceneVisualGenerationError = computed(() => {
+  const settings = activeScene.value?.image_generation_settings;
+  if (!settings?.needs_visual) return "";
+  return (
+    settings.last_error ||
+    "Image generation failed. Please revise the prompt and try again."
+  );
+});
 const activeSceneVisualIsVideo = computed(() => {
   const asset = activeSceneVisualAsset.value;
   if (!asset) return false;
@@ -248,10 +274,19 @@ const latestExportDownloadUrl = computed(
   () => latestExportJob.value?.output_asset?.storage_url ?? null
 );
 const captionPreviewClass = computed(() => {
-  if (!captionEnabledDraft.value) return "caption-hidden";
+  if (!captionEnabledDraft.value || !captionsCanRender.value) return "caption-hidden";
   if (captionStyleDraft.value === "editorial") return "caption-style-editorial";
   if (captionStyleDraft.value === "hacker") return "caption-style-hacker";
   return "caption-style-impact";
+});
+const captionsCanRender = computed(() => {
+  if (
+    activeSceneAIImagePending.value ||
+    activeSceneVisualGenerationError.value ||
+    visualLoadFailed.value
+  ) return false;
+  if (activeSceneVisualUrl.value) return activeSceneVisualLoaded.value;
+  return showTextCardPreview.value || showWaveformPreview.value;
 });
 const captionPositionStyle = computed(() => {
   if (captionPositionDraft.value === "center")
@@ -260,6 +295,21 @@ const captionPositionStyle = computed(() => {
     return { top: "80px", bottom: "auto" };
   return {};
 });
+const flattenedCaptionFonts = computed(() =>
+  CAPTION_FONT_GROUPS.flatMap((group) =>
+    group.fonts.map((font) => ({ font, group: group.label }))
+  )
+);
+const selectedCaptionFont = computed(
+  () =>
+    flattenedCaptionFonts.value.find((item) => item.font === captionFontDraft.value) || {
+      font: captionFontDraft.value || DEFAULT_CAPTION_FONT,
+      group: "Custom",
+    }
+);
+const captionFontStyle = computed(() => ({
+  fontFamily: fontFamilyValue(captionFontDraft.value || DEFAULT_CAPTION_FONT),
+}));
 const activeCaptionSettings = computed(
   () => activeScene.value?.caption_settings ?? activeScene.value?.caption_settings_json ?? {}
 );
@@ -271,13 +321,7 @@ const sceneTypeOptions = [
   "Text Card",
   "Quote",
 ];
-const visualSourceOptions = [
-  { label: "Stock Clip", icon: "🎬" },
-  { label: "BG Loop", icon: "🔁" },
-  { label: "AI Image", icon: "🖼" },
-  { label: "Text Only", icon: "Aa" },
-  { label: "Waveform", icon: "〰" },
-];
+const addSceneStockTypeOptions = ["Stock Clip", "BG Loop", "Text Only", "Waveform"];
 const visualSourceTypeMap = {
   "Stock Clip": "stock_clip",
   "BG Loop": "background_loop",
@@ -332,12 +376,15 @@ watch(
     visualQueryDraft.value = scene?.visual_prompt || "";
     selectedSwapVisualSource.value =
       visualTypeLabelMap[String(scene?.visual_type || "")] || "Stock Clip";
-    const captionSettings = scene?.caption_settings || scene?.caption_settings_json || {};
+    const captionSettings = normalizeCaptionSettings(
+      scene?.caption_settings || scene?.caption_settings_json
+    );
     captionEnabledDraft.value = captionSettings.enabled !== false;
-    captionStyleDraft.value = String(captionSettings.style_key || "impact");
-    captionHighlightDraft.value = String(captionSettings.highlight_mode || "keywords");
-    captionPositionDraft.value = String(captionSettings.position || "bottom_third");
-    captionFontDraft.value = String(captionSettings.font || "Poppins");
+    captionStyleDraft.value = String(captionSettings.style_key);
+    captionHighlightDraft.value = String(captionSettings.highlight_mode);
+    captionPositionDraft.value = String(captionSettings.position);
+    captionFontDraft.value = String(captionSettings.font);
+    fontDropdownOpen.value = false;
     const motionSettings = scene?.motion_settings || scene?.motion_settings_json || {};
     motionEffectDraft.value = String(motionSettings.effect || "zoom_in");
     motionIntensityDraft.value = String(motionSettings.intensity || "moderate");
@@ -464,7 +511,7 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
     String(savedCaptions.style_key || "impact") === nextSettings.style_key &&
     String(savedCaptions.highlight_mode || "keywords") === nextSettings.highlight_mode &&
     String(savedCaptions.position || "bottom_third") === nextSettings.position &&
-    String(savedCaptions.font || "Poppins") === nextSettings.font
+    String(savedCaptions.font || DEFAULT_CAPTION_FONT) === nextSettings.font
   ) {
     if (captionSaveTimer) {
       window.clearTimeout(captionSaveTimer);
@@ -481,6 +528,7 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
     window.clearTimeout(captionSaveTimer);
   }
 
+  patchSceneCaptionSettings(scene.id, nextSettings);
   captionSaveState.value = "pending";
   captionSaveError.value = "";
   captionSaveTimer = window.setTimeout(() => {
@@ -620,11 +668,42 @@ function sceneVoiceOutdated(scene) {
 function normalizeScenePayload(scene) {
   if (!scene) return null;
 
+  const captionSettings = normalizeCaptionSettings(
+    scene.caption_settings ?? scene.caption_settings_json
+  );
+
   return {
     ...scene,
     voice_settings: scene.voice_settings ?? scene.voice_settings_json ?? null,
-    caption_settings: scene.caption_settings ?? scene.caption_settings_json ?? null,
+    caption_settings: captionSettings,
+    caption_settings_json: captionSettings,
+    image_generation_settings:
+      scene.image_generation_settings ?? scene.image_generation_settings_json ?? null,
     locked_fields: scene.locked_fields ?? scene.locked_fields_json ?? null,
+  };
+}
+
+function normalizeCaptionSettings(settings, fallback = {}) {
+  const source = settings && typeof settings === "object" ? settings : {};
+  const fallbackSource = fallback && typeof fallback === "object" ? fallback : {};
+
+  return {
+    ...DEFAULT_CAPTION_SETTINGS,
+    ...fallbackSource,
+    ...source,
+    enabled: source.enabled ?? fallbackSource.enabled ?? DEFAULT_CAPTION_SETTINGS.enabled,
+    style_key: source.style_key || fallbackSource.style_key || DEFAULT_CAPTION_SETTINGS.style_key,
+    highlight_mode:
+      source.highlight_mode ||
+      fallbackSource.highlight_mode ||
+      DEFAULT_CAPTION_SETTINGS.highlight_mode,
+    position: source.position || fallbackSource.position || DEFAULT_CAPTION_SETTINGS.position,
+    font: source.font || fallbackSource.font || DEFAULT_CAPTION_SETTINGS.font,
+    highlight_color:
+      source.highlight_color ||
+      fallbackSource.highlight_color ||
+      DEFAULT_CAPTION_SETTINGS.highlight_color,
+    preset_id: source.preset_id ?? fallbackSource.preset_id ?? DEFAULT_CAPTION_SETTINGS.preset_id,
   };
 }
 
@@ -636,10 +715,33 @@ function sortScenesByOrder(nextScenes) {
 
 function replaceSceneInCollection(updatedScene) {
   scenes.value = sortScenesByOrder(
-    scenes.value.map((scene) =>
-      scene.id === updatedScene.id ? { ...scene, ...updatedScene } : scene
-    )
+    scenes.value.map((scene) => {
+      if (scene.id !== updatedScene.id) return scene;
+
+      const captionSettings = normalizeCaptionSettings(
+        updatedScene.caption_settings ?? updatedScene.caption_settings_json,
+        scene.caption_settings ?? scene.caption_settings_json
+      );
+
+      return {
+        ...scene,
+        ...updatedScene,
+        caption_settings: captionSettings,
+        caption_settings_json: captionSettings,
+      };
+    })
   );
+}
+
+function patchSceneCaptionSettings(sceneId, captionSettings) {
+  const scene = scenes.value.find((item) => item.id === sceneId);
+
+  if (!scene) return;
+
+  const normalizedSettings = normalizeCaptionSettings(captionSettings);
+
+  scene.caption_settings = normalizedSettings;
+  scene.caption_settings_json = normalizedSettings;
 }
 
 function buildSceneLabel(sceneType) {
@@ -650,6 +752,9 @@ function buildSceneLabel(sceneType) {
 function resetAddSceneDrafts() {
   selectedSceneType.value = "Narration";
   selectedAddSceneVisualSource.value = "Stock Clip";
+  addSceneVisualMode.value = "stock";
+  addSceneVisualStyle.value = null;
+  addSceneVisualQuery.value = "";
   newSceneScript.value = "";
 }
 
@@ -736,6 +841,15 @@ function previewWords(text) {
     text: `${word}${index === words.length - 1 ? "" : " "}`,
     highlighted: index >= highlightStart && index < highlightEnd,
   }));
+}
+
+function fontFamilyValue(font) {
+  return `"${font}", sans-serif`;
+}
+
+function selectCaptionFont(font) {
+  captionFontDraft.value = font;
+  fontDropdownOpen.value = false;
 }
 
 function formatPreviewTime(value) {
@@ -962,7 +1076,9 @@ async function loadProject() {
     musicFadeInMs.value = ms.fade_in_ms ?? 500;
     musicLoop.value = ms.loop ?? true;
     musicDuckDuringVoice.value = ms.duck_during_voice ?? true;
-    scenes.value = response.data?.data?.scenes ?? [];
+    scenes.value = (response.data?.data?.scenes ?? []).map((scene) =>
+      normalizeScenePayload(scene)
+    );
     hookOptions.value = response.data?.data?.hook_options ?? [];
     activeSceneId.value = scenes.value[0]?.id ?? null;
     scenes.value.forEach((scene) => {
@@ -1199,6 +1315,11 @@ function closeAddScene() {
   addScenePanelPosition.value = "";
   resetAddSceneDrafts();
   addSceneGenerateError.value = "";
+}
+
+function selectAddSceneVisualMode(mode) {
+  addSceneVisualMode.value = mode;
+  selectedAddSceneVisualSource.value = mode === "ai_image" ? "AI Image" : "Stock Clip";
 }
 
 function toggleRewriteTools() {
@@ -1556,7 +1677,7 @@ async function generateAIImage() {
 
   try {
     await api.post(`/scenes/${activeScene.value.id}/generate-image`, {
-      style: aiImageStyle.value,
+      style: visualStyleDraft.value || "cinematic",
       prompt_override: aiImagePromptOverride.value || undefined,
     });
     // Result comes back via Reverb generation.progress event — no polling needed
@@ -1568,6 +1689,40 @@ async function generateAIImage() {
     aiImagePending.value = false;
   }
   // aiImagePending stays true until Reverb fires completed/failed
+}
+
+async function pollSceneUntilVisual(sceneId, attempt = 0) {
+  if (attempt >= 24) {
+    aiImagePending.value = false;
+    return;
+  }
+
+  window.setTimeout(async () => {
+    try {
+      const response = await api.get(`/scenes/${sceneId}/preview`);
+      const refreshed = normalizeScenePayload(response.data?.data?.scene ?? null);
+
+      if (refreshed) {
+        replaceSceneInCollection(refreshed);
+        if (refreshed.visual_asset) {
+          aiImagePending.value = false;
+          aiImageError.value = "";
+          return;
+        }
+        if (refreshed.image_generation_settings?.needs_visual) {
+          aiImagePending.value = false;
+          aiImageError.value =
+            refreshed.image_generation_settings?.last_error ||
+            "Image generation failed. Please revise the prompt and try again.";
+          return;
+        }
+      }
+    } catch {
+      // Realtime updates may still arrive; keep polling briefly as a fallback.
+    }
+
+    pollSceneUntilVisual(sceneId, attempt + 1);
+  }, attempt < 3 ? 2500 : 5000);
 }
 
 async function queueExport() {
@@ -1644,7 +1799,14 @@ function subscribeProjectChannel() {
       aiImageError.value = "";
     } else if (payload.status === "failed") {
       aiImagePending.value = false;
-      aiImageError.value = payload.message || "Image generation failed.";
+      aiImageError.value =
+        payload.message || "Image generation failed. Please revise the prompt and try again.";
+      if (payload.scene_id) {
+        api.get(`/scenes/${payload.scene_id}/preview`).then((res) => {
+          const refreshed = res.data?.data?.scene ?? null;
+          if (refreshed) replaceSceneInCollection(normalizeScenePayload(refreshed));
+        }).catch(() => {});
+      }
     }
   });
 
@@ -1692,8 +1854,10 @@ async function createScene(insertAfterSceneId = null) {
     .toLowerCase()
     .replace(/\s+/g, "_");
   const visualType =
-    visualSourceTypeMap[selectedAddSceneVisualSource.value] || "stock_clip";
-  const visualQuery = scriptText || buildSceneLabel(sceneType);
+    addSceneVisualMode.value === "ai_image"
+      ? "ai_image"
+      : visualSourceTypeMap[selectedAddSceneVisualSource.value] || "stock_clip";
+  const visualQuery = addSceneVisualQuery.value.trim() || scriptText || buildSceneLabel(sceneType);
 
   try {
     const response = await api.post("/scenes", {
@@ -1709,7 +1873,8 @@ async function createScene(insertAfterSceneId = null) {
           )
         : 3,
       visual_type: visualType,
-      visual_prompt: scriptText || null,
+      visual_prompt: visualQuery || null,
+      visual_style: addSceneVisualStyle.value,
     });
 
     const createdScene = normalizeScenePayload(response.data?.data?.scene ?? null);
@@ -1719,7 +1884,20 @@ async function createScene(insertAfterSceneId = null) {
 
     let nextScene = createdScene;
 
-    if (!["text_card", "waveform"].includes(visualType)) {
+    if (visualType === "ai_image") {
+      aiImagePending.value = true;
+      aiImageError.value = "";
+      await api.post(`/scenes/${createdScene.id}/generate-image`, {
+        style: addSceneVisualStyle.value || "cinematic",
+        prompt_override: visualQuery || undefined,
+      });
+      nextScene = {
+        ...createdScene,
+        visual_type: "ai_image",
+        visual_prompt: visualQuery,
+        visual_style: addSceneVisualStyle.value,
+      };
+    } else if (!["text_card", "waveform"].includes(visualType)) {
       const visualResponse = await api.post(`/scenes/${createdScene.id}/swap-visual`, {
         query: visualQuery,
         visual_type: visualType,
@@ -1734,6 +1912,9 @@ async function createScene(insertAfterSceneId = null) {
     preloadSceneVisual(nextScene);
     closeAddScene();
     activeSceneId.value = nextScene.id;
+    if (visualType === "ai_image") {
+      pollSceneUntilVisual(nextScene.id);
+    }
   } catch (requestError) {
     pushToast({
       id: `scene-create-error-${Date.now()}`,
@@ -1923,7 +2104,7 @@ async function flushActiveSceneDrafts() {
       String(savedCaptions.style_key || "impact") !== nextCaptions.style_key ||
       String(savedCaptions.highlight_mode || "keywords") !== nextCaptions.highlight_mode ||
       String(savedCaptions.position || "bottom_third") !== nextCaptions.position ||
-      String(savedCaptions.font || "Poppins") !== nextCaptions.font
+      String(savedCaptions.font || DEFAULT_CAPTION_FONT) !== nextCaptions.font
     ) {
       if (captionSaveTimer) {
         window.clearTimeout(captionSaveTimer);
@@ -2193,20 +2374,60 @@ onBeforeUnmount(() => {
                   class="add-scene-textarea"
                   placeholder="Write your scene script, or click 'AI Generate' to create one..."
                 ></textarea>
-                <div class="micro-label">Visual source</div>
-                <div class="add-scene-visual-row">
-                  <div
-                    v-for="option in visualSourceOptions"
-                    :key="option.label"
-                    :class="`add-scene-visual-opt ${
-                      selectedAddSceneVisualSource === option.label ? 'selected' : ''
-                    }`"
-                    @click="selectedAddSceneVisualSource = option.label"
-                  >
-                    <div class="ico">{{ option.icon }}</div>
-                    {{ option.label }}
+                <div class="add-scene-visual-source">
+                  <div class="micro-label">Visual Style</div>
+                  <div class="visual-style-grid compact">
+                    <button
+                      v-for="s in AI_IMAGE_STYLES"
+                      :key="`top-add-style-${s.key}`"
+                      type="button"
+                      :class="['visual-style-btn', addSceneVisualStyle === s.key ? 'active' : '']"
+                      @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key"
+                    >{{ s.label }}</button>
                   </div>
-                </div>
+                  <div class="visual-type-tabs add-scene-tabs">
+                    <button
+                      type="button"
+                      :class="['visual-type-tab', addSceneVisualMode === 'stock' ? 'active' : '']"
+                      @click="selectAddSceneVisualMode('stock')"
+                    >Stock</button>
+                    <button
+                      type="button"
+                      :class="['visual-type-tab', addSceneVisualMode === 'ai_image' ? 'active ai' : '']"
+                      @click="selectAddSceneVisualMode('ai_image')"
+                    >✦ AI Image</button>
+                  </div>
+                  <template v-if="addSceneVisualMode === 'stock'">
+                    <div class="control-row add-scene-control-row">
+                      <span class="control-name">Type</span>
+                      <select v-model="selectedAddSceneVisualSource" class="control-value">
+                        <option
+                          v-for="option in addSceneStockTypeOptions"
+                          :key="`top-add-type-${option}`"
+                          :value="option"
+                        >{{ option }}</option>
+                      </select>
+                    </div>
+                    <div class="add-scene-control-row add-scene-prompt-row">
+                      <textarea
+                        v-model="addSceneVisualQuery"
+                        class="control-value query-input add-scene-visual-textarea"
+                        rows="3"
+                        placeholder="Search query for this scene... Leave blank to use the scene script."
+                      ></textarea>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="add-scene-control-row add-scene-prompt-row">
+                      <textarea
+                        v-model="addSceneVisualQuery"
+                        class="control-value query-input add-scene-visual-textarea"
+                        rows="3"
+                        placeholder="Describe the AI image... Leave blank to use the scene script."
+                      ></textarea>
+                    </div>
+                  </template>
+                  </div>
                 <div class="add-scene-actions">
                   <button
                     class="btn btn-ghost btn-sm"
@@ -2339,24 +2560,64 @@ onBeforeUnmount(() => {
                     class="add-scene-textarea"
                     placeholder="Write your scene script, or click 'AI Generate' to create one..."
                   ></textarea>
-                  <div class="micro-label">Visual source</div>
-                  <div class="add-scene-visual-row">
-                    <div
-                      v-for="option in visualSourceOptions"
-                      :key="`${scene.id}-${option.label}`"
-                      :class="`add-scene-visual-opt ${
-                        selectedAddSceneVisualSource === option.label ? 'selected' : ''
-                      }`"
-                      @click="selectedAddSceneVisualSource = option.label"
-                    >
-                      <div class="ico">{{ option.icon }}</div>
-                      {{ option.label }}
+                  <div class="add-scene-visual-source">
+                    <div class="micro-label">Visual Style</div>
+                    <div class="visual-style-grid compact">
+                      <button
+                        v-for="s in AI_IMAGE_STYLES"
+                        :key="`${scene.id}-add-style-${s.key}`"
+                        type="button"
+                        :class="['visual-style-btn', addSceneVisualStyle === s.key ? 'active' : '']"
+                        @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key"
+                      >{{ s.label }}</button>
                     </div>
-                </div>
-                <div v-if="addSceneGenerateError" class="rewrite-error">
-                  {{ addSceneGenerateError }}
-                </div>
-                <div class="add-scene-actions">
+                    <div class="visual-type-tabs add-scene-tabs">
+                      <button
+                        type="button"
+                        :class="['visual-type-tab', addSceneVisualMode === 'stock' ? 'active' : '']"
+                        @click="selectAddSceneVisualMode('stock')"
+                      >Stock</button>
+                      <button
+                        type="button"
+                        :class="['visual-type-tab', addSceneVisualMode === 'ai_image' ? 'active ai' : '']"
+                        @click="selectAddSceneVisualMode('ai_image')"
+                      >✦ AI Image</button>
+                    </div>
+                    <template v-if="addSceneVisualMode === 'stock'">
+                      <div class="control-row add-scene-control-row">
+                        <span class="control-name">Type</span>
+                        <select v-model="selectedAddSceneVisualSource" class="control-value">
+                          <option
+                            v-for="option in addSceneStockTypeOptions"
+                            :key="`${scene.id}-add-type-${option}`"
+                            :value="option"
+                          >{{ option }}</option>
+                        </select>
+                      </div>
+                      <div class="add-scene-control-row add-scene-prompt-row">
+                        <textarea
+                          v-model="addSceneVisualQuery"
+                          class="control-value query-input add-scene-visual-textarea"
+                          rows="3"
+                          placeholder="Search query for this scene... Leave blank to use the scene script."
+                        ></textarea>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <div class="add-scene-control-row add-scene-prompt-row">
+                        <textarea
+                          v-model="addSceneVisualQuery"
+                          class="control-value query-input add-scene-visual-textarea"
+                          rows="3"
+                          placeholder="Describe the AI image... Leave blank to use the scene script."
+                        ></textarea>
+                      </div>
+                    </template>
+                  </div>
+                  <div v-if="addSceneGenerateError" class="rewrite-error">
+                    {{ addSceneGenerateError }}
+                  </div>
+                  <div class="add-scene-actions">
                     <button
                       class="btn btn-ghost btn-sm"
                       type="button"
@@ -2379,9 +2640,6 @@ onBeforeUnmount(() => {
                     >
                       Add Scene
                     </button>
-                  </div>
-                  <div v-if="addSceneGenerateError" class="rewrite-error">
-                    {{ addSceneGenerateError }}
                   </div>
                 </div>
               </template>
@@ -2428,7 +2686,13 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <div v-else class="preview-fallback"></div>
-                <div v-if="isVisualLoading" class="preview-loading">
+                <div v-if="activeSceneAIImagePending" class="preview-loading">
+                  Generating AI image...
+                </div>
+                <div v-else-if="activeSceneVisualGenerationError" class="preview-loading error">
+                  {{ activeSceneVisualGenerationError }}
+                </div>
+                <div v-else-if="isVisualLoading" class="preview-loading">
                   Loading scene media...
                 </div>
                 <div v-else-if="visualLoadFailed" class="preview-loading error">
@@ -2445,7 +2709,7 @@ onBeforeUnmount(() => {
                 <div
                   class="preview-caption"
                   :class="captionPreviewClass"
-                  :style="captionPositionStyle"
+                  :style="[captionPositionStyle, captionFontStyle]"
                 >
                   <span
                     v-for="(word, index) in previewWords(
@@ -2633,18 +2897,6 @@ onBeforeUnmount(() => {
 
                 <!-- AI Image generation -->
                 <template v-else>
-                  <div style="margin-top:10px;">
-                    <div class="micro-label" style="margin-bottom:6px;">Style</div>
-                    <div class="ai-style-grid">
-                      <button
-                        v-for="s in AI_IMAGE_STYLES"
-                        :key="s.key"
-                        type="button"
-                        :class="['ai-style-btn', aiImageStyle === s.key ? 'active' : '']"
-                        @click="aiImageStyle = s.key"
-                      >{{ s.label }}</button>
-                    </div>
-                  </div>
                   <div class="control-row" style="margin-top:10px; flex-direction:column; align-items:flex-start; gap:4px;">
                     <span class="control-name">Prompt override <span style="opacity:.5;">(optional)</span></span>
                     <textarea
@@ -2665,6 +2917,7 @@ onBeforeUnmount(() => {
                   </button>
                   <div v-if="aiImageError" class="panel-error-copy">{{ aiImageError }}</div>
                   <div v-if="aiImagePending" class="panel-hint-copy">Generating via DALL-E 3 — this takes ~15s</div>
+                  <div v-else class="panel-hint-copy">Uses the visual style selected above.</div>
                 </template>
               </div>
             </div>
@@ -2796,26 +3049,27 @@ onBeforeUnmount(() => {
                     <span>On</span>
                   </label>
                 </div>
+                <div class="micro-label" style="margin-bottom:6px;">Caption effect</div>
                 <div class="caption-style-grid">
                   <div
                     :class="['caption-style-opt', captionStyleDraft === 'impact' ? 'active' : '']"
                     @click="captionStyleDraft = 'impact'"
                   >
-                    <div class="preview-text accent-text">BOLD</div>
+                    <div class="preview-text accent-text">Impact</div>
                     <div class="style-name">Impact</div>
                   </div>
                   <div
                     :class="['caption-style-opt', captionStyleDraft === 'editorial' ? 'active' : '']"
                     @click="captionStyleDraft = 'editorial'"
                   >
-                    <div class="preview-text serif-text">SERIF</div>
+                    <div class="preview-text serif-text">Editorial</div>
                     <div class="style-name">Editorial</div>
                   </div>
                   <div
                     :class="['caption-style-opt', captionStyleDraft === 'hacker' ? 'active' : '']"
                     @click="captionStyleDraft = 'hacker'"
                   >
-                    <div class="preview-text mono-text">MONO</div>
+                    <div class="preview-text mono-text">Hacker</div>
                     <div class="style-name">Hacker</div>
                   </div>
                 </div>
@@ -2839,21 +3093,40 @@ onBeforeUnmount(() => {
                 <!-- Font picker -->
                 <div class="font-picker-block">
                   <div class="micro-label" style="margin-bottom:6px;">Font</div>
-                  <div
-                    v-for="group in CAPTION_FONT_GROUPS"
-                    :key="group.label"
-                    class="font-group"
-                  >
-                    <div class="font-group-label">{{ group.label }}</div>
-                    <div class="font-group-items">
-                      <button
-                        v-for="font in group.fonts"
-                        :key="font"
-                        type="button"
-                        :class="['font-btn', captionFontDraft === font ? 'active' : '']"
-                        :style="{ fontFamily: font }"
-                        @click="captionFontDraft = font"
-                      >{{ font }}</button>
+                  <div class="font-dropdown">
+                    <button
+                      type="button"
+                      class="font-dropdown-trigger"
+                      @click="fontDropdownOpen = !fontDropdownOpen"
+                    >
+                      <span class="font-trigger-copy">
+                        <span class="font-trigger-name" :style="captionFontStyle">
+                          {{ selectedCaptionFont.font }}
+                        </span>
+                        <span class="font-trigger-group">{{ selectedCaptionFont.group }}</span>
+                      </span>
+                      <span class="font-trigger-chevron">▾</span>
+                    </button>
+                    <div v-if="fontDropdownOpen" class="font-dropdown-menu">
+                      <div
+                        v-for="group in CAPTION_FONT_GROUPS"
+                        :key="group.label"
+                        class="font-group"
+                      >
+                        <div class="font-group-label">{{ group.label }}</div>
+                        <button
+                          v-for="font in group.fonts"
+                          :key="font"
+                          type="button"
+                          :class="['font-option', captionFontDraft === font ? 'active' : '']"
+                          @click="selectCaptionFont(font)"
+                        >
+                          <span class="font-option-preview" :style="{ fontFamily: fontFamilyValue(font) }">
+                            {{ font }}
+                          </span>
+                          <span class="font-option-name">{{ font }}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3882,8 +4155,75 @@ button {
   padding-top: 10px;
 }
 
+.font-dropdown {
+  position: relative;
+}
+
+.font-dropdown-trigger {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.font-trigger-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.font-trigger-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.font-trigger-group {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.font-trigger-chevron {
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.font-dropdown-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #111118;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
 .font-group {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.font-group:last-child {
+  margin-bottom: 0;
 }
 
 .font-group-label {
@@ -3895,36 +4235,51 @@ button {
   opacity: 0.6;
 }
 
-.font-group-items {
+.font-option {
+  width: 100%;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.font-btn {
-  padding: 5px 8px;
-  border-radius: 5px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
-  font-size: 13px;
   cursor: pointer;
   text-align: left;
   transition: all 0.12s;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.font-btn:hover {
+.font-option:hover {
   background: rgba(255,255,255,0.04);
   border-color: var(--border);
 }
 
-.font-btn.active {
+.font-option.active {
   background: rgba(99,102,241,0.15);
   border-color: #6366f1;
   color: #a5b4fc;
+}
+
+.font-option-preview {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.font-option-name {
+  flex: 0 0 auto;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
 .add-scene-divider {
@@ -4110,39 +4465,40 @@ button {
   border-color: rgba(255, 107, 53, 0.45);
 }
 
-.add-scene-visual-row {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
+.add-scene-visual-source {
+  margin-top: 12px;
   margin-bottom: 10px;
 }
 
-.add-scene-visual-opt {
-  min-width: 0;
-  min-height: 88px;
-  padding: 8px 6px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  text-align: center;
-  font-size: 11px;
-  color: var(--text-secondary);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
+.visual-style-grid.compact {
+  margin-top: 6px;
+  margin-bottom: 10px;
 }
 
-.add-scene-visual-opt.selected {
-  border-color: var(--accent);
-  background: var(--accent-glow);
-  color: var(--accent);
+.add-scene-tabs {
+  margin-bottom: 10px;
 }
 
-.ico {
-  font-size: 16px;
-  margin-bottom: 2px;
+.add-scene-control-row {
+  margin-top: 8px;
+}
+
+.add-scene-prompt-row {
+  display: block;
+  width: 100%;
+}
+
+.add-scene-visual-textarea {
+  display: block;
+  width: 100%;
+  max-width: none;
+  min-height: 84px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.add-scene-prompt-row .add-scene-visual-textarea {
+  width: 100%;
 }
 
 .add-scene-actions {
@@ -4368,7 +4724,6 @@ button {
 
 /* Hacker style — monospace, yellow highlight */
 .caption-style-hacker .caption-word {
-  font-family: "Space Mono", monospace;
   font-size: 16px;
   font-weight: 400;
 }
@@ -4685,7 +5040,7 @@ select.control-value {
   background-position: right 8px center;
 }
 
-.query-input {
+.query-input:not(.add-scene-visual-textarea) {
   width: 140px;
 }
 

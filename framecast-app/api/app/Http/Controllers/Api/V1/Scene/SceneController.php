@@ -33,6 +33,7 @@ class SceneController extends Controller
             'duration_seconds' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:600'],
             'visual_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'visual_prompt' => ['sometimes', 'nullable', 'string'],
+            'visual_style' => ['sometimes', 'nullable', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon'],
         ]);
 
         $project = Project::query()
@@ -84,12 +85,14 @@ class SceneController extends Controller
                     'style_key' => 'impact',
                     'highlight_mode' => 'keywords',
                     'position' => 'bottom_third',
+                    'font' => 'Bebas Neue',
                     'highlight_color' => '#ff6b35',
                     'preset_id' => null,
                 ],
                 'visual_type' => $validated['visual_type'] ?? 'stock_clip',
                 'visual_asset_id' => null,
                 'visual_prompt' => $validated['visual_prompt'] ?? null,
+                'visual_style' => $validated['visual_style'] ?? null,
                 'transition_rule' => null,
                 'status' => 'draft',
                 'locked_fields_json' => [],
@@ -137,7 +140,13 @@ class SceneController extends Controller
             'voice_profile_id' => ['sometimes', 'nullable', 'integer'],
             'voice_settings_json' => ['sometimes', 'nullable', 'array'],
             'caption_settings_json' => ['sometimes', 'nullable', 'array'],
+            'caption_settings_json.enabled' => ['sometimes', 'boolean'],
+            'caption_settings_json.style_key' => ['sometimes', 'string', 'in:impact,editorial,hacker'],
+            'caption_settings_json.highlight_mode' => ['sometimes', 'string', 'in:keywords,word_by_word,line_by_line,none'],
+            'caption_settings_json.position' => ['sometimes', 'string', 'in:bottom_third,center,top_third'],
             'caption_settings_json.font' => ['sometimes', 'nullable', 'string', \Illuminate\Validation\Rule::in(CaptionFonts::ALL)],
+            'caption_settings_json.highlight_color' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'caption_settings_json.preset_id' => ['sometimes', 'nullable'],
             'visual_style' => ['sometimes', 'nullable', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon'],
             'motion_settings_json' => ['sometimes', 'nullable', 'array'],
             'motion_settings_json.effect' => ['sometimes', 'string', 'in:zoom_in,zoom_out,pan_left,pan_right,pan_up,pan_down,pan_zoom,static'],
@@ -732,6 +741,10 @@ class SceneController extends Controller
     private function isB2Url(string $url): bool
     {
         if (str_starts_with($url, 'b2://')) {
+            return true;
+        }
+
+        if (! str_contains($url, '://') && ! str_starts_with($url, '/')) {
             return true;
         }
 

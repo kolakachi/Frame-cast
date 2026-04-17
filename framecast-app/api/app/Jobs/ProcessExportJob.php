@@ -295,6 +295,7 @@ class ProcessExportJob implements ShouldQueue
         $captionEnabled = ($captionSettings['enabled'] ?? true) !== false;
         $captionStyle = (string) ($captionSettings['style_key'] ?? 'impact');
         $captionPosition = (string) ($captionSettings['position'] ?? 'bottom_third');
+        $captionFont = (string) ($captionSettings['font'] ?? 'Bebas Neue');
         $captionText = (string) ($scene->script_text ?: $scene->label ?: 'Framecast');
         $durationForFilter = $this->formatFilterDuration($duration);
 
@@ -354,7 +355,7 @@ class ProcessExportJob implements ShouldQueue
             $assFile = null;
             if ($captionEnabled && trim($captionText) !== '') {
                 $assFile = sprintf('%s/caption-%03d.ass', $tempDir, $index);
-                $this->buildASSCaption($captionText, $captionStyle, $captionPosition, $duration, $dimensions, $assFile);
+                $this->buildASSCaption($captionText, $captionStyle, $captionPosition, $captionFont, $duration, $dimensions, $assFile);
                 $filters[] = "subtitles={$assFile}";
                 $cleanupPaths[] = $assFile;
             }
@@ -711,6 +712,7 @@ class ProcessExportJob implements ShouldQueue
         string $text,
         string $captionStyle,
         string $captionPosition,
+        string $captionFont,
         float $duration,
         array $dimensions,
         string $outputPath
@@ -735,10 +737,11 @@ class ProcessExportJob implements ShouldQueue
         $marginLR = (int) round(60 * $playResX / 1080);
 
         // Mirror preview font sizing: 22px on 480px canvas scaled to export resolution
-        [$fontName, $fontSize, $bold, $italic] = match ($captionStyle) {
-            'editorial' => ['DejaVu Serif', (int) round(22 * $playResY / 480), 0, 1],
-            'hacker' => ['DejaVu Sans Mono', (int) round(16 * $playResY / 480), -1, 0],
-            default => ['DejaVu Sans', (int) round(22 * $playResY / 480), -1, 0],
+        $fontName = $this->sanitizeASSFontName($captionFont);
+        [$fontSize, $bold, $italic] = match ($captionStyle) {
+            'editorial' => [(int) round(22 * $playResY / 480), 0, 1],
+            'hacker' => [(int) round(16 * $playResY / 480), -1, 0],
+            default => [(int) round(22 * $playResY / 480), -1, 0],
         };
 
         $styledText = $this->buildASSStyledText($text, $captionStyle);
@@ -761,6 +764,13 @@ class ProcessExportJob implements ShouldQueue
         ]);
 
         file_put_contents($outputPath, $content);
+    }
+
+    private function sanitizeASSFontName(string $fontName): string
+    {
+        $fontName = trim(str_replace([',', "\r", "\n"], ' ', $fontName));
+
+        return $fontName !== '' ? $fontName : 'Bebas Neue';
     }
 
     private function buildASSStyledText(string $text, string $captionStyle): string

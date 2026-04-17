@@ -20,6 +20,10 @@ class PromptTemplateRegistry
                 'system' => 'You are a short-form video script writer. Rewrite source material into plain script text only.',
                 'user' => "Rewrite this URL/article-derived content into a short-form video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: preserve factual claims from the source, do not invent statistics, and use short caption-friendly lines.\nSource:\n{{source_content}}",
             ],
+            'script_from_images' => [
+                'system' => 'You write short-form narration from uploaded image references. Return plain script text only.',
+                'user' => "Create a short-form video script from these uploaded image references.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: analyze each image visually, write one concise narration beat per image in the same order, separate each beat with a blank line, use any user context, do not invent exact dates or identities unless provided.\nImage references and user context:\n{{source_content}}",
+            ],
             'script_from_product' => [
                 'system' => 'You write short-form product explainer and UGC-style ad scripts. Return plain script text only.',
                 'user' => "Create a short-form product video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: use only product details provided, do not invent testimonials/pricing/guarantees, include a clear CTA.\nProduct source:\n{{source_content}}",
