@@ -95,6 +95,9 @@ class MatchVisualsJob implements ShouldQueue
         $sceneText = mb_substr(trim((string) $scene->script_text), 0, 160);
         $tone = $project->tone ?: 'neutral';
 
-        return trim("{$sceneLabel}, {$tone} style, {$sceneText}");
+        // Append scene visual_style as a search modifier when set.
+        $stylePart = $scene->visual_style ? ", {$scene->visual_style}" : '';
+
+        return trim("{$sceneLabel}, {$tone} style{$stylePart}, {$sceneText}");
     }
 }

@@ -14,19 +14,29 @@ const usagePayload = ref(null)
 const loading = ref(true)
 const error = ref('')
 const assets = ref([])
+const collections = ref([])
 const selectedAsset = ref(null)
 const uploadPending = ref(false)
 const uploadError = ref('')
 const showUploadPanel = ref(false)
 const archiveTarget = ref(null)
 const archivePending = ref(false)
+const collectionDeleteTarget = ref(null)
+const collectionDeletePending = ref(false)
+const collectionSavePending = ref(false)
+const assetSavePending = ref(false)
 
 const searchQuery = ref('')
 const activeFilter = ref('')
+const activeCollectionId = ref('')
 const uploadTitle = ref('')
 const uploadType = ref('video')
 const uploadTags = ref('')
+const uploadCollectionId = ref('')
 const uploadFile = ref(null)
+const collectionName = ref('')
+const collectionDescription = ref('')
+const editingCollectionId = ref('')
 const currentPage = ref(1)
 const perPage = ref(12)
 const totalAssets = ref(0)
@@ -77,9 +87,20 @@ const archiveMessage = computed(() => {
   if (!archiveTarget.value) return ''
   return `"${archiveTarget.value.title}" will be removed from the active library and hidden from default selectors.`
 })
+const collectionDeleteMessage = computed(() => {
+  if (!collectionDeleteTarget.value) return ''
+  return `"${collectionDeleteTarget.value.name}" will be removed and assets assigned to it will stay in the library.`
+})
+const collectionOptions = computed(() => collections.value.map(collection => ({
+  ...collection,
+  value: String(collection.id),
+})))
 
 function pickAsset(asset) {
-  selectedAsset.value = asset
+  selectedAsset.value = {
+    ...asset,
+    collection_ids: Array.isArray(asset.collection_ids) ? [...asset.collection_ids] : [],
+  }
 }
 
 function closeAsset() {
@@ -95,6 +116,7 @@ async function fetchMe() {
 async function fetchAssets() {
   const params = {}
   if (activeFilter.value) params.asset_type = activeFilter.value
+  if (activeCollectionId.value) params.collection_id = activeCollectionId.value
   if (searchQuery.value.trim()) params.q = searchQuery.value.trim()
   params.page = currentPage.value
   params.per_page = perPage.value
@@ -107,13 +129,18 @@ async function fetchAssets() {
   }
 }
 
+async function fetchCollections() {
+  const { data } = await api.get('/collections')
+  collections.value = data.data?.collections || []
+}
+
 async function refreshAll() {
   loading.value = true
   error.value = ''
   try {
-    const [meResult, assetsResult] = await Promise.allSettled([fetchMe(), fetchAssets()])
+    const [meResult, collectionsResult, assetsResult] = await Promise.allSettled([fetchMe(), fetchCollections(), fetchAssets()])
 
-    if (meResult.status === 'rejected' && assetsResult.status === 'rejected') {
+    if (meResult.status === 'rejected' && collectionsResult.status === 'rejected' && assetsResult.status === 'rejected') {
       error.value = 'Could not load the asset library.'
       return
     }
@@ -124,6 +151,10 @@ async function refreshAll() {
 
     if (assetsResult.status === 'rejected') {
       error.value = assetsResult.reason?.response?.data?.error?.message || 'Could not load the asset library.'
+    }
+
+    if (collectionsResult.status === 'rejected') {
+      error.value = collectionsResult.reason?.response?.data?.error?.message || 'Could not load collections.'
     }
   } catch (err) {
     error.value = err?.response?.data?.error?.message || 'Could not load the asset library.'
@@ -149,11 +180,15 @@ async function uploadAsset() {
 
     const tagList = uploadTags.value.split(',').map(t => t.trim()).filter(Boolean)
     tagList.forEach((tag, i) => formData.append(`tags[${i}]`, tag))
+    if (uploadCollectionId.value) {
+      formData.append('collection_ids[0]', uploadCollectionId.value)
+    }
 
     await api.post('/assets', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 
     uploadTitle.value = ''
     uploadTags.value = ''
+    uploadCollectionId.value = ''
     uploadFile.value = null
     showUploadPanel.value = false
     uploadError.value = ''
@@ -164,6 +199,104 @@ async function uploadAsset() {
     uploadError.value = err?.response?.data?.error?.message || 'Upload failed.'
   } finally {
     uploadPending.value = false
+  }
+}
+
+function beginEditCollection(collection) {
+  editingCollectionId.value = String(collection.id)
+  collectionName.value = collection.name
+  collectionDescription.value = collection.description || ''
+}
+
+function resetCollectionForm() {
+  editingCollectionId.value = ''
+  collectionName.value = ''
+  collectionDescription.value = ''
+}
+
+async function saveCollection() {
+  if (!collectionName.value.trim()) {
+    error.value = 'Collection name is required.'
+    return
+  }
+
+  collectionSavePending.value = true
+  error.value = ''
+
+  try {
+    const payload = {
+      name: collectionName.value.trim(),
+      description: collectionDescription.value.trim() || null,
+    }
+
+    if (editingCollectionId.value) {
+      await api.patch(`/collections/${editingCollectionId.value}`, payload)
+    } else {
+      await api.post('/collections', payload)
+    }
+
+    resetCollectionForm()
+    await fetchCollections()
+  } catch (err) {
+    error.value = err?.response?.data?.error?.message || 'Could not save collection.'
+  } finally {
+    collectionSavePending.value = false
+  }
+}
+
+function requestDeleteCollection(collection) {
+  collectionDeleteTarget.value = collection
+}
+
+function closeCollectionDeleteConfirm() {
+  if (collectionDeletePending.value) return
+  collectionDeleteTarget.value = null
+}
+
+async function deleteCollection() {
+  if (!collectionDeleteTarget.value) return
+
+  collectionDeletePending.value = true
+  error.value = ''
+
+  try {
+    const deletedId = String(collectionDeleteTarget.value.id)
+    await api.delete(`/collections/${deletedId}`)
+    if (activeCollectionId.value === deletedId) {
+      activeCollectionId.value = ''
+      currentPage.value = 1
+    }
+    collectionDeleteTarget.value = null
+    await Promise.all([fetchCollections(), fetchAssets()])
+  } catch (err) {
+    error.value = err?.response?.data?.error?.message || 'Could not delete collection.'
+  } finally {
+    collectionDeletePending.value = false
+  }
+}
+
+async function saveSelectedAssetCollections() {
+  if (!selectedAsset.value) return
+
+  assetSavePending.value = true
+  error.value = ''
+
+  try {
+    const { data } = await api.patch(`/assets/${selectedAsset.value.id}`, {
+      collection_ids: selectedAsset.value.collection_ids || [],
+    })
+    const updatedAsset = data.data?.asset
+    if (updatedAsset) {
+      selectedAsset.value = {
+        ...updatedAsset,
+        collection_ids: Array.isArray(updatedAsset.collection_ids) ? [...updatedAsset.collection_ids] : [],
+      }
+      assets.value = assets.value.map(asset => asset.id === updatedAsset.id ? updatedAsset : asset)
+    }
+  } catch (err) {
+    error.value = err?.response?.data?.error?.message || 'Could not update asset collections.'
+  } finally {
+    assetSavePending.value = false
   }
 }
 
@@ -214,7 +347,7 @@ async function logout() {
 onMounted(refreshAll)
 
 let searchTimer = null
-watch([searchQuery, activeFilter], () => {
+watch([searchQuery, activeFilter, activeCollectionId], () => {
   if (loading.value) return
 
   if (searchTimer) {
@@ -307,6 +440,16 @@ watch([currentPage, perPage], () => {
               <input v-model="uploadTags" class="field-input" type="text" placeholder="finance, intro, evergreen" />
             </label>
 
+            <label class="field-label">
+              <span>Collection</span>
+              <select v-model="uploadCollectionId" class="field-select">
+                <option value="">No collection</option>
+                <option v-for="collection in collectionOptions" :key="collection.id" :value="collection.value">
+                  {{ collection.name }}
+                </option>
+              </select>
+            </label>
+
             <label class="upload-zone">
               <input type="file" hidden @change="uploadFile = $event.target.files?.[0] || null" />
               <span>{{ uploadFile ? uploadFile.name : 'Choose a file' }}</span>
@@ -323,6 +466,58 @@ watch([currentPage, perPage], () => {
           </div>
         </div>
 
+        <div class="collections-panel surface-card">
+          <div class="collections-header">
+            <div>
+              <div class="section-title">Collections</div>
+              <div class="section-subtitle">Group reusable assets by brand, series, client, or campaign.</div>
+            </div>
+          </div>
+
+          <div class="collection-form-row">
+            <label class="field-label collection-name-field">
+              <span>{{ editingCollectionId ? 'Edit Collection' : 'New Collection' }}</span>
+              <input v-model="collectionName" class="field-input" type="text" placeholder="Finance evergreen" />
+            </label>
+            <label class="field-label collection-description-field">
+              <span>Description</span>
+              <input v-model="collectionDescription" class="field-input" type="text" placeholder="Approved assets for a recurring series" />
+            </label>
+            <div class="collection-form-actions">
+              <button v-if="editingCollectionId" class="btn btn-ghost btn-sm" type="button" @click="resetCollectionForm">Cancel</button>
+              <button class="btn btn-ghost btn-sm" type="button" :disabled="collectionSavePending" @click="saveCollection">
+                {{ collectionSavePending ? 'Saving...' : (editingCollectionId ? 'Save' : 'Create') }}
+              </button>
+            </div>
+          </div>
+
+          <div class="collection-list">
+            <button
+              v-for="collection in collectionOptions"
+              :key="collection.id"
+              type="button"
+              :class="['collection-pill', activeCollectionId === collection.value ? 'active' : '']"
+              @click="activeCollectionId = activeCollectionId === collection.value ? '' : collection.value"
+            >
+              {{ collection.name }}
+            </button>
+            <span v-if="collections.length === 0" class="collection-empty">No collections yet</span>
+          </div>
+
+          <div v-if="collections.length" class="collection-management-list">
+            <div v-for="collection in collectionOptions" :key="collection.id" class="collection-management-row">
+              <div>
+                <strong>{{ collection.name }}</strong>
+                <span>{{ collection.description || 'No description' }}</span>
+              </div>
+              <div class="collection-row-actions">
+                <button class="micro-btn" type="button" @click="beginEditCollection(collection)">Edit</button>
+                <button class="micro-btn danger" type="button" @click="requestDeleteCollection(collection)">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="asset-toolbar">
           <div class="search-wrap">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -331,6 +526,13 @@ watch([currentPage, perPage], () => {
             </svg>
             <input v-model="searchQuery" class="search-box" placeholder="Search assets by name, tag, or type" />
           </div>
+
+          <select v-model="activeCollectionId" class="collection-filter-select">
+            <option value="">All Collections</option>
+            <option v-for="collection in collectionOptions" :key="collection.id" :value="collection.value">
+              {{ collection.name }}
+            </option>
+          </select>
 
           <div class="filter-chips">
             <div
@@ -426,6 +628,26 @@ watch([currentPage, perPage], () => {
           </div>
         </div>
 
+        <div class="drawer-section">
+          <div class="drawer-section-label">Collections</div>
+          <div v-if="collections.length" class="drawer-collection-list">
+            <label v-for="collection in collectionOptions" :key="collection.id" class="drawer-collection-option">
+              <input v-model="selectedAsset.collection_ids" type="checkbox" :value="collection.id" />
+              <span>{{ collection.name }}</span>
+            </label>
+          </div>
+          <div v-else class="detail-copy">Create a collection to group this asset.</div>
+          <button
+            v-if="collections.length"
+            class="btn btn-ghost btn-sm mt"
+            type="button"
+            :disabled="assetSavePending"
+            @click="saveSelectedAssetCollections"
+          >
+            {{ assetSavePending ? 'Saving...' : 'Save Collections' }}
+          </button>
+        </div>
+
         <div class="detail-actions">
           <a v-if="selectedAsset.storage_url" class="btn btn-ghost" :href="selectedAsset.storage_url" target="_blank" rel="noreferrer">Open Asset</a>
           <button class="btn btn-ghost btn-danger" type="button" @click="requestArchiveAsset(selectedAsset)">Archive</button>
@@ -442,6 +664,17 @@ watch([currentPage, perPage], () => {
       destructive
       @close="closeArchiveConfirm"
       @confirm="archiveAsset"
+    />
+
+    <ConfirmDialog
+      :open="Boolean(collectionDeleteTarget)"
+      title="Delete Collection?"
+      :message="collectionDeleteMessage"
+      confirm-label="Delete Collection"
+      :pending="collectionDeletePending"
+      destructive
+      @close="closeCollectionDeleteConfirm"
+      @confirm="deleteCollection"
     />
   </div>
 </template>
@@ -566,6 +799,96 @@ watch([currentPage, perPage], () => {
 }
 .upload-zone:hover { border-color: #494960; color: #a1a1b5; }
 
+/* Collections */
+.collections-panel {
+  margin-bottom: 20px;
+  padding: 18px;
+}
+.collections-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.collection-form-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+.collection-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.collection-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.collection-pill {
+  border: 1px solid #2a2a36;
+  border-radius: 999px;
+  background: #1d1d28;
+  color: #a1a1b5;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 10px;
+  transition: 0.15s ease;
+}
+.collection-pill:hover,
+.collection-pill.active {
+  border-color: rgba(255,107,53,0.4);
+  color: #ff9b72;
+  background: rgba(255,107,53,0.12);
+}
+.collection-empty {
+  color: #6a6a7c;
+  font-size: 12px;
+}
+.collection-management-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.collection-management-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #2a2a36;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.015);
+  padding: 10px 12px;
+}
+.collection-management-row strong {
+  display: block;
+  font-size: 12px;
+}
+.collection-management-row span {
+  display: block;
+  margin-top: 2px;
+  color: #6a6a7c;
+  font-size: 11px;
+}
+.collection-row-actions {
+  display: flex;
+  gap: 8px;
+}
+.micro-btn {
+  border: 1px solid #2a2a36;
+  border-radius: 7px;
+  background: transparent;
+  color: #a1a1b5;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 5px 8px;
+}
+.micro-btn:hover { border-color: #494960; color: #ececf3; }
+.micro-btn.danger { color: #fca5a5; }
+
 /* Toolbar */
 .asset-toolbar {
   display: flex;
@@ -596,6 +919,15 @@ watch([currentPage, perPage], () => {
   font-size: 13px;
 }
 .search-box:focus { outline: none; border-color: #494960; }
+.collection-filter-select {
+  min-width: 180px;
+  border-radius: 8px;
+  border: 1px solid #2a2a36;
+  background: #1d1d28;
+  color: #ececf3;
+  padding: 9px 11px;
+  font-size: 13px;
+}
 .filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .filter-chip {
   padding: 6px 14px;
@@ -774,10 +1106,28 @@ watch([currentPage, perPage], () => {
   font-weight: 500;
 }
 .detail-copy { color: #a1a1b5; font-size: 13px; line-height: 1.5; }
+.drawer-collection-list {
+  display: grid;
+  gap: 8px;
+}
+.drawer-collection-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #a1a1b5;
+  font-size: 12px;
+}
+.drawer-collection-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: #ff6b35;
+}
+.mt { margin-top: 10px; }
 .detail-actions { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 10px; }
 
 @media (max-width: 900px) {
   .asset-overview { grid-template-columns: 1fr; }
+  .collection-form-row { grid-template-columns: 1fr; }
   .mini-metrics { grid-template-columns: repeat(2, 1fr); }
   .section-header,
   .asset-pagination {

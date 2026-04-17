@@ -14,10 +14,14 @@ const project = ref(null)
 const hookOptions = ref([])
 const voiceProfiles = ref([])
 const variantSets = ref([])
+const localizationGroups = ref([])
 
 const drawerOpen = ref(false)
 const createPending = ref(false)
 const createError = ref('')
+const localizationPending = ref(false)
+const localizationError = ref('')
+const retryLocalizationPendingId = ref(null)
 const exportPending = ref(false)
 const exportError = ref('')
 const retryPending = ref(false)
@@ -38,9 +42,21 @@ const varyFormat = ref(false)
 const selectedFormats = ref(['9:16'])
 const lockSceneText = ref(false)
 const lockCaptions = ref(false)
+const selectedLocalizationLanguages = ref(['es', 'fr', 'de'])
 
 const selectedVariantIds = ref([])
 let pollTimer = null
+
+const localizationLanguageOptions = [
+  { value: 'es', label: 'Spanish' },
+  { value: 'fr', label: 'French' },
+  { value: 'de', label: 'German' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'it', label: 'Italian' },
+  { value: 'hi', label: 'Hindi' },
+  { value: 'ja', label: 'Japanese' },
+  { value: 'ar', label: 'Arabic' },
+]
 
 const availableHooks = computed(() => hookOptions.value.slice(0, 5))
 const availableHookCount = computed(() => availableHooks.value.length)
@@ -58,6 +74,16 @@ const variantCards = computed(() =>
       ...variant,
       variant_set_status: variantSet.status,
       variant_set_id: variantSet.id,
+    })),
+  ),
+)
+
+const localizationCards = computed(() =>
+  localizationGroups.value.flatMap((group) =>
+    (group.links || []).map((link) => ({
+      ...link,
+      group_status: group.status,
+      source_language: group.source_language,
     })),
   ),
 )
@@ -129,6 +155,17 @@ const stats = computed(() => {
     rendered: cards.filter((card) => displayVariantStatus(card) === 'rendered').length,
     queued: cards.filter((card) => ['pending', 'generating', 'queued', 'processing'].includes(displayVariantStatus(card))).length,
     failed: cards.filter((card) => displayVariantStatus(card) === 'failed').length,
+  }
+})
+
+const localizationStats = computed(() => {
+  const cards = localizationCards.value
+
+  return {
+    total: cards.length,
+    completed: cards.filter((card) => card.status === 'completed').length,
+    active: cards.filter((card) => ['pending', 'translating', 'dub_generating'].includes(card.status)).length,
+    failed: cards.filter((card) => card.status === 'failed').length,
   }
 })
 
@@ -285,6 +322,9 @@ function variantStatusCopy(status) {
   if (status === 'rendered') return 'Rendered'
   if (status === 'ready_for_review') return 'Ready'
   if (status === 'processing') return 'Processing'
+  if (status === 'completed') return 'Completed'
+  if (status === 'translating') return 'Translating'
+  if (status === 'dub_generating') return 'Generating voice'
   if (status === 'queued') return 'Queued'
   if (status === 'generating') return 'Generating'
   if (status === 'failed') return 'Failed'
@@ -380,6 +420,19 @@ function changedDimensionText(variant) {
   return pieces.join(' · ')
 }
 
+function languageLabel(language) {
+  return localizationLanguageOptions.find((option) => option.value === language)?.label || language
+}
+
+function toggleLocalizationLanguage(language) {
+  if (selectedLocalizationLanguages.value.includes(language)) {
+    selectedLocalizationLanguages.value = selectedLocalizationLanguages.value.filter((value) => value !== language)
+    return
+  }
+
+  selectedLocalizationLanguages.value = [...selectedLocalizationLanguages.value, language]
+}
+
 function voiceSelectionKey(voice) {
   return String(voice.provider_voice_key || voice.id)
 }
@@ -433,9 +486,12 @@ async function loadData({ silent = false } = {}) {
       api.get('/voice-profiles'),
     ])
 
+    const localizationResponse = await api.get(`/projects/${projectId.value}/localizations`)
+
     project.value = projectResponse.data?.data?.project ?? null
     hookOptions.value = projectResponse.data?.data?.hook_options ?? []
     variantSets.value = variantsResponse.data?.data?.variant_sets ?? []
+    localizationGroups.value = localizationResponse.data?.data?.localization_groups ?? []
     voiceProfiles.value = voicesResponse.data?.data?.voice_profiles ?? []
 
     if (hookCountOptions.value.length > 0 && !hookCountOptions.value.includes(hookCount.value)) {
@@ -462,6 +518,8 @@ function startPolling() {
   pollTimer = window.setInterval(() => {
     const hasActiveWork = variantCards.value.some((variant) =>
       ['pending', 'generating', 'queued'].includes(variant.status),
+    ) || localizationCards.value.some((link) =>
+      ['pending', 'translating', 'dub_generating'].includes(link.status),
     )
 
     if (!hasActiveWork && !exportPending.value && !createPending.value) {
@@ -470,6 +528,45 @@ function startPolling() {
 
     loadData({ silent: true })
   }, 4000)
+}
+
+async function generateLocalizations() {
+  localizationError.value = ''
+
+  if (selectedLocalizationLanguages.value.length === 0) {
+    localizationError.value = 'Select at least one target language.'
+    return
+  }
+
+  localizationPending.value = true
+
+  try {
+    await api.post(`/projects/${projectId.value}/localizations`, {
+      target_languages: selectedLocalizationLanguages.value,
+    })
+
+    await loadData({ silent: true })
+  } catch (error) {
+    localizationError.value = error.response?.data?.error?.message ?? 'Could not generate localizations.'
+  } finally {
+    localizationPending.value = false
+  }
+}
+
+async function retryLocalization(link) {
+  if (!link || link.status !== 'failed') return
+
+  localizationError.value = ''
+  retryLocalizationPendingId.value = link.id
+
+  try {
+    await api.post(`/localization-links/${link.id}/retry`)
+    await loadData({ silent: true })
+  } catch (error) {
+    localizationError.value = error.response?.data?.error?.message ?? 'Could not retry localization.'
+  } finally {
+    retryLocalizationPendingId.value = null
+  }
 }
 
 function stopPolling() {
@@ -704,6 +801,7 @@ onBeforeUnmount(() => {
             <div v-if="exportError" class="banner error">{{ exportError }}</div>
             <div v-if="retryError" class="banner error">{{ retryError }}</div>
             <div v-if="deleteError" class="banner error">{{ deleteError }}</div>
+            <div v-if="localizationError" class="banner error">{{ localizationError }}</div>
             <div v-if="partialSuccessSets.length > 0" class="banner warning">{{ partialSuccessCopy }}</div>
 
             <div v-if="variantCards.length > 0" class="variant-grid">
@@ -775,6 +873,48 @@ onBeforeUnmount(() => {
               <div class="empty-copy">Generate hook, voice, visual, or format variants from this project.</div>
               <button class="btn btn-primary" type="button" @click="openDrawer">Generate Variants</button>
             </div>
+
+            <div class="localization-section">
+              <div class="section-header compact-header">
+                <div>
+                  <div class="section-title">Localized Versions</div>
+                  <div class="section-subtitle">Translate scene scripts and regenerate voice for each target language.</div>
+                </div>
+              </div>
+
+              <div v-if="localizationCards.length > 0" class="localization-grid">
+                <article v-for="link in localizationCards" :key="link.id" class="localization-card">
+                  <div>
+                    <div class="localization-label">{{ languageLabel(link.target_language) }}</div>
+                    <div class="localization-meta">
+                      {{ link.source_language }} → {{ link.target_language }}
+                      <span v-if="link.voice_profile_name"> · {{ link.voice_profile_name }}</span>
+                    </div>
+                  </div>
+                  <span :class="['variant-status-pill inline-pill', variantStatusClass(link.status)]">{{ variantStatusCopy(link.status) }}</span>
+                  <div class="localization-actions">
+                    <button
+                      v-if="link.localized_project_id"
+                      class="btn btn-ghost btn-sm"
+                      type="button"
+                      @click="openEditor(link.localized_project_id)"
+                    >
+                      Open
+                    </button>
+                    <button
+                      v-if="link.status === 'failed'"
+                      class="btn btn-ghost btn-sm"
+                      type="button"
+                      :disabled="retryLocalizationPendingId === link.id"
+                      @click="retryLocalization(link)"
+                    >
+                      {{ retryLocalizationPendingId === link.id ? 'Retrying...' : 'Retry' }}
+                    </button>
+                  </div>
+                </article>
+              </div>
+              <div v-else class="localization-empty">No localized versions yet.</div>
+            </div>
           </div>
 
           <aside class="surface-card control-surface">
@@ -793,6 +933,24 @@ onBeforeUnmount(() => {
             </button>
 
             <div class="side-section">
+              <div class="panel-label">Localization</div>
+              <div class="language-chip-wrap">
+                <button
+                  v-for="language in localizationLanguageOptions"
+                  :key="language.value"
+                  :class="['chip', selectedLocalizationLanguages.includes(language.value) ? 'selected' : '']"
+                  type="button"
+                  @click="toggleLocalizationLanguage(language.value)"
+                >
+                  {{ language.label }}
+                </button>
+              </div>
+              <button class="btn btn-ghost full-width" type="button" :disabled="localizationPending || selectedLocalizationLanguages.length === 0" @click="generateLocalizations">
+                {{ localizationPending ? 'Localizing...' : `Generate ${selectedLocalizationLanguages.length} Language${selectedLocalizationLanguages.length === 1 ? '' : 's'}` }}
+              </button>
+            </div>
+
+            <div class="side-section">
               <div class="panel-label">Base Project</div>
               <div class="detail-card">
                 <div class="detail-title">{{ projectTitle }}</div>
@@ -807,6 +965,16 @@ onBeforeUnmount(() => {
                 <div class="job-row"><span>Rendered</span><span class="good">{{ stats.rendered }}</span></div>
                 <div class="job-row"><span>Queued</span><span class="info">{{ stats.queued }}</span></div>
                 <div class="job-row"><span>Failed</span><span class="bad">{{ stats.failed }}</span></div>
+              </div>
+            </div>
+
+            <div class="side-section">
+              <div class="panel-label">Localization Stats</div>
+              <div class="stats-list">
+                <div class="job-row"><span>Total languages</span><span>{{ localizationStats.total }}</span></div>
+                <div class="job-row"><span>Completed</span><span class="good">{{ localizationStats.completed }}</span></div>
+                <div class="job-row"><span>Active</span><span class="info">{{ localizationStats.active }}</span></div>
+                <div class="job-row"><span>Failed</span><span class="bad">{{ localizationStats.failed }}</span></div>
               </div>
             </div>
 
@@ -1078,9 +1246,19 @@ onBeforeUnmount(() => {
 .variant-actions { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .variant-export-meta { margin-top: 8px; }
 .variant-export-copy { display: inline-block; font-size: 11px; color: var(--color-text-muted); }
+.localization-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--color-border); }
+.compact-header { margin-bottom: 12px; }
+.localization-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.localization-card { position: relative; padding: 14px; border: 1px solid var(--color-border); border-radius: 12px; background: rgba(255,255,255,0.018); }
+.localization-label { font-size: 14px; font-weight: 600; }
+.localization-meta { margin-top: 4px; font-size: 11px; color: var(--color-text-muted); }
+.localization-actions { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+.localization-empty { color: var(--color-text-muted); font-size: 13px; padding: 10px 0; }
+.inline-pill { position: static; display: inline-flex; margin-top: 12px; }
 .status-rendered { color: #34d399; }
 .status-ready_for_review { color: #60a5fa; }
-.status-queued, .status-generating, .status-pending { color: #fbbf24; }
+.status-completed { color: #34d399; }
+.status-queued, .status-generating, .status-pending, .status-translating, .status-dub_generating { color: #fbbf24; }
 .status-failed { color: #f87171; }
 .empty-state { padding: 56px 20px; text-align: center; }
 .empty-title { font-size: 18px; font-weight: 600; }
@@ -1091,6 +1269,7 @@ onBeforeUnmount(() => {
 .detail-title { font-size: 13px; font-weight: 600; }
 .detail-meta { margin-top: 4px; font-size: 11px; color: var(--color-text-muted); }
 .stats-list { margin-top: 10px; display: grid; gap: 8px; }
+.language-chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .job-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--color-text-secondary); }
 .good { color: #34d399; }
 .info { color: #60a5fa; }

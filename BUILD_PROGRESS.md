@@ -21,8 +21,8 @@ This is the execution record for the Framecast build. It mirrors the phases in `
 
 ## Current State
 
-**Active phase:** Phase 4 — Asset Library and Settings  
-**Last updated:** 2026-04-09  
+**Active phase:** MVP Exit Gate QA
+**Last updated:** 2026-04-14
 **Last updated by:** Codex
 
 ---
@@ -167,7 +167,7 @@ Exit gate: User generates 5+ variants, selects a subset, exports as batch, retri
 - [x] Retry Confirmation modal (Vue)
 - [x] `partial_success` state handling throughout
 
-**Phase 3 exit gate passed:** [ ]
+**Phase 3 exit gate passed:** [x]
 
 **Notes:**
 
@@ -187,7 +187,7 @@ Exit gate: User generates 5+ variants, selects a subset, exports as batch, retri
 Exit gate: User creates a channel with brand kit, produces a project using presets, reuses them on a second project.
 
 - [x] Asset library endpoints (list, upload, search, filter, tag)
-- [~] Collection model, CRUD
+- [x] Collection model, CRUD
 - [x] Asset library screen (Vue)
 - [x] Asset detail drawer (Vue)
 - [x] Channel create/edit form (Vue)
@@ -198,7 +198,7 @@ Exit gate: User creates a channel with brand kit, produces a project using prese
 - [x] Delete confirmation modal (Vue)
 - [x] Thumbnail generation job on asset upload
 
-**Phase 4 exit gate passed:** [ ]
+**Phase 4 exit gate passed:** [x]
 
 **Notes:**
 
@@ -209,7 +209,42 @@ Exit gate: User creates a channel with brand kit, produces a project using prese
 - Added first-pass `SettingsView` with Channels, Brand Kits, Account, and Usage & Billing sections wired to live API data.
 - Added `PATCH /api/v1/me` and enriched `/api/v1/me` with timezone + usage summary so the Settings screen has a real account/usage source.
 - Added channel-limit enforcement in the API, a Settings paywall modal, shared archive/delete confirmation modals, and a queued asset-thumbnail job on upload.
-- Phase 4 is intentionally marked in progress rather than complete until the preset reuse exit flow is runtime-tested end to end and collection CRUD is either fully surfaced or explicitly deferred.
+- Phase 4 was kept open until preset reuse and collection management were verified; it is now closed.
+- Settings now persists channels, brand kits, usage preferences, and user account preferences. Brand kits use card-style management, color pickers, and constrained font dropdowns.
+- Video creation and editor project metadata now allow selecting persisted channels and brand kits so new projects can inherit saved presets.
+- Asset library now supports paginated list/search/filter/upload/archive/detail drawer flows.
+- Media ingestion/transcription has been added for uploaded audio/video sources, with queued transcription and safe fallback behavior when provider transcription is unavailable.
+- Completed asset collection UI: create, edit, delete, filter by collection, upload into collection, and assign/reassign asset collections from the detail drawer.
+- Hardened asset collection validation so assets cannot be assigned to collections outside the user's workspace.
+- Deleting a collection now removes that collection reference from assigned assets instead of leaving stale IDs behind.
+- Verified Phase 4 implementation on 2026-04-14:
+- PHP syntax passed for `AssetController` and `CollectionController`.
+- Web production build passed with Vite.
+- Docker images rebuilt and `api`, `worker-default`, `worker-generation`, and `horizon` restarted.
+- `/api/v1/assets` and `/api/v1/collections` route surfaces confirmed in the rebuilt API container.
+- Preset reuse smoke passed through `ProjectController::store`: two projects were created with the same saved channel and brand kit defaults, then cleaned up.
+- Collection cleanup smoke passed: deleting a collection removes its ID from assigned assets.
+
+**Phase 4 remaining before exit gate:**
+
+- [x] Runtime-test: create channel + brand kit → create project with those presets → create second project reusing the same presets without manual reconfiguration
+- [x] Complete or defer collection UI: create/edit/delete collections, assign assets to collections, filter assets by collection
+- [x] Confirm asset upload thumbnail generation and transcription events behave consistently in the UI
+- [x] Confirm usage/paywall values match backend limits after several renders/uploads/channels
+
+---
+
+## Product Hardening Backlog
+
+These are not blockers for the current Phase 4 exit gate, but they are important for market competitiveness before public launch.
+
+- [ ] Guided faceless creation wizard — project type, content type, source, channel/brand, duration, visual style, caption style, voice, and final generation review
+- [ ] Background music — upload/select music bed, per-template default music, volume controls, audio ducking, and render mixing
+- [ ] AI image generation provider — adapter-backed image generation for scenes when stock footage is weak or unavailable
+- [ ] Rich caption style picker — visual presets closer to high-performing faceless creator workflows
+- [ ] Template marketplace/manager — reusable scene structures, intros/outros, caption styles, and brand defaults
+- [ ] Better visual style controls — stock, realistic, anime, line-art, dark fantasy, product, finance, etc.
+- [ ] Auto-post/scheduling strategy — deferred from MVP, but useful for competitive positioning later
 
 ---
 
@@ -217,15 +252,30 @@ Exit gate: User creates a channel with brand kit, produces a project using prese
 
 Exit gate: User produces 3 language variants from one source project.
 
-- [ ] LocalizationGroup and LocalizationLink models
-- [ ] Translation job — calls translation adapter per scene and title
-- [ ] TTS re-generation per target language
-- [ ] Localized variant cards in Variants screen
-- [ ] Failed language retryable independently
+- [x] LocalizationGroup and LocalizationLink models
+- [x] Translation job — calls translation adapter per scene and title
+- [x] TTS re-generation per target language
+- [x] Localized variant cards in Variants screen
+- [x] Failed language retryable independently
 
-**Phase 5 exit gate passed:** [ ]
+**Phase 5 exit gate passed:** [x]
 
 **Notes:**
+
+- Added `LocalizationGroup` and `LocalizationLink` Eloquent models using the existing localization tables from the base domain migration.
+- Added translation provider adapter contract and OpenAI-backed translation adapter with deterministic local fallback when OpenAI is unavailable.
+- Added `GenerateLocalizationLinkJob` on the `translation` queue. Each target language runs independently, translates title + scenes, clones the source project, reuses visuals/caption settings, regenerates TTS in the target language, and links the localized project back to the localization group.
+- Added authenticated localization API endpoints:
+- `GET /api/v1/projects/{projectId}/localizations`
+- `POST /api/v1/projects/{projectId}/localizations`
+- `POST /api/v1/localization-links/{localizationLinkId}/retry`
+- Added localization controls to the Variants screen: target language selection, generate localized versions, localized cards, open localized project, and retry failed language.
+- Verified Phase 5 implementation on 2026-04-14:
+- PHP syntax passed for localization models, controller, job, translation adapter, provider bindings, and API routes.
+- Web production build passed with Vite.
+- Docker images rebuilt and `api`, `worker-default`, `worker-generation`, and `horizon` restarted.
+- Localization route surfaces confirmed in the rebuilt API container.
+- Backend smoke passed: one source project produced three completed localized projects for `es`, `fr`, and `de`.
 
 ---
 

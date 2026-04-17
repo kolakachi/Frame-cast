@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\GenerateAssetThumbnailJob;
 use App\Jobs\TranscribeAssetJob;
 use App\Models\Asset;
+use App\Models\Collection;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -108,6 +109,12 @@ class AssetController extends Controller
         ]);
 
         $file = $request->file('asset_file');
+        $collectionIds = $this->normalizeCollectionIds($user, $validated['collection_ids'] ?? []);
+
+        if ($collectionIds === null) {
+            return $this->error('invalid_collection', 'One or more selected collections do not exist in this workspace.', 422);
+        }
+
         $extension = $file?->getClientOriginalExtension() ?: $file?->extension() ?: 'bin';
         $path = sprintf(
             'workspace-assets/%d/%s.%s',
@@ -134,7 +141,7 @@ class AssetController extends Controller
                 ? 'queued'
                 : 'not_requested',
             'tags' => $validated['tags'] ?? [],
-            'collection_ids' => $validated['collection_ids'] ?? [],
+            'collection_ids' => $collectionIds,
             'restriction_scope' => 'workspace',
             'status' => 'active',
             'created_by_user_id' => $user->getKey(),
@@ -174,6 +181,16 @@ class AssetController extends Controller
             'channel_id' => ['sometimes', 'nullable', 'integer'],
             'status' => ['sometimes', 'in:active,archived'],
         ]);
+
+        if (array_key_exists('collection_ids', $validated)) {
+            $collectionIds = $this->normalizeCollectionIds($user, $validated['collection_ids'] ?? []);
+
+            if ($collectionIds === null) {
+                return $this->error('invalid_collection', 'One or more selected collections do not exist in this workspace.', 422);
+            }
+
+            $validated['collection_ids'] = $collectionIds;
+        }
 
         $asset->fill($validated)->save();
 
@@ -388,6 +405,36 @@ class AssetController extends Controller
         return in_array($assetType, ['audio', 'video'], true)
             || str_starts_with($mimeType, 'audio/')
             || str_starts_with($mimeType, 'video/');
+    }
+
+    /**
+     * @param  array<int|string>  $collectionIds
+     * @return array<int>|null
+     */
+    private function normalizeCollectionIds(User $user, array $collectionIds): ?array
+    {
+        $ids = collect($collectionIds)
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $found = Collection::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->whereIn('id', $ids->all())
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->sort()
+            ->values()
+            ->all();
+
+        $expected = $ids->sort()->values()->all();
+
+        return $found === $expected ? $ids->all() : null;
     }
 
     private function error(string $code, string $message, int $status): JsonResponse

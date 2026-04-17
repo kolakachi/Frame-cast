@@ -16,11 +16,14 @@ class ProjectHookOption extends Model
         'project_id',
         'sort_order',
         'hook_text',
+        'hook_score',
+        'hook_score_reason',
     ];
 
     protected function casts(): array
     {
         return [
+            'hook_score' => 'integer',
             'created_at' => 'datetime',
         ];
     }

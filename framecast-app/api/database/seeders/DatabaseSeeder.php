@@ -17,6 +17,8 @@ class DatabaseSeeder extends Seeder
             VoiceProfileSeeder::class,
             CaptionPresetSeeder::class,
             TemplateSeeder::class,
+            MusicTrackSeeder::class,
+            NicheSeeder::class,
         ]);
 
         // User::factory(10)->create();

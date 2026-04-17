@@ -34,10 +34,14 @@ const queueLastPage = ref(1)
 const perPageOptions = [4, 8, 12, 16, 24]
 const queuePerPageOptions = [5, 10, 20]
 
-const showCreateModal = ref(false)
-const createState = ref('idle')
-const createError = ref('')
-const activeSourceType = ref('script')
+// New video wizard (merged flow — single entry point)
+const showWizardModal = ref(false)
+const wizardStep = ref(1)
+const niches = ref([])
+const selectedNicheId = ref(null)
+const wizardSourceType = ref('script')
+const wizardCreateState = ref('idle')
+const wizardCreateError = ref('')
 const languageSelections = ref(['en'])
 const platformTarget = ref('tiktok')
 const aspectRatio = ref('9:16')
@@ -76,48 +80,35 @@ const activeChannels = computed(() => {
 const selectedChannel = computed(() =>
   channels.value.find((channel) => String(channel.id) === String(channelId.value)) || null
 )
+const selectedNiche = computed(() =>
+  niches.value.find((n) => n.id === selectedNicheId.value) ?? null
+)
 
-const sourceChips = [
-  { key: 'script', label: 'Script' },
-  { key: 'url', label: 'URL/Article' },
-  { key: 'prompt', label: 'Prompt' },
-  { key: 'csv_topic', label: 'CSV Topics' },
-  { key: 'product_description', label: 'Product Description' },
-  { key: 'audio_upload', label: 'Existing Audio' },
-  { key: 'video_upload', label: 'Existing Video' },
+const sourceOptions = [
+  { key: 'prompt',              icon: '✍️', label: 'Write a Prompt',      hint: 'AI generates the script' },
+  { key: 'script',              icon: '📄', label: 'Paste a Script',       hint: 'Your script, broken into scenes' },
+  { key: 'url',                 icon: '🔗', label: 'From URL / Article',   hint: 'Paste any article link' },
+  { key: 'product_description', icon: '📦', label: 'Product Description',  hint: 'Name, features, audience' },
+  { key: 'audio_upload',        icon: '🎙️', label: 'Upload Audio',         hint: 'Transcribe and structure' },
+  { key: 'video_upload',        icon: '🎬', label: 'Upload Video',         hint: 'Extract and repurpose' },
+  { key: 'csv_topic',           icon: '📋', label: 'CSV Batch',            hint: 'Multiple topics at once' },
 ]
 
-function toggleLanguage(language) {
-  if (languageSelections.value.includes(language)) {
-    languageSelections.value = languageSelections.value.filter((item) => item !== language)
-    return
-  }
-
-  languageSelections.value = [...languageSelections.value, language]
-}
-
-function resetCreateModal() {
-  createState.value = 'idle'
-  createError.value = ''
-}
-
-function openCreateModal() {
-  showCreateModal.value = true
-  resetCreateModal()
-}
-
-function closeCreateModal() {
-  if (createState.value === 'loading') return
-  showCreateModal.value = false
+function nicheTagsFor(niche) {
+  const tags = []
+  if (niche.default_visual_style) tags.push(niche.default_visual_style)
+  if (niche.default_voice_tone)   tags.push(niche.default_voice_tone)
+  if (niche.default_caption_preset_name) tags.push(niche.default_caption_preset_name)
+  return tags
 }
 
 function buildSourceContentRaw() {
-  if (activeSourceType.value === 'script') return scriptText.value.trim()
-  if (activeSourceType.value === 'url') return urlText.value.trim()
-  if (activeSourceType.value === 'prompt') return promptText.value.trim()
-  if (activeSourceType.value === 'csv_topic') return csvText.value.trim()
-  if (activeSourceType.value === 'audio_upload') return audioPath.value.trim()
-  if (activeSourceType.value === 'video_upload') return videoPath.value.trim()
+  if (wizardSourceType.value === 'script') return scriptText.value.trim()
+  if (wizardSourceType.value === 'url') return urlText.value.trim()
+  if (wizardSourceType.value === 'prompt') return promptText.value.trim()
+  if (wizardSourceType.value === 'csv_topic') return csvText.value.trim()
+  if (wizardSourceType.value === 'audio_upload') return audioPath.value.trim()
+  if (wizardSourceType.value === 'video_upload') return videoPath.value.trim()
 
   return [
     `Product Name: ${productName.value.trim()}`,
@@ -157,60 +148,15 @@ async function uploadMediaSource(file, assetType) {
 }
 
 async function resolveSourceContentRaw() {
-  if (activeSourceType.value === 'audio_upload' && audioFile.value) {
+  if (wizardSourceType.value === 'audio_upload' && audioFile.value) {
     return uploadMediaSource(audioFile.value, 'audio')
   }
 
-  if (activeSourceType.value === 'video_upload' && videoFile.value) {
+  if (wizardSourceType.value === 'video_upload' && videoFile.value) {
     return uploadMediaSource(videoFile.value, 'video')
   }
 
   return buildSourceContentRaw()
-}
-
-async function submitProject() {
-  createState.value = 'loading'
-  createError.value = ''
-
-  let sourceContentRaw = buildSourceContentRaw()
-  const hasMediaFile = (activeSourceType.value === 'audio_upload' && audioFile.value)
-    || (activeSourceType.value === 'video_upload' && videoFile.value)
-
-  if (!sourceContentRaw && !hasMediaFile) {
-    createState.value = 'error'
-    createError.value = 'Source content is required.'
-    return
-  }
-
-  try {
-    sourceContentRaw = await resolveSourceContentRaw()
-
-    const response = await api.post('/projects', {
-      source_type: activeSourceType.value,
-      source_content_raw: sourceContentRaw,
-      languages: languageSelections.value,
-      platform_target: platformTarget.value,
-      aspect_ratio: aspectRatio.value,
-      ...(channelId.value ? { channel_id: Number(channelId.value) } : {}),
-      ...(templateId.value ? { template_id: Number(templateId.value) } : {}),
-      ...(brandKitId.value ? { brand_kit_id: Number(brandKitId.value) } : {}),
-      ...(contentGoal.value ? { content_goal: contentGoal.value } : {}),
-      ...(tone.value ? { tone: tone.value } : {}),
-      ...(title.value ? { title: title.value } : {}),
-      ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
-    })
-
-    const projectId = response.data?.data?.project?.id
-    showCreateModal.value = false
-    createState.value = 'success'
-
-    if (projectId) {
-      router.push({ name: 'generation-progress', params: { projectId } })
-    }
-  } catch (error) {
-    createState.value = 'error'
-    createError.value = error.response?.data?.error?.message ?? 'Project creation failed.'
-  }
 }
 
 watch(channelId, (nextChannelId, previousChannelId) => {
@@ -451,7 +397,7 @@ async function loadMe() {
   try {
     const response = await api.get('/me')
     mePayload.value = response.data?.data?.user ?? null
-    await Promise.all([loadProjects(), loadQueue(), loadChannels(), loadBrandKits()])
+    await Promise.all([loadProjects(), loadQueue(), loadChannels(), loadBrandKits(), loadNiches()])
     await loadNotifications()
     subscribeWorkspaceNotifications()
     startDashboardPolling()
@@ -475,6 +421,82 @@ async function loadBrandKits() {
     brandKits.value = response.data?.data?.brand_kits ?? []
   } catch {
     brandKits.value = []
+  }
+}
+
+async function loadNiches() {
+  try {
+    const response = await api.get('/niches')
+    niches.value = response.data?.data?.niches ?? []
+  } catch {
+    niches.value = []
+  }
+}
+
+function openWizard() {
+  wizardStep.value = 1
+  selectedNicheId.value = null
+  wizardSourceType.value = 'script'
+  wizardCreateState.value = 'idle'
+  wizardCreateError.value = ''
+  showWizardModal.value = true
+}
+
+function closeWizard() {
+  if (wizardCreateState.value === 'loading') return
+  showWizardModal.value = false
+}
+
+function wizardNext() {
+  if (wizardStep.value === 1 && !selectedNicheId.value) return
+  wizardStep.value = Math.min(3, wizardStep.value + 1)
+}
+
+function wizardBack() {
+  wizardStep.value = Math.max(1, wizardStep.value - 1)
+}
+
+async function submitWizardProject() {
+  wizardCreateState.value = 'loading'
+  wizardCreateError.value = ''
+
+  const sourceContentRaw = buildSourceContentRaw()
+  const hasMediaFile = (wizardSourceType.value === 'audio_upload' && audioFile.value)
+    || (wizardSourceType.value === 'video_upload' && videoFile.value)
+
+  if (!sourceContentRaw && !hasMediaFile) {
+    wizardCreateState.value = 'error'
+    wizardCreateError.value = 'Source content is required.'
+    return
+  }
+
+  try {
+    const resolvedSource = await resolveSourceContentRaw()
+
+    const response = await api.post('/projects', {
+      source_type: wizardSourceType.value,
+      source_content_raw: resolvedSource,
+      languages: languageSelections.value,
+      platform_target: platformTarget.value,
+      aspect_ratio: aspectRatio.value,
+      niche_id: selectedNicheId.value,
+      ...(channelId.value ? { channel_id: Number(channelId.value) } : {}),
+      ...(brandKitId.value ? { brand_kit_id: Number(brandKitId.value) } : {}),
+      ...(contentGoal.value ? { content_goal: contentGoal.value } : {}),
+      ...(title.value ? { title: title.value } : {}),
+      ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
+    })
+
+    const projectId = response.data?.data?.project?.id
+    showWizardModal.value = false
+    wizardCreateState.value = 'success'
+
+    if (projectId) {
+      router.push({ name: 'generation-progress', params: { projectId } })
+    }
+  } catch (error) {
+    wizardCreateState.value = 'error'
+    wizardCreateError.value = error.response?.data?.error?.message ?? 'Project creation failed.'
   }
 }
 
@@ -608,17 +630,9 @@ onBeforeUnmount(() => {
           <div class="topbar-breadcrumb"><span>Workspace</span> · {{ videosThisMonth }} videos</div>
         </div>
         <div class="topbar-right">
-          <button class="btn btn-ghost" type="button" @click="openCreateModal">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M12 5v14M5 12h14"></path>
-            </svg>
+          <button class="btn btn-primary btn-sm" type="button" @click="openWizard">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
             New Video
-          </button>
-          <button class="btn btn-primary" type="button">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>
-            </svg>
-            Export
           </button>
           <button class="notif-bell-btn" type="button" title="Notifications" @click="notificationDrawerOpen = !notificationDrawerOpen">
             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
@@ -670,7 +684,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="projects-grid">
-          <button class="new-project-card" type="button" @click="openCreateModal">
+          <button class="new-project-card" type="button" @click="openWizard">
             <div style="text-align:center;">
               <div style="font-size:30px; margin-bottom:8px;">+</div>
               <div style="font-size:13px; font-weight:600;">New Video</div>
@@ -736,8 +750,8 @@ onBeforeUnmount(() => {
         <div v-if="projects.length === 0" class="empty-row">
           <p>No videos yet. Create your first project or import CSV topics.</p>
           <div class="empty-actions">
-            <button class="btn btn-ghost btn-sm" type="button" @click="openCreateModal">Create New Video</button>
-            <button class="btn btn-ghost btn-sm" type="button" @click="activeSourceType = 'csv_topic'; openCreateModal()">Import CSV Topics</button>
+            <button class="btn btn-ghost btn-sm" type="button" @click="openWizard">Create New Video</button>
+            <button class="btn btn-ghost btn-sm" type="button" @click="wizardSourceType = 'csv_topic'; openWizard()">Import CSV Topics</button>
           </div>
         </div>
 
@@ -846,125 +860,195 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div v-if="showCreateModal" class="modal-overlay" @click.self="closeCreateModal">
-      <div class="modal">
-        <div class="modal-title">Create New Video</div>
-        <div class="modal-subtitle">Choose source type, then generate.</div>
+    <!-- New Video Wizard Modal -->
+    <div v-if="showWizardModal" class="modal-overlay" @click.self="closeWizard">
+      <div class="modal wizard-modal">
 
-        <div class="source-type-chips">
-          <button
-            v-for="chip in sourceChips"
-            :key="chip.key"
-            :class="`chip ${activeSourceType === chip.key ? 'selected' : ''}`"
-            type="button"
-            @click="activeSourceType = chip.key"
-          >
-            {{ chip.label }}
-          </button>
-        </div>
-
-        <div class="source-panel" :class="activeSourceType === 'script' ? 'active' : ''">
-          <label><span>Script</span><textarea v-model="scriptText" class="field-input textarea"></textarea></label>
-        </div>
-
-        <div class="source-panel" :class="activeSourceType === 'url' ? 'active' : ''">
-          <label><span>Article URL or pasted article text</span><textarea v-model="urlText" class="field-input textarea" placeholder="https://example.com/article or paste article text here"></textarea></label>
-        </div>
-
-        <div class="source-panel" :class="activeSourceType === 'prompt' ? 'active' : ''">
-          <label><span>Prompt</span><textarea v-model="promptText" class="field-input textarea"></textarea></label>
-        </div>
-
-        <div class="source-panel" :class="activeSourceType === 'csv_topic' ? 'active' : ''">
-          <label><span>CSV Topics</span><textarea v-model="csvText" class="field-input textarea" placeholder="topic,angle,hook"></textarea></label>
-        </div>
-
-        <div class="source-panel" :class="activeSourceType === 'product_description' ? 'active' : ''">
-          <div class="form-grid">
-            <label><span>Product name</span><input v-model="productName" class="field-input" type="text"></label>
-            <label><span>Product URL</span><input v-model="productUrl" class="field-input" type="text"></label>
+        <!-- Step indicator -->
+        <div class="wizard-steps">
+          <div :class="['wizard-step', wizardStep === 1 ? 'active' : wizardStep > 1 ? 'done' : '']">
+            <div class="wizard-step-num">{{ wizardStep > 1 ? '✓' : '1' }}</div>
+            <span>Pick Niche</span>
           </div>
-          <label class="mt"><span>Product description</span><textarea v-model="productDescription" class="field-input textarea"></textarea></label>
-          <label class="mt"><span>Target audience</span><input v-model="targetAudience" class="field-input" type="text"></label>
-        </div>
-
-        <div class="source-panel" :class="activeSourceType === 'audio_upload' ? 'active' : ''">
-          <label class="upload-zone upload-zone-input">
-            <span>{{ audioFile ? audioFile.name : 'Upload audio file' }}</span>
-            <input class="hidden-file-input" type="file" accept="audio/*" @change="audioFile = selectedFile($event)">
-          </label>
-          <label class="mt"><span>Or existing storage path / URL</span><input v-model="audioPath" class="field-input" type="text"></label>
-        </div>
-
-        <div class="source-panel" :class="activeSourceType === 'video_upload' ? 'active' : ''">
-          <label class="upload-zone upload-zone-input">
-            <span>{{ videoFile ? videoFile.name : 'Upload video file' }}</span>
-            <input class="hidden-file-input" type="file" accept="video/*" @change="videoFile = selectedFile($event)">
-          </label>
-          <label class="mt"><span>Or existing storage path / URL</span><input v-model="videoPath" class="field-input" type="text"></label>
-        </div>
-
-        <div class="form-grid mt">
-          <label><span>Aspect ratio</span>
-            <select v-model="aspectRatio" class="field-input"><option value="9:16">9:16</option><option value="1:1">1:1</option><option value="16:9">16:9</option></select>
-          </label>
-          <label><span>Platform</span>
-            <select v-model="platformTarget" class="field-input"><option value="tiktok">TikTok</option><option value="reels">Instagram Reels</option><option value="shorts">YouTube Shorts</option></select>
-          </label>
-        </div>
-
-        <div class="form-grid mt">
-          <label><span>Channel</span>
-            <select v-model="channelId" class="field-input">
-              <option value="">No channel</option>
-              <option v-for="channel in channels" :key="channel.id" :value="String(channel.id)">
-                {{ channel.name }}
-              </option>
-            </select>
-          </label>
-          <label><span>Brand Kit</span>
-            <select v-model="brandKitId" class="field-input">
-              <option value="">No brand kit</option>
-              <option v-for="brandKit in brandKits" :key="brandKit.id" :value="String(brandKit.id)">
-                {{ brandKit.name }}
-              </option>
-            </select>
-          </label>
-        </div>
-
-        <div v-if="selectedChannel" class="modal-hint">
-          Channel defaults can prefill brand kit, platform, and language. You can still override them before generation.
-        </div>
-
-        <div class="form-grid mt">
-          <label><span>Template ID</span><input v-model="templateId" class="field-input" type="text"></label>
-          <label><span>Duration target (sec)</span><input v-model="durationTargetSeconds" class="field-input" type="text"></label>
-        </div>
-
-        <div class="form-grid mt">
-          <label><span>Tone</span><input v-model="tone" class="field-input" type="text"></label>
-          <label><span>Content goal</span><input v-model="contentGoal" class="field-input" type="text"></label>
-        </div>
-
-        <label class="mt"><span>Title</span><input v-model="title" class="field-input" type="text"></label>
-
-        <div class="langs mt">
-          <span>Languages</span>
-          <div class="lang-row">
-            <button :class="`chip ${languageSelections.includes('en') ? 'selected' : ''}`" type="button" @click="toggleLanguage('en')">EN</button>
-            <button :class="`chip ${languageSelections.includes('es') ? 'selected' : ''}`" type="button" @click="toggleLanguage('es')">ES</button>
-            <button :class="`chip ${languageSelections.includes('fr') ? 'selected' : ''}`" type="button" @click="toggleLanguage('fr')">FR</button>
+          <div :class="['wizard-connector', wizardStep > 1 ? 'done' : '']"></div>
+          <div :class="['wizard-step', wizardStep === 2 ? 'active' : wizardStep > 2 ? 'done' : '']">
+            <div class="wizard-step-num">{{ wizardStep > 2 ? '✓' : '2' }}</div>
+            <span>Source</span>
+          </div>
+          <div :class="['wizard-connector', wizardStep > 2 ? 'done' : '']"></div>
+          <div :class="['wizard-step', wizardStep === 3 ? 'active' : '']">
+            <div class="wizard-step-num">3</div>
+            <span>Content</span>
           </div>
         </div>
 
-        <div v-if="createError" class="modal-error mt">{{ createError }}</div>
-
-        <div class="modal-actions">
-          <button class="btn btn-ghost" type="button" @click="closeCreateModal">Cancel</button>
-          <button class="btn btn-primary" :disabled="createState === 'loading'" type="button" @click="submitProject">
-            {{ createState === 'loading' ? 'Generating...' : 'Generate' }}
-          </button>
+        <!-- Step 1: Pick Niche -->
+        <div v-if="wizardStep === 1">
+          <div class="section-title">Pick your content niche</div>
+          <div class="section-subtitle">Framecast pre-configures visuals, voice, captions, and music based on your selection.</div>
+          <div class="niche-grid">
+            <div
+              v-for="niche in niches"
+              :key="niche.id"
+              :class="['niche-card', selectedNicheId === niche.id ? 'selected' : '']"
+              role="button"
+              tabindex="0"
+              @click="selectedNicheId = niche.id"
+              @keydown.enter="selectedNicheId = niche.id"
+            >
+              <div class="niche-selected-check">✓</div>
+              <span class="niche-emoji">{{ niche.icon_emoji }}</span>
+              <div class="niche-name">{{ niche.name }}</div>
+              <div class="niche-desc">{{ niche.description }}</div>
+              <div class="niche-tags">
+                <span v-for="tag in nicheTagsFor(niche)" :key="tag" class="niche-tag">{{ tag }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" type="button" @click="closeWizard">Cancel</button>
+            <button class="btn btn-primary" type="button" :disabled="!selectedNicheId" @click="wizardNext">Continue →</button>
+          </div>
         </div>
+
+        <!-- Step 2: Source Type -->
+        <div v-if="wizardStep === 2">
+          <div class="section-title">Choose your source</div>
+          <div class="section-subtitle">How do you want to start this video?</div>
+          <div v-if="selectedNiche" class="niche-preset-banner">
+            <span>{{ selectedNiche.icon_emoji }}</span>
+            <span>Loaded <strong>{{ selectedNiche.name }}</strong>
+              <template v-if="selectedNiche.default_visual_style"> — {{ selectedNiche.default_visual_style }} visuals</template>
+              <template v-if="selectedNiche.default_voice_tone">, {{ selectedNiche.default_voice_tone }} voice</template>
+              <template v-if="selectedNiche.default_music_mood">, {{ selectedNiche.default_music_mood }} music</template>
+            </span>
+          </div>
+          <div class="source-type-grid">
+            <div
+              v-for="opt in sourceOptions"
+              :key="opt.key"
+              :class="['source-type-opt', wizardSourceType === opt.key ? 'selected' : '']"
+              role="button"
+              tabindex="0"
+              @click="wizardSourceType = opt.key"
+              @keydown.enter="wizardSourceType = opt.key"
+            >
+              <span class="source-type-ico">{{ opt.icon }}</span>
+              <div class="source-type-name">{{ opt.label }}</div>
+              <div class="source-type-hint">{{ opt.hint }}</div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" type="button" @click="wizardBack">← Back</button>
+            <button class="btn btn-primary" type="button" @click="wizardNext">Continue →</button>
+          </div>
+        </div>
+
+        <!-- Step 3: Content Entry -->
+        <div v-if="wizardStep === 3">
+          <div class="section-title">Enter your content</div>
+          <div class="section-subtitle">Almost done — fill in your content and confirm settings.</div>
+
+          <!-- Niche preset summary pills -->
+          <div v-if="selectedNiche" class="niche-preset-summary">
+            <div v-if="selectedNiche.default_visual_style" class="preset-pill">
+              <div class="preset-pill-label">Visual</div>
+              <div class="preset-pill-val">{{ selectedNiche.default_visual_style }}</div>
+            </div>
+            <div v-if="selectedNiche.default_voice_tone" class="preset-pill">
+              <div class="preset-pill-label">Voice</div>
+              <div class="preset-pill-val">{{ selectedNiche.default_voice_tone }}</div>
+            </div>
+            <div v-if="selectedNiche.default_caption_preset_name" class="preset-pill">
+              <div class="preset-pill-label">Captions</div>
+              <div class="preset-pill-val">{{ selectedNiche.default_caption_preset_name }}</div>
+            </div>
+            <div v-if="selectedNiche.default_music_mood" class="preset-pill">
+              <div class="preset-pill-label">Music</div>
+              <div class="preset-pill-val">{{ selectedNiche.default_music_mood }}</div>
+            </div>
+          </div>
+
+          <!-- Content input by source type -->
+          <div v-if="wizardSourceType === 'prompt'" class="input-group">
+            <label class="input-label">What's your video about?</label>
+            <textarea v-model="promptText" class="field-input textarea" rows="5" placeholder="e.g. The mysterious disappearance of the Beaumont family in 1966…"></textarea>
+          </div>
+          <div v-else-if="wizardSourceType === 'script'" class="input-group">
+            <label class="input-label">Paste your script</label>
+            <textarea v-model="scriptText" class="field-input textarea" rows="6" placeholder="Each paragraph will become a scene…"></textarea>
+          </div>
+          <div v-else-if="wizardSourceType === 'url'" class="input-group">
+            <label class="input-label">Article or page URL</label>
+            <input v-model="urlText" type="url" class="field-input" placeholder="https://…" />
+          </div>
+          <div v-else-if="wizardSourceType === 'csv_topic'" class="input-group">
+            <label class="input-label">CSV Topics</label>
+            <textarea v-model="csvText" class="field-input textarea" rows="5" placeholder="topic,angle,hook"></textarea>
+          </div>
+          <div v-else-if="wizardSourceType === 'product_description'" class="input-group">
+            <div class="form-grid">
+              <label class="input-label-wrap"><span class="input-label">Product name</span><input v-model="productName" class="field-input" type="text"></label>
+              <label class="input-label-wrap"><span class="input-label">Product URL</span><input v-model="productUrl" class="field-input" type="url"></label>
+            </div>
+            <label class="input-label-wrap mt"><span class="input-label">Description</span><textarea v-model="productDescription" class="field-input textarea" rows="3"></textarea></label>
+            <label class="input-label-wrap mt"><span class="input-label">Target audience</span><input v-model="targetAudience" class="field-input" type="text"></label>
+          </div>
+          <div v-else-if="wizardSourceType === 'audio_upload'" class="input-group">
+            <label class="input-label">Upload audio file</label>
+            <label class="upload-zone upload-zone-input">
+              <span>{{ audioFile ? audioFile.name : '🎙️  Drop your audio file here — MP3, WAV, M4A · max 500MB' }}</span>
+              <input class="hidden-file-input" type="file" accept="audio/*" @change="audioFile = selectedFile($event)">
+            </label>
+          </div>
+          <div v-else-if="wizardSourceType === 'video_upload'" class="input-group">
+            <label class="input-label">Upload video file</label>
+            <label class="upload-zone upload-zone-input">
+              <span>{{ videoFile ? videoFile.name : '🎬  Drop your video file here — MP4, MOV · max 2GB' }}</span>
+              <input class="hidden-file-input" type="file" accept="video/*" @change="videoFile = selectedFile($event)">
+            </label>
+          </div>
+
+          <!-- Settings -->
+          <div class="settings-2col mt">
+            <label class="input-label-wrap">
+              <span class="input-label">Channel</span>
+              <select v-model="channelId" class="field-input">
+                <option value="">No channel</option>
+                <option v-for="channel in channels" :key="channel.id" :value="String(channel.id)">{{ channel.name }}</option>
+              </select>
+            </label>
+            <label class="input-label-wrap">
+              <span class="input-label">Language</span>
+              <select v-model="languageSelections[0]" class="field-input">
+                <option value="en">English (US)</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="mt">
+            <div class="input-label" style="margin-bottom:8px;">Format</div>
+            <div class="format-chips">
+              <div :class="['format-chip', aspectRatio === '9:16' ? 'active' : '']" @click="aspectRatio = '9:16'">9:16</div>
+              <div :class="['format-chip', aspectRatio === '1:1'  ? 'active' : '']" @click="aspectRatio = '1:1'">1:1</div>
+              <div :class="['format-chip', aspectRatio === '16:9' ? 'active' : '']" @click="aspectRatio = '16:9'">16:9</div>
+            </div>
+          </div>
+
+          <label class="input-label-wrap mt"><span class="input-label">Title <span style="opacity:.5;font-weight:400;">(optional)</span></span><input v-model="title" class="field-input" type="text"></label>
+
+          <div v-if="wizardCreateError" class="modal-error mt">{{ wizardCreateError }}</div>
+
+          <div class="modal-actions">
+            <button class="btn btn-ghost" type="button" @click="wizardBack">← Back</button>
+            <button class="btn btn-primary" type="button" :disabled="wizardCreateState === 'loading'" @click="submitWizardProject">
+              {{ wizardCreateState === 'loading' ? '✦ Generating…' : '✦ Generate Video' }}
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -1124,8 +1208,9 @@ onBeforeUnmount(() => {
 .toast-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); margin-top: 6px; }
 .toast-content { font-size: 12px; color: var(--color-text-secondary); }
 .toast-msg strong { color: var(--color-text-primary); }
+/* ── Modals ─────────────────────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; z-index: 180; background: rgba(0,0,0,0.68); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.modal { width: min(900px,100%); max-height: 90vh; overflow-y: auto; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; padding: 18px; }
+.modal { width: min(900px,100%); max-height: 90vh; overflow-y: auto; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; }
 .delete-modal-overlay { z-index: 190; }
 .delete-modal { width: min(420px, 100%); background: linear-gradient(180deg, rgba(255,255,255,0.018), transparent 100%), var(--color-bg-panel); border: 1px solid rgba(248,113,113,0.18); border-radius: 16px; padding: 22px; box-shadow: 0 24px 48px rgba(0, 0, 0, 0.42); }
 .delete-modal-icon { width: 42px; height: 42px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: rgba(248,113,113,0.12); color: #f87171; border: 1px solid rgba(248,113,113,0.18); }
@@ -1135,27 +1220,78 @@ onBeforeUnmount(() => {
 .delete-modal-actions { margin-top: 22px; display: flex; justify-content: flex-end; gap: 8px; }
 .delete-btn { background: #ef4444; color: #fff; }
 .delete-btn:disabled { opacity: 0.6; cursor: default; }
-.modal-title { font-size: 18px; font-weight: 600; }
-.modal-subtitle { margin-top: 4px; font-size: 13px; color: var(--color-text-muted); }
-.source-type-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.chip { padding: 6px 10px; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-secondary); cursor: pointer; font-size: 12px; }
-.chip.selected { background: rgba(255,107,53,0.14); border-color: rgba(255,107,53,0.35); color: var(--color-accent); }
-.source-panel { display: none; margin-top: 12px; }
-.source-panel.active { display: block; }
+.modal-error { padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(248,113,113,0.25); color: #f87171; font-size: 12px; background: rgba(248,113,113,0.1); }
+.modal-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 8px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.settings-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-input { width: 100%; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-primary); padding: 9px 12px; font-size: 13px; }
 .textarea { min-height: 90px; resize: vertical; }
-.upload-zone { margin-top: 8px; border: 1px dashed var(--color-border); border-radius: 8px; padding: 16px; color: var(--color-text-muted); font-size: 13px; text-align: center; background: var(--color-bg-card); }
+.upload-zone { border: 1px dashed var(--color-border); border-radius: 8px; padding: 20px 16px; color: var(--color-text-muted); font-size: 13px; text-align: center; background: var(--color-bg-card); }
 .upload-zone-input { display: block; cursor: pointer; transition: 0.15s ease; }
-.upload-zone-input:hover { border-color: rgba(255, 107, 53, 0.35); color: var(--color-text-secondary); }
+.upload-zone-input:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }
 .hidden-file-input { display: none; }
-label { display: grid; gap: 6px; font-size: 12px; color: var(--color-text-secondary); }
-.mt { margin-top: 12px; }
-.langs > span { font-size: 12px; color: var(--color-text-secondary); }
-.lang-row { margin-top: 8px; display: flex; gap: 8px; }
-.modal-error { padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(248,113,113,0.25); color: #f87171; font-size: 12px; background: rgba(248,113,113,0.1); }
-.modal-hint { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(96,165,250,0.18); color: var(--color-text-muted); font-size: 12px; background: rgba(96,165,250,0.08); }
-.modal-actions { margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px; }
+.input-group { margin-top: 16px; }
+.input-label { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 6px; display: block; }
+.input-label-wrap { display: grid; gap: 6px; }
+.mt { margin-top: 14px; }
+
+/* ── Wizard ──────────────────────────────────────────────────────── */
+.wizard-modal { width: min(860px,calc(100vw - 32px)); }
+
+/* Step indicator */
+.wizard-steps { display: flex; align-items: center; margin-bottom: 24px; }
+.wizard-step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-muted); }
+.wizard-step-num { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--color-border); color: var(--color-text-muted); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; }
+.wizard-step.active .wizard-step-num { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.wizard-step.active { color: var(--color-text-primary); }
+.wizard-step.done .wizard-step-num { background: rgba(52,211,153,0.15); border-color: rgba(52,211,153,0.4); color: #34d399; }
+.wizard-connector { flex: 1; height: 1px; background: var(--color-border); margin: 0 10px; }
+.wizard-connector.done { background: rgba(52,211,153,0.35); }
+
+/* Section headings (inside wizard steps) */
+.section-title { font-size: 18px; font-weight: 600; color: var(--color-text-primary); }
+.section-subtitle { margin-top: 4px; margin-bottom: 20px; font-size: 13px; color: var(--color-text-muted); }
+
+/* Niche grid */
+.niche-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 4px; }
+.niche-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px 12px; border-radius: 10px; border: 1.5px solid var(--color-border); background: rgba(255,255,255,0.025); cursor: pointer; text-align: left; transition: border-color 0.15s, background 0.15s; }
+.niche-card:hover { border-color: rgba(255,107,53,0.4); background: rgba(255,107,53,0.04); transform: translateY(-1px); }
+.niche-card.selected { border-color: var(--color-accent); background: rgba(255,107,53,0.08); }
+.niche-selected-check { display: none; position: absolute; top: 8px; right: 8px; width: 18px; height: 18px; border-radius: 50%; background: var(--color-accent); color: #fff; font-size: 10px; font-weight: 700; align-items: center; justify-content: center; }
+.niche-card.selected .niche-selected-check { display: flex; }
+.niche-emoji { font-size: 24px; line-height: 1; margin-bottom: 6px; }
+.niche-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); line-height: 1.2; }
+.niche-desc { font-size: 11px; color: var(--color-text-muted); line-height: 1.45; }
+.niche-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.niche-tag { padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 500; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-muted); }
+
+/* Niche preset banner (step 2) */
+.niche-preset-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; background: rgba(255,107,53,0.06); border: 1px solid rgba(255,107,53,0.2); margin-bottom: 18px; font-size: 12px; color: var(--color-text-secondary); }
+.niche-preset-banner strong { color: var(--color-text-primary); }
+
+/* Source type grid (step 2) */
+.source-type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 4px; }
+.source-type-opt { padding: 14px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: center; transition: 0.15s ease; }
+.source-type-opt:hover { border-color: rgba(255,107,53,0.35); }
+.source-type-opt.selected { border-color: var(--color-accent); background: rgba(255,107,53,0.08); }
+.source-type-ico { font-size: 22px; margin-bottom: 6px; display: block; }
+.source-type-name { font-size: 12px; font-weight: 600; color: var(--color-text-primary); }
+.source-type-hint { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+
+/* Niche preset summary pills (step 3) */
+.niche-preset-summary { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.preset-pill { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); min-width: 80px; }
+.preset-pill-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); margin-bottom: 3px; }
+.preset-pill-val { font-size: 12px; font-weight: 600; color: var(--color-text-primary); text-transform: capitalize; }
+
+/* Format chips */
+.format-chips { display: flex; gap: 8px; }
+.format-chip { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.15s; }
+.format-chip:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }
+.format-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
+
+@media (max-width: 680px) { .niche-grid { grid-template-columns: repeat(2, 1fr); } .source-type-grid { grid-template-columns: repeat(2, 1fr); } .settings-2col { grid-template-columns: 1fr; } }
+
 @media (max-width: 980px) { .stats-row { grid-template-columns: 1fr 1fr; } .form-grid { grid-template-columns: 1fr; } .section-header { align-items: flex-start; flex-direction: column; } .projects-toolbar { margin-left: 0; flex-wrap: wrap; } .pagination-row { justify-content: space-between; } }
 @media (max-width: 800px) { .sidebar { display: none; } .main { margin-left: 0; } .topbar { height: auto; padding: 12px; gap: 10px; align-items: flex-start; flex-direction: column; } .stats-row { grid-template-columns: 1fr; } .empty-actions { flex-direction: column; } .projects-toolbar { width: 100%; justify-content: space-between; } .projects-summary { width: 100%; } }
 </style>

@@ -162,6 +162,18 @@ class ProcessExportJob implements ShouldQueue
             }
         }
 
+        // Apply background music mix if a track is selected on the project.
+        if ($project->music_asset_id) {
+            $musicAsset = Asset::query()->find($project->music_asset_id);
+
+            if ($musicAsset) {
+                $musicedFile = $tempDir.'/output_music.mp4';
+                $this->applyMusicMix($project, $musicAsset, $outputFile, $musicedFile, $tempDir);
+                @unlink($outputFile);
+                rename($musicedFile, $outputFile);
+            }
+        }
+
         $storagePath = 'exports/'.Str::uuid().'.mp4';
         $stream = fopen($outputFile, 'rb');
 
@@ -300,17 +312,38 @@ class ProcessExportJob implements ShouldQueue
                 $durationForFilter = $this->formatFilterDuration($duration);
             }
 
+            // Pre-detect visual type so the motion filter can be computed before the filter chain is built.
+            $isVideo = $visualAsset !== null
+                && ($visualAsset->asset_type === 'video' || str_starts_with((string) $visualAsset->mime_type, 'video/'));
+
+            // Ken Burns motion filter — applied only to still-image visuals (not video clips).
+            $motionFilter = null;
+            if ($visualAsset && ! $isVideo) {
+                $motionFilter = $this->buildMotionFilter($scene, $dimensions, $duration);
+            }
+
+            // When motion is applied, scale source to 1.5× output so zoompan has headroom
+            // to zoom/pan without interpolation quality loss. Dimensions kept even-numbered.
+            $scaleW = $motionFilter ? (int) (ceil($dimensions['width'] * 1.5 / 2) * 2) : $dimensions['width'];
+            $scaleH = $motionFilter ? (int) (ceil($dimensions['height'] * 1.5 / 2) * 2) : $dimensions['height'];
+
+            $baseFilter = sprintf(
+                'setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,setsar=1',
+                $scaleW,
+                $scaleH,
+                $scaleW,
+                $scaleH
+            );
+            if ($motionFilter !== null) {
+                $baseFilter .= ','.$motionFilter.',setpts=PTS-STARTPTS';
+            }
+
+            $baseFilter .= ',trim=duration='.$durationForFilter;
+
             $filters = [
                 // setpts=PTS-STARTPTS normalises non-zero start PTS from stock clips so
                 // audio and video start at exactly the same moment within the segment.
-                sprintf(
-                    'setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,setsar=1,trim=duration=%s',
-                    $dimensions['width'],
-                    $dimensions['height'],
-                    $dimensions['width'],
-                    $dimensions['height'],
-                    $durationForFilter
-                ),
+                $baseFilter,
                 "drawtext=fontfile={$monoFont}:text='FRAMECAST':fontcolor=white@0.3:fontsize=20:x=16:y=20",
                 sprintf(
                     "drawtext=fontfile={$monoFont}:text='%s':fontcolor=white@0.5:fontsize=22:x=w-text_w-16:y=18:box=1:boxcolor=black@0.4:boxborderw=12",
@@ -331,8 +364,7 @@ class ProcessExportJob implements ShouldQueue
             if ($visualAsset) {
                 $visualPath = $this->materializeAsset($visualAsset, $tempDir, 'visual-'.$index);
                 $cleanupPaths[] = $visualPath;
-                $isVideo = $visualAsset->asset_type === 'video'
-                    || str_starts_with((string) $visualAsset->mime_type, 'video/');
+                // $isVideo already detected above (before filter chain construction).
 
                 if ($isVideo) {
                     array_push($command, '-stream_loop', '-1', '-i', $visualPath);
@@ -400,6 +432,85 @@ class ProcessExportJob implements ShouldQueue
                 }
             }
         }
+    }
+
+    private function applyMusicMix(Project $project, Asset $musicAsset, string $videoFile, string $outputFile, string $tempDir): void
+    {
+        $musicSettings = is_array($project->music_settings_json) ? $project->music_settings_json : [];
+        $volume = (int) ($musicSettings['volume'] ?? 30);
+        $duckVolume = (int) ($musicSettings['duck_volume'] ?? 8);
+        $fadeInMs = (int) ($musicSettings['fade_in_ms'] ?? 500);
+        $loop = (bool) ($musicSettings['loop'] ?? true);
+        $duckDuringVoice = (bool) ($musicSettings['duck_during_voice'] ?? true);
+
+        $musicPath = $this->materializeAsset($musicAsset, $tempDir, 'music');
+
+        // Probe video duration to know how long to trim/loop the music.
+        $videoDuration = $this->probeMediaDuration($videoFile) ?? 60.0;
+
+        $volumeFraction = $volume / 100.0;
+        $duckFraction = $duckVolume / 100.0;
+        $fadeInSec = $fadeInMs / 1000.0;
+
+        // Build the music processing chain.
+        // [2] is the music stream. We volume-adjust, optionally fade in, then loop+trim to video length.
+        $loopFilter = $loop ? "aloop=loop=-1:size=2147483647," : '';
+        $fadeFilter = $fadeInSec > 0 ? sprintf('afade=t=in:st=0:d=%.3f,', $fadeInSec) : '';
+        $musicChain = "[2:a]{$loopFilter}{$fadeFilter}atrim=duration={$videoDuration},asetpts=PTS-STARTPTS,volume={$volumeFraction}[music_vol]";
+
+        if ($duckDuringVoice) {
+            // Sidechain-compress music against the video's voice track.
+            // threshold=0.02 triggers ducking at very low voice levels; ratio=8 gives 8:1 reduction.
+            $filterComplex = implode(';', [
+                $musicChain,
+                "[1:a]asplit=2[voice_main][voice_sc]",
+                "[music_vol][voice_sc]sidechaincompress=threshold=0.02:ratio=8:attack=200:release=1000[music_ducked]",
+                "[voice_main][music_ducked]amix=inputs=2:normalize=0[outa]",
+            ]);
+        } else {
+            $filterComplex = implode(';', [
+                $musicChain,
+                "[1:a][music_vol]amix=inputs=2:normalize=0[outa]",
+            ]);
+        }
+
+        $command = [
+            'ffmpeg', '-y',
+            '-i', $videoFile,   // [0] video+voice
+            '-i', $videoFile,   // [1] voice (second input for sidechain split)
+            '-i', $musicPath,   // [2] music
+            '-filter_complex', $filterComplex,
+            '-map', '0:v',
+            '-map', '[outa]',
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-shortest',
+            '-movflags', '+faststart',
+            $outputFile,
+        ];
+
+        // For non-ducked mode we only need 2 inputs (video + music).
+        if (! $duckDuringVoice) {
+            $command = [
+                'ffmpeg', '-y',
+                '-i', $videoFile,   // [0] video+voice
+                '-i', $musicPath,   // [1] music
+                '-filter_complex', $filterComplex,
+                '-map', '0:v',
+                '-map', '[outa]',
+                '-c:v', 'copy',
+                '-c:a', 'aac',
+                '-shortest',
+                '-movflags', '+faststart',
+                $outputFile,
+            ];
+        }
+
+        $process = new Process($command);
+        $process->setTimeout(300);
+        $process->mustRun();
+
+        @unlink($musicPath);
     }
 
     /**
@@ -853,5 +964,83 @@ class ProcessExportJob implements ShouldQueue
         }
 
         return 'Export failed while processing the video. Please retry, or regenerate the affected scene if it continues.';
+    }
+
+    /**
+     * Build an FFmpeg zoompan filter string for Ken Burns motion on still images.
+     * Returns null when no motion should be applied (effect = static, or none configured).
+     *
+     * The caller must pre-scale the source image to 1.5× the output dimensions so that
+     * zoompan can zoom/pan without sampling beyond the input boundary.
+     *
+     * @param  array{width:int,height:int}  $dimensions  Final output dimensions.
+     */
+    private function buildMotionFilter(Scene $scene, array $dimensions, float $duration): ?string
+    {
+        $motionSettings = is_array($scene->motion_settings_json) ? $scene->motion_settings_json : [];
+        $effect = (string) ($motionSettings['effect'] ?? 'zoom_in');
+        $intensity = (string) ($motionSettings['intensity'] ?? 'moderate');
+
+        if ($effect === 'static') {
+            return null;
+        }
+
+        $frames = max(30, (int) round($duration * 30));
+        $size = "{$dimensions['width']}x{$dimensions['height']}";
+
+        // Zoom speed per frame at 30 fps.
+        $speed = match ($intensity) {
+            'subtle'   => 0.0008,
+            'dramatic' => 0.003,
+            default    => 0.0015, // moderate
+        };
+
+        // Source is pre-scaled to 1.5× output. iw/ih refer to those larger dimensions.
+        // Center formula iw/2-(iw/zoom/2) positions the crop window at the image centre.
+        // Pan range at zoom z: iw*(1-1/z) gives the total available travel distance.
+        [$zExpr, $xExpr, $yExpr] = match ($effect) {
+            'zoom_in' => [
+                "min(1.0+{$speed}*on,1.5)",
+                'iw/2-(iw/zoom/2)',
+                'ih/2-(ih/zoom/2)',
+            ],
+            'zoom_out' => [
+                "max(1.5-{$speed}*on,1.0)",
+                'iw/2-(iw/zoom/2)',
+                'ih/2-(ih/zoom/2)',
+            ],
+            'pan_left' => [
+                '1.2',
+                "iw*(1-1/zoom)*(1-on/{$frames})",
+                'ih/2-(ih/zoom/2)',
+            ],
+            'pan_right' => [
+                '1.2',
+                "iw*(1-1/zoom)*on/{$frames}",
+                'ih/2-(ih/zoom/2)',
+            ],
+            'pan_up' => [
+                '1.2',
+                'iw/2-(iw/zoom/2)',
+                "ih*(1-1/zoom)*(1-on/{$frames})",
+            ],
+            'pan_down' => [
+                '1.2',
+                'iw/2-(iw/zoom/2)',
+                "ih*(1-1/zoom)*on/{$frames}",
+            ],
+            'pan_zoom' => [
+                "min(1.0+{$speed}*on,1.4)",
+                "iw*(1-1/zoom)*on/{$frames}",
+                'ih/2-(ih/zoom/2)',
+            ],
+            default => [
+                '1.0',
+                'iw/2-(iw/zoom/2)',
+                'ih/2-(ih/zoom/2)',
+            ],
+        };
+
+        return "zoompan=z='{$zExpr}':x='{$xExpr}':y='{$yExpr}':d={$frames}:s={$size}:fps=30";
     }
 }

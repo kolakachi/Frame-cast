@@ -62,6 +62,16 @@ const projectChannelId = ref("");
 const projectBrandKitId = ref("");
 const projectDefaultsSaveState = ref("idle");
 const projectDefaultsSaveError = ref("");
+const musicTracks = ref([]);
+const selectedMusicTrackId = ref(null);
+const musicVolume = ref(30);
+const musicDuckVolume = ref(8);
+const musicFadeInMs = ref(500);
+const musicLoop = ref(true);
+const musicDuckDuringVoice = ref(true);
+let musicSaveTimer = null;
+const musicSaveState = ref("idle");
+const musicSaveError = ref("");
 const voiceProfileKey = ref("alloy");
 const voiceSpeedDraft = ref("1.0");
 const voiceStabilityDraft = ref("medium");
@@ -70,6 +80,22 @@ const voiceSaveError = ref("");
 const visualQueryDraft = ref("");
 const visualSwapPending = ref(false);
 const visualSwapError = ref("");
+// AI Image generation
+const aiImageStyle = ref("cinematic");
+const aiImagePromptOverride = ref("");
+const aiImagePending = ref(false);
+const aiImageError = ref("");
+const aiImageStyles = ref([]);
+const AI_IMAGE_STYLES = [
+  { key: "cinematic",   label: "Cinematic" },
+  { key: "dark",        label: "Dark" },
+  { key: "anime",       label: "Anime" },
+  { key: "documentary", label: "Documentary" },
+  { key: "minimalist",  label: "Minimalist" },
+  { key: "realistic",   label: "Realistic" },
+  { key: "vintage",     label: "Vintage" },
+  { key: "neon",        label: "Neon" },
+];
 const exportPending = ref(false);
 const exportState = ref("idle");
 const queuedExportJobId = ref(null);
@@ -79,19 +105,38 @@ const captionEnabledDraft = ref(true);
 const captionStyleDraft = ref("impact");
 const captionHighlightDraft = ref("keywords");
 const captionPositionDraft = ref("bottom_third");
+const captionFontDraft = ref("Poppins");
 const captionSaveState = ref("idle");
 const captionSaveError = ref("");
+const CAPTION_FONT_GROUPS = [
+  { label: "Display", fonts: ["Bebas Neue", "Days One", "Passion One", "Fredoka One", "Luckiest Guy", "New Rocker", "Aladin"] },
+  { label: "Sans-serif", fonts: ["Montserrat", "Raleway", "Lato", "Nunito", "Quicksand", "Noto Sans", "Liberation Sans"] },
+  { label: "Serif", fonts: ["Playfair Display", "Roboto Slab", "Libre Baskerville", "Liberation Serif"] },
+  { label: "Script", fonts: ["Dancing Script", "Sacramento", "Satisfy", "Shadows Into Light"] },
+  { label: "Monospace", fonts: ["Roboto Mono", "Source Code Pro", "Orbitron", "Liberation Mono"] },
+  { label: "Handwritten", fonts: ["Permanent Marker", "Amatic SC", "Indie Flower", "Rock Salt", "Calligraffitti"] },
+];
+const motionEffectDraft = ref("zoom_in");
+const motionIntensityDraft = ref("moderate");
+const motionSaveState = ref("idle");
+const motionSaveError = ref("");
+const visualStyleDraft = ref(null);
+let visualStyleSaveTimer = null;
+const visualStyleSaveState = ref("idle");
 const panelState = ref({
   script: false,
   visual: false,
+  motion: false,
   voice: false,
   captions: false,
+  music: false,
   brand: false,
 });
 const sceneScriptDraft = ref("");
 let scriptSaveTimer = null;
 let voiceSaveTimer = null;
 let captionSaveTimer = null;
+let motionSaveTimer = null;
 let beforeUnloadHandler = null;
 
 const activeScene = computed(
@@ -115,6 +160,25 @@ const activeSceneAudioUrl = computed(
 const selectedProjectChannel = computed(() =>
   channels.value.find((channel) => String(channel.id) === String(projectChannelId.value)) || null
 );
+const activeMusicTrack = computed(() =>
+  musicTracks.value.find((t) => t.id === selectedMusicTrackId.value) ?? null
+);
+const musicTrackListItems = computed(() => {
+  const groups = {};
+  for (const track of musicTracks.value) {
+    const mood = track.tags?.find((tag) => tag !== "music") ?? "other";
+    if (!groups[mood]) groups[mood] = [];
+    groups[mood].push(track);
+  }
+  const items = [];
+  for (const [mood, tracks] of Object.entries(groups)) {
+    items.push({ type: "mood", key: `mood-${mood}`, mood });
+    for (const track of tracks) {
+      items.push({ type: "track", key: `track-${track.id}`, track });
+    }
+  }
+  return items;
+});
 const activeSceneVisualLoaded = computed(() => {
   const sceneId = activeSceneId.value;
   if (!sceneId || !activeSceneVisualUrl.value) return false;
@@ -147,6 +211,29 @@ const activeVoiceSpeed = computed(
 const activeVoiceOutdated = computed(
   () => Boolean(activeScene.value?.voice_settings?.is_outdated)
 );
+// Hook options sorted by score descending; unscored hooks go last.
+const sortedHookOptions = computed(() =>
+  [...hookOptions.value].sort((a, b) => {
+    const sa = a.hook_score ?? -1;
+    const sb = b.hook_score ?? -1;
+    return sb - sa;
+  })
+);
+// True when the active scene's visual is a still image (not video, text card, or waveform).
+// Ken Burns motion controls only appear in this state.
+const activeSceneIsStillImage = computed(() => {
+  if (!activeScene.value) return false;
+  const vtype = String(activeScene.value.visual_type || "");
+  if (vtype === "text_card" || vtype === "waveform") return false;
+  if (!activeScene.value.visual_asset) return false;
+  return !activeSceneVisualIsVideo.value;
+});
+const activeMotionClass = computed(() => {
+  if (!activeSceneIsStillImage.value) return "";
+  const effect = motionEffectDraft.value;
+  if (effect === "static") return "";
+  return "kb-" + effect.replace(/_/g, "-");
+});
 const activeSceneIndex = computed(() =>
   scenes.value.findIndex((scene) => scene.id === activeSceneId.value)
 );
@@ -250,6 +337,12 @@ watch(
     captionStyleDraft.value = String(captionSettings.style_key || "impact");
     captionHighlightDraft.value = String(captionSettings.highlight_mode || "keywords");
     captionPositionDraft.value = String(captionSettings.position || "bottom_third");
+    captionFontDraft.value = String(captionSettings.font || "Poppins");
+    const motionSettings = scene?.motion_settings || scene?.motion_settings_json || {};
+    motionEffectDraft.value = String(motionSettings.effect || "zoom_in");
+    motionIntensityDraft.value = String(motionSettings.intensity || "moderate");
+    visualStyleDraft.value = scene?.visual_style ?? null;
+    visualStyleSaveState.value = "idle";
     visualSwapPending.value = false;
     visualSwapError.value = "";
     voiceSaveState.value = "idle";
@@ -350,7 +443,7 @@ watch(sceneScriptDraft, (draft) => {
   }, 700);
 });
 
-watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPositionDraft], () => {
+watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPositionDraft, captionFontDraft], () => {
   const scene = activeScene.value;
 
   if (!scene) return;
@@ -361,6 +454,7 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
     style_key: captionStyleDraft.value,
     highlight_mode: captionHighlightDraft.value,
     position: captionPositionDraft.value,
+    font: captionFontDraft.value,
     highlight_color: savedCaptions.highlight_color || "#ff6b35",
     preset_id: savedCaptions.preset_id || null,
   };
@@ -369,7 +463,8 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
     (savedCaptions.enabled !== false) === nextSettings.enabled &&
     String(savedCaptions.style_key || "impact") === nextSettings.style_key &&
     String(savedCaptions.highlight_mode || "keywords") === nextSettings.highlight_mode &&
-    String(savedCaptions.position || "bottom_third") === nextSettings.position
+    String(savedCaptions.position || "bottom_third") === nextSettings.position &&
+    String(savedCaptions.font || "Poppins") === nextSettings.font
   ) {
     if (captionSaveTimer) {
       window.clearTimeout(captionSaveTimer);
@@ -390,6 +485,63 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
   captionSaveError.value = "";
   captionSaveTimer = window.setTimeout(() => {
     persistCaptionSettings(scene.id, nextSettings);
+  }, 500);
+});
+
+watch([motionEffectDraft, motionIntensityDraft], () => {
+  const scene = activeScene.value;
+  if (!scene) return;
+
+  const savedMotion = scene.motion_settings || scene.motion_settings_json || {};
+  const nextSettings = {
+    effect: motionEffectDraft.value,
+    intensity: motionIntensityDraft.value,
+  };
+
+  if (
+    String(savedMotion.effect || "zoom_in") === nextSettings.effect &&
+    String(savedMotion.intensity || "moderate") === nextSettings.intensity
+  ) {
+    if (motionSaveTimer) {
+      window.clearTimeout(motionSaveTimer);
+      motionSaveTimer = null;
+    }
+    if (motionSaveState.value !== "saved") {
+      motionSaveState.value = "idle";
+    }
+    motionSaveError.value = "";
+    return;
+  }
+
+  if (motionSaveTimer) {
+    window.clearTimeout(motionSaveTimer);
+  }
+
+  motionSaveState.value = "pending";
+  motionSaveError.value = "";
+  motionSaveTimer = window.setTimeout(() => {
+    persistMotionSettings(scene.id, nextSettings);
+  }, 500);
+});
+
+watch(visualStyleDraft, (nextStyle) => {
+  const scene = activeScene.value;
+  if (!scene) return;
+  if ((nextStyle ?? null) === (scene.visual_style ?? null)) return;
+
+  visualStyleSaveState.value = "pending";
+  clearTimeout(visualStyleSaveTimer);
+  visualStyleSaveTimer = setTimeout(async () => {
+    try {
+      const response = await api.patch(`/scenes/${scene.id}`, { visual_style: nextStyle });
+      const updated = response.data?.data?.scene;
+      if (updated) {
+        scenes.value = scenes.value.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
+      }
+      visualStyleSaveState.value = "saved";
+    } catch {
+      visualStyleSaveState.value = "idle";
+    }
   }, 500);
 });
 
@@ -803,6 +955,13 @@ async function loadProject() {
     project.value = response.data?.data?.project ?? null;
     projectChannelId.value = project.value?.channel_id ? String(project.value.channel_id) : "";
     projectBrandKitId.value = project.value?.brand_kit_id ? String(project.value.brand_kit_id) : "";
+    selectedMusicTrackId.value = project.value?.music_asset_id ?? null;
+    const ms = project.value?.music_settings_json ?? {};
+    musicVolume.value = ms.volume ?? 30;
+    musicDuckVolume.value = ms.duck_volume ?? 8;
+    musicFadeInMs.value = ms.fade_in_ms ?? 500;
+    musicLoop.value = ms.loop ?? true;
+    musicDuckDuringVoice.value = ms.duck_during_voice ?? true;
     scenes.value = response.data?.data?.scenes ?? [];
     hookOptions.value = response.data?.data?.hook_options ?? [];
     activeSceneId.value = scenes.value[0]?.id ?? null;
@@ -824,7 +983,7 @@ async function loadMe() {
   try {
     const response = await api.get("/me");
     mePayload.value = response.data?.data?.user ?? null;
-    await Promise.all([loadVoiceProfiles(), loadChannels(), loadBrandKits()]);
+    await Promise.all([loadVoiceProfiles(), loadChannels(), loadBrandKits(), loadMusicTracks()]);
     await loadNotifications();
     subscribeWorkspaceNotifications();
   } catch {
@@ -860,6 +1019,44 @@ async function loadBrandKits() {
   } catch {
     brandKits.value = [];
   }
+}
+
+async function loadMusicTracks() {
+  try {
+    const response = await api.get("/assets", { params: { asset_type: "music", per_page: 50 } });
+    musicTracks.value = response.data?.data?.assets ?? [];
+  } catch {
+    musicTracks.value = [];
+  }
+}
+
+async function persistMusicSettings() {
+  if (!project.value) return;
+  musicSaveState.value = "saving";
+  musicSaveError.value = "";
+  try {
+    const response = await api.patch(`/projects/${project.value.id}`, {
+      music_asset_id: selectedMusicTrackId.value ?? null,
+      music_settings_json: {
+        volume: musicVolume.value,
+        duck_volume: musicDuckVolume.value,
+        fade_in_ms: musicFadeInMs.value,
+        loop: musicLoop.value,
+        duck_during_voice: musicDuckDuringVoice.value,
+      },
+    });
+    project.value = response.data?.data?.project ?? project.value;
+    musicSaveState.value = "saved";
+  } catch (err) {
+    musicSaveError.value = err?.response?.data?.error?.message ?? "Failed to save music settings.";
+    musicSaveState.value = "idle";
+  }
+}
+
+function scheduleMusicSave() {
+  musicSaveState.value = "idle";
+  clearTimeout(musicSaveTimer);
+  musicSaveTimer = setTimeout(persistMusicSettings, 500);
 }
 
 async function saveProjectDefaults() {
@@ -1261,6 +1458,57 @@ async function persistCaptionSettings(sceneId, nextSettings) {
   }
 }
 
+async function persistMotionSettings(sceneId, nextSettings) {
+  motionSaveTimer = null;
+  motionSaveState.value = "saving";
+  motionSaveError.value = "";
+
+  try {
+    const response = await api.patch(`/scenes/${sceneId}`, {
+      motion_settings_json: nextSettings,
+    });
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene);
+    if (updatedScene) replaceSceneInCollection(updatedScene);
+    motionSaveState.value = "saved";
+    window.setTimeout(() => {
+      if (motionSaveState.value === "saved") motionSaveState.value = "idle";
+    }, 1200);
+  } catch (requestError) {
+    motionSaveState.value = "error";
+    motionSaveError.value =
+      requestError.response?.data?.error?.message ?? "Motion save failed";
+  }
+}
+
+function hookScoreClass(score) {
+  if (score == null) return "score-none";
+  if (score >= 80) return "score-green";
+  if (score >= 60) return "score-yellow";
+  return "score-red";
+}
+
+async function useHook(option) {
+  // Apply hook text to the first hook-type scene (or the first scene if none).
+  const hookScene =
+    scenes.value.find((s) => s.scene_type === "hook") ?? scenes.value[0] ?? null;
+  if (!hookScene) return;
+
+  try {
+    const response = await api.patch(`/scenes/${hookScene.id}`, {
+      script_text: option.hook_text,
+    });
+    const updated = normalizeScenePayload(response.data?.data?.scene ?? null);
+    if (updated) {
+      replaceSceneInCollection(updated);
+      if (activeSceneId.value === hookScene.id) {
+        sceneScriptDraft.value = option.hook_text;
+      }
+    }
+  } catch {
+    // silent — hook text can be copied manually if PATCH fails
+  }
+}
+
 async function swapVisual() {
   if (!activeScene.value || visualSwapPending.value) return;
 
@@ -1298,6 +1546,28 @@ async function swapVisual() {
   } finally {
     visualSwapPending.value = false;
   }
+}
+
+async function generateAIImage() {
+  if (!activeScene.value || aiImagePending.value) return;
+
+  aiImagePending.value = true;
+  aiImageError.value = "";
+
+  try {
+    await api.post(`/scenes/${activeScene.value.id}/generate-image`, {
+      style: aiImageStyle.value,
+      prompt_override: aiImagePromptOverride.value || undefined,
+    });
+    // Result comes back via Reverb generation.progress event — no polling needed
+  } catch (err) {
+    aiImageError.value =
+      err.response?.data?.error?.message ||
+      err.message ||
+      "Image generation failed.";
+    aiImagePending.value = false;
+  }
+  // aiImagePending stays true until Reverb fires completed/failed
 }
 
 async function queueExport() {
@@ -1360,6 +1630,23 @@ function subscribeProjectChannel() {
   if (!echo || !projectId.value) return;
 
   projectChannelName = `project.${projectId.value}`;
+
+  echo.private(projectChannelName).listen(".generation.progress", (payload) => {
+    if (payload.stage !== "ai_image") return;
+
+    if (payload.status === "completed" && payload.scene_id) {
+      // Refresh the scene so the new visual_asset appears in the editor
+      api.get(`/scenes/${payload.scene_id}/preview`).then((res) => {
+        const refreshed = res.data?.data?.scene ?? null;
+        if (refreshed) replaceSceneInCollection(normalizeScenePayload(refreshed));
+      }).catch(() => {});
+      aiImagePending.value = false;
+      aiImageError.value = "";
+    } else if (payload.status === "failed") {
+      aiImagePending.value = false;
+      aiImageError.value = payload.message || "Image generation failed.";
+    }
+  });
 
   echo.private(projectChannelName).listen(".export.progress", (payload) => {
     const jobId = Number(payload.export_job_id);
@@ -1625,6 +1912,7 @@ async function flushActiveSceneDrafts() {
       style_key: captionStyleDraft.value,
       highlight_mode: captionHighlightDraft.value,
       position: captionPositionDraft.value,
+      font: captionFontDraft.value,
       highlight_color: savedCaptions.highlight_color || "#ff6b35",
       preset_id: savedCaptions.preset_id || null,
     };
@@ -1634,7 +1922,8 @@ async function flushActiveSceneDrafts() {
       (savedCaptions.enabled !== false) !== nextCaptions.enabled ||
       String(savedCaptions.style_key || "impact") !== nextCaptions.style_key ||
       String(savedCaptions.highlight_mode || "keywords") !== nextCaptions.highlight_mode ||
-      String(savedCaptions.position || "bottom_third") !== nextCaptions.position
+      String(savedCaptions.position || "bottom_third") !== nextCaptions.position ||
+      String(savedCaptions.font || "Poppins") !== nextCaptions.font
     ) {
       if (captionSaveTimer) {
         window.clearTimeout(captionSaveTimer);
@@ -1960,6 +2249,7 @@ onBeforeUnmount(() => {
                   <div class="scene-text">{{ scene.script_text }}</div>
                   <div class="scene-meta">
                     <span class="scene-tag">{{ sceneVisualLabel(scene) }}</span>
+                    <span v-if="scene.visual_style" class="scene-style-badge">{{ scene.visual_style }}</span>
                     <span>{{
                       formatSceneDuration(scene.duration_seconds)
                     }}</span>
@@ -2113,7 +2403,7 @@ onBeforeUnmount(() => {
                 <img
                   v-else-if="currentVisualUrl"
                   :src="currentVisualUrl"
-                  class="preview-image"
+                  :class="['preview-image', activeMotionClass]"
                   alt=""
                 />
                 <div v-else-if="showTextCardPreview" class="preview-fallback preview-fallback-text">
@@ -2143,6 +2433,10 @@ onBeforeUnmount(() => {
                 </div>
                 <div v-else-if="visualLoadFailed" class="preview-loading error">
                   Media unavailable
+                </div>
+                <div v-if="activeMusicTrack" class="preview-music-indicator">
+                  <span class="music-wave-icon">♫</span>
+                  <span class="music-wave-title">{{ activeMusicTrack.title }}</span>
                 </div>
                 <div class="preview-watermark">FRAMECAST</div>
                 <div class="preview-timer">
@@ -2271,34 +2565,145 @@ onBeforeUnmount(() => {
               :class="`panel-section ${panelState.visual ? 'collapsed' : ''}`"
             >
               <div class="panel-section-header" @click="togglePanel('visual')">
-                <div class="panel-label panel-label-tight">Visual Source</div>
+                <div class="panel-label-row">
+                  <div class="panel-label panel-label-tight">Visual Source</div>
+                  <span v-if="activeScene?.visual_type === 'ai_image'" class="panel-badge new">AI</span>
+                </div>
                 <div class="panel-chevron">▾</div>
               </div>
               <div class="panel-section-body">
-                <div class="control-row">
-                  <span class="control-name">Type</span>
-                  <select v-model="selectedSwapVisualSource" class="control-value">
-                    <option value="Stock Clip">Stock Clip</option>
-                    <option value="BG Loop">BG Loop</option>
-                    <option value="AI Image">AI Image</option>
-                    <option value="Text Only">Text Only</option>
-                    <option value="Waveform">Waveform</option>
+                <!-- Visual style picker (applies to both stock search and AI image generation) -->
+                <div style="margin-bottom:10px;">
+                  <div class="micro-label" style="margin-bottom:5px;">
+                    Visual Style
+                    <span v-if="visualStyleSaveState === 'saved'" style="opacity:.5; font-weight:400; margin-left:4px;">saved</span>
+                  </div>
+                  <div class="visual-style-grid">
+                    <button
+                      v-for="s in AI_IMAGE_STYLES"
+                      :key="s.key"
+                      type="button"
+                      :class="['visual-style-btn', visualStyleDraft === s.key ? 'active' : '']"
+                      :title="s.key"
+                      @click="visualStyleDraft = visualStyleDraft === s.key ? null : s.key"
+                    >{{ s.label }}</button>
+                  </div>
+                  <div
+                    v-if="visualStyleDraft && activeScene?.visual_type === 'ai_image'"
+                    class="style-regen-hint"
+                  >
+                    Style changed — regenerate to apply.
+                  </div>
+                </div>
+
+                <!-- Visual type tabs -->
+                <div class="visual-type-tabs">
+                  <button
+                    type="button"
+                    :class="['visual-type-tab', selectedSwapVisualSource !== 'AI Image' ? 'active' : '']"
+                    @click="selectedSwapVisualSource = 'Stock Clip'"
+                  >Stock</button>
+                  <button
+                    type="button"
+                    :class="['visual-type-tab', selectedSwapVisualSource === 'AI Image' ? 'active ai' : '']"
+                    @click="selectedSwapVisualSource = 'AI Image'"
+                  >✦ AI Image</button>
+                </div>
+
+                <!-- Stock / BG Loop / Text / Waveform -->
+                <template v-if="selectedSwapVisualSource !== 'AI Image'">
+                  <div class="control-row" style="margin-top:10px;">
+                    <span class="control-name">Type</span>
+                    <select v-model="selectedSwapVisualSource" class="control-value">
+                      <option value="Stock Clip">Stock Clip</option>
+                      <option value="BG Loop">BG Loop</option>
+                      <option value="Text Only">Text Only</option>
+                      <option value="Waveform">Waveform</option>
+                    </select>
+                  </div>
+                  <div class="control-row">
+                    <span class="control-name">Query</span>
+                    <input v-model="visualQueryDraft" class="control-value query-input" />
+                  </div>
+                  <button class="btn btn-ghost btn-sm panel-full-btn" type="button" @click="swapVisual">
+                    ↻ Swap Visual
+                  </button>
+                  <div v-if="visualSwapError" class="panel-error-copy">{{ visualSwapError }}</div>
+                </template>
+
+                <!-- AI Image generation -->
+                <template v-else>
+                  <div style="margin-top:10px;">
+                    <div class="micro-label" style="margin-bottom:6px;">Style</div>
+                    <div class="ai-style-grid">
+                      <button
+                        v-for="s in AI_IMAGE_STYLES"
+                        :key="s.key"
+                        type="button"
+                        :class="['ai-style-btn', aiImageStyle === s.key ? 'active' : '']"
+                        @click="aiImageStyle = s.key"
+                      >{{ s.label }}</button>
+                    </div>
+                  </div>
+                  <div class="control-row" style="margin-top:10px; flex-direction:column; align-items:flex-start; gap:4px;">
+                    <span class="control-name">Prompt override <span style="opacity:.5;">(optional)</span></span>
+                    <textarea
+                      v-model="aiImagePromptOverride"
+                      class="control-value query-input"
+                      rows="2"
+                      placeholder="Leave blank to use scene script…"
+                      style="width:100%;resize:vertical;"
+                    ></textarea>
+                  </div>
+                  <button
+                    class="btn btn-primary btn-sm panel-full-btn"
+                    type="button"
+                    :disabled="aiImagePending"
+                    @click="generateAIImage"
+                  >
+                    {{ aiImagePending ? '✦ Generating…' : '✦ Generate Image' }}
+                  </button>
+                  <div v-if="aiImageError" class="panel-error-copy">{{ aiImageError }}</div>
+                  <div v-if="aiImagePending" class="panel-hint-copy">Generating via DALL-E 3 — this takes ~15s</div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Motion panel — visible only when scene visual is a still image -->
+            <div
+              v-if="activeSceneIsStillImage"
+              :class="`panel-section ${panelState.motion ? 'collapsed' : ''}`"
+            >
+              <div class="panel-section-header" @click="togglePanel('motion')">
+                <div class="panel-label-row">
+                  <div class="panel-label panel-label-tight">Motion</div>
+                  <span v-if="motionEffectDraft !== 'static'" class="panel-badge new">KB</span>
+                </div>
+                <div class="panel-chevron">▾</div>
+              </div>
+              <div class="panel-section-body">
+                <div class="control-row" style="margin-top:4px;">
+                  <span class="control-name">Effect</span>
+                  <select v-model="motionEffectDraft" class="control-value">
+                    <option value="zoom_in">Zoom In</option>
+                    <option value="zoom_out">Zoom Out</option>
+                    <option value="pan_left">Pan Left</option>
+                    <option value="pan_right">Pan Right</option>
+                    <option value="pan_up">Pan Up</option>
+                    <option value="pan_down">Pan Down</option>
+                    <option value="pan_zoom">Pan + Zoom</option>
+                    <option value="static">Static (no motion)</option>
                   </select>
                 </div>
-                <div class="control-row">
-                  <span class="control-name">Query</span>
-                  <input
-                    v-model="visualQueryDraft"
-                    class="control-value query-input"
-                  />
+                <div v-if="motionEffectDraft !== 'static'" class="control-row">
+                  <span class="control-name">Intensity</span>
+                  <select v-model="motionIntensityDraft" class="control-value">
+                    <option value="subtle">Subtle</option>
+                    <option value="moderate">Moderate</option>
+                    <option value="dramatic">Dramatic</option>
+                  </select>
                 </div>
-                <button
-                  class="btn btn-ghost btn-sm panel-full-btn"
-                  type="button"
-                  @click="swapVisual"
-                >
-                  ↻ Swap Visual
-                </button>
+                <div v-if="motionSaveState === 'error'" class="panel-error-copy">{{ motionSaveError }}</div>
               </div>
             </div>
 
@@ -2431,6 +2836,115 @@ onBeforeUnmount(() => {
                     <option value="top_third">Top third</option>
                   </select>
                 </div>
+                <!-- Font picker -->
+                <div class="font-picker-block">
+                  <div class="micro-label" style="margin-bottom:6px;">Font</div>
+                  <div
+                    v-for="group in CAPTION_FONT_GROUPS"
+                    :key="group.label"
+                    class="font-group"
+                  >
+                    <div class="font-group-label">{{ group.label }}</div>
+                    <div class="font-group-items">
+                      <button
+                        v-for="font in group.fonts"
+                        :key="font"
+                        type="button"
+                        :class="['font-btn', captionFontDraft === font ? 'active' : '']"
+                        :style="{ fontFamily: font }"
+                        @click="captionFontDraft = font"
+                      >{{ font }}</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              :class="`panel-section ${panelState.music ? 'collapsed' : ''}`"
+            >
+              <div class="panel-section-header" @click="togglePanel('music')">
+                <div class="panel-label panel-label-tight">Background Music</div>
+                <div class="panel-chevron">▾</div>
+              </div>
+              <div class="panel-section-body">
+                <div class="music-track-list">
+                  <div
+                    class="music-track-item"
+                    :class="{ 'music-track-selected': selectedMusicTrackId === null }"
+                    @click="selectedMusicTrackId = null; scheduleMusicSave()"
+                  >
+                    <span class="music-track-name">No music</span>
+                  </div>
+                  <div
+                    v-for="item in musicTrackListItems"
+                    :key="item.key"
+                    :class="item.type === 'mood' ? 'music-mood-label' : ['music-track-item', { 'music-track-selected': selectedMusicTrackId === item.track?.id }]"
+                    @click="item.type === 'track' && (selectedMusicTrackId = item.track.id) && scheduleMusicSave()"
+                  >{{ item.type === 'mood' ? item.mood : item.track?.title }}</div>
+                </div>
+
+                <div v-if="selectedMusicTrackId" class="music-settings">
+                  <div class="control-row">
+                    <span class="control-name">Volume</span>
+                    <div class="slider-wrap">
+                      <input
+                        v-model.number="musicVolume"
+                        type="range"
+                        min="0"
+                        max="100"
+                        class="slider"
+                        @input="scheduleMusicSave"
+                      />
+                      <span class="slider-val">{{ musicVolume }}%</span>
+                    </div>
+                  </div>
+                  <div class="control-row">
+                    <span class="control-name">Duck level</span>
+                    <div class="slider-wrap">
+                      <input
+                        v-model.number="musicDuckVolume"
+                        type="range"
+                        min="0"
+                        max="50"
+                        class="slider"
+                        @input="scheduleMusicSave"
+                      />
+                      <span class="slider-val">{{ musicDuckVolume }}%</span>
+                    </div>
+                  </div>
+                  <div class="control-row">
+                    <span class="control-name">Fade in</span>
+                    <div class="slider-wrap">
+                      <input
+                        v-model.number="musicFadeInMs"
+                        type="range"
+                        min="0"
+                        max="3000"
+                        step="100"
+                        class="slider"
+                        @input="scheduleMusicSave"
+                      />
+                      <span class="slider-val">{{ musicFadeInMs }}ms</span>
+                    </div>
+                  </div>
+                  <div class="control-row">
+                    <span class="control-name">Loop track</span>
+                    <label class="toggle-wrap">
+                      <input v-model="musicLoop" type="checkbox" class="toggle-input" @change="scheduleMusicSave" />
+                      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </label>
+                  </div>
+                  <div class="control-row">
+                    <span class="control-name">Duck voice</span>
+                    <label class="toggle-wrap">
+                      <input v-model="musicDuckDuringVoice" type="checkbox" class="toggle-input" @change="scheduleMusicSave" />
+                      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </label>
+                  </div>
+                  <div v-if="musicSaveError" class="micro-error">{{ musicSaveError }}</div>
+                  <div v-if="musicSaveState === 'saved'" class="micro-copy">Saved</div>
+                </div>
               </div>
             </div>
 
@@ -2467,14 +2981,20 @@ onBeforeUnmount(() => {
                 <button class="btn btn-ghost btn-full" type="button" @click="saveProjectDefaults">
                   {{ projectDefaultsSaveState === "saving" ? "Saving…" : projectDefaultsSaveState === "saved" ? "Saved" : "Save Defaults" }}
                 </button>
-                <div v-if="hookOptions.length" class="hooks-block">
-                  <div class="micro-label hooks-title">Generated hooks</div>
+                <div v-if="sortedHookOptions.length" class="hooks-block">
+                  <div class="micro-label hooks-title">Hook options — sorted by score</div>
                   <div
-                    v-for="option in hookOptions.slice(0, 3)"
+                    v-for="option in sortedHookOptions"
                     :key="option.id"
                     class="hook-card"
                   >
-                    {{ option.hook_text }}
+                    <div class="hook-card-top">
+                      <span v-if="option.hook_score != null" :class="['hook-score-badge', hookScoreClass(option.hook_score)]">{{ option.hook_score }}</span>
+                      <span v-else class="hook-score-badge score-none">—</span>
+                      <span class="hook-card-text">{{ option.hook_text }}</span>
+                    </div>
+                    <div v-if="option.hook_score_reason" class="hook-card-reason">{{ option.hook_score_reason }}</div>
+                    <button class="btn btn-ghost btn-sm hook-use-btn" type="button" @click="useHook(option)">Use Hook</button>
                   </div>
                 </div>
               </div>
@@ -2559,6 +3079,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat&family=Raleway&family=Nunito&family=Lato&family=Roboto+Mono&family=Roboto+Slab&family=Libre+Baskerville&family=Playfair+Display&family=Dancing+Script&family=Fredoka+One&family=Sacramento&family=Luckiest+Guy&family=Orbitron&family=Satisfy&family=Permanent+Marker&family=Noto+Sans&family=Amatic+SC&family=Days+One&family=Rock+Salt&family=New+Rocker&family=Passion+One&family=Indie+Flower&family=Quicksand&family=Shadows+Into+Light&family=Source+Code+Pro&family=Aladin&family=Calligraffitti&display=swap");
 
 .editor-page {
   --bg-deep: #0a0a0f;
@@ -3305,6 +3826,107 @@ button {
   font-size: 10px;
 }
 
+.scene-style-badge {
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 500;
+  background: rgba(99,102,241,0.15);
+  color: #a5b4fc;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Visual style picker */
+.visual-style-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.visual-style-btn {
+  padding: 5px 0;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.visual-style-btn:hover {
+  border-color: rgba(99,102,241,0.4);
+  color: var(--text);
+}
+
+.visual-style-btn.active {
+  border-color: #6366f1;
+  background: rgba(99,102,241,0.15);
+  color: #a5b4fc;
+}
+
+.style-regen-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #fbbf24;
+  opacity: 0.85;
+}
+
+/* Font picker */
+.font-picker-block {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.font-group {
+  margin-bottom: 8px;
+}
+
+.font-group-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  opacity: 0.6;
+}
+
+.font-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.font-btn {
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.font-btn:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: var(--border);
+}
+
+.font-btn.active {
+  background: rgba(99,102,241,0.15);
+  border-color: #6366f1;
+  color: #a5b4fc;
+}
+
 .add-scene-divider {
   display: flex;
   align-items: center;
@@ -3558,6 +4180,7 @@ button {
   width: 100%;
   height: 100%;
   position: relative;
+  overflow: hidden;
   background: linear-gradient(180deg, #1a1a3e 0%, #0d0d2b 40%, #1a0a2e 100%);
 }
 
@@ -3569,7 +4192,46 @@ button {
 
 .preview-image {
   object-fit: cover;
+  transform-origin: center center;
 }
+
+/* Ken Burns canvas preview — approximate visual (real motion rendered by FFmpeg) */
+@keyframes kb-zoom-in {
+  from { transform: scale(1); }
+  to   { transform: scale(1.25); }
+}
+@keyframes kb-zoom-out {
+  from { transform: scale(1.25); }
+  to   { transform: scale(1); }
+}
+@keyframes kb-pan-left {
+  from { transform: scale(1.15) translateX(8%); }
+  to   { transform: scale(1.15) translateX(-8%); }
+}
+@keyframes kb-pan-right {
+  from { transform: scale(1.15) translateX(-8%); }
+  to   { transform: scale(1.15) translateX(8%); }
+}
+@keyframes kb-pan-up {
+  from { transform: scale(1.15) translateY(8%); }
+  to   { transform: scale(1.15) translateY(-8%); }
+}
+@keyframes kb-pan-down {
+  from { transform: scale(1.15) translateY(-8%); }
+  to   { transform: scale(1.15) translateY(8%); }
+}
+@keyframes kb-pan-zoom {
+  from { transform: scale(1) translateX(-5%); }
+  to   { transform: scale(1.25) translateX(5%); }
+}
+
+.kb-zoom-in  { animation: kb-zoom-in  6s ease-in-out infinite alternate; }
+.kb-zoom-out { animation: kb-zoom-out 6s ease-in-out infinite alternate; }
+.kb-pan-left { animation: kb-pan-left 6s ease-in-out infinite alternate; }
+.kb-pan-right { animation: kb-pan-right 6s ease-in-out infinite alternate; }
+.kb-pan-up   { animation: kb-pan-up   6s ease-in-out infinite alternate; }
+.kb-pan-down { animation: kb-pan-down 6s ease-in-out infinite alternate; }
+.kb-pan-zoom { animation: kb-pan-zoom 6s ease-in-out infinite alternate; }
 
 .preview-fallback {
   background: linear-gradient(180deg, #1a1a3e 0%, #0d0d2b 40%, #1a0a2e 100%);
@@ -3814,6 +4476,85 @@ button {
 .panel-badge.warn {
   background: var(--yellow-bg);
   color: var(--yellow);
+}
+
+.panel-badge.new {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+}
+
+.visual-type-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-deep);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.visual-type-tab {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.visual-type-tab.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.visual-type-tab.active.ai {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+}
+
+.ai-style-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.ai-style-btn {
+  padding: 5px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-deep);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.ai-style-btn:hover {
+  border-color: var(--border-active);
+  color: var(--text-primary);
+}
+
+.ai-style-btn.active {
+  border-color: #a78bfa;
+  background: rgba(167, 139, 250, 0.12);
+  color: #a78bfa;
+}
+
+.panel-error-copy {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--red);
+}
+
+.panel-hint-copy {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .panel-chevron {
@@ -4160,6 +4901,125 @@ select.control-value {
   line-height: 1.5;
   color: var(--text-secondary);
   margin-top: 8px;
+}
+
+.hook-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.hook-score-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 20px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0 4px;
+}
+
+.score-green  { background: #14532d; color: #4ade80; }
+.score-yellow { background: #713f12; color: #fbbf24; }
+.score-red    { background: #450a0a; color: #f87171; }
+.score-none   { background: var(--bg-deep); color: var(--text-muted); }
+
+.hook-card-text {
+  flex: 1;
+  line-height: 1.5;
+}
+
+.hook-card-reason {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.hook-use-btn {
+  margin-top: 8px;
+  width: 100%;
+}
+
+/* Music panel */
+.music-track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.music-mood-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 4px 6px 2px;
+}
+
+.music-track-item {
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.music-track-item:hover {
+  background: var(--surface-hover, rgba(255,255,255,0.05));
+}
+
+.music-track-item.music-track-selected {
+  background: rgba(99, 102, 241, 0.18);
+}
+
+.music-track-name {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.music-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+/* Canvas music wave indicator */
+.preview-music-indicator {
+  position: absolute;
+  bottom: 36px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0,0,0,0.55);
+  border-radius: 4px;
+  padding: 3px 7px;
+  pointer-events: none;
+}
+
+.music-wave-icon {
+  font-size: 11px;
+  color: #a5b4fc;
+}
+
+.music-wave-title {
+  font-size: 10px;
+  color: rgba(255,255,255,0.8);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 1180px) {

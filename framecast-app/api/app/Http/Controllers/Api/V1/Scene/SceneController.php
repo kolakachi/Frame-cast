@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1\Scene;
 
+use App\Constants\CaptionFonts;
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateAIImageJob;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
@@ -135,6 +137,11 @@ class SceneController extends Controller
             'voice_profile_id' => ['sometimes', 'nullable', 'integer'],
             'voice_settings_json' => ['sometimes', 'nullable', 'array'],
             'caption_settings_json' => ['sometimes', 'nullable', 'array'],
+            'caption_settings_json.font' => ['sometimes', 'nullable', 'string', \Illuminate\Validation\Rule::in(CaptionFonts::ALL)],
+            'visual_style' => ['sometimes', 'nullable', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon'],
+            'motion_settings_json' => ['sometimes', 'nullable', 'array'],
+            'motion_settings_json.effect' => ['sometimes', 'string', 'in:zoom_in,zoom_out,pan_left,pan_right,pan_up,pan_down,pan_zoom,static'],
+            'motion_settings_json.intensity' => ['sometimes', 'string', 'in:subtle,moderate,dramatic'],
             'locked_fields_json' => ['sometimes', 'nullable', 'array'],
             'status' => ['sometimes', 'nullable', 'string', 'max:64'],
         ]);
@@ -562,6 +569,43 @@ class SceneController extends Controller
         ]);
     }
 
+    public function generateImage(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $validated = $request->validate([
+            'style'           => ['sometimes', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon'],
+            'prompt_override' => ['sometimes', 'nullable', 'string', 'max:500'],
+        ]);
+
+        // Prefer request style, then scene-level visual_style, then default.
+        $style = $validated['style'] ?? $scene->visual_style ?? 'cinematic';
+
+        GenerateAIImageJob::dispatch(
+            $scene->getKey(),
+            $scene->project_id,
+            $style,
+            $validated['prompt_override'] ?? null,
+            $scene->visual_style,
+        );
+
+        return response()->json([
+            'data' => [
+                'status'   => 'queued',
+                'scene_id' => $scene->getKey(),
+                'style'    => $style,
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function destroy(Request $request, int $sceneId): JsonResponse
     {
         /** @var User $user */
@@ -636,6 +680,9 @@ class SceneController extends Controller
             'visual_type' => $scene->visual_type,
             'visual_asset_id' => $scene->visual_asset_id,
             'visual_prompt' => $scene->visual_prompt,
+            'visual_style' => $scene->visual_style,
+            'image_generation_settings' => $scene->image_generation_settings_json,
+            'motion_settings' => $scene->motion_settings_json,
             'transition_rule' => $scene->transition_rule,
             'status' => $scene->status,
             'locked_fields' => $scene->locked_fields_json,

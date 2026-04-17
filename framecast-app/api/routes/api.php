@@ -1,12 +1,16 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
+use App\Http\Controllers\Api\V1\Niche\NicheController;
 use App\Http\Controllers\Api\V1\Asset\AssetController;
 use App\Http\Controllers\Api\V1\Asset\CollectionController;
+use App\Http\Controllers\Api\V1\Asset\ImageStyleController;
 use App\Http\Controllers\Api\V1\BrandKit\BrandKitController;
 use App\Http\Controllers\Api\V1\Channel\ChannelController;
+use App\Http\Controllers\Api\V1\Localization\LocalizationController;
 use App\Http\Controllers\Api\V1\Project\ProjectController;
 use App\Http\Controllers\Api\V1\Scene\SceneController;
+use App\Http\Controllers\Api\V1\System\FontController;
 use App\Http\Controllers\Api\V1\System\HealthCheckController;
 use App\Http\Controllers\Api\V1\System\NotificationController;
 use App\Http\Controllers\Api\V1\System\VerificationController;
@@ -37,6 +41,10 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
         Route::get('/voice-profiles', [VoiceProfileController::class, 'index']);
+        Route::get('/niches', [NicheController::class, 'index']);
+        Route::get('/fonts', [FontController::class, 'index']);
+        Route::get('/visual-styles', [ImageStyleController::class, 'index']);
+        Route::get('/image-generation/styles', [ImageStyleController::class, 'index']);
         Route::prefix('/assets')->group(function (): void {
             Route::get('/', [AssetController::class, 'index']);
             Route::post('/', [AssetController::class, 'store']);
@@ -83,6 +91,8 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{projectId}/exports', [ProjectController::class, 'exports'])->whereNumber('projectId');
             Route::get('/{projectId}/variants', [VariantController::class, 'index'])->whereNumber('projectId');
             Route::post('/{projectId}/variants', [VariantController::class, 'store'])->whereNumber('projectId');
+            Route::get('/{projectId}/localizations', [LocalizationController::class, 'index'])->whereNumber('projectId');
+            Route::post('/{projectId}/localizations', [LocalizationController::class, 'store'])->whereNumber('projectId');
             Route::post('/{projectId}/export', [ProjectController::class, 'export'])->whereNumber('projectId');
             Route::delete('/{projectId}', [ProjectController::class, 'destroy'])->whereNumber('projectId');
         });
@@ -93,6 +103,7 @@ Route::prefix('v1')->group(function (): void {
         });
 
         Route::delete('/variants/{variantId}', [VariantController::class, 'destroy'])->whereNumber('variantId');
+        Route::post('/localization-links/{localizationLinkId}/retry', [LocalizationController::class, 'retry'])->whereNumber('localizationLinkId');
 
         Route::prefix('/scenes')->group(function (): void {
             Route::post('/', [SceneController::class, 'store']);
@@ -102,6 +113,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{sceneId}/preview', [SceneController::class, 'preview'])->whereNumber('sceneId');
             Route::post('/{sceneId}/regenerate-voice', [SceneController::class, 'regenerateVoice'])->whereNumber('sceneId');
             Route::post('/{sceneId}/swap-visual', [SceneController::class, 'swapVisual'])->whereNumber('sceneId');
+            Route::post('/{sceneId}/generate-image', [SceneController::class, 'generateImage'])->whereNumber('sceneId');
             Route::post('/{sceneId}/rewrite', [SceneController::class, 'rewrite'])->whereNumber('sceneId');
             Route::post('/{sceneId}/duplicate', [SceneController::class, 'duplicate'])->whereNumber('sceneId');
             Route::delete('/{sceneId}', [SceneController::class, 'destroy'])->whereNumber('sceneId');

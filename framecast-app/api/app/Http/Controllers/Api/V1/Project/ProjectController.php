@@ -9,6 +9,7 @@ use App\Jobs\ProcessExportJob;
 use App\Models\Asset;
 use App\Models\BrandKit;
 use App\Models\Channel;
+use App\Models\Niche;
 use App\Models\ExportJob;
 use App\Models\Project;
 use App\Models\ProjectHookOption;
@@ -205,6 +206,7 @@ class ProjectController extends Controller
             'channel_id' => ['nullable', 'integer'],
             'template_id' => ['nullable', 'integer'],
             'brand_kit_id' => ['nullable', 'integer'],
+            'niche_id' => ['nullable', 'integer'],
             'content_goal' => ['nullable', 'string', 'max:255'],
             'duration_target_seconds' => ['nullable', 'integer', 'min:5', 'max:600'],
             'tone' => ['nullable', 'string', 'max:64'],
@@ -279,11 +281,50 @@ class ProjectController extends Controller
 
         $brandKitId = $validated['brand_kit_id'] ?? $channel?->brand_kit_id;
 
+        // Resolve niche and apply its defaults where not explicitly overridden.
+        $niche = null;
+        $nicheMusicAssetId = null;
+        $nicheTone = null;
+
+        if (! empty($validated['niche_id'])) {
+            $niche = Niche::query()->find($validated['niche_id']);
+
+            if ($niche) {
+                // Inherit tone from niche if not explicitly set.
+                if (empty($validated['tone'])) {
+                    $nicheTone = $niche->default_voice_tone;
+                }
+
+                // Pick a music asset matching the niche's mood if no template already sets one.
+                if ($niche->default_music_mood) {
+                    $nicheMusicAssetId = Asset::query()
+                        ->where('workspace_id', $user->workspace_id)
+                        ->where('asset_type', 'music')
+                        ->whereJsonContains('tags', $niche->default_music_mood)
+                        ->value('id');
+                }
+
+                // Use niche's template type to pick template if one wasn't explicitly chosen.
+                if (! $template && $niche->default_template_type) {
+                    $template = Template::query()
+                        ->where('template_type', $niche->default_template_type)
+                        ->where(function ($query) use ($user): void {
+                            $query->whereNull('workspace_id')
+                                ->orWhere('workspace_id', $user->workspace_id);
+                        })
+                        ->first();
+                }
+            }
+        }
+
         $project = Project::query()->create([
             'workspace_id' => $user->workspace_id,
             'channel_id' => $channel?->getKey(),
             'brand_kit_id' => $brandKitId,
             'template_id' => $template?->getKey(),
+            'niche_id' => $niche?->getKey(),
+            'music_asset_id' => $nicheMusicAssetId,
+            'music_settings_json' => $nicheMusicAssetId ? ['volume' => 30, 'duck_volume' => 8, 'fade_in_ms' => 500, 'loop' => true, 'duck_during_voice' => true] : null,
             'source_type' => $validated['source_type'],
             'source_content_raw' => $validated['source_content_raw'] ?? null,
             'source_content_normalized' => $this->normalizeSource($validated['source_content_raw'] ?? ''),
@@ -291,7 +332,7 @@ class ProjectController extends Controller
             'platform_target' => $validated['platform_target'],
             'duration_target_seconds' => $validated['duration_target_seconds'] ?? null,
             'aspect_ratio' => $validated['aspect_ratio'],
-            'tone' => $validated['tone'] ?? null,
+            'tone' => $validated['tone'] ?? $nicheTone,
             'primary_language' => $validated['languages'][0],
             'title' => $validated['title'] ?? null,
             'status' => 'generating',
@@ -459,6 +500,13 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'channel_id' => ['sometimes', 'nullable', 'integer'],
             'brand_kit_id' => ['sometimes', 'nullable', 'integer'],
+            'music_asset_id' => ['sometimes', 'nullable', 'integer'],
+            'music_settings_json' => ['sometimes', 'nullable', 'array'],
+            'music_settings_json.volume' => ['sometimes', 'integer', 'min:0', 'max:100'],
+            'music_settings_json.duck_volume' => ['sometimes', 'integer', 'min:0', 'max:100'],
+            'music_settings_json.fade_in_ms' => ['sometimes', 'integer', 'min:0', 'max:5000'],
+            'music_settings_json.loop' => ['sometimes', 'boolean'],
+            'music_settings_json.duck_during_voice' => ['sometimes', 'boolean'],
         ]);
 
         if (array_key_exists('channel_id', $validated) && $validated['channel_id']) {
@@ -480,6 +528,18 @@ class ProjectController extends Controller
 
             if (! $brandKitExists) {
                 return $this->error('invalid_brand_kit', 'Selected brand kit does not exist in this workspace.', 422);
+            }
+        }
+
+        if (array_key_exists('music_asset_id', $validated) && $validated['music_asset_id']) {
+            $musicAssetExists = Asset::query()
+                ->whereKey($validated['music_asset_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->where('asset_type', 'music')
+                ->exists();
+
+            if (! $musicAssetExists) {
+                return $this->error('invalid_music_asset', 'Selected music track does not exist in this workspace.', 422);
             }
         }
 
@@ -674,6 +734,8 @@ class ProjectController extends Controller
             'project_id' => $option->project_id,
             'sort_order' => $option->sort_order,
             'hook_text' => $option->hook_text,
+            'hook_score' => $option->hook_score,
+            'hook_score_reason' => $option->hook_score_reason,
             'created_at' => $option->created_at?->toIso8601String(),
         ];
     }
@@ -754,6 +816,7 @@ class ProjectController extends Controller
             'channel_id' => $project->channel_id,
             'brand_kit_id' => $project->brand_kit_id,
             'template_id' => $project->template_id,
+            'niche_id' => $project->niche_id,
             'source_type' => $project->source_type,
             'source_content_raw' => $project->source_content_raw,
             'source_content_normalized' => $project->source_content_normalized,
@@ -766,6 +829,8 @@ class ProjectController extends Controller
             'title' => $project->title,
             'script_text' => $project->script_text,
             'status' => $project->status,
+            'music_asset_id' => $project->music_asset_id,
+            'music_settings_json' => $project->music_settings_json,
             'variants_count' => isset($project->variants_count) ? (int) $project->variants_count : 0,
             'created_by_user_id' => $project->created_by_user_id,
             'created_at' => $project->created_at?->toIso8601String(),

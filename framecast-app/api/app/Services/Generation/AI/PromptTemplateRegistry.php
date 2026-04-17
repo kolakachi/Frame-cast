@@ -44,6 +44,10 @@ class PromptTemplateRegistry
                 'system' => 'Generate hook options for a short-form video. Return JSON only in this shape: {"hooks":[{"text":"..."}]} with 3 to 10 options.',
                 'user' => "Generate 3-10 hook options from this script.\nLanguage: {{language}}\nScript:\n{{script_text}}",
             ],
+            'score_hooks' => [
+                'system' => 'You score short-form video hooks for engagement potential. Return JSON only in this exact shape: {"scores":[{"id":number,"score":0-100,"reason":"one short sentence"}]}. Score each hook on four criteria: pattern interrupt (stops the scroll), specificity (concrete claim vs vague promise), curiosity gap (creates desire to keep watching), emotional pull (fear, curiosity, aspiration, or urgency). 80–100 = strong hook that would perform well. 60–79 = decent but improvable. Below 60 = weak, unlikely to retain viewers past the first second.',
+                'user' => "Score these short-form video hooks for engagement.\nHooks (JSON array with id and text):\n{{hooks_json}}",
+            ],
             'scene_rewrite' => [
                 'system' => 'You rewrite exactly one short-form video scene. Return plain rewritten scene text only. Do not add labels, bullets, notes, or extra commentary. Preserve all locked facts and keep the output in the same language as the input. Maintain continuity with adjacent scenes.',
                 'user' => "Rewrite this single scene for a short-form video.\nProject: {{project_title}}\nMode: {{mode}}\nLanguage: {{language}}\nScene type: {{scene_type}}\nScene label: {{scene_label}}\nPrevious scene:\n{{previous_scene}}\nCurrent scene:\n{{script_text}}\nNext scene:\n{{next_scene}}\nScene outline:\n{{scene_outline}}",

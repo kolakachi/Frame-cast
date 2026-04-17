@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Events\GenerationProgressed;
-use App\Jobs\MatchVisualsJob;
 use App\Models\Project;
 use App\Models\ProjectHookOption;
 use App\Services\Generation\AI\AIGenerationAdapter;
@@ -52,7 +51,7 @@ class GenerateHooksJob implements ShouldQueue
         });
 
         GenerationProgressed::dispatch($this->projectId, 'hooks', 'completed');
-        MatchVisualsJob::dispatch($project->getKey());
+        ScoreHooksJob::dispatch($project->getKey());
     }
 
     public function failed(\Throwable $exception): void

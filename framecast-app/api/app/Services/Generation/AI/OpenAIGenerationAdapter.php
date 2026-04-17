@@ -90,6 +90,10 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
             return $this->fallbackHookOptions($variables);
         }
 
+        if ($promptTemplateKey === 'score_hooks') {
+            return $this->fallbackScoreHooks($variables);
+        }
+
         if ($promptTemplateKey === 'scene_rewrite') {
             return $this->fallbackSceneRewrite($variables);
         }
@@ -211,6 +215,43 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
         ];
 
         return (string) json_encode(['hooks' => $hooks], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * Deterministic fallback for score_hooks — assigns placeholder scores so the
+     * UI renders score badges even when the API key is absent.
+     *
+     * @param  array<string, mixed>  $variables
+     */
+    private function fallbackScoreHooks(array $variables): string
+    {
+        $hooksJson = trim((string) ($variables['hooks_json'] ?? '[]'));
+        $hooks = json_decode($hooksJson, true);
+
+        if (! is_array($hooks)) {
+            return json_encode(['scores' => []], JSON_UNESCAPED_SLASHES);
+        }
+
+        $fallbackScores = [72, 65, 58, 80, 63, 55, 70, 68, 61, 75];
+        $fallbackReasons = [
+            'Clear pattern interrupt but the claim could be sharper.',
+            'Decent curiosity gap — specificity would push it higher.',
+            'Low urgency; try leading with a concrete result instead.',
+            'Strong emotional pull and specific outcome — well-structured hook.',
+            'Moderate curiosity but the opening word is weak.',
+        ];
+
+        $scores = [];
+        foreach (array_values($hooks) as $i => $hook) {
+            $id = (int) ($hook['id'] ?? ($i + 1));
+            $scores[] = [
+                'id' => $id,
+                'score' => $fallbackScores[$i % count($fallbackScores)],
+                'reason' => $fallbackReasons[$i % count($fallbackReasons)],
+            ];
+        }
+
+        return (string) json_encode(['scores' => $scores], JSON_UNESCAPED_SLASHES);
     }
 
     /**

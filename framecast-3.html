@@ -1,0 +1,2169 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Framecast 3 — Visual Edge Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ── Design tokens (identical to framecast-2.html) ───────────────── */
+:root {
+  --bg-deep:       #0a0a0f;
+  --bg-panel:      #111118;
+  --bg-card:       #17171f;
+  --bg-elevated:   #1d1d28;
+  --bg-soft:       #15151d;
+  --border:        #2a2a36;
+  --border-active: #494960;
+  --text-primary:  #ececf3;
+  --text-secondary:#a1a1b5;
+  --text-muted:    #6a6a7c;
+  --accent:        #ff6b35;
+  --accent-hover:  #ff875a;
+  --accent-glow:   rgba(255,107,53,.14);
+  --green:         #34d399;
+  --green-bg:      rgba(52,211,153,.12);
+  --blue:          #60a5fa;
+  --blue-bg:       rgba(96,165,250,.12);
+  --yellow:        #fbbf24;
+  --yellow-bg:     rgba(251,191,36,.12);
+  --purple:        #a78bfa;
+  --purple-bg:     rgba(167,139,250,.12);
+  --red:           #f87171;
+  --red-bg:        rgba(248,113,113,.12);
+  --radius-sm:     6px;
+  --radius:        12px;
+  --radius-lg:     16px;
+  --shadow:        0 18px 40px rgba(0,0,0,.35);
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+
+body {
+  min-height:100vh;
+  background:
+    radial-gradient(circle at top right, rgba(255,107,53,.09), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(96,165,250,.08), transparent 24%),
+    var(--bg-deep);
+  color:var(--text-primary);
+  font-family:"DM Sans",sans-serif;
+  overflow-x:hidden;
+}
+
+button,input,select,textarea{ font:inherit; }
+button{ background:none; border:none; cursor:pointer; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────── */
+.sidebar {
+  position:fixed; inset:0 auto 0 0; width:72px;
+  background:rgba(17,17,24,.96); border-right:1px solid var(--border);
+  backdrop-filter:blur(12px);
+  display:flex; flex-direction:column; align-items:center; padding:16px 0; z-index:100;
+}
+.sidebar-logo {
+  width:40px; height:40px; border-radius:10px;
+  background:linear-gradient(135deg,var(--accent),#ff9b72);
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; font-family:"Space Mono",monospace; font-weight:700; margin-bottom:28px;
+}
+.sidebar-nav{ display:flex; flex-direction:column; gap:8px; flex:1; }
+.nav-item {
+  width:44px; height:44px; border-radius:10px; color:var(--text-muted);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; position:relative; transition:0.2s ease;
+}
+.nav-item:hover{ color:var(--text-secondary); background:var(--bg-card); }
+.nav-item.active{ color:var(--accent); background:var(--accent-glow); box-shadow:inset 0 0 0 1px rgba(255,107,53,.18); }
+.tooltip {
+  position:absolute; left:58px; top:50%; transform:translateY(-50%);
+  opacity:0; pointer-events:none;
+  background:var(--bg-elevated); color:var(--text-primary); font-size:12px;
+  padding:5px 10px; border-radius:var(--radius-sm); border:1px solid var(--border);
+  white-space:nowrap; transition:opacity .15s ease;
+}
+.nav-item:hover .tooltip{ opacity:1; }
+.sidebar-bottom{ display:flex; flex-direction:column; gap:8px; }
+.avatar {
+  width:34px; height:34px; border-radius:50%;
+  background:linear-gradient(135deg,#2a3a70,#7d3cff);
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700;
+}
+
+/* ── Main shell ──────────────────────────────────────────────────── */
+.main{ margin-left:72px; min-height:100vh; }
+.topbar {
+  position:sticky; top:0; z-index:90; height:64px;
+  background:rgba(17,17,24,.88); border-bottom:1px solid var(--border);
+  backdrop-filter:blur(14px); padding:0 24px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.topbar-left{ display:flex; align-items:center; gap:18px; }
+.topbar-title{ font-size:16px; font-weight:600; }
+.topbar-right{ display:flex; align-items:center; gap:10px; }
+
+/* ── Buttons ─────────────────────────────────────────────────────── */
+.btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  padding:7px 16px; border-radius:var(--radius-sm);
+  cursor:pointer; transition:0.2s ease; font-size:13px; font-weight:500;
+}
+.btn-primary{ background:var(--accent); color:#fff; }
+.btn-primary:hover{ background:var(--accent-hover); box-shadow:0 0 24px var(--accent-glow); }
+.btn-ghost{ color:var(--text-secondary); background:transparent; border:1px solid var(--border); }
+.btn-ghost:hover{ color:var(--text-primary); border-color:var(--border-active); }
+.btn-sm{ padding:5px 10px; font-size:12px; }
+.btn-danger{ background:rgba(248,113,113,.15); color:var(--red); border:1px solid rgba(248,113,113,.25); }
+.btn-danger:hover{ background:rgba(248,113,113,.25); }
+.btn-purple{ background:rgba(167,139,250,.15); color:var(--purple); border:1px solid rgba(167,139,250,.25); }
+.btn-purple:hover{ background:rgba(167,139,250,.25); }
+
+/* ── Mockup navigation bar ───────────────────────────────────────── */
+.mockup-nav {
+  display:flex; align-items:center; gap:0; background:var(--bg-card);
+  border-bottom:1px solid var(--border); padding:0 24px; overflow-x:auto;
+}
+.mockup-tab {
+  display:flex; align-items:center; gap:6px;
+  padding:14px 16px; font-size:13px; font-weight:500; color:var(--text-muted);
+  cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; transition:.15s;
+  user-select:none;
+}
+.mockup-tab:hover:not(.locked):not(.done){ color:var(--text-secondary); }
+.mockup-tab.active{ color:var(--accent); border-bottom-color:var(--accent); }
+.mockup-tab.done{
+  color:var(--text-muted); cursor:default; opacity:.55;
+  pointer-events:none;
+}
+.mockup-tab.done .tab-num{ background:var(--green-bg); color:var(--green); border-color:rgba(52,211,153,.25); }
+.mockup-tab.done .tab-num::after{ content:"✓"; }
+.mockup-tab.locked{
+  color:var(--text-muted); cursor:not-allowed; opacity:.35;
+  pointer-events:none;
+}
+.tab-num{
+  width:20px; height:20px; border-radius:50%; flex-shrink:0;
+  border:1.5px solid var(--border); background:var(--bg-elevated);
+  font-size:10px; font-weight:700; font-family:"Space Mono",monospace;
+  display:flex; align-items:center; justify-content:center; color:var(--text-muted);
+}
+.mockup-tab.active .tab-num{ background:var(--accent); border-color:var(--accent); color:#fff; }
+.tab-arrow{ color:var(--border-active); font-size:14px; padding:0 2px; flex-shrink:0; }
+
+/* ── Screen wrapper ──────────────────────────────────────────────── */
+.screen{ display:none; padding:24px; }
+.screen.active{ display:block; }
+.editor-screen{ display:none; }
+.editor-screen.active{ display:flex; height:calc(100vh - 112px); padding:0; }
+
+/* ── Cards / surfaces ────────────────────────────────────────────── */
+.surface-card,.stat-card {
+  background:linear-gradient(180deg,rgba(255,255,255,.015),transparent 100%),var(--bg-card);
+  border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow);
+}
+.section-header{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.section-title{ font-size:16px; font-weight:600; }
+.section-subtitle{ margin-top:3px; font-size:13px; color:var(--text-muted); }
+
+/* ── Modal ───────────────────────────────────────────────────────── */
+.modal-overlay {
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.62); backdrop-filter:blur(4px);
+  opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:200;
+}
+.modal-overlay.show{ opacity:1; pointer-events:all; }
+.modal {
+  width:min(680px,calc(100vw - 32px)); max-height:86vh; overflow-y:auto;
+  padding:28px; border-radius:var(--radius-lg);
+  background:var(--bg-panel); border:1px solid var(--border);
+  box-shadow:0 30px 80px rgba(0,0,0,.5);
+}
+.modal-wide{ width:min(860px,calc(100vw - 32px)); }
+.modal-title{ font-size:20px; font-weight:700; }
+.modal-subtitle{ margin-top:4px; margin-bottom:22px; font-size:13px; color:var(--text-muted); }
+.modal-actions {
+  display:flex; justify-content:flex-end; gap:10px;
+  margin-top:24px; padding-top:18px; border-top:1px solid var(--border);
+}
+.input-group{ margin-bottom:16px; }
+.input-label{ display:block; margin-bottom:6px; font-size:12px; font-weight:500; color:var(--text-secondary); }
+.input-field {
+  width:100%; padding:9px 12px; border-radius:8px; font-size:13px;
+  border:1px solid var(--border); background:var(--bg-elevated); color:var(--text-primary);
+}
+.input-field:focus{ outline:none; border-color:rgba(255,107,53,.45); }
+
+/* ── Wizard steps indicator ──────────────────────────────────────── */
+.wizard-steps {
+  display:flex; align-items:center; gap:0; margin-bottom:28px;
+}
+.wizard-step {
+  display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted);
+}
+.wizard-step-num {
+  width:24px; height:24px; border-radius:50%;
+  background:var(--bg-elevated); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:700; font-family:"Space Mono",monospace;
+}
+.wizard-step.active .wizard-step-num{ background:var(--accent); border-color:var(--accent); color:#fff; }
+.wizard-step.done .wizard-step-num{ background:var(--green-bg); border-color:var(--green); color:var(--green); }
+.wizard-step.active{ color:var(--text-primary); }
+.wizard-connector{ width:32px; height:1px; background:var(--border); margin:0 4px; flex-shrink:0; }
+.wizard-connector.done{ background:var(--green); opacity:.4; }
+
+/* ── Niche grid ──────────────────────────────────────────────────── */
+.niche-grid {
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+  margin-bottom:8px;
+}
+.niche-card {
+  background:var(--bg-elevated); border:1px solid var(--border);
+  border-radius:var(--radius); padding:16px 14px;
+  cursor:pointer; transition:.2s ease; position:relative; overflow:hidden;
+}
+.niche-card::before {
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(135deg,var(--niche-color,.2),transparent 70%);
+  opacity:0; transition:.2s ease;
+}
+.niche-card:hover{ border-color:var(--border-active); transform:translateY(-1px); }
+.niche-card:hover::before{ opacity:1; }
+.niche-card.selected{ border-color:var(--accent); background:var(--accent-glow); }
+.niche-card.selected::before{ opacity:0; }
+.niche-emoji{ font-size:26px; margin-bottom:10px; display:block; }
+.niche-name{ font-size:13px; font-weight:600; margin-bottom:3px; }
+.niche-desc{ font-size:11px; color:var(--text-muted); line-height:1.45; }
+.niche-tags{ display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+.niche-tag {
+  padding:2px 6px; border-radius:3px; font-size:10px;
+  background:var(--bg-card); color:var(--text-muted); border:1px solid var(--border);
+}
+.niche-selected-check {
+  position:absolute; top:10px; right:10px;
+  width:18px; height:18px; border-radius:50%;
+  background:var(--accent); color:#fff;
+  display:none; align-items:center; justify-content:center; font-size:10px;
+}
+.niche-card.selected .niche-selected-check{ display:flex; }
+
+/* ── Source type chips (wizard step 2) ───────────────────────────── */
+.source-type-grid {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:20px;
+}
+.source-type-opt {
+  padding:14px 12px; border-radius:var(--radius); border:1px solid var(--border);
+  background:var(--bg-elevated); cursor:pointer; transition:.18s ease;
+  text-align:center;
+}
+.source-type-opt:hover{ border-color:var(--border-active); }
+.source-type-opt.selected{ border-color:var(--accent); background:var(--accent-glow); }
+.source-type-ico{ font-size:22px; margin-bottom:6px; display:block; }
+.source-type-name{ font-size:12px; font-weight:600; }
+.source-type-hint{ font-size:11px; color:var(--text-muted); margin-top:2px; }
+
+/* ── Niche preset badge ──────────────────────────────────────────── */
+.niche-preset-banner {
+  display:flex; align-items:center; gap:10px;
+  padding:10px 14px; border-radius:var(--radius-sm);
+  background:var(--accent-glow); border:1px solid rgba(255,107,53,.2);
+  margin-bottom:18px; font-size:12px; color:var(--text-secondary);
+}
+.niche-preset-banner strong{ color:var(--text-primary); }
+
+/* ── Hook scoring ────────────────────────────────────────────────── */
+.hook-options-list{ display:grid; gap:10px; }
+.hook-option {
+  display:flex; align-items:flex-start; gap:14px;
+  padding:14px 16px; border-radius:var(--radius); border:1px solid var(--border);
+  background:var(--bg-elevated); cursor:pointer; transition:.18s ease;
+}
+.hook-option:hover{ border-color:var(--border-active); }
+.hook-option.selected{ border-color:var(--accent); background:var(--accent-glow); }
+.hook-option-radio {
+  width:16px; height:16px; border-radius:50%; border:1.5px solid var(--border);
+  margin-top:2px; flex-shrink:0; transition:.15s; display:flex; align-items:center; justify-content:center;
+}
+.hook-option.selected .hook-option-radio{
+  border-color:var(--accent); background:var(--accent);
+}
+.hook-option.selected .hook-option-radio::after{
+  content:""; width:6px; height:6px; border-radius:50%; background:#fff;
+}
+.hook-option-body{ flex:1; }
+.hook-option-text{ font-size:13px; line-height:1.5; color:var(--text-primary); }
+.hook-option-reason{ font-size:11px; color:var(--text-muted); margin-top:5px; line-height:1.4; }
+.hook-score-wrap{ display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0; }
+.hook-score {
+  font-family:"Space Mono",monospace; font-size:14px; font-weight:700;
+  width:40px; height:40px; border-radius:8px;
+  display:flex; align-items:center; justify-content:center;
+}
+.hook-score.high{ background:var(--green-bg); color:var(--green); }
+.hook-score.mid{ background:var(--yellow-bg); color:var(--yellow); }
+.hook-score.low{ background:var(--red-bg); color:var(--red); }
+.hook-score-label{ font-size:9px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; }
+.hook-score-header {
+  display:flex; align-items:center; gap:8px; margin-bottom:14px;
+}
+.hook-score-header-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:3px 8px; border-radius:999px; font-size:11px; font-weight:500;
+  background:var(--green-bg); color:var(--green); border:1px solid rgba(52,211,153,.2);
+}
+
+/* ── Visual type tabs (editor extension) ─────────────────────────── */
+.visual-type-tabs {
+  display:flex; border-radius:var(--radius-sm);
+  background:var(--bg-elevated); padding:3px; gap:2px; margin-bottom:12px;
+}
+.visual-type-tab {
+  flex:1; padding:5px 6px; border-radius:4px; font-size:11px; font-weight:500;
+  color:var(--text-muted); text-align:center; cursor:pointer; transition:.15s;
+}
+.visual-type-tab:hover{ color:var(--text-secondary); }
+.visual-type-tab.active{ background:var(--bg-card); color:var(--text-primary); box-shadow:0 1px 3px rgba(0,0,0,.3); }
+.visual-type-tab.active.ai{ color:var(--purple); }
+
+/* ── AI style picker ─────────────────────────────────────────────── */
+.style-picker-grid {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:12px;
+}
+.style-opt {
+  padding:7px 4px; border-radius:var(--radius-sm); border:1px solid var(--border);
+  background:var(--bg-card); text-align:center; cursor:pointer; transition:.15s;
+}
+.style-opt:hover{ border-color:var(--border-active); }
+.style-opt.selected{ border-color:var(--purple); background:rgba(167,139,250,.1); }
+.style-opt-ico{ font-size:14px; display:block; margin-bottom:2px; }
+.style-opt-name{ font-size:9px; color:var(--text-muted); }
+.style-opt.selected .style-opt-name{ color:var(--purple); }
+
+.ai-prompt-area {
+  width:100%; min-height:54px; resize:none;
+  padding:8px 10px; background:var(--bg-elevated); border:1px solid var(--border);
+  border-radius:var(--radius-sm); color:var(--text-primary); font-family:inherit;
+  font-size:12px; margin-bottom:8px;
+}
+.ai-prompt-area:focus{ outline:none; border-color:rgba(167,139,250,.45); }
+
+.ai-gen-footer{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.ai-gen-meta{ font-size:11px; color:var(--text-muted); }
+.ai-gen-meta span{ color:var(--purple); }
+
+.ai-image-result {
+  border-radius:var(--radius-sm); overflow:hidden; position:relative; margin-bottom:8px;
+}
+.ai-image-preview {
+  width:100%; height:148px;
+  background:linear-gradient(160deg,#1a1a3e 0%,#0d1a2e 40%,#1a0d2e 70%,#2e1a0d 100%);
+  display:flex; align-items:center; justify-content:center; position:relative;
+}
+.ai-image-overlay-badge {
+  position:absolute; top:8px; left:8px;
+  padding:3px 8px; border-radius:4px; font-size:10px; font-weight:700;
+  background:rgba(167,139,250,.25); color:var(--purple); border:1px solid rgba(167,139,250,.3);
+  backdrop-filter:blur(4px);
+}
+.ai-image-ico{ font-size:36px; opacity:.35; }
+.ai-image-actions{ display:flex; gap:6px; margin-top:6px; }
+
+/* ── Music panel ─────────────────────────────────────────────────── */
+.music-track-list{ display:grid; gap:6px; margin-bottom:14px; }
+.music-track {
+  display:flex; align-items:center; gap:10px;
+  padding:9px 10px; border-radius:var(--radius-sm); border:1px solid var(--border);
+  background:var(--bg-card); cursor:pointer; transition:.15s;
+}
+.music-track:hover{ border-color:var(--border-active); }
+.music-track.selected{ border-color:var(--accent); background:var(--accent-glow); }
+.music-track-thumb {
+  width:36px; height:36px; border-radius:6px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:14px;
+}
+.music-track-info{ flex:1; min-width:0; }
+.music-track-name{ font-size:12px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.music-track-meta{ font-size:10px; color:var(--text-muted); margin-top:1px; }
+.music-track-duration{ font-family:"Space Mono",monospace; font-size:10px; color:var(--text-muted); flex-shrink:0; }
+.music-play-btn {
+  width:24px; height:24px; border-radius:50%; border:1px solid var(--border);
+  background:var(--bg-elevated); color:var(--text-secondary);
+  display:flex; align-items:center; justify-content:center; font-size:9px; flex-shrink:0;
+}
+.music-track.selected .music-play-btn{ border-color:var(--accent); color:var(--accent); }
+
+.music-controls{ padding:12px; border-radius:var(--radius-sm); background:var(--bg-elevated); border:1px solid var(--border); }
+.music-control-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.music-control-row:last-child{ margin-bottom:0; }
+.music-control-label{ font-size:11px; color:var(--text-muted); width:70px; flex-shrink:0; }
+.music-slider{ flex:1; appearance:none; height:4px; border-radius:999px; background:var(--border); outline:none; cursor:pointer; }
+.music-slider::-webkit-slider-thumb{ appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); cursor:pointer; }
+.music-slider-val{ font-family:"Space Mono",monospace; font-size:10px; color:var(--text-muted); width:28px; text-align:right; }
+
+/* ── Music library (asset lib tab) ──────────────────────────────── */
+.music-library-grid{ display:grid; gap:10px; }
+.music-library-track {
+  display:flex; align-items:center; gap:14px;
+  padding:14px; border-radius:var(--radius); border:1px solid var(--border);
+  background:var(--bg-card); transition:.18s; cursor:pointer;
+}
+.music-library-track:hover{ border-color:var(--border-active); transform:translateY(-1px); }
+.music-library-thumb {
+  width:52px; height:52px; border-radius:10px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:22px;
+}
+.music-library-info{ flex:1; min-width:0; }
+.music-library-name{ font-size:14px; font-weight:600; margin-bottom:3px; }
+.music-library-tags{ display:flex; gap:5px; flex-wrap:wrap; }
+.music-library-tag {
+  padding:2px 7px; border-radius:3px; font-size:10px;
+  background:var(--bg-elevated); color:var(--text-muted);
+}
+.music-library-tag.mood-dark{ background:rgba(167,139,250,.1); color:var(--purple); }
+.music-library-tag.mood-upbeat{ background:rgba(251,191,36,.1); color:var(--yellow); }
+.music-library-tag.mood-calm{ background:rgba(96,165,250,.1); color:var(--blue); }
+.music-library-tag.mood-epic{ background:rgba(248,113,113,.1); color:var(--red); }
+.music-library-tag.mood-corporate{ background:rgba(52,211,153,.1); color:var(--green); }
+.music-library-meta{ display:flex; align-items:center; gap:12px; margin-top:5px; font-size:11px; color:var(--text-muted); }
+.music-library-actions{ display:flex; gap:8px; flex-shrink:0; }
+.music-big-play {
+  width:40px; height:40px; border-radius:50%;
+  background:var(--bg-elevated); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-size:14px; color:var(--text-secondary); transition:.15s;
+}
+.music-big-play:hover{ border-color:var(--accent); color:var(--accent); }
+
+/* ── Filter chips ────────────────────────────────────────────────── */
+.filter-chips{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+.filter-chip {
+  padding:6px 12px; border-radius:999px; border:1px solid var(--border);
+  background:var(--bg-elevated); color:var(--text-secondary); cursor:pointer; font-size:12px; transition:.15s;
+}
+.filter-chip:hover{ border-color:var(--border-active); }
+.filter-chip.active{ background:var(--accent-glow); border-color:rgba(255,107,53,.35); color:var(--accent); }
+
+/* ── Editor layout ───────────────────────────────────────────────── */
+.editor-sidebar {
+  width:320px; border-right:1px solid var(--border);
+  background:var(--bg-panel); display:flex; flex-direction:column;
+}
+.editor-sidebar-header {
+  padding:16px 20px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+}
+.editor-sidebar-title{ font-size:14px; font-weight:600; }
+.scene-list{ flex:1; overflow-y:auto; padding:12px; }
+.scene-item {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm);
+  padding:12px; margin-bottom:4px; cursor:pointer; transition:all .2s;
+}
+.scene-item:hover{ border-color:var(--border-active); }
+.scene-item.active{ border-color:var(--accent); background:var(--accent-glow); }
+.scene-number{ font-family:"Space Mono",monospace; font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.1em; margin-bottom:6px; }
+.scene-text{ font-size:13px; line-height:1.5; color:var(--text-secondary); }
+.scene-meta{ display:flex; align-items:center; gap:8px; margin-top:8px; font-size:11px; color:var(--text-muted); }
+.scene-tag{ padding:2px 6px; border-radius:3px; background:var(--bg-elevated); font-size:10px; }
+.scene-tag.ai-img{ background:rgba(167,139,250,.1); color:var(--purple); }
+
+.editor-canvas {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:var(--bg-deep); position:relative;
+}
+.preview-container{ width:270px; height:480px; background:#000; border-radius:16px; overflow:hidden; position:relative; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+.preview-video-bg{ width:100%; height:100%; background:linear-gradient(180deg,#1a1a3e 0%,#0d0d2b 40%,#1a0a2e 100%); position:relative; }
+.preview-caption{ position:absolute; bottom:100px; left:16px; right:16px; text-align:center; }
+.caption-word{ font-size:22px; font-weight:700; display:inline; line-height:1.4; }
+.caption-word.highlight{ color:var(--accent); }
+.caption-word.normal{ color:#fff; }
+.preview-watermark{ position:absolute; top:16px; left:16px; font-family:"Space Mono",monospace; font-size:10px; color:rgba(255,255,255,.3); }
+.preview-timer{ position:absolute; top:16px; right:16px; font-family:"Space Mono",monospace; font-size:11px; color:rgba(255,255,255,.5); background:rgba(0,0,0,.4); padding:3px 8px; border-radius:4px; }
+.preview-music-indicator{ position:absolute; bottom:16px; left:16px; right:16px; display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:6px; background:rgba(0,0,0,.5); backdrop-filter:blur(4px); }
+.preview-music-waves{ display:flex; align-items:center; gap:2px; }
+.music-wave{ width:2px; border-radius:999px; background:var(--accent); animation:wave .6s ease-in-out infinite alternate; animation-play-state:paused; }
+.music-wave.playing{ animation-play-state:running; }
+.music-wave:nth-child(2){ animation-delay:.1s; }
+.music-wave:nth-child(3){ animation-delay:.2s; }
+.music-wave:nth-child(4){ animation-delay:.3s; }
+@keyframes wave{
+  from{ height:4px; opacity:.5; }
+  to{ height:12px; opacity:1; }
+}
+.preview-music-name{ font-size:10px; color:rgba(255,255,255,.7); font-family:"Space Mono",monospace; }
+.playback-controls{ display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:20px; }
+.preview-mode-toggle{ display:flex; gap:3px; background:var(--bg-card); border:1px solid var(--border); border-radius:999px; padding:3px; }
+.preview-mode-btn{ padding:4px 14px; border-radius:999px; font-size:11px; font-weight:500; border:none; background:transparent; color:var(--text-muted); cursor:pointer; transition:all .2s; }
+.preview-mode-btn.active{ background:var(--bg-elevated); color:var(--text-primary); }
+.preview-scrubber{ width:270px; position:relative; padding:6px 0; cursor:pointer; }
+.scrubber-track{ height:3px; border-radius:999px; background:var(--border); position:relative; }
+.scrubber-fill{ height:100%; border-radius:999px; background:var(--accent); width:0%; pointer-events:none; transition:width .05s linear; }
+.scrubber-thumb{ position:absolute; top:50%; transform:translate(-50%,-50%); width:11px; height:11px; border-radius:50%; background:var(--accent); left:0%; pointer-events:none; opacity:0; transition:opacity .15s, left .05s linear; }
+.preview-scrubber:hover .scrubber-thumb{ opacity:1; }
+.scrubber-marker{ position:absolute; top:-2px; width:1px; height:7px; background:rgba(255,255,255,.2); border-radius:1px; pointer-events:none; }
+.playback-btns{ display:flex; align-items:center; gap:14px; }
+.play-skip-btn{ width:30px; height:30px; border-radius:50%; border:1px solid var(--border); background:transparent; color:var(--text-muted); cursor:pointer; font-size:12px; display:flex; align-items:center; justify-content:center; transition:all .2s; flex-shrink:0; }
+.play-skip-btn:hover{ border-color:var(--border-active); color:var(--text-primary); }
+.play-btn{ width:44px; height:44px; border-radius:50%; background:var(--accent); border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#fff; font-size:18px; transition:all .2s; flex-shrink:0; }
+.play-btn:hover{ transform:scale(1.05); box-shadow:0 0 24px var(--accent-glow); }
+.play-time-row{ display:flex; align-items:center; gap:6px; }
+.time-display{ font-family:"Space Mono",monospace; font-size:12px; color:var(--text-muted); }
+.play-scene-label{ font-size:10px; color:var(--text-muted); margin-left:6px; }
+.music-wave.paused{ animation-play-state:paused; }
+
+.editor-right{ width:300px; background:var(--bg-panel); border-left:1px solid var(--border); overflow-y:auto; }
+.editor-right-header{ padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.editor-right-title{ font-size:14px; font-weight:600; }
+.panel-section{ padding:16px 20px; border-bottom:1px solid var(--border); }
+.panel-section-header{ display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer; }
+.panel-label{ font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; font-weight:500; }
+.panel-label-row{ display:flex; align-items:center; gap:8px; }
+.panel-badge{ padding:2px 6px; border-radius:999px; font-size:10px; font-weight:600; }
+.panel-badge.new{ background:var(--purple-bg); color:var(--purple); }
+.panel-badge.warn{ background:var(--yellow-bg); color:var(--yellow); }
+.panel-chevron{ color:var(--text-muted); font-size:14px; transition:transform .2s ease; }
+.panel-section.collapsed .panel-chevron{ transform:rotate(-90deg); }
+.panel-section-body{ display:block; margin-top:12px; }
+.panel-section.collapsed .panel-section-body{ display:none; }
+
+.voice-preview{ display:flex; align-items:center; gap:10px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px; }
+.voice-avatar{ width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,var(--blue),var(--purple)); display:flex; align-items:center; justify-content:center; font-size:14px; }
+.voice-info{ flex:1; }
+.voice-name{ font-size:13px; font-weight:500; }
+.voice-desc{ font-size:11px; color:var(--text-muted); }
+.voice-play{ width:28px; height:28px; border-radius:50%; background:var(--bg-elevated); border:1px solid var(--border); color:var(--text-secondary); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:12px; }
+
+.control-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.control-row:last-child{ margin-bottom:0; }
+.control-name{ font-size:13px; color:var(--text-secondary); }
+.control-value{ font-size:12px; color:var(--text-primary); background:var(--bg-card); padding:4px 10px; border-radius:var(--radius-sm); border:1px solid var(--border); font-family:inherit; }
+
+/* ── Asset library filter bar ─────────────────────────────────────── */
+.asset-toolbar{ display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+.search-wrap{ position:relative; flex:1; min-width:220px; }
+.search-wrap svg{ position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--text-muted); }
+.search-box{ width:100%; padding:10px 14px 10px 36px; font-size:13px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elevated); color:var(--text-primary); }
+.search-box:focus{ outline:none; border-color:rgba(255,107,53,.45); }
+
+/* ── Misc helpers ─────────────────────────────────────────────────── */
+::-webkit-scrollbar{ width:6px; }
+::-webkit-scrollbar-thumb{ background:var(--border); border-radius:999px; }
+.tag{ padding:2px 7px; border-radius:4px; font-size:10px; background:var(--bg-elevated); color:var(--text-muted); }
+.badge-music{ background:rgba(251,191,36,.12); color:var(--yellow); }
+.badge-ai{ background:var(--purple-bg); color:var(--purple); }
+.divider{ height:1px; background:var(--border); margin:16px 0; }
+.hint-box{
+  padding:10px 12px; border-radius:var(--radius-sm);
+  background:rgba(96,165,250,.07); border:1px solid rgba(96,165,250,.15);
+  font-size:11px; color:var(--text-muted); line-height:1.5; margin-bottom:14px;
+}
+.hint-box strong{ color:var(--blue); }
+
+/* ── Generation progress screen ─────────────────────────────────── */
+.gen-stage-list{ display:grid; gap:10px; max-width:520px; margin:0 auto 32px; }
+.gen-stage{
+  display:flex; align-items:center; gap:14px;
+  padding:14px 16px; border-radius:var(--radius); border:1px solid var(--border);
+  background:var(--bg-card);
+}
+.gen-stage-ico{
+  width:36px; height:36px; border-radius:10px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:16px;
+}
+.gen-stage.done .gen-stage-ico{ background:var(--green-bg); }
+.gen-stage.active .gen-stage-ico{ background:var(--accent-glow); }
+.gen-stage.pending .gen-stage-ico{ background:var(--bg-elevated); }
+.gen-stage-info{ flex:1; }
+.gen-stage-name{ font-size:13px; font-weight:600; margin-bottom:2px; }
+.gen-stage-desc{ font-size:11px; color:var(--text-muted); }
+.gen-stage-status{ flex-shrink:0; font-size:12px; }
+.gen-stage.done .gen-stage-status{ color:var(--green); }
+.gen-stage.active .gen-stage-status{ color:var(--accent); }
+.gen-stage.pending .gen-stage-status{ color:var(--text-muted); }
+.gen-stage.active{ border-color:rgba(255,107,53,.3); background:var(--accent-glow); }
+.gen-stage.done{ border-color:rgba(52,211,153,.15); }
+
+.gen-progress-bar-wrap{ max-width:520px; margin:0 auto 24px; }
+.gen-progress-track{ height:4px; background:var(--bg-elevated); border-radius:999px; overflow:hidden; }
+.gen-progress-fill{ height:100%; background:linear-gradient(90deg,var(--accent),#ff9b72); border-radius:999px; transition:width .4s ease; }
+.gen-label{ display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-bottom:6px; }
+.gen-label span:last-child{ font-family:"Space Mono",monospace; }
+
+.spinner{ display:inline-block; width:14px; height:14px; border:2px solid rgba(255,107,53,.2); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin{ to{ transform:rotate(360deg); } }
+
+.gen-center{ text-align:center; }
+.gen-demo-btn{ margin-top:20px; }
+
+/* ── Step 3 — content entry ──────────────────────────────────────── */
+.wizard-content-area{ margin-bottom:16px; }
+.wizard-content-area textarea, .wizard-content-area input[type=text], .wizard-content-area input[type=url] {
+  width:100%; padding:12px 14px; border-radius:var(--radius-sm); font-size:13px;
+  border:1px solid var(--border); background:var(--bg-elevated); color:var(--text-primary);
+  font-family:inherit;
+}
+.wizard-content-area textarea{ min-height:110px; resize:vertical; }
+.wizard-content-area textarea:focus, .wizard-content-area input:focus{ outline:none; border-color:rgba(255,107,53,.45); }
+
+.settings-2col{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+.settings-field label{ display:block; font-size:12px; font-weight:500; color:var(--text-secondary); margin-bottom:6px; }
+.settings-field select{
+  width:100%; padding:8px 12px; border-radius:var(--radius-sm); font-size:13px;
+  border:1px solid var(--border); background:var(--bg-elevated); color:var(--text-primary);
+  appearance:none; cursor:pointer;
+}
+.settings-field select:focus{ outline:none; border-color:rgba(255,107,53,.45); }
+
+.format-chips{ display:flex; gap:6px; flex-wrap:wrap; }
+.format-chip{
+  padding:6px 12px; border-radius:var(--radius-sm); border:1px solid var(--border);
+  background:var(--bg-elevated); color:var(--text-secondary); cursor:pointer; font-size:12px;
+  font-family:"Space Mono",monospace; transition:.15s;
+}
+.format-chip:hover{ border-color:var(--border-active); }
+.format-chip.active{ border-color:var(--accent); background:var(--accent-glow); color:var(--accent); }
+
+.niche-preset-summary{
+  display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:16px;
+}
+.preset-pill{
+  padding:8px 10px; border-radius:var(--radius-sm);
+  background:var(--bg-elevated); border:1px solid var(--border);
+  font-size:11px; text-align:center;
+}
+.preset-pill-label{ color:var(--text-muted); font-size:10px; margin-bottom:2px; }
+.preset-pill-val{ color:var(--text-primary); font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ── Image upload source type ────────────────────────────────────── */
+.image-upload-zone{
+  border:1.5px dashed var(--border); border-radius:var(--radius);
+  padding:24px; text-align:center; cursor:pointer; transition:.2s;
+  background:var(--bg-elevated); margin-bottom:12px;
+}
+.image-upload-zone:hover{ border-color:var(--accent); background:var(--accent-glow); }
+.image-upload-zone-ico{ font-size:32px; margin-bottom:8px; }
+.image-upload-zone-title{ font-size:13px; font-weight:600; margin-bottom:3px; }
+.image-upload-zone-hint{ font-size:11px; color:var(--text-muted); }
+
+.image-preview-grid{
+  display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px;
+}
+.image-preview-thumb{
+  aspect-ratio:1; border-radius:var(--radius-sm); overflow:hidden; position:relative;
+  border:1px solid var(--border);
+}
+.image-preview-thumb img{ width:100%; height:100%; object-fit:cover; }
+.image-preview-thumb .img-remove{
+  position:absolute; top:4px; right:4px; width:16px; height:16px; border-radius:50%;
+  background:rgba(0,0,0,.6); color:#fff; font-size:9px; display:none;
+  align-items:center; justify-content:center; cursor:pointer;
+}
+.image-preview-thumb:hover .img-remove{ display:flex; }
+.image-preview-add{
+  aspect-ratio:1; border-radius:var(--radius-sm); border:1.5px dashed var(--border);
+  display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--text-muted);
+  cursor:pointer; transition:.15s; background:var(--bg-elevated);
+}
+.image-preview-add:hover{ border-color:var(--accent); color:var(--accent); }
+.image-ai-hint{
+  display:flex; align-items:flex-start; gap:8px; padding:10px 12px;
+  border-radius:var(--radius-sm); background:var(--purple-bg); border:1px solid rgba(167,139,250,.2);
+  font-size:11px; color:var(--text-muted); line-height:1.5; margin-bottom:14px;
+}
+.image-ai-hint strong{ color:var(--purple); }
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ─────────────────────────────────────────────────── -->
+<div class="sidebar">
+  <div class="sidebar-logo">FC</div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      <span class="tooltip">Dashboard</span>
+    </button>
+    <button class="nav-item">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+      <span class="tooltip">Asset Library</span>
+    </button>
+    <button class="nav-item">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      <span class="tooltip">Settings</span>
+    </button>
+  </nav>
+  <div class="sidebar-bottom">
+    <div class="avatar">K</div>
+  </div>
+</div>
+
+<!-- ── Main ────────────────────────────────────────────────────── -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-title">Framecast</span>
+      <span style="color:var(--text-muted);font-size:12px;padding:3px 8px;border-radius:4px;background:var(--purple-bg);color:var(--purple);font-weight:600;">Visual Edge — Mockup</span>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-ghost btn-sm" onclick="showModal('nicheWizard')">Quick Start</button>
+      <button class="btn btn-primary btn-sm">+ New Video</button>
+    </div>
+  </div>
+
+  <!-- Mockup flow nav — strict, linear, no tab-jumping -->
+  <div class="mockup-nav" id="flow-nav">
+    <div class="mockup-tab active" id="tab-niche">
+      <span class="tab-num">1</span>Niche Wizard
+    </div>
+    <span class="tab-arrow">›</span>
+    <div class="mockup-tab locked" id="tab-generation">
+      <span class="tab-num">2</span>Generating
+    </div>
+    <span class="tab-arrow">›</span>
+    <div class="mockup-tab locked" id="tab-hooks">
+      <span class="tab-num">3</span>Hook Scoring
+    </div>
+    <span class="tab-arrow">›</span>
+    <div class="mockup-tab locked" id="tab-editor">
+      <span class="tab-num">4</span>Editor
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCREEN 1 — Niche Wizard
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="screen active" id="screen-niche">
+
+    <!-- Shared step indicator -->
+    <div class="wizard-steps" id="inline-wizard-steps" style="margin-bottom:24px;">
+      <div class="wizard-step active" id="iws-1"><div class="wizard-step-num" id="iwn-1">1</div><span>Pick Niche</span></div>
+      <div class="wizard-connector" id="iwc-1"></div>
+      <div class="wizard-step" id="iws-2"><div class="wizard-step-num" id="iwn-2">2</div><span>Source</span></div>
+      <div class="wizard-connector" id="iwc-2"></div>
+      <div class="wizard-step" id="iws-3"><div class="wizard-step-num" id="iwn-3">3</div><span>Content</span></div>
+    </div>
+
+    <!-- ── Step 1: Pick niche ── -->
+    <div id="inline-step-1">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Pick your content niche</div>
+          <div class="section-subtitle">Framecast pre-configures visuals, voice, captions, and music based on your selection.</div>
+        </div>
+      </div>
+      <div class="niche-grid">
+        <div class="niche-card selected" style="--niche-color:rgba(167,139,250,.15)" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">🕯️</span>
+          <div class="niche-name">Horror &amp; Dark Stories</div>
+          <div class="niche-desc">Eerie narration, atmospheric visuals, high-tension pacing</div>
+          <div class="niche-tags"><span class="niche-tag">Dark cinematic</span><span class="niche-tag">Deep voice</span><span class="niche-tag">Bold captions</span></div>
+        </div>
+        <div class="niche-card" style="--niche-color:rgba(52,211,153,.1)" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">💰</span>
+          <div class="niche-name">Finance &amp; Money</div>
+          <div class="niche-desc">Clean documentary style, authoritative voice, data-driven</div>
+          <div class="niche-tags"><span class="niche-tag">Documentary</span><span class="niche-tag">Neutral male</span><span class="niche-tag">Subtitle style</span></div>
+        </div>
+        <div class="niche-card" style="--niche-color:rgba(251,191,36,.1)" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">🔥</span>
+          <div class="niche-name">Motivation &amp; Mindset</div>
+          <div class="niche-desc">Energetic pacing, cinematic warmth, powerful hooks</div>
+          <div class="niche-tags"><span class="niche-tag">Cinematic warm</span><span class="niche-tag">Energetic</span><span class="niche-tag">Bold overlay</span></div>
+        </div>
+        <div class="niche-card" style="--niche-color:rgba(96,165,250,.1)" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">📜</span>
+          <div class="niche-name">History &amp; Facts</div>
+          <div class="niche-desc">Documentary gravitas, factual precision, visual storytelling</div>
+          <div class="niche-tags"><span class="niche-tag">Documentary</span><span class="niche-tag">Neutral</span><span class="niche-tag">Subtitle</span></div>
+        </div>
+        <div class="niche-card" style="--niche-color:rgba(52,211,153,.1)" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">🔬</span>
+          <div class="niche-name">Science &amp; Explainers</div>
+          <div class="niche-desc">Clear, minimalist style with structured breakdowns</div>
+          <div class="niche-tags"><span class="niche-tag">Minimalist</span><span class="niche-tag">Clear female</span><span class="niche-tag">Clean subtitle</span></div>
+        </div>
+        <div class="niche-card" style="--niche-color:rgba(248,113,113,.1)" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">🔍</span>
+          <div class="niche-name">True Crime</div>
+          <div class="niche-desc">Dark gritty visuals, dramatic narration, suspense builds</div>
+          <div class="niche-tags"><span class="niche-tag">Dark gritty</span><span class="niche-tag">Dramatic</span><span class="niche-tag">High contrast</span></div>
+        </div>
+        <div class="niche-card" style="--niche-color:rgba(255,107,53,.1)" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">📦</span>
+          <div class="niche-name">Product Walkthrough</div>
+          <div class="niche-desc">Clean product shots, friendly voice, benefit-led structure</div>
+          <div class="niche-tags"><span class="niche-tag">Realistic</span><span class="niche-tag">Friendly</span><span class="niche-tag">Standard</span></div>
+        </div>
+        <div class="niche-card" style="--niche-color:rgba(96,165,250,.1)" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">🧘</span>
+          <div class="niche-name">Self Improvement</div>
+          <div class="niche-desc">Warm minimal style, calm voice, habit-focused pacing</div>
+          <div class="niche-tags"><span class="niche-tag">Warm minimal</span><span class="niche-tag">Calm female</span><span class="niche-tag">Soft subtitle</span></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:20px;gap:10px;">
+        <button class="btn btn-ghost">Cancel</button>
+        <button class="btn btn-primary" onclick="inlineGoTo(2)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- ── Step 2: Source type ── -->
+    <div id="inline-step-2" style="display:none;">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Choose your source</div>
+          <div class="section-subtitle">How do you want to start this video?</div>
+        </div>
+      </div>
+      <div class="niche-preset-banner" id="inline-niche-banner">
+        <span id="inline-niche-emoji">🕯️</span>
+        <span>Loaded <strong id="inline-niche-name">Horror &amp; Dark Stories</strong> — dark cinematic visuals, deep voice, bold captions, dark ambient music</span>
+      </div>
+      <div class="source-type-grid" id="inline-source-grid">
+        <div class="source-type-opt selected" data-source="prompt" onclick="selectSource(this,'inline')">
+          <span class="source-type-ico">✍️</span>
+          <div class="source-type-name">Write a Prompt</div>
+          <div class="source-type-hint">AI generates the script</div>
+        </div>
+        <div class="source-type-opt" data-source="script" onclick="selectSource(this,'inline')">
+          <span class="source-type-ico">📄</span>
+          <div class="source-type-name">Paste a Script</div>
+          <div class="source-type-hint">Your script, broken into scenes</div>
+        </div>
+        <div class="source-type-opt" data-source="url" onclick="selectSource(this,'inline')">
+          <span class="source-type-ico">🔗</span>
+          <div class="source-type-name">From URL / Article</div>
+          <div class="source-type-hint">Paste any article link</div>
+        </div>
+        <div class="source-type-opt" data-source="images" onclick="selectSource(this,'inline')">
+          <span class="source-type-ico">🖼️</span>
+          <div class="source-type-name">Upload Images</div>
+          <div class="source-type-hint">Your photos become scenes</div>
+        </div>
+        <div class="source-type-opt" data-source="audio" onclick="selectSource(this,'inline')">
+          <span class="source-type-ico">🎙️</span>
+          <div class="source-type-name">Upload Audio</div>
+          <div class="source-type-hint">Transcribe and structure</div>
+        </div>
+        <div class="source-type-opt" data-source="video" onclick="selectSource(this,'inline')">
+          <span class="source-type-ico">🎬</span>
+          <div class="source-type-name">Upload Video</div>
+          <div class="source-type-hint">Extract and repurpose</div>
+        </div>
+        <div class="source-type-opt" data-source="csv" onclick="selectSource(this,'inline')">
+          <span class="source-type-ico">📋</span>
+          <div class="source-type-name">CSV Batch</div>
+          <div class="source-type-hint">Multiple topics at once</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:4px;">
+        <button class="btn btn-ghost" onclick="inlineGoTo(1)">← Back</button>
+        <button class="btn btn-primary" onclick="inlineGoTo(3)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- ── Step 3: Content entry ── -->
+    <div id="inline-step-3" style="display:none;">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Enter your content</div>
+          <div class="section-subtitle">Almost done — fill in your content and confirm settings.</div>
+        </div>
+      </div>
+      <!-- Preset summary pills -->
+      <div class="niche-preset-summary">
+        <div class="preset-pill"><div class="preset-pill-label">Visual</div><div class="preset-pill-val" id="inline-pill-visual">Dark Cinematic</div></div>
+        <div class="preset-pill"><div class="preset-pill-label">Voice</div><div class="preset-pill-val" id="inline-pill-voice">Deep Male</div></div>
+        <div class="preset-pill"><div class="preset-pill-label">Captions</div><div class="preset-pill-val" id="inline-pill-captions">Bold Overlay</div></div>
+        <div class="preset-pill"><div class="preset-pill-label">Music</div><div class="preset-pill-val" id="inline-pill-music">Dark Ambient</div></div>
+      </div>
+      <!-- Prompt input (default) -->
+      <div id="inline-content-prompt" class="input-group">
+        <label class="input-label">What's your video about?</label>
+        <div class="wizard-content-area">
+          <textarea placeholder="e.g. The mysterious disappearance of the Beaumont family in 1966 — one of Australia's most haunting unsolved cases…" rows="5"></textarea>
+        </div>
+      </div>
+      <!-- Script -->
+      <div id="inline-content-script" class="input-group" style="display:none;">
+        <label class="input-label">Paste your script</label>
+        <div class="wizard-content-area"><textarea placeholder="Paste your full script here. Each paragraph will become a scene…" rows="7"></textarea></div>
+      </div>
+      <!-- URL -->
+      <div id="inline-content-url" class="input-group" style="display:none;">
+        <label class="input-label">Article or page URL</label>
+        <div class="wizard-content-area"><input type="url" placeholder="https://…" /></div>
+        <div class="hint-box" style="margin-top:8px;">AI will extract the main body text and structure it into scenes matching your niche template.</div>
+      </div>
+      <!-- Images -->
+      <div id="inline-content-images" style="display:none;">
+        <div class="image-ai-hint">
+          <span>✦</span>
+          <span><strong>Vision AI</strong> will analyse each image and generate matching narration. Each image becomes one scene. Upload 3–15 images for best results.</span>
+        </div>
+        <div class="image-preview-grid">
+          <div class="image-preview-thumb" style="background:linear-gradient(135deg,#1a0a2e,#0d0d2b);"><div class="img-remove">✕</div></div>
+          <div class="image-preview-thumb" style="background:linear-gradient(135deg,#0d1a2e,#0d0d1a);"><div class="img-remove">✕</div></div>
+          <div class="image-preview-thumb" style="background:linear-gradient(135deg,#1a1a0d,#2e0d0d);"><div class="img-remove">✕</div></div>
+          <div class="image-preview-add">+</div>
+        </div>
+        <div class="image-upload-zone" style="margin-bottom:14px;">
+          <div class="image-upload-zone-ico">🖼️</div>
+          <div class="image-upload-zone-title">Drop images here or click to browse</div>
+          <div class="image-upload-zone-hint">JPG, PNG, WEBP · max 10MB each · up to 15 images</div>
+        </div>
+        <div class="input-group">
+          <label class="input-label">Optional context for AI narration</label>
+          <div class="wizard-content-area"><textarea placeholder="e.g. These are photos from an abandoned asylum in Kentucky. Describe the history and atmosphere…" rows="3"></textarea></div>
+        </div>
+      </div>
+      <!-- Audio -->
+      <div id="inline-content-audio" class="input-group" style="display:none;">
+        <label class="input-label">Upload audio file</label>
+        <div class="image-upload-zone"><div class="image-upload-zone-ico">🎙️</div><div class="image-upload-zone-title">Drop your audio file here</div><div class="image-upload-zone-hint">MP3, WAV, M4A · max 500MB</div></div>
+      </div>
+      <!-- Video -->
+      <div id="inline-content-video" class="input-group" style="display:none;">
+        <label class="input-label">Upload video file</label>
+        <div class="image-upload-zone"><div class="image-upload-zone-ico">🎬</div><div class="image-upload-zone-title">Drop your video file here</div><div class="image-upload-zone-hint">MP4, MOV · max 2GB</div></div>
+      </div>
+      <!-- Settings -->
+      <div class="settings-2col">
+        <div class="settings-field"><label>Channel</label>
+          <select><option>Horror Vault</option><option>Dark Stories UK</option><option>+ Create new channel</option></select>
+        </div>
+        <div class="settings-field"><label>Language</label>
+          <select><option>English (US)</option><option>English (UK)</option><option>Spanish</option></select>
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="input-label" style="margin-bottom:8px;display:block;">Format</label>
+        <div class="format-chips"><div class="format-chip active">9:16</div><div class="format-chip">1:1</div><div class="format-chip">16:9</div></div>
+      </div>
+      <div style="margin-bottom:20px;">
+        <label class="input-label" style="margin-bottom:8px;display:block;">Target length</label>
+        <div class="format-chips"><div class="format-chip">30s</div><div class="format-chip active">60s</div><div class="format-chip">90s</div><div class="format-chip">3 min</div></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;gap:10px;">
+        <button class="btn btn-ghost" onclick="inlineGoTo(2)">← Back</button>
+        <button class="btn btn-primary" onclick="advanceFlow('generation')">✦ Generate Video</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCREEN 2 — Generation Progress
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="screen" id="screen-generation">
+    <div style="max-width:560px; margin:0 auto; padding-top:16px;">
+
+      <div class="gen-center" style="margin-bottom:28px;">
+        <div style="font-size:15px;font-weight:600;margin-bottom:6px;">Generating your video</div>
+        <div style="font-size:13px;color:var(--text-muted);">Horror &amp; Dark Stories · Write a Prompt · 9:16 · 60s</div>
+      </div>
+
+      <div class="gen-progress-bar-wrap">
+        <div class="gen-label">
+          <span>Script Generation</span>
+          <span id="gen-pct">40%</span>
+        </div>
+        <div class="gen-progress-track">
+          <div class="gen-progress-fill" id="gen-fill" style="width:40%;"></div>
+        </div>
+      </div>
+
+      <div class="gen-stage-list">
+
+        <div class="gen-stage done">
+          <div class="gen-stage-ico">📝</div>
+          <div class="gen-stage-info">
+            <div class="gen-stage-name">Script Generation</div>
+            <div class="gen-stage-desc">Script written from your prompt using GPT-4o</div>
+          </div>
+          <div class="gen-stage-status">Done</div>
+        </div>
+
+        <div class="gen-stage done">
+          <div class="gen-stage-ico">🎯</div>
+          <div class="gen-stage-info">
+            <div class="gen-stage-name">Hook Scoring</div>
+            <div class="gen-stage-desc">7 hooks generated and AI-scored for engagement</div>
+          </div>
+          <div class="gen-stage-status">Done · 7 hooks</div>
+        </div>
+
+        <div class="gen-stage active">
+          <div class="gen-stage-ico">🎬</div>
+          <div class="gen-stage-info">
+            <div class="gen-stage-name">Scene Breakdown</div>
+            <div class="gen-stage-desc">Breaking script into timed scenes…</div>
+          </div>
+          <div class="gen-stage-status"><span class="spinner"></span></div>
+        </div>
+
+        <div class="gen-stage pending">
+          <div class="gen-stage-ico">🖼️</div>
+          <div class="gen-stage-info">
+            <div class="gen-stage-name">AI Image Generation</div>
+            <div class="gen-stage-desc">Generating dark cinematic images per scene</div>
+          </div>
+          <div class="gen-stage-status">Waiting</div>
+        </div>
+
+        <div class="gen-stage pending">
+          <div class="gen-stage-ico">🎙️</div>
+          <div class="gen-stage-info">
+            <div class="gen-stage-name">Voice Generation</div>
+            <div class="gen-stage-desc">TTS narration in selected voice profile</div>
+          </div>
+          <div class="gen-stage-status">Waiting</div>
+        </div>
+
+      </div>
+
+      <div class="gen-center">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">
+          Generation usually takes 45–90 seconds. You'll be taken to hook selection automatically when it's ready.
+        </div>
+        <div style="padding:10px 16px;border-radius:var(--radius-sm);background:var(--bg-elevated);border:1px solid var(--border);font-size:12px;color:var(--text-muted);display:inline-block;">
+          You can close this tab and come back — we'll notify you when it's done.
+        </div>
+        <!-- Demo-only shortcut -->
+        <div class="gen-demo-btn">
+          <button class="btn btn-ghost btn-sm" onclick="advanceFlow('hooks')" style="border-style:dashed;font-size:11px;opacity:.6;">
+            ↗ Skip to Hook Scoring (mockup only)
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCREEN 3 — Hook Scoring
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="screen" id="screen-hooks">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Hook Selection</div>
+        <div class="section-subtitle">AI has scored each hook for predicted engagement. Hooks are sorted highest first — top hook selected by default.</div>
+      </div>
+    </div>
+
+    <div style="max-width:680px;">
+
+      <div class="hook-score-header">
+        <span style="font-size:13px;color:var(--text-muted);">7 hooks generated</span>
+        <span class="hook-score-header-badge">
+          <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          AI-scored
+        </span>
+      </div>
+
+      <div class="hook-options-list">
+
+        <div class="hook-option selected">
+          <div class="hook-option-radio"></div>
+          <div class="hook-option-body">
+            <div class="hook-option-text">"This house has been empty for 47 years — and the footage inside will change everything you thought you knew about what happens when we die."</div>
+            <div class="hook-option-reason">Strong curiosity gap + paranormal tension. Time specificity ("47 years") anchors the claim without over-explaining.</div>
+          </div>
+          <div class="hook-score-wrap">
+            <div class="hook-score high">94</div>
+            <div class="hook-score-label">Score</div>
+          </div>
+        </div>
+
+        <div class="hook-option">
+          <div class="hook-option-radio"></div>
+          <div class="hook-option-body">
+            <div class="hook-option-text">"Nobody believed her when she said the walls were breathing. Three weeks later, the investigation was sealed by the government."</div>
+            <div class="hook-option-reason">Government seal detail creates conspiracy intrigue. High shareability for dark/horror audiences.</div>
+          </div>
+          <div class="hook-score-wrap">
+            <div class="hook-score high">88</div>
+            <div class="hook-score-label">Score</div>
+          </div>
+        </div>
+
+        <div class="hook-option">
+          <div class="hook-option-radio"></div>
+          <div class="hook-option-body">
+            <div class="hook-option-text">"I found something buried in the archive files that the original crew never intended anyone to see."</div>
+            <div class="hook-option-reason">First-person discovery framing builds personal investment. Moderate engagement — slightly generic.</div>
+          </div>
+          <div class="hook-score-wrap">
+            <div class="hook-score mid">74</div>
+            <div class="hook-score-label">Score</div>
+          </div>
+        </div>
+
+        <div class="hook-option">
+          <div class="hook-option-radio"></div>
+          <div class="hook-option-body">
+            <div class="hook-option-text">"The scariest part isn't what happened — it's that it's still happening right now, in a building most of you have walked past."</div>
+            <div class="hook-option-reason">Local proximity angle is effective but requires geographic specificity to land fully. Good for certain audiences.</div>
+          </div>
+          <div class="hook-score-wrap">
+            <div class="hook-score mid">71</div>
+            <div class="hook-score-label">Score</div>
+          </div>
+        </div>
+
+        <div class="hook-option">
+          <div class="hook-option-radio"></div>
+          <div class="hook-option-body">
+            <div class="hook-option-text">"This is the story that keeps me up at night — and after you hear it, you'll understand why."</div>
+            <div class="hook-option-reason">Emotional hook but low specificity. Overused format in the horror niche reduces impact.</div>
+          </div>
+          <div class="hook-score-wrap">
+            <div class="hook-score low">58</div>
+            <div class="hook-score-label">Score</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+        <button class="btn btn-ghost">Regenerate Hooks</button>
+        <button class="btn btn-primary" onclick="advanceFlow('editor')">Use Selected Hook →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCREEN 3 — Editor: AI Image Panel
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="editor-screen" id="screen-editor">
+
+    <!-- Left: scene list -->
+    <div class="editor-sidebar">
+      <div class="editor-sidebar-header">
+        <div>
+          <div class="editor-sidebar-title">Scenes</div>
+        </div>
+        <button class="btn btn-ghost btn-sm">+ Add</button>
+      </div>
+      <div class="scene-list">
+        <div class="scene-item active">
+          <div class="scene-number">Scene 01</div>
+          <div class="scene-text">This house has been empty for 47 years — and the footage inside will change everything…</div>
+          <div class="scene-meta">
+            <span class="scene-tag">Hook</span>
+            <span class="scene-tag ai-img">AI Image</span>
+            <span style="color:var(--purple);">✦</span>
+          </div>
+        </div>
+        <div class="scene-item">
+          <div class="scene-number">Scene 02</div>
+          <div class="scene-text">The house on Morrow Lane was built in 1934. By 1977 every tenant had left without explanation…</div>
+          <div class="scene-meta">
+            <span class="scene-tag">Body</span>
+            <span class="scene-tag">Stock Video</span>
+          </div>
+        </div>
+        <div class="scene-item">
+          <div class="scene-number">Scene 03</div>
+          <div class="scene-text">Investigators found journals, sealed rooms, and one photograph that couldn't be explained…</div>
+          <div class="scene-meta">
+            <span class="scene-tag">Body</span>
+            <span class="scene-tag ai-img">AI Image</span>
+          </div>
+        </div>
+        <div class="scene-item">
+          <div class="scene-number">Scene 04</div>
+          <div class="scene-text">Nobody believed her when she reported the sounds. Three weeks later the case was sealed…</div>
+          <div class="scene-meta">
+            <span class="scene-tag">Body</span>
+            <span class="scene-tag">Stock Image</span>
+          </div>
+        </div>
+        <div class="scene-item">
+          <div class="scene-number">Scene 05</div>
+          <div class="scene-text">What remains in that house today is something science still cannot fully account for…</div>
+          <div class="scene-meta">
+            <span class="scene-tag">Outro</span>
+            <span class="scene-tag ai-img">AI Image</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: preview -->
+    <div class="editor-canvas">
+      <div class="preview-container">
+        <div class="preview-video-bg" style="background:linear-gradient(200deg,#1a0a2e 0%,#0d0d1a 50%,#0a0a0d 100%);">
+          <div class="preview-watermark">FRAMECAST</div>
+          <div class="preview-timer" id="canvas-timer">00:00</div>
+          <div class="preview-caption">
+            <span class="caption-word normal">This </span>
+            <span class="caption-word highlight">house</span>
+            <span class="caption-word normal"> has been</span><br>
+            <span class="caption-word normal">empty for </span>
+            <span class="caption-word highlight">47 years</span>
+          </div>
+          <div class="preview-music-indicator">
+            <div class="preview-music-waves">
+              <div class="music-wave"></div>
+              <div class="music-wave"></div>
+              <div class="music-wave"></div>
+              <div class="music-wave"></div>
+            </div>
+            <span class="preview-music-name">Dark Ambient — Hollow Echoes</span>
+          </div>
+        </div>
+      </div>
+      <div class="playback-controls">
+        <!-- Mode toggle -->
+        <div class="preview-mode-toggle">
+          <button class="preview-mode-btn active" id="mode-scene" onclick="setPreviewMode('scene')">Scene</button>
+          <button class="preview-mode-btn" id="mode-full" onclick="setPreviewMode('full')">Full Video</button>
+        </div>
+
+        <!-- Scrubber -->
+        <div class="preview-scrubber" id="preview-scrubber" onclick="scrubberSeek(event)">
+          <div class="scrubber-track" id="scrubber-track">
+            <div class="scrubber-fill" id="scrubber-fill"></div>
+            <!-- Scene boundary markers — visible in Full Video mode -->
+            <div class="scrubber-marker" id="scrubber-markers" style="display:none;">
+              <span class="scrubber-marker" style="left:20%;"></span>
+              <span class="scrubber-marker" style="left:40%;"></span>
+              <span class="scrubber-marker" style="left:62%;"></span>
+              <span class="scrubber-marker" style="left:81%;"></span>
+            </div>
+            <div class="scrubber-thumb" id="scrubber-thumb"></div>
+          </div>
+        </div>
+
+        <!-- Prev / Play / Next -->
+        <div class="playback-btns">
+          <button class="play-skip-btn" onclick="skipScene(-1)" title="Previous scene">⏮</button>
+          <button class="play-btn" id="play-btn" onclick="togglePlay()">▶</button>
+          <button class="play-skip-btn" onclick="skipScene(1)" title="Next scene">⏭</button>
+        </div>
+
+        <!-- Time + scene label -->
+        <div class="play-time-row">
+          <span class="time-display" id="play-current">00:00</span>
+          <span class="time-display" style="opacity:.35;">/</span>
+          <span class="time-display" id="play-total">00:12</span>
+          <span class="play-scene-label" id="play-label">Scene 01</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: panel -->
+    <div class="editor-right">
+      <div class="editor-right-header">
+        <div class="editor-right-title" id="editor-scene-title">Scene 01</div>
+      </div>
+
+      <!-- Script section (collapsed) -->
+      <div class="panel-section collapsed">
+        <div class="panel-section-header">
+          <div class="panel-label-row">
+            <span class="panel-label" style="margin-bottom:0;">Script</span>
+          </div>
+          <span class="panel-chevron">›</span>
+        </div>
+      </div>
+
+      <!-- Visual section — EXPANDED with new AI Image tab -->
+      <div class="panel-section">
+        <div class="panel-section-header" style="margin-bottom:12px;">
+          <div class="panel-label-row">
+            <span class="panel-label" style="margin-bottom:0;">Visual</span>
+            <span class="panel-badge new">AI Image</span>
+          </div>
+          <span class="panel-chevron">›</span>
+        </div>
+
+        <!-- Visual type tabs — NEW -->
+        <div class="visual-type-tabs">
+          <div class="visual-type-tab">Stock Video</div>
+          <div class="visual-type-tab">Stock Image</div>
+          <div class="visual-type-tab active ai">AI Image</div>
+          <div class="visual-type-tab">My Assets</div>
+        </div>
+
+        <!-- AI Image panel — shown when AI Image tab active -->
+        <div id="aiImagePanel">
+          <!-- Current result -->
+          <div class="ai-image-result">
+            <div class="ai-image-preview">
+              <div class="ai-image-overlay-badge">✦ AI Generated</div>
+              <div style="text-align:center;">
+                <div class="ai-image-ico">🏚️</div>
+                <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:6px;">Dark cinematic · 9:16</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Style picker -->
+          <div class="panel-label">Style</div>
+          <div class="style-picker-grid">
+            <div class="style-opt selected">
+              <span class="style-opt-ico">🎬</span>
+              <div class="style-opt-name">Cinematic</div>
+            </div>
+            <div class="style-opt">
+              <span class="style-opt-ico">🌑</span>
+              <div class="style-opt-name">Dark</div>
+            </div>
+            <div class="style-opt">
+              <span class="style-opt-ico">📽️</span>
+              <div class="style-opt-name">Documentary</div>
+            </div>
+            <div class="style-opt">
+              <span class="style-opt-ico">🌸</span>
+              <div class="style-opt-name">Anime</div>
+            </div>
+            <div class="style-opt">
+              <span class="style-opt-ico">◽</span>
+              <div class="style-opt-name">Minimalist</div>
+            </div>
+            <div class="style-opt">
+              <span class="style-opt-ico">📸</span>
+              <div class="style-opt-name">Realistic</div>
+            </div>
+            <div class="style-opt">
+              <span class="style-opt-ico">🌅</span>
+              <div class="style-opt-name">Warm</div>
+            </div>
+            <div class="style-opt">
+              <span class="style-opt-ico">⚡</span>
+              <div class="style-opt-name">Epic</div>
+            </div>
+          </div>
+
+          <!-- Prompt override -->
+          <div class="panel-label">Prompt override <span style="font-weight:400;color:var(--text-muted);">(optional)</span></div>
+          <textarea class="ai-prompt-area" placeholder="Leave blank to use scene script as the generation prompt…">Abandoned Victorian house exterior, night time, mist rising, overgrown garden, single light in attic window, cinematic composition, high contrast</textarea>
+
+          <div class="ai-gen-footer">
+            <div class="ai-gen-meta">Provider: <span>DALL-E 3</span> · ~$0.04</div>
+            <button class="btn btn-purple btn-sm">✦ Generate</button>
+          </div>
+
+          <div class="ai-image-actions" style="margin-top:8px;">
+            <button class="btn btn-ghost btn-sm" style="flex:1;">Regenerate</button>
+            <button class="btn btn-ghost btn-sm" style="flex:1;">Save to Library</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Voice section (collapsed) -->
+      <div class="panel-section collapsed">
+        <div class="panel-section-header">
+          <div class="panel-label-row">
+            <span class="panel-label" style="margin-bottom:0;">Voice</span>
+          </div>
+          <span class="panel-chevron">›</span>
+        </div>
+      </div>
+
+      <!-- Captions (collapsed) -->
+      <div class="panel-section collapsed">
+        <div class="panel-section-header">
+          <div class="panel-label-row">
+            <span class="panel-label" style="margin-bottom:0;">Captions</span>
+          </div>
+          <span class="panel-chevron">›</span>
+        </div>
+      </div>
+
+      <!-- Music section — collapsible, starts collapsed -->
+      <div class="panel-section collapsed" id="editor-music-panel" onclick="toggleEditorPanel('editor-music-panel')">
+        <div class="panel-section-header">
+          <div class="panel-label-row">
+            <span class="panel-label" style="margin-bottom:0;">Music</span>
+            <span class="panel-badge new">New</span>
+          </div>
+          <span class="panel-chevron">›</span>
+        </div>
+        <div class="panel-section-body">
+          <div class="hint-box">
+            Music plays under narration for the full video. Duck volume kicks in automatically during voice segments.
+          </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">
+            <div class="filter-chip active" style="padding:4px 9px;font-size:11px;">All</div>
+            <div class="filter-chip" style="padding:4px 9px;font-size:11px;">Dark</div>
+            <div class="filter-chip" style="padding:4px 9px;font-size:11px;">Upbeat</div>
+            <div class="filter-chip" style="padding:4px 9px;font-size:11px;">Calm</div>
+            <div class="filter-chip" style="padding:4px 9px;font-size:11px;">Epic</div>
+          </div>
+          <div class="music-track-list">
+            <div class="music-track selected">
+              <div class="music-track-thumb" style="background:linear-gradient(135deg,#1a0a2e,#0d0d2b);">🌑</div>
+              <div class="music-track-info">
+                <div class="music-track-name">Hollow Echoes</div>
+                <div class="music-track-meta">Dark Ambient · Royalty-free</div>
+              </div>
+              <div class="music-track-duration">2:48</div>
+              <button class="music-play-btn" onclick="event.stopPropagation()">▶</button>
+            </div>
+            <div class="music-track">
+              <div class="music-track-thumb" style="background:linear-gradient(135deg,#0d1a2e,#1a1a0d);">🌫️</div>
+              <div class="music-track-info">
+                <div class="music-track-name">The Watcher</div>
+                <div class="music-track-meta">Dark Suspense · Royalty-free</div>
+              </div>
+              <div class="music-track-duration">3:14</div>
+              <button class="music-play-btn" onclick="event.stopPropagation()">▶</button>
+            </div>
+            <div class="music-track">
+              <div class="music-track-thumb" style="background:linear-gradient(135deg,#1a1a2e,#2e1a1a);">🎹</div>
+              <div class="music-track-info">
+                <div class="music-track-name">Cold Silence</div>
+                <div class="music-track-meta">Minimal Horror · Royalty-free</div>
+              </div>
+              <div class="music-track-duration">2:06</div>
+              <button class="music-play-btn" onclick="event.stopPropagation()">▶</button>
+            </div>
+            <div class="music-track">
+              <div class="music-track-thumb" style="background:linear-gradient(135deg,#0d1a0d,#1a0d2e);">🌙</div>
+              <div class="music-track-info">
+                <div class="music-track-name">Midnight Static</div>
+                <div class="music-track-meta">Dark Ambient · Royalty-free</div>
+              </div>
+              <div class="music-track-duration">3:32</div>
+              <button class="music-play-btn" onclick="event.stopPropagation()">▶</button>
+            </div>
+          </div>
+          <div class="music-controls" onclick="event.stopPropagation()">
+            <div class="music-control-row">
+              <span class="music-control-label">Volume</span>
+              <input type="range" class="music-slider" min="0" max="100" value="30">
+              <span class="music-slider-val">30%</span>
+            </div>
+            <div class="music-control-row">
+              <span class="music-control-label">Duck vol.</span>
+              <input type="range" class="music-slider" min="0" max="100" value="8">
+              <span class="music-slider-val">8%</span>
+            </div>
+            <div class="music-control-row">
+              <span class="music-control-label">Fade in</span>
+              <input type="range" class="music-slider" min="0" max="2000" step="100" value="500">
+              <span class="music-slider-val">0.5s</span>
+            </div>
+            <div class="music-control-row" style="margin-top:6px;">
+              <span class="music-control-label" style="font-size:11px;color:var(--text-muted);">Loop track</span>
+              <div style="flex:1;"></div>
+              <div class="toggle on"></div>
+            </div>
+            <div class="music-control-row">
+              <span class="music-control-label" style="font-size:11px;color:var(--text-muted);">Duck during voice</span>
+              <div style="flex:1;"></div>
+              <div class="toggle on"></div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;" onclick="event.stopPropagation()">Browse Full Music Library →</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- [removed: music editor and music library screens — music panel is in the Editor sidebar; music library accessed via Asset Library] -->
+
+
+</div><!-- /main -->
+
+<!-- ── Niche wizard modal (triggered from "Quick Start") ──────── -->
+<div class="modal-overlay" id="nicheWizard" onclick="if(event.target===this)hideModal('nicheWizard')">
+  <div class="modal modal-wide">
+
+    <!-- Step indicator -->
+    <div class="wizard-steps" id="modal-wizard-steps" style="margin-bottom:20px;">
+      <div class="wizard-step active" id="mws-1"><div class="wizard-step-num" id="mwn-1">1</div><span>Pick Niche</span></div>
+      <div class="wizard-connector" id="mwc-1"></div>
+      <div class="wizard-step" id="mws-2"><div class="wizard-step-num" id="mwn-2">2</div><span>Source</span></div>
+      <div class="wizard-connector" id="mwc-2"></div>
+      <div class="wizard-step" id="mws-3"><div class="wizard-step-num" id="mwn-3">3</div><span>Content</span></div>
+    </div>
+
+    <!-- ── Step 1: Pick niche ── -->
+    <div id="modal-step-1">
+      <div class="modal-title">Quick Start</div>
+      <div class="modal-subtitle">Pick your content niche. Framecast pre-configures visuals, voice, captions, and music.</div>
+      <div class="niche-grid">
+        <div class="niche-card" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">🕯️</span>
+          <div class="niche-name">Horror &amp; Dark Stories</div>
+          <div class="niche-desc">Eerie narration, atmospheric AI visuals</div>
+          <div class="niche-tags"><span class="niche-tag">Dark cinematic</span><span class="niche-tag">Deep voice</span></div>
+        </div>
+        <div class="niche-card" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">💰</span>
+          <div class="niche-name">Finance &amp; Money</div>
+          <div class="niche-desc">Clean documentary, data-driven narration</div>
+          <div class="niche-tags"><span class="niche-tag">Documentary</span><span class="niche-tag">Authoritative</span></div>
+        </div>
+        <div class="niche-card" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">🔥</span>
+          <div class="niche-name">Motivation &amp; Mindset</div>
+          <div class="niche-desc">Energetic pacing, cinematic warmth</div>
+          <div class="niche-tags"><span class="niche-tag">Cinematic warm</span><span class="niche-tag">Energetic</span></div>
+        </div>
+        <div class="niche-card" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">📜</span>
+          <div class="niche-name">History &amp; Facts</div>
+          <div class="niche-desc">Documentary gravitas, factual precision</div>
+          <div class="niche-tags"><span class="niche-tag">Documentary</span><span class="niche-tag">Neutral</span></div>
+        </div>
+        <div class="niche-card" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">🔬</span>
+          <div class="niche-name">Science &amp; Explainers</div>
+          <div class="niche-desc">Clear, minimalist, structured breakdowns</div>
+          <div class="niche-tags"><span class="niche-tag">Minimalist</span><span class="niche-tag">Clear female</span></div>
+        </div>
+        <div class="niche-card" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">🔍</span>
+          <div class="niche-name">True Crime</div>
+          <div class="niche-desc">Dark gritty visuals, suspense pacing</div>
+          <div class="niche-tags"><span class="niche-tag">Dark gritty</span><span class="niche-tag">Dramatic</span></div>
+        </div>
+        <div class="niche-card" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">📦</span>
+          <div class="niche-name">Product Walkthrough</div>
+          <div class="niche-desc">Clean product visuals, friendly voice</div>
+          <div class="niche-tags"><span class="niche-tag">Realistic</span><span class="niche-tag">Friendly</span></div>
+        </div>
+        <div class="niche-card" onclick="selectNiche(this)">
+          <div class="niche-selected-check">✓</div>
+          <span class="niche-emoji">🧘</span>
+          <div class="niche-name">Self Improvement</div>
+          <div class="niche-desc">Warm minimal style, calm narration</div>
+          <div class="niche-tags"><span class="niche-tag">Warm minimal</span><span class="niche-tag">Calm female</span></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="hideModal('nicheWizard')">Cancel</button>
+        <button class="btn btn-primary" onclick="modalGoTo(2)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- ── Step 2: Source type ── -->
+    <div id="modal-step-2" style="display:none;">
+      <div class="modal-title" style="margin-bottom:4px;">Choose your source</div>
+      <div class="niche-preset-banner" id="modal-niche-banner" style="margin-top:12px;">
+        <span id="modal-niche-emoji">🕯️</span>
+        <span>Loaded <strong id="modal-niche-name">Horror &amp; Dark Stories</strong> — dark cinematic visuals, deep voice, bold captions, dark ambient music</span>
+      </div>
+
+      <div class="source-type-grid" id="modal-source-grid" style="grid-template-columns:repeat(4,1fr);">
+        <div class="source-type-opt selected" data-source="prompt" onclick="selectSource(this,'modal')">
+          <span class="source-type-ico">✍️</span>
+          <div class="source-type-name">Write a Prompt</div>
+          <div class="source-type-hint">AI writes the script</div>
+        </div>
+        <div class="source-type-opt" data-source="script" onclick="selectSource(this,'modal')">
+          <span class="source-type-ico">📄</span>
+          <div class="source-type-name">Paste a Script</div>
+          <div class="source-type-hint">Your words, our engine</div>
+        </div>
+        <div class="source-type-opt" data-source="url" onclick="selectSource(this,'modal')">
+          <span class="source-type-ico">🔗</span>
+          <div class="source-type-name">From URL</div>
+          <div class="source-type-hint">Article or web page</div>
+        </div>
+        <div class="source-type-opt" data-source="images" onclick="selectSource(this,'modal')">
+          <span class="source-type-ico">🖼️</span>
+          <div class="source-type-name">Upload Images</div>
+          <div class="source-type-hint">Your photos become scenes</div>
+        </div>
+        <div class="source-type-opt" data-source="audio" onclick="selectSource(this,'modal')">
+          <span class="source-type-ico">🎙️</span>
+          <div class="source-type-name">Upload Audio</div>
+          <div class="source-type-hint">Transcribe &amp; structure</div>
+        </div>
+        <div class="source-type-opt" data-source="video" onclick="selectSource(this,'modal')">
+          <span class="source-type-ico">🎬</span>
+          <div class="source-type-name">Upload Video</div>
+          <div class="source-type-hint">Extract &amp; repurpose</div>
+        </div>
+        <div class="source-type-opt" data-source="csv" onclick="selectSource(this,'modal')">
+          <span class="source-type-ico">📋</span>
+          <div class="source-type-name">CSV Batch</div>
+          <div class="source-type-hint">Many topics at once</div>
+        </div>
+        <div class="source-type-opt" data-source="product" onclick="selectSource(this,'modal')">
+          <span class="source-type-ico">🛍️</span>
+          <div class="source-type-name">Product Description</div>
+          <div class="source-type-hint">Name, benefits, audience</div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="modalGoTo(1)">← Back</button>
+        <button class="btn btn-primary" onclick="modalGoTo(3)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- ── Step 3: Content entry ── -->
+    <div id="modal-step-3" style="display:none;">
+      <div class="modal-title" style="margin-bottom:12px;">Enter your content</div>
+
+      <!-- Niche preset summary pills -->
+      <div class="niche-preset-summary">
+        <div class="preset-pill">
+          <div class="preset-pill-label">Visual</div>
+          <div class="preset-pill-val">Dark Cinematic</div>
+        </div>
+        <div class="preset-pill">
+          <div class="preset-pill-label">Voice</div>
+          <div class="preset-pill-val">Deep Male</div>
+        </div>
+        <div class="preset-pill">
+          <div class="preset-pill-label">Captions</div>
+          <div class="preset-pill-val">Bold Overlay</div>
+        </div>
+        <div class="preset-pill">
+          <div class="preset-pill-label">Music</div>
+          <div class="preset-pill-val">Dark Ambient</div>
+        </div>
+      </div>
+
+      <!-- Dynamic content input — changes by source type -->
+      <div id="modal-content-prompt" class="input-group">
+        <label class="input-label">What's your video about?</label>
+        <div class="wizard-content-area">
+          <textarea placeholder="e.g. The mysterious disappearance of the Beaumont family in 1966 — one of Australia's most haunting unsolved cases…" rows="5"></textarea>
+        </div>
+      </div>
+
+      <div id="modal-content-script" class="input-group" style="display:none;">
+        <label class="input-label">Paste your script</label>
+        <div class="wizard-content-area">
+          <textarea placeholder="Paste your full script here. Each paragraph will become a scene…" rows="7"></textarea>
+        </div>
+      </div>
+
+      <div id="modal-content-url" class="input-group" style="display:none;">
+        <label class="input-label">Article or page URL</label>
+        <div class="wizard-content-area">
+          <input type="url" placeholder="https://example.com/article…" />
+        </div>
+        <div class="hint-box" style="margin-top:8px;">AI will extract the main body text and structure it into scenes matching your niche template.</div>
+      </div>
+
+      <div id="modal-content-images" style="display:none;">
+        <div class="image-ai-hint">
+          <span>✦</span>
+          <span><strong>Vision AI</strong> analyses each image and generates matching narration. Each image becomes one scene. Upload 3–15 images for best results.</span>
+        </div>
+        <div class="image-preview-grid">
+          <div class="image-preview-thumb" style="background:linear-gradient(135deg,#1a0a2e,#0d0d2b);"><div class="img-remove">✕</div></div>
+          <div class="image-preview-thumb" style="background:linear-gradient(135deg,#0d1a2e,#0d0d1a);"><div class="img-remove">✕</div></div>
+          <div class="image-preview-thumb" style="background:linear-gradient(135deg,#1a1a0d,#2e0d0d);"><div class="img-remove">✕</div></div>
+          <div class="image-preview-add">+</div>
+        </div>
+        <div class="image-upload-zone" style="margin-bottom:14px;">
+          <div class="image-upload-zone-ico">🖼️</div>
+          <div class="image-upload-zone-title">Drop images here or click to browse</div>
+          <div class="image-upload-zone-hint">JPG, PNG, WEBP · max 10MB each · up to 15 images</div>
+        </div>
+        <div class="input-group">
+          <label class="input-label">Optional context for AI narration</label>
+          <div class="wizard-content-area">
+            <textarea placeholder="e.g. These are photos from an abandoned asylum in Kentucky. Describe the history and atmosphere…" rows="3"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div id="modal-content-audio" class="input-group" style="display:none;">
+        <label class="input-label">Upload audio file</label>
+        <div class="image-upload-zone">
+          <div class="image-upload-zone-ico">🎙️</div>
+          <div class="image-upload-zone-title">Drop your audio file here</div>
+          <div class="image-upload-zone-hint">MP3, WAV, M4A · max 500MB · will be transcribed</div>
+        </div>
+      </div>
+
+      <div id="modal-content-video" class="input-group" style="display:none;">
+        <label class="input-label">Upload video file</label>
+        <div class="image-upload-zone">
+          <div class="image-upload-zone-ico">🎬</div>
+          <div class="image-upload-zone-title">Drop your video file here</div>
+          <div class="image-upload-zone-hint">MP4, MOV · max 2GB · audio extracted and transcribed</div>
+        </div>
+      </div>
+
+      <!-- Settings grid -->
+      <div class="settings-2col">
+        <div class="settings-field">
+          <label>Channel</label>
+          <select>
+            <option>Horror Vault</option>
+            <option>Dark Stories UK</option>
+            <option>+ Create new channel</option>
+          </select>
+        </div>
+        <div class="settings-field">
+          <label>Language</label>
+          <select>
+            <option>English (US)</option>
+            <option>English (UK)</option>
+            <option>Spanish</option>
+            <option>French</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label class="input-label" style="margin-bottom:8px;display:block;">Format</label>
+        <div class="format-chips">
+          <div class="format-chip active">9:16</div>
+          <div class="format-chip">1:1</div>
+          <div class="format-chip">16:9</div>
+        </div>
+      </div>
+      <div style="margin-bottom:4px;">
+        <label class="input-label" style="margin-bottom:8px;display:block;">Target length</label>
+        <div class="format-chips">
+          <div class="format-chip">30s</div>
+          <div class="format-chip active">60s</div>
+          <div class="format-chip">90s</div>
+          <div class="format-chip">3 min</div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="modalGoTo(2)">← Back</button>
+        <button class="btn btn-primary">✦ Generate Video</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Strict linear flow state machine ───────────────────────────────
+// Steps in order. Each step has a tab ID and a screen ID.
+const FLOW = [
+  { tab: 'tab-niche',      screen: 'screen-niche'      },
+  { tab: 'tab-generation', screen: 'screen-generation'  },
+  { tab: 'tab-hooks',      screen: 'screen-hooks'       },
+  { tab: 'tab-editor',     screen: 'screen-editor'      },
+];
+const FLOW_KEY = { niche: 0, generation: 1, hooks: 2, editor: 3 };
+let currentFlowStep = 0; // index into FLOW
+
+function advanceFlow(name) {
+  const target = FLOW_KEY[name];
+  if (target === undefined || target <= currentFlowStep) return;
+  currentFlowStep = target;
+  applyFlowState();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function applyFlowState() {
+  // Hide all screens
+  document.querySelectorAll('.screen, .editor-screen').forEach(s => s.classList.remove('active'));
+  // Show active screen
+  const active = FLOW[currentFlowStep];
+  const screenEl = document.getElementById(active.screen);
+  if (screenEl) screenEl.classList.add('active');
+  // Update tabs
+  FLOW.forEach((step, i) => {
+    const tab = document.getElementById(step.tab);
+    if (!tab) return;
+    tab.classList.remove('active', 'done', 'locked');
+    if (i < currentFlowStep)  tab.classList.add('done');
+    if (i === currentFlowStep) tab.classList.add('active');
+    if (i > currentFlowStep)  tab.classList.add('locked');
+    // Update number badge
+    const num = tab.querySelector('.tab-num');
+    if (num) num.textContent = i < currentFlowStep ? '' : (i + 1); // done tabs show ✓ via CSS ::after
+  });
+}
+
+// Legacy stub — not used in flow tabs, kept for safety
+function showScreen(tab, id) {}
+
+// ── Niche card selection ────────────────────────────────────────────
+const nicheData = {
+  '🕯️': { name:'Horror & Dark Stories',   visual:'Dark Cinematic', voice:'Deep Male',    captions:'Bold Overlay',  music:'Dark Ambient' },
+  '💰': { name:'Finance & Money',          visual:'Documentary',    voice:'Neutral Male', captions:'Subtitle',      music:'Corporate'    },
+  '🔥': { name:'Motivation & Mindset',     visual:'Cinematic Warm', voice:'Energetic',    captions:'Bold Overlay',  music:'Epic'         },
+  '📜': { name:'History & Facts',          visual:'Documentary',    voice:'Neutral Male', captions:'Subtitle',      music:'Calm'         },
+  '🔬': { name:'Science & Explainers',     visual:'Minimalist',     voice:'Clear Female', captions:'Clean Subtitle',music:'Corporate'    },
+  '🔍': { name:'True Crime',               visual:'Dark Gritty',    voice:'Dramatic',     captions:'High Contrast', music:'Dark Ambient' },
+  '📦': { name:'Product Walkthrough',      visual:'Realistic',      voice:'Friendly',     captions:'Standard',      music:'Upbeat'       },
+  '🧘': { name:'Self Improvement',         visual:'Warm Minimal',   voice:'Calm Female',  captions:'Soft Subtitle', music:'Calm'         },
+};
+let selectedNicheEmoji = '🕯️';
+
+function selectNiche(el) {
+  const grid = el.closest('.niche-grid');
+  grid.querySelectorAll('.niche-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  const emoji = el.querySelector('.niche-emoji')?.textContent?.trim();
+  if (emoji) selectedNicheEmoji = emoji;
+}
+
+// ── Source type selection ───────────────────────────────────────────
+let selectedSource = { modal: 'prompt', inline: 'prompt' };
+
+function selectSource(el, context) {
+  const grid = el.closest('.source-type-grid');
+  grid.querySelectorAll('.source-type-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedSource[context] = el.dataset.source;
+  if (context === 'modal') updateModalContentPanel();
+  if (context === 'inline') updateInlineContentPanel();
+}
+
+function updateModalContentPanel() {
+  const src = selectedSource.modal;
+  const panels = ['prompt','script','url','images','audio','video'];
+  panels.forEach(p => {
+    const el = document.getElementById('modal-content-' + p);
+    if (el) el.style.display = (p === src) ? 'block' : 'none';
+  });
+  // csv / product → show prompt as fallback
+  if (!panels.includes(src)) {
+    document.getElementById('modal-content-prompt').style.display = 'block';
+  }
+}
+
+function updateInlineContentPanel() {
+  const src = selectedSource.inline;
+  const panels = ['prompt','script','url','images','audio','video'];
+  panels.forEach(p => {
+    const el = document.getElementById('inline-content-' + p);
+    if (el) el.style.display = (p === src || (!panels.includes(src) && p === 'prompt')) ? 'block' : 'none';
+  });
+}
+
+// ── Modal wizard navigation ─────────────────────────────────────────
+let modalStep = 1;
+
+function modalGoTo(step) {
+  // hide all steps
+  [1,2,3].forEach(s => {
+    const el = document.getElementById('modal-step-' + s);
+    if (el) el.style.display = 'none';
+  });
+  // show target
+  const target = document.getElementById('modal-step-' + step);
+  if (target) target.style.display = 'block';
+  modalStep = step;
+  updateModalStepIndicator(step);
+
+  // Populate niche banner in step 2
+  if (step === 2) {
+    const d = nicheData[selectedNicheEmoji] || nicheData['🕯️'];
+    const banner = document.getElementById('modal-niche-banner');
+    if (banner) {
+      document.getElementById('modal-niche-emoji').textContent = selectedNicheEmoji;
+      document.getElementById('modal-niche-name').textContent = d.name;
+    }
+  }
+  // Populate preset summary in step 3
+  if (step === 3) {
+    const d = nicheData[selectedNicheEmoji] || nicheData['🕯️'];
+    const pills = document.querySelectorAll('#modal-step-3 .preset-pill-val');
+    if (pills[0]) pills[0].textContent = d.visual;
+    if (pills[1]) pills[1].textContent = d.voice;
+    if (pills[2]) pills[2].textContent = d.captions;
+    if (pills[3]) pills[3].textContent = d.music;
+    updateModalContentPanel();
+  }
+  // scroll modal to top
+  const modal = document.querySelector('#nicheWizard .modal');
+  if (modal) modal.scrollTop = 0;
+}
+
+function updateModalStepIndicator(current) {
+  [1,2,3].forEach(s => {
+    const stepEl = document.getElementById('mws-' + s);
+    const numEl  = document.getElementById('mwn-' + s);
+    const connEl = document.getElementById('mwc-' + s);
+    if (!stepEl || !numEl) return;
+    stepEl.classList.remove('active','done');
+    if (s < current)  { stepEl.classList.add('done'); numEl.textContent = '✓'; }
+    if (s === current){ stepEl.classList.add('active'); numEl.textContent = s; }
+    if (s > current)  { numEl.textContent = s; }
+    if (connEl) connEl.classList.toggle('done', s < current);
+  });
+}
+
+// ── Inline wizard navigation ────────────────────────────────────────
+function inlineGoTo(step) {
+  [1,2,3].forEach(s => {
+    const el = document.getElementById('inline-step-' + s);
+    if (el) el.style.display = (s === step) ? 'block' : 'none';
+  });
+  updateInlineStepIndicator(step);
+  // Populate niche banner in step 2
+  if (step === 2) {
+    const d = nicheData[selectedNicheEmoji] || nicheData['🕯️'];
+    const emoji = document.getElementById('inline-niche-emoji');
+    const name  = document.getElementById('inline-niche-name');
+    if (emoji) emoji.textContent = selectedNicheEmoji;
+    if (name)  name.textContent  = d.name;
+  }
+  // Populate preset pills in step 3
+  if (step === 3) {
+    const d = nicheData[selectedNicheEmoji] || nicheData['🕯️'];
+    const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+    set('inline-pill-visual',   d.visual);
+    set('inline-pill-voice',    d.voice);
+    set('inline-pill-captions', d.captions);
+    set('inline-pill-music',    d.music);
+    updateInlineContentPanel();
+  }
+  // Scroll to top of screen
+  const screen = document.getElementById('screen-niche');
+  if (screen) screen.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function updateInlineStepIndicator(current) {
+  [1,2,3].forEach(s => {
+    const stepEl = document.getElementById('iws-' + s);
+    const numEl  = document.getElementById('iwn-' + s);
+    const connEl = document.getElementById('iwc-' + s);
+    if (!stepEl || !numEl) return;
+    stepEl.classList.remove('active','done');
+    if (s < current)  { stepEl.classList.add('done');   numEl.textContent = '✓'; }
+    if (s === current){ stepEl.classList.add('active'); numEl.textContent = s;   }
+    if (s > current)  { numEl.textContent = s; }
+    if (connEl) connEl.classList.toggle('done', s < current);
+  });
+}
+
+// ── Modal open/close ────────────────────────────────────────────────
+function showModal(id) {
+  modalGoTo(1); // always start at step 1
+  document.getElementById(id).classList.add('show');
+}
+function hideModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+// ── Editor panel toggle ─────────────────────────────────────────────
+function toggleEditorPanel(id) {
+  const panel = document.getElementById(id);
+  if (panel) panel.classList.toggle('collapsed');
+}
+
+// ── Visual type tabs ────────────────────────────────────────────────
+document.querySelectorAll('.visual-type-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    tab.closest('.visual-type-tabs').querySelectorAll('.visual-type-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+  });
+});
+
+// ── Style picker ────────────────────────────────────────────────────
+document.querySelectorAll('.style-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    opt.closest('.style-picker-grid').querySelectorAll('.style-opt').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+  });
+});
+
+// ── Music track selection ───────────────────────────────────────────
+document.querySelectorAll('.music-track').forEach(track => {
+  track.addEventListener('click', () => {
+    track.closest('.music-track-list').querySelectorAll('.music-track').forEach(t => t.classList.remove('selected'));
+    track.classList.add('selected');
+  });
+});
+
+// ── Filter / format chips toggle ────────────────────────────────────
+document.querySelectorAll('.filter-chip, .format-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    chip.closest('.filter-chips, div')?.querySelectorAll('.filter-chip, .format-chip')
+      .forEach(c => { if(c.classList.contains(chip.classList[1])) c.classList.remove('active'); });
+    chip.classList.add('active');
+  });
+});
+
+// Simpler: toggle active within same parent element for format chips
+document.querySelectorAll('.format-chips').forEach(group => {
+  group.querySelectorAll('.format-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      group.querySelectorAll('.format-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    });
+  });
+});
+
+// ── Hook option selection ───────────────────────────────────────────
+document.querySelectorAll('.hook-option').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('.hook-option').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+  });
+});
+
+// ── Music slider live labels ────────────────────────────────────────
+document.querySelectorAll('.music-slider').forEach(slider => {
+  slider.addEventListener('input', () => {
+    const val = slider.nextElementSibling;
+    if (!val) return;
+    const num = parseInt(slider.value), max = parseInt(slider.max);
+    val.textContent = max === 2000 ? (num/1000).toFixed(1)+'s' : num+'%';
+  });
+});
+
+// ── Preview playback ────────────────────────────────────────────────
+const SCENES = [
+  { label:'Scene 01', duration:12 },
+  { label:'Scene 02', duration:14 },
+  { label:'Scene 03', duration:13 },
+  { label:'Scene 04', duration:11 },
+  { label:'Scene 05', duration:11 },
+];
+const SCENE_MARKERS = [20, 40, 62, 81]; // % boundaries between scenes in full video
+const FULL_DURATION = SCENES.reduce((s, sc) => s + sc.duration, 0); // 61s
+
+let previewMode = 'scene';
+let currentSceneIdx = 0;
+let playProgress = 0; // 0–100 within current context
+let isPlaying = false;
+let playTimer = null;
+
+function fmtTime(secs) {
+  const m = String(Math.floor(secs / 60)).padStart(2, '0');
+  const s = String(secs % 60).padStart(2, '0');
+  return m + ':' + s;
+}
+
+function setPreviewMode(mode) {
+  previewMode = mode;
+  stopPlay();
+  playProgress = 0;
+  document.getElementById('mode-scene').classList.toggle('active', mode === 'scene');
+  document.getElementById('mode-full').classList.toggle('active', mode === 'full');
+  const markers = document.getElementById('scrubber-markers');
+  if (markers) markers.style.display = mode === 'full' ? 'block' : 'none';
+  refreshPlaybackUI();
+}
+
+function togglePlay() {
+  isPlaying ? stopPlay() : startPlay();
+}
+
+function startPlay() {
+  isPlaying = true;
+  document.getElementById('play-btn').textContent = '⏸';
+  document.querySelectorAll('.music-wave').forEach(w => w.classList.add('playing'));
+  playTimer = setInterval(() => {
+    playProgress += (100 / (previewMode === 'scene' ? SCENES[currentSceneIdx].duration : FULL_DURATION)) * 0.05;
+    if (playProgress >= 100) {
+      if (previewMode === 'scene') {
+        playProgress = 0; // loop scene
+      } else {
+        playProgress = 100;
+        stopPlay();
+      }
+    }
+    refreshPlaybackUI();
+  }, 50);
+}
+
+function stopPlay() {
+  isPlaying = false;
+  clearInterval(playTimer);
+  const btn = document.getElementById('play-btn');
+  if (btn) btn.textContent = '▶';
+  document.querySelectorAll('.music-wave').forEach(w => w.classList.remove('playing'));
+}
+
+function refreshPlaybackUI() {
+  const pct = Math.min(playProgress, 100);
+  const fill = document.getElementById('scrubber-fill');
+  const thumb = document.getElementById('scrubber-thumb');
+  if (fill) fill.style.width = pct + '%';
+  if (thumb) thumb.style.left = pct + '%';
+
+  let elapsed, total, label;
+  if (previewMode === 'scene') {
+    const sc = SCENES[currentSceneIdx];
+    elapsed = Math.round((pct / 100) * sc.duration);
+    total = sc.duration;
+    label = sc.label;
+  } else {
+    elapsed = Math.round((pct / 100) * FULL_DURATION);
+    total = FULL_DURATION;
+    // figure out which scene we're in for the label
+    const boundary = SCENE_MARKERS;
+    let scIdx = 0;
+    for (let i = 0; i < boundary.length; i++) { if (pct >= boundary[i]) scIdx = i + 1; }
+    label = SCENES[scIdx].label;
+  }
+
+  const cur = document.getElementById('play-current');
+  const tot = document.getElementById('play-total');
+  const lbl = document.getElementById('play-label');
+  const cvs = document.getElementById('canvas-timer');
+  if (cur) cur.textContent = fmtTime(elapsed);
+  if (tot) tot.textContent = fmtTime(total);
+  if (lbl) lbl.textContent = label;
+  if (cvs) cvs.textContent = fmtTime(elapsed);
+
+  // Rotate caption word highlight
+  const words = document.querySelectorAll('#screen-editor .caption-word');
+  if (words.length) {
+    const wi = Math.floor((pct / 100) * words.length) % words.length;
+    words.forEach((w, i) => { w.className = 'caption-word ' + (i === wi ? 'highlight' : 'normal'); });
+  }
+}
+
+function skipScene(dir) {
+  const next = currentSceneIdx + dir;
+  if (next < 0 || next >= SCENES.length) return;
+  stopPlay();
+  currentSceneIdx = next;
+  playProgress = 0;
+  // sync sidebar active state
+  document.querySelectorAll('#screen-editor .scene-item').forEach((el, i) => {
+    el.classList.toggle('active', i === currentSceneIdx);
+  });
+  // sync right panel title
+  const title = document.getElementById('editor-scene-title');
+  if (title) title.textContent = SCENES[currentSceneIdx].label;
+  refreshPlaybackUI();
+}
+
+function scrubberSeek(e) {
+  const track = document.getElementById('scrubber-track');
+  if (!track) return;
+  const rect = track.getBoundingClientRect();
+  playProgress = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+  refreshPlaybackUI();
+}
+
+// Init playback display on load
+refreshPlaybackUI();
+
+// ── Init: fix filter-chip click to be group-scoped ──────────────────
+document.querySelectorAll('.filter-chips').forEach(group => {
+  group.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      group.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    });
+  });
+});
+</script>
+</body>
+</html>

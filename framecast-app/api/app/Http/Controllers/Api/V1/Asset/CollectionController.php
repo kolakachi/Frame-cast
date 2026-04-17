@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Asset;
 
 use App\Http\Controllers\Controller;
+use App\Models\Asset;
 use App\Models\Collection;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -86,6 +87,19 @@ class CollectionController extends Controller
         if (! $collection) {
             return $this->error('not_found', 'Collection not found.', 404);
         }
+
+        Asset::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->whereJsonContains('collection_ids', $collection->getKey())
+            ->get()
+            ->each(function (Asset $asset) use ($collection): void {
+                $asset->forceFill([
+                    'collection_ids' => collect($asset->collection_ids ?? [])
+                        ->reject(fn ($id): bool => (int) $id === (int) $collection->getKey())
+                        ->values()
+                        ->all(),
+                ])->save();
+            });
 
         $collection->delete();
 

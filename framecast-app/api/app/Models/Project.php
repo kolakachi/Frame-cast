@@ -16,6 +16,7 @@ class Project extends Model
         'channel_id',
         'brand_kit_id',
         'template_id',
+        'niche_id',
         'source_type',
         'source_content_raw',
         'source_content_normalized',
@@ -31,12 +32,17 @@ class Project extends Model
         'current_revision_id',
         'family_id',
         'created_by_user_id',
+        'music_asset_id',
+        'music_settings_json',
     ];
 
     protected function casts(): array
     {
         return [
             'duration_target_seconds' => 'integer',
+            'niche_id' => 'integer',
+            'music_asset_id' => 'integer',
+            'music_settings_json' => 'array',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
@@ -60,5 +66,10 @@ class Project extends Model
     public function variantSets(): HasMany
     {
         return $this->hasMany(VariantSet::class, 'base_project_id');
+    }
+
+    public function localizationGroups(): HasMany
+    {
+        return $this->hasMany(LocalizationGroup::class, 'source_project_id');
     }
 }
