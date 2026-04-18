@@ -8,6 +8,7 @@ import MagicLinkView from '../views/MagicLinkView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import VariantsView from '../views/VariantsView.vue'
+import AdminView from '../views/AdminView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -18,6 +19,7 @@ const routes = [
   { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/assets', name: 'asset-library', component: AssetLibraryView, meta: { requiresAuth: true } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true } },
+  { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
   { path: '/projects/:projectId/generation', name: 'generation-progress', component: GenerationProgressView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/editor', name: 'project-editor', component: EditorView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/variants', name: 'project-variants', component: VariantsView, meta: { requiresAuth: true } },
@@ -36,6 +38,10 @@ router.beforeEach(function (to) {
   }
 
   if (to.meta.guestOnly && authStore.isAuthenticated) {
+    return { name: 'dashboard' }
+  }
+
+  if (to.meta.adminOnly && !['super_admin', 'platform_admin'].includes(authStore.user?.role)) {
     return { name: 'dashboard' }
   }
 

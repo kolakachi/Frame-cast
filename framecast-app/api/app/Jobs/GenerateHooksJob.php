@@ -33,7 +33,14 @@ class GenerateHooksJob implements ShouldQueue
         $result = $aiGeneration->generate('hook_options', [
             'script_text' => $project->script_text,
             'language' => $project->primary_language ?: 'en',
-        ], 500, 0.7);
+        ], 500, 0.7, [
+            'usage_context' => [
+                'workspace_id' => $project->workspace_id,
+                'project_id' => $project->getKey(),
+                'user_id' => $project->created_by_user_id,
+                'template' => 'hook_options',
+            ],
+        ]);
 
         $hooks = $this->extractHooks($result['content'], $project->script_text);
 

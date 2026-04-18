@@ -54,7 +54,14 @@ class ScoreHooksJob implements ShouldQueue
 
             $result = $aiGeneration->generate('score_hooks', [
                 'hooks_json' => (string) json_encode($hooksPayload, JSON_UNESCAPED_SLASHES),
-            ], 700, 0.2);
+            ], 700, 0.2, [
+                'usage_context' => [
+                    'workspace_id' => $project->workspace_id,
+                    'project_id' => $project->getKey(),
+                    'user_id' => $project->created_by_user_id,
+                    'template' => 'score_hooks',
+                ],
+            ]);
 
             $scores = $this->extractScores($result['content'], $hooks->pluck('id')->all());
 

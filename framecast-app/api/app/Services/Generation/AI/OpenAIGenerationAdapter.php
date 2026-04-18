@@ -2,6 +2,7 @@
 
 namespace App\Services\Generation\AI;
 
+use App\Services\ApiUsageService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -11,6 +12,7 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
 {
     public function __construct(
         private readonly PromptTemplateRegistry $templates,
+        private readonly ApiUsageService $usage,
     ) {
     }
 
@@ -22,6 +24,7 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
 
         $apiKey = (string) config('services.openai.api_key');
         $model = (string) config('services.openai.model', 'gpt-4o-mini');
+        $usageContext = $this->usage->contextFromOptions($options);
 
         if ($apiKey === '') {
             return [
@@ -51,18 +54,44 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
 
             $json = $response->json();
             $content = trim((string) data_get($json, 'choices.0.message.content', ''));
+            $promptTokens = (int) data_get($json, 'usage.prompt_tokens', 0);
+            $completionTokens = (int) data_get($json, 'usage.completion_tokens', 0);
+            $totalTokens = (int) data_get($json, 'usage.total_tokens', 0);
 
             if ($content === '') {
                 throw new RuntimeException('OpenAI generation returned empty content.');
             }
 
+            $this->usage->record([
+                ...$usageContext,
+                'provider' => 'openai',
+                'service' => 'text_generation',
+                'operation' => $promptTemplateKey,
+                'model' => $model,
+                'status' => 'succeeded',
+                'prompt_tokens' => $promptTokens,
+                'completion_tokens' => $completionTokens,
+                'total_tokens' => $totalTokens,
+                'estimated_cost_usd' => $this->usage->estimateTextCost($model, $promptTokens, $completionTokens, $totalTokens),
+            ]);
+
             return [
                 'content' => $content,
                 'provider_key' => 'openai',
                 'model' => $model,
-                'tokens_used' => (int) data_get($json, 'usage.total_tokens', 0),
+                'tokens_used' => $totalTokens,
             ];
         } catch (Throwable $exception) {
+            $this->usage->record([
+                ...$usageContext,
+                'provider' => 'openai',
+                'service' => 'text_generation',
+                'operation' => $promptTemplateKey,
+                'model' => $model,
+                'status' => 'failed',
+                'error_message' => $exception->getMessage(),
+            ]);
+
             Log::warning('AI generation fell back to deterministic local content.', [
                 'template' => $promptTemplateKey,
                 'error' => $exception->getMessage(),

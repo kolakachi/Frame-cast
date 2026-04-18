@@ -64,6 +64,11 @@ RUN composer install \
 
 COPY . .
 
+RUN if [ -d /var/www/html/resources/fonts ]; then \
+        cp -R /var/www/html/resources/fonts/. /usr/local/share/fonts/framecast/; \
+    fi \
+    && fc-cache -f -v
+
 RUN composer dump-autoload --optimize \
     && php artisan package:discover --ansi \
     && chown -R framecast:framecast /var/www/html

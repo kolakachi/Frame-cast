@@ -7,6 +7,7 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     ports:
       - "8000:8000"
@@ -22,6 +23,7 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     depends_on:
       - postgres
@@ -35,6 +37,7 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     depends_on:
       - postgres
@@ -43,11 +46,12 @@ services:
   worker-exports:
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=exports,rendering --tries=1
+    command: php artisan queue:work redis --queue=exports,rendering --tries=1 --timeout=1800
     env_file:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     depends_on:
       - postgres
@@ -61,6 +65,7 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     depends_on:
       - postgres
@@ -74,6 +79,7 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     ports:
       - "8080:8080"
@@ -88,6 +94,7 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     depends_on:
       - postgres

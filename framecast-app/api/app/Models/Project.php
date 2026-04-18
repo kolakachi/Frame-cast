@@ -32,6 +32,7 @@ class Project extends Model
         'title',
         'script_text',
         'status',
+        'generation_status_json',
         'current_revision_id',
         'family_id',
         'created_by_user_id',
@@ -47,6 +48,7 @@ class Project extends Model
             'source_image_asset_ids' => 'array',
             'music_asset_id' => 'integer',
             'music_settings_json' => 'array',
+            'generation_status_json' => 'array',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];

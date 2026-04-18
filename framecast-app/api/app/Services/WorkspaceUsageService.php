@@ -10,6 +10,7 @@ use App\Models\Project;
 use App\Models\Scene;
 use App\Models\User;
 use App\Models\VoiceProfile;
+use App\Models\Workspace;
 
 class WorkspaceUsageService
 {
@@ -18,6 +19,51 @@ class WorkspaceUsageService
     public const DUB_LANGUAGES_LIMIT = 3;
     public const CHANNEL_LIMIT = 5;
     public const VOICE_CLONING_LIMIT = 2;
+
+    /**
+     * @return array<string, array<string, int|float|string>>
+     */
+    public static function plans(): array
+    {
+        return [
+            'free' => [
+                'name' => 'Free',
+                'render_limit' => 10,
+                'voice_minutes_limit' => 20,
+                'dub_languages_limit' => 1,
+                'channel_limit' => 1,
+                'voice_cloning_limit' => 0,
+                'api_budget_usd' => 1.0,
+            ],
+            'studio' => [
+                'name' => 'Studio',
+                'render_limit' => self::RENDER_LIMIT,
+                'voice_minutes_limit' => self::VOICE_MINUTES_LIMIT,
+                'dub_languages_limit' => self::DUB_LANGUAGES_LIMIT,
+                'channel_limit' => self::CHANNEL_LIMIT,
+                'voice_cloning_limit' => self::VOICE_CLONING_LIMIT,
+                'api_budget_usd' => 25.0,
+            ],
+            'scale' => [
+                'name' => 'Scale',
+                'render_limit' => 1000,
+                'voice_minutes_limit' => 600,
+                'dub_languages_limit' => 12,
+                'channel_limit' => 25,
+                'voice_cloning_limit' => 10,
+                'api_budget_usd' => 150.0,
+            ],
+            'enterprise' => [
+                'name' => 'Enterprise',
+                'render_limit' => 10000,
+                'voice_minutes_limit' => 5000,
+                'dub_languages_limit' => 50,
+                'channel_limit' => 250,
+                'voice_cloning_limit' => 100,
+                'api_budget_usd' => 1000.0,
+            ],
+        ];
+    }
 
     /**
      * @return array{
@@ -34,12 +80,33 @@ class WorkspaceUsageService
      *     voice_cloning_limit:int,
      *     assets:int,
      *     brand_kits:int,
-     *     projects:int
+     *     projects:int,
+     *     api_budget_usd:float
      * }
      */
     public function summaryForUser(User $user): array
     {
-        $workspaceId = $user->workspace_id;
+        if ($user->workspace) {
+            return $this->summaryForWorkspace($user->workspace);
+        }
+
+        return $this->buildSummary((int) $user->workspace_id, 'studio');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function summaryForWorkspace(Workspace $workspace): array
+    {
+        return $this->buildSummary((int) $workspace->getKey(), (string) ($workspace->plan_tier ?: 'studio'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildSummary(int $workspaceId, string $planTier): array
+    {
+        $plan = self::plans()[$planTier] ?? self::plans()['studio'];
 
         $voiceSeconds = (float) Scene::query()
             ->whereHas('project', fn ($query) => $query->where('workspace_id', $workspaceId))
@@ -52,40 +119,45 @@ class WorkspaceUsageService
             ->count('primary_language');
 
         return [
-            'plan' => 'Studio',
+            'plan' => $plan['name'],
+            'plan_tier' => $planTier,
             'renders_used' => ExportJob::query()
                 ->whereHas('project', fn ($query) => $query->where('workspace_id', $workspaceId))
                 ->where('status', 'completed')
                 ->count(),
-            'render_limit' => self::RENDER_LIMIT,
+            'render_limit' => (int) $plan['render_limit'],
             'voice_minutes_used' => (int) ceil($voiceSeconds / 60),
-            'voice_minutes_limit' => self::VOICE_MINUTES_LIMIT,
+            'voice_minutes_limit' => (int) $plan['voice_minutes_limit'],
             'dub_languages_used' => $dubLanguagesUsed,
-            'dub_languages_limit' => self::DUB_LANGUAGES_LIMIT,
+            'dub_languages_limit' => (int) $plan['dub_languages_limit'],
             'active_channels' => Channel::query()
                 ->where('workspace_id', $workspaceId)
                 ->where('status', 'active')
                 ->count(),
-            'channel_limit' => self::CHANNEL_LIMIT,
+            'channel_limit' => (int) $plan['channel_limit'],
             'voice_cloning_used' => VoiceProfile::query()
                 ->where('workspace_id', $workspaceId)
                 ->where('is_cloned', true)
                 ->count(),
-            'voice_cloning_limit' => self::VOICE_CLONING_LIMIT,
+            'voice_cloning_limit' => (int) $plan['voice_cloning_limit'],
             'assets' => Asset::query()
                 ->where('workspace_id', $workspaceId)
                 ->where('status', 'active')
                 ->count(),
             'brand_kits' => BrandKit::query()->where('workspace_id', $workspaceId)->count(),
             'projects' => Project::query()->where('workspace_id', $workspaceId)->count(),
+            'api_budget_usd' => (float) $plan['api_budget_usd'],
         ];
     }
 
     public function hasReachedChannelLimit(User $user): bool
     {
+        $planTier = (string) ($user->workspace?->plan_tier ?: 'studio');
+        $plan = self::plans()[$planTier] ?? self::plans()['studio'];
+
         return Channel::query()
             ->where('workspace_id', $user->workspace_id)
             ->where('status', 'active')
-            ->count() >= self::CHANNEL_LIMIT;
+            ->count() >= (int) $plan['channel_limit'];
     }
 }

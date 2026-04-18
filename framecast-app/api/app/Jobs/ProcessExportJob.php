@@ -27,7 +27,7 @@ class ProcessExportJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public int $timeout = 300;
+    public int $timeout = 1800;
 
     public function __construct(public readonly int $exportJobId)
     {
@@ -45,7 +45,9 @@ class ProcessExportJob implements ShouldQueue
         $exportJob->forceFill([
             'status' => 'processing',
             'progress_percent' => 5,
+            'failure_reason' => null,
             'started_at' => now(),
+            'completed_at' => null,
         ])->save();
 
         $this->syncBatchJob($exportJob);

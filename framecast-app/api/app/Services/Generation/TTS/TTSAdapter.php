@@ -12,5 +12,5 @@ interface TTSAdapter
      *   provider_voice_id:string
      * }
      */
-    public function synthesize(string $text, string $language, string $voiceId, float $speed = 1.0): array;
+    public function synthesize(string $text, string $language, string $voiceId, float $speed = 1.0, array $options = []): array;
 }

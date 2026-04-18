@@ -834,12 +834,12 @@ class ProjectController extends Controller
     {
         ExportJob::query()
             ->where('project_id', $projectId)
-            ->where('status', 'queued')
-            ->whereNull('started_at')
-            ->where('queued_at', '<', now()->subMinutes(2))
+            ->where('status', 'processing')
+            ->whereNotNull('started_at')
+            ->where('started_at', '<', now()->subHours(2))
             ->update([
                 'status' => 'failed',
-                'failure_reason' => 'Stale — export queue job disappeared',
+                'failure_reason' => 'Export worker stopped before completing this render.',
                 'completed_at' => now(),
             ]);
     }
@@ -893,6 +893,7 @@ class ProjectController extends Controller
             'title' => $project->title,
             'script_text' => $project->script_text,
             'status' => $project->status,
+            'generation_status_json' => $project->generation_status_json,
             'music_asset_id' => $project->music_asset_id,
             'music_settings_json' => $project->music_settings_json,
             'variants_count' => isset($project->variants_count) ? (int) $project->variants_count : 0,

@@ -448,8 +448,16 @@ class SceneController extends Controller
             return $this->error('invalid_scene_state', 'Scene script is required before regenerating voice.', 422);
         }
 
-        DB::transaction(function () use ($scene, $project, $tts, $voiceId, $speed, $language, $sceneText): void {
-            $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed);
+        DB::transaction(function () use ($scene, $project, $user, $tts, $voiceId, $speed, $language, $sceneText): void {
+            $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
+                'usage_context' => [
+                    'workspace_id' => $project->workspace_id,
+                    'project_id' => $project->getKey(),
+                    'user_id' => $user->getKey(),
+                    'scene_id' => $scene->getKey(),
+                    'manual_voice_regeneration' => true,
+                ],
+            ]);
 
             $asset = Asset::query()->create([
                 'workspace_id' => $project->workspace_id,
@@ -589,6 +597,12 @@ class SceneController extends Controller
             return $this->error('not_found', 'Scene not found.', 404);
         }
 
+        // Guard: reject concurrent requests — only one generation per scene at a time.
+        $imageSettings = $scene->image_generation_settings_json ?? [];
+        if (! empty($imageSettings['in_progress'])) {
+            return $this->error('generation_in_progress', 'Image generation is already in progress for this scene.', 409);
+        }
+
         $validated = $request->validate([
             'style'           => ['sometimes', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon'],
             'prompt_override' => ['sometimes', 'nullable', 'string', 'max:500'],
@@ -596,6 +610,15 @@ class SceneController extends Controller
 
         // Prefer request style, then scene-level visual_style, then default.
         $style = $validated['style'] ?? $scene->visual_style ?? 'cinematic';
+
+        // Lock the scene immediately so rapid re-clicks and pipeline overlap are rejected.
+        $scene->forceFill([
+            'image_generation_settings_json' => array_merge($imageSettings, [
+                'in_progress' => true,
+                'last_error'  => null,
+                'needs_visual' => false,
+            ]),
+        ])->save();
 
         GenerateAIImageJob::dispatch(
             $scene->getKey(),

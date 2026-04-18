@@ -218,7 +218,16 @@ class VariantGenerationService
                 $sceneText,
                 (string) ($project->primary_language ?: 'en'),
                 $voiceId,
-                $speed
+                $speed,
+                [
+                    'usage_context' => [
+                        'workspace_id' => $project->workspace_id,
+                        'project_id' => $project->getKey(),
+                        'user_id' => $project->created_by_user_id,
+                        'scene_id' => $scene->getKey(),
+                        'variant_tts' => true,
+                    ],
+                ]
             );
 
             $asset = Asset::query()->create([

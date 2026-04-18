@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
+use App\Http\Controllers\Api\V1\Admin\AdminController;
 use App\Http\Controllers\Api\V1\Niche\NicheController;
 use App\Http\Controllers\Api\V1\Asset\AssetController;
 use App\Http\Controllers\Api\V1\Asset\CollectionController;
@@ -45,6 +46,10 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/fonts', [FontController::class, 'index']);
         Route::get('/visual-styles', [ImageStyleController::class, 'index']);
         Route::get('/image-generation/styles', [ImageStyleController::class, 'index']);
+        Route::prefix('/admin')->group(function (): void {
+            Route::get('/overview', [AdminController::class, 'overview']);
+            Route::patch('/workspaces/{workspaceId}/plan', [AdminController::class, 'updateWorkspacePlan'])->whereNumber('workspaceId');
+        });
         Route::prefix('/assets')->group(function (): void {
             Route::get('/', [AssetController::class, 'index']);
             Route::post('/', [AssetController::class, 'store']);

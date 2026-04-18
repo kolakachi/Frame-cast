@@ -13,13 +13,36 @@ const subtitle = ref(`Project #${projectId.value}`)
 let channelName = null
 let pollTimer = null
 
-const stages = ref([
-  { key: 'script', label: 'Writing script', status: 'pending', statusText: 'Waiting' },
-  { key: 'scene_breakdown', label: 'Breaking into scenes', status: 'pending', statusText: 'Waiting' },
-  { key: 'visual_match', label: 'Matching visuals', status: 'pending', statusText: 'Waiting' },
-  { key: 'tts', label: 'Generating voice', status: 'pending', statusText: 'Waiting' },
-  { key: 'preview_assembly', label: 'Assembling preview', status: 'pending', statusText: 'Waiting' },
-])
+const baseStages = [
+  { key: 'script', label: 'Writing script' },
+  { key: 'scene_breakdown', label: 'Breaking into scenes' },
+  { key: 'hooks', label: 'Creating hooks' },
+  { key: 'hooks_scoring', label: 'Scoring hooks' },
+  { key: 'tts', label: 'Generating voice' },
+  { key: 'preview_assembly', label: 'Assembling preview' },
+]
+
+function stageDefinitions(project = null) {
+  const visualStage = project?.visual_generation_mode === 'ai_images'
+    ? { key: 'ai_image', label: 'Generating AI visuals' }
+    : { key: 'visual_match', label: 'Matching visuals' }
+
+  return [
+    ...baseStages.slice(0, 4),
+    visualStage,
+    ...baseStages.slice(4),
+  ]
+}
+
+function freshStages(project = null) {
+  return stageDefinitions(project).map((stage) => ({
+    ...stage,
+    status: 'pending',
+    statusText: 'Waiting',
+  }))
+}
+
+const stages = ref(freshStages())
 
 const progressPercent = computed(() => {
   const completeCount = stages.value.filter((stage) => stage.status === 'complete').length
@@ -41,7 +64,60 @@ function markStage(key, status, statusText = '') {
   )
 }
 
-function applyPipelineState(projectStatus) {
+function displayMessage(message) {
+  if (!message) return ''
+
+  if (String(message).includes('insufficient_quota')) {
+    return 'Voice generation could not run because the OpenAI quota is exhausted.'
+  }
+
+  return message
+}
+
+function normalizeEventStatus(status) {
+  if (status === 'processing') return 'active'
+  if (status === 'completed') return 'complete'
+  if (status === 'failed') return 'failed'
+  return 'pending'
+}
+
+function previousStageKeys(key) {
+  const index = stages.value.findIndex((stage) => stage.key === key)
+  if (index <= 0) return []
+  return stages.value.slice(0, index).map((stage) => stage.key)
+}
+
+function applyStoredGenerationState(project) {
+  const generationStatus = project?.generation_status_json || {}
+  const storedStages = generationStatus.stages || {}
+
+  for (const [key, stageState] of Object.entries(storedStages)) {
+    const normalizedStatus = normalizeEventStatus(stageState?.status)
+    markStage(key, normalizedStatus, displayMessage(stageState?.message))
+
+    if (normalizedStatus !== 'pending') {
+      previousStageKeys(key).forEach((previousKey) => {
+        const previous = stageByKey(previousKey)
+        if (previous?.status === 'pending') {
+          markStage(previousKey, 'complete', 'Done')
+        }
+      })
+    }
+  }
+}
+
+function applyPipelineState(project) {
+  const projectStatus = project?.status
+  const nextDefinitions = stageDefinitions(project)
+  const currentKeys = stages.value.map((stage) => stage.key).join('|')
+  const nextKeys = nextDefinitions.map((stage) => stage.key).join('|')
+
+  if (currentKeys !== nextKeys) {
+    stages.value = freshStages(project)
+  }
+
+  applyStoredGenerationState(project)
+
   if (projectStatus === 'ready_for_review') {
     stages.value.forEach((stage) => markStage(stage.key, 'complete', 'Done'))
     maybeOpenEditor()
@@ -49,7 +125,10 @@ function applyPipelineState(projectStatus) {
   }
 
   if (projectStatus === 'failed') {
-    const active = stages.value.find((stage) => stage.status === 'active') ?? stages.value[0]
+    const active = stages.value.find((stage) => stage.status === 'active')
+      ?? [...stages.value].reverse().find((stage) => stage.status === 'failed')
+      ?? stages.value.find((stage) => stage.status === 'pending')
+      ?? stages.value[0]
     markStage(active.key, 'failed', 'Failed')
     return
   }
@@ -72,9 +151,11 @@ function updateStageFromEvent(payload) {
   const stageMap = {
     script: 'script',
     scene_breakdown: 'scene_breakdown',
+    hooks: 'hooks',
+    hooks_scoring: 'hooks_scoring',
     visual_match: 'visual_match',
+    ai_image: 'ai_image',
     tts: 'tts',
-    hooks: 'preview_assembly',
   }
 
   const mappedKey = stageMap[payload.stage]
@@ -97,7 +178,7 @@ function updateStageFromEvent(payload) {
   }
 
   if (payload.status === 'failed') {
-    markStage(mappedKey, 'failed', payload.message || 'Failed')
+    markStage(mappedKey, 'failed', displayMessage(payload.message) || 'Failed')
   }
 }
 
@@ -109,7 +190,7 @@ async function loadProjectStatus() {
     if (!project) return
 
     subtitle.value = `${project.title || `Project #${project.id}`} · ${project.primary_language?.toUpperCase?.() || 'EN'} · ${project.aspect_ratio || '9:16'}`
-    applyPipelineState(project.status)
+    applyPipelineState(project)
   } catch {
     // no-op
   }

@@ -39,6 +39,9 @@ class GenerateScriptJob implements ShouldQueue
         $options = $project->source_type === 'images'
             ? ['images' => $this->imageInputsForGeneration($project)]
             : [];
+        $options['usage_context'] = $this->usageContext($project, [
+            'template' => $promptTemplateKey,
+        ]);
 
         $result = $aiGeneration->generate($promptTemplateKey, [
             'source_type' => $project->source_type ?: 'prompt',
@@ -54,6 +57,20 @@ class GenerateScriptJob implements ShouldQueue
 
         GenerationProgressed::dispatch($this->projectId, 'script', 'completed');
         BreakdownScenesJob::dispatch($project->getKey());
+    }
+
+    /**
+     * @param array<string, mixed> $extra
+     * @return array<string, mixed>
+     */
+    private function usageContext(Project $project, array $extra = []): array
+    {
+        return [
+            'workspace_id' => $project->workspace_id,
+            'project_id' => $project->getKey(),
+            'user_id' => $project->created_by_user_id,
+            ...$extra,
+        ];
     }
 
     public function failed(\Throwable $exception): void

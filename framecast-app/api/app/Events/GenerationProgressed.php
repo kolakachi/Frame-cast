@@ -2,10 +2,12 @@
 
 namespace App\Events;
 
+use App\Models\Project;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Queue\SerializesModels;
 
 class GenerationProgressed implements ShouldBroadcastNow
@@ -21,6 +23,7 @@ class GenerationProgressed implements ShouldBroadcastNow
         public readonly ?string $message = null,
         public readonly array $meta = [],
     ) {
+        $this->recordProgress();
     }
 
     public function broadcastOn(): array
@@ -47,5 +50,41 @@ class GenerationProgressed implements ShouldBroadcastNow
             'message' => $this->message,
             ...$this->meta,
         ];
+    }
+
+    private function recordProgress(): void
+    {
+        rescue(function (): void {
+            if (! Schema::hasColumn('projects', 'generation_status_json')) {
+                return;
+            }
+
+            $project = Project::query()->find($this->projectId);
+
+            if (! $project) {
+                return;
+            }
+
+            $status = is_array($project->generation_status_json)
+                ? $project->generation_status_json
+                : [];
+            $stages = is_array($status['stages'] ?? null) ? $status['stages'] : [];
+
+            $stages[$this->stage] = [
+                'status' => $this->status,
+                'message' => $this->message,
+                'updated_at' => now()->toIso8601String(),
+            ];
+
+            $project->forceFill([
+                'generation_status_json' => [
+                    ...$status,
+                    'current_stage' => $this->stage,
+                    'current_status' => $this->status,
+                    'last_message' => $this->message,
+                    'stages' => $stages,
+                ],
+            ])->save();
+        });
     }
 }

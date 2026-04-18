@@ -16,6 +16,8 @@ class GenerateTTSJob implements ShouldQueue
 {
     use Queueable;
 
+    public int $timeout = 900;
+
     public function __construct(
         public readonly int $projectId,
     ) {
@@ -41,15 +43,30 @@ class GenerateTTSJob implements ShouldQueue
             return;
         }
 
-        DB::transaction(function () use ($project, $scenes, $tts): void {
-            foreach ($scenes as $scene) {
-                $voiceId = (string) data_get($scene->voice_settings_json, 'voice_id', 'alloy');
-                $speed = (float) data_get($scene->voice_settings_json, 'speed', 1.0);
-                $language = $project->primary_language ?: 'en';
-                $sceneText = (string) ($scene->script_text ?: '');
+        foreach ($scenes as $scene) {
+            $existingVoiceSettings = $scene->voice_settings_json ?? [];
+            $existingAudioAssetId = (int) data_get($existingVoiceSettings, 'audio_asset_id', 0);
+            $voiceIsOutdated = (bool) data_get($existingVoiceSettings, 'is_outdated', false);
 
-                $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed);
+            if ($existingAudioAssetId > 0 && ! $voiceIsOutdated && Asset::query()->whereKey($existingAudioAssetId)->exists()) {
+                continue;
+            }
 
+            $voiceId = (string) data_get($scene->voice_settings_json, 'voice_id', 'alloy');
+            $speed = (float) data_get($scene->voice_settings_json, 'speed', 1.0);
+            $language = $project->primary_language ?: 'en';
+            $sceneText = (string) ($scene->script_text ?: '');
+
+            $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
+                'usage_context' => [
+                    'workspace_id' => $project->workspace_id,
+                    'project_id' => $project->getKey(),
+                    'user_id' => $project->created_by_user_id,
+                    'scene_id' => $scene->getKey(),
+                ],
+            ]);
+
+            DB::transaction(function () use ($project, $scene, $sceneText, $audio, $speed, $language): void {
                 $asset = Asset::query()->create([
                     'workspace_id' => $project->workspace_id,
                     'channel_id' => $project->channel_id,
@@ -71,13 +88,16 @@ class GenerateTTSJob implements ShouldQueue
                 $voiceSettings['speed'] = $speed;
                 $voiceSettings['language'] = $language;
                 $voiceSettings['audio_asset_id'] = $asset->getKey();
+                $voiceSettings['is_outdated'] = false;
 
                 $scene->forceFill([
                     'duration_seconds' => $audio['duration_seconds'],
                     'voice_settings_json' => $voiceSettings,
                 ])->save();
-            }
+            });
+        }
 
+        DB::transaction(function () use ($project): void {
             $project->forceFill([
                 'status' => 'ready_for_review',
             ])->save();

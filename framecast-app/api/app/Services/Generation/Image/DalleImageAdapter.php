@@ -2,6 +2,7 @@
 
 namespace App\Services\Generation\Image;
 
+use App\Services\ApiUsageService;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -38,6 +39,11 @@ class DalleImageAdapter implements ImageGenerationAdapter
         'cartoon' => 'modern cartoon illustration, clean shapes, expressive character style,',
     ];
 
+    public function __construct(
+        private readonly ApiUsageService $usage,
+    ) {
+    }
+
     public function generate(
         string $prompt,
         string $style,
@@ -49,6 +55,9 @@ class DalleImageAdapter implements ImageGenerationAdapter
         $size = self::ASPECT_RATIO_MAP[$aspectRatio] ?? '1024x1792';
         $stylePrefix = self::STYLE_PROMPT_MAP[$style] ?? '';
         $fullPrompt = trim("{$stylePrefix} {$prompt}. No text or watermarks.");
+        $model = 'dall-e-3';
+        $quality = (string) ($options['quality'] ?? 'standard');
+        $usageContext = $this->usage->contextFromOptions($options);
 
         if (empty($apiKey)) {
             return $this->localFallback($prompt, $style, $size);
@@ -58,11 +67,11 @@ class DalleImageAdapter implements ImageGenerationAdapter
             $response = Http::withToken($apiKey)
                 ->timeout(60)
                 ->post('https://api.openai.com/v1/images/generations', [
-                    'model'           => 'dall-e-3',
+                    'model'           => $model,
                     'prompt'          => $fullPrompt,
                     'n'               => 1,
                     'size'            => $size,
-                    'quality'         => $options['quality'] ?? 'standard',
+                    'quality'         => $quality,
                     'response_format' => 'url',
                 ])
                 ->throw()
@@ -70,6 +79,23 @@ class DalleImageAdapter implements ImageGenerationAdapter
 
             $image = $response['data'][0];
             [$width, $height] = explode('x', $size);
+
+            $this->usage->record([
+                ...$usageContext,
+                'provider' => 'openai',
+                'service' => 'image_generation',
+                'operation' => 'image',
+                'model' => $model,
+                'status' => 'succeeded',
+                'units' => 1,
+                'estimated_cost_usd' => $this->usage->estimateImageCost($model, $quality, $size),
+                'metadata_json' => [
+                    ...($usageContext['metadata_json'] ?? []),
+                    'style' => $style,
+                    'size' => $size,
+                    'quality' => $quality,
+                ],
+            ]);
 
             return [
                 'provider_key'    => 'dalle',
@@ -81,6 +107,24 @@ class DalleImageAdapter implements ImageGenerationAdapter
             ];
         } catch (RequestException $e) {
             $message = $this->friendlyExceptionMessage($e);
+            $this->usage->record([
+                ...$usageContext,
+                'provider' => 'openai',
+                'service' => 'image_generation',
+                'operation' => 'image',
+                'model' => $model,
+                'status' => 'failed',
+                'units' => 1,
+                'estimated_cost_usd' => 0,
+                'error_code' => (string) $e->response?->status(),
+                'error_message' => $message,
+                'metadata_json' => [
+                    ...($usageContext['metadata_json'] ?? []),
+                    'style' => $style,
+                    'size' => $size,
+                    'quality' => $quality,
+                ],
+            ]);
             Log::error('DALL-E image generation failed', [
                 'prompt' => $fullPrompt,
                 'error'  => $e->getMessage(),

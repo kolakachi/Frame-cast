@@ -44,7 +44,18 @@ class GenerateAIImageJob implements ShouldQueue
             $prompt = $this->buildPrompt($scene);
             $aspectRatio = $scene->project->aspect_ratio ?? '9:16';
 
-            $result = $adapter->generate($prompt, $this->style, $aspectRatio);
+            $scene->loadMissing('project');
+            $project = $scene->project;
+
+            $result = $adapter->generate($prompt, $this->style, $aspectRatio, [
+                'usage_context' => [
+                    'workspace_id' => $project?->workspace_id,
+                    'project_id' => $this->projectId,
+                    'user_id' => $project?->created_by_user_id,
+                    'scene_id' => $this->sceneId,
+                    'style' => $this->style,
+                ],
+            ]);
 
             // Download the image and store in B2 so it persists beyond provider URL TTL
             $storagePath = $this->storeImage($result['image_url'], $scene);
@@ -75,6 +86,7 @@ class GenerateAIImageJob implements ShouldQueue
                 'visual_asset_id'                => $asset->getKey(),
                 'visual_prompt'                  => $prompt,
                 'image_generation_settings_json' => [
+                    'in_progress'    => false,
                     'style'          => $this->style,
                     'provider_key'   => $result['provider_key'],
                     'revised_prompt' => $result['revised_prompt'],
@@ -98,7 +110,7 @@ class GenerateAIImageJob implements ShouldQueue
             $scene->forceFill([
                 'image_generation_settings_json' => array_merge(
                     $scene->image_generation_settings_json ?? [],
-                    ['needs_visual' => true, 'last_error' => $e->getMessage()]
+                    ['in_progress' => false, 'needs_visual' => true, 'last_error' => $e->getMessage()]
                 ),
             ])->save();
 

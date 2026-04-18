@@ -45,6 +45,15 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             ->get();
 
         foreach ($scenes as $scene) {
+            // Lock the scene so the editor's manual generate-image endpoint is rejected
+            // while the pipeline is actively generating for it.
+            $scene->forceFill([
+                'image_generation_settings_json' => array_merge(
+                    $scene->image_generation_settings_json ?? [],
+                    ['in_progress' => true]
+                ),
+            ])->save();
+
             try {
                 $this->generateSceneImage($adapter, $project, $scene);
             } catch (\Throwable $exception) {
@@ -57,7 +66,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                 $scene->forceFill([
                     'image_generation_settings_json' => array_merge(
                         $scene->image_generation_settings_json ?? [],
-                        ['needs_visual' => true, 'last_error' => $exception->getMessage()]
+                        ['in_progress' => false, 'needs_visual' => true, 'last_error' => $exception->getMessage()]
                     ),
                 ])->save();
             }
@@ -71,7 +80,15 @@ class GenerateProjectAIImagesJob implements ShouldQueue
     {
         $style = $project->ai_broll_style ?: 'cinematic';
         $prompt = $this->buildPrompt($project, $scene, $style);
-        $result = $adapter->generate($prompt, $style, $project->aspect_ratio ?? '9:16');
+        $result = $adapter->generate($prompt, $style, $project->aspect_ratio ?? '9:16', [
+            'usage_context' => [
+                'workspace_id' => $project->workspace_id,
+                'project_id' => $project->getKey(),
+                'user_id' => $project->created_by_user_id,
+                'scene_id' => $scene->getKey(),
+                'style' => $style,
+            ],
+        ]);
         $storagePath = $this->storeImage($result['image_url'], $project);
 
         $asset = Asset::query()->create([
@@ -100,6 +117,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             'visual_prompt' => $prompt,
             'visual_style' => $style,
             'image_generation_settings_json' => [
+                'in_progress' => false,
                 'style' => $style,
                 'provider_key' => $result['provider_key'],
                 'revised_prompt' => $result['revised_prompt'],

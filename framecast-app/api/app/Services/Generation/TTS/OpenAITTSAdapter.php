@@ -2,15 +2,24 @@
 
 namespace App\Services\Generation\TTS;
 
+use App\Services\ApiUsageService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 class OpenAITTSAdapter implements TTSAdapter
 {
-    public function synthesize(string $text, string $language, string $voiceId, float $speed = 1.0): array
+    public function __construct(
+        private readonly ApiUsageService $usage,
+    ) {
+    }
+
+    public function synthesize(string $text, string $language, string $voiceId, float $speed = 1.0, array $options = []): array
     {
         $apiKey = (string) config('services.openai.api_key');
+        $model = 'tts-1';
+        $usageContext = $this->usage->contextFromOptions($options);
 
         if ($apiKey === '') {
             $seed = rawurlencode(Str::slug(mb_substr($text, 0, 40)).'-'.Str::random(6));
@@ -27,17 +36,47 @@ class OpenAITTSAdapter implements TTSAdapter
             ? $voiceId
             : 'alloy';
 
-        $response = Http::timeout(60)
-            ->withToken($apiKey)
-            ->post('https://api.openai.com/v1/audio/speech', [
-                'model' => 'tts-1',
-                'input' => $text ?: ' ',
-                'voice' => $safeVoice,
-                'speed' => max(0.25, min(4.0, $speed)),
-                'response_format' => 'mp3',
+        try {
+            $response = Http::timeout(60)
+                ->withToken($apiKey)
+                ->post('https://api.openai.com/v1/audio/speech', [
+                    'model' => $model,
+                    'input' => $text ?: ' ',
+                    'voice' => $safeVoice,
+                    'speed' => max(0.25, min(4.0, $speed)),
+                    'response_format' => 'mp3',
+                ]);
+        } catch (Throwable $exception) {
+            $this->usage->record([
+                ...$usageContext,
+                'provider' => 'openai',
+                'service' => 'tts',
+                'operation' => 'speech',
+                'model' => $model,
+                'status' => 'failed',
+                'units' => mb_strlen($text),
+                'estimated_cost_usd' => $this->usage->estimateTtsCost($model, $text),
+                'error_code' => 'connection_error',
+                'error_message' => $exception->getMessage(),
             ]);
 
+            throw new RuntimeException('Voice generation could not reach OpenAI. Please try again in a moment.', previous: $exception);
+        }
+
         if (! $response->ok()) {
+            $this->usage->record([
+                ...$usageContext,
+                'provider' => 'openai',
+                'service' => 'tts',
+                'operation' => 'speech',
+                'model' => $model,
+                'status' => 'failed',
+                'units' => mb_strlen($text),
+                'estimated_cost_usd' => $this->usage->estimateTtsCost($model, $text),
+                'error_code' => (string) $response->status(),
+                'error_message' => $response->body(),
+            ]);
+
             throw new RuntimeException('OpenAI TTS request failed with status '.$response->status().': '.$response->body());
         }
 
@@ -45,6 +84,22 @@ class OpenAITTSAdapter implements TTSAdapter
 
         \Illuminate\Support\Facades\Storage::disk('b2')->put($path, $response->body(), [
             'ContentType' => 'audio/mpeg',
+        ]);
+
+        $this->usage->record([
+            ...$usageContext,
+            'provider' => 'openai',
+            'service' => 'tts',
+            'operation' => 'speech',
+            'model' => $model,
+            'status' => 'succeeded',
+            'units' => mb_strlen($text),
+            'estimated_cost_usd' => $this->usage->estimateTtsCost($model, $text),
+            'metadata_json' => [
+                ...($usageContext['metadata_json'] ?? []),
+                'voice_id' => $safeVoice,
+                'language' => $language,
+            ],
         ]);
 
         return [

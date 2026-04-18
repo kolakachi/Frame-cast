@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "../services/api";
 import { getEcho } from "../services/echo";
@@ -16,6 +16,7 @@ const project = ref(null);
 const scenes = ref([]);
 const hookOptions = ref([]);
 const mePayload = ref(null);
+const isAdmin = computed(() => ["super_admin", "platform_admin"].includes(mePayload.value?.role ?? authStore.user?.role));
 const activeSceneId = ref(null);
 const showUserPopover = ref(false);
 const notificationDrawerOpen = ref(false);
@@ -25,8 +26,11 @@ const exportJobs = ref([]);
 let workspaceChannelName = null;
 
 const audioRef = ref(null);
+const musicAudioRef = ref(null);
+const musicAuditionRef = ref(null);
 const isAudioPlaying = ref(false);
 const isAudioLoading = ref(false);
+const auditionMusicTrackId = ref(null);
 const currentVisualUrl = ref(null);
 const visualLoadFailed = ref(false);
 const mediaCache = ref({
@@ -105,6 +109,7 @@ const stockVideoSubType = ref("stock_clip");
 const playProgress = ref(0);
 const isPreviewPlaying = ref(false);
 let previewPlayTimer = null;
+let pendingPreviewAudioOffset = 0;
 const musicMoodFilter = ref("all");
 const queuedExportJobId = ref(null);
 const scriptSaveState = ref("idle");
@@ -170,9 +175,13 @@ const activeSceneVisualType = computed(
 );
 const activeSceneAIImagePending = computed(() => {
   const scene = activeScene.value;
-  if (!scene || String(scene.visual_type || "") !== "ai_image") return false;
+  if (!scene) return false;
+  const settings = scene.image_generation_settings ?? {};
+  // in_progress is set by both the pipeline job and the manual endpoint
+  if (settings.in_progress) return true;
+  if (String(scene.visual_type || "") !== "ai_image") return false;
   if (scene.visual_asset) return false;
-  return !scene.image_generation_settings?.needs_visual;
+  return !settings.needs_visual;
 });
 const activeSceneVisualGenerationError = computed(() => {
   const settings = activeScene.value?.image_generation_settings;
@@ -196,21 +205,33 @@ const selectedProjectChannel = computed(() =>
 const activeMusicTrack = computed(() =>
   musicTracks.value.find((t) => t.id === selectedMusicTrackId.value) ?? null
 );
-const musicTrackListItems = computed(() => {
+const activeMusicTrackUrl = computed(() => activeMusicTrack.value?.storage_url ?? null);
+const auditionMusicTrack = computed(() =>
+  musicTracks.value.find((t) => t.id === auditionMusicTrackId.value) ?? null
+);
+const previewMusicVolume = computed(() => {
+  const rawVolume =
+    musicDuckDuringVoice.value && activeSceneAudioUrl.value && isPreviewPlaying.value && isAudioPlaying.value
+      ? musicDuckVolume.value
+      : musicVolume.value;
+
+  return Math.max(0, Math.min(1, Number(rawVolume || 0) / 100));
+});
+const filteredMusicTracks = computed(() => {
+  if (musicMoodFilter.value === "all") return musicTracks.value;
+  return musicTracks.value.filter((t) =>
+    (t.tags ?? []).some((tag) => tag.toLowerCase() === musicMoodFilter.value)
+  );
+});
+const musicTrackGroups = computed(() => {
   const groups = {};
-  for (const track of musicTracks.value) {
+  for (const track of filteredMusicTracks.value) {
     const mood = track.tags?.find((tag) => tag !== "music") ?? "other";
     if (!groups[mood]) groups[mood] = [];
     groups[mood].push(track);
   }
-  const items = [];
-  for (const [mood, tracks] of Object.entries(groups)) {
-    items.push({ type: "mood", key: `mood-${mood}`, mood });
-    for (const track of tracks) {
-      items.push({ type: "track", key: `track-${track.id}`, track });
-    }
-  }
-  return items;
+
+  return Object.entries(groups).map(([mood, tracks]) => ({ mood, tracks }));
 });
 const activeSceneVisualLoaded = computed(() => {
   const sceneId = activeSceneId.value;
@@ -424,9 +445,25 @@ watch(
     isAudioLoading.value = false;
     visualLoadFailed.value = false;
     syncActiveSceneMedia(scene);
+    if (isPreviewPlaying.value) {
+      nextTick(() => playActiveSceneAudio(pendingPreviewAudioOffset));
+    }
   },
   { immediate: true }
 );
+
+watch(activeMusicTrackUrl, () => {
+  if (!musicAudioRef.value) return;
+  musicAudioRef.value.pause();
+  musicAudioRef.value.load();
+  if (isPreviewPlaying.value) {
+    nextTick(() => playPreviewMusic());
+  }
+});
+
+watch(previewMusicVolume, () => {
+  syncPreviewMusicVolume();
+});
 
 watch(activeSceneVisualUrl, () => {
   visualLoadFailed.value = false;
@@ -876,8 +913,30 @@ function formatPreviewTime(value) {
 }
 
 const totalVideoDuration = computed(() =>
-  scenes.value.reduce((sum, s) => sum + Number(s.duration_seconds || 12), 0)
+  scenes.value.reduce((sum, s) => sum + sceneDuration(s), 0)
 );
+
+function sceneDuration(scene) {
+  return Math.max(0.1, Number(scene?.duration_seconds || 12));
+}
+
+function sceneAtFullElapsed(elapsedSeconds) {
+  if (!scenes.value.length) return { scene: null, index: -1, start: 0, duration: 0 };
+
+  const clamped = Math.max(0, Math.min(elapsedSeconds, totalVideoDuration.value || 0));
+  let start = 0;
+
+  for (let index = 0; index < scenes.value.length; index += 1) {
+    const scene = scenes.value[index];
+    const duration = sceneDuration(scene);
+    if (clamped < start + duration || index === scenes.value.length - 1) {
+      return { scene, index, start, duration };
+    }
+    start += duration;
+  }
+
+  return { scene: scenes.value[0], index: 0, start: 0, duration: sceneDuration(scenes.value[0]) };
+}
 
 // Cumulative scene start percentages for scrubber boundary markers (full video mode)
 const sceneBoundaryPcts = computed(() => {
@@ -886,7 +945,7 @@ const sceneBoundaryPcts = computed(() => {
   const pcts = [];
   let cum = 0;
   for (let i = 0; i < scenes.value.length - 1; i++) {
-    cum += Number(scenes.value[i].duration_seconds || 12);
+    cum += sceneDuration(scenes.value[i]);
     pcts.push((cum / total) * 100);
   }
   return pcts;
@@ -895,7 +954,7 @@ const sceneBoundaryPcts = computed(() => {
 const previewContextDuration = computed(() =>
   previewMode.value === "full"
     ? totalVideoDuration.value
-    : Number(activeScene.value?.duration_seconds || 12)
+    : sceneDuration(activeScene.value)
 );
 
 const previewElapsedSecs = computed(() =>
@@ -906,13 +965,6 @@ const previewTimer = computed(() => ({
   elapsed: formatPreviewTime(previewElapsedSecs.value),
   total: formatPreviewTime(previewContextDuration.value),
 }));
-
-const filteredMusicTracks = computed(() => {
-  if (musicMoodFilter.value === "all") return musicTracks.value;
-  return musicTracks.value.filter((t) =>
-    (t.tags ?? []).some((tag) => tag.toLowerCase() === musicMoodFilter.value)
-  );
-});
 
 function formatNotifTime(value) {
   if (!value) return "now";
@@ -1103,25 +1155,7 @@ async function loadProject() {
 
   try {
     const response = await api.get(`/projects/${projectId.value}`);
-    project.value = response.data?.data?.project ?? null;
-    projectChannelId.value = project.value?.channel_id ? String(project.value.channel_id) : "";
-    projectBrandKitId.value = project.value?.brand_kit_id ? String(project.value.brand_kit_id) : "";
-    selectedMusicTrackId.value = project.value?.music_asset_id ?? null;
-    const ms = project.value?.music_settings_json ?? {};
-    musicVolume.value = ms.volume ?? 30;
-    musicDuckVolume.value = ms.duck_volume ?? 8;
-    musicFadeInMs.value = ms.fade_in_ms ?? 500;
-    musicLoop.value = ms.loop ?? true;
-    musicDuckDuringVoice.value = ms.duck_during_voice ?? true;
-    scenes.value = (response.data?.data?.scenes ?? []).map((scene) =>
-      normalizeScenePayload(scene)
-    );
-    hookOptions.value = response.data?.data?.hook_options ?? [];
-    activeSceneId.value = scenes.value[0]?.id ?? null;
-    scenes.value.forEach((scene) => {
-      preloadSceneVisual(scene);
-      preloadSceneAudio(scene);
-    });
+    applyProjectPayload(response.data?.data, { preserveActiveScene: false });
     await loadExportJobs();
     subscribeProjectChannel();
   } catch (requestError) {
@@ -1130,6 +1164,39 @@ async function loadProject() {
   } finally {
     loading.value = false;
   }
+}
+
+function applyProjectPayload(data, { preserveActiveScene = true } = {}) {
+  const previousActiveSceneId = activeSceneId.value;
+
+  project.value = data?.project ?? null;
+  projectChannelId.value = project.value?.channel_id ? String(project.value.channel_id) : "";
+  projectBrandKitId.value = project.value?.brand_kit_id ? String(project.value.brand_kit_id) : "";
+  selectedMusicTrackId.value = project.value?.music_asset_id ?? null;
+  const ms = project.value?.music_settings_json ?? {};
+  musicVolume.value = ms.volume ?? 30;
+  musicDuckVolume.value = ms.duck_volume ?? 8;
+  musicFadeInMs.value = ms.fade_in_ms ?? 500;
+  musicLoop.value = ms.loop ?? true;
+  musicDuckDuringVoice.value = ms.duck_during_voice ?? true;
+  scenes.value = (data?.scenes ?? []).map((scene) => normalizeScenePayload(scene));
+  hookOptions.value = data?.hook_options ?? [];
+
+  if (preserveActiveScene && scenes.value.some((scene) => scene.id === previousActiveSceneId)) {
+    activeSceneId.value = previousActiveSceneId;
+  } else {
+    activeSceneId.value = scenes.value[0]?.id ?? null;
+  }
+
+  scenes.value.forEach((scene) => {
+    preloadSceneVisual(scene);
+    preloadSceneAudio(scene);
+  });
+}
+
+async function refreshProjectPayload() {
+  const response = await api.get(`/projects/${projectId.value}`);
+  applyProjectPayload(response.data?.data, { preserveActiveScene: true });
 }
 
 async function loadMe() {
@@ -1353,12 +1420,39 @@ function skipToScene(direction) {
   }
 }
 
+async function setPreviewMode(mode) {
+  if (previewMode.value === mode) return;
+
+  stopPreviewPlay();
+
+  if (mode === "full" && scenes.value[0]?.id && activeSceneId.value !== scenes.value[0].id) {
+    const flushed = await flushActiveSceneDrafts();
+    if (flushed === false) return;
+    activeSceneId.value = scenes.value[0].id;
+  }
+
+  previewMode.value = mode;
+  playProgress.value = 0;
+}
+
 function togglePreviewPlay() {
   isPreviewPlaying.value ? stopPreviewPlay() : startPreviewPlay();
 }
 
-function startPreviewPlay() {
+async function startPreviewPlay() {
+  if (!scenes.value.length) return;
+
+  const flushed = await flushActiveSceneDrafts();
+  if (flushed === false) return;
+
+  if (previewMode.value === "full") {
+    syncFullPreviewScene();
+  }
+
+  stopMusicAudition();
   isPreviewPlaying.value = true;
+  nextTick(() => playActiveSceneAudio(currentSceneAudioOffset()));
+  nextTick(() => playPreviewMusic());
   const TICK = 50;
   previewPlayTimer = window.setInterval(() => {
     const dur = previewContextDuration.value || 1;
@@ -1367,21 +1461,13 @@ function startPreviewPlay() {
     if (playProgress.value >= 100) {
       if (previewMode.value === "scene") {
         playProgress.value = 0; // loop scene
+        playActiveSceneAudio(0);
       } else {
-        // In full-video mode advance to next scene automatically
-        const nextIdx = activeSceneIndex.value + 1;
-        if (nextIdx < scenes.value.length) {
-          const nextScene = scenes.value[nextIdx];
-          flushActiveSceneDrafts().then((flushed) => {
-            if (flushed === false) return;
-            activeSceneId.value = nextScene.id;
-          });
-          playProgress.value = 0;
-        } else {
-          playProgress.value = 100;
-          stopPreviewPlay();
-        }
+        playProgress.value = 100;
+        stopPreviewPlay();
       }
+    } else if (previewMode.value === "full") {
+      syncFullPreviewScene();
     }
   }, TICK);
 }
@@ -1392,6 +1478,10 @@ function stopPreviewPlay() {
     window.clearInterval(previewPlayTimer);
     previewPlayTimer = null;
   }
+  if (audioRef.value) {
+    audioRef.value.pause();
+  }
+  stopPreviewMusic();
 }
 
 function scrubberSeek(event) {
@@ -1399,6 +1489,116 @@ function scrubberSeek(event) {
   if (!track) return;
   const rect = track.getBoundingClientRect();
   playProgress.value = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
+  if (previewMode.value === "full") {
+    syncFullPreviewScene();
+  }
+  if (isPreviewPlaying.value) {
+    nextTick(() => playActiveSceneAudio(currentSceneAudioOffset()));
+    nextTick(() => playPreviewMusic());
+  } else if (audioRef.value) {
+    audioRef.value.currentTime = currentSceneAudioOffset();
+  }
+}
+
+function currentSceneAudioOffset() {
+  if (previewMode.value === "full") {
+    const elapsed = previewElapsedSecs.value;
+    const match = sceneAtFullElapsed(elapsed);
+    return Math.max(0, elapsed - match.start);
+  }
+
+  return previewElapsedSecs.value;
+}
+
+function syncFullPreviewScene() {
+  if (previewMode.value !== "full") return;
+
+  const elapsed = previewElapsedSecs.value;
+  const match = sceneAtFullElapsed(elapsed);
+  if (!match.scene) return;
+
+  pendingPreviewAudioOffset = Math.max(0, elapsed - match.start);
+  if (activeSceneId.value !== match.scene.id) {
+    activeSceneId.value = match.scene.id;
+  }
+}
+
+function playActiveSceneAudio(offsetSeconds = 0) {
+  if (!audioRef.value || !activeSceneAudioUrl.value || !isPreviewPlaying.value) return;
+
+  isAudioLoading.value = true;
+  preloadSceneAudio(activeScene.value);
+
+  const duration = Number.isFinite(audioRef.value.duration) ? audioRef.value.duration : null;
+  const boundedOffset = duration
+    ? Math.max(0, Math.min(offsetSeconds, Math.max(0, duration - 0.05)))
+    : Math.max(0, offsetSeconds);
+
+  try {
+    audioRef.value.currentTime = boundedOffset;
+  } catch {
+    // Some browsers reject currentTime before metadata loads; playback can still begin.
+  }
+
+  audioRef.value.play().catch(() => {
+    isAudioPlaying.value = false;
+    isAudioLoading.value = false;
+    syncPreviewMusicVolume();
+  });
+}
+
+function previewMusicOffset() {
+  if (previewMode.value === "full") {
+    return previewElapsedSecs.value;
+  }
+
+  return 0;
+}
+
+function syncPreviewMusicVolume() {
+  if (!musicAudioRef.value) return;
+  musicAudioRef.value.volume = previewMusicVolume.value;
+}
+
+function playPreviewMusic() {
+  if (!musicAudioRef.value || !activeMusicTrackUrl.value || !isPreviewPlaying.value) return;
+
+  syncPreviewMusicVolume();
+
+  const offset = previewMusicOffset();
+  const duration = Number.isFinite(musicAudioRef.value.duration) ? musicAudioRef.value.duration : null;
+  if (!musicLoop.value && duration && offset >= duration) {
+    musicAudioRef.value.pause();
+    return;
+  }
+
+  const nextTime = duration && duration > 0
+    ? (musicLoop.value ? offset % duration : offset)
+    : offset;
+
+  try {
+    musicAudioRef.value.currentTime = Math.max(0, nextTime);
+  } catch {
+    // Metadata may not be available yet; the browser will start from the beginning.
+  }
+
+  musicAudioRef.value.play().catch(() => {});
+}
+
+function stopPreviewMusic() {
+  if (musicAudioRef.value) {
+    musicAudioRef.value.pause();
+  }
+}
+
+function handleSceneAudioPlay() {
+  isAudioPlaying.value = true;
+  syncPreviewMusicVolume();
+}
+
+function handleSceneAudioPause() {
+  isAudioPlaying.value = false;
+  syncPreviewMusicVolume();
 }
 
 function moodGradient(mood) {
@@ -1420,6 +1620,49 @@ function moodEmoji(mood) {
 function trackMoodLabel(track) {
   const mood = (track.tags ?? []).find((t) => t !== "music") ?? "music";
   return mood.charAt(0).toUpperCase() + mood.slice(1) + " · Royalty-free";
+}
+
+function selectMusicTrack(trackId) {
+  selectedMusicTrackId.value = trackId;
+  scheduleMusicSave();
+
+  if (isPreviewPlaying.value) {
+    nextTick(() => playPreviewMusic());
+  }
+}
+
+function toggleMusicAudition(track) {
+  if (!track?.storage_url || !musicAuditionRef.value) return;
+
+  stopPreviewPlay();
+
+  if (auditionMusicTrackId.value === track.id && !musicAuditionRef.value.paused) {
+    musicAuditionRef.value.pause();
+    auditionMusicTrackId.value = null;
+    return;
+  }
+
+  auditionMusicTrackId.value = track.id;
+  nextTick(() => {
+    if (!musicAuditionRef.value) return;
+    musicAuditionRef.value.volume = Math.max(0, Math.min(1, Number(musicVolume.value || 0) / 100));
+    musicAuditionRef.value.currentTime = 0;
+    musicAuditionRef.value.play().catch(() => {
+      auditionMusicTrackId.value = null;
+    });
+  });
+}
+
+function stopMusicAudition() {
+  if (musicAuditionRef.value) {
+    musicAuditionRef.value.pause();
+  }
+  auditionMusicTrackId.value = null;
+}
+
+function moodLabel(mood) {
+  const value = String(mood || "other");
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function formatTrackDuration(secs) {
@@ -1796,7 +2039,7 @@ async function swapVisual() {
 }
 
 async function generateAIImage() {
-  if (!activeScene.value || aiImagePending.value) return;
+  if (!activeScene.value || aiImagePending.value || activeSceneAIImagePending.value) return;
 
   aiImagePending.value = true;
   aiImageError.value = "";
@@ -1808,6 +2051,12 @@ async function generateAIImage() {
     });
     // Result comes back via Reverb generation.progress event — no polling needed
   } catch (err) {
+    // 409 means the backend already has a generation in progress — treat as pending, not an error
+    if (err.response?.status === 409) {
+      aiImageError.value = "";
+      // Stay pending; Reverb will fire when it completes
+      return;
+    }
     aiImageError.value =
       err.response?.data?.error?.message ||
       err.message ||
@@ -1913,6 +2162,11 @@ function subscribeProjectChannel() {
   projectChannelName = `project.${projectId.value}`;
 
   echo.private(projectChannelName).listen(".generation.progress", (payload) => {
+    if (payload.stage === "tts" && ["completed", "failed"].includes(String(payload.status || ""))) {
+      refreshProjectPayload().catch(() => {});
+      return;
+    }
+
     if (payload.stage !== "ai_image") return;
 
     if (payload.status === "completed" && payload.scene_id) {
@@ -2384,6 +2638,26 @@ onBeforeUnmount(() => {
             </svg>
             <span class="tooltip">Settings</span>
           </button>
+
+          <button
+            v-if="isAdmin"
+            class="nav-item"
+            type="button"
+            @click="router.push({ name: 'admin' })"
+          >
+            <svg
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path d="M12 3l7 3v5c0 4.4-2.8 8.4-7 10-4.2-1.6-7-5.6-7-10V6l7-3z"></path>
+              <path d="M9 12l2 2 4-5"></path>
+            </svg>
+            <span class="tooltip">God Mode</span>
+          </button>
         </div>
 
         <div class="sidebar-bottom">
@@ -2846,8 +3120,8 @@ onBeforeUnmount(() => {
 
             <div class="playback-controls">
               <div class="preview-mode-toggle">
-                <button :class="['preview-mode-btn', previewMode === 'scene' ? 'active' : '']" type="button" @click="previewMode = 'scene'; stopPreviewPlay(); playProgress = 0">Scene</button>
-                <button :class="['preview-mode-btn', previewMode === 'full' ? 'active' : '']" type="button" @click="previewMode = 'full'; stopPreviewPlay(); playProgress = 0">Full Video</button>
+                <button :class="['preview-mode-btn', previewMode === 'scene' ? 'active' : '']" type="button" @click="setPreviewMode('scene')">Scene</button>
+                <button :class="['preview-mode-btn', previewMode === 'full' ? 'active' : '']" type="button" @click="setPreviewMode('full')">Full Video</button>
               </div>
               <div class="preview-scrubber" @click="scrubberSeek">
                 <div class="scrubber-track">
@@ -3308,37 +3582,54 @@ onBeforeUnmount(() => {
                   Music plays under narration for the full video. Duck volume kicks in automatically during voice segments.
                 </div>
 
+                <div class="music-selected-summary">
+                  <div class="music-selected-copy">
+                    <span class="music-selected-label">Selected</span>
+                    <strong>{{ activeMusicTrack ? activeMusicTrack.title : "No music" }}</strong>
+                  </div>
+                  <span>{{ activeMusicTrack ? trackMoodLabel(activeMusicTrack) : "Silence" }}</span>
+                </div>
+
                 <!-- Mood filter chips -->
-                <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">
+                <div class="music-filter-row">
                   <div v-for="mood in ['all','dark','upbeat','calm','epic']" :key="mood"
                     :class="['filter-chip', musicMoodFilter === mood ? 'active' : '']"
-                    style="padding:4px 9px;font-size:11px;"
                     @click="musicMoodFilter = mood"
                   >{{ mood.charAt(0).toUpperCase() + mood.slice(1) }}</div>
                 </div>
 
                 <!-- Track list -->
-                <div class="music-track-list">
+                <div class="music-track-scroll">
                   <!-- No music option -->
                   <div :class="['music-track', selectedMusicTrackId === null ? 'selected' : '']"
-                    @click="selectedMusicTrackId = null; scheduleMusicSave()">
+                    @click="selectMusicTrack(null)">
                     <div class="music-track-thumb" style="background:var(--bg-elevated);">🚫</div>
                     <div class="music-track-info">
                       <div class="music-track-name">No music</div>
                       <div class="music-track-meta">Silence</div>
                     </div>
-                    <button class="music-play-btn" type="button" @click.stop>▶</button>
+                    <button class="music-play-btn" type="button" disabled @click.stop>▶</button>
                   </div>
-                  <div v-for="track in filteredMusicTracks" :key="track.id"
-                    :class="['music-track', selectedMusicTrackId === track.id ? 'selected' : '']"
-                    @click="selectedMusicTrackId = track.id; scheduleMusicSave()">
-                    <div class="music-track-thumb" :style="{ background: moodGradient((track.tags ?? []).find(t => t !== 'music')) }">{{ moodEmoji((track.tags ?? []).find(t => t !== 'music')) }}</div>
-                    <div class="music-track-info">
-                      <div class="music-track-name">{{ track.title }}</div>
-                      <div class="music-track-meta">{{ trackMoodLabel(track) }}</div>
+                  <div v-for="group in musicTrackGroups" :key="group.mood" class="music-category">
+                    <div class="music-category-title">
+                      <span>{{ moodEmoji(group.mood) }}</span>
+                      {{ moodLabel(group.mood) }}
                     </div>
-                    <div class="music-track-duration">{{ formatTrackDuration(track.duration_seconds) }}</div>
-                    <button class="music-play-btn" type="button" @click.stop>▶</button>
+                    <div class="music-track-list">
+                      <div v-for="track in group.tracks" :key="track.id"
+                        :class="['music-track', selectedMusicTrackId === track.id ? 'selected' : '']"
+                        @click="selectMusicTrack(track.id)">
+                        <div class="music-track-thumb" :style="{ background: moodGradient((track.tags ?? []).find(t => t !== 'music')) }">{{ moodEmoji((track.tags ?? []).find(t => t !== 'music')) }}</div>
+                        <div class="music-track-info">
+                          <div class="music-track-name">{{ track.title }}</div>
+                          <div class="music-track-meta">{{ trackMoodLabel(track) }}</div>
+                        </div>
+                        <div class="music-track-duration">{{ formatTrackDuration(track.duration_seconds) }}</div>
+                        <button class="music-play-btn" type="button" @click.stop="toggleMusicAudition(track)">
+                          {{ auditionMusicTrackId === track.id ? "⏸" : "▶" }}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -3346,12 +3637,12 @@ onBeforeUnmount(() => {
                 <div class="music-controls">
                   <div class="music-control-row">
                     <span class="music-control-label">Volume</span>
-                    <input v-model.number="musicVolume" type="range" class="music-slider" min="0" max="100" @input="scheduleMusicSave" />
+                    <input v-model.number="musicVolume" type="range" class="music-slider" min="0" max="100" @input="scheduleMusicSave(); syncPreviewMusicVolume()" />
                     <span class="music-slider-val">{{ musicVolume }}%</span>
                   </div>
                   <div class="music-control-row">
                     <span class="music-control-label">Duck vol.</span>
-                    <input v-model.number="musicDuckVolume" type="range" class="music-slider" min="0" max="50" @input="scheduleMusicSave" />
+                    <input v-model.number="musicDuckVolume" type="range" class="music-slider" min="0" max="50" @input="scheduleMusicSave(); syncPreviewMusicVolume()" />
                     <span class="music-slider-val">{{ musicDuckVolume }}%</span>
                   </div>
                   <div class="music-control-row">
@@ -3503,10 +3794,26 @@ onBeforeUnmount(() => {
       @loadstart="isAudioLoading = true"
       @canplay="isAudioLoading = false"
       @loadeddata="isAudioLoading = false"
-      @ended="isAudioPlaying = false"
-      @play="isAudioPlaying = true"
-      @pause="isAudioPlaying = false"
+      @ended="handleSceneAudioPause"
+      @play="handleSceneAudioPlay"
+      @pause="handleSceneAudioPause"
       @error="isAudioLoading = false"
+    ></audio>
+    <audio
+      v-if="activeMusicTrackUrl"
+      ref="musicAudioRef"
+      :src="activeMusicTrackUrl"
+      preload="metadata"
+      :loop="musicLoop"
+      @loadedmetadata="syncPreviewMusicVolume"
+    ></audio>
+    <audio
+      v-if="auditionMusicTrack?.storage_url"
+      ref="musicAuditionRef"
+      :src="auditionMusicTrack.storage_url"
+      preload="metadata"
+      @ended="auditionMusicTrackId = null"
+      @pause="auditionMusicTrackId = null"
     ></audio>
   </main>
 </template>
@@ -5513,10 +5820,96 @@ select.control-value {
 }
 
 /* Music panel */
+.music-selected-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid rgba(255,107,53,0.35);
+  background: rgba(255,107,53,0.08);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.music-selected-copy {
+  min-width: 0;
+}
+
+.music-selected-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text-muted);
+  font-family: "Space Mono", monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.music-selected-copy strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-filter-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.music-filter-row .filter-chip {
+  padding: 4px 9px;
+  font-size: 11px;
+}
+
+.music-track-scroll {
+  max-height: 330px;
+  overflow-y: auto;
+  display: grid;
+  gap: 10px;
+  padding-right: 4px;
+  margin-bottom: 14px;
+}
+
+.music-track-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.music-track-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.music-track-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border-radius: 999px;
+}
+
+.music-category {
+  display: grid;
+  gap: 6px;
+}
+
+.music-category-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
 .music-track-list {
   display: grid;
   gap: 6px;
-  margin-bottom: 14px;
 }
 
 .music-track {

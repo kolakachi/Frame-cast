@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AssetController extends Controller
@@ -225,7 +226,7 @@ class AssetController extends Controller
         ]);
     }
 
-    public function content(Request $request, int $assetId): StreamedResponse|\Illuminate\Http\JsonResponse
+    public function content(Request $request, int $assetId): StreamedResponse|RedirectResponse|\Illuminate\Http\JsonResponse
     {
         $asset = Asset::query()
             ->whereKey($assetId)
@@ -243,6 +244,11 @@ class AssetController extends Controller
         $path = $this->extractB2Path((string) $asset->storage_url);
 
         if ($path === null) {
+            $externalUrl = trim((string) $asset->storage_url);
+            if (filter_var($externalUrl, FILTER_VALIDATE_URL)) {
+                return redirect()->away($externalUrl);
+            }
+
             return response()->json([
                 'error' => [
                     'code' => 'invalid_asset_source',
@@ -397,6 +403,10 @@ class AssetController extends Controller
 
     private function signedAssetUrl(Asset $asset): string
     {
+        if ($this->extractB2Path((string) $asset->storage_url) === null) {
+            return (string) $asset->storage_url;
+        }
+
         return URL::temporarySignedRoute(
             'media.assets.content',
             now()->addMinutes(30),

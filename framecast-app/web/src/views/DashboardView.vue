@@ -9,6 +9,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const mePayload = ref(null)
 const showUserPopover = ref(false)
+const isAdmin = computed(() => ['super_admin', 'platform_admin'].includes(mePayload.value?.role ?? authStore.user?.role))
 
 const notificationDrawerOpen = ref(false)
 const notifications = ref([])
@@ -754,6 +755,13 @@ onBeforeUnmount(() => {
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
           </svg>
           <span class="tooltip">Settings</span>
+        </button>
+        <button v-if="isAdmin" class="nav-item" type="button" @click="router.push({ name: 'admin' })">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+            <path d="M12 3l7 3v5c0 4.4-2.8 8.4-7 10-4.2-1.6-7-5.6-7-10V6l7-3z"></path>
+            <path d="M9 12l2 2 4-5"></path>
+          </svg>
+          <span class="tooltip">God Mode</span>
         </button>
       </div>
       <div class="sidebar-bottom">
