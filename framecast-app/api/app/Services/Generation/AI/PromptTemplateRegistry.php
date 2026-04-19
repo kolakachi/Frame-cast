@@ -13,35 +13,35 @@ class PromptTemplateRegistry
     {
         return match ($key) {
             'script_from_prompt' => [
-                'system' => 'You are a short-form video script writer. Return plain script text only.',
+                'system' => 'You are a short-form video script writer. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines, no character cues. Write only the words the narrator will speak aloud.',
                 'user' => "Create a concise social video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nSource: {{source_content}}",
             ],
             'script_from_url' => [
-                'system' => 'You are a short-form video script writer. Rewrite source material into plain script text only.',
-                'user' => "Rewrite this URL/article-derived content into a short-form video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: preserve factual claims from the source, do not invent statistics, and use short caption-friendly lines.\nSource:\n{{source_content}}",
+                'system' => 'You are a short-form video script writer. Rewrite source material into plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines, no character cues. Write only the words the narrator will speak aloud. Preserve factual claims, do not invent statistics.',
+                'user' => "Rewrite this URL/article-derived content into a short-form video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: preserve factual claims from the source, do not invent statistics, use short caption-friendly lines.\nSource:\n{{source_content}}",
             ],
             'script_from_images' => [
-                'system' => 'You write short-form narration from uploaded image references. Return plain script text only.',
-                'user' => "Create a short-form video script from these uploaded image references.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: analyze each image visually, write one concise narration beat per image in the same order, separate each beat with a blank line, use any user context, do not invent exact dates or identities unless provided.\nImage references and user context:\n{{source_content}}",
+                'system' => 'You write short-form narration from uploaded image references. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
+                'user' => "Create a short-form video script from these uploaded image references.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: write one concise narration beat per image in the same order, separate each beat with a blank line, do not invent exact dates or identities unless provided.\nImage references and user context:\n{{source_content}}",
             ],
             'script_from_product' => [
-                'system' => 'You write short-form product explainer and UGC-style ad scripts. Return plain script text only.',
+                'system' => 'You write short-form product explainer and UGC-style ad scripts. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
                 'user' => "Create a short-form product video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: use only product details provided, do not invent testimonials/pricing/guarantees, include a clear CTA.\nProduct source:\n{{source_content}}",
             ],
             'script_from_csv' => [
-                'system' => 'You turn CSV topic rows into short-form video scripts. Return plain script text only.',
+                'system' => 'You turn CSV topic rows into short-form video scripts. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
                 'user' => "Create one short-form video script from this CSV. Use the first topic row as the primary video unless the source clearly asks for a batch. Preserve fields like topic, angle, audience, and CTA.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nCSV:\n{{source_content}}",
             ],
             'script_from_audio_reference' => [
-                'system' => 'You prepare a short-form repurposing draft from an existing audio reference. Return plain script text only.',
-                'user' => "Create a short-form repurposing draft for this existing audio source.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, say this is a draft based on the provided reference and keep it easy to replace once transcription is available.\nAudio reference:\n{{source_content}}",
+                'system' => 'You prepare a short-form repurposing draft from an existing audio reference. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
+                'user' => "Create a short-form repurposing draft for this existing audio source.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, note this is a draft based on the provided reference.\nAudio reference:\n{{source_content}}",
             ],
             'script_from_video_reference' => [
-                'system' => 'You prepare a short-form repurposing draft from an existing video reference. Return plain script text only.',
-                'user' => "Create a short-form repurposing draft for this existing video source.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, say this is a draft based on the provided reference and keep it easy to replace once transcription is available.\nVideo reference:\n{{source_content}}",
+                'system' => 'You prepare a short-form repurposing draft from an existing video reference. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
+                'user' => "Create a short-form repurposing draft for this existing video source.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, note this is a draft based on the provided reference.\nVideo reference:\n{{source_content}}",
             ],
             'scene_breakdown' => [
-                'system' => 'You split scripts into scenes. Return JSON only in this shape: {"scenes":[{"scene_type":"hook|narration|transition|text_card|quote","label":"...","script_text":"...","duration_seconds":number}]}',
+                'system' => 'You split scripts into scenes. Return JSON only in this shape: {"scenes":[{"scene_type":"hook|narration|transition|text_card|quote","label":"...","script_text":"...","duration_seconds":number}]}. The script_text for every scene must be clean spoken narration only — the exact words a narrator will read aloud. Never include stage directions, scene transitions, [CUT TO:], [INT/EXT], FADE IN/OUT, parenthetical actions, or any screenplay formatting.',
                 'user' => "Break this script into 1-20 scenes for short-form video.\nLanguage: {{language}}\nScript:\n{{script_text}}",
             ],
             'hook_options' => [
@@ -59,6 +59,14 @@ class PromptTemplateRegistry
             'scene_insert' => [
                 'system' => 'You write exactly one new short-form video scene that fits naturally into an existing sequence. Return plain scene text only. Do not add labels, bullets, notes, or explanations.',
                 'user' => "Create one new scene.\nProject: {{project_title}}\nLanguage: {{language}}\nTone: {{tone}}\nRequested scene type: {{scene_type}}\nUser draft seed:\n{{current_text}}\nPrevious scene:\n{{previous_scene}}\nNext scene:\n{{next_scene}}\nScene outline:\n{{scene_outline}}",
+            ],
+            'visual_brief' => [
+                'system' => 'You extract a visual identity brief for a short-form video. Return JSON only in this exact shape: {"subject":"...","setting":"...","palette":"...","keywords":["...","...","..."]}. subject: who appears on screen (e.g. "young professional woman, 30s, business casual") or "no people, product focused" or "abstract, no people". setting: the environment (e.g. "modern office, clean workspace"). palette: the mood and color feel (e.g. "bright, clean, high-contrast"). keywords: 3-6 Pexels-friendly search terms that should anchor every scene (e.g. ["professional","workplace","productivity","focused","modern"]). Keep all values concise and stock-footage search friendly.',
+                'user' => "Extract a visual identity brief from this short-form video script.\nTone: {{tone}}\nScript:\n{{script_text}}",
+            ],
+            'visual_reference_style' => [
+                'system' => 'You analyze reference images uploaded by a creator and extract a concise visual style description for use as a prefix in AI image generation prompts. Return plain text only — one to two sentences. Describe: the apparent character (if people appear: age range, gender, clothing, hair), the setting or backdrop, the lighting mood, and the overall aesthetic. Write it as a ready-to-use prompt prefix (e.g. "Photorealistic, young professional woman in her early 30s, dark shoulder-length hair, wearing a navy blazer, warm studio lighting, clean modern office background.").',
+                'user' => "Analyze these reference images and describe the visual style for AI image generation.\nTone: {{tone}}",
             ],
             default => throw new InvalidArgumentException("Unknown prompt template key: {$key}"),
         };

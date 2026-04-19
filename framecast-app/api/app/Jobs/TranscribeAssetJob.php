@@ -32,7 +32,9 @@ class TranscribeAssetJob implements ShouldQueue
             'transcription_error' => null,
         ])->save();
 
-        $result = $transcriptionService->transcribeAsset($asset);
+        $result = $transcriptionService->transcribeAssetWithTimestamps($asset);
+        $words = $result['words'] ?? [];
+        $segments = $result['segments'] ?? [];
 
         $asset->forceFill([
             'transcript_text' => $result['transcript'],
@@ -42,6 +44,14 @@ class TranscribeAssetJob implements ShouldQueue
                 'transcription_provider' => $result['provider_key'],
                 'transcription_model' => $result['model'],
                 'transcribed_at' => now()->toIso8601String(),
+                'caption_timing_status' => count($words) > 0 ? 'completed' : 'unavailable',
+                'caption_timing' => [
+                    'source' => $result['provider_key'],
+                    'model' => $result['model'],
+                    'words' => $words,
+                    'segments' => $segments,
+                    'generated_at' => now()->toIso8601String(),
+                ],
             ]),
         ])->save();
     }

@@ -658,7 +658,7 @@ class ProjectController extends Controller
     private function resolveSourceImageAssetIds(string $sourceType, mixed $assetIds, User $user, ?string $visualGenerationMode): ?array
     {
         if ($sourceType !== 'images') {
-            return null;
+            return [];
         }
 
         $ids = array_values(array_unique(array_map(
@@ -741,6 +741,9 @@ class ProjectController extends Controller
             'thumbnail_url' => $asset->thumbnail_url,
             'duration_seconds' => $asset->duration_seconds,
             'mime_type' => $asset->mime_type,
+            'transcript_text' => $asset->transcript_text,
+            'transcription_status' => $asset->transcription_status,
+            'metadata_json' => $asset->metadata_json,
         ];
     }
 

@@ -95,7 +95,12 @@ class ScoreHooksJob implements ShouldQueue
 
     private function dispatchVisualStep(?Project $project): void
     {
-        if ($project?->visual_generation_mode === 'ai_images') {
+        // 'images' source type means the creator uploaded reference images for style anchoring —
+        // the output is always AI-generated visuals, not stock clips.
+        $useAiImages = $project?->visual_generation_mode === 'ai_images'
+            || $project?->source_type === 'images';
+
+        if ($useAiImages) {
             GenerateProjectAIImagesJob::dispatch($this->projectId);
 
             return;

@@ -386,67 +386,105 @@ const rewriteModeMap = {
 
 watch(
   activeScene,
-  (scene) => {
-    if (scriptSaveTimer) {
-      window.clearTimeout(scriptSaveTimer);
-      scriptSaveTimer = null;
+  (scene, prevScene) => {
+    const sceneChanged = scene?.id !== prevScene?.id;
+
+    if (sceneChanged) {
+      // Scene switch — cancel pending saves and reset all draft state
+      if (scriptSaveTimer) {
+        window.clearTimeout(scriptSaveTimer);
+        scriptSaveTimer = null;
+      }
+      if (voiceSaveTimer) {
+        window.clearTimeout(voiceSaveTimer);
+        voiceSaveTimer = null;
+      }
+      if (captionSaveTimer) {
+        window.clearTimeout(captionSaveTimer);
+        captionSaveTimer = null;
+      }
+      sceneScriptDraft.value = scene?.script_text || "";
+      voiceProfileKey.value = scene?.voice_settings?.voice_id || "alloy";
+      voiceSpeedDraft.value = String(scene?.voice_settings?.speed ?? 1.0);
+      voiceStabilityDraft.value = String(scene?.voice_settings?.stability ?? "medium");
+      visualQueryDraft.value = scene?.visual_prompt || "";
+      const rawType = String(scene?.visual_type || "");
+      if (rawType === "ai_image") selectedSwapVisualSource.value = "AI Image";
+      else if (rawType === "image_montage") selectedSwapVisualSource.value = "Stock Image";
+      else if (rawType === "background_loop") selectedSwapVisualSource.value = "Stock Video";
+      else selectedSwapVisualSource.value = "Stock Video";
+      const captionSettings = normalizeCaptionSettings(
+        scene?.caption_settings || scene?.caption_settings_json
+      );
+      captionEnabledDraft.value = captionSettings.enabled !== false;
+      captionStyleDraft.value = String(captionSettings.style_key);
+      captionHighlightDraft.value = String(captionSettings.highlight_mode);
+      captionPositionDraft.value = String(captionSettings.position);
+      captionFontDraft.value = String(captionSettings.font);
+      fontDropdownOpen.value = false;
+      const motionSettings = scene?.motion_settings || scene?.motion_settings_json || {};
+      motionEffectDraft.value = String(motionSettings.effect || "zoom_in");
+      motionIntensityDraft.value = String(motionSettings.intensity || "moderate");
+      visualStyleDraft.value = scene?.visual_style ?? null;
+      visualStyleSaveState.value = "idle";
+      visualSwapPending.value = false;
+      visualSwapError.value = "";
+      voiceSaveState.value = "idle";
+      voiceSaveError.value = "";
+      scriptSaveState.value = "idle";
+      scriptSaveError.value = "";
+      captionSaveState.value = "idle";
+      captionSaveError.value = "";
+      rewriteToolsVisible.value = false;
+      rewritePreviewVisible.value = false;
+      rewritePreviewCopy.value = "";
+      rewriteCustomInstruction.value = "";
+      rewriteMode.value = "";
+      rewriteError.value = "";
+      // Reset and reload both visual and audio
+      if (audioRef.value) {
+        audioRef.value.pause();
+        audioRef.value.load();
+        isAudioPlaying.value = false;
+      }
+      isAudioLoading.value = false;
+      visualLoadFailed.value = false;
+      syncActiveSceneMedia(scene);
+      if (isPreviewPlaying.value) {
+        nextTick(() => playActiveSceneAudio(pendingPreviewAudioOffset));
+      }
+      return;
     }
-    if (voiceSaveTimer) {
-      window.clearTimeout(voiceSaveTimer);
-      voiceSaveTimer = null;
+
+    // Same scene updated — selectively reload only what changed
+    const prevVisualUrl = prevScene?.visual_asset?.storage_url ?? null;
+    const nextVisualUrl = scene?.visual_asset?.storage_url ?? null;
+    const visualChanged =
+      scene?.visual_asset_id !== prevScene?.visual_asset_id ||
+      nextVisualUrl !== prevVisualUrl;
+
+    const prevAudioUrl = prevScene?.audio_asset?.storage_url ?? null;
+    const nextAudioUrl = scene?.audio_asset?.storage_url ?? null;
+    const audioChanged = nextAudioUrl !== prevAudioUrl;
+
+    if (visualChanged) {
+      visualLoadFailed.value = false;
+      syncActiveSceneMedia(scene);
     }
-    if (captionSaveTimer) {
-      window.clearTimeout(captionSaveTimer);
-      captionSaveTimer = null;
-    }
-    sceneScriptDraft.value = scene?.script_text || "";
-    voiceProfileKey.value = scene?.voice_settings?.voice_id || "alloy";
-    voiceSpeedDraft.value = String(scene?.voice_settings?.speed ?? 1.0);
-    voiceStabilityDraft.value = String(scene?.voice_settings?.stability ?? "medium");
-    visualQueryDraft.value = scene?.visual_prompt || "";
-    const rawType = String(scene?.visual_type || "");
-    if (rawType === "ai_image") selectedSwapVisualSource.value = "AI Image";
-    else if (rawType === "image_montage") selectedSwapVisualSource.value = "Stock Image";
-    else if (rawType === "background_loop") selectedSwapVisualSource.value = "Stock Video";
-    else selectedSwapVisualSource.value = "Stock Video";
-    const captionSettings = normalizeCaptionSettings(
-      scene?.caption_settings || scene?.caption_settings_json
-    );
-    captionEnabledDraft.value = captionSettings.enabled !== false;
-    captionStyleDraft.value = String(captionSettings.style_key);
-    captionHighlightDraft.value = String(captionSettings.highlight_mode);
-    captionPositionDraft.value = String(captionSettings.position);
-    captionFontDraft.value = String(captionSettings.font);
-    fontDropdownOpen.value = false;
-    const motionSettings = scene?.motion_settings || scene?.motion_settings_json || {};
-    motionEffectDraft.value = String(motionSettings.effect || "zoom_in");
-    motionIntensityDraft.value = String(motionSettings.intensity || "moderate");
-    visualStyleDraft.value = scene?.visual_style ?? null;
-    visualStyleSaveState.value = "idle";
-    visualSwapPending.value = false;
-    visualSwapError.value = "";
-    voiceSaveState.value = "idle";
-    voiceSaveError.value = "";
-    scriptSaveState.value = "idle";
-    scriptSaveError.value = "";
-    captionSaveState.value = "idle";
-    captionSaveError.value = "";
-    rewriteToolsVisible.value = false;
-    rewritePreviewVisible.value = false;
-    rewritePreviewCopy.value = "";
-    rewriteCustomInstruction.value = "";
-    rewriteMode.value = "";
-    rewriteError.value = "";
-    if (audioRef.value) {
-      audioRef.value.pause();
-      audioRef.value.load();
-      isAudioPlaying.value = false;
-    }
-    isAudioLoading.value = false;
-    visualLoadFailed.value = false;
-    syncActiveSceneMedia(scene);
-    if (isPreviewPlaying.value) {
-      nextTick(() => playActiveSceneAudio(pendingPreviewAudioOffset));
+
+    if (audioChanged) {
+      if (audioRef.value) {
+        audioRef.value.pause();
+        audioRef.value.load();
+        isAudioPlaying.value = false;
+      }
+      isAudioLoading.value = false;
+      if (scene?.audio_asset?.storage_url) {
+        preloadSceneAudio(scene);
+      }
+      if (isPreviewPlaying.value) {
+        nextTick(() => playActiveSceneAudio(pendingPreviewAudioOffset));
+      }
     }
   },
   { immediate: true }
@@ -463,10 +501,6 @@ watch(activeMusicTrackUrl, () => {
 
 watch(previewMusicVolume, () => {
   syncPreviewMusicVolume();
-});
-
-watch(activeSceneVisualUrl, () => {
-  visualLoadFailed.value = false;
 });
 
 watch([voiceProfileKey, voiceSpeedDraft, voiceStabilityDraft], () => {
@@ -880,20 +914,97 @@ function formatSceneDuration(value) {
   return `${amount.toFixed(1)}s`;
 }
 
-function previewWords(text) {
+function previewWords(text, highlightMode, progress) {
+  const mode = highlightMode || captionHighlightDraft.value || "keywords";
+  const pct = Math.min(1, Math.max(0, (progress ?? playProgress.value) / 100));
+
+  if (mode === "none") return [];
+
+  const timedWords = captionTimingWords(activeScene.value);
+  if (timedWords.length > 0 && (mode === "word_by_word" || mode === "line_by_line")) {
+    return previewTimedWords(timedWords, mode);
+  }
+
   const words = String(text || "")
     .trim()
     .split(/\s+/)
     .filter(Boolean);
   if (words.length === 0) return [];
 
+  if (mode === "word_by_word") {
+    const idx = Math.min(Math.floor(pct * words.length), words.length - 1);
+    return [{ text: words[idx], highlighted: true }];
+  }
+
+  if (mode === "line_by_line") {
+    const wordsPerLine = 4;
+    const lines = [];
+    for (let i = 0; i < words.length; i += wordsPerLine) {
+      lines.push(words.slice(i, i + wordsPerLine));
+    }
+    const wordIdx = Math.min(Math.floor(pct * words.length), words.length - 1);
+    const lineIdx = Math.min(Math.floor(wordIdx / wordsPerLine), lines.length - 1);
+    const lineWords = lines[lineIdx];
+    const hStart = Math.min(1, lineWords.length - 1);
+    const hEnd = Math.min(lineWords.length, hStart + 2);
+    return lineWords.map((word, i) => ({
+      text: i === lineWords.length - 1 ? word : word + " ",
+      highlighted: i >= hStart && i < hEnd,
+    }));
+  }
+
+  // keywords: full text with 2nd–3rd words highlighted
   const highlightStart = Math.min(1, words.length - 1);
   const highlightEnd = Math.min(words.length, highlightStart + 2);
-
   return words.map((word, index) => ({
     text: `${word}${index === words.length - 1 ? "" : " "}`,
     highlighted: index >= highlightStart && index < highlightEnd,
   }));
+}
+
+function captionTimingWords(scene) {
+  const words = scene?.audio_asset?.metadata_json?.caption_timing?.words;
+  if (!Array.isArray(words)) return [];
+
+  return words
+    .map((word) => ({
+      text: String(word?.text || word?.word || "").trim(),
+      start: Number(word?.start),
+      end: Number(word?.end),
+    }))
+    .filter((word) => word.text && Number.isFinite(word.start) && Number.isFinite(word.end))
+    .sort((a, b) => a.start - b.start);
+}
+
+function previewTimedWords(timedWords, mode) {
+  const currentSeconds = currentCaptionSeconds();
+  const wordIndex = timedWords.findIndex(
+    (word) => currentSeconds >= word.start && currentSeconds < word.end
+  );
+  const activeIndex =
+    wordIndex >= 0
+      ? wordIndex
+      : Math.max(0, Math.min(timedWords.length - 1, timedWords.findLastIndex((word) => word.start <= currentSeconds)));
+
+  if (mode === "word_by_word") {
+    return [{ text: timedWords[activeIndex]?.text || "", highlighted: true }];
+  }
+
+  const wordsPerLine = 4;
+  const lineStart = Math.floor(activeIndex / wordsPerLine) * wordsPerLine;
+  return timedWords.slice(lineStart, lineStart + wordsPerLine).map((word, index, lineWords) => ({
+    text: `${word.text}${index === lineWords.length - 1 ? "" : " "}`,
+    highlighted: lineStart + index === activeIndex,
+  }));
+}
+
+function currentCaptionSeconds() {
+  const audio = audioRef.value;
+  if (audio && Number.isFinite(audio.currentTime)) {
+    return Math.max(0, audio.currentTime);
+  }
+
+  return currentSceneAudioOffset();
 }
 
 function fontFamilyValue(font) {
@@ -917,6 +1028,11 @@ const totalVideoDuration = computed(() =>
 );
 
 function sceneDuration(scene) {
+  const audioDuration = Number(scene?.audio_asset?.duration_seconds || 0);
+  if (Number.isFinite(audioDuration) && audioDuration > 0) {
+    return Math.max(0.1, audioDuration);
+  }
+
   return Math.max(0.1, Number(scene?.duration_seconds || 12));
 }
 
@@ -1456,18 +1572,43 @@ async function startPreviewPlay() {
   const TICK = 50;
   previewPlayTimer = window.setInterval(() => {
     const dur = previewContextDuration.value || 1;
-    playProgress.value += (100 / dur) * (TICK / 1000);
 
-    if (playProgress.value >= 100) {
-      if (previewMode.value === "scene") {
-        playProgress.value = 0; // loop scene
-        playActiveSceneAudio(0);
+    if (previewMode.value === "scene") {
+      // Drive progress from actual audio position so captions stay in sync
+      const audio = audioRef.value;
+      if (
+        audio &&
+        !audio.paused &&
+        Number.isFinite(audio.duration) &&
+        audio.duration > 0
+      ) {
+        const newProgress = (audio.currentTime / audio.duration) * 100;
+        if (audio.ended || newProgress >= 100) {
+          playProgress.value = 0;
+          playActiveSceneAudio(0);
+        } else {
+          playProgress.value = newProgress;
+        }
       } else {
+        // Audio not ready yet — advance timer as fallback
+        playProgress.value += (100 / dur) * (TICK / 1000);
+        if (playProgress.value >= 100) {
+          playProgress.value = 0;
+          playActiveSceneAudio(0);
+        }
+      }
+    } else {
+      const audioDrivenProgress = fullPreviewAudioProgress();
+      playProgress.value =
+        audioDrivenProgress ??
+        playProgress.value + (100 / dur) * (TICK / 1000);
+
+      if (playProgress.value >= 100) {
         playProgress.value = 100;
         stopPreviewPlay();
+      } else {
+        syncFullPreviewScene();
       }
-    } else if (previewMode.value === "full") {
-      syncFullPreviewScene();
     }
   }, TICK);
 }
@@ -1508,6 +1649,37 @@ function currentSceneAudioOffset() {
   }
 
   return previewElapsedSecs.value;
+}
+
+function fullPreviewAudioProgress() {
+  if (previewMode.value !== "full") return null;
+
+  const audio = audioRef.value;
+  if (
+    !audio ||
+    audio.paused ||
+    !Number.isFinite(audio.duration) ||
+    audio.duration <= 0 ||
+    !activeScene.value
+  ) {
+    return null;
+  }
+
+  const currentSceneIndex = scenes.value.findIndex(
+    (scene) => scene.id === activeScene.value.id
+  );
+  if (currentSceneIndex < 0) return null;
+
+  let sceneStart = 0;
+  for (let i = 0; i < currentSceneIndex; i += 1) {
+    sceneStart += sceneDuration(scenes.value[i]);
+  }
+
+  const activeDuration = sceneDuration(activeScene.value);
+  const sceneElapsed = Math.min(audio.currentTime, activeDuration);
+  const total = totalVideoDuration.value || 1;
+
+  return Math.max(0, Math.min(100, ((sceneStart + sceneElapsed) / total) * 100));
 }
 
 function syncFullPreviewScene() {
@@ -3101,6 +3273,7 @@ onBeforeUnmount(() => {
                 <div class="preview-watermark">FRAMECAST</div>
                 <div class="preview-timer">{{ previewTimer.elapsed }}</div>
                 <div
+                  v-if="captionEnabledDraft && captionHighlightDraft !== 'none'"
                   class="preview-caption"
                   :class="captionPreviewClass"
                   :style="[captionPositionStyle, captionFontStyle]"

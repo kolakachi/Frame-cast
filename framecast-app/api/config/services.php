@@ -39,6 +39,7 @@ return [
         'api_key' => env('OPENAI_API_KEY'),
         'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
         'transcription_model' => env('OPENAI_TRANSCRIPTION_MODEL', 'whisper-1'),
+        'timestamp_transcription_model' => env('OPENAI_TIMESTAMP_TRANSCRIPTION_MODEL', 'whisper-1'),
     ],
 
     'pexels' => [

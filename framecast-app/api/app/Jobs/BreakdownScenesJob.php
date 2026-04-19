@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\GenerationProgressed;
-use App\Jobs\GenerateHooksJob;
+use App\Jobs\GenerateVisualBriefJob;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Services\Generation\AI\AIGenerationAdapter;
@@ -44,14 +44,11 @@ class BreakdownScenesJob implements ShouldQueue
         ]);
 
         $scenes = $this->extractScenes($result['content'], $project->script_text);
-        $sourceImageAssetIds = $this->sourceImageAssetIds($project);
 
-        DB::transaction(function () use ($project, $scenes, $sourceImageAssetIds): void {
+        DB::transaction(function () use ($project, $scenes): void {
             Scene::query()->where('project_id', $project->getKey())->delete();
 
             foreach ($scenes as $index => $scene) {
-                $sourceImageAssetId = $sourceImageAssetIds[$index] ?? null;
-
                 Scene::query()->create([
                     'project_id' => $project->getKey(),
                     'scene_order' => $index + 1,
@@ -59,17 +56,13 @@ class BreakdownScenesJob implements ShouldQueue
                     'label' => $scene['label'],
                     'script_text' => $scene['script_text'],
                     'duration_seconds' => $scene['duration_seconds'],
-                    'visual_type' => $sourceImageAssetId ? 'upload' : null,
-                    'visual_asset_id' => $sourceImageAssetId,
-                    'visual_prompt' => $sourceImageAssetId ? 'Uploaded source image #'.($index + 1) : null,
                     'status' => 'draft',
                 ]);
             }
-
         });
 
         GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'completed');
-        GenerateHooksJob::dispatch($project->getKey());
+        GenerateVisualBriefJob::dispatch($project->getKey());
     }
 
     public function failed(\Throwable $exception): void
@@ -101,7 +94,7 @@ class BreakdownScenesJob implements ShouldQueue
                         continue;
                     }
 
-                    $text = trim((string) ($row['script_text'] ?? $row['text'] ?? ''));
+                    $text = $this->sanitizeSceneText(trim((string) ($row['script_text'] ?? $row['text'] ?? '')));
 
                     if ($text === '') {
                         continue;
@@ -122,6 +115,29 @@ class BreakdownScenesJob implements ShouldQueue
         }
 
         return $this->fallbackScenes($scriptText);
+    }
+
+    private function sanitizeSceneText(string $text): string
+    {
+        // Strip bracketed stage directions: [CUT TO: ...], [INT. ...], [FADE OUT], etc.
+        $text = preg_replace('/\[[^\]]*\]/', '', $text) ?? $text;
+
+        // Strip INT./EXT. sluglines at the start of a line
+        $text = preg_replace('/^(INT|EXT)\.[^\n]*/mi', '', $text) ?? $text;
+
+        // Strip FADE IN/OUT, DISSOLVE TO, CUT TO at the start of a line
+        $text = preg_replace('/^(FADE\s+(IN|OUT)|DISSOLVE\s+TO|CUT\s+TO)[^\n]*/mi', '', $text) ?? $text;
+
+        // Strip ALL-CAPS character cues (e.g. "NARRATOR:", "VOICE OVER:") at line start
+        $text = preg_replace('/^[A-Z][A-Z\s]{2,}:\s*/m', '', $text) ?? $text;
+
+        // Strip parenthetical action lines: "(beat)", "(sighs)", "(walks away)"
+        $text = preg_replace('/^\([^)]+\)\s*$/m', '', $text) ?? $text;
+
+        // Collapse multiple blank lines into one and trim
+        $text = preg_replace('/\n{3,}/', "\n\n", $text) ?? $text;
+
+        return trim($text);
     }
 
     private function normalizeSceneType(string $sceneType): string
@@ -193,18 +209,4 @@ class BreakdownScenesJob implements ShouldQueue
         ]] : $scenes;
     }
 
-    /**
-     * @return list<int>
-     */
-    private function sourceImageAssetIds(Project $project): array
-    {
-        if ($project->source_type !== 'images') {
-            return [];
-        }
-
-        return array_values(array_filter(array_map(
-            static fn (mixed $id): int => (int) $id,
-            $project->source_image_asset_ids ?? [],
-        )));
-    }
 }

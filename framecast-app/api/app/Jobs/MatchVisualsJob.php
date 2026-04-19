@@ -95,13 +95,40 @@ class MatchVisualsJob implements ShouldQueue
 
     private function buildPrompt(Scene $scene, Project $project): string
     {
-        $sceneLabel = $scene->label ?: 'scene';
-        $sceneText = mb_substr(trim((string) $scene->script_text), 0, 160);
+        $sceneText = mb_substr(trim((string) $scene->script_text), 0, 120);
         $tone = $project->tone ?: 'neutral';
-
-        // Append scene visual_style as a search modifier when set.
         $stylePart = $scene->visual_style ? ", {$scene->visual_style}" : '';
 
-        return trim("{$sceneLabel}, {$tone} style{$stylePart}, {$sceneText}");
+        // Build a brief anchor from the project's visual_brief if available.
+        // This keeps all scene searches within the same visual universe.
+        $brief = is_array($project->visual_brief) ? $project->visual_brief : [];
+        $briefAnchor = '';
+
+        if ($brief !== []) {
+            $parts = [];
+
+            if (! empty($brief['subject'])) {
+                $parts[] = (string) $brief['subject'];
+            }
+
+            if (! empty($brief['setting'])) {
+                $parts[] = (string) $brief['setting'];
+            }
+
+            $keywords = array_filter(
+                array_slice((array) ($brief['keywords'] ?? []), 0, 3),
+                static fn (mixed $k): bool => is_string($k) && $k !== '',
+            );
+
+            if ($keywords !== []) {
+                $parts[] = implode(', ', $keywords);
+            }
+
+            if ($parts !== []) {
+                $briefAnchor = implode(', ', $parts).', ';
+            }
+        }
+
+        return trim("{$briefAnchor}{$tone} style{$stylePart}, {$sceneText}");
     }
 }

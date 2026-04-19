@@ -16,6 +16,12 @@ class DalleImageAdapter implements ImageGenerationAdapter
         '1:1'  => '1024x1024',
     ];
 
+    private const ASPECT_RATIO_COMPOSITION = [
+        '9:16' => 'Vertical portrait frame. Compose the scene upright — subjects stand or scene elements fill the frame top-to-bottom, not left-to-right. Do not rotate.',
+        '16:9' => 'Horizontal landscape frame. Wide cinematic composition, left-to-right.',
+        '1:1'  => 'Square frame. Centered balanced composition.',
+    ];
+
     private const STYLE_PROMPT_MAP = [
         'cinematic'    => 'cinematic photography, dramatic lighting, film grain, shallow depth of field,',
         'dark'         => 'dark moody atmosphere, deep shadows, high contrast, noir style,',
@@ -54,7 +60,8 @@ class DalleImageAdapter implements ImageGenerationAdapter
 
         $size = self::ASPECT_RATIO_MAP[$aspectRatio] ?? '1024x1792';
         $stylePrefix = self::STYLE_PROMPT_MAP[$style] ?? '';
-        $fullPrompt = trim("{$stylePrefix} {$prompt}. No text or watermarks.");
+        $composition = self::ASPECT_RATIO_COMPOSITION[$aspectRatio] ?? self::ASPECT_RATIO_COMPOSITION['9:16'];
+        $fullPrompt = trim("{$stylePrefix} {$prompt}. {$composition} No text, no writing, no letters, no words, no watermarks, no captions, no signs with readable text.");
         $model = 'dall-e-3';
         $quality = (string) ($options['quality'] ?? 'standard');
         $usageContext = $this->usage->contextFromOptions($options);

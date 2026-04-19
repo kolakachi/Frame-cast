@@ -12,7 +12,7 @@ use RuntimeException;
 class MediaTranscriptionService
 {
     /**
-     * @return array{transcript:string,provider_key:string,model:string}
+     * @return array{transcript:string,provider_key:string,model:string,words?:array<int, array{text:string,start:float,end:float}>,segments?:array<int, array{text:string,start:float,end:float}>}
      */
     public function transcribeAsset(Asset $asset): array
     {
@@ -31,44 +31,123 @@ class MediaTranscriptionService
     }
 
     /**
-     * @return array{transcript:string,provider_key:string,model:string}
+     * @return array{transcript:string,provider_key:string,model:string,words?:array<int, array{text:string,start:float,end:float}>,segments?:array<int, array{text:string,start:float,end:float}>}
      */
     public function transcribeLocalFile(string $path, string $fallbackTitle = 'media file'): array
     {
+        return $this->transcribeLocalFileWithOptions($path, $fallbackTitle, false);
+    }
+
+    /**
+     * @return array{transcript:string,provider_key:string,model:string,words:array<int, array{text:string,start:float,end:float}>,segments:array<int, array{text:string,start:float,end:float}>}
+     */
+    public function transcribeAssetWithTimestamps(Asset $asset): array
+    {
+        $localPath = $this->downloadAsset($asset);
+        $transcriptionPath = $this->prepareTranscriptionFile($asset, $localPath);
+
+        try {
+            $result = $this->transcribeLocalFileWithOptions($transcriptionPath, (string) $asset->title, true);
+
+            return [
+                ...$result,
+                'words' => $result['words'] ?? [],
+                'segments' => $result['segments'] ?? [],
+            ];
+        } finally {
+            @unlink($localPath);
+
+            if ($transcriptionPath !== $localPath) {
+                @unlink($transcriptionPath);
+            }
+        }
+    }
+
+    /**
+     * @return array{transcript:string,provider_key:string,model:string,words?:array<int, array{text:string,start:float,end:float}>,segments?:array<int, array{text:string,start:float,end:float}>}
+     */
+    private function transcribeLocalFileWithOptions(string $path, string $fallbackTitle, bool $withTimestamps): array
+    {
         $apiKey = (string) config('services.openai.api_key');
-        $model = (string) config('services.openai.transcription_model', 'whisper-1');
+        $model = $withTimestamps
+            ? (string) config('services.openai.timestamp_transcription_model', 'whisper-1')
+            : (string) config('services.openai.transcription_model', 'whisper-1');
 
         if ($apiKey === '') {
             return $this->fallbackTranscript($fallbackTitle);
         }
 
         try {
+            $payload = [
+                'model' => $model,
+                'response_format' => $withTimestamps ? 'verbose_json' : 'json',
+            ];
+
+            if ($withTimestamps) {
+                $payload['timestamp_granularities[]'] = 'word';
+            }
+
             $response = Http::timeout(120)
                 ->withToken($apiKey)
                 ->attach('file', file_get_contents($path), basename($path))
-                ->post('https://api.openai.com/v1/audio/transcriptions', [
-                    'model' => $model,
-                    'response_format' => 'json',
-                ]);
+                ->post('https://api.openai.com/v1/audio/transcriptions', $payload);
 
             if (! $response->ok()) {
                 throw new RuntimeException('Transcription provider request failed.');
             }
 
-            $text = trim((string) data_get($response->json(), 'text', ''));
+            $json = $response->json();
+            $text = trim((string) data_get($json, 'text', ''));
 
             if ($text === '') {
                 throw new RuntimeException('Transcription provider returned empty text.');
             }
 
-            return [
+            $result = [
                 'transcript' => $text,
                 'provider_key' => 'openai',
                 'model' => $model,
             ];
+
+            if ($withTimestamps) {
+                $result['words'] = $this->normalizeTimedItems((array) data_get($json, 'words', []), 'word');
+                $result['segments'] = $this->normalizeTimedItems((array) data_get($json, 'segments', []), 'text');
+            }
+
+            return $result;
         } catch (\Throwable) {
             return $this->fallbackTranscript($fallbackTitle);
         }
+    }
+
+    /**
+     * @return array<int, array{text:string,start:float,end:float}>
+     */
+    private function normalizeTimedItems(array $items, string $textKey): array
+    {
+        $normalized = [];
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $text = trim((string) ($item[$textKey] ?? $item['text'] ?? $item['word'] ?? ''));
+            $start = (float) ($item['start'] ?? -1);
+            $end = (float) ($item['end'] ?? -1);
+
+            if ($text === '' || $start < 0 || $end <= $start) {
+                continue;
+            }
+
+            $normalized[] = [
+                'text' => $text,
+                'start' => round($start, 3),
+                'end' => round($end, 3),
+            ];
+        }
+
+        return $normalized;
     }
 
     private function downloadAsset(Asset $asset): string

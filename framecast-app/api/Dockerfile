@@ -48,6 +48,8 @@ RUN apt-get update \
     && mkdir -p /usr/local/share/fonts/framecast \
     && fc-cache -f -v
 
+COPY uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 RUN groupadd -g ${WWWGROUP} framecast \

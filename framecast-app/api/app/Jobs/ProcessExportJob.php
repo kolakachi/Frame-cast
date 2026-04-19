@@ -298,7 +298,13 @@ class ProcessExportJob implements ShouldQueue
         $captionStyle = (string) ($captionSettings['style_key'] ?? 'impact');
         $captionPosition = (string) ($captionSettings['position'] ?? 'bottom_third');
         $captionFont = (string) ($captionSettings['font'] ?? 'Bebas Neue');
+        $captionHighlightMode = (string) ($captionSettings['highlight_mode'] ?? 'keywords');
         $captionText = (string) ($scene->script_text ?: $scene->label ?: 'Framecast');
+
+        // 'none' mode disables captions entirely
+        if ($captionHighlightMode === 'none') {
+            $captionEnabled = false;
+        }
         $durationForFilter = $this->formatFilterDuration($duration);
 
         $monoFont = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf';
@@ -357,7 +363,17 @@ class ProcessExportJob implements ShouldQueue
             $assFile = null;
             if ($captionEnabled && trim($captionText) !== '') {
                 $assFile = sprintf('%s/caption-%03d.ass', $tempDir, $index);
-                $this->buildASSCaption($captionText, $captionStyle, $captionPosition, $captionFont, $duration, $dimensions, $assFile);
+                $this->buildASSCaption(
+                    $captionText,
+                    $captionStyle,
+                    $captionPosition,
+                    $captionFont,
+                    $duration,
+                    $dimensions,
+                    $assFile,
+                    $captionHighlightMode,
+                    $this->captionTimingWordsFromAsset($audioAsset)
+                );
                 $filters[] = "subtitles={$assFile}";
                 $cleanupPaths[] = $assFile;
             }
@@ -717,20 +733,19 @@ class ProcessExportJob implements ShouldQueue
         string $captionFont,
         float $duration,
         array $dimensions,
-        string $outputPath
+        string $outputPath,
+        string $highlightMode = 'keywords',
+        ?array $timedWords = null
     ): void {
         $playResX = $dimensions['width'];
         $playResY = $dimensions['height'];
-        $endTime = $this->formatASSTime($duration);
 
-        // Numpad alignment: 2=bottom-center, 5=middle-center, 8=top-center
         $alignment = match ($captionPosition) {
             'center' => 5,
             'top_third' => 8,
             default => 2,
         };
 
-        // Mirror preview: bottom:100px on 480px canvas = 20.8% → 400px on 1920px video
         $marginV = match ($captionPosition) {
             'center' => 0,
             'top_third' => (int) round(80 * $playResY / 1920),
@@ -738,7 +753,6 @@ class ProcessExportJob implements ShouldQueue
         };
         $marginLR = (int) round(60 * $playResX / 1080);
 
-        // Mirror preview font sizing: 22px on 480px canvas scaled to export resolution
         $fontName = $this->sanitizeASSFontName($captionFont);
         [$fontSize, $bold, $italic] = match ($captionStyle) {
             'editorial' => [(int) round(22 * $playResY / 480), 0, 1],
@@ -746,7 +760,16 @@ class ProcessExportJob implements ShouldQueue
             default => [(int) round(22 * $playResY / 480), -1, 0],
         };
 
-        $styledText = $this->buildASSStyledText($text, $captionStyle);
+        $events = match ($highlightMode) {
+            'word_by_word' => $this->buildWordByWordEvents($text, $captionStyle, $duration, $timedWords),
+            'line_by_line' => $this->buildLineByLineEvents($text, $captionStyle, $duration, $timedWords),
+            default => [['0:00:00.00', $this->formatASSTime($duration), $this->buildASSStyledText($text, $captionStyle)]],
+        };
+
+        $dialogueLines = array_map(
+            static fn (array $e): string => "Dialogue: 0,{$e[0]},{$e[1]},Default,,0,0,0,,{$e[2]}",
+            $events
+        );
 
         $content = implode("\n", [
             '[Script Info]',
@@ -762,11 +785,157 @@ class ProcessExportJob implements ShouldQueue
             '',
             '[Events]',
             'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
-            "Dialogue: 0,0:00:00.00,{$endTime},Default,,0,0,0,,{$styledText}",
+            implode("\n", $dialogueLines),
         ]);
 
         file_put_contents($outputPath, $content);
     }
+
+    /**
+     * Word-by-word: one dialogue event per word, evenly timed.
+     *
+     * @return list<array{string, string, string}>
+     */
+    private function buildWordByWordEvents(string $text, string $captionStyle, float $duration, ?array $timedWords = null): array
+    {
+        $words = array_values(array_filter(preg_split('/\\s+/', trim($text)) ?: []));
+
+        if (empty($words)) {
+            return [['0:00:00.00', $this->formatASSTime($duration), '']];
+        }
+
+        $highlightCode = match ($captionStyle) {
+            'hacker' => '\\c&H0000FFFF&',
+            'editorial' => '\\c&H00CCCCFF&\\u1',
+            default => '\\c&H00356BFF&',
+        };
+
+        if (! empty($timedWords)) {
+            $events = [];
+            foreach ($timedWords as $timedWord) {
+                $word = trim((string) ($timedWord['text'] ?? ''));
+                $start = (float) ($timedWord['start'] ?? -1);
+                $end = (float) ($timedWord['end'] ?? -1);
+
+                if ($word === '' || $start < 0 || $end <= $start) {
+                    continue;
+                }
+
+                $start = max(0.0, min($duration, $start));
+                $end = max($start + 0.03, min($duration, $end));
+                $styledText = '{' . $highlightCode . '}' . $this->escapeASSText($word) . '{\\r}';
+                $events[] = [$this->formatASSTime($start), $this->formatASSTime($end), $styledText];
+            }
+
+            if (! empty($events)) {
+                return $events;
+            }
+        }
+
+        $wordDuration = $duration / count($words);
+        $events = [];
+
+        foreach ($words as $i => $word) {
+            $start = $this->formatASSTime($i * $wordDuration);
+            $end = $this->formatASSTime(($i + 1) * $wordDuration);
+            $styledText = '{' . $highlightCode . '}' . $this->escapeASSText($word) . '{\\r}';
+            $events[] = [$start, $end, $styledText];
+        }
+
+        return $events;
+    }
+
+    /**
+     * Line-by-line: groups of ~4 words per event, timed proportionally by word count.
+     *
+     * @return list<array{string, string, string}>
+     */
+    private function buildLineByLineEvents(string $text, string $captionStyle, float $duration, ?array $timedWords = null): array
+    {
+        $words = array_values(array_filter(preg_split('/\\s+/', trim($text)) ?: []));
+
+        if (empty($words)) {
+            return [['0:00:00.00', $this->formatASSTime($duration), '']];
+        }
+
+        if (! empty($timedWords)) {
+            $chunks = array_chunk($timedWords, 4);
+            $events = [];
+
+            foreach ($chunks as $chunk) {
+                $validWords = array_values(array_filter($chunk, static function (array $word): bool {
+                    return trim((string) ($word['text'] ?? '')) !== ''
+                        && (float) ($word['start'] ?? -1) >= 0
+                        && (float) ($word['end'] ?? -1) > (float) ($word['start'] ?? -1);
+                }));
+
+                if (empty($validWords)) {
+                    continue;
+                }
+
+                $start = max(0.0, min($duration, (float) $validWords[0]['start']));
+                $end = max($start + 0.03, min($duration, (float) $validWords[array_key_last($validWords)]['end']));
+                $line = implode(' ', array_map(static fn (array $word): string => (string) $word['text'], $validWords));
+                $events[] = [$this->formatASSTime($start), $this->formatASSTime($end), $this->buildASSStyledText($line, $captionStyle)];
+            }
+
+            if (! empty($events)) {
+                return $events;
+            }
+        }
+
+        $lines = array_chunk($words, 4);
+        $totalWords = count($words);
+        $events = [];
+        $elapsed = 0.0;
+
+        foreach ($lines as $lineWords) {
+            $lineDuration = ($duration * count($lineWords)) / $totalWords;
+            $start = $this->formatASSTime($elapsed);
+            $end = $this->formatASSTime($elapsed + $lineDuration);
+            $styledText = $this->buildASSStyledText(implode(' ', $lineWords), $captionStyle);
+            $events[] = [$start, $end, $styledText];
+            $elapsed += $lineDuration;
+        }
+
+        return $events;
+    }
+
+    /**
+     * @return array<int, array{text:string,start:float,end:float}>|null
+     */
+    private function captionTimingWordsFromAsset(?Asset $asset): ?array
+    {
+        if (! $asset) {
+            return null;
+        }
+
+        $words = data_get($asset->metadata_json, 'caption_timing.words');
+
+        if (! is_array($words) || empty($words)) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($words as $word) {
+            if (! is_array($word)) {
+                continue;
+            }
+
+            $text = trim((string) ($word['text'] ?? $word['word'] ?? ''));
+            $start = (float) ($word['start'] ?? -1);
+            $end = (float) ($word['end'] ?? -1);
+
+            if ($text === '' || $start < 0 || $end <= $start) {
+                continue;
+            }
+
+            $normalized[] = compact('text', 'start', 'end');
+        }
+
+        return $normalized ?: null;
+    }
+
 
     private function sanitizeASSFontName(string $fontName): string
     {

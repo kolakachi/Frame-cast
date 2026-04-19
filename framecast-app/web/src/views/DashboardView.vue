@@ -111,7 +111,7 @@ const sourceOptions = [
   { key: 'prompt',              icon: '✍️', label: 'Write a Prompt',      hint: 'AI generates the script' },
   { key: 'script',              icon: '📄', label: 'Paste a Script',       hint: 'Your script, broken into scenes' },
   { key: 'url',                 icon: '🔗', label: 'From URL / Article',   hint: 'Paste any article link' },
-  { key: 'images',              icon: '🖼️', label: 'Upload Images',        hint: 'Your photos become scenes' },
+  { key: 'images',              icon: '🖼️', label: 'Upload Images',        hint: 'AI generates matching visuals' },
   { key: 'product_description', icon: '📦', label: 'Product Description',  hint: 'Name, features, audience' },
   { key: 'audio_upload',        icon: '🎙️', label: 'Upload Audio',         hint: 'Transcribe and structure' },
   { key: 'video_upload',        icon: '🎬', label: 'Upload Video',         hint: 'Extract and repurpose' },
@@ -178,18 +178,28 @@ function withCustomNicheContext(source) {
   return [customBlock, source].filter((part) => trimString(part) !== '').join('\n\n')
 }
 
+function setWizardSourceType(sourceType) {
+  wizardSourceType.value = sourceType
+
+  if (sourceType !== 'images') {
+    sourceImageAssetIds.value = []
+    imageFiles.value = []
+    revokeImagePreviewItems()
+  }
+}
+
 function trimString(value) {
   return String(value ?? '').trim()
 }
 
-function buildSourceContentRaw() {
-  if (wizardSourceType.value === 'script') return withCustomNicheContext(scriptText.value.trim())
-  if (wizardSourceType.value === 'url') return withCustomNicheContext(urlText.value.trim())
-  if (wizardSourceType.value === 'prompt') return withCustomNicheContext(promptText.value.trim())
-  if (wizardSourceType.value === 'csv_topic') return withCustomNicheContext(csvText.value.trim())
-  if (wizardSourceType.value === 'audio_upload') return withCustomNicheContext(audioPath.value.trim())
-  if (wizardSourceType.value === 'video_upload') return withCustomNicheContext(videoPath.value.trim())
-  if (wizardSourceType.value === 'images') return withCustomNicheContext(imageContext.value.trim())
+function buildSourceContentRaw(sourceType = wizardSourceType.value) {
+  if (sourceType === 'script') return withCustomNicheContext(scriptText.value.trim())
+  if (sourceType === 'url') return withCustomNicheContext(urlText.value.trim())
+  if (sourceType === 'prompt') return withCustomNicheContext(promptText.value.trim())
+  if (sourceType === 'csv_topic') return withCustomNicheContext(csvText.value.trim())
+  if (sourceType === 'audio_upload') return withCustomNicheContext(audioPath.value.trim())
+  if (sourceType === 'video_upload') return withCustomNicheContext(videoPath.value.trim())
+  if (sourceType === 'images') return withCustomNicheContext(imageContext.value.trim())
 
   return withCustomNicheContext([
     `Product Name: ${productName.value.trim()}`,
@@ -274,20 +284,20 @@ async function uploadImageSources() {
   ].filter(Boolean).join('\n\n')
 }
 
-async function resolveSourceContentRaw() {
-  if (wizardSourceType.value === 'audio_upload' && audioFile.value) {
+async function resolveSourceContentRaw(sourceType = wizardSourceType.value) {
+  if (sourceType === 'audio_upload' && audioFile.value) {
     return uploadMediaSource(audioFile.value, 'audio')
   }
 
-  if (wizardSourceType.value === 'video_upload' && videoFile.value) {
+  if (sourceType === 'video_upload' && videoFile.value) {
     return uploadMediaSource(videoFile.value, 'video')
   }
 
-  if (wizardSourceType.value === 'images' && imageFiles.value.length > 0) {
+  if (sourceType === 'images' && imageFiles.value.length > 0) {
     return uploadImageSources()
   }
 
-  return buildSourceContentRaw()
+  return buildSourceContentRaw(sourceType)
 }
 
 watch(channelId, (nextChannelId, previousChannelId) => {
@@ -602,10 +612,11 @@ async function submitWizardProject() {
   wizardCreateState.value = 'loading'
   wizardCreateError.value = ''
 
-  const sourceContentRaw = buildSourceContentRaw()
-  const hasMediaFile = (wizardSourceType.value === 'audio_upload' && audioFile.value)
-    || (wizardSourceType.value === 'video_upload' && videoFile.value)
-    || (wizardSourceType.value === 'images' && imageFiles.value.length > 0)
+  const selectedSourceType = wizardSourceType.value
+  const sourceContentRaw = buildSourceContentRaw(selectedSourceType)
+  const hasMediaFile = (selectedSourceType === 'audio_upload' && audioFile.value)
+    || (selectedSourceType === 'video_upload' && videoFile.value)
+    || (selectedSourceType === 'images' && imageFiles.value.length > 0)
 
   if (!sourceContentRaw && !hasMediaFile) {
     wizardCreateState.value = 'error'
@@ -614,10 +625,10 @@ async function submitWizardProject() {
   }
 
   try {
-    const resolvedSource = await resolveSourceContentRaw()
+    const resolvedSource = await resolveSourceContentRaw(selectedSourceType)
 
     const response = await api.post('/projects', {
-      source_type: wizardSourceType.value,
+      source_type: selectedSourceType,
 	      source_content_raw: resolvedSource,
 	      languages: languageSelections.value,
 	      platform_target: platformTarget.value,
@@ -629,8 +640,8 @@ async function submitWizardProject() {
 	      ...(customNicheVoiceTone.value ? { tone: customNicheVoiceTone.value } : {}),
 	      ...(title.value ? { title: title.value } : {}),
 	      ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
-	      ...(wizardSourceType.value === 'images' && imageVisualMode.value === 'upload' ? { source_image_asset_ids: sourceImageAssetIds.value } : {}),
-	      ...(wizardSourceType.value === 'images' && imageVisualMode.value === 'ai' ? { visual_generation_mode: 'ai_images', ai_broll_style: aiBrollStyle.value } : {}),
+	      ...(selectedSourceType === 'images' && imageVisualMode.value === 'upload' ? { source_image_asset_ids: sourceImageAssetIds.value } : {}),
+	      ...(selectedSourceType === 'images' && imageVisualMode.value === 'ai' ? { visual_generation_mode: 'ai_images', ai_broll_style: aiBrollStyle.value } : {}),
 	    })
 
     const projectId = response.data?.data?.project?.id
@@ -1107,8 +1118,8 @@ onBeforeUnmount(() => {
               :class="['source-type-opt', wizardSourceType === opt.key ? 'selected' : '']"
               role="button"
               tabindex="0"
-              @click="wizardSourceType = opt.key"
-              @keydown.enter="wizardSourceType = opt.key"
+              @click="setWizardSourceType(opt.key)"
+              @keydown.enter="setWizardSourceType(opt.key)"
             >
               <span class="source-type-ico">{{ opt.icon }}</span>
               <div class="source-type-name">{{ opt.label }}</div>
@@ -1196,7 +1207,7 @@ onBeforeUnmount(() => {
 	          <div v-else-if="wizardSourceType === 'images'" class="input-group">
 	            <div class="image-mode-toggle">
 	              <button :class="['image-mode-btn', imageVisualMode === 'upload' ? 'active' : '']" type="button" @click="imageVisualMode = 'upload'">
-	                Upload images
+	                Upload reference images
 	              </button>
 	              <button :class="['image-mode-btn', imageVisualMode === 'ai' ? 'active' : '']" type="button" @click="imageVisualMode = 'ai'">
 	                Generate AI B-roll
@@ -1206,7 +1217,7 @@ onBeforeUnmount(() => {
 	            <template v-if="imageVisualMode === 'upload'">
 	              <div class="image-ai-hint">
 	                <span>✦</span>
-	                <span><strong>Vision AI</strong> analyses each image and generates matching narration. Each image becomes one scene. Upload 3-15 images for best results.</span>
+	                <span><strong>Reference images</strong> — AI analyses your photos to match the look, character, and aesthetic when generating visuals for each scene. Upload 1–15 images.</span>
 	              </div>
 	              <div v-if="imagePreviewItems.length > 0" class="image-preview-grid">
 	                <div v-for="item in imagePreviewItems" :key="item.key" class="image-preview-thumb">
@@ -1249,8 +1260,8 @@ onBeforeUnmount(() => {
 	            </template>
 
 	            <label class="input-label-wrap">
-	              <span class="input-label">{{ imageVisualMode === 'ai' ? 'What should the video be about?' : 'Optional context for AI narration' }}</span>
-	              <textarea v-model="imageContext" class="field-input textarea" rows="3" :placeholder="imageVisualMode === 'ai' ? 'e.g. 7 strange facts about abandoned castles in Europe, eerie but factual, with a strong opening hook.' : 'e.g. These are photos from an abandoned asylum in Kentucky. Describe the history and atmosphere…'"></textarea>
+	              <span class="input-label">{{ imageVisualMode === 'ai' ? 'What should the video be about?' : 'What is the video about?' }}</span>
+	              <textarea v-model="imageContext" class="field-input textarea" rows="3" :placeholder="imageVisualMode === 'ai' ? 'e.g. 7 strange facts about abandoned castles in Europe, eerie but factual, with a strong opening hook.' : 'e.g. A productivity guide for remote workers — calm, professional tone, tips on deep focus and morning routines.'"></textarea>
 	            </label>
 	          </div>
           <div v-else-if="wizardSourceType === 'csv_topic'" class="input-group">

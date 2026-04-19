@@ -135,7 +135,13 @@ class GenerateProjectAIImagesJob implements ShouldQueue
         $tone = $project->tone ?: 'neutral';
         $context = mb_substr(trim((string) $project->source_content_raw), 0, 500);
 
-        return trim("{$label} for a faceless {$tone} video. B-roll style: {$style}. Scene narration: {$sceneText}. Context: {$context}. Make it vertical-video friendly, visually specific, no text overlays.");
+        // Prepend the reference style extracted from uploaded reference images so
+        // every scene is anchored to the same character/look/aesthetic.
+        $brief = is_array($project->visual_brief) ? $project->visual_brief : [];
+        $referenceStyle = trim((string) ($brief['reference_style'] ?? ''));
+        $stylePrefix = $referenceStyle !== '' ? "{$referenceStyle} " : '';
+
+        return trim("{$stylePrefix}{$label} for a faceless {$tone} video. B-roll style: {$style}. Scene narration: {$sceneText}. Context: {$context}. Make it vertical-video friendly, visually specific, no text overlays.");
     }
 
     private function storeImage(string $url, Project $project): string

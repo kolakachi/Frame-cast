@@ -49,6 +49,7 @@ class Project extends Model
             'music_asset_id' => 'integer',
             'music_settings_json' => 'array',
             'generation_status_json' => 'array',
+            'visual_brief' => 'array',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
