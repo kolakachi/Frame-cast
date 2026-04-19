@@ -1983,8 +1983,20 @@ async function regenerateVoice() {
       throw new Error("Voice regeneration returned no scene payload.");
     }
 
+    updatedScene.voice_settings = {
+      ...(updatedScene.voice_settings || {}),
+      is_outdated: false,
+    };
+    updatedScene.voice_settings_json = updatedScene.voice_settings;
+
     replaceSceneInCollection(updatedScene);
     activeSceneId.value = updatedScene.id;
+    sceneScriptDraft.value = updatedScene.script_text || "";
+    voiceProfileKey.value = updatedScene.voice_settings?.voice_id || "alloy";
+    voiceSpeedDraft.value = String(updatedScene.voice_settings?.speed ?? 1.0);
+    voiceStabilityDraft.value = String(updatedScene.voice_settings?.stability ?? "medium");
+    voiceSaveState.value = "saved";
+    scriptSaveState.value = "idle";
     preloadSceneAudio(updatedScene);
   } catch (requestError) {
     voiceRegenerateError.value =

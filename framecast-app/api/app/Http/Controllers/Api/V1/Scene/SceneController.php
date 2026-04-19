@@ -12,10 +12,12 @@ use App\Models\User;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use App\Services\Generation\TTS\TTSAdapter;
 use App\Services\Generation\Visual\VisualProviderAdapter;
+use App\Services\Media\MediaTranscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
+use Throwable;
 
 class SceneController extends Controller
 {
@@ -422,7 +424,12 @@ class SceneController extends Controller
         ]);
     }
 
-    public function regenerateVoice(Request $request, int $sceneId, TTSAdapter $tts): JsonResponse
+    public function regenerateVoice(
+        Request $request,
+        int $sceneId,
+        TTSAdapter $tts,
+        MediaTranscriptionService $transcription
+    ): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
@@ -448,7 +455,9 @@ class SceneController extends Controller
             return $this->error('invalid_scene_state', 'Scene script is required before regenerating voice.', 422);
         }
 
-        DB::transaction(function () use ($scene, $project, $user, $tts, $voiceId, $speed, $language, $sceneText): void {
+        $asset = null;
+
+        DB::transaction(function () use ($scene, $project, $user, $tts, $voiceId, $speed, $language, $sceneText, &$asset): void {
             $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
                 'usage_context' => [
                     'workspace_id' => $project->workspace_id,
@@ -468,7 +477,11 @@ class SceneController extends Controller
                 'storage_url' => $audio['audio_url'],
                 'duration_seconds' => $audio['duration_seconds'],
                 'mime_type' => 'audio/mpeg',
+                'transcription_status' => 'queued',
                 'tags' => ['tts', $audio['provider_key']],
+                'metadata_json' => [
+                    'caption_timing_status' => 'queued',
+                ],
                 'usage_count' => 1,
                 'status' => 'active',
                 'created_by_user_id' => $project->created_by_user_id,
@@ -488,6 +501,17 @@ class SceneController extends Controller
                 'status' => 'edited',
             ])->save();
         });
+
+        if ($asset) {
+            $this->attachCaptionTiming($asset, $transcription);
+        }
+
+        $scene->refresh();
+        $voiceSettings = is_array($scene->voice_settings_json) ? $scene->voice_settings_json : [];
+        $voiceSettings['is_outdated'] = false;
+        $scene->forceFill([
+            'voice_settings_json' => $voiceSettings,
+        ])->save();
 
         return response()->json([
             'data' => [
@@ -584,6 +608,50 @@ class SceneController extends Controller
             ],
             'meta' => [],
         ]);
+    }
+
+    private function attachCaptionTiming(Asset $asset, MediaTranscriptionService $transcription): void
+    {
+        $asset->forceFill([
+            'transcription_status' => 'processing',
+            'metadata_json' => array_merge($asset->metadata_json ?? [], [
+                'caption_timing_status' => 'processing',
+            ]),
+        ])->save();
+
+        try {
+            $result = $transcription->transcribeAssetWithTimestamps($asset);
+            $words = $result['words'] ?? [];
+            $segments = $result['segments'] ?? [];
+
+            $asset->forceFill([
+                'transcript_text' => $result['transcript'],
+                'transcription_status' => 'completed',
+                'transcription_error' => null,
+                'metadata_json' => array_merge($asset->metadata_json ?? [], [
+                    'transcription_provider' => $result['provider_key'],
+                    'transcription_model' => $result['model'],
+                    'transcribed_at' => now()->toIso8601String(),
+                    'caption_timing_status' => count($words) > 0 ? 'completed' : 'unavailable',
+                    'caption_timing' => [
+                        'source' => $result['provider_key'],
+                        'model' => $result['model'],
+                        'words' => $words,
+                        'segments' => $segments,
+                        'generated_at' => now()->toIso8601String(),
+                    ],
+                ]),
+            ])->save();
+        } catch (Throwable $exception) {
+            $asset->forceFill([
+                'transcription_status' => 'failed',
+                'transcription_error' => $exception->getMessage(),
+                'metadata_json' => array_merge($asset->metadata_json ?? [], [
+                    'caption_timing_status' => 'failed',
+                    'caption_timing_error' => $exception->getMessage(),
+                ]),
+            ])->save();
+        }
     }
 
     public function generateImage(Request $request, int $sceneId): JsonResponse
