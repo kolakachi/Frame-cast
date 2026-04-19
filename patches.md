@@ -1,0 +1,2 @@
+- Correct error messages for forms filled incorrectly, we are having vague report instead of specific error messages
+- The one real issue flagged is the ProcessExportJob timeout on the exports queue (timing out uploading to B2/S3). That's a separate problem worth fixing but unrelated to generation.

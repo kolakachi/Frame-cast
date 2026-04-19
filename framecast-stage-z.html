@@ -1,0 +1,1523 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Framecast — Stage Z Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep:       #0a0a0f;
+  --bg-panel:      #111118;
+  --bg-card:       #17171f;
+  --bg-elevated:   #1d1d28;
+  --bg-soft:       #15151d;
+  --border:        #2a2a36;
+  --border-active: #494960;
+  --text-primary:  #ececf3;
+  --text-secondary:#a1a1b5;
+  --text-muted:    #6a6a7c;
+  --accent:        #ff6b35;
+  --accent-hover:  #ff875a;
+  --accent-glow:   rgba(255,107,53,.14);
+  --green:         #34d399;
+  --green-bg:      rgba(52,211,153,.12);
+  --blue:          #60a5fa;
+  --blue-bg:       rgba(96,165,250,.12);
+  --yellow:        #fbbf24;
+  --yellow-bg:     rgba(251,191,36,.12);
+  --purple:        #a78bfa;
+  --purple-bg:     rgba(167,139,250,.12);
+  --red:           #f87171;
+  --red-bg:        rgba(248,113,113,.12);
+  --radius-sm:     6px;
+  --radius:        12px;
+  --radius-lg:     16px;
+  --shadow:        0 18px 40px rgba(0,0,0,.35);
+}
+*{ box-sizing:border-box; margin:0; padding:0; }
+body {
+  min-height:100vh;
+  background:
+    radial-gradient(circle at top right, rgba(255,107,53,.09), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(96,165,250,.08), transparent 24%),
+    var(--bg-deep);
+  color:var(--text-primary);
+  font-family:"DM Sans",sans-serif;
+  overflow-x:hidden;
+}
+button,input,select,textarea{ font:inherit; }
+button{ background:none; border:none; cursor:pointer; }
+
+/* Sidebar */
+.sidebar {
+  position:fixed; inset:0 auto 0 0; width:72px;
+  background:rgba(17,17,24,.96); border-right:1px solid var(--border);
+  backdrop-filter:blur(12px);
+  display:flex; flex-direction:column; align-items:center; padding:16px 0; z-index:100;
+}
+.sidebar-logo {
+  width:40px; height:40px; border-radius:10px;
+  background:linear-gradient(135deg,var(--accent),#ff9b72);
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; font-family:"Space Mono",monospace; font-weight:700; font-size:13px; margin-bottom:28px;
+}
+.sidebar-nav{ display:flex; flex-direction:column; gap:8px; flex:1; }
+.nav-item {
+  width:44px; height:44px; border-radius:10px; color:var(--text-muted);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; position:relative; transition:0.2s ease;
+}
+.nav-item:hover{ color:var(--text-secondary); background:var(--bg-card); }
+.nav-item.active{ color:var(--accent); background:var(--accent-glow); box-shadow:inset 0 0 0 1px rgba(255,107,53,.18); }
+.tooltip {
+  position:absolute; left:58px; top:50%; transform:translateY(-50%);
+  opacity:0; pointer-events:none;
+  background:var(--bg-elevated); color:var(--text-primary); font-size:12px;
+  padding:5px 10px; border-radius:var(--radius-sm); border:1px solid var(--border);
+  white-space:nowrap; transition:opacity .15s ease; z-index:200;
+}
+.nav-item:hover .tooltip{ opacity:1; }
+.sidebar-bottom{ display:flex; flex-direction:column; gap:8px; }
+.avatar {
+  width:34px; height:34px; border-radius:50%;
+  background:linear-gradient(135deg,#2a3a70,#7d3cff);
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700;
+}
+
+/* Main */
+.main{ margin-left:72px; min-height:100vh; }
+.topbar {
+  position:sticky; top:0; z-index:90; height:64px;
+  background:rgba(17,17,24,.88); border-bottom:1px solid var(--border);
+  backdrop-filter:blur(14px); padding:0 24px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.topbar-title{ font-size:16px; font-weight:600; }
+.topbar-right{ display:flex; align-items:center; gap:10px; }
+
+/* Mockup nav */
+.mockup-nav {
+  display:flex; align-items:center; background:var(--bg-card);
+  border-bottom:1px solid var(--border); padding:0 24px; overflow-x:auto; gap:0;
+}
+.mockup-tab {
+  display:flex; align-items:center; gap:6px;
+  padding:14px 16px; font-size:13px; font-weight:500; color:var(--text-muted);
+  cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; transition:.15s;
+}
+.mockup-tab:hover{ color:var(--text-secondary); }
+.mockup-tab.active{ color:var(--accent); border-bottom-color:var(--accent); }
+
+/* Buttons */
+.btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  padding:8px 16px; border-radius:var(--radius-sm);
+  cursor:pointer; transition:0.2s ease; font-size:13px; font-weight:500;
+}
+.btn-primary{ background:var(--accent); color:#fff; }
+.btn-primary:hover{ background:var(--accent-hover); box-shadow:0 0 24px var(--accent-glow); }
+.btn-ghost{ color:var(--text-secondary); border:1px solid var(--border); }
+.btn-ghost:hover{ color:var(--text-primary); border-color:var(--border-active); }
+.btn-sm{ padding:5px 12px; font-size:12px; }
+.btn-blue{ background:var(--blue-bg); color:var(--blue); border:1px solid rgba(96,165,250,.2); }
+.btn-blue:hover{ background:rgba(96,165,250,.2); }
+.btn-green{ background:var(--green-bg); color:var(--green); border:1px solid rgba(52,211,153,.2); }
+.btn-purple{ background:var(--purple-bg); color:var(--purple); border:1px solid rgba(167,139,250,.2); }
+
+/* Screens */
+.screen{ display:none; padding:28px; animation:fadeIn .2s ease; }
+.screen.active{ display:block; }
+@keyframes fadeIn{ from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+
+/* Modal */
+.modal-overlay {
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.7); backdrop-filter:blur(6px);
+  opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:300;
+}
+.modal-overlay.show{ opacity:1; pointer-events:all; }
+.modal {
+  width:min(720px,calc(100vw - 32px)); max-height:90vh; overflow-y:auto;
+  padding:32px; border-radius:var(--radius-lg);
+  background:var(--bg-panel); border:1px solid var(--border);
+  box-shadow:0 40px 100px rgba(0,0,0,.6);
+}
+.modal-wide{ width:min(900px,calc(100vw - 32px)); }
+.modal-title{ font-size:22px; font-weight:700; }
+.modal-sub{ margin-top:5px; font-size:13px; color:var(--text-muted); margin-bottom:24px; }
+.modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:24px; padding-top:18px; border-top:1px solid var(--border); }
+
+/* Input */
+.input-label{ display:block; margin-bottom:6px; font-size:12px; font-weight:500; color:var(--text-secondary); }
+.input-field, .textarea-field {
+  width:100%; padding:10px 12px; border-radius:8px; font-size:13px;
+  border:1px solid var(--border); background:var(--bg-elevated); color:var(--text-primary);
+}
+.input-field:focus, .textarea-field:focus{ outline:none; border-color:rgba(255,107,53,.5); box-shadow:0 0 0 3px rgba(255,107,53,.08); }
+.textarea-field{ resize:vertical; min-height:80px; line-height:1.6; }
+.input-group{ margin-bottom:18px; }
+
+/* Cards */
+.card {
+  background:linear-gradient(180deg,rgba(255,255,255,.015),transparent),var(--bg-card);
+  border:1px solid var(--border); border-radius:var(--radius);
+}
+.card:hover{ border-color:var(--border-active); }
+
+/* Badge */
+.badge {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:2px 8px; border-radius:100px; font-size:11px; font-weight:600;
+}
+.badge-green{ background:var(--green-bg); color:var(--green); }
+.badge-blue{ background:var(--blue-bg); color:var(--blue); }
+.badge-yellow{ background:var(--yellow-bg); color:var(--yellow); }
+.badge-purple{ background:var(--purple-bg); color:var(--purple); }
+.badge-accent{ background:var(--accent-glow); color:var(--accent); }
+
+/* ── Screen 1: Mode Picker ──────────────────────────────────────── */
+.mode-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:24px;
+}
+.mode-card{
+  background:var(--bg-elevated); border:1.5px solid var(--border);
+  border-radius:var(--radius); padding:22px 20px;
+  cursor:pointer; transition:.2s ease; position:relative; overflow:hidden;
+}
+.mode-card:hover{ border-color:var(--border-active); background:var(--bg-card); }
+.mode-card.selected{ border-color:var(--accent); background:var(--accent-glow); }
+.mode-card::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,var(--accent),transparent);
+  opacity:0; transition:.2s;
+}
+.mode-card.selected::before{ opacity:1; }
+.mode-icon{ font-size:28px; margin-bottom:12px; display:block; }
+.mode-title{ font-size:15px; font-weight:600; margin-bottom:5px; }
+.mode-desc{ font-size:12px; color:var(--text-muted); line-height:1.5; }
+.mode-who{
+  margin-top:10px; font-size:11px; color:var(--text-muted);
+  padding-top:10px; border-top:1px solid var(--border);
+}
+.mode-who span{ color:var(--text-secondary); font-weight:500; }
+
+/* ── Screen 2: Niche Intelligence ───────────────────────────────── */
+.niche-grid{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px;
+}
+.niche-card{
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:20px; cursor:pointer; transition:.2s;
+}
+.niche-card:hover{ border-color:var(--border-active); transform:translateY(-2px); }
+.niche-card.selected{ border-color:var(--accent); background:var(--accent-glow); }
+.niche-emoji{ font-size:30px; margin-bottom:10px; display:block; }
+.niche-name{ font-size:14px; font-weight:600; margin-bottom:4px; }
+.niche-format{ font-size:11px; color:var(--text-muted); margin-bottom:10px; }
+.niche-tags{ display:flex; flex-wrap:wrap; gap:5px; }
+.niche-tag{
+  font-size:10px; padding:2px 7px; border-radius:100px;
+  background:var(--bg-elevated); border:1px solid var(--border); color:var(--text-muted);
+}
+.niche-brief-box{
+  margin-top:24px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:22px; display:none;
+}
+.niche-brief-box.show{ display:block; animation:fadeIn .2s ease; }
+.brief-row{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:18px; }
+.brief-col-title{ font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }
+.brief-col-val{ font-size:13px; color:var(--text-secondary); line-height:1.6; }
+.hook-pills{ display:flex; flex-direction:column; gap:6px; }
+.hook-pill{
+  background:var(--bg-elevated); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:8px 12px;
+  font-size:12px; color:var(--text-secondary); line-height:1.5;
+  cursor:pointer; transition:.15s;
+}
+.hook-pill:hover{ border-color:var(--accent); color:var(--text-primary); }
+.hook-pill .hook-style{ font-size:10px; color:var(--text-muted); display:block; margin-bottom:3px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+
+/* ── Screen 3: Competitor Research ──────────────────────────────── */
+.research-layout{ display:grid; grid-template-columns:340px 1fr; gap:20px; align-items:start; }
+.research-input-card{ background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:22px; }
+.analysis-card{ background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:22px; }
+.channel-header{ display:flex; align-items:center; gap:14px; margin-bottom:20px; padding-bottom:18px; border-bottom:1px solid var(--border); }
+.channel-avatar{ width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg,#1a1a3a,#3d1f7a); display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
+.channel-name{ font-size:16px; font-weight:700; }
+.channel-meta{ font-size:12px; color:var(--text-muted); margin-top:3px; }
+.channel-stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:20px; }
+.ch-stat{ background:var(--bg-elevated); border-radius:var(--radius-sm); padding:12px; text-align:center; }
+.ch-stat-val{ font-size:18px; font-weight:700; color:var(--text-primary); }
+.ch-stat-label{ font-size:10px; color:var(--text-muted); margin-top:2px; }
+.analysis-section{ margin-bottom:20px; }
+.analysis-label{ font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px; }
+.pattern-list{ display:flex; flex-direction:column; gap:6px; }
+.pattern-item{
+  background:var(--bg-elevated); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:9px 12px;
+  font-size:12px; color:var(--text-secondary);
+}
+.pattern-item .pi-label{ font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:600; letter-spacing:.05em; margin-right:6px; }
+.topic-bars{ display:flex; flex-direction:column; gap:6px; }
+.topic-bar-row{ display:flex; align-items:center; gap:10px; }
+.topic-bar-label{ font-size:12px; color:var(--text-secondary); width:120px; flex-shrink:0; }
+.topic-bar-track{ flex:1; height:6px; background:var(--bg-elevated); border-radius:3px; overflow:hidden; }
+.topic-bar-fill{ height:100%; border-radius:3px; background:linear-gradient(90deg,var(--accent),#ff9b72); }
+.topic-bar-pct{ font-size:11px; color:var(--text-muted); width:32px; text-align:right; flex-shrink:0; }
+.audience-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.aud-chip{
+  background:var(--bg-elevated); border:1px solid var(--border);
+  border-radius:100px; padding:4px 10px; font-size:11px; color:var(--text-secondary);
+}
+.generate-btn-row{ margin-top:20px; padding-top:18px; border-top:1px solid var(--border); display:flex; gap:10px; }
+
+/* ── Screen 4: Hook Lab ─────────────────────────────────────────── */
+.hooklab-layout{ display:grid; grid-template-columns:1fr 380px; gap:20px; align-items:start; }
+.hooklab-context{ background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:22px; }
+.hooklab-picks{ background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:22px; }
+.hook-options{ display:flex; flex-direction:column; gap:8px; }
+.hook-opt{
+  background:var(--bg-elevated); border:1.5px solid var(--border);
+  border-radius:var(--radius-sm); padding:13px 14px;
+  cursor:pointer; transition:.15s;
+}
+.hook-opt:hover{ border-color:var(--border-active); background:var(--bg-card); }
+.hook-opt.selected{ border-color:var(--accent); background:var(--accent-glow); }
+.hook-opt-style{
+  font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
+  color:var(--text-muted); margin-bottom:5px; display:flex; align-items:center; gap:5px;
+}
+.hook-opt-text{ font-size:13px; color:var(--text-primary); line-height:1.5; }
+.hook-opt.selected .hook-opt-text{ color:var(--accent); }
+.hook-perf{
+  margin-top:6px; font-size:11px; color:var(--text-muted);
+  display:flex; align-items:center; gap:4px;
+}
+.hook-perf .perf-dot{ width:6px; height:6px; border-radius:50%; background:var(--green); }
+.selected-hook-preview{
+  background:var(--bg-elevated); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:14px; margin-top:16px;
+  font-size:13px; color:var(--text-secondary); line-height:1.6;
+  font-style:italic;
+}
+.custom-hook-row{ margin-top:14px; }
+
+/* ── Screen 5: Series ───────────────────────────────────────────── */
+.series-layout{ display:grid; grid-template-columns:280px 1fr; gap:20px; align-items:start; }
+.series-list{ display:flex; flex-direction:column; gap:8px; }
+.series-item{
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:14px 16px;
+  cursor:pointer; transition:.15s; display:flex; align-items:center; gap:12px;
+}
+.series-item:hover{ border-color:var(--border-active); }
+.series-item.active{ border-color:var(--accent); background:var(--accent-glow); }
+.series-cover{
+  width:44px; height:44px; border-radius:8px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:22px;
+}
+.series-meta{ flex:1; min-width:0; }
+.series-meta-name{ font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.series-meta-count{ font-size:11px; color:var(--text-muted); margin-top:2px; }
+.series-detail{ background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); }
+.series-detail-header{ padding:22px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:16px; }
+.series-detail-cover{ width:60px; height:60px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:32px; }
+.series-detail-name{ font-size:20px; font-weight:700; }
+.series-detail-sub{ font-size:12px; color:var(--text-muted); margin-top:3px; }
+.series-defaults{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.series-default-chip{
+  display:flex; align-items:center; gap:5px;
+  background:var(--bg-elevated); border:1px solid var(--border);
+  border-radius:100px; padding:3px 10px; font-size:11px; color:var(--text-secondary);
+}
+.episode-table{ width:100%; }
+.ep-row{ display:grid; grid-template-columns:40px 1fr 100px 110px 90px; gap:12px; align-items:center; padding:12px 22px; border-bottom:1px solid var(--border); }
+.ep-row:last-child{ border-bottom:none; }
+.ep-row.header{ padding-top:14px; padding-bottom:10px; }
+.ep-num{ font-size:12px; font-weight:600; color:var(--text-muted); font-family:"Space Mono",monospace; }
+.ep-title{ font-size:13px; font-weight:500; }
+.ep-hook{ font-size:11px; color:var(--text-muted); margin-top:2px; }
+.ep-status-dot{ width:6px; height:6px; border-radius:50%; }
+.ep-status{ display:flex; align-items:center; gap:6px; font-size:11px; }
+
+/* ── Screen 6: Thumbnail Studio ─────────────────────────────────── */
+.thumb-layout{ display:grid; grid-template-columns:1fr 360px; gap:24px; align-items:start; }
+.thumb-canvas-area{
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:24px; text-align:center;
+}
+.thumb-preview{
+  position:relative; display:inline-block;
+  border-radius:10px; overflow:hidden; box-shadow:var(--shadow);
+  background:#000;
+}
+.thumb-img{
+  width:270px; height:480px;
+  background:linear-gradient(180deg,#0a0a1a,#1a0a2e);
+  display:flex; align-items:flex-end;
+}
+.thumb-img-bg{
+  position:absolute; inset:0;
+  background:linear-gradient(180deg,
+    rgba(10,10,30,.3) 0%,
+    rgba(10,10,30,.1) 40%,
+    rgba(10,10,30,.7) 70%,
+    rgba(10,10,30,.95) 100%
+  );
+}
+.thumb-scene-img{
+  width:100%; height:100%; object-fit:cover;
+  background:linear-gradient(135deg,#0d0515,#1a0830,#0a1520);
+}
+.thumb-text-overlay{
+  position:absolute; bottom:0; left:0; right:0;
+  padding:20px 16px 24px;
+}
+.thumb-text-main{
+  font-size:22px; font-weight:700; color:#fff; line-height:1.2;
+  text-shadow:0 2px 8px rgba(0,0,0,.9);
+  margin-bottom:6px;
+}
+.thumb-text-sub{
+  font-size:13px; color:rgba(255,255,255,.7);
+  text-shadow:0 1px 4px rgba(0,0,0,.9);
+}
+.thumb-platform-tabs{ display:flex; gap:8px; margin-top:16px; justify-content:center; }
+.platform-tab{
+  padding:5px 12px; border-radius:100px; font-size:11px; font-weight:600;
+  border:1px solid var(--border); color:var(--text-muted); cursor:pointer; transition:.15s;
+}
+.platform-tab.active{ background:var(--accent-glow); color:var(--accent); border-color:rgba(255,107,53,.35); }
+.thumb-controls{ background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:22px; }
+.scene-thumbs{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:16px; }
+.scene-thumb{
+  border-radius:6px; overflow:hidden; cursor:pointer; border:2px solid transparent; transition:.15s; aspect-ratio:9/16;
+  background:linear-gradient(135deg,#0d0a20,#1a1030);
+  display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:11px;
+}
+.scene-thumb.active{ border-color:var(--accent); }
+.thumb-variants{ display:flex; flex-direction:column; gap:8px; margin-top:16px; }
+.thumb-variant{
+  display:flex; align-items:center; gap:12px;
+  background:var(--bg-elevated); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:8px 12px; cursor:pointer; transition:.15s;
+}
+.thumb-variant:hover{ border-color:var(--border-active); }
+.thumb-variant.active{ border-color:var(--accent); }
+.tv-mini{ width:36px; height:36px; border-radius:6px; flex-shrink:0; background:linear-gradient(135deg,#0d0515,#1a0830); display:flex; align-items:center; justify-content:center; font-size:8px; color:var(--text-muted); }
+.tv-label{ font-size:12px; color:var(--text-secondary); flex:1; }
+.tv-badge{ font-size:10px; }
+
+/* ── Audience profile panel ──────────────────────────────────────── */
+.audience-panel{
+  background:var(--bg-elevated); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:16px; margin-top:16px;
+}
+.audience-panel-title{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin-bottom:10px; }
+.aud-row{ display:flex; align-items:flex-start; gap:8px; margin-bottom:8px; font-size:12px; color:var(--text-secondary); }
+.aud-row-label{ color:var(--text-muted); min-width:90px; flex-shrink:0; }
+
+/* ── Stats row ───────────────────────────────────────────────────── */
+.stats-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+.stat-card{
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:18px;
+}
+.stat-val{ font-size:26px; font-weight:700; }
+.stat-label{ font-size:12px; color:var(--text-muted); margin-top:3px; }
+.stat-change{ font-size:11px; color:var(--green); margin-top:4px; }
+
+/* ── Empty state ─────────────────────────────────────────────────── */
+.empty-state{
+  text-align:center; padding:60px 20px;
+  color:var(--text-muted); font-size:14px;
+}
+.empty-icon{ font-size:40px; margin-bottom:12px; display:block; }
+.empty-title{ font-size:16px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; }
+
+/* ── Section layout helpers ──────────────────────────────────────── */
+.section-header{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.section-title{ font-size:17px; font-weight:700; }
+.section-sub{ font-size:13px; color:var(--text-muted); margin-top:3px; }
+.divider{ height:1px; background:var(--border); margin:20px 0; }
+
+/* Tag / chip row */
+.chip-row{ display:flex; flex-wrap:wrap; gap:6px; }
+.chip{
+  padding:4px 10px; border-radius:100px; font-size:11px; font-weight:500;
+  background:var(--bg-elevated); border:1px solid var(--border); color:var(--text-secondary);
+  cursor:pointer; transition:.15s;
+}
+.chip:hover{ border-color:var(--border-active); color:var(--text-primary); }
+.chip.active{ background:var(--accent-glow); border-color:rgba(255,107,53,.35); color:var(--accent); }
+
+/* ── Mode picker details ─────────────────────────────────────────── */
+.mode-form{ display:none; }
+.mode-form.show{ display:block; animation:fadeIn .2s ease; }
+.mode-separator{ display:flex; align-items:center; gap:12px; margin:20px 0; }
+.mode-separator span{ font-size:11px; color:var(--text-muted); }
+.mode-separator::before,.mode-separator::after{ content:''; flex:1; height:1px; background:var(--border); }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-logo">Fc</div>
+  <div class="sidebar-nav">
+    <div class="nav-item active"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="tooltip">Dashboard</span></div>
+    <div class="nav-item"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polygon points="10,8 16,12 10,16"/></svg><span class="tooltip">Projects</span></div>
+    <div class="nav-item"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg><span class="tooltip">Series</span></div>
+    <div class="nav-item"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span class="tooltip">Calendar</span></div>
+    <div class="nav-item"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><span class="tooltip">Research</span></div>
+    <div class="nav-item"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="tooltip">Asset Library</span></div>
+  </div>
+  <div class="sidebar-bottom">
+    <div class="nav-item"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span class="tooltip">Settings</span></div>
+    <div class="avatar">K</div>
+  </div>
+</nav>
+
+<!-- Main -->
+<div class="main">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:18px;">
+      <span class="topbar-title">Stage Z — Creator Loop</span>
+      <span class="badge badge-accent">Mockup</span>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-ghost btn-sm" onclick="openModal('modal-create')">+ New Video</button>
+      <button class="btn btn-primary btn-sm" onclick="openModal('modal-create')">Create</button>
+    </div>
+  </div>
+
+  <!-- Tab nav -->
+  <div class="mockup-nav">
+    <div style="display:flex;align-items:center;padding:0 12px 0 0;border-right:1px solid var(--border);margin-right:8px;font-size:11px;color:var(--text-muted);white-space:nowrap;">Standalone tools — each links to creation</div>
+    <div class="mockup-tab active" onclick="showScreen('s-create',this)">Architecture</div>
+    <div class="mockup-tab" onclick="showScreen('s-niche',this)">🔍 Niche Intelligence</div>
+    <div class="mockup-tab" onclick="showScreen('s-research',this)">📊 Competitor Research</div>
+    <div class="mockup-tab" onclick="showScreen('s-hooklab',this)">🎣 Hook Lab</div>
+    <div class="mockup-tab" onclick="showScreen('s-series',this)">📺 Series</div>
+    <div class="mockup-tab" onclick="showScreen('s-thumb',this)">🖼️ Thumbnail Studio</div>
+  </div>
+
+  <!-- ══════════════ SCREEN 1 — Architecture ══════════════ -->
+  <div id="s-create" class="screen active">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Stage Z — Architecture</div>
+        <div class="section-sub">Standalone tools that feed into the existing creation flow. Video creation is unchanged.</div>
+      </div>
+      <button class="btn btn-primary" onclick="openModal('modal-create')">Open "New Video" modal →</button>
+    </div>
+
+    <!-- Architecture diagram -->
+    <div class="card" style="padding:28px;margin-bottom:24px;">
+      <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:20px;">How tools connect to creation</div>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:0;align-items:center;">
+
+        <!-- Left: standalone tools -->
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:4px;">Standalone tools (sidebar)</div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;" onclick="showScreen('s-niche',document.querySelectorAll('.mockup-tab')[1])" style="cursor:pointer;">
+            <span style="font-size:18px;">🔍</span>
+            <div><div style="font-size:13px;font-weight:600;">Niche Intelligence</div><div style="font-size:11px;color:var(--text-muted);">Browse niches, see what works</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;">
+            <span style="font-size:18px;">📊</span>
+            <div><div style="font-size:13px;font-weight:600;">Competitor Research</div><div style="font-size:11px;color:var(--text-muted);">Analyse channels and videos</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;">
+            <span style="font-size:18px;">🎣</span>
+            <div><div style="font-size:13px;font-weight:600;">Hook Lab</div><div style="font-size:11px;color:var(--text-muted);">Brainstorm hooks for any topic</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;">
+            <span style="font-size:18px;">📺</span>
+            <div><div style="font-size:13px;font-weight:600;">Series</div><div style="font-size:11px;color:var(--text-muted);">Manage episode defaults and history</div></div>
+          </div>
+        </div>
+
+        <!-- Arrow -->
+        <div style="display:flex;flex-direction:column;align-items:center;padding:0 32px;gap:6px;">
+          <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;">pre-fills context</div>
+          <div style="font-size:28px;color:var(--accent);">→</div>
+          <div style="font-size:11px;color:var(--text-muted);">user can override</div>
+        </div>
+
+        <!-- Right: creation flow -->
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:4px;">Creation flow (unchanged)</div>
+          <div style="padding:14px;background:var(--accent-glow);border:1.5px solid rgba(255,107,53,.3);border-radius:8px;">
+            <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px;">New Video wizard</div>
+            <div style="font-size:11px;color:var(--text-secondary);">Niche, source type, voice, style, aspect ratio — accepts pre-fills but everything is editable</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding-left:8px;">
+            <div style="width:1px;height:24px;background:var(--border);margin-left:7px;"></div>
+          </div>
+          <div style="padding:12px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;">
+            <div style="font-size:13px;font-weight:600;">Editor</div>
+            <div style="font-size:11px;color:var(--text-muted);">Scenes, voice, visuals, captions, music</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding-left:8px;">
+            <div style="width:1px;height:24px;background:var(--border);margin-left:7px;"></div>
+          </div>
+          <div style="padding:12px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;">
+            <div style="font-size:13px;font-weight:600;">Export + Schedule</div>
+            <div style="font-size:11px;color:var(--text-muted);">MP4, thumbnail → calendar → post</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding-left:8px;">
+            <div style="width:1px;height:24px;background:var(--border);margin-left:7px;"></div>
+          </div>
+          <div style="padding:10px 14px;background:var(--purple-bg);border:1px solid rgba(167,139,250,.2);border-radius:8px;display:flex;align-items:center;gap:8px;">
+            <span style="font-size:16px;">🖼️</span>
+            <div><div style="font-size:13px;font-weight:600;color:var(--purple);">Thumbnail Studio</div><div style="font-size:11px;color:var(--text-muted);">Post-export — accessible from completed project</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:24px;padding:14px 16px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);font-size:12px;color:var(--text-secondary);">
+        <strong style="color:var(--text-primary);">Key rule:</strong> A user can ignore every tool and still create videos exactly as they do today. The tools are available — not mandatory. Any tool's "→ Create Video" CTA opens the wizard with whatever context was gathered. Nothing is lost if they skip the tools.
+      </div>
+    </div>
+
+    <!-- Context pre-fill table -->
+    <div class="card" style="padding:22px;margin-bottom:24px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:14px;">What gets pre-filled into the wizard</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);">
+            <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.06em;">Entry point</th>
+            <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.06em;">Pre-filled into wizard</th>
+            <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.06em;">User still chooses</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;color:var(--text-primary);font-weight:500;">Direct (dashboard)</td>
+            <td style="padding:10px 12px;color:var(--text-muted);">Nothing</td>
+            <td style="padding:10px 12px;color:var(--text-secondary);">Everything</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;color:var(--text-primary);font-weight:500;">🔍 Niche Intelligence</td>
+            <td style="padding:10px 12px;color:var(--text-secondary);">Niche, tone, visual style, format, audience profile</td>
+            <td style="padding:10px 12px;color:var(--text-secondary);">Source content, voice, hook</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;color:var(--text-primary);font-weight:500;">📊 Competitor Research</td>
+            <td style="padding:10px 12px;color:var(--text-secondary);">Tone, visual style, hook pattern, audience profile, length</td>
+            <td style="padding:10px 12px;color:var(--text-secondary);">Source content, specific topic</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;color:var(--text-primary);font-weight:500;">🎣 Hook Lab</td>
+            <td style="padding:10px 12px;color:var(--text-secondary);">Hook text, niche, audience description</td>
+            <td style="padding:10px 12px;color:var(--text-secondary);">Source content, voice, style</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;color:var(--text-primary);font-weight:500;">📺 Series → New Episode</td>
+            <td style="padding:10px 12px;color:var(--text-secondary);">All series defaults: voice, style, caption preset, music, aspect ratio, channel</td>
+            <td style="padding:10px 12px;color:var(--text-secondary);">Episode content only</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+      <!-- Mode cards explained -->
+      <div class="card" style="padding:22px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:16px;">Four entry points — same workflow underneath</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
+            <span style="font-size:22px;flex-shrink:0;">🧭</span>
+            <div>
+              <div style="font-size:13px;font-weight:600;">Start from Scratch</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Niche browser → competitor research → hook lab → generate. Best for new creators or new niches.</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
+            <span style="font-size:22px;flex-shrink:0;">🎯</span>
+            <div>
+              <div style="font-size:13px;font-weight:600;">I Know My Audience</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Skip research. Free-text audience description → hook lab → generate. Best for established creators.</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
+            <span style="font-size:22px;flex-shrink:0;">📄</span>
+            <div>
+              <div style="font-size:13px;font-weight:600;">I Have Content Ready</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Paste script / URL / upload audio. No niche, no research required. Direct to generation.</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
+            <span style="font-size:22px;flex-shrink:0;">🔁</span>
+            <div>
+              <div style="font-size:13px;font-weight:600;">New Episode</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Pick a series. All defaults inherited. Provide content only. Calendar pre-suggests next slot.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats + loop -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="card" style="padding:22px;">
+          <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:16px;">The Loop</div>
+          <div style="display:flex;flex-direction:column;gap:0;">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;">
+              <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-glow);border:1px solid rgba(255,107,53,.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent);flex-shrink:0;">1</div>
+              <div style="font-size:13px;color:var(--text-secondary);">Find niche / pick audience</div>
+            </div>
+            <div style="width:1px;height:16px;background:var(--border);margin-left:15px;"></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;">
+              <div style="width:32px;height:32px;border-radius:50%;background:var(--blue-bg);border:1px solid rgba(96,165,250,.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--blue);flex-shrink:0;">2</div>
+              <div style="font-size:13px;color:var(--text-secondary);">Research what's working</div>
+            </div>
+            <div style="width:1px;height:16px;background:var(--border);margin-left:15px;"></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;">
+              <div style="width:32px;height:32px;border-radius:50%;background:var(--purple-bg);border:1px solid rgba(167,139,250,.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--purple);flex-shrink:0;">3</div>
+              <div style="font-size:13px;color:var(--text-secondary);">Pick hook → generate video</div>
+            </div>
+            <div style="width:1px;height:16px;background:var(--border);margin-left:15px;"></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;">
+              <div style="width:32px;height:32px;border-radius:50%;background:var(--green-bg);border:1px solid rgba(52,211,153,.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--green);flex-shrink:0;">4</div>
+              <div style="font-size:13px;color:var(--text-secondary);">Export + schedule + post</div>
+            </div>
+            <div style="width:1px;height:16px;background:var(--border);margin-left:15px;"></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;">
+              <div style="width:32px;height:32px;border-radius:50%;background:var(--yellow-bg);border:1px solid rgba(251,191,36,.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--yellow);flex-shrink:0;">5</div>
+              <div style="font-size:13px;color:var(--text-secondary);">Track → feed into next video</div>
+            </div>
+          </div>
+          <div style="margin-top:12px;padding:10px 12px;background:var(--bg-elevated);border-radius:8px;font-size:11px;color:var(--text-muted);border:1px solid var(--border);">
+            Any step can be skipped. The loop always ends at creation.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ SCREEN 2 — Niche Intelligence ══════════════ -->
+  <div id="s-niche" class="screen">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);">Standalone tool</span>
+      <span style="font-size:10px;color:var(--border-active);">·</span>
+      <span style="font-size:11px;color:var(--text-muted);">Use this independently, or link straight into video creation</span>
+    </div>
+    <div class="section-header">
+      <div>
+        <div class="section-title">🔍 Niche Intelligence</div>
+        <div class="section-sub">Research a niche before you create. See what's working, who the audience is, and what hooks perform.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" class="input-field" style="width:200px;" placeholder="Or describe your niche…">
+        <button class="btn btn-primary" onclick="openModal('modal-create')">→ Create Video</button>
+      </div>
+    </div>
+
+    <div class="chip-row" style="margin-bottom:20px;">
+      <div class="chip active">All</div>
+      <div class="chip">🔥 Trending</div>
+      <div class="chip">😱 Horror</div>
+      <div class="chip">📚 History</div>
+      <div class="chip">💰 Finance</div>
+      <div class="chip">💪 Motivation</div>
+      <div class="chip">🧠 Facts</div>
+      <div class="chip">🙏 Devotional</div>
+      <div class="chip">📱 Reddit</div>
+    </div>
+
+    <div class="niche-grid">
+      <div class="niche-card selected" onclick="toggleNiche(this,'brief-horror')">
+        <span class="niche-emoji">😱</span>
+        <div class="niche-name">Horror Stories</div>
+        <div class="niche-format">4–8 min · 3–5×/week · TikTok + YouTube</div>
+        <div class="niche-tags">
+          <span class="niche-tag">Dark</span>
+          <span class="niche-tag">Suspense</span>
+          <span class="niche-tag">AI visuals</span>
+          <span class="niche-tag">High rewatch</span>
+        </div>
+      </div>
+      <div class="niche-card" onclick="toggleNiche(this,'brief-history')">
+        <span class="niche-emoji">📜</span>
+        <div class="niche-name">History Mysteries</div>
+        <div class="niche-format">5–10 min · 2–3×/week · YouTube first</div>
+        <div class="niche-tags">
+          <span class="niche-tag">Documentary</span>
+          <span class="niche-tag">Cinematic</span>
+          <span class="niche-tag">Stock footage</span>
+        </div>
+      </div>
+      <div class="niche-card" onclick="toggleNiche(this,'brief-motivation')">
+        <span class="niche-emoji">💪</span>
+        <div class="niche-name">Motivation</div>
+        <div class="niche-format">60–90 sec · Daily · TikTok + Reels</div>
+        <div class="niche-tags">
+          <span class="niche-tag">Fast cuts</span>
+          <span class="niche-tag">Bold captions</span>
+          <span class="niche-tag">Music-forward</span>
+        </div>
+      </div>
+      <div class="niche-card" onclick="toggleNiche(this,'')">
+        <span class="niche-emoji">🧠</span>
+        <div class="niche-name">Weird Facts</div>
+        <div class="niche-format">30–60 sec · Daily · All platforms</div>
+        <div class="niche-tags">
+          <span class="niche-tag">Listicle</span>
+          <span class="niche-tag">Quick pace</span>
+          <span class="niche-tag">Text hooks</span>
+        </div>
+      </div>
+      <div class="niche-card" onclick="toggleNiche(this,'')">
+        <span class="niche-emoji">💰</span>
+        <div class="niche-name">Finance Explainers</div>
+        <div class="niche-format">3–6 min · 3×/week · YouTube + LinkedIn</div>
+        <div class="niche-tags">
+          <span class="niche-tag">Explainer</span>
+          <span class="niche-tag">Minimalist</span>
+          <span class="niche-tag">Trust-building</span>
+          <span class="niche-tag">Compliance risk</span>
+        </div>
+      </div>
+      <div class="niche-card" onclick="toggleNiche(this,'')">
+        <span class="niche-emoji">🙏</span>
+        <div class="niche-name">Devotional Shorts</div>
+        <div class="niche-format">60–90 sec · Daily · Facebook + YouTube</div>
+        <div class="niche-tags">
+          <span class="niche-tag">Calm voice</span>
+          <span class="niche-tag">Scripture</span>
+          <span class="niche-tag">Nature visuals</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Niche brief — Horror -->
+    <div id="brief-horror" class="niche-brief-box show">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:24px;">😱</span>
+          <div>
+            <div style="font-size:15px;font-weight:700;">Horror Stories — Niche Brief</div>
+            <div style="font-size:12px;color:var(--text-muted);">Based on top-performing channels in this niche</div>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('modal-create')">Start Creating →</button>
+      </div>
+      <div class="brief-row">
+        <div>
+          <div class="brief-col-title">Format</div>
+          <div class="brief-col-val">4–8 minute videos<br>3–5× per week<br>TikTok · YouTube Shorts<br>Vertical 9:16</div>
+        </div>
+        <div>
+          <div class="brief-col-title">Audience</div>
+          <div class="brief-col-val">Ages 18–34<br>Late night viewing<br>High rewatch rate<br>Share to friends</div>
+        </div>
+        <div>
+          <div class="brief-col-title">Visual Style</div>
+          <div class="brief-col-val">Dark, atmospheric<br>AI-generated imagery<br>Slow zoom / Ken Burns<br>No bright stock footage</div>
+        </div>
+      </div>
+      <div class="brief-col-title" style="margin-bottom:10px;">Top Hook Patterns — click to use</div>
+      <div class="hook-pills">
+        <div class="hook-pill" onclick="showScreen('s-hooklab',document.querySelectorAll('.mockup-tab')[3])">
+          <span class="hook-style">Mystery open</span>
+          "Nobody has ever explained what happened at [location] — until now."
+        </div>
+        <div class="hook-pill" onclick="showScreen('s-hooklab',document.querySelectorAll('.mockup-tab')[3])">
+          <span class="hook-style">Threat / warning</span>
+          "If you ever visit [place], here's what they don't tell you on the tour."
+        </div>
+        <div class="hook-pill" onclick="showScreen('s-hooklab',document.querySelectorAll('.mockup-tab')[3])">
+          <span class="hook-style">Shocking stat</span>
+          "Over [number] people died here. The locals call it cursed. Scientists have no explanation."
+        </div>
+      </div>
+    </div>
+    <div id="brief-history" class="niche-brief-box">
+      <div style="font-size:14px;font-weight:600;margin-bottom:8px;">📜 History Mysteries — Brief would show here</div>
+      <div style="font-size:12px;color:var(--text-muted);">5–10 min, documentary tone, cinematic stock footage, YouTube-first, older audience 25–45.</div>
+    </div>
+    <div id="brief-motivation" class="niche-brief-box">
+      <div style="font-size:14px;font-weight:600;margin-bottom:8px;">💪 Motivation — Brief would show here</div>
+      <div style="font-size:12px;color:var(--text-muted);">60–90 sec, fast cuts, bold captions, energetic music, TikTok + Reels, 16–28 audience.</div>
+    </div>
+  </div>
+
+  <!-- ══════════════ SCREEN 3 — Competitor Research ══════════════ -->
+  <div id="s-research" class="screen">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);">Standalone tool</span>
+      <span style="font-size:10px;color:var(--border-active);">·</span>
+      <span style="font-size:11px;color:var(--text-muted);">Research without creating. "Generate my version" links to the wizard with context pre-filled.</span>
+    </div>
+    <div class="section-header">
+      <div>
+        <div class="section-title">📊 Competitor Research</div>
+        <div class="section-sub">Paste a YouTube channel or video. See what's working — hooks, topics, tone, audience.</div>
+      </div>
+    </div>
+
+    <div class="research-layout">
+      <!-- Input -->
+      <div>
+        <div class="research-input-card">
+          <div style="font-size:14px;font-weight:600;margin-bottom:16px;">Analyse a channel or video</div>
+          <div class="input-group">
+            <label class="input-label">YouTube channel or video URL</label>
+            <input type="text" class="input-field" value="youtube.com/@DarkMysteries" placeholder="Paste URL here…">
+          </div>
+          <div class="chip-row" style="margin-bottom:14px;">
+            <div class="chip active">Channel</div>
+            <div class="chip">Single video</div>
+          </div>
+          <button class="btn btn-primary" style="width:100%;">Analyse →</button>
+        </div>
+
+        <div class="research-input-card" style="margin-top:14px;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Saved inspiration</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-elevated);border-radius:6px;cursor:pointer;">
+              <span style="font-size:16px;">😱</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@DarkMysteries</div>
+                <div style="font-size:10px;color:var(--text-muted);">2.1M subs · analysed today</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-elevated);border-radius:6px;cursor:pointer;">
+              <span style="font-size:16px;">📜</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@HistoryUnveiled</div>
+                <div style="font-size:10px;color:var(--text-muted);">890K subs · 3 days ago</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analysis result -->
+      <div class="analysis-card">
+        <div class="channel-header">
+          <div class="channel-avatar">😱</div>
+          <div>
+            <div class="channel-name">Dark Mysteries</div>
+            <div class="channel-meta">@DarkMysteries · Horror &amp; Unexplained · YouTube</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:8px;">
+            <span class="badge badge-green">Analysed</span>
+          </div>
+        </div>
+
+        <div class="channel-stats">
+          <div class="ch-stat"><div class="ch-stat-val">2.1M</div><div class="ch-stat-label">Subscribers</div></div>
+          <div class="ch-stat"><div class="ch-stat-val">340K</div><div class="ch-stat-label">Avg views</div></div>
+          <div class="ch-stat"><div class="ch-stat-val">4×/wk</div><div class="ch-stat-label">Post frequency</div></div>
+        </div>
+
+        <div class="analysis-section">
+          <div class="analysis-label">Hook patterns</div>
+          <div class="pattern-list">
+            <div class="pattern-item"><span class="pi-label">Mystery open</span> "Nobody can explain why [X] happened…"</div>
+            <div class="pattern-item"><span class="pi-label">Disappearance</span> "The [person/place] that vanished without a trace"</div>
+            <div class="pattern-item"><span class="pi-label">Discovery</span> "What they found inside [location] shocked everyone"</div>
+          </div>
+        </div>
+
+        <div class="analysis-section">
+          <div class="analysis-label">Top topics</div>
+          <div class="topic-bars">
+            <div class="topic-bar-row">
+              <div class="topic-bar-label">Haunted places</div>
+              <div class="topic-bar-track"><div class="topic-bar-fill" style="width:72%"></div></div>
+              <div class="topic-bar-pct">34%</div>
+            </div>
+            <div class="topic-bar-row">
+              <div class="topic-bar-label">Disappearances</div>
+              <div class="topic-bar-track"><div class="topic-bar-fill" style="width:58%"></div></div>
+              <div class="topic-bar-pct">28%</div>
+            </div>
+            <div class="topic-bar-row">
+              <div class="topic-bar-label">Unexplained deaths</div>
+              <div class="topic-bar-track"><div class="topic-bar-fill" style="width:46%"></div></div>
+              <div class="topic-bar-pct">22%</div>
+            </div>
+            <div class="topic-bar-row">
+              <div class="topic-bar-label">Cursed objects</div>
+              <div class="topic-bar-track"><div class="topic-bar-fill" style="width:33%"></div></div>
+              <div class="topic-bar-pct">16%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="analysis-section">
+          <div class="analysis-label">Tone &amp; style</div>
+          <div class="audience-chips">
+            <div class="aud-chip">Calm narrator</div>
+            <div class="aud-chip">Slow dramatic pace</div>
+            <div class="aud-chip">Dark AI visuals</div>
+            <div class="aud-chip">5.2 min avg</div>
+            <div class="aud-chip">No face cam</div>
+          </div>
+        </div>
+
+        <div class="analysis-section">
+          <div class="analysis-label">Audience profile</div>
+          <div class="audience-panel" style="margin-top:0;">
+            <div class="aud-row"><span class="aud-row-label">Age range</span> 18–34 (primarily female)</div>
+            <div class="aud-row"><span class="aud-row-label">Platform</span> TikTok first, YouTube second</div>
+            <div class="aud-row"><span class="aud-row-label">Watch time</span> Late evening / night</div>
+            <div class="aud-row"><span class="aud-row-label">Behaviour</span> High rewatch, share to friends, comment theories</div>
+          </div>
+        </div>
+
+        <div class="generate-btn-row">
+          <button class="btn btn-primary" onclick="showScreen('s-hooklab',document.querySelectorAll('.mockup-tab')[3])">Generate my version →</button>
+          <button class="btn btn-ghost">Save to inspiration</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ SCREEN 4 — Hook Lab ══════════════ -->
+  <div id="s-hooklab" class="screen">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);">Standalone tool</span>
+      <span style="font-size:10px;color:var(--border-active);">·</span>
+      <span style="font-size:11px;color:var(--text-muted);">Brainstorm hooks for any topic. "Use this hook" carries it into the wizard.</span>
+    </div>
+    <div class="section-header">
+      <div>
+        <div class="section-title">🎣 Hook Lab</div>
+        <div class="section-sub">Generate hook options for a topic. Pick the one that fits, then create the video around it.</div>
+      </div>
+    </div>
+
+    <div class="hooklab-layout">
+      <!-- Context + custom -->
+      <div>
+        <div class="hooklab-context">
+          <div style="font-size:13px;font-weight:600;margin-bottom:14px;">Your video</div>
+          <div class="input-group">
+            <label class="input-label">Topic or working title</label>
+            <input type="text" class="input-field" value="The haunting of Poveglia Island — Italy's most cursed place">
+          </div>
+          <div class="input-group">
+            <label class="input-label">Who is this for?</label>
+            <textarea class="textarea-field" style="min-height:64px;">18–30 year olds who love horror and can't sleep at night. They want tension, real facts, and a satisfying or unsettling ending.</textarea>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <div style="flex:1;">
+              <label class="input-label">Niche</label>
+              <select class="input-field"><option>😱 Horror Stories</option></select>
+            </div>
+            <div style="flex:1;">
+              <label class="input-label">Length</label>
+              <select class="input-field"><option>5–7 minutes</option></select>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;">
+            Hook options
+            <button class="btn btn-ghost btn-sm">↻ Regenerate</button>
+          </div>
+          <div class="hook-options">
+            <div class="hook-opt selected" onclick="selectHook(this,'Nobody has ever explained what happened on Poveglia Island — until now.')">
+              <div class="hook-opt-style">
+                <span style="color:var(--accent);">●</span> Mystery open
+                <div class="hook-perf" style="margin-left:auto;"><div class="perf-dot"></div> 2.3× avg views on horror</div>
+              </div>
+              <div class="hook-opt-text">"Nobody has ever explained what happened on Poveglia Island — until now."</div>
+            </div>
+            <div class="hook-opt" onclick="selectHook(this,'If you ever visit Poveglia Island, here\'s what they don\'t tell you on the tour.')">
+              <div class="hook-opt-style"><span>●</span> Threat / warning</div>
+              <div class="hook-opt-text">"If you ever visit Poveglia Island, here's what they don't tell you on the tour."</div>
+            </div>
+            <div class="hook-opt" onclick="selectHook(this,'Over 160,000 people died on this island. Scientists have no explanation for what happens there at night.')">
+              <div class="hook-opt-style"><span>●</span> Shocking stat</div>
+              <div class="hook-opt-text">"Over 160,000 people died on this island. Scientists have no explanation for what happens there at night."</div>
+            </div>
+            <div class="hook-opt" onclick="selectHook(this,'In 1968, a doctor disappeared from the psychiatric ward on Poveglia Island. His body was never found.')">
+              <div class="hook-opt-style"><span>●</span> Story open</div>
+              <div class="hook-opt-text">"In 1968, a doctor disappeared from the psychiatric ward on Poveglia Island. His body was never found."</div>
+            </div>
+            <div class="hook-opt" onclick="selectHook(this,'Italy\'s most beautiful lagoon hides the darkest secret in European history.')">
+              <div class="hook-opt-style"><span>●</span> Contradiction</div>
+              <div class="hook-opt-text">"Italy's most beautiful lagoon hides the darkest secret in European history."</div>
+            </div>
+          </div>
+          <div class="custom-hook-row">
+            <div class="mode-separator"><span>or write your own</span></div>
+            <textarea class="textarea-field" style="min-height:60px;" placeholder="Type a custom hook…"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right panel — selected hook + generate -->
+      <div>
+        <div class="hooklab-picks">
+          <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Selected hook</div>
+          <div class="selected-hook-preview" id="selected-hook-text">
+            "Nobody has ever explained what happened on Poveglia Island — until now."
+          </div>
+
+          <div style="margin-top:20px;">
+            <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Settings inherited from series</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);">
+                <span style="color:var(--text-muted);">Voice</span><span style="color:var(--text-secondary);">Onyx — deep, dramatic</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);">
+                <span style="color:var(--text-muted);">Visual style</span><span style="color:var(--text-secondary);">🌑 Dark AI images</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);">
+                <span style="color:var(--text-muted);">Caption style</span><span style="color:var(--text-secondary);">Bold white, word-by-word</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);">
+                <span style="color:var(--text-muted);">Music mood</span><span style="color:var(--text-secondary);">Dark ambient</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;">
+                <span style="color:var(--text-muted);">Length</span><span style="color:var(--text-secondary);">5–7 minutes</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:20px;padding:12px;background:var(--green-bg);border:1px solid rgba(52,211,153,.2);border-radius:8px;">
+            <div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:4px;">Based on your series history</div>
+            <div style="font-size:12px;color:var(--text-secondary);">Mystery open hooks average <strong style="color:var(--text-primary);">2.3×</strong> more views on Dark Nights channel.</div>
+          </div>
+
+          <button class="btn btn-primary" style="width:100%;margin-top:20px;padding:11px;">Generate video →</button>
+          <button class="btn btn-ghost" style="width:100%;margin-top:8px;">Skip hook — generate from topic</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ SCREEN 5 — Series ══════════════ -->
+  <div id="s-series" class="screen">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);">Standalone tool</span>
+      <span style="font-size:10px;color:var(--border-active);">·</span>
+      <span style="font-size:11px;color:var(--text-muted);">"New Episode" opens the wizard with all series defaults pre-filled — just add the content.</span>
+    </div>
+    <div class="section-header">
+      <div>
+        <div class="section-title">📺 Series</div>
+        <div class="section-sub">Manage recurring content formats. Defaults carry into every episode automatically.</div>
+      </div>
+      <button class="btn btn-primary" onclick="openModal('modal-episode')">+ New Episode</button>
+    </div>
+
+    <div class="series-layout">
+      <!-- Series list -->
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Your series</div>
+        <div class="series-list">
+          <div class="series-item active">
+            <div class="series-cover" style="background:linear-gradient(135deg,#0d0515,#2a0a40);">😱</div>
+            <div class="series-meta">
+              <div class="series-meta-name">Dark Nights</div>
+              <div class="series-meta-count">12 episodes · Horror</div>
+            </div>
+            <span class="badge badge-green">Active</span>
+          </div>
+          <div class="series-item">
+            <div class="series-cover" style="background:linear-gradient(135deg,#0a1020,#102040);">📜</div>
+            <div class="series-meta">
+              <div class="series-meta-name">Forgotten History</div>
+              <div class="series-meta-count">7 episodes · History</div>
+            </div>
+          </div>
+          <div class="series-item">
+            <div class="series-cover" style="background:linear-gradient(135deg,#0a1a10,#0d3020);">💪</div>
+            <div class="series-meta">
+              <div class="series-meta-name">Daily Motivation</div>
+              <div class="series-meta-count">31 episodes · Motivation</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Series detail -->
+      <div class="series-detail">
+        <div class="series-detail-header">
+          <div class="series-detail-cover" style="background:linear-gradient(135deg,#0d0515,#2a0a40);">😱</div>
+          <div style="flex:1;">
+            <div class="series-detail-name">Dark Nights</div>
+            <div class="series-detail-sub">Horror · 12 episodes · TikTok + YouTube · 9:16</div>
+            <div class="series-defaults">
+              <div class="series-default-chip">🎙 Onyx</div>
+              <div class="series-default-chip">🌑 Dark AI</div>
+              <div class="series-default-chip">🎵 Ambient</div>
+              <div class="series-default-chip">Bold captions</div>
+              <div class="series-default-chip">5–7 min</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0;">
+            <button class="btn btn-ghost btn-sm">Edit defaults</button>
+            <button class="btn btn-primary" onclick="openModal('modal-episode')">+ New Episode</button>
+          </div>
+        </div>
+
+        <div style="padding:14px 22px;background:var(--bg-elevated);border-bottom:1px solid var(--border);display:flex;gap:24px;">
+          <div style="text-align:center;">
+            <div style="font-size:18px;font-weight:700;">12</div>
+            <div style="font-size:10px;color:var(--text-muted);">Total episodes</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:18px;font-weight:700;color:var(--green);">9</div>
+            <div style="font-size:10px;color:var(--text-muted);">Published</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:18px;font-weight:700;color:var(--yellow);">2</div>
+            <div style="font-size:10px;color:var(--text-muted);">Scheduled</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:18px;font-weight:700;color:var(--blue);">1</div>
+            <div style="font-size:10px;color:var(--text-muted);">In editor</div>
+          </div>
+          <div style="text-align:center;margin-left:auto;">
+            <div style="font-size:18px;font-weight:700;">248K</div>
+            <div style="font-size:10px;color:var(--text-muted);">Total views</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:18px;font-weight:700;color:var(--green);">3.1M</div>
+            <div style="font-size:10px;color:var(--text-muted);">Best ep views</div>
+          </div>
+        </div>
+
+        <!-- Episodes -->
+        <div class="episode-table">
+          <div class="ep-row header" style="border-bottom:1px solid var(--border);">
+            <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">#</div>
+            <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Episode</div>
+            <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Views</div>
+            <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Published</div>
+            <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Status</div>
+          </div>
+          <div class="ep-row">
+            <div class="ep-num">01</div>
+            <div><div class="ep-title">The Haunting of Poveglia Island</div><div class="ep-hook">Mystery open hook · 6:14</div></div>
+            <div style="font-size:13px;font-weight:600;color:var(--green);">3.1M</div>
+            <div style="font-size:11px;color:var(--text-muted);">Apr 10</div>
+            <div class="ep-status"><div class="ep-status-dot" style="background:var(--green);"></div><span style="font-size:11px;color:var(--green);">Published</span></div>
+          </div>
+          <div class="ep-row">
+            <div class="ep-num">02</div>
+            <div><div class="ep-title">The Disappearance of the Beaumont Children</div><div class="ep-hook">Story open hook · 7:02</div></div>
+            <div style="font-size:13px;font-weight:600;">1.8M</div>
+            <div style="font-size:11px;color:var(--text-muted);">Apr 13</div>
+            <div class="ep-status"><div class="ep-status-dot" style="background:var(--green);"></div><span style="font-size:11px;color:var(--green);">Published</span></div>
+          </div>
+          <div class="ep-row">
+            <div class="ep-num">12</div>
+            <div><div class="ep-title">The Black Dahlia — Unsolved</div><div class="ep-hook">Threat hook · 5:44</div></div>
+            <div style="font-size:13px;font-weight:600;color:var(--text-muted);">—</div>
+            <div style="font-size:11px;color:var(--yellow);">Apr 22</div>
+            <div class="ep-status"><div class="ep-status-dot" style="background:var(--yellow);"></div><span style="font-size:11px;color:var(--yellow);">Scheduled</span></div>
+          </div>
+          <div class="ep-row" style="background:var(--accent-glow);">
+            <div class="ep-num" style="color:var(--accent);">13</div>
+            <div><div class="ep-title" style="color:var(--accent);">New episode — in editor</div><div class="ep-hook">Mystery open · Poveglia followup</div></div>
+            <div style="font-size:13px;font-weight:600;color:var(--text-muted);">—</div>
+            <div style="font-size:11px;color:var(--text-muted);">Not scheduled</div>
+            <div class="ep-status"><div class="ep-status-dot" style="background:var(--blue);"></div><span style="font-size:11px;color:var(--blue);">In editor</span></div>
+          </div>
+        </div>
+
+        <div style="padding:14px 22px;background:var(--green-bg);border-top:1px solid rgba(52,211,153,.15);">
+          <div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:3px;">Best performer insight</div>
+          <div style="font-size:12px;color:var(--text-secondary);">Your top 3 episodes used <strong style="color:var(--text-primary);">mystery open</strong> hooks on <strong style="color:var(--text-primary);">location-based</strong> stories. Next episode suggestion: cursed or abandoned buildings.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ SCREEN 6 — Thumbnail Studio ══════════════ -->
+  <div id="s-thumb" class="screen">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--purple);">Post-export tool</span>
+      <span style="font-size:10px;color:var(--border-active);">·</span>
+      <span style="font-size:11px;color:var(--text-muted);">Accessible from a completed export in the editor or dashboard. Not part of the creation flow.</span>
+    </div>
+    <div class="section-header">
+      <div>
+        <div class="section-title">🖼️ Thumbnail Studio</div>
+        <div class="section-sub">Turn a scene image into a click-worthy thumbnail. Export alongside your video as a complete ready-to-post package.</div>
+      </div>
+    </div>
+
+    <div class="thumb-layout">
+      <!-- Canvas -->
+      <div class="thumb-canvas-area">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Preview · Dark Nights Ep 13</div>
+        <div class="thumb-preview">
+          <div class="thumb-scene-img" style="width:270px;height:480px;background:linear-gradient(170deg,#030208,#0d0518,#180830,#060312);"></div>
+          <div class="thumb-img-bg"></div>
+          <div class="thumb-text-overlay">
+            <div class="thumb-text-main" id="thumb-main-text">Nobody Can Explain What Happened Here</div>
+            <div class="thumb-text-sub" id="thumb-sub-text">The Truth About Poveglia Island</div>
+          </div>
+        </div>
+        <div class="thumb-platform-tabs">
+          <div class="platform-tab active">TikTok 9:16</div>
+          <div class="platform-tab">YouTube 16:9</div>
+          <div class="platform-tab">Instagram 1:1</div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;">
+          <button class="btn btn-primary">Export Thumbnail</button>
+          <button class="btn btn-ghost">Export with Video</button>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="thumb-controls">
+        <div style="font-size:13px;font-weight:600;margin-bottom:14px;">Pick a scene</div>
+        <div class="scene-thumbs">
+          <div class="scene-thumb active"><span>Scene 1</span></div>
+          <div class="scene-thumb"><span>Scene 2</span></div>
+          <div class="scene-thumb"><span>Scene 3</span></div>
+          <div class="scene-thumb"><span>Scene 4</span></div>
+          <div class="scene-thumb"><span>Scene 5</span></div>
+          <div class="scene-thumb" style="align-items:center;justify-content:center;border:1px dashed var(--border);color:var(--text-muted);font-size:20px;cursor:pointer;">+</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="input-group">
+          <label class="input-label">Primary text</label>
+          <input class="input-field" value="Nobody Can Explain What Happened Here" oninput="document.getElementById('thumb-main-text').textContent=this.value">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Sub text</label>
+          <input class="input-field" value="The Truth About Poveglia Island" oninput="document.getElementById('thumb-sub-text').textContent=this.value">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;" class="input-group">
+          <div>
+            <label class="input-label">Font</label>
+            <select class="input-field"><option>DM Sans Bold</option><option>Space Mono</option></select>
+          </div>
+          <div>
+            <label class="input-label">Text position</label>
+            <select class="input-field"><option>Bottom</option><option>Centre</option><option>Top</option></select>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Variants</div>
+        <div class="thumb-variants">
+          <div class="thumb-variant active">
+            <div class="tv-mini">A</div>
+            <div class="tv-label">Text bottom — dark overlay</div>
+            <span class="tv-badge badge badge-accent">Selected</span>
+          </div>
+          <div class="thumb-variant">
+            <div class="tv-mini">B</div>
+            <div class="tv-label">Text centre — split frame</div>
+          </div>
+          <div class="thumb-variant">
+            <div class="tv-mini">C</div>
+            <div class="tv-label">Minimal — top text only</div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;padding:12px;background:var(--blue-bg);border:1px solid rgba(96,165,250,.2);border-radius:8px;font-size:11px;color:var(--text-secondary);">
+          <strong style="color:var(--blue);">A/B test tip:</strong> Export all 3 variants and test which thumbnail gets a better CTR — check back in analytics after 48 hours.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ══════════════ MODAL — Create / Mode Picker ══════════════ -->
+<div id="modal-create" class="modal-overlay" onclick="closeModal('modal-create',event)">
+  <div class="modal modal-wide" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <div class="modal-title">What do you want to make?</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-create',event)">✕</button>
+    </div>
+    <div class="modal-sub">Pick how you want to start — you can skip any step along the way.</div>
+
+    <div class="mode-grid">
+      <div class="mode-card selected" onclick="selectMode(this,'form-scratch')">
+        <span class="mode-icon">🧭</span>
+        <div class="mode-title">Start from scratch</div>
+        <div class="mode-desc">Browse niches, research what's working, pick a hook, then generate.</div>
+        <div class="mode-who"><span>Best for:</span> New creators, new niches, or anyone who wants guidance.</div>
+      </div>
+      <div class="mode-card" onclick="selectMode(this,'form-audience')">
+        <span class="mode-icon">🎯</span>
+        <div class="mode-title">I know my audience</div>
+        <div class="mode-desc">Skip research. Describe who you're making this for and go straight to creation.</div>
+        <div class="mode-who"><span>Best for:</span> Established creators who know their niche and audience.</div>
+      </div>
+      <div class="mode-card" onclick="selectMode(this,'form-content')">
+        <span class="mode-icon">📄</span>
+        <div class="mode-title">I have content ready</div>
+        <div class="mode-desc">Paste a script, drop a URL, or upload audio. Skip research and niche setup entirely.</div>
+        <div class="mode-who"><span>Best for:</span> Repurposers, power users, agencies with existing copy.</div>
+      </div>
+      <div class="mode-card" onclick="selectMode(this,'form-episode')">
+        <span class="mode-icon">🔁</span>
+        <div class="mode-title">New episode</div>
+        <div class="mode-desc">Pick a series. All defaults are inherited. Just add the content for this episode.</div>
+        <div class="mode-who"><span>Best for:</span> Series creators, operators running channels at volume.</div>
+      </div>
+    </div>
+
+    <!-- Form: Scratch -->
+    <div id="form-scratch" class="mode-form show">
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary" onclick="closeModal('modal-create',event);showScreen('s-niche',document.querySelectorAll('.mockup-tab')[1])">Browse niches →</button>
+        <button class="btn btn-ghost" onclick="closeModal('modal-create',event);showScreen('s-research',document.querySelectorAll('.mockup-tab')[2])">Import a competitor channel →</button>
+      </div>
+    </div>
+
+    <!-- Form: Know audience -->
+    <div id="form-audience" class="mode-form">
+      <div class="input-group">
+        <label class="input-label">Who is this video for? <span style="color:var(--text-muted);font-weight:400;">(be as specific as you like)</span></label>
+        <textarea class="textarea-field" placeholder="e.g. 18–30 year olds who love horror stories and can't sleep at night. They want real facts, tension, and an unsettling ending." style="min-height:80px;"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;" class="input-group">
+        <div>
+          <label class="input-label">Niche <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+          <select class="input-field"><option value="">Skip — infer from description</option><option>😱 Horror Stories</option><option>📜 History Mysteries</option><option>💪 Motivation</option><option>🧠 Weird Facts</option></select>
+        </div>
+        <div>
+          <label class="input-label">Platform</label>
+          <select class="input-field"><option>TikTok</option><option>YouTube Shorts</option><option>Instagram Reels</option></select>
+        </div>
+      </div>
+      <div class="modal-actions" style="padding-top:0;border-top:none;margin-top:0;">
+        <button class="btn btn-ghost" onclick="closeModal('modal-create',event)">Cancel</button>
+        <button class="btn btn-primary" onclick="closeModal('modal-create',event);showScreen('s-hooklab',document.querySelectorAll('.mockup-tab')[3])">Choose a hook →</button>
+      </div>
+    </div>
+
+    <!-- Form: Content ready -->
+    <div id="form-content" class="mode-form">
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <div class="chip active">Script / Idea</div>
+        <div class="chip">URL</div>
+        <div class="chip">Audio upload</div>
+        <div class="chip">Video upload</div>
+        <div class="chip">Images</div>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Your script or idea</label>
+        <textarea class="textarea-field" style="min-height:100px;" placeholder="Paste your script, a rough idea, or a topic…"></textarea>
+      </div>
+      <div class="modal-actions" style="padding-top:0;border-top:none;margin-top:0;">
+        <button class="btn btn-ghost" onclick="closeModal('modal-create',event)">Cancel</button>
+        <button class="btn btn-primary">Generate →</button>
+      </div>
+    </div>
+
+    <!-- Form: New episode -->
+    <div id="form-episode" class="mode-form">
+      <div class="input-group">
+        <label class="input-label">Pick a series</label>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div class="series-item active" style="cursor:pointer;">
+            <div class="series-cover" style="background:linear-gradient(135deg,#0d0515,#2a0a40);width:36px;height:36px;font-size:18px;">😱</div>
+            <div class="series-meta"><div class="series-meta-name">Dark Nights</div><div class="series-meta-count">12 episodes · Horror</div></div>
+            <span style="color:var(--accent);font-size:18px;">✓</span>
+          </div>
+          <div class="series-item" style="cursor:pointer;">
+            <div class="series-cover" style="background:linear-gradient(135deg,#0a1020,#102040);width:36px;height:36px;font-size:18px;">📜</div>
+            <div class="series-meta"><div class="series-meta-name">Forgotten History</div><div class="series-meta-count">7 episodes · History</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Episode content — script, URL, or topic</label>
+        <textarea class="textarea-field" style="min-height:80px;" placeholder="Paste topic, script, or URL for this episode…"></textarea>
+      </div>
+      <div style="padding:10px 12px;background:var(--green-bg);border:1px solid rgba(52,211,153,.2);border-radius:8px;font-size:11px;color:var(--text-secondary);margin-bottom:12px;">
+        All Dark Nights defaults will be applied: Onyx voice · Dark AI visuals · Bold captions · Ambient music
+      </div>
+      <div class="modal-actions" style="padding-top:0;border-top:none;margin-top:0;">
+        <button class="btn btn-ghost" onclick="closeModal('modal-create',event)">Cancel</button>
+        <button class="btn btn-primary" onclick="closeModal('modal-create',event);showScreen('s-hooklab',document.querySelectorAll('.mockup-tab')[3])">Pick hook →</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════ MODAL — New Episode quick ══════════════ -->
+<div id="modal-episode" class="modal-overlay" onclick="closeModal('modal-episode',event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <div class="modal-title">Dark Nights — Episode 13</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-episode',event)">✕</button>
+    </div>
+    <div class="modal-sub">All series defaults are pre-filled. Just provide the episode content.</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <div class="chip active">Script / Idea</div>
+      <div class="chip">URL</div>
+      <div class="chip">Audio</div>
+    </div>
+    <div class="input-group">
+      <label class="input-label">Episode topic or script</label>
+      <textarea class="textarea-field" style="min-height:100px;" placeholder="e.g. The Bell Witch haunting — the only case where a spirit is said to have killed a person…"></textarea>
+    </div>
+    <div style="padding:10px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--text-secondary);margin-bottom:4px;">
+      <span style="color:var(--text-muted);">Inheriting:</span> Onyx voice · 🌑 Dark AI visuals · Bold white captions · 🎵 Ambient music · 9:16 · 5–7 min
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-episode',event)">Cancel</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-episode',event);showScreen('s-hooklab',document.querySelectorAll('.mockup-tab')[3])">Choose hook first</button>
+      <button class="btn btn-primary" onclick="closeModal('modal-episode',event)">Generate episode →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showScreen(id, tab) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.mockup-tab').forEach(t => t.classList.remove('active'));
+  if (tab) tab.classList.add('active');
+}
+
+function openModal(id) {
+  document.getElementById(id).classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal(id, e) {
+  if (!e || e.target === document.getElementById(id) || e.target.closest('.btn-ghost')) {
+    document.getElementById(id).classList.remove('show');
+    document.body.style.overflow = '';
+  }
+}
+
+function selectMode(card, formId) {
+  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+  document.querySelectorAll('.mode-form').forEach(f => f.classList.remove('show'));
+  document.getElementById(formId).classList.add('show');
+}
+
+function toggleNiche(card, briefId) {
+  document.querySelectorAll('.niche-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+  document.querySelectorAll('.niche-brief-box').forEach(b => b.classList.remove('show'));
+  if (briefId) {
+    const box = document.getElementById(briefId);
+    if (box) box.classList.add('show');
+  }
+}
+
+function selectHook(opt, text) {
+  document.querySelectorAll('.hook-opt').forEach(o => o.classList.remove('selected'));
+  opt.classList.add('selected');
+  document.getElementById('selected-hook-text').textContent = '"' + text + '"';
+}
+</script>
+</body></html>

@@ -44,6 +44,7 @@ class AdminController extends Controller
                 'workspaces' => $this->workspaceRows(),
                 'users' => $this->userRows(),
                 'recent_usage' => $this->recentUsageRows(),
+                'project_costs' => $this->projectCostRows(),
             ],
             'meta' => [],
         ]);
@@ -180,6 +181,49 @@ class AdminController extends Controller
                 'error_message' => $event->error_message,
                 'occurred_at' => $event->occurred_at?->toIso8601String(),
             ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function projectCostRows(): array
+    {
+        return ApiUsageEvent::query()
+            ->select(
+                'project_id',
+                DB::raw('SUM(estimated_cost_usd) as total_cost'),
+                DB::raw("SUM(CASE WHEN service = 'text_generation' THEN estimated_cost_usd ELSE 0 END) as script_cost"),
+                DB::raw("SUM(CASE WHEN service = 'image_generation' THEN estimated_cost_usd ELSE 0 END) as image_cost"),
+                DB::raw("SUM(CASE WHEN service = 'tts' THEN estimated_cost_usd ELSE 0 END) as tts_cost"),
+                DB::raw('COUNT(*) as call_count'),
+                DB::raw('MIN(occurred_at) as first_call_at'),
+            )
+            ->whereNotNull('project_id')
+            ->groupBy('project_id')
+            ->orderByDesc('total_cost')
+            ->limit(50)
+            ->get()
+            ->map(function (\stdClass $row): array {
+                $project = Project::query()
+                    ->select(['id', 'title', 'workspace_id', 'status', 'source_type', 'created_at'])
+                    ->find($row->project_id);
+
+                return [
+                    'project_id' => (int) $row->project_id,
+                    'project_title' => $project?->title ?? '(untitled)',
+                    'workspace_id' => $project?->workspace_id,
+                    'status' => $project?->status,
+                    'source_type' => $project?->source_type,
+                    'created_at' => $project?->created_at?->toIso8601String(),
+                    'total_cost' => $this->money($row->total_cost),
+                    'script_cost' => $this->money($row->script_cost),
+                    'image_cost' => $this->money($row->image_cost),
+                    'tts_cost' => $this->money($row->tts_cost),
+                    'call_count' => (int) $row->call_count,
+                ];
+            })
             ->values()
             ->all();
     }

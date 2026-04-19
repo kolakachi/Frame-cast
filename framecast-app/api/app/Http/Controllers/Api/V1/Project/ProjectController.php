@@ -34,6 +34,7 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', Rule::in([4, 8, 12, 16, 24])],
+            'channel_id' => ['nullable', 'integer'],
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 8);
@@ -41,6 +42,7 @@ class ProjectController extends Controller
 
         $paginator = Project::query()
             ->where('workspace_id', $user->workspace_id)
+            ->when(! empty($validated['channel_id']), fn ($q) => $q->where('channel_id', (int) $validated['channel_id']))
             ->whereNotExists(function ($query): void {
                 $query->selectRaw('1')
                     ->from('variants')
@@ -353,11 +355,14 @@ class ProjectController extends Controller
             'tone' => $validated['tone'] ?? $nicheTone,
             'primary_language' => $validated['languages'][0],
             'title' => $validated['title'] ?? null,
-            'status' => 'generating',
+            'status' => $validated['source_type'] === 'blank' ? 'ready_for_review' : 'generating',
             'created_by_user_id' => $user->getKey(),
         ]);
 
-        GenerateScriptJob::dispatch($project->getKey());
+        // Blank projects skip AI generation — user builds all scenes manually in the editor.
+        if ($validated['source_type'] !== 'blank') {
+            GenerateScriptJob::dispatch($project->getKey());
+        }
 
         return response()->json([
             'data' => [
@@ -621,6 +626,7 @@ class ProjectController extends Controller
     private function allowedSourceTypes(): array
     {
         return [
+            'blank',
             'prompt',
             'script',
             'url',
@@ -634,6 +640,11 @@ class ProjectController extends Controller
 
     private function validateSourceContent(string $sourceType, ?string $source): ?string
     {
+        // Blank projects have no source content — user builds scenes in the editor.
+        if ($sourceType === 'blank') {
+            return null;
+        }
+
         $trimmed = trim((string) $source);
 
         if ($trimmed === '') {

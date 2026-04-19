@@ -257,16 +257,33 @@ class AssetController extends Controller
             ], 422);
         }
 
-        if (! Storage::disk('b2')->exists($path)) {
+        // For large media (video/audio), redirect to a short-lived B2 temporary URL
+        // instead of streaming through Laravel. This avoids server-side memory pressure
+        // and sidesteps B2 idle-connection issues that surface as "Unable to check existence".
+        $isLargeMedia = in_array($asset->asset_type ?? '', ['video', 'audio'], true)
+            || str_starts_with((string) ($asset->mime_type ?? ''), 'video/')
+            || str_starts_with((string) ($asset->mime_type ?? ''), 'audio/');
+
+        if ($isLargeMedia) {
+            try {
+                $tempUrl = Storage::disk('b2')->temporaryUrl($path, now()->addMinutes(30));
+
+                return redirect()->away($tempUrl);
+            } catch (\Throwable) {
+                // Fall through to stream if temporaryUrl is unsupported or fails.
+            }
+        }
+
+        try {
+            $stream = Storage::disk('b2')->readStream($path);
+        } catch (\Throwable) {
             return response()->json([
                 'error' => [
                     'code' => 'asset_missing',
-                    'message' => 'Asset file not found in storage.',
+                    'message' => 'Asset file could not be retrieved from storage.',
                 ],
             ], 404);
         }
-
-        $stream = Storage::disk('b2')->readStream($path);
 
         if (! is_resource($stream)) {
             return response()->json([

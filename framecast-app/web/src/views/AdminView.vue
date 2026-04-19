@@ -19,6 +19,7 @@ const plans = computed(() => overview.value?.plans ?? {})
 const workspaces = computed(() => overview.value?.workspaces ?? [])
 const users = computed(() => overview.value?.users ?? [])
 const recentUsage = computed(() => overview.value?.recent_usage ?? [])
+const projectCosts = computed(() => overview.value?.project_costs ?? [])
 
 const planOptions = computed(() =>
   Object.entries(plans.value).map(([key, plan]) => ({
@@ -200,6 +201,47 @@ onMounted(loadAdmin)
                 </div>
               </div>
             </article>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Spend</p>
+              <h2>Cost per Video</h2>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Status</th>
+                  <th>Script</th>
+                  <th>Image</th>
+                  <th>Voice</th>
+                  <th>Total</th>
+                  <th>Calls</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in projectCosts" :key="row.project_id">
+                  <td>
+                    <strong>{{ row.project_title }}</strong>
+                    <span>{{ row.source_type }} · ws {{ row.workspace_id }}</span>
+                  </td>
+                  <td>{{ row.status }}</td>
+                  <td>{{ money(row.script_cost) }}</td>
+                  <td>{{ money(row.image_cost) }}</td>
+                  <td>{{ money(row.tts_cost) }}</td>
+                  <td><strong>{{ money(row.total_cost) }}</strong></td>
+                  <td>{{ row.call_count }}</td>
+                </tr>
+                <tr v-if="projectCosts.length === 0">
+                  <td colspan="7">No project cost data yet.</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
 

@@ -1,0 +1,257 @@
+# Framecast Product Progress
+
+## How to use this file
+
+Execution tracker for the phases defined in `PRODUCT_PLAN.md`. Every task gets marked as it ships.
+
+**Status key:**
+- `[ ]` — not started
+- `[~]` — in progress
+- `[x]` — complete
+- `[!]` — blocked (add a note)
+
+**Rules:**
+- Do not mark complete if partially done — use `[~]` and add a note
+- Do not move to the next phase until the current phase QA gate passes (see `PRODUCT_QA.md`)
+- Record decisions and deviations in the Decisions table at the bottom
+
+---
+
+## Current State
+
+**Active phase:** Phase A — Stabilize  
+**Last updated:** 2026-04-18  
+**Last updated by:** —
+
+Focused MVP source of truth:
+
+- Scope: `PRODUCT_MVP_CORE.md`
+- QA gate: `PRODUCT_MVP_CORE_QA.md`
+
+---
+
+## Phase A — Stabilize
+
+Exit gate: Product is stable enough to charge real users. Billing enforces limits. A new user can complete their first export in under 10 minutes. Prod infra is live.
+
+See QA gate: `PRODUCT_MVP_CORE_QA.md`
+
+### Export Stability
+- [ ] Split `ProcessExportJob` into per-scene sub-jobs so large projects don't hit the monolithic timeout
+- [ ] Add idempotency guard on asset creation in export — retry must not create duplicate Asset records
+- [ ] Clean up temp directories on job failure
+- [~] Increase export worker timeout and document the new limit
+- [ ] Add `failed()` handler to `ProcessExportJob` — sets export status to `failed` with reason
+- [ ] Verify export Reverb events fire correctly for queued → processing → completed → failed transitions
+- [~] Export blocked (not silently failed) when required voice or visual is missing per scene
+- [x] Bundle editor caption fonts into the export worker image so selected fonts render in MP4 exports
+- [~] Caption/music/export preview parity — selected font works; remaining caption preset and audio parity still needs QA
+
+### Paddle Billing
+- [ ] Install and configure Paddle SDK in Laravel
+- [ ] Define Free / Creator / Studio / Agency plan IDs in config
+- [ ] Workspace model: add `plan`, `plan_status`, `paddle_customer_id`, `paddle_subscription_id`
+- [ ] Paddle webhook handler — update workspace plan on subscription created/updated/cancelled/failed
+- [ ] Plan gating middleware — enforce limits before expensive calls (exports, AI image, TTS, variants)
+- [ ] Over-limit response returns plan name, current usage, and limit to the frontend
+- [ ] Upgrade flow — checkout link opens Paddle overlay/redirect
+- [ ] Downgrade flow — plan changes on next billing cycle
+- [ ] Failed payment state — workspace flagged, user sees graceful "payment failed" message
+- [ ] Admin can manually override plan tier for a workspace
+
+### Onboarding Wizard
+- [ ] First-login detection — redirect new users to wizard instead of dashboard
+- [ ] Wizard step 1: pick niche (or custom)
+- [ ] Wizard step 2: pick source type and enter content
+- [ ] Wizard step 3: configure voice, style, aspect ratio
+- [ ] Wizard step 4: launch generation with progress view
+- [ ] Wizard step 5: land in Editor with scenes populated
+- [ ] Skip option available at each step
+- [ ] Wizard state persisted (refresh-safe)
+
+### God-Mode Admin
+- [~] Workspace list with plan tier, usage, created date, status
+- [ ] User list with workspace, last login, role
+- [~] Per-workspace: API usage events, monthly spend estimate, failed provider calls
+- [ ] Recent generations list (last 50 across all workspaces)
+- [ ] Suspend workspace action (blocks all API calls for that workspace)
+- [~] Manually adjust plan tier and limits for a workspace
+- [ ] Audit trail for admin actions (who did what, when)
+- [~] Admin routes restricted to `super_admin` / `platform_admin` roles
+
+### Content Quality and Repeatability
+- [ ] Niche-specific script templates for launch niches
+- [ ] Hook alternatives before full generation
+- [ ] Scene pacing controls
+- [ ] One-click rewrite actions: shorter, scarier, more dramatic, simpler, more documentary
+- [ ] Series Lite: series name, niche, defaults, and "Create next episode"
+- [ ] Saved caption/voice/visual/music presets
+- [ ] Regenerate only the requested scene/media without touching voice or unrelated assets
+- [ ] Friendly rewrite suggestions when AI image/script prompts hit policy limits
+
+### Cost Tracking and Unit Economics
+- [~] Record OpenAI text usage and estimated cost
+- [~] Record AI image usage and estimated cost
+- [~] Record TTS usage/failures and estimated cost
+- [ ] Record export compute/storage cost estimate
+- [ ] Show cost per completed export in god-mode
+- [ ] Enforce per-workspace API budget before expensive jobs start
+- [ ] Admin alert when workspace spend approaches plan budget
+
+### Production Infrastructure
+- [ ] Production `.env` — all secrets populated (OpenAI, B2, Reverb, Paddle, DB, Redis, mail)
+- [ ] Postmark or SES configured — magic link email delivers in prod
+- [ ] SSL certificate provisioned and auto-renewing
+- [ ] Domain DNS pointed correctly (API, web, Reverb)
+- [ ] CORS configured for production domain
+- [ ] Queue workers supervised (Supervisor or similar) — auto-restart on crash
+- [ ] All 4 queues running: `generation`, `visual`, `exports`, `default`
+- [ ] Reverb server supervised and reachable from frontend
+- [ ] PostgreSQL backups scheduled
+- [ ] Redis persistence decision made and configured
+- [ ] Docker production build pipeline working (`docker-compose.prod.yml`)
+- [ ] All seeders and migrations clean — no dev-only data in prod
+- [ ] No local URLs or dev credentials in production code paths
+- [ ] B2 production bucket configured with correct CORS and ACL
+
+**Phase A exit gate:** `PRODUCT_QA.md § Phase A` must pass before Phase B starts.
+
+---
+
+## Phase B — Publish
+
+Exit gate: A user can connect a social account, export a video, schedule a post, and have it auto-publish at the scheduled time. Posting calendar shows accurate status.
+
+See QA gate: `PRODUCT_QA.md § Phase B`
+
+### Social Account OAuth
+- [ ] `social_accounts` table — platform, workspace_id, tokens, expires_at, status
+- [ ] OAuth connect flow for YouTube (Settings → Connect Account)
+- [ ] OAuth connect flow for TikTok
+- [ ] OAuth connect flow for Instagram (via Meta Graph API)
+- [ ] OAuth connect flow for Facebook Reels (same Meta app as Instagram)
+- [ ] Token refresh — auto-refresh before expiry, mark as `expired` if refresh fails
+- [ ] Disconnect account action
+- [ ] Connected accounts list in Settings with platform avatar and display name
+
+### Schedule Post Flow
+- [ ] `scheduled_posts` table — project_id, export_job_id, social_account_id, scheduled_at, status, caption, hashtags, platform_post_id, failure_reason
+- [ ] "Schedule Post" button appears on completed exports (Editor + Variants screen)
+- [ ] Schedule modal: pick connected account, write caption, add hashtags, pick date/time
+- [ ] Caption character limit enforcement per platform (TikTok 2200, YouTube 5000, Instagram 2200)
+- [ ] Save as draft option (no scheduled_at set)
+- [ ] Edit/reschedule a pending post
+- [ ] Cancel a scheduled post
+
+### Publish Job
+- [ ] `PublishVideoJob` dispatched at `scheduled_at` via Laravel scheduler or queue delay
+- [ ] Downloads export MP4 from B2 and posts to platform API
+- [ ] Sets `platform_post_id` and status `published` on success
+- [ ] Sets `failure_reason` and status `failed` on error — retries up to 3×
+- [ ] Reverb event fires on publish success and failure (toast in UI)
+- [ ] Platform-specific metadata: YouTube title/description/category, TikTok privacy, Instagram caption
+
+### Posting Calendar
+- [ ] Calendar view route and navigation entry
+- [ ] Month view — each day shows scheduled post count badge
+- [ ] Week view — each slot shows post card (platform icon + video title + status)
+- [ ] Color coding: draft (grey), scheduled (blue), published (green), failed (red)
+- [ ] Click post card → quick modal: view details, edit caption, reschedule, retry
+- [ ] Filter by platform, status, or channel
+- [ ] "Add to calendar" shortcut from any completed export
+
+**Phase B exit gate:** `PRODUCT_QA.md § Phase B` must pass before Phase C starts.
+
+---
+
+## Phase C — Plan (Series + Calendar)
+
+Exit gate: A user can create a named series, generate multiple episodes that inherit series defaults, and view all episodes in the calendar grouped by series.
+
+See QA gate: `PRODUCT_QA.md § Phase C`
+
+### Series Model
+- [ ] `series` table — workspace_id, name, niche_id, cover_image_asset_id, default_voice_profile_id, default_visual_style, default_caption_preset_id, default_music_mood, default_aspect_ratio, episode_count
+- [ ] Use `Project.family_id` to link episodes to a series
+- [ ] Series CRUD API endpoints
+- [ ] Series list on dashboard (card grid or sidebar section)
+- [ ] Series detail page: name, cover, defaults, episode list ordered by episode number
+
+### New Episode Flow
+- [ ] "New Episode" button on Series detail page
+- [ ] Episode creation wizard pre-fills all series defaults (voice, style, caption, music, aspect ratio, channel, brand kit)
+- [ ] User only needs to provide content (script, URL, audio, etc.)
+- [ ] Episode numbered automatically (episode_number on Project or in series metadata)
+- [ ] After generation, episode appears in series list
+
+### Batch Series Generation
+- [ ] Batch input: paste N scripts or upload CSV → N episodes created
+- [ ] All batch episodes inherit series defaults
+- [ ] One BatchJob parent tracks all episode jobs
+- [ ] Progress visible per episode on series detail page
+
+### Calendar — Series View
+- [ ] Calendar groups episodes by series (color per series)
+- [ ] Series filter chip on calendar
+- [ ] Series episode cards in calendar link back to project editor
+
+**Phase C exit gate:** `PRODUCT_QA.md § Phase C` must pass before Phase D starts.
+
+---
+
+## Phase D — Agency
+
+Exit gate: An agency account can invite team members, manage multiple client brands, send a client approval link, export without watermark, and see platform analytics inside the tool.
+
+See QA gate: `PRODUCT_QA.md § Phase D`
+
+### Team Roles and Invites
+- [ ] Workspace roles: `owner`, `editor`, `publisher`, `viewer`
+- [ ] Invite by email — sends magic link joining the workspace
+- [ ] Role permissions enforced: editor cannot publish, viewer cannot edit
+- [ ] Member list in Settings with role management
+- [ ] Remove member action
+
+### Client Approval Link
+- [ ] `approval_requests` table — export_job_id, token, status (pending/approved/rejected), reviewer_email, reviewed_at, note
+- [ ] "Send for Approval" button on completed export
+- [ ] Public approval page (no login required) — plays video, approve / reject with note
+- [ ] On approval → auto-schedule post if platform was pre-selected
+- [ ] On rejection → notification to workspace with reviewer note
+- [ ] Approval link expires after 7 days
+
+### White-Label Export
+- [ ] Watermark toggled off for Studio and Agency plans
+- [ ] `watermark_enabled` on ExportJob defaults to plan-based value
+- [ ] White-label flag enforced in `ProcessExportJob` FFmpeg command
+
+### Analytics Pull-Back
+- [ ] `post_analytics` table — scheduled_post_id, fetched_at, views, likes, comments, shares, watch_time_seconds
+- [ ] Scheduled job fetches analytics daily for published posts (per platform API)
+- [ ] Analytics panel on Calendar post detail modal
+- [ ] Per-series analytics summary on Series detail page (total views, avg watch time)
+
+### Agency Workspace
+- [ ] Agency plan allows creating sub-workspaces (client brands) under one billing account
+- [ ] Switch between client workspaces from top nav
+- [ ] Billing consolidated to agency workspace owner
+
+**Phase D exit gate:** `PRODUCT_QA.md § Phase D` must pass — product considered full launch-ready.
+
+---
+
+## Decisions Made During Build
+
+| Date | Decision | Reason | Phase |
+|---|---|---|---|
+| 2026-04-18 | Billing via Paddle, not Stripe | Paddle handles VAT and is merchant of record — simpler global compliance | A |
+| 2026-04-18 | Series Lite should move earlier than full calendar | Repeatable content workflows are the subscription hook even before publishing is live | A |
+| 2026-04-18 | Treat platform publishing as approval-risk work | YouTube/TikTok direct public posting can require audits and platform policy checks | B |
+
+---
+
+## Blockers
+
+| Blocker | Phase | Raised by | Status |
+|---|---|---|---|
+| — | — | — | — |

@@ -27,6 +27,7 @@ const currentPage = ref(1)
 const perPage = ref(8)
 const totalProjects = ref(0)
 const lastPage = ref(1)
+const filterChannelId = ref(null)
 const queuePage = ref(1)
 const queuePerPage = ref(10)
 const totalQueueRows = ref(0)
@@ -116,6 +117,7 @@ const sourceOptions = [
   { key: 'audio_upload',        icon: '🎙️', label: 'Upload Audio',         hint: 'Transcribe and structure' },
   { key: 'video_upload',        icon: '🎬', label: 'Upload Video',         hint: 'Extract and repurpose' },
   { key: 'csv_topic',           icon: '📋', label: 'CSV Batch',            hint: 'Multiple topics at once' },
+  { key: 'blank',               icon: '✏️', label: 'Start from Scratch',   hint: 'Build every scene yourself' },
 ]
 
 const durationOptions = [
@@ -357,6 +359,12 @@ function formatDurationLabel(seconds) {
   return `${mins}:${String(secs).padStart(2, '0')}`
 }
 
+function channelName(channelId) {
+  if (!channelId) return null
+  const ch = channels.value.find((c) => String(c.id) === String(channelId))
+  return ch?.name ?? null
+}
+
 function openProject(project) {
   if (!project?.id) return
 
@@ -396,7 +404,7 @@ function queueRowsFromProjects(projectList) {
     return {
       id: project.id,
       project: project.title || `Project #${project.id}`,
-      channel: project.channel_id ? `Channel #${project.channel_id}` : 'No channel',
+      channel: channelName(project.channel_id) || 'No channel',
       variants: Number(project.variants_count || 0),
       status,
       statusLabel,
@@ -448,14 +456,17 @@ async function confirmDeleteProject() {
   }
 }
 
+function setChannelFilter(channelId) {
+  filterChannelId.value = channelId
+  currentPage.value = 1
+  loadProjects()
+}
+
 async function loadProjects() {
   try {
-    const response = await api.get('/projects', {
-      params: {
-        page: currentPage.value,
-        per_page: perPage.value,
-      },
-    })
+    const params = { page: currentPage.value, per_page: perPage.value }
+    if (filterChannelId.value) params.channel_id = filterChannelId.value
+    const response = await api.get('/projects', { params })
     const items = response.data?.data?.projects ?? []
     const pagination = response.data?.meta?.pagination ?? {}
     projects.value = items
@@ -574,7 +585,7 @@ async function loadNiches() {
   }
 }
 
-function openWizard(initialSourceType = 'prompt') {
+function openWizard(initialSourceType = 'prompt', presetChannelId = null) {
   wizardStep.value = 1
   selectedNicheId.value = null
   customNicheSelected.value = false
@@ -590,6 +601,7 @@ function openWizard(initialSourceType = 'prompt') {
   sourceImageAssetIds.value = []
   imageVisualMode.value = 'upload'
   aiBrollStyle.value = 'photorealistic'
+  channelId.value = presetChannelId ? String(presetChannelId) : ''
   revokeImagePreviewItems()
   showWizardModal.value = true
 }
@@ -618,7 +630,7 @@ async function submitWizardProject() {
     || (selectedSourceType === 'video_upload' && videoFile.value)
     || (selectedSourceType === 'images' && imageFiles.value.length > 0)
 
-  if (!sourceContentRaw && !hasMediaFile) {
+  if (selectedSourceType !== 'blank' && !sourceContentRaw && !hasMediaFile) {
     wizardCreateState.value = 'error'
     wizardCreateError.value = 'Source content is required.'
     return
@@ -649,7 +661,11 @@ async function submitWizardProject() {
     wizardCreateState.value = 'success'
 
     if (projectId) {
-      router.push({ name: 'generation-progress', params: { projectId } })
+      if (selectedSourceType === 'blank') {
+        router.push({ name: 'project-editor', params: { projectId } })
+      } else {
+        router.push({ name: 'generation-progress', params: { projectId } })
+      }
     }
   } catch (error) {
     wizardCreateState.value = 'error'
@@ -834,7 +850,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="section-header">
-          <div class="section-title">Recent Projects</div>
+          <div class="section-title">{{ filterChannelId ? (channelName(filterChannelId) || 'Channel') : 'All Videos' }}</div>
           <div class="projects-toolbar">
             <label class="page-size-control">
               <span>Per page</span>
@@ -848,8 +864,24 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
+        <!-- Channel filter tabs -->
+        <div v-if="channels.length > 0" class="channel-filter-bar">
+          <button
+            :class="['channel-filter-tab', !filterChannelId ? 'active' : '']"
+            type="button"
+            @click="setChannelFilter(null)"
+          >All</button>
+          <button
+            v-for="ch in channels"
+            :key="ch.id"
+            :class="['channel-filter-tab', filterChannelId === ch.id ? 'active' : '']"
+            type="button"
+            @click="setChannelFilter(ch.id)"
+          >{{ ch.name }}</button>
+        </div>
+
         <div class="projects-grid">
-          <button class="new-project-card" type="button" @click="openWizard">
+          <button class="new-project-card" type="button" @click="openWizard('prompt', filterChannelId)">
             <div style="text-align:center;">
               <div style="font-size:30px; margin-bottom:8px;">+</div>
               <div style="font-size:13px; font-weight:600;">New Video</div>
@@ -893,7 +925,8 @@ onBeforeUnmount(() => {
             <div class="project-info">
               <div class="project-name">{{ project.title || `Project #${project.id}` }}</div>
               <div class="project-meta">
-                <span>{{ project.channel_id ? `Channel #${project.channel_id}` : 'No channel' }}</span>
+                <span v-if="channelName(project.channel_id)" class="channel-badge">{{ channelName(project.channel_id) }}</span>
+                <span v-else class="channel-badge channel-badge-none">No channel</span>
                 <span>{{ project.primary_language || 'en' }}</span>
                 <span>{{ Number(project.variants_count || 0) }} variants</span>
               </div>
@@ -1134,8 +1167,8 @@ onBeforeUnmount(() => {
 
         <!-- Step 3: Content Entry -->
         <div v-if="wizardStep === 3">
-          <div class="section-title">Enter your content</div>
-          <div class="section-subtitle">Almost done — fill in your content and confirm settings.</div>
+          <div class="section-title">{{ wizardSourceType === 'blank' ? 'Set up your project' : 'Enter your content' }}</div>
+          <div class="section-subtitle">{{ wizardSourceType === 'blank' ? 'Pick your format and channel — you\'ll build scenes in the editor.' : 'Almost done — fill in your content and confirm settings.' }}</div>
 
           <!-- Niche preset summary pills -->
 	          <div v-if="selectedNiche" class="niche-preset-summary">
@@ -1191,7 +1224,14 @@ onBeforeUnmount(() => {
 	          </div>
 
 	          <!-- Content input by source type -->
-          <div v-if="wizardSourceType === 'prompt'" class="input-group">
+          <div v-if="wizardSourceType === 'blank'" class="blank-canvas-notice">
+            <div class="blank-canvas-icon">✏️</div>
+            <div class="blank-canvas-body">
+              <div class="blank-canvas-title">Blank canvas</div>
+              <div class="blank-canvas-text">Add scenes in the editor, write your script, pick visuals from your library or generate with AI, and record voice per scene.</div>
+            </div>
+          </div>
+          <div v-else-if="wizardSourceType === 'prompt'" class="input-group">
             <label class="input-label">What's your video about?</label>
             <textarea v-model="promptText" class="field-input textarea" rows="5" placeholder="e.g. The mysterious disappearance of the Beaumont family in 1966…"></textarea>
           </div>
@@ -1340,7 +1380,9 @@ onBeforeUnmount(() => {
           <div class="modal-actions">
             <button class="btn btn-ghost" type="button" @click="wizardBack">← Back</button>
             <button class="btn btn-primary" type="button" :disabled="wizardCreateState === 'loading'" @click="submitWizardProject">
-              {{ wizardCreateState === 'loading' ? '✦ Generating…' : '✦ Generate Video' }}
+              {{ wizardCreateState === 'loading'
+                ? (wizardSourceType === 'blank' ? 'Creating…' : '✦ Generating…')
+                : (wizardSourceType === 'blank' ? 'Create Project →' : '✦ Generate Video') }}
             </button>
           </div>
         </div>
@@ -1428,6 +1470,12 @@ onBeforeUnmount(() => {
 .page-size-control span { white-space: nowrap; }
 .page-size-select { min-width: 72px; padding: 6px 10px; }
 .projects-summary { color: var(--color-text-muted); font-size: 12px; }
+.channel-filter-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.channel-filter-tab { padding: 5px 14px; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-secondary); font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.15s ease; white-space: nowrap; }
+.channel-filter-tab:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-primary); }
+.channel-filter-tab.active { border-color: var(--color-accent); background: rgba(255,107,53,0.12); color: var(--color-accent); font-weight: 600; }
+.channel-badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600; background: rgba(255,107,53,0.12); color: var(--color-accent); border: 1px solid rgba(255,107,53,0.2); }
+.channel-badge-none { background: transparent; color: var(--color-text-muted); border-color: transparent; font-weight: 400; }
 .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 16px; }
 .new-project-card { min-height: 222px; border: 1px dashed var(--color-border); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); cursor: pointer; background: var(--color-bg-card); }
 .project-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; transition: 0.22s ease; text-align: left; }
@@ -1597,6 +1645,10 @@ onBeforeUnmount(() => {
 .format-chip:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }
 .format-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
 .hint-box { margin-top: 8px; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }
+.blank-canvas-notice { display: flex; align-items: flex-start; gap: 14px; padding: 18px 16px; border-radius: 10px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); margin-bottom: 4px; }
+.blank-canvas-icon { font-size: 24px; flex-shrink: 0; margin-top: 1px; }
+.blank-canvas-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
+.blank-canvas-text { font-size: 12px; color: var(--color-text-muted); line-height: 1.55; }
 .image-mode-toggle { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
 .image-mode-btn { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.15s; }
 .image-mode-btn:hover { border-color: rgba(255,107,53,0.35); }
