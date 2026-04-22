@@ -35,6 +35,7 @@ class ProjectController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', Rule::in([4, 8, 12, 16, 24])],
             'channel_id' => ['nullable', 'integer'],
+            'status' => ['nullable', 'string', Rule::in(['draft', 'generating', 'ready', 'published', 'failed'])],
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 8);
@@ -43,6 +44,7 @@ class ProjectController extends Controller
         $paginator = Project::query()
             ->where('workspace_id', $user->workspace_id)
             ->when(! empty($validated['channel_id']), fn ($q) => $q->where('channel_id', (int) $validated['channel_id']))
+            ->when(! empty($validated['status']), fn ($q) => $q->where('status', $validated['status']))
             ->whereNotExists(function ($query): void {
                 $query->selectRaw('1')
                     ->from('variants')

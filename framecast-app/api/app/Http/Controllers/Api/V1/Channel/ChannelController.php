@@ -20,6 +20,7 @@ class ChannelController extends Controller
 
         $channels = Channel::query()
             ->where('workspace_id', $user->workspace_id)
+            ->withCount('projects')
             ->orderByDesc('id')
             ->get();
 
@@ -188,6 +189,7 @@ class ChannelController extends Controller
             'allowed_template_ids' => $channel->allowed_template_ids,
             'brand_kit_id' => $channel->brand_kit_id,
             'status' => $channel->status,
+            'projects_count' => (int) ($channel->projects_count ?? 0),
             'created_at' => $channel->created_at?->toIso8601String(),
             'updated_at' => $channel->updated_at?->toIso8601String(),
         ];

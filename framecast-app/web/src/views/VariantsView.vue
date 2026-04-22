@@ -2,11 +2,15 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
+import { useAuthStore } from '../stores/auth'
+import AppSidebar from '../components/AppSidebar.vue'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 
 const projectId = computed(() => Number(route.params.projectId))
+const mePayload = ref(null)
 
 const loading = ref(true)
 const loadError = ref('')
@@ -247,6 +251,11 @@ function backToDashboard() {
   router.push({ name: 'dashboard' })
 }
 
+async function logout() {
+  await authStore.logout()
+  router.push({ name: 'login' })
+}
+
 function openEditor(projectTargetId) {
   router.push({ name: 'project-editor', params: { projectId: projectTargetId } })
 }
@@ -480,11 +489,14 @@ async function loadData({ silent = false } = {}) {
   }
 
   try {
-    const [projectResponse, variantsResponse, voicesResponse] = await Promise.all([
+    const [projectResponse, variantsResponse, voicesResponse, meResponse] = await Promise.all([
       api.get(`/projects/${projectId.value}`),
       api.get(`/projects/${projectId.value}/variants`),
       api.get('/voice-profiles'),
+      api.get('/me'),
     ])
+
+    mePayload.value = meResponse.data?.data?.user ?? null
 
     const localizationResponse = await api.get(`/projects/${projectId.value}/localizations`)
 
@@ -733,36 +745,7 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="variants-shell">
-    <aside class="sidebar">
-      <button class="sidebar-logo" type="button" @click="backToDashboard">F</button>
-
-      <div class="sidebar-nav">
-        <button class="nav-item" type="button" @click="backToDashboard">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
-            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
-            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
-            <rect x="14" y="14" width="7" height="7" rx="1"></rect>
-          </svg>
-          <span class="tooltip">Dashboard</span>
-        </button>
-
-        <button class="nav-item" type="button" @click="router.push({ name: 'asset-library' })">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"></path>
-          </svg>
-          <span class="tooltip">Asset Library</span>
-        </button>
-
-        <button class="nav-item" type="button" @click="router.push({ name: 'settings' })">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-          <span class="tooltip">Settings</span>
-        </button>
-      </div>
-    </aside>
+    <AppSidebar :user="mePayload" active-page="variants" @logout="logout" />
 
     <section class="main">
       <header class="topbar">
@@ -1190,14 +1173,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .variants-shell { min-height: 100vh; background: radial-gradient(circle at top right, rgba(255, 107, 53, 0.09), transparent 28%), radial-gradient(circle at bottom left, rgba(96, 165, 250, 0.08), transparent 24%), var(--color-bg-deep); color: var(--color-text-primary); font-family: "DM Sans", sans-serif; }
-.sidebar { position: fixed; inset: 0 auto 0 0; width: 72px; background: rgba(17, 17, 24, 0.96); border-right: 1px solid var(--color-border); backdrop-filter: blur(12px); display: flex; flex-direction: column; align-items: center; padding: 16px 0; z-index: 100; }
-.sidebar-logo { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, var(--color-accent), #ff9b72); display: flex; align-items: center; justify-content: center; color: #fff; font-family: "Space Mono", monospace; font-weight: 700; margin-bottom: 28px; }
-.sidebar-nav { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-.nav-item { width: 44px; height: 44px; border-radius: 10px; color: var(--color-text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.2s ease; }
-.nav-item:hover { color: var(--color-text-secondary); background: var(--color-bg-card); }
-.tooltip { position: absolute; left: 58px; top: 50%; transform: translateY(-50%); opacity: 0; pointer-events: none; background: var(--color-bg-elevated); color: var(--color-text-primary); font-size: 12px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--color-border); white-space: nowrap; transition: opacity 0.15s ease; }
-.nav-item:hover .tooltip { opacity: 1; }
-.main { margin-left: 72px; min-height: 100vh; }
+.main { margin-left: 220px; min-height: 100vh; }
 .topbar { position: sticky; top: 0; z-index: 90; min-height: 64px; background: rgba(17, 17, 24, 0.88); border-bottom: 1px solid var(--color-border); backdrop-filter: blur(14px); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .topbar-title { font-size: 16px; font-weight: 600; }
 .topbar-subtitle { margin-top: 4px; color: var(--color-text-muted); font-size: 13px; }
@@ -1343,7 +1319,6 @@ onBeforeUnmount(() => {
   .control-surface { position: static; }
 }
 @media (max-width: 800px) {
-  .sidebar { display: none; }
   .main { margin-left: 0; }
   .topbar { flex-direction: column; align-items: flex-start; }
   .variants-page { padding: 16px; }

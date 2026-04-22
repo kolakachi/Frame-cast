@@ -9,6 +9,10 @@ import RegisterView from '../views/RegisterView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import VariantsView from '../views/VariantsView.vue'
 import AdminView from '../views/AdminView.vue'
+import ChannelsView from '../views/ChannelsView.vue'
+import ChannelDetailView from '../views/ChannelDetailView.vue'
+import VideosView from '../views/VideosView.vue'
+import JobsView from '../views/JobsView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -20,6 +24,10 @@ const routes = [
   { path: '/assets', name: 'asset-library', component: AssetLibraryView, meta: { requiresAuth: true } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true } },
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
+  { path: '/channels', name: 'channels', component: ChannelsView, meta: { requiresAuth: true } },
+  { path: '/channels/:channelId', name: 'channel-detail', component: ChannelDetailView, meta: { requiresAuth: true } },
+  { path: '/videos', name: 'videos', component: VideosView, meta: { requiresAuth: true } },
+  { path: '/jobs', name: 'jobs', component: JobsView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/generation', name: 'generation-progress', component: GenerationProgressView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/editor', name: 'project-editor', component: EditorView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/variants', name: 'project-variants', component: VariantsView, meta: { requiresAuth: true } },
