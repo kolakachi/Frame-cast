@@ -325,7 +325,7 @@ onMounted(loadAdmin)
 }
 
 .admin-main {
-  margin-left: 72px;
+  margin-left: 220px;
   padding: 30px;
 }
 

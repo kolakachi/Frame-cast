@@ -690,7 +690,7 @@ watch([currentPage, perPage], () => {
 }
 
 /* Main content */
-.main { margin-left: 72px; min-height: 100vh; padding: 24px; }
+.main { margin-left: 220px; min-height: 100vh; padding: 24px; }
 
 /* Overview */
 .asset-overview {

@@ -764,7 +764,7 @@ onMounted(loadSettings)
   font-family: "DM Sans", sans-serif;
 }
 
-.main { margin-left: 72px; min-height: 100vh; padding: 24px; }
+.main { margin-left: 220px; min-height: 100vh; padding: 24px; }
 
 .page-state { margin-top: 24px; color: #6a6a7c; font-size: 13px; }
 

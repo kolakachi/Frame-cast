@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import api from "../services/api";
 import { getEcho } from "../services/echo";
 import { useAuthStore } from "../stores/auth";
+import AppSidebar from "../components/AppSidebar.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -18,7 +19,6 @@ const hookOptions = ref([]);
 const mePayload = ref(null);
 const isAdmin = computed(() => ["super_admin", "platform_admin"].includes(mePayload.value?.role ?? authStore.user?.role));
 const activeSceneId = ref(null);
-const showUserPopover = ref(false);
 const notificationDrawerOpen = ref(false);
 const notifications = ref([]);
 const notificationToasts = ref([]);
@@ -2757,112 +2757,7 @@ onBeforeUnmount(() => {
     <section v-else-if="error" class="state-card error">{{ error }}</section>
 
     <div v-else class="editor-shell">
-      <aside class="sidebar">
-        <button
-          class="sidebar-logo"
-          type="button"
-          @click="router.push({ name: 'dashboard' })"
-        >
-          F
-        </button>
-
-        <div class="sidebar-nav">
-          <button
-            class="nav-item"
-            type="button"
-            @click="router.push({ name: 'dashboard' })"
-          >
-            <svg
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              viewBox="0 0 24 24"
-            >
-              <rect x="3" y="3" width="7" height="7" rx="1"></rect>
-              <rect x="14" y="3" width="7" height="7" rx="1"></rect>
-              <rect x="3" y="14" width="7" height="7" rx="1"></rect>
-              <rect x="14" y="14" width="7" height="7" rx="1"></rect>
-            </svg>
-            <span class="tooltip">Dashboard</span>
-          </button>
-
-          <button class="nav-item" type="button" @click="router.push({ name: 'asset-library' })">
-            <svg
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"
-              ></path>
-            </svg>
-            <span class="tooltip">Asset Library</span>
-          </button>
-
-          <button
-            class="nav-item"
-            type="button"
-            @click="router.push({ name: 'settings' })"
-          >
-            <svg
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              viewBox="0 0 24 24"
-            >
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-            </svg>
-            <span class="tooltip">Settings</span>
-          </button>
-
-          <button
-            v-if="isAdmin"
-            class="nav-item"
-            type="button"
-            @click="router.push({ name: 'admin' })"
-          >
-            <svg
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path d="M12 3l7 3v5c0 4.4-2.8 8.4-7 10-4.2-1.6-7-5.6-7-10V6l7-3z"></path>
-              <path d="M9 12l2 2 4-5"></path>
-            </svg>
-            <span class="tooltip">God Mode</span>
-          </button>
-        </div>
-
-        <div class="sidebar-bottom">
-          <button
-            class="avatar"
-            type="button"
-            @click="showUserPopover = !showUserPopover"
-          >
-            {{ mePayload?.name?.[0] || "K" }}
-          </button>
-
-          <div v-if="showUserPopover" class="user-popover">
-            <div class="user-popover-name">{{ mePayload?.name || "User" }}</div>
-            <div class="user-popover-email">{{ mePayload?.email || "—" }}</div>
-            <div class="user-popover-divider"></div>
-            <button class="user-popover-action" type="button" @click="logout">
-              Log out
-            </button>
-          </div>
-        </div>
-      </aside>
+      <AppSidebar :user="mePayload" active-page="editor" @logout="logout" />
 
       <div class="main">
         <header class="topbar">
@@ -4079,150 +3974,8 @@ button {
   border: none;
 }
 
-.sidebar-logo,
-.avatar,
-.user-popover-action {
-  cursor: pointer;
-}
-
-.sidebar {
-  position: fixed;
-  inset: 0 auto 0 0;
-  width: 72px;
-  background: rgba(17, 17, 24, 0.96);
-  border-right: 1px solid var(--border);
-  backdrop-filter: blur(12px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px 0;
-  z-index: 100;
-}
-
-.sidebar-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent), #ff9b72);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-family: "Space Mono", monospace;
-  font-weight: 700;
-  margin-bottom: 28px;
-}
-
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: 1;
-}
-
-.nav-item {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  position: relative;
-  transition: 0.2s ease;
-}
-
-.nav-item:hover {
-  color: var(--text-secondary);
-  background: var(--bg-card);
-}
-
-.nav-item.active {
-  color: var(--accent);
-  background: var(--accent-glow);
-  box-shadow: inset 0 0 0 1px rgba(255, 107, 53, 0.18);
-}
-
-.tooltip {
-  position: absolute;
-  left: 58px;
-  top: 50%;
-  transform: translateY(-50%);
-  opacity: 0;
-  pointer-events: none;
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  font-size: 12px;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  white-space: nowrap;
-  transition: opacity 0.15s ease;
-}
-
-.nav-item:hover .tooltip {
-  opacity: 1;
-}
-
-.sidebar-bottom {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #2a3a70, #7d3cff);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 700;
-  color: #fff;
-}
-
-.user-popover {
-  position: absolute;
-  bottom: 52px;
-  left: 12px;
-  width: 200px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-active);
-  border-radius: 10px;
-  padding: 12px;
-  z-index: 200;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-}
-
-.user-popover-name {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.user-popover-email {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.user-popover-divider {
-  border-top: 1px solid var(--border);
-  margin: 10px 0;
-}
-
-.user-popover-action {
-  width: 100%;
-  text-align: left;
-  color: var(--red);
-  font-size: 13px;
-}
-
 .main {
-  margin-left: 72px;
+  margin-left: 220px;
   min-height: 100vh;
 }
 
@@ -6541,26 +6294,6 @@ select.control-value {
 }
 
 @media (max-width: 860px) {
-  .sidebar {
-    position: static;
-    width: 100%;
-    height: 72px;
-    flex-direction: row;
-    justify-content: space-between;
-    padding: 0 16px;
-  }
-
-  .sidebar-nav,
-  .sidebar-bottom {
-    flex-direction: row;
-    display: flex;
-    align-items: center;
-  }
-
-  .sidebar-logo {
-    margin-bottom: 0;
-  }
-
   .main {
     margin-left: 0;
   }
