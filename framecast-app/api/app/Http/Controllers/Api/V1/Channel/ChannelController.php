@@ -195,7 +195,7 @@ class ChannelController extends Controller
         ];
     }
 
-    private function error(string $code, string $message, int $status): JsonResponse
+    protected function error(string $code, string $message, int $status = 422): JsonResponse
     {
         return response()->json([
             'error' => [

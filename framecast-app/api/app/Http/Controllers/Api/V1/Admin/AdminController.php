@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminAuditLog;
 use App\Models\ApiUsageEvent;
+use App\Models\ExportJob;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\Auth\JwtService;
 use App\Services\WorkspaceUsageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,50 +18,314 @@ use Illuminate\Validation\Rule;
 
 class AdminController extends Controller
 {
-    public function __construct(private readonly WorkspaceUsageService $usageService)
-    {
-    }
+    public function __construct(private readonly WorkspaceUsageService $usageService) {}
 
     public function overview(Request $request): JsonResponse
     {
-        if (! $this->canUseGodMode($request->user())) {
-            return $this->error('forbidden', 'God mode access is required.', 403);
-        }
-
         $monthStart = now()->startOfMonth();
 
         return response()->json([
             'data' => [
                 'summary' => [
-                    'users' => User::query()->count(),
-                    'workspaces' => Workspace::query()->count(),
-                    'projects' => Project::query()->count(),
-                    'api_spend_total_usd' => $this->money(ApiUsageEvent::query()->sum('estimated_cost_usd')),
+                    'total_users' => User::query()->count(),
+                    'active_users' => User::query()->where('status', 'active')->count(),
+                    'total_workspaces' => Workspace::query()->count(),
+                    'total_projects' => Project::query()->count(),
+                    'exports_today' => ExportJob::query()->where('status', 'completed')->whereDate('completed_at', today())->count(),
+                    'exports_month' => ExportJob::query()->where('status', 'completed')->where('completed_at', '>=', $monthStart)->count(),
+                    'api_spend_today_usd' => $this->money(ApiUsageEvent::query()->whereDate('occurred_at', today())->sum('estimated_cost_usd')),
                     'api_spend_month_usd' => $this->money(ApiUsageEvent::query()->where('occurred_at', '>=', $monthStart)->sum('estimated_cost_usd')),
-                    'failed_api_calls_month' => ApiUsageEvent::query()
-                        ->where('occurred_at', '>=', $monthStart)
-                        ->where('status', 'failed')
-                        ->count(),
+                    'api_spend_total_usd' => $this->money(ApiUsageEvent::query()->sum('estimated_cost_usd')),
+                    'failed_jobs_today' => ExportJob::query()->where('status', 'failed')->whereDate('queued_at', today())->count(),
                 ],
-                'plans' => WorkspaceUsageService::plans(),
-                'workspaces' => $this->workspaceRows(),
-                'users' => $this->userRows(),
-                'recent_usage' => $this->recentUsageRows(),
-                'project_costs' => $this->projectCostRows(),
+                'plan_distribution' => $this->planDistribution(),
+                'spend_by_day' => $this->spendByDay(14),
+                'top_spenders' => $this->topSpenders(5),
             ],
             'meta' => [],
         ]);
     }
 
+    public function users(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', 'string', Rule::in(['active', 'inactive', 'suspended'])],
+            'plan' => ['nullable', 'string', Rule::in(array_keys(WorkspaceUsageService::plans()))],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', Rule::in([10, 20, 50, 100])],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 50);
+        $page = (int) ($validated['page'] ?? 1);
+
+        $monthStart = now()->startOfMonth();
+
+        $spendByWorkspace = ApiUsageEvent::query()
+            ->select('workspace_id', DB::raw('SUM(estimated_cost_usd) as spend'))
+            ->whereNotNull('workspace_id')
+            ->where('occurred_at', '>=', $monthStart)
+            ->groupBy('workspace_id')
+            ->pluck('spend', 'workspace_id');
+
+        $projectsByWorkspace = Project::query()
+            ->select('workspace_id', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('workspace_id')
+            ->pluck('cnt', 'workspace_id');
+
+        $exportsByWorkspace = ExportJob::query()
+            ->select(DB::raw('projects.workspace_id'), DB::raw('COUNT(*) as cnt'))
+            ->join('projects', 'projects.id', '=', 'export_jobs.project_id')
+            ->where('export_jobs.status', 'completed')
+            ->groupBy('projects.workspace_id')
+            ->pluck('cnt', 'projects.workspace_id');
+
+        $query = User::query()
+            ->with('workspace:id,name,plan_tier,status')
+            ->when($validated['search'] ?? null, function ($q, $s): void {
+                $q->where(function ($q) use ($s): void {
+                    $q->where('name', 'like', "%{$s}%")
+                      ->orWhere('email', 'like', "%{$s}%");
+                });
+            })
+            ->when($validated['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
+            ->when($validated['plan'] ?? null, fn ($q, $p) => $q->whereHas('workspace', fn ($q) => $q->where('plan_tier', $p)))
+            ->orderByDesc('id');
+
+        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
+
+        return response()->json([
+            'data' => [
+                'users' => $paginator->getCollection()->map(function (User $user) use ($spendByWorkspace, $projectsByWorkspace, $exportsByWorkspace): array {
+                    $wsId = (int) $user->workspace_id;
+                    return [
+                        'id' => $user->getKey(),
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'role' => $user->role,
+                        'status' => $user->status,
+                        'workspace_id' => $wsId,
+                        'workspace_name' => $user->workspace?->name,
+                        'plan_tier' => $user->workspace?->plan_tier,
+                        'workspace_status' => $user->workspace?->status,
+                        'projects' => (int) ($projectsByWorkspace[$wsId] ?? 0),
+                        'exports' => (int) ($exportsByWorkspace[$wsId] ?? 0),
+                        'spend_month_usd' => $this->money($spendByWorkspace[$wsId] ?? 0),
+                        'created_at' => $user->created_at?->toIso8601String(),
+                        'last_login_at' => $user->updated_at?->toIso8601String(),
+                    ];
+                })->all(),
+            ],
+            'meta' => [
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+            ],
+        ]);
+    }
+
+    public function userDetail(Request $request, int $userId): JsonResponse
+    {
+        $user = User::query()->with('workspace')->find($userId);
+
+        if (! $user) {
+            return $this->error('not_found', 'User not found.', 404);
+        }
+
+        $wsId = (int) $user->workspace_id;
+        $monthStart = now()->startOfMonth();
+
+        $spendMonth = $this->money(ApiUsageEvent::query()->where('workspace_id', $wsId)->where('occurred_at', '>=', $monthStart)->sum('estimated_cost_usd'));
+        $spendTotal = $this->money(ApiUsageEvent::query()->where('workspace_id', $wsId)->sum('estimated_cost_usd'));
+
+        $providerBreakdown = ApiUsageEvent::query()
+            ->select('provider', 'service', DB::raw('COUNT(*) as calls'), DB::raw('SUM(estimated_cost_usd) as cost'))
+            ->where('workspace_id', $wsId)
+            ->where('occurred_at', '>=', $monthStart)
+            ->groupBy('provider', 'service')
+            ->get()
+            ->map(fn ($r) => [
+                'provider' => $r->provider,
+                'service' => $r->service,
+                'calls' => (int) $r->calls,
+                'cost_usd' => $this->money($r->cost),
+            ])->values()->all();
+
+        $recentProjects = Project::query()
+            ->where('workspace_id', $wsId)
+            ->withCount('scenes')
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get()
+            ->map(fn (Project $p) => [
+                'id' => $p->getKey(),
+                'title' => $p->title,
+                'status' => $p->status,
+                'scenes_count' => (int) ($p->scenes_count ?? 0),
+                'created_at' => $p->created_at?->toIso8601String(),
+            ])->all();
+
+        $recentExports = ExportJob::query()
+            ->join('projects', 'projects.id', '=', 'export_jobs.project_id')
+            ->where('projects.workspace_id', $wsId)
+            ->select('export_jobs.*', 'projects.title as project_title')
+            ->orderByDesc('export_jobs.id')
+            ->limit(10)
+            ->get()
+            ->map(fn ($j) => [
+                'id' => (int) $j->id,
+                'project_title' => $j->project_title,
+                'status' => $j->status,
+                'aspect_ratio' => $j->aspect_ratio,
+                'failure_reason' => $j->failure_reason,
+                'completed_at' => $j->completed_at,
+            ])->all();
+
+        $spendByDay = ApiUsageEvent::query()
+            ->select(DB::raw('DATE(occurred_at) as day'), DB::raw('SUM(estimated_cost_usd) as spend'))
+            ->where('workspace_id', $wsId)
+            ->where('occurred_at', '>=', now()->subDays(30))
+            ->groupBy('day')
+            ->orderBy('day')
+            ->get()
+            ->map(fn ($r) => ['day' => $r->day, 'spend' => $this->money($r->spend)])
+            ->all();
+
+        return response()->json([
+            'data' => [
+                'user' => [
+                    'id' => $user->getKey(),
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                    'status' => $user->status,
+                    'created_at' => $user->created_at?->toIso8601String(),
+                    'last_login_at' => $user->updated_at?->toIso8601String(),
+                ],
+                'workspace' => $user->workspace ? $this->serializeWorkspace($user->workspace) : null,
+                'usage' => $user->workspace ? $this->usageService->summaryForWorkspace($user->workspace) : null,
+                'spend_month_usd' => $spendMonth,
+                'spend_total_usd' => $spendTotal,
+                'spend_by_day' => $spendByDay,
+                'provider_breakdown' => $providerBreakdown,
+                'recent_projects' => $recentProjects,
+                'recent_exports' => $recentExports,
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    public function impersonate(Request $request, int $userId, JwtService $jwt): JsonResponse
+    {
+        /** @var User $admin */
+        $admin = $request->user();
+
+        $target = User::query()->with('workspace')->find($userId);
+
+        if (! $target) {
+            return $this->error('not_found', 'User not found.', 404);
+        }
+
+        $ttl = (int) config('admin.impersonation_ttl_minutes', 15);
+
+        $token = $jwt->issue($target, $ttl, [
+            'impersonated_by' => $admin->getKey(),
+            'impersonation' => true,
+        ]);
+
+        AdminAuditLog::record(
+            adminUserId: $admin->getKey(),
+            action: 'impersonate',
+            targetType: 'user',
+            targetId: $target->getKey(),
+            payload: ['target_email' => $target->email, 'ttl_minutes' => $ttl],
+            ip: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        return response()->json([
+            'data' => [
+                'token' => $token,
+                'expires_in_minutes' => $ttl,
+                'user' => ['id' => $target->getKey(), 'name' => $target->name, 'email' => $target->email],
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    public function workspaces(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', 'string', Rule::in(['active', 'inactive', 'suspended'])],
+            'plan' => ['nullable', 'string', Rule::in(array_keys(WorkspaceUsageService::plans()))],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', Rule::in([10, 20, 50, 100])],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 50);
+        $page = (int) ($validated['page'] ?? 1);
+
+        $monthStart = now()->startOfMonth();
+
+        $spendByWorkspace = ApiUsageEvent::query()
+            ->select('workspace_id', DB::raw('SUM(estimated_cost_usd) as spend'))
+            ->whereNotNull('workspace_id')
+            ->where('occurred_at', '>=', $monthStart)
+            ->groupBy('workspace_id')
+            ->pluck('spend', 'workspace_id');
+
+        $paginator = Workspace::query()
+            ->withCount(['users', 'projects'])
+            ->when($validated['search'] ?? null, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
+            ->when($validated['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
+            ->when($validated['plan'] ?? null, fn ($q, $p) => $q->where('plan_tier', $p))
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        return response()->json([
+            'data' => [
+                'workspaces' => $paginator->getCollection()->map(function (Workspace $ws) use ($spendByWorkspace): array {
+                    $usage = $this->usageService->summaryForWorkspace($ws);
+                    $monthSpend = $this->money($spendByWorkspace[$ws->getKey()] ?? 0);
+                    $budget = (float) $usage['api_budget_usd'];
+                    return [
+                        ...$this->serializeWorkspace($ws),
+                        'users_count' => (int) ($ws->users_count ?? 0),
+                        'projects_count' => (int) ($ws->projects_count ?? 0),
+                        'exports_count' => (int) $usage['renders_used'],
+                        'spend_month_usd' => $monthSpend,
+                        'budget_usd' => $budget,
+                        'budget_pct' => $budget > 0 ? round($monthSpend / $budget * 100, 1) : 0,
+                        'channels' => (int) $usage['active_channels'],
+                    ];
+                })->all(),
+            ],
+            'meta' => [
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+            ],
+        ]);
+    }
+
     public function updateWorkspacePlan(Request $request, int $workspaceId): JsonResponse
     {
-        if (! $this->canUseGodMode($request->user())) {
-            return $this->error('forbidden', 'God mode access is required.', 403);
-        }
+        /** @var User $admin */
+        $admin = $request->user();
 
         $validated = $request->validate([
             'plan_tier' => ['required', 'string', Rule::in(array_keys(WorkspaceUsageService::plans()))],
-            'status' => ['sometimes', 'string', Rule::in(['active', 'paused', 'cancelled'])],
         ]);
 
         $workspace = Workspace::query()->find($workspaceId);
@@ -67,170 +334,271 @@ class AdminController extends Controller
             return $this->error('not_found', 'Workspace not found.', 404);
         }
 
+        $old = $workspace->plan_tier;
         $workspace->fill($validated)->save();
+
+        AdminAuditLog::record(
+            adminUserId: $admin->getKey(),
+            action: 'update_plan',
+            targetType: 'workspace',
+            targetId: $workspace->getKey(),
+            payload: ['from' => $old, 'to' => $validated['plan_tier']],
+            ip: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        return response()->json(['data' => ['workspace' => $this->serializeWorkspace($workspace->fresh())], 'meta' => []]);
+    }
+
+    public function updateWorkspaceStatus(Request $request, int $workspaceId): JsonResponse
+    {
+        /** @var User $admin */
+        $admin = $request->user();
+
+        $validated = $request->validate([
+            'status' => ['required', 'string', Rule::in(['active', 'inactive', 'suspended'])],
+        ]);
+
+        $workspace = Workspace::query()->find($workspaceId);
+
+        if (! $workspace) {
+            return $this->error('not_found', 'Workspace not found.', 404);
+        }
+
+        $old = $workspace->status;
+        $workspace->fill($validated)->save();
+
+        AdminAuditLog::record(
+            adminUserId: $admin->getKey(),
+            action: 'update_workspace_status',
+            targetType: 'workspace',
+            targetId: $workspace->getKey(),
+            payload: ['from' => $old, 'to' => $validated['status']],
+            ip: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        return response()->json(['data' => ['workspace' => $this->serializeWorkspace($workspace->fresh())], 'meta' => []]);
+    }
+
+    public function videos(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', 'string', Rule::in(['draft', 'generating', 'ready_for_review', 'published', 'failed'])],
+            'workspace_id' => ['nullable', 'integer'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', Rule::in([10, 20, 50, 100])],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 20);
+        $page = (int) ($validated['page'] ?? 1);
+        $monthStart = now()->startOfMonth();
+
+        $spendByProject = ApiUsageEvent::query()
+            ->select('project_id', DB::raw('SUM(estimated_cost_usd) as spend'))
+            ->whereNotNull('project_id')
+            ->where('occurred_at', '>=', $monthStart)
+            ->groupBy('project_id')
+            ->pluck('spend', 'project_id');
+
+        $paginator = Project::query()
+            ->with(['workspace:id,name,plan_tier'])
+            ->withCount('scenes')
+            ->when($validated['search'] ?? null, fn ($q, $s) => $q->where('title', 'like', "%{$s}%"))
+            ->when($validated['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
+            ->when($validated['workspace_id'] ?? null, fn ($q, $id) => $q->where('workspace_id', $id))
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $page);
 
         return response()->json([
             'data' => [
-                'workspace' => $this->serializeWorkspace($workspace->fresh()),
+                'videos' => $paginator->getCollection()->map(fn (Project $p) => [
+                    'id' => $p->getKey(),
+                    'title' => $p->title ?? 'Untitled',
+                    'status' => $p->status,
+                    'source_type' => $p->source_type,
+                    'aspect_ratio' => $p->aspect_ratio,
+                    'primary_language' => $p->primary_language,
+                    'platform_target' => $p->platform_target,
+                    'scenes_count' => (int) ($p->scenes_count ?? 0),
+                    'workspace_id' => $p->workspace_id,
+                    'workspace_name' => $p->workspace?->name,
+                    'plan_tier' => $p->workspace?->plan_tier,
+                    'channel_id' => $p->channel_id,
+                    'cost_usd' => $this->money($spendByProject[$p->getKey()] ?? 0),
+                    'created_at' => $p->created_at?->toIso8601String(),
+                ])->all(),
+                'status_counts' => [
+                    'all' => Project::query()->count(),
+                    'draft' => Project::query()->where('status', 'draft')->count(),
+                    'generating' => Project::query()->where('status', 'generating')->count(),
+                    'ready_for_review' => Project::query()->where('status', 'ready_for_review')->count(),
+                    'published' => Project::query()->where('status', 'published')->count(),
+                    'failed' => Project::query()->where('status', 'failed')->count(),
+                ],
             ],
-            'meta' => [],
+            'meta' => [
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+            ],
         ]);
     }
 
-    private function canUseGodMode(?User $user): bool
+    public function jobs(Request $request): JsonResponse
     {
-        return in_array($user?->role, ['super_admin', 'platform_admin'], true);
+        $validated = $request->validate([
+            'status' => ['nullable', 'string', Rule::in(['queued', 'processing', 'completed', 'failed'])],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', Rule::in([10, 20, 50, 100])],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 50);
+        $page = (int) ($validated['page'] ?? 1);
+
+        $paginator = ExportJob::query()
+            ->with('project:id,title,workspace_id')
+            ->when($validated['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        return response()->json([
+            'data' => [
+                'jobs' => $paginator->getCollection()->map(fn (ExportJob $j) => [
+                    'id' => $j->getKey(),
+                    'project_id' => $j->project_id,
+                    'project_title' => $j->project?->title,
+                    'workspace_id' => $j->project?->workspace_id,
+                    'workspace_name' => null,
+                    'status' => $j->status,
+                    'progress_percent' => $j->progress_percent,
+                    'failure_reason' => $j->failure_reason,
+                    'aspect_ratio' => $j->aspect_ratio,
+                    'queue' => 'exports',
+                    'queued_at' => $j->queued_at?->toIso8601String(),
+                    'started_at' => $j->started_at?->toIso8601String(),
+                    'completed_at' => $j->completed_at?->toIso8601String(),
+                ])->all(),
+                'counts' => [
+                    'queued' => ExportJob::query()->where('status', 'queued')->count(),
+                    'processing' => ExportJob::query()->where('status', 'processing')->count(),
+                    'completed_today' => ExportJob::query()->where('status', 'completed')->whereDate('completed_at', today())->count(),
+                    'failed_today' => ExportJob::query()->where('status', 'failed')->whereDate('queued_at', today())->count(),
+                ],
+            ],
+            'meta' => [
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+            ],
+        ]);
     }
 
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function workspaceRows(): array
+    public function spendChart(Request $request): JsonResponse
     {
-        $spendByWorkspace = ApiUsageEvent::query()
-            ->select('workspace_id', DB::raw('SUM(estimated_cost_usd) as spend'))
-            ->groupBy('workspace_id')
-            ->pluck('spend', 'workspace_id');
+        $validated = $request->validate([
+            'days' => ['nullable', 'integer', Rule::in([7, 14, 30, 90])],
+            'workspace_id' => ['nullable', 'integer'],
+        ]);
 
-        $monthSpendByWorkspace = ApiUsageEvent::query()
+        $days = (int) ($validated['days'] ?? 14);
+
+        $rows = ApiUsageEvent::query()
+            ->select(DB::raw('DATE(occurred_at) as day'), DB::raw('SUM(estimated_cost_usd) as spend'))
+            ->when($validated['workspace_id'] ?? null, fn ($q, $id) => $q->where('workspace_id', $id))
+            ->where('occurred_at', '>=', now()->subDays($days))
+            ->groupBy('day')
+            ->orderBy('day')
+            ->get()
+            ->map(fn ($r) => ['day' => $r->day, 'spend' => $this->money($r->spend)])
+            ->all();
+
+        return response()->json(['data' => ['chart' => $rows], 'meta' => []]);
+    }
+
+    public function auditLog(Request $request): JsonResponse
+    {
+        $perPage = (int) in_array((int) $request->query('per_page'), [10, 20, 50, 100])
+            ? $request->query('per_page')
+            : 20;
+
+        $paginator = \App\Models\AdminAuditLog::query()
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', (int) ($request->query('page', 1)));
+
+        return response()->json([
+            'data' => ['logs' => $paginator->items()],
+            'meta' => ['pagination' => ['current_page' => $paginator->currentPage(), 'last_page' => $paginator->lastPage(), 'per_page' => $paginator->perPage(), 'total' => $paginator->total(), 'from' => $paginator->firstItem(), 'to' => $paginator->lastItem()]],
+        ]);
+    }
+
+    private function planDistribution(): array
+    {
+        $total = Workspace::query()->count();
+
+        $counts = Workspace::query()
+            ->select('plan_tier', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('plan_tier')
+            ->pluck('cnt', 'plan_tier');
+
+        return collect(array_keys(WorkspaceUsageService::plans()))
+            ->map(fn (string $plan) => [
+                'plan' => $plan,
+                'count' => (int) ($counts[$plan] ?? 0),
+                'pct' => $total > 0 ? round(($counts[$plan] ?? 0) / $total * 100, 1) : 0,
+            ])->all();
+    }
+
+    private function spendByDay(int $days): array
+    {
+        return ApiUsageEvent::query()
+            ->select(DB::raw('DATE(occurred_at) as day'), DB::raw('SUM(estimated_cost_usd) as spend'))
+            ->where('occurred_at', '>=', now()->subDays($days))
+            ->groupBy('day')
+            ->orderBy('day')
+            ->get()
+            ->map(fn ($r) => ['day' => $r->day, 'spend' => $this->money($r->spend)])
+            ->all();
+    }
+
+    private function topSpenders(int $limit): array
+    {
+        $monthStart = now()->startOfMonth();
+
+        $spendByWs = ApiUsageEvent::query()
             ->select('workspace_id', DB::raw('SUM(estimated_cost_usd) as spend'))
-            ->where('occurred_at', '>=', now()->startOfMonth())
+            ->whereNotNull('workspace_id')
+            ->where('occurred_at', '>=', $monthStart)
             ->groupBy('workspace_id')
+            ->orderByDesc('spend')
+            ->limit($limit)
             ->pluck('spend', 'workspace_id');
 
         return Workspace::query()
-            ->withCount(['users', 'projects'])
-            ->orderByDesc('id')
-            ->limit(100)
+            ->whereIn('id', $spendByWs->keys())
+            ->with('users:id,workspace_id,name,email')
             ->get()
-            ->map(function (Workspace $workspace) use ($spendByWorkspace, $monthSpendByWorkspace): array {
-                $usage = $this->usageService->summaryForWorkspace($workspace);
-                $monthSpend = $this->money($monthSpendByWorkspace[$workspace->getKey()] ?? 0);
-                $apiBudget = $this->money($usage['api_budget_usd'] ?? 0);
-
-                return [
-                    ...$this->serializeWorkspace($workspace),
-                    'users_count' => (int) ($workspace->users_count ?? 0),
-                    'projects_count' => (int) ($workspace->projects_count ?? 0),
-                    'api_spend_usd' => $this->money($spendByWorkspace[$workspace->getKey()] ?? 0),
-                    'api_spend_month_usd' => $monthSpend,
-                    'api_budget_usd' => $apiBudget,
-                    'api_budget_remaining_usd' => $this->money(max(0, $apiBudget - $monthSpend)),
-                    'usage' => $usage,
-                    'remaining' => [
-                        'renders' => max(0, (int) $usage['render_limit'] - (int) $usage['renders_used']),
-                        'voice_minutes' => max(0, (int) $usage['voice_minutes_limit'] - (int) $usage['voice_minutes_used']),
-                        'dub_languages' => max(0, (int) $usage['dub_languages_limit'] - (int) $usage['dub_languages_used']),
-                        'channels' => max(0, (int) $usage['channel_limit'] - (int) $usage['active_channels']),
-                        'voice_clones' => max(0, (int) $usage['voice_cloning_limit'] - (int) $usage['voice_cloning_used']),
-                    ],
-                ];
-            })
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function userRows(): array
-    {
-        return User::query()
-            ->with('workspace:id,name,plan_tier,status')
-            ->orderByDesc('id')
-            ->limit(100)
-            ->get()
-            ->map(fn (User $user): array => [
-                'id' => $user->getKey(),
-                'workspace_id' => $user->workspace_id,
-                'workspace_name' => $user->workspace?->name,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->role,
-                'status' => $user->status,
-                'created_at' => $user->created_at?->toIso8601String(),
+            ->map(fn (Workspace $ws) => [
+                ...$this->serializeWorkspace($ws),
+                'spend_month_usd' => $this->money($spendByWs[$ws->getKey()] ?? 0),
+                'owner_email' => $ws->users->first()?->email,
             ])
+            ->sortByDesc('spend_month_usd')
             ->values()
             ->all();
     }
 
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function recentUsageRows(): array
-    {
-        return ApiUsageEvent::query()
-            ->with(['workspace:id,name', 'project:id,title'])
-            ->orderByDesc('occurred_at')
-            ->limit(50)
-            ->get()
-            ->map(fn (ApiUsageEvent $event): array => [
-                'id' => $event->getKey(),
-                'workspace_id' => $event->workspace_id,
-                'workspace_name' => $event->workspace?->name,
-                'project_id' => $event->project_id,
-                'project_title' => $event->project?->title,
-                'provider' => $event->provider,
-                'service' => $event->service,
-                'operation' => $event->operation,
-                'model' => $event->model,
-                'status' => $event->status,
-                'total_tokens' => $event->total_tokens,
-                'units' => $event->units,
-                'estimated_cost_usd' => $this->money($event->estimated_cost_usd),
-                'error_message' => $event->error_message,
-                'occurred_at' => $event->occurred_at?->toIso8601String(),
-            ])
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function projectCostRows(): array
-    {
-        return ApiUsageEvent::query()
-            ->select(
-                'project_id',
-                DB::raw('SUM(estimated_cost_usd) as total_cost'),
-                DB::raw("SUM(CASE WHEN service = 'text_generation' THEN estimated_cost_usd ELSE 0 END) as script_cost"),
-                DB::raw("SUM(CASE WHEN service = 'image_generation' THEN estimated_cost_usd ELSE 0 END) as image_cost"),
-                DB::raw("SUM(CASE WHEN service = 'tts' THEN estimated_cost_usd ELSE 0 END) as tts_cost"),
-                DB::raw('COUNT(*) as call_count'),
-                DB::raw('MIN(occurred_at) as first_call_at'),
-            )
-            ->whereNotNull('project_id')
-            ->groupBy('project_id')
-            ->orderByDesc('total_cost')
-            ->limit(50)
-            ->get()
-            ->map(function (\stdClass $row): array {
-                $project = Project::query()
-                    ->select(['id', 'title', 'workspace_id', 'status', 'source_type', 'created_at'])
-                    ->find($row->project_id);
-
-                return [
-                    'project_id' => (int) $row->project_id,
-                    'project_title' => $project?->title ?? '(untitled)',
-                    'workspace_id' => $project?->workspace_id,
-                    'status' => $project?->status,
-                    'source_type' => $project?->source_type,
-                    'created_at' => $project?->created_at?->toIso8601String(),
-                    'total_cost' => $this->money($row->total_cost),
-                    'script_cost' => $this->money($row->script_cost),
-                    'image_cost' => $this->money($row->image_cost),
-                    'tts_cost' => $this->money($row->tts_cost),
-                    'call_count' => (int) $row->call_count,
-                ];
-            })
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
     private function serializeWorkspace(Workspace $workspace): array
     {
         return [
@@ -245,16 +613,6 @@ class AdminController extends Controller
 
     private function money(mixed $value): float
     {
-        return round((float) $value, 6);
-    }
-
-    private function error(string $code, string $message, int $status): JsonResponse
-    {
-        return response()->json([
-            'error' => [
-                'code' => $code,
-                'message' => $message,
-            ],
-        ], $status);
+        return round((float) $value, 4);
     }
 }

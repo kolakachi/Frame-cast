@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Api\V1\Project;
 
 use App\Events\ExportProgressed;
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateAIImageJob;
 use App\Jobs\GenerateScriptJob;
+use App\Jobs\GenerateTTSJob;
 use App\Jobs\ProcessExportJob;
 use App\Models\Asset;
 use App\Models\BrandKit;
 use App\Models\Channel;
+use App\Models\Series;
 use App\Models\Niche;
 use App\Models\ExportJob;
 use App\Models\Project;
@@ -16,6 +19,7 @@ use App\Models\ProjectHookOption;
 use App\Models\Scene;
 use App\Models\Template;
 use App\Models\User;
+use App\Services\WorkspaceUsageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -26,6 +30,8 @@ use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
+    public function __construct(private readonly WorkspaceUsageService $usageService) {}
+
     public function index(Request $request): JsonResponse
     {
         /** @var User $user */
@@ -200,6 +206,15 @@ class ProjectController extends Controller
             return $this->error('workspace_required', 'User is not assigned to a workspace.', 422);
         }
 
+        if ($this->usageService->hasExceededApiBudget($user)) {
+            $ctx = $this->usageService->apiBudgetContext($user);
+            return $this->limitError(
+                'api_budget_exceeded',
+                "Your workspace has reached its \${$ctx['budget_usd']} AI budget for the {$ctx['plan']} plan this month.",
+                $ctx,
+            );
+        }
+
         $validated = $request->validate([
             'source_type' => ['required', Rule::in($this->allowedSourceTypes())],
             'source_content_raw' => ['nullable', 'string'],
@@ -207,10 +222,10 @@ class ProjectController extends Controller
             'source_image_asset_ids.*' => ['integer'],
             'visual_generation_mode' => ['nullable', Rule::in(['stock', 'ai_images'])],
             'ai_broll_style' => ['nullable', 'string', 'max:64'],
-            'languages' => ['required', 'array', 'min:1'],
+            'languages' => ['nullable', 'array', 'min:1'],
             'languages.*' => ['required', 'string', 'max:16'],
-            'platform_target' => ['required', 'string', 'max:64'],
-            'aspect_ratio' => ['required', Rule::in(['9:16', '1:1', '16:9'])],
+            'platform_target' => ['nullable', 'string', 'max:64'],
+            'aspect_ratio' => ['nullable', Rule::in(['9:16', '1:1', '16:9'])],
             'channel_id' => ['nullable', 'integer'],
             'template_id' => ['nullable', 'integer'],
             'brand_kit_id' => ['nullable', 'integer'],
@@ -219,6 +234,8 @@ class ProjectController extends Controller
             'duration_target_seconds' => ['nullable', 'integer', 'min:5', 'max:600'],
             'tone' => ['nullable', 'string', 'max:64'],
             'title' => ['nullable', 'string', 'max:255'],
+            'series_id' => ['nullable', 'integer'],
+            'series_episode_number' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $sourceError = $this->validateSourceContent($validated['source_type'], $validated['source_content_raw'] ?? null);
@@ -336,9 +353,53 @@ class ProjectController extends Controller
             }
         }
 
+        // Resolve series and apply its defaults.
+        $series = null;
+        $seriesEpisodeNumber = null;
+
+        if (! empty($validated['series_id'])) {
+            $series = Series::query()
+                ->whereKey($validated['series_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->first();
+
+            if ($series) {
+                $seriesEpisodeNumber = $validated['series_episode_number']
+                    ?? ((int) Project::query()->where('series_id', $series->getKey())->max('series_episode_number') + 1);
+
+                // Inherit series defaults where the request doesn't override.
+                if (empty($validated['aspect_ratio']) && $series->aspect_ratio) {
+                    $validated['aspect_ratio'] = $series->aspect_ratio;
+                }
+                if (empty($validated['duration_target_seconds']) && $series->duration_target_seconds) {
+                    $validated['duration_target_seconds'] = $series->duration_target_seconds;
+                }
+                if (empty($validated['tone']) && $series->tone) {
+                    $validated['tone'] = $series->tone;
+                }
+                if (empty($validated['platform_target']) && ! empty($series->platform_targets)) {
+                    $validated['platform_target'] = $series->platform_targets[0];
+                }
+                if (empty($validated['languages']) && $series->default_language) {
+                    $validated['languages'] = [$series->default_language];
+                }
+            }
+        }
+
+        // Apply final defaults for required fields still missing after all inheritance.
+        if (empty($validated['aspect_ratio'])) {
+            $validated['aspect_ratio'] = '9:16';
+        }
+        if (empty($validated['platform_target'])) {
+            $validated['platform_target'] = 'tiktok';
+        }
+        if (empty($validated['languages'])) {
+            $validated['languages'] = ['en'];
+        }
+
         $project = Project::query()->create([
             'workspace_id' => $user->workspace_id,
-            'channel_id' => $channel?->getKey(),
+            'channel_id' => $channel?->getKey() ?? $series?->channel_id,
             'brand_kit_id' => $brandKitId,
             'template_id' => $template?->getKey(),
             'niche_id' => $niche?->getKey(),
@@ -359,6 +420,8 @@ class ProjectController extends Controller
             'title' => $validated['title'] ?? null,
             'status' => $validated['source_type'] === 'blank' ? 'ready_for_review' : 'generating',
             'created_by_user_id' => $user->getKey(),
+            'series_id' => $series?->getKey(),
+            'series_episode_number' => $seriesEpisodeNumber,
         ]);
 
         // Blank projects skip AI generation — user builds all scenes manually in the editor.
@@ -379,6 +442,106 @@ class ProjectController extends Controller
             ],
             'meta' => [],
         ], 201);
+    }
+
+    public function retryGeneration(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        if ($project->status !== 'failed') {
+            return $this->error('invalid_state', 'Only failed projects can be retried.', 422);
+        }
+
+        if ($project->source_type === 'blank') {
+            return $this->error('invalid_state', 'Blank projects have no generation to retry.', 422);
+        }
+
+        $hasScenes = Scene::query()->where('project_id', $project->getKey())->exists();
+
+        if (! $hasScenes) {
+            // Script generation failed — check budget before re-dispatching.
+            if ($this->usageService->hasExceededApiBudget($user)) {
+                $ctx = $this->usageService->apiBudgetContext($user);
+                return $this->limitError(
+                    'api_budget_exceeded',
+                    "Your workspace has reached its \${$ctx['budget_usd']} AI budget for the {$ctx['plan']} plan this month.",
+                    $ctx,
+                );
+            }
+
+            $project->forceFill(['status' => 'generating'])->save();
+            GenerateScriptJob::dispatch($project->getKey());
+
+            return response()->json(['data' => ['project' => $this->serializeProject($project->fresh())], 'meta' => []]);
+        }
+
+        // Scenes exist — script completed. Check what still needs generating.
+        $missingAudio = Scene::query()
+            ->where('project_id', $project->getKey())
+            ->where(function ($q): void {
+                $q->whereNull('voice_settings_json->audio_asset_id')
+                    ->orWhere('voice_settings_json->is_outdated', true);
+            })
+            ->exists();
+
+        $scenesNeedingVisuals = Scene::query()
+            ->where('project_id', $project->getKey())
+            ->whereNull('visual_asset_id')
+            ->where('visual_type', 'ai_image')
+            ->get();
+
+        $missingVisual = $scenesNeedingVisuals->isNotEmpty();
+
+        if (! $missingAudio && ! $missingVisual) {
+            // Everything generated — just unblock the project.
+            $project->forceFill(['status' => 'ready_for_review'])->save();
+
+            return response()->json(['data' => ['project' => $this->serializeProject($project->fresh())], 'meta' => []]);
+        }
+
+        if ($missingAudio && $this->usageService->hasReachedVoiceLimit($user)) {
+            $ctx = $this->usageService->voiceLimitContext($user);
+            return $this->limitError(
+                'voice_limit_reached',
+                "Your workspace has used {$ctx['used']} of {$ctx['limit']} voice minutes on the {$ctx['plan']} plan.",
+                $ctx,
+            );
+        }
+
+        if ($this->usageService->hasExceededApiBudget($user)) {
+            $ctx = $this->usageService->apiBudgetContext($user);
+            return $this->limitError(
+                'api_budget_exceeded',
+                "Your workspace has reached its \${$ctx['budget_usd']} AI budget for the {$ctx['plan']} plan this month.",
+                $ctx,
+            );
+        }
+
+        $project->forceFill(['status' => 'generating'])->save();
+
+        if ($missingAudio) {
+            GenerateTTSJob::dispatch($project->getKey());
+        }
+
+        foreach ($scenesNeedingVisuals as $scene) {
+            GenerateAIImageJob::dispatch(
+                $scene->getKey(),
+                $scene->project_id,
+                (string) ($scene->visual_style ?: 'cinematic'),
+            );
+        }
+
+        return response()->json(['data' => ['project' => $this->serializeProject($project->fresh())], 'meta' => []]);
     }
 
     public function destroy(Request $request, int $projectId): JsonResponse
@@ -432,6 +595,15 @@ class ProjectController extends Controller
             ->where('project_id', $project->getKey())
             ->orderBy('scene_order')
             ->get();
+
+        if ($this->usageService->hasReachedExportLimit($user)) {
+            $ctx = $this->usageService->exportLimitContext($user);
+            return $this->limitError(
+                'export_limit_reached',
+                "You've used {$ctx['used']} of {$ctx['limit']} exports on the {$ctx['plan']} plan this month.",
+                $ctx,
+            );
+        }
 
         if ($scenes->isEmpty()) {
             return $this->error('export_blocked', 'At least one scene is required before export.', 422);
@@ -727,13 +899,21 @@ class ProjectController extends Controller
             'duration_seconds' => $scene->duration_seconds,
             'voice_profile_id' => $scene->voice_profile_id,
             'voice_settings' => $scene->voice_settings_json,
+            'voice_settings_json' => $scene->voice_settings_json,
             'caption_settings' => $scene->caption_settings_json,
+            'caption_settings_json' => $scene->caption_settings_json,
             'visual_type' => $scene->visual_type,
             'visual_asset_id' => $scene->visual_asset_id,
             'visual_prompt' => $scene->visual_prompt,
+            'visual_style' => $scene->visual_style,
+            'image_generation_settings' => $scene->image_generation_settings_json,
+            'image_generation_settings_json' => $scene->image_generation_settings_json,
+            'motion_settings' => $scene->motion_settings_json,
+            'motion_settings_json' => $scene->motion_settings_json,
             'transition_rule' => $scene->transition_rule,
             'status' => $scene->status,
             'locked_fields' => $scene->locked_fields_json,
+            'locked_fields_json' => $scene->locked_fields_json,
             'visual_asset' => $visualAsset ? $this->serializeAsset($visualAsset) : null,
             'audio_asset' => $audioAsset ? $this->serializeAsset($audioAsset) : null,
             'created_at' => $scene->created_at?->toIso8601String(),
@@ -919,7 +1099,7 @@ class ProjectController extends Controller
         ];
     }
 
-    private function error(string $code, string $message, int $status): JsonResponse
+    protected function error(string $code, string $message, int $status = 422): JsonResponse
     {
         return response()->json([
             'error' => [

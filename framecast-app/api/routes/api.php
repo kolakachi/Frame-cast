@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Asset\CollectionController;
 use App\Http\Controllers\Api\V1\Asset\ImageStyleController;
 use App\Http\Controllers\Api\V1\BrandKit\BrandKitController;
 use App\Http\Controllers\Api\V1\Channel\ChannelController;
+use App\Http\Controllers\Api\V1\Series\SeriesController;
 use App\Http\Controllers\Api\V1\Localization\LocalizationController;
 use App\Http\Controllers\Api\V1\Project\ProjectController;
 use App\Http\Controllers\Api\V1\Scene\SceneController;
@@ -46,9 +47,18 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/fonts', [FontController::class, 'index']);
         Route::get('/visual-styles', [ImageStyleController::class, 'index']);
         Route::get('/image-generation/styles', [ImageStyleController::class, 'index']);
-        Route::prefix('/admin')->group(function (): void {
+        Route::prefix('/admin')->middleware(['admin', 'admin.ip'])->group(function (): void {
             Route::get('/overview', [AdminController::class, 'overview']);
+            Route::get('/users', [AdminController::class, 'users']);
+            Route::get('/users/{userId}', [AdminController::class, 'userDetail'])->whereNumber('userId');
+            Route::post('/users/{userId}/impersonate', [AdminController::class, 'impersonate'])->whereNumber('userId');
+            Route::get('/workspaces', [AdminController::class, 'workspaces']);
             Route::patch('/workspaces/{workspaceId}/plan', [AdminController::class, 'updateWorkspacePlan'])->whereNumber('workspaceId');
+            Route::patch('/workspaces/{workspaceId}/status', [AdminController::class, 'updateWorkspaceStatus'])->whereNumber('workspaceId');
+            Route::get('/videos', [AdminController::class, 'videos']);
+            Route::get('/jobs', [AdminController::class, 'jobs']);
+            Route::get('/spend-chart', [AdminController::class, 'spendChart']);
+            Route::get('/audit-log', [AdminController::class, 'auditLog']);
         });
         Route::prefix('/assets')->group(function (): void {
             Route::get('/', [AssetController::class, 'index']);
@@ -69,6 +79,19 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{workspaceId}', [WorkspaceController::class, 'show'])->whereNumber('workspaceId');
             Route::patch('/{workspaceId}', [WorkspaceController::class, 'update'])->whereNumber('workspaceId');
             Route::delete('/{workspaceId}', [WorkspaceController::class, 'destroy'])->whereNumber('workspaceId');
+        });
+
+        Route::prefix('/series')->group(function (): void {
+            Route::get('/', [SeriesController::class, 'index']);
+            Route::post('/', [SeriesController::class, 'store']);
+            Route::get('/{seriesId}', [SeriesController::class, 'show'])->whereNumber('seriesId');
+            Route::patch('/{seriesId}', [SeriesController::class, 'update'])->whereNumber('seriesId');
+            Route::delete('/{seriesId}', [SeriesController::class, 'destroy'])->whereNumber('seriesId');
+            Route::get('/{seriesId}/episodes', [SeriesController::class, 'episodes'])->whereNumber('seriesId');
+            Route::get('/{seriesId}/characters', [SeriesController::class, 'characters'])->whereNumber('seriesId');
+            Route::post('/{seriesId}/characters', [SeriesController::class, 'storeCharacter'])->whereNumber('seriesId');
+            Route::patch('/{seriesId}/characters/{characterId}', [SeriesController::class, 'updateCharacter'])->whereNumber('seriesId')->whereNumber('characterId');
+            Route::delete('/{seriesId}/characters/{characterId}', [SeriesController::class, 'destroyCharacter'])->whereNumber('seriesId')->whereNumber('characterId');
         });
 
         Route::prefix('/channels')->group(function (): void {
@@ -99,6 +122,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{projectId}/localizations', [LocalizationController::class, 'index'])->whereNumber('projectId');
             Route::post('/{projectId}/localizations', [LocalizationController::class, 'store'])->whereNumber('projectId');
             Route::post('/{projectId}/export', [ProjectController::class, 'export'])->whereNumber('projectId');
+            Route::post('/{projectId}/retry-generation', [ProjectController::class, 'retryGeneration'])->whereNumber('projectId');
             Route::delete('/{projectId}', [ProjectController::class, 'destroy'])->whereNumber('projectId');
         });
 

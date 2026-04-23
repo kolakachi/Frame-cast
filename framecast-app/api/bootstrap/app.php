@@ -16,6 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'auth.jwt' => \App\Http\Middleware\AuthenticateWithJwt::class,
+            'admin' => \App\Http\Middleware\RequireAdmin::class,
+            'admin.ip' => \App\Http\Middleware\AdminIpAllowlist::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [
