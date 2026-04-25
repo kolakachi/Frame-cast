@@ -214,7 +214,7 @@ class ProcessExportJob implements ShouldQueue
 
         $totalDurationSeconds = (float) $scenes->sum(fn (Scene $scene): float => (float) ($scene->duration_seconds ?: 0));
 
-        DB::transaction(function () use ($exportJob, $storagePath, $fileSize, $totalDurationSeconds, $dimensions): void {
+        DB::transaction(function () use ($exportJob, $exportStorageUrl, $fileSize, $totalDurationSeconds, $dimensions): void {
             $fresh = ExportJob::query()->lockForUpdate()->find($exportJob->getKey());
 
             // Another attempt already completed — skip asset creation.
