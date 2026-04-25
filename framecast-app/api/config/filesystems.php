@@ -60,13 +60,43 @@ return [
             'report' => false,
         ],
 
-        'b2' => [
+        'minio' => [
+            'driver' => 's3',
+            'key' => env('MINIO_ACCESS_KEY'),
+            'secret' => env('MINIO_SECRET_KEY'),
+            'region' => env('MINIO_REGION', 'us-east-1'),
+            'bucket' => env('MINIO_BUCKET'),
+            'endpoint' => env('MINIO_ENDPOINT'),
+            'url' => env('MINIO_URL'),
+            'use_path_style_endpoint' => true,
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
+        'b2_legacy' => [
             'driver' => 's3',
             'key' => env('B2_KEY_ID'),
             'secret' => env('B2_APP_KEY'),
-            'region' => env('B2_REGION'),
+            'region' => env('B2_REGION', 'us-east-1'),
             'bucket' => env('B2_BUCKET_NAME'),
             'endpoint' => env('B2_ENDPOINT'),
+            'url' => null,
+            'use_path_style_endpoint' => false,
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
+        // Legacy alias — kept so any remaining direct disk('b2') calls still resolve to MinIO.
+        'b2' => [
+            'driver' => 's3',
+            'key' => env('MINIO_ACCESS_KEY', env('B2_KEY_ID')),
+            'secret' => env('MINIO_SECRET_KEY', env('B2_APP_KEY')),
+            'region' => env('MINIO_REGION', env('B2_REGION', 'us-east-1')),
+            'bucket' => env('MINIO_BUCKET', env('B2_BUCKET_NAME')),
+            'endpoint' => env('MINIO_ENDPOINT', env('B2_ENDPOINT')),
+            'url' => env('MINIO_URL'),
             'use_path_style_endpoint' => true,
             'visibility' => 'public',
             'throw' => false,

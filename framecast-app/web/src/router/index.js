@@ -9,8 +9,12 @@ import RegisterView from '../views/RegisterView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import VariantsView from '../views/VariantsView.vue'
 import AdminView from '../views/AdminView.vue'
+import WorkspaceView from '../views/WorkspaceView.vue'
 import ChannelsView from '../views/ChannelsView.vue'
 import ChannelDetailView from '../views/ChannelDetailView.vue'
+import SeriesView from '../views/SeriesView.vue'
+import SeriesDetailView from '../views/SeriesDetailView.vue'
+import SeriesCreateView from '../views/SeriesCreateView.vue'
 import VideosView from '../views/VideosView.vue'
 import JobsView from '../views/JobsView.vue'
 import { useAuthStore } from '../stores/auth'
@@ -22,8 +26,12 @@ const routes = [
   { path: '/auth/magic', name: 'magic-link', component: MagicLinkView },
   { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/assets', name: 'asset-library', component: AssetLibraryView, meta: { requiresAuth: true } },
+  { path: '/workspace', name: 'workspace', component: WorkspaceView, meta: { requiresAuth: true } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true } },
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
+  { path: '/series', name: 'series', component: SeriesView, meta: { requiresAuth: true } },
+  { path: '/series/new', name: 'series-create', component: SeriesCreateView, meta: { requiresAuth: true } },
+  { path: '/series/:seriesId', name: 'series-detail', component: SeriesDetailView, meta: { requiresAuth: true } },
   { path: '/channels', name: 'channels', component: ChannelsView, meta: { requiresAuth: true } },
   { path: '/channels/:channelId', name: 'channel-detail', component: ChannelDetailView, meta: { requiresAuth: true } },
   { path: '/videos', name: 'videos', component: VideosView, meta: { requiresAuth: true } },

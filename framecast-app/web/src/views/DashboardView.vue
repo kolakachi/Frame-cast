@@ -22,6 +22,9 @@ let dashboardPollTimer = null
 const projects = ref([])
 const queueRows = ref([])
 const channels = ref([])
+const seriesPreview = ref([])
+
+const CH_DOT_COLORS = ['#7c1a1a', '#c8860a', '#0a6b6b', '#1a3d7c', '#6b0a6b']
 const deletingProjectIds = ref([])
 const deleteConfirmProject = ref(null)
 const currentPage = ref(1)
@@ -100,6 +103,10 @@ function channelName(channelId) {
   if (!channelId) return null
   const ch = channels.value.find((c) => String(c.id) === String(channelId))
   return ch?.name ?? null
+}
+
+function channelNameById(id) {
+  return channelName(id)
 }
 
 function openProject(project) {
@@ -286,7 +293,7 @@ async function loadMe() {
   try {
     const response = await api.get('/me')
     mePayload.value = response.data?.data?.user ?? null
-    await Promise.all([loadProjects(), loadQueue(), loadChannels()])
+    await Promise.all([loadProjects(), loadQueue(), loadChannels(), loadSeriesPreview()])
     await loadNotifications()
     subscribeWorkspaceNotifications()
     startDashboardPolling()
@@ -301,6 +308,15 @@ async function loadChannels() {
     channels.value = response.data?.data?.channels ?? []
   } catch {
     channels.value = []
+  }
+}
+
+async function loadSeriesPreview() {
+  try {
+    const response = await api.get('/series')
+    seriesPreview.value = (response.data?.data?.series ?? []).slice(0, 3)
+  } catch {
+    seriesPreview.value = []
   }
 }
 
@@ -436,6 +452,10 @@ onBeforeUnmount(() => {
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
             New Video
           </button>
+          <button class="quick-action" type="button" @click="router.push({ name: 'series-create' })">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            New Series
+          </button>
           <button class="quick-action" type="button" @click="router.push({ name: 'channels' })">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
             New Channel
@@ -443,10 +463,6 @@ onBeforeUnmount(() => {
           <button class="quick-action" type="button" @click="router.push({ name: 'asset-library' })">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Upload Asset
-          </button>
-          <button class="quick-action" type="button" @click="router.push({ name: 'videos' })">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-            All Videos
           </button>
         </div>
 
@@ -549,7 +565,7 @@ onBeforeUnmount(() => {
               <div class="eyebrow">Content lanes</div>
               <div class="section-title">Channels</div>
             </div>
-            <button class="btn btn-ghost btn-sm" type="button" @click="router.push({ name: 'channels' })">View all →</button>
+            <button class="btn btn-ghost btn-sm" type="button" @click="router.push({ name: 'channels' })">Manage channels →</button>
           </div>
 
           <div v-if="channels.length === 0" class="empty-section">
@@ -557,63 +573,94 @@ onBeforeUnmount(() => {
             <button class="btn btn-ghost btn-sm" type="button" @click="router.push({ name: 'channels' })">Create Channel →</button>
           </div>
 
-          <div v-else class="channel-cards-grid">
-            <div
-              v-for="ch in channels"
-              :key="ch.id"
-              class="channel-card"
-              @click="router.push({ name: 'videos', query: { channel_id: ch.id } })"
-            >
-              <div :class="['channel-card-cover', `ch-grad-${(ch.id % 5) + 1}`]">
-                <span class="channel-card-initial">{{ ch.name?.[0]?.toUpperCase() || '?' }}</span>
+          <template v-else>
+            <div v-if="channels.length > 1" class="adaptive-note">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              <div>You have <strong>{{ channels.length }} channels</strong>. Click a channel to see its videos, series, and brand defaults.</div>
+            </div>
+            <div class="channel-grid">
+              <div
+                v-for="(ch, i) in channels"
+                :key="ch.id"
+                class="channel-card"
+                @click="router.push({ name: 'videos', query: { channel_id: ch.id } })"
+              >
+                <div :class="['channel-cover', `ch-grad-${(ch.id % 5) + 1}`]">
+                  <span class="channel-icon">{{ ch.name?.[0]?.toUpperCase() || '?' }}</span>
+                </div>
+                <div class="channel-body">
+                  <div class="channel-name">{{ ch.name }}</div>
+                  <div v-if="ch.description" class="channel-desc">{{ ch.description }}</div>
+                  <div class="channel-stats">
+                    <div class="ch-stat">
+                      <div class="ch-stat-val">{{ ch.platform_targets?.[0] || 'tiktok' }}</div>
+                      <div class="ch-stat-label">Platform</div>
+                    </div>
+                    <div class="ch-stat">
+                      <div class="ch-stat-val">{{ ch.default_language || 'en' }}</div>
+                      <div class="ch-stat-label">Lang</div>
+                    </div>
+                    <div class="ch-stat">
+                      <div class="ch-stat-val">{{ ch.aspect_ratio || '9:16' }}</div>
+                      <div class="ch-stat-label">Format</div>
+                    </div>
+                  </div>
+                  <div class="channel-footer">
+                    <div class="channel-kit">
+                      <div class="kit-dot" :style="{ background: CH_DOT_COLORS[i % CH_DOT_COLORS.length] }"></div>
+                      {{ ch.brand_kit?.name || 'Default Kit' }}
+                    </div>
+                    <span class="channel-action">Open →</span>
+                  </div>
+                </div>
               </div>
-              <div class="channel-card-body">
-                <div class="channel-card-name">{{ ch.name }}</div>
-                <div class="channel-card-meta">
-                  <span>{{ ch.platform_targets?.[0] || 'tiktok' }}</span>
-                  <span>{{ ch.default_language || 'en' }}</span>
-                </div>
-                <div class="channel-card-footer">
-                  <span class="channel-card-cta">View videos →</span>
-                </div>
+              <div class="channel-card-new" @click="router.push({ name: 'channels' })">
+                <div class="channel-new-icon">+</div>
+                <div>New Channel</div>
               </div>
             </div>
-          </div>
+          </template>
         </div>
 
-        <!-- Series section (dummy cards — series not built yet) -->
+        <!-- Series section -->
         <div class="dash-section">
           <div class="section-hd">
             <div class="section-hd-left">
               <div class="eyebrow">Repeatable formats</div>
               <div class="section-title">Series</div>
             </div>
-            <span class="coming-soon-pill">Coming soon</span>
+            <button class="btn btn-ghost btn-sm" type="button" @click="router.push({ name: 'series' })">View all →</button>
           </div>
 
-          <div class="series-dummy-grid">
-            <div class="series-dummy-card">
-              <div class="series-dummy-num">01</div>
-              <div class="series-dummy-body">
-                <div class="series-dummy-name">Your first series</div>
-                <div class="series-dummy-desc">Group related videos into a recurring format with shared defaults — voice, visuals, captions, and music.</div>
-                <div class="series-dummy-pills">
-                  <span class="series-pill">Episodes</span>
-                  <span class="series-pill">Shared defaults</span>
-                  <span class="series-pill">Auto-schedule</span>
+          <div v-if="seriesPreview.length === 0" class="empty-section">
+            <div class="empty-section-text">No series yet. Series let you build recurring content formats with shared voice, visuals, and characters.</div>
+            <button class="btn btn-ghost btn-sm" type="button" @click="router.push({ name: 'series-create' })">Create Series →</button>
+          </div>
+
+          <div v-else class="series-grid">
+            <div
+              v-for="(s, i) in seriesPreview"
+              :key="s.id"
+              class="series-card"
+              @click="router.push({ name: 'series-detail', params: { seriesId: s.id } })"
+            >
+              <div class="series-num">{{ String(i + 1).padStart(2, '0') }}</div>
+              <div class="series-info">
+                <div class="series-name">{{ s.name }}</div>
+                <div v-if="channelNameById(s.channel_id)" class="series-channel">{{ channelNameById(s.channel_id) }}</div>
+                <div class="series-meta">
+                  <span class="series-pill">{{ s.episodes_count || 0 }} ep{{ s.episodes_count !== 1 ? 's' : '' }}</span>
+                  <span v-if="s.tone" class="series-pill">{{ s.tone }}</span>
+                  <span v-if="s.duration_target_seconds" class="series-pill">~{{ Math.round(s.duration_target_seconds / 60) }}min</span>
                 </div>
               </div>
-            </div>
-            <div class="series-dummy-card series-dummy-faded">
-              <div class="series-dummy-num">02</div>
-              <div class="series-dummy-body">
-                <div class="series-dummy-name">Weekly roundup</div>
-                <div class="series-dummy-desc">Generate the next episode with one click. Series remembers your format so you don't have to reconfigure.</div>
-                <div class="series-dummy-pills">
-                  <span class="series-pill">8 episodes</span>
-                  <span class="series-pill">Cinematic</span>
-                  <span class="series-pill">~60s</span>
-                </div>
+              <div class="series-actions">
+                <span class="series-eps">ep {{ (s.episodes_count || 0) + 1 }} due</span>
+                <button
+                  class="btn btn-primary btn-sm"
+                  type="button"
+                  @click.stop="router.push({ name: 'series-detail', params: { seriesId: s.id } })"
+                >+ Episode</button>
               </div>
             </div>
           </div>
@@ -852,23 +899,31 @@ onBeforeUnmount(() => {
 .channel-filter-tab.active { border-color: var(--color-accent); background: rgba(255,107,53,0.12); color: var(--color-accent); font-weight: 600; }
 
 /* Channel cards */
-.channel-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.channel-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: 0.2s; }
-.channel-card:hover { border-color: var(--color-border-active); transform: translateY(-2px); }
-.channel-card-cover { height: 70px; display: flex; align-items: flex-end; padding: 10px; position: relative; }
+.adaptive-note { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; background: rgba(255,107,53,0.05); border: 1px solid rgba(255,107,53,0.15); border-radius: 8px; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 14px; }
+.adaptive-note svg { flex-shrink: 0; margin-top: 1px; color: var(--color-accent); }
+.adaptive-note strong { color: var(--color-text-primary); }
+.channel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.channel-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; }
+.channel-card:hover { border-color: var(--color-border-active); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.channel-cover { height: 80px; position: relative; display: flex; align-items: flex-end; padding: 12px; }
 .ch-grad-1 { background: linear-gradient(135deg, #1a0005, #3d0010); }
 .ch-grad-2 { background: linear-gradient(135deg, #0a1a3d, #1a0a2e); }
 .ch-grad-3 { background: linear-gradient(135deg, #0a1a0a, #1a2e1a); }
 .ch-grad-4 { background: linear-gradient(135deg, #1a1400, #2e2400); }
 .ch-grad-5 { background: linear-gradient(135deg, #0a0e1a, #1a2030); }
-.channel-card-initial { font-size: 24px; font-weight: 700; color: rgba(255,255,255,0.25); font-family: "Space Mono", monospace; position: relative; z-index: 1; }
-.channel-card-body { padding: 12px 14px 14px; }
-.channel-card-name { font-size: 14px; font-weight: 700; color: var(--color-text-primary); margin-bottom: 5px; }
-.channel-card-meta { display: flex; gap: 8px; font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-family: "Space Mono", monospace; margin-bottom: 10px; }
-.channel-card-footer { padding-top: 10px; border-top: 1px solid var(--color-border); }
-.channel-active-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; background: rgba(255,107,53,0.12); color: var(--color-accent); border: 1px solid rgba(255,107,53,0.22); }
-.channel-card-cta { font-size: 12px; font-weight: 600; color: var(--color-accent); }
-.channel-card-new { background: transparent; border: 1px dashed var(--color-border); border-radius: 14px; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: 0.15s; color: var(--color-text-muted); font-size: 13px; font-weight: 500; }
+.channel-icon { font-size: 22px; font-weight: 700; color: rgba(255,255,255,0.3); font-family: "Space Mono", monospace; position: relative; z-index: 1; }
+.channel-body { padding: 14px 16px 16px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.channel-name { font-size: 15px; font-weight: 700; color: var(--color-text-primary); }
+.channel-desc { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; flex: 1; }
+.channel-stats { display: flex; gap: 12px; }
+.ch-stat { display: flex; flex-direction: column; gap: 2px; }
+.ch-stat-val { font-size: 12px; font-weight: 700; color: var(--color-text-primary); font-family: "Space Mono", monospace; text-transform: uppercase; }
+.ch-stat-label { font-size: 9px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-family: "Space Mono", monospace; }
+.channel-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--color-border); }
+.channel-kit { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-muted); min-width: 0; }
+.kit-dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+.channel-action { font-size: 12px; font-weight: 600; color: var(--color-accent); flex-shrink: 0; }
+.channel-card-new { background: transparent; border: 1px dashed var(--color-border); border-radius: 14px; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: 0.15s; color: var(--color-text-muted); font-size: 13px; font-weight: 500; }
 .channel-card-new:hover { border-color: rgba(255,107,53,0.4); color: var(--color-accent); }
 .channel-new-icon { font-size: 24px; }
 
@@ -881,17 +936,18 @@ onBeforeUnmount(() => {
 .empty-section { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; padding: 20px 22px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .empty-section-text { font-size: 13px; color: var(--color-text-muted); flex: 1; }
 
-/* Series dummy cards */
-.coming-soon-pill { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: "Space Mono", monospace; text-transform: uppercase; background: rgba(96,165,250,0.1); color: #60a5fa; border: 1px solid rgba(96,165,250,0.2); }
-.series-dummy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-.series-dummy-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; padding: 16px 18px; display: flex; gap: 14px; }
-.series-dummy-faded { opacity: 0.5; }
-.series-dummy-num { font-family: "Space Mono", monospace; font-size: 20px; font-weight: 700; color: var(--color-border-active); flex-shrink: 0; width: 32px; text-align: center; padding-top: 2px; }
-.series-dummy-body { flex: 1; min-width: 0; }
-.series-dummy-name { font-size: 14px; font-weight: 700; color: var(--color-text-primary); margin-bottom: 5px; }
-.series-dummy-desc { font-size: 12px; color: var(--color-text-muted); line-height: 1.5; margin-bottom: 10px; }
-.series-dummy-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Series cards */
+.series-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.series-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; padding: 16px 18px; cursor: pointer; transition: 0.2s; display: flex; gap: 14px; align-items: flex-start; }
+.series-card:hover { border-color: var(--color-border-active); transform: translateY(-1px); }
+.series-num { font-family: "Space Mono", monospace; font-size: 22px; font-weight: 700; color: var(--color-border-active); flex-shrink: 0; width: 36px; text-align: center; padding-top: 2px; }
+.series-info { flex: 1; min-width: 0; }
+.series-name { font-size: 14px; font-weight: 700; color: var(--color-text-primary); margin-bottom: 4px; }
+.series-channel { font-size: 11px; color: var(--color-accent); font-weight: 500; margin-bottom: 6px; }
+.series-meta { display: flex; gap: 8px; flex-wrap: wrap; }
 .series-pill { font-size: 10px; font-family: "Space Mono", monospace; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 4px; padding: 2px 7px; color: var(--color-text-muted); }
+.series-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; flex-shrink: 0; }
+.series-eps { font-size: 11px; color: var(--color-text-muted); font-family: "Space Mono", monospace; white-space: nowrap; }
 
 /* Projects / queue toolbar */
 .projects-toolbar { display: flex; align-items: center; gap: 12px; }

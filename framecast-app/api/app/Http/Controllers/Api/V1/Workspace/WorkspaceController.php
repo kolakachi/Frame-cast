@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api\V1\Workspace;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\WorkspaceUsageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class WorkspaceController extends Controller
 {
+    public function __construct(private readonly WorkspaceUsageService $usageService) {}
+
     public function index(Request $request): JsonResponse
     {
         /** @var User $user */
@@ -69,6 +72,7 @@ class WorkspaceController extends Controller
         return response()->json([
             'data' => [
                 'workspace' => $this->serializeWorkspace($workspace),
+                'usage' => $this->usageService->summaryForWorkspace($workspace),
             ],
             'meta' => [],
         ]);
@@ -156,7 +160,7 @@ class WorkspaceController extends Controller
         ];
     }
 
-    private function error(string $code, string $message, int $status): JsonResponse
+    protected function error(string $code, string $message, int $status = 422): JsonResponse
     {
         return response()->json([
             'error' => [

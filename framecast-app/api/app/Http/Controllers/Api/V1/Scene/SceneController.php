@@ -13,6 +13,8 @@ use App\Services\Generation\AI\AIGenerationAdapter;
 use App\Services\Generation\TTS\TTSAdapter;
 use App\Services\Generation\Visual\VisualProviderAdapter;
 use App\Services\Media\MediaTranscriptionService;
+use App\Services\Media\StorageService;
+use App\Services\WorkspaceUsageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +23,8 @@ use Throwable;
 
 class SceneController extends Controller
 {
+    public function __construct(private readonly WorkspaceUsageService $usageService) {}
+
     public function store(Request $request): JsonResponse
     {
         /** @var User $user */
@@ -137,6 +141,8 @@ class SceneController extends Controller
             'duration_seconds' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:600'],
             'scene_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'visual_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'visual_asset_id' => ['sometimes', 'nullable', 'integer'],
+            'sound_asset_id' => ['sometimes', 'nullable', 'integer'],
             'visual_prompt' => ['sometimes', 'nullable', 'string'],
             'transition_rule' => ['sometimes', 'nullable', 'string', 'max:64'],
             'voice_profile_id' => ['sometimes', 'nullable', 'integer'],
@@ -148,14 +154,38 @@ class SceneController extends Controller
             'caption_settings_json.position' => ['sometimes', 'string', 'in:bottom_third,center,top_third'],
             'caption_settings_json.font' => ['sometimes', 'nullable', 'string', \Illuminate\Validation\Rule::in(CaptionFonts::ALL)],
             'caption_settings_json.highlight_color' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'caption_settings_json.color' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'caption_settings_json.size' => ['sometimes', 'nullable', 'string', 'in:small,medium,large,xlarge'],
             'caption_settings_json.preset_id' => ['sometimes', 'nullable'],
-            'visual_style' => ['sometimes', 'nullable', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon'],
+            'visual_style' => ['sometimes', 'nullable', 'string', 'max:64'],
             'motion_settings_json' => ['sometimes', 'nullable', 'array'],
             'motion_settings_json.effect' => ['sometimes', 'string', 'in:zoom_in,zoom_out,pan_left,pan_right,pan_up,pan_down,pan_zoom,static'],
             'motion_settings_json.intensity' => ['sometimes', 'string', 'in:subtle,moderate,dramatic'],
             'locked_fields_json' => ['sometimes', 'nullable', 'array'],
             'status' => ['sometimes', 'nullable', 'string', 'max:64'],
         ]);
+
+        if (array_key_exists('visual_asset_id', $validated) && $validated['visual_asset_id'] !== null) {
+            $assetExists = Asset::query()
+                ->whereKey($validated['visual_asset_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->exists();
+
+            if (! $assetExists) {
+                return $this->error('invalid_asset', 'Asset not found in this workspace.', 422);
+            }
+        }
+
+        if (array_key_exists('sound_asset_id', $validated) && $validated['sound_asset_id'] !== null) {
+            $assetExists = Asset::query()
+                ->whereKey($validated['sound_asset_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->exists();
+
+            if (! $assetExists) {
+                return $this->error('invalid_asset', 'Sound asset not found in this workspace.', 422);
+            }
+        }
 
         $scene->fill($validated);
         $scene->save();
@@ -440,6 +470,24 @@ class SceneController extends Controller
             return $this->error('not_found', 'Scene not found.', 404);
         }
 
+        if ($this->usageService->hasExceededApiBudget($user)) {
+            $ctx = $this->usageService->apiBudgetContext($user);
+            return $this->limitError(
+                'api_budget_exceeded',
+                "Your workspace has reached its \${$ctx['budget_usd']} AI budget for the {$ctx['plan']} plan this month.",
+                $ctx,
+            );
+        }
+
+        if ($this->usageService->hasReachedVoiceLimit($user)) {
+            $ctx = $this->usageService->voiceLimitContext($user);
+            return $this->limitError(
+                'voice_limit_reached',
+                "Your workspace has used {$ctx['used']} of {$ctx['limit']} voice minutes on the {$ctx['plan']} plan.",
+                $ctx,
+            );
+        }
+
         $project = $scene->project;
 
         if (! $project) {
@@ -665,6 +713,15 @@ class SceneController extends Controller
             return $this->error('not_found', 'Scene not found.', 404);
         }
 
+        if ($this->usageService->hasExceededApiBudget($user)) {
+            $ctx = $this->usageService->apiBudgetContext($user);
+            return $this->limitError(
+                'api_budget_exceeded',
+                "Your workspace has reached its \${$ctx['budget_usd']} AI budget for the {$ctx['plan']} plan this month.",
+                $ctx,
+            );
+        }
+
         // Guard: reject concurrent requests — only one generation per scene at a time.
         $imageSettings = $scene->image_generation_settings_json ?? [];
         if (! empty($imageSettings['in_progress'])) {
@@ -764,6 +821,10 @@ class SceneController extends Controller
             ? Asset::query()->whereKey($audioAssetId)->first()
             : null;
 
+        $soundAsset = $scene->sound_asset_id
+            ? Asset::query()->whereKey($scene->sound_asset_id)->first()
+            : null;
+
         return [
             'id' => $scene->getKey(),
             'project_id' => $scene->project_id,
@@ -787,8 +848,10 @@ class SceneController extends Controller
             'status' => $scene->status,
             'locked_fields' => $scene->locked_fields_json,
             'locked_fields_json' => $scene->locked_fields_json,
+            'sound_asset_id' => $scene->sound_asset_id,
             'visual_asset' => $visualAsset ? $this->serializeAsset($visualAsset) : null,
             'audio_asset' => $audioAsset ? $this->serializeAsset($audioAsset) : null,
+            'sound_asset' => $soundAsset ? $this->serializeAsset($soundAsset) : null,
             'created_at' => $scene->created_at?->toIso8601String(),
             'updated_at' => $scene->updated_at?->toIso8601String(),
         ];
@@ -799,14 +862,16 @@ class SceneController extends Controller
      */
     private function serializeAsset(Asset $asset): array
     {
+        $thumbnailUrl = trim((string) $asset->thumbnail_url);
         return [
             'id' => $asset->getKey(),
             'asset_type' => $asset->asset_type,
             'title' => $asset->title,
             'storage_url' => $this->assetUrl($asset),
-            'thumbnail_url' => $asset->thumbnail_url,
+            'thumbnail_url' => ($thumbnailUrl !== '' && (str_starts_with($thumbnailUrl, 'data:') || ! $this->isB2Url($thumbnailUrl))) ? $thumbnailUrl : null,
             'duration_seconds' => $asset->duration_seconds,
             'mime_type' => $asset->mime_type,
+            'tags' => $asset->tags ?? [],
             'transcript_text' => $asset->transcript_text,
             'transcription_status' => $asset->transcription_status,
             'metadata_json' => $asset->metadata_json,
@@ -834,27 +899,10 @@ class SceneController extends Controller
 
     private function isB2Url(string $url): bool
     {
-        if (str_starts_with($url, 'b2://')) {
-            return true;
-        }
-
-        if (! str_contains($url, '://') && ! str_starts_with($url, '/')) {
-            return true;
-        }
-
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        $bucket = strtolower((string) config('filesystems.disks.b2.bucket'));
-
-        if ($host !== '' && str_contains($host, 'backblazeb2.com')) {
-            return true;
-        }
-
-        $path = strtolower(trim((string) parse_url($url, PHP_URL_PATH), '/'));
-
-        return $bucket !== '' && str_starts_with($path, $bucket.'/');
+        return app(StorageService::class)->isManagedUrl($url);
     }
 
-    private function error(string $code, string $message, int $status): JsonResponse
+    protected function error(string $code, string $message, int $status = 422): JsonResponse
     {
         return response()->json([
             'error' => [

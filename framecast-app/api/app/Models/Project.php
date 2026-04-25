@@ -38,6 +38,9 @@ class Project extends Model
         'created_by_user_id',
         'music_asset_id',
         'music_settings_json',
+        'series_id',
+        'series_episode_number',
+        'series_episode_summary',
     ];
 
     protected function casts(): array
@@ -50,6 +53,8 @@ class Project extends Model
             'music_settings_json' => 'array',
             'generation_status_json' => 'array',
             'visual_brief' => 'array',
+            'series_id' => 'integer',
+            'series_episode_number' => 'integer',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
@@ -58,6 +63,11 @@ class Project extends Model
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);
+    }
+
+    public function series(): BelongsTo
+    {
+        return $this->belongsTo(Series::class);
     }
 
     public function hookOptions(): HasMany

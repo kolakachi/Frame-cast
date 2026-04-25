@@ -12,7 +12,6 @@ const authStore = useAuthStore()
 
 const mePayload = ref(null)
 const usage    = ref(null)
-const channels  = ref([])
 const brandKits = ref([])
 const voices    = ref([])
 const loading   = ref(true)
@@ -20,39 +19,8 @@ const saveError = ref('')
 const saveState = ref('idle')
 const brandSavePending = ref(false)
 const limitModalOpen = ref(false)
-const limitModalContext = ref('usage')
 const deleteTarget = ref(null)
 const deletePending = ref(false)
-
-// ── Channel modal ─────────────────────────────────────────
-const channelModal = ref({ open: false, mode: 'create' })
-const channelForm  = ref({
-  id: null, name: '', description: '',
-  default_language: 'en',
-  default_voice_profile_id: '',
-  brand_kit_id: '',
-  platforms: [],
-})
-
-const platformOptions = [
-  { value: 'tiktok', label: 'TikTok' },
-  { value: 'reels', label: 'Reels' },
-  { value: 'shorts', label: 'Shorts' },
-  { value: 'instagram_square', label: 'Instagram Square' },
-  { value: 'youtube', label: 'YouTube' },
-]
-
-const platformAliases = new Map([
-  ['tiktok', 'tiktok'],
-  ['tik tok', 'tiktok'],
-  ['reels', 'reels'],
-  ['instagram reels', 'reels'],
-  ['shorts', 'shorts'],
-  ['youtube shorts', 'shorts'],
-  ['instagram square', 'instagram_square'],
-  ['instagram_square', 'instagram_square'],
-  ['youtube', 'youtube'],
-])
 
 const fontOptions = [
   'DM Sans',
@@ -67,66 +35,14 @@ const fontOptions = [
   'IBM Plex Sans',
 ]
 
-function normalizePlatformTarget(target) {
-  const key = String(target || '').trim().toLowerCase()
-  return platformAliases.get(key) || ''
-}
-
-function normalizePlatformTargets(targets) {
-  if (!Array.isArray(targets)) return []
-  return [...new Set(targets.map(normalizePlatformTarget).filter(Boolean))]
-}
-
-function platformLabel(value) {
-  return platformOptions.find((option) => option.value === normalizePlatformTarget(value))?.label || value
-}
-
-function channelPlatformLabels(channel) {
-  const normalized = normalizePlatformTargets(channel.platform_targets)
-  return normalized.length ? normalized.map(platformLabel).join(', ') : 'No platform targets'
-}
-
 function voiceName(voiceId) {
   if (!voiceId) return 'No default voice'
-  return voices.value.find((voice) => String(voice.id) === String(voiceId))?.name || 'Unknown voice'
+  return voices.value.find((v) => String(v.id) === String(voiceId))?.name || 'Unknown voice'
 }
 
 function normalizeFont(font, fallback) {
   const normalized = String(font || '').replace(/\s+(bold|regular|medium|semibold)$/i, '').trim()
   return fontOptions.includes(normalized) ? normalized : fallback
-}
-
-function togglePlatform(p) {
-  const idx = channelForm.value.platforms.indexOf(p)
-  if (idx === -1) channelForm.value.platforms.push(p)
-  else channelForm.value.platforms.splice(idx, 1)
-}
-
-function openNewChannel() {
-  if ((usage.value?.active_channels || 0) >= (usage.value?.channel_limit || 0)) {
-    limitModalContext.value = 'channels'
-    limitModalOpen.value = true
-    return
-  }
-  channelForm.value = { id: null, name: '', description: '', default_language: 'en', default_voice_profile_id: '', brand_kit_id: '', platforms: [] }
-  channelModal.value = { open: true, mode: 'create' }
-}
-
-function openEditChannel(channel) {
-  channelForm.value = {
-    id: channel.id,
-    name: channel.name,
-    description: channel.description || '',
-    default_language: channel.default_language || 'en',
-    default_voice_profile_id: channel.default_voice_profile_id || '',
-    brand_kit_id: channel.brand_kit_id || '',
-    platforms: normalizePlatformTargets(channel.platform_targets),
-  }
-  channelModal.value = { open: true, mode: 'edit' }
-}
-
-function closeChannelModal() {
-  channelModal.value.open = false
 }
 
 // ── Account / preferences ─────────────────────────────────
@@ -174,18 +90,7 @@ const activeBrandKit = computed(() =>
 )
 
 // ── Active nav ────────────────────────────────────────────
-const activeSection = ref('channels')
-
-// ── Avatar gradients ──────────────────────────────────────
-const avatarGradients = [
-  'linear-gradient(135deg, #0f2027, #2c5364)',
-  'linear-gradient(135deg, #1a0a2e, #3d1a6e)',
-  'linear-gradient(135deg, #2a1a10, #4a3020)',
-  'linear-gradient(135deg, #1a2a1a, #2a4a2a)',
-  'linear-gradient(135deg, #2a1a20, #4a2a40)',
-]
-function channelGradient(i) { return avatarGradients[i % avatarGradients.length] }
-function channelInitials(name) { return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() }
+const activeSection = ref('brand')
 
 function hydrateBrandKitForm(brandKit) {
   brandKitForm.value = {
@@ -227,32 +132,20 @@ const limitRows = computed(() => {
   return rows.length > 0 ? rows : usageProgress.value
 })
 
-const deleteDialogTitle = computed(() =>
-  deleteTarget.value?.kind === 'channel' ? 'Archive Channel?' : 'Delete Brand Kit?'
-)
-
+const deleteDialogTitle = computed(() => 'Delete Brand Kit?')
 const deleteDialogMessage = computed(() => deleteTarget.value?.message || '')
 const deleteDialogConfirmLabel = computed(() => deleteTarget.value?.confirmLabel || 'Confirm')
-const limitModalTitle = computed(() =>
-  limitModalContext.value === 'channels' ? 'Channel limit reached' : 'Usage is approaching your plan limits'
-)
-const limitModalSubtitle = computed(() =>
-  limitModalContext.value === 'channels'
-    ? 'This workspace is already at the maximum active channels for the current plan. Upgrade to add another lane.'
-    : 'Upgrade before your next batch so channels, renders, and voice capacity do not block production.'
-)
 
 // ── API calls ─────────────────────────────────────────────
 async function loadSettings() {
   loading.value = true
   saveError.value = ''
   try {
-    const [meRes, channelsRes, brandKitsRes, voicesRes] = await Promise.all([
-      api.get('/me'), api.get('/channels'), api.get('/brand-kits'), api.get('/voice-profiles'),
+    const [meRes, brandKitsRes, voicesRes] = await Promise.all([
+      api.get('/me'), api.get('/brand-kits'), api.get('/voice-profiles'),
     ])
     mePayload.value = meRes.data.data.user
     usage.value     = meRes.data.data.usage
-    channels.value  = channelsRes.data.data.channels || []
     brandKits.value = brandKitsRes.data.data.brand_kits || []
     voices.value    = voicesRes.data.data.voice_profiles || []
     accountForm.value = { name: mePayload.value?.name || '', timezone: mePayload.value?.timezone || 'UTC' }
@@ -282,35 +175,6 @@ async function saveAccount() {
     saveState.value = 'saved'
   } catch (err) {
     saveError.value = err?.response?.data?.error?.message || 'Could not save account settings.'
-    saveState.value = 'error'
-  }
-}
-
-async function saveChannel() {
-  saveState.value = 'saving'; saveError.value = ''
-  try {
-    const payload = {
-      name: channelForm.value.name,
-      description: channelForm.value.description || null,
-      default_language: channelForm.value.default_language || null,
-      default_voice_profile_id: channelForm.value.default_voice_profile_id || null,
-      brand_kit_id: channelForm.value.brand_kit_id || null,
-      platform_targets: channelForm.value.platforms.length ? channelForm.value.platforms : null,
-    }
-    if (channelForm.value.id) {
-      await api.patch(`/channels/${channelForm.value.id}`, payload)
-    } else {
-      await api.post('/channels', payload)
-    }
-    await loadSettings()
-    closeChannelModal()
-    saveState.value = 'saved'
-  } catch (err) {
-    if (err?.response?.data?.error?.code === 'channel_limit_reached') {
-      limitModalContext.value = 'channels'
-      limitModalOpen.value = true
-    }
-    saveError.value = err?.response?.data?.error?.message || 'Could not save channel.'
     saveState.value = 'error'
   }
 }
@@ -347,20 +211,9 @@ async function saveBrandKit() {
   }
 }
 
-function requestArchiveChannel() {
-  if (!channelForm.value.id) return
-  deleteTarget.value = {
-    kind: 'channel',
-    id: channelForm.value.id,
-    message: `"${channelForm.value.name}" will be archived and removed from the active channel list.`,
-    confirmLabel: 'Archive Channel',
-  }
-}
-
 function requestDeleteBrandKit() {
   if (!brandKitForm.value.id) return
   deleteTarget.value = {
-    kind: 'brand-kit',
     id: brandKitForm.value.id,
     message: `"${brandKitForm.value.name}" will be deleted from this workspace. Channels using it will need a new default kit.`,
     confirmLabel: 'Delete Brand Kit',
@@ -374,19 +227,9 @@ function closeDeleteConfirm() {
 
 async function confirmDeleteTarget() {
   if (!deleteTarget.value) return
-
   deletePending.value = true
-
   try {
-    if (deleteTarget.value.kind === 'channel') {
-      await api.delete(`/channels/${deleteTarget.value.id}`)
-      closeChannelModal()
-    }
-
-    if (deleteTarget.value.kind === 'brand-kit') {
-      await api.delete(`/brand-kits/${deleteTarget.value.id}`)
-    }
-
+    await api.delete(`/brand-kits/${deleteTarget.value.id}`)
     await loadSettings()
     deleteTarget.value = null
   } catch (err) {
@@ -419,38 +262,19 @@ onMounted(loadSettings)
         <div class="surface-card settings-menu">
           <div class="settings-menu-title">Settings</div>
           <div class="settings-nav">
-            <div :class="['settings-tab', activeSection === 'channels' ? 'active' : '']" @click="activeSection = 'channels'">Channels</div>
-            <div :class="['settings-tab', activeSection === 'brand'    ? 'active' : '']" @click="activeSection = 'brand'">Brand Kits</div>
-            <div :class="['settings-tab', activeSection === 'account'  ? 'active' : '']" @click="activeSection = 'account'">Account</div>
-            <div :class="['settings-tab', activeSection === 'usage'    ? 'active' : '']" @click="activeSection = 'usage'">Usage and Billing</div>
+            <div :class="['settings-tab', activeSection === 'brand'   ? 'active' : '']" @click="activeSection = 'brand'">Brand Kits</div>
+            <div :class="['settings-tab', activeSection === 'account' ? 'active' : '']" @click="activeSection = 'account'">Account</div>
+            <div :class="['settings-tab', activeSection === 'usage'   ? 'active' : '']" @click="activeSection = 'usage'">Usage and Billing</div>
           </div>
         </div>
 
         <!-- ── Right pane ── -->
         <div class="surface-card settings-content-card">
 
-          <!-- Channels -->
-          <div v-if="activeSection === 'channels'">
-            <div class="section-title">Channels</div>
-            <div class="settings-section-desc">This now reads as a proper management surface instead of a detached tab strip.</div>
-
-            <div v-for="(channel, i) in channels" :key="channel.id" class="channel-card">
-              <div class="channel-avatar" :style="{ background: channelGradient(i) }">{{ channelInitials(channel.name) }}</div>
-              <div class="channel-info">
-                <div class="channel-name-row">{{ channel.name }}</div>
-                <div class="channel-detail">{{ channel.description || 'No description yet' }}</div>
-                <div class="channel-detail">{{ channelPlatformLabels(channel) }} · {{ voiceName(channel.default_voice_profile_id) }} · {{ channel.default_language || 'en' }}</div>
-              </div>
-              <button class="btn btn-ghost btn-sm" type="button" @click="openEditChannel(channel)">Edit</button>
-            </div>
-
-            <button class="btn btn-ghost new-channel-btn" type="button" @click="openNewChannel">+ New Channel</button>
-          </div>
-
           <!-- Brand Kits -->
-          <div v-else-if="activeSection === 'brand'">
+          <div v-if="activeSection === 'brand'">
             <div class="section-title">Brand Kit Defaults</div>
-            <div class="settings-section-desc">Make the global kit obvious, with clear form rows and less visual noise.</div>
+            <div class="settings-section-desc">Reusable color, font, and voice presets applied across channels and series.</div>
 
             <div class="brand-kit-grid">
               <button
@@ -623,7 +447,7 @@ onMounted(loadSettings)
           <!-- Usage & Billing -->
           <div v-else>
             <div class="section-title">Usage and Billing</div>
-            <div class="settings-section-desc">Billing status and plan usage stay readable inside the same card system.</div>
+            <div class="settings-section-desc">Current plan usage and upgrade options.</div>
 
             <div v-if="usage">
               <div v-for="row in usageProgress" :key="row.label" class="usage-bar-container">
@@ -658,79 +482,6 @@ onMounted(loadSettings)
       </div>
     </div>
 
-    <!-- ── Channel Modal ── -->
-    <div v-if="channelModal.open" class="modal-overlay" @click.self="closeChannelModal">
-      <div class="modal">
-        <div class="modal-title">{{ channelModal.mode === 'create' ? 'New Channel' : 'Edit Channel' }}</div>
-        <div class="modal-subtitle">{{ channelModal.mode === 'create' ? 'Set up a new publishing lane' : channelForm.name }}</div>
-
-        <div class="form-grid-2">
-          <div class="input-group">
-            <label class="input-label">Channel Name</label>
-            <input v-model="channelForm.name" class="input-field" type="text" placeholder="Faceless Finance Tips">
-          </div>
-          <div class="input-group">
-            <label class="input-label">Default Language</label>
-            <select v-model="channelForm.default_language" class="input-field">
-              <option value="en">English (en-US)</option>
-              <option value="es">Spanish (es)</option>
-              <option value="pt">Portuguese (pt-BR)</option>
-              <option value="fr">French (fr)</option>
-              <option value="de">German (de)</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="input-group">
-          <label class="input-label">Description</label>
-          <input v-model="channelForm.description" class="input-field" type="text" placeholder="Personal finance tips for everyday people">
-        </div>
-
-        <div class="input-group">
-          <label class="input-label">Platform Targets</label>
-          <div class="platform-checks">
-            <div
-              v-for="platform in platformOptions"
-              :key="platform.value"
-              :class="['platform-check', channelForm.platforms.includes(platform.value) ? 'on' : '']"
-              @click="togglePlatform(platform.value)"
-            >{{ platform.label }}</div>
-          </div>
-        </div>
-
-        <div class="form-grid-2">
-          <div class="input-group">
-            <label class="input-label">Default Voice Profile</label>
-            <select v-model="channelForm.default_voice_profile_id" class="input-field">
-              <option value="">No default</option>
-              <option v-for="voice in voices" :key="voice.id" :value="voice.id">{{ voice.name }}</option>
-            </select>
-          </div>
-          <div class="input-group">
-            <label class="input-label">Brand Kit</label>
-            <select v-model="channelForm.brand_kit_id" class="input-field">
-              <option value="">No default</option>
-              <option v-for="kit in brandKits" :key="kit.id" :value="kit.id">{{ kit.name }}</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="channel-hint">Changing defaults does not update existing projects that use this channel.</div>
-
-        <div v-if="channelModal.mode === 'edit'" class="danger-zone">
-          <div class="danger-zone-label">Danger Zone</div>
-          <button class="btn btn-ghost btn-sm btn-danger" type="button" @click="requestArchiveChannel">Archive Channel</button>
-        </div>
-
-        <div class="modal-actions">
-          <button class="btn btn-ghost" type="button" @click="closeChannelModal">Cancel</button>
-          <button class="btn btn-primary" type="button" @click="saveChannel">
-            {{ saveState === 'saving' ? 'Saving…' : channelModal.mode === 'create' ? 'Create Channel' : 'Save Changes' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <ConfirmDialog
       :open="Boolean(deleteTarget)"
       :title="deleteDialogTitle"
@@ -744,8 +495,8 @@ onMounted(loadSettings)
 
     <LimitModal
       :open="limitModalOpen"
-      :title="limitModalTitle"
-      :subtitle="limitModalSubtitle"
+      title="Usage is approaching your plan limits"
+      subtitle="Upgrade before your next batch so channels, renders, and voice capacity do not block production."
       :rows="limitRows"
       @close="limitModalOpen = false"
     />
@@ -857,10 +608,7 @@ onMounted(loadSettings)
   align-content: center;
 }
 
-.brand-kit-swatches {
-  display: flex;
-  gap: 6px;
-}
+.brand-kit-swatches { display: flex; gap: 6px; }
 
 .brand-kit-swatch {
   width: 28px;
@@ -869,17 +617,8 @@ onMounted(loadSettings)
   border: 1px solid rgba(255,255,255,0.15);
 }
 
-.brand-kit-name {
-  color: #ececf3;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.brand-kit-meta {
-  color: #6a6a7c;
-  font-size: 11px;
-  line-height: 1.4;
-}
+.brand-kit-name { color: #ececf3; font-size: 13px; font-weight: 600; }
+.brand-kit-meta { color: #6a6a7c; font-size: 11px; line-height: 1.4; }
 
 .brand-kit-plus {
   width: 28px;
@@ -891,37 +630,6 @@ onMounted(loadSettings)
   border: 1px solid #2a2a36;
   color: #ff6b35;
 }
-
-/* ── Channel list ── */
-.channel-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px;
-  margin-bottom: 10px;
-  border-radius: 10px;
-  border: 1px solid #2a2a36;
-  background: #15151d;
-}
-
-.channel-avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-  color: #ececf3;
-  flex-shrink: 0;
-}
-
-.channel-info { flex: 1; min-width: 0; }
-.channel-name-row { font-size: 13px; font-weight: 600; }
-.channel-detail { margin-top: 2px; font-size: 11px; color: #6a6a7c; }
-
-.new-channel-btn { margin-top: 8px; }
 
 /* ── Settings rows ── */
 .settings-row {
@@ -969,9 +677,7 @@ onMounted(loadSettings)
   gap: 10px;
 }
 
-.brand-font-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
+.brand-font-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 .color-field {
   display: grid;
@@ -990,7 +696,6 @@ onMounted(loadSettings)
   cursor: pointer;
 }
 
-/* Color swatches */
 .color-swatches { display: flex; gap: 8px; margin-top: 10px; }
 .color-swatch {
   width: 32px; height: 32px;
@@ -1075,92 +780,6 @@ onMounted(loadSettings)
 .btn-sm { padding: 6px 12px; font-size: 12px; }
 .btn-danger { border-color: rgba(248,113,113,0.3); color: #f87171; }
 
-/* ── Modal ── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.62);
-  backdrop-filter: blur(4px);
-  z-index: 200;
-}
-
-.modal {
-  width: min(560px, calc(100vw - 32px));
-  max-height: 82vh;
-  overflow-y: auto;
-  padding: 28px;
-  border-radius: 16px;
-  background: #111118;
-  border: 1px solid #2a2a36;
-  box-shadow: 0 30px 80px rgba(0,0,0,0.5);
-}
-
-.modal-title { font-size: 20px; font-weight: 700; }
-.modal-subtitle { margin-top: 4px; margin-bottom: 20px; font-size: 13px; color: #6a6a7c; }
-
-.input-group { margin-bottom: 16px; }
-.input-label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 500; color: #a1a1b5; }
-
-.input-field {
-  width: 100%;
-  border-radius: 8px;
-  border: 1px solid #2a2a36;
-  background: #1d1d28;
-  color: #ececf3;
-  padding: 9px 12px;
-  font-size: 13px;
-  font: inherit;
-}
-.input-field:focus { outline: none; border-color: rgba(255,107,53,0.45); }
-
-textarea.input-field { min-height: 86px; resize: vertical; }
-
-.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
-.form-grid-2 .input-group { margin: 0; }
-
-/* Platform checks */
-.platform-checks { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.platform-check {
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid #2a2a36;
-  background: #1d1d28;
-  cursor: pointer;
-  font-size: 12px;
-  color: #a1a1b5;
-  transition: 0.15s;
-  user-select: none;
-}
-.platform-check.on {
-  border-color: rgba(255,107,53,0.4);
-  background: rgba(255,107,53,0.14);
-  color: #ff6b35;
-}
-
-/* Channel hint */
-.channel-hint {
-  font-size: 12px;
-  color: #6a6a7c;
-  padding: 10px 12px;
-  background: #1d1d28;
-  border-radius: 8px;
-  border: 1px solid #2a2a36;
-  margin-bottom: 4px;
-}
-
-/* Danger zone */
-.danger-zone { margin-top: 24px; padding-top: 16px; border-top: 1px solid #2a2a36; }
-.danger-zone-label {
-  font-size: 11px;
-  color: #6a6a7c;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 10px;
-}
-
 /* Modal actions */
 .modal-actions {
   display: flex;
@@ -1178,7 +797,6 @@ textarea.input-field { min-height: 86px; resize: vertical; }
 
 @media (max-width: 1000px) {
   .settings-shell { grid-template-columns: 1fr; }
-  .form-grid-2 { grid-template-columns: 1fr; }
   .brand-color-grid,
   .brand-font-grid { grid-template-columns: 1fr; }
 }

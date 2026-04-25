@@ -58,6 +58,14 @@ function stepLabel(job) {
   return step ? (STEP_LABELS[step] ?? null) : null
 }
 
+function jobQueue(job) {
+  if (job.status === 'generating') {
+    const step = job.generation_status_json?.step
+    return (step === 'ai_image') ? 'visual' : 'generation'
+  }
+  return null
+}
+
 function jobProgress(job) {
   if (job.status === 'ready_for_review') return 100
   if (job.status === 'failed') return 100
@@ -566,6 +574,7 @@ td { padding: 15px 20px; border-bottom: 1px solid var(--color-border); vertical-
 /* ── Misc cells ──────────────────────────────────────────── */
 .mono-cell { font-family: "Space Mono", monospace; font-size: 12px; color: var(--color-text-primary); }
 .dim-cell { font-family: "Space Mono", monospace; font-size: 12px; color: var(--color-text-muted); }
+.queue-badge { font-family: "Space Mono", monospace; font-size: 10px; font-weight: 400; padding: 3px 8px; border-radius: 5px; background: rgba(255,255,255,0.05); border: 1px solid var(--color-border); color: var(--color-text-muted); white-space: nowrap; }
 
 /* ── Row action ──────────────────────────────────────────── */
 .row-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--color-text-muted); cursor: pointer; transition: 0.12s ease; }

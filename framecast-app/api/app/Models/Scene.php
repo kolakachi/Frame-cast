@@ -22,6 +22,7 @@ class Scene extends Model
         'caption_settings_json',
         'visual_type',
         'visual_asset_id',
+        'sound_asset_id',
         'visual_prompt',
         'visual_style',
         'image_generation_settings_json',

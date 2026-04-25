@@ -22,6 +22,10 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
         $systemPrompt = $template['system'];
         $userPrompt = $this->templates->render($template['user'], $variables);
 
+        if (isset($options['system_prefix']) && is_string($options['system_prefix']) && $options['system_prefix'] !== '') {
+            $systemPrompt = $options['system_prefix']."\n\n".$systemPrompt;
+        }
+
         $apiKey = (string) config('services.openai.api_key');
         $model = (string) config('services.openai.model', 'gpt-4o-mini');
         $usageContext = $this->usage->contextFromOptions($options);

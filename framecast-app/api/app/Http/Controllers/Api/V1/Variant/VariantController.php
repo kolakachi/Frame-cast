@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\Variant;
 use App\Models\VariantSet;
 use App\Models\VoiceProfile;
+use App\Services\Media\StorageService;
 use App\Services\VariantGeneration\VariantGenerationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -537,24 +538,7 @@ class VariantController extends Controller
 
     private function isB2Url(string $url): bool
     {
-        if (str_starts_with($url, 'b2://')) {
-            return true;
-        }
-
-        if (! str_contains($url, '://') && ! str_starts_with($url, '/')) {
-            return true;
-        }
-
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        $bucket = strtolower((string) config('filesystems.disks.b2.bucket'));
-
-        if ($host !== '' && str_contains($host, 'backblazeb2.com')) {
-            return true;
-        }
-
-        $path = strtolower(trim((string) parse_url($url, PHP_URL_PATH), '/'));
-
-        return $bucket !== '' && str_starts_with($path, $bucket.'/');
+        return app(StorageService::class)->isManagedUrl($url);
     }
 
     /**
@@ -579,7 +563,7 @@ class VariantController extends Controller
         ];
     }
 
-    private function error(string $code, string $message, int $status): JsonResponse
+    protected function error(string $code, string $message, int $status = 422): JsonResponse
     {
         return response()->json([
             'error' => [

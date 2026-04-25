@@ -19,6 +19,7 @@ use App\Models\ProjectHookOption;
 use App\Models\Scene;
 use App\Models\Template;
 use App\Models\User;
+use App\Services\Media\StorageService;
 use App\Services\WorkspaceUsageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -125,6 +126,10 @@ class ProjectController extends Controller
 
                 if ($audioAssetId) {
                     $ids[] = (int) $audioAssetId;
+                }
+
+                if ($scene->sound_asset_id) {
+                    $ids[] = (int) $scene->sound_asset_id;
                 }
 
                 return $ids;
@@ -888,6 +893,7 @@ class ProjectController extends Controller
         $visualAsset = $scene->visual_asset_id ? $assetMap->get((int) $scene->visual_asset_id) : null;
         $audioAssetId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
         $audioAsset = $audioAssetId > 0 ? $assetMap->get($audioAssetId) : null;
+        $soundAsset = $scene->sound_asset_id ? $assetMap->get((int) $scene->sound_asset_id) : null;
 
         return [
             'id' => $scene->getKey(),
@@ -914,8 +920,10 @@ class ProjectController extends Controller
             'status' => $scene->status,
             'locked_fields' => $scene->locked_fields_json,
             'locked_fields_json' => $scene->locked_fields_json,
+            'sound_asset_id' => $scene->sound_asset_id,
             'visual_asset' => $visualAsset ? $this->serializeAsset($visualAsset) : null,
             'audio_asset' => $audioAsset ? $this->serializeAsset($audioAsset) : null,
+            'sound_asset' => $soundAsset ? $this->serializeAsset($soundAsset) : null,
             'created_at' => $scene->created_at?->toIso8601String(),
             'updated_at' => $scene->updated_at?->toIso8601String(),
         ];
@@ -926,14 +934,16 @@ class ProjectController extends Controller
      */
     private function serializeAsset(Asset $asset): array
     {
+        $thumbnailUrl = trim((string) $asset->thumbnail_url);
         return [
             'id' => $asset->getKey(),
             'asset_type' => $asset->asset_type,
             'title' => $asset->title,
             'storage_url' => $this->assetUrl($asset),
-            'thumbnail_url' => $asset->thumbnail_url,
+            'thumbnail_url' => ($thumbnailUrl !== '' && (str_starts_with($thumbnailUrl, 'data:') || ! $this->isB2Url($thumbnailUrl))) ? $thumbnailUrl : null,
             'duration_seconds' => $asset->duration_seconds,
             'mime_type' => $asset->mime_type,
+            'tags' => $asset->tags ?? [],
             'transcript_text' => $asset->transcript_text,
             'transcription_status' => $asset->transcription_status,
             'metadata_json' => $asset->metadata_json,
@@ -961,24 +971,7 @@ class ProjectController extends Controller
 
     private function isB2Url(string $url): bool
     {
-        if (str_starts_with($url, 'b2://')) {
-            return true;
-        }
-
-        if (! str_contains($url, '://') && ! str_starts_with($url, '/')) {
-            return true;
-        }
-
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        $bucket = strtolower((string) config('filesystems.disks.b2.bucket'));
-
-        if ($host !== '' && str_contains($host, 'backblazeb2.com')) {
-            return true;
-        }
-
-        $path = strtolower(trim((string) parse_url($url, PHP_URL_PATH), '/'));
-
-        return $bucket !== '' && str_starts_with($path, $bucket.'/');
+        return app(StorageService::class)->isManagedUrl($url);
     }
 
     /**

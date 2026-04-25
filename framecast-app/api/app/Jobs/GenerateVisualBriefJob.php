@@ -5,9 +5,9 @@ namespace App\Jobs;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Services\Generation\AI\AIGenerationAdapter;
+use App\Services\Media\StorageService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Storage;
 
 class GenerateVisualBriefJob implements ShouldQueue
 {
@@ -127,11 +127,11 @@ class GenerateVisualBriefJob implements ShouldQueue
 
     private function resolvePublicUrl(string $storageUrl): ?string
     {
-        if (str_starts_with($storageUrl, 'b2://')) {
-            $path = ltrim(substr($storageUrl, 5), '/');
+        $storage = app(StorageService::class);
 
+        if ($storage->isManagedUrl($storageUrl)) {
             try {
-                return Storage::disk('b2')->temporaryUrl($path, now()->addMinutes(15));
+                return $storage->url($storageUrl);
             } catch (\Throwable) {
                 return null;
             }

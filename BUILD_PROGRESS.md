@@ -143,6 +143,7 @@ Exit gate: User can adjust scenes, queue export, and download a rendered MP4.
 - Added project export queue endpoint and editor export button wiring to validate export readiness and create an `export_jobs` record.
 - Added debounced script autosave in the editor with save-state feedback (`Unsaved changes`, `Saving...`, `Saved`) backed by `PATCH /api/v1/scenes/{sceneId}`.
 - Added caption-settings persistence plumbing in the editor for enabled/highlight/position controls backed by `PATCH /api/v1/scenes/{sceneId}` and `caption_settings_json`.
+- Fixed editor hydration for AI image scenes by including `visual_style` and `image_generation_settings_json` in `GET /api/v1/projects/{id}` scene payloads, so the last selected style is visible immediately on load.
 - Added editor export-status polling so queued/processing exports keep updating in-place and completed renders open the finished MP4 automatically.
 - Upgraded export rendering from a placeholder file to a real scene-based FFmpeg composition that stitches scene visuals, audio, and caption text into a downloadable MP4 uploaded to B2.
 - Fixed segment stream mapping and exact per-scene trim timing so narration and scene boundaries stay aligned through concat.

@@ -8,6 +8,7 @@ use App\Jobs\TranscribeAssetJob;
 use App\Models\Asset;
 use App\Models\Collection;
 use App\Models\User;
+use App\Services\Media\StorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -124,7 +125,7 @@ class AssetController extends Controller
             ltrim($extension, '.'),
         );
 
-        Storage::disk('b2')->put($path, file_get_contents($file->getRealPath()), [
+        $storageUrl = app(StorageService::class)->put($path, file_get_contents($file->getRealPath()), [
             'ContentType' => $file->getMimeType() ?: 'application/octet-stream',
         ]);
 
@@ -134,7 +135,7 @@ class AssetController extends Controller
             'asset_type' => $validated['asset_type'],
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
-            'storage_url' => 'b2://'.$path,
+            'storage_url' => $storageUrl,
             'thumbnail_url' => null,
             'file_size_bytes' => $file?->getSize(),
             'mime_type' => $file?->getMimeType(),
@@ -241,10 +242,12 @@ class AssetController extends Controller
             ], 404);
         }
 
-        $path = $this->extractB2Path((string) $asset->storage_url);
+        $storageService = app(StorageService::class);
+        $rawStorageUrl  = (string) $asset->storage_url;
+        $path           = $storageService->extractPath($rawStorageUrl);
 
         if ($path === null) {
-            $externalUrl = trim((string) $asset->storage_url);
+            $externalUrl = trim($rawStorageUrl);
             if (filter_var($externalUrl, FILTER_VALIDATE_URL)) {
                 return redirect()->away($externalUrl);
             }
@@ -252,30 +255,26 @@ class AssetController extends Controller
             return response()->json([
                 'error' => [
                     'code' => 'invalid_asset_source',
-                    'message' => 'Asset is not stored in the configured B2 bucket.',
+                    'message' => 'Asset is not stored in a recognised storage location.',
                 ],
             ], 422);
         }
 
-        // For large media (video/audio), redirect to a short-lived B2 temporary URL
-        // instead of streaming through Laravel. This avoids server-side memory pressure
-        // and sidesteps B2 idle-connection issues that surface as "Unable to check existence".
+        // For large media redirect to a direct storage URL to avoid streaming overhead.
         $isLargeMedia = in_array($asset->asset_type ?? '', ['video', 'audio'], true)
             || str_starts_with((string) ($asset->mime_type ?? ''), 'video/')
             || str_starts_with((string) ($asset->mime_type ?? ''), 'audio/');
 
         if ($isLargeMedia) {
             try {
-                $tempUrl = Storage::disk('b2')->temporaryUrl($path, now()->addMinutes(30));
-
-                return redirect()->away($tempUrl);
+                return redirect()->away($storageService->url($rawStorageUrl));
             } catch (\Throwable) {
-                // Fall through to stream if temporaryUrl is unsupported or fails.
+                // Fall through to stream.
             }
         }
 
         try {
-            $stream = Storage::disk('b2')->readStream($path);
+            $stream = $storageService->readStream($rawStorageUrl);
         } catch (\Throwable) {
             return response()->json([
                 'error' => [
@@ -350,7 +349,7 @@ class AssetController extends Controller
             'title' => $asset->title,
             'description' => $asset->description,
             'storage_url' => $asset->storage_url ? $this->signedAssetUrl($asset) : null,
-            'thumbnail_url' => $asset->thumbnail_url,
+            'thumbnail_url' => $this->safeThumbnailUrl($asset),
             'duration_seconds' => $asset->duration_seconds !== null ? (float) $asset->duration_seconds : null,
             'dimensions_json' => $asset->dimensions_json,
             'file_size_bytes' => $asset->file_size_bytes !== null ? (int) $asset->file_size_bytes : null,
@@ -418,9 +417,20 @@ class AssetController extends Controller
         return trim((string) $safeTitle, '-').'.'.$extension;
     }
 
+    private function safeThumbnailUrl(Asset $asset): ?string
+    {
+        $url = trim((string) $asset->thumbnail_url);
+        if ($url === '') return null;
+        // data: URIs (SVG placeholders) are fine for the browser
+        if (str_starts_with($url, 'data:')) return $url;
+        // Managed storage URLs (minio://, b2://, bare paths) cannot be used directly
+        if (app(StorageService::class)->isManagedUrl($url)) return null;
+        return $url;
+    }
+
     private function signedAssetUrl(Asset $asset): string
     {
-        if ($this->extractB2Path((string) $asset->storage_url) === null) {
+        if (app(StorageService::class)->extractPath((string) $asset->storage_url) === null) {
             return (string) $asset->storage_url;
         }
 
@@ -468,7 +478,7 @@ class AssetController extends Controller
         return $found === $expected ? $ids->all() : null;
     }
 
-    private function error(string $code, string $message, int $status): JsonResponse
+    protected function error(string $code, string $message, int $status = 422): JsonResponse
     {
         return response()->json([
             'error' => [

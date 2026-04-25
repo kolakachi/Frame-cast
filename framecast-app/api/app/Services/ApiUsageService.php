@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\CheckBudgetAlertJob;
 use App\Models\ApiUsageEvent;
 use Illuminate\Support\Arr;
 
@@ -34,7 +35,7 @@ class ApiUsageService
      */
     public function record(array $data): ?ApiUsageEvent
     {
-        return rescue(fn () => ApiUsageEvent::query()->create([
+        $event = rescue(fn () => ApiUsageEvent::query()->create([
             'workspace_id' => $this->nullableInt($data['workspace_id'] ?? null),
             'project_id' => $this->nullableInt($data['project_id'] ?? null),
             'user_id' => $this->nullableInt($data['user_id'] ?? null),
@@ -53,6 +54,13 @@ class ApiUsageService
             'metadata_json' => $data['metadata_json'] ?? null,
             'occurred_at' => now(),
         ]), null, false);
+
+        $workspaceId = $this->nullableInt($data['workspace_id'] ?? null);
+        if ($event && $workspaceId) {
+            CheckBudgetAlertJob::dispatch($workspaceId);
+        }
+
+        return $event;
     }
 
     public function estimateTextCost(string $model, int $promptTokens, int $completionTokens, int $totalTokens = 0): float

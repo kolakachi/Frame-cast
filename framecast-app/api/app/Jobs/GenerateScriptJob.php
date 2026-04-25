@@ -6,7 +6,9 @@ use App\Jobs\BreakdownScenesJob;
 use App\Events\GenerationProgressed;
 use App\Models\Asset;
 use App\Models\Project;
+use App\Models\Series;
 use App\Services\Media\MediaTranscriptionService;
+use App\Services\Media\StorageService;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -43,6 +45,11 @@ class GenerateScriptJob implements ShouldQueue
             'template' => $promptTemplateKey,
         ]);
 
+        $seriesContext = $this->buildSeriesContext($project);
+        if ($seriesContext !== '') {
+            $options['system_prefix'] = $seriesContext;
+        }
+
         $result = $aiGeneration->generate($promptTemplateKey, [
             'source_type' => $project->source_type ?: 'prompt',
             'tone' => $project->tone ?: 'neutral',
@@ -57,6 +64,87 @@ class GenerateScriptJob implements ShouldQueue
 
         GenerationProgressed::dispatch($this->projectId, 'script', 'completed');
         BreakdownScenesJob::dispatch($project->getKey());
+    }
+
+    private function buildSeriesContext(Project $project): string
+    {
+        if (! $project->series_id) {
+            return '';
+        }
+
+        $series = Series::query()->with('characters')->find($project->series_id);
+
+        if (! $series) {
+            return '';
+        }
+
+        $parts = ['=== SERIES CONTEXT ===', "Series: {$series->name}"];
+
+        if ($series->concept_text) {
+            $parts[] = "\nSeries Bible:\n{$series->concept_text}";
+        }
+
+        if ($series->audience_text) {
+            $parts[] = "\nTarget Audience: {$series->audience_text}";
+        }
+
+        if ($series->tone) {
+            $parts[] = "\nSeries Tone: {$series->tone}";
+        }
+
+        if ($series->episode_format_template) {
+            $parts[] = "\nEpisode Format:\n{$series->episode_format_template}";
+        }
+
+        $alwaysTags = array_filter((array) ($series->always_include_tags ?? []));
+        if ($alwaysTags !== []) {
+            $parts[] = "\nAlways include: ".implode(', ', $alwaysTags);
+        }
+
+        $neverTags = array_filter((array) ($series->never_include_tags ?? []));
+        if ($neverTags !== []) {
+            $parts[] = "\nNever include: ".implode(', ', $neverTags);
+        }
+
+        $characters = $series->characters->where('status', 'active');
+        if ($characters->isNotEmpty()) {
+            $parts[] = "\n--- Characters ---";
+            foreach ($characters as $character) {
+                $line = $character->name;
+                if ($character->personality_notes) {
+                    $line .= ': '.$character->personality_notes;
+                }
+                $parts[] = $line;
+            }
+        }
+
+        $memoryWindow = (int) $series->memory_window;
+        if ($memoryWindow > 0) {
+            $pastSummaries = Project::query()
+                ->where('series_id', $series->getKey())
+                ->whereNotNull('series_episode_summary')
+                ->where('series_episode_summary', '!=', '')
+                ->orderByDesc('series_episode_number')
+                ->limit($memoryWindow)
+                ->pluck('series_episode_summary', 'series_episode_number')
+                ->sortKeys()
+                ->all();
+
+            if ($pastSummaries !== []) {
+                $parts[] = "\n--- Episode Memory (last {$memoryWindow} episodes) ---";
+                foreach ($pastSummaries as $epNum => $summary) {
+                    $parts[] = "Episode {$epNum}: {$summary}";
+                }
+            }
+        }
+
+        if ($series->visual_description) {
+            $parts[] = "\nVisual Style: {$series->visual_description}";
+        }
+
+        $parts[] = '\n=== END SERIES CONTEXT ===';
+
+        return implode("\n", $parts);
     }
 
     /**
@@ -198,13 +286,13 @@ class GenerateScriptJob implements ShouldQueue
             return null;
         }
 
-        if (! str_starts_with($storageUrl, 'b2://')) {
+        $storage = app(StorageService::class);
+
+        if (! $storage->isManagedUrl($storageUrl)) {
             return $storageUrl;
         }
 
-        $path = Str::after($storageUrl, 'b2://');
-
-        return Storage::disk('b2')->temporaryUrl($path, now()->addMinutes(30));
+        return $storage->url($storageUrl);
     }
 
     private function mediaSourceContent(Project $project, string $source, MediaTranscriptionService $transcriptionService): string

@@ -5,7 +5,6 @@ namespace App\Services\Media;
 use App\Models\Asset;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -152,15 +151,17 @@ class MediaTranscriptionService
 
     private function downloadAsset(Asset $asset): string
     {
-        $path = $this->extractB2Path((string) $asset->storage_url);
+        $rawUrl  = (string) $asset->storage_url;
+        $storage = app(StorageService::class);
 
-        if ($path === null || ! Storage::disk('b2')->exists($path)) {
+        if (! $storage->isManagedUrl($rawUrl) || ! $storage->exists($rawUrl)) {
             throw new RuntimeException('Asset file is not available for transcription.');
         }
 
+        $path      = (string) $storage->extractPath($rawUrl);
         $extension = pathinfo($path, PATHINFO_EXTENSION) ?: $this->extensionFromMime((string) $asset->mime_type);
         $localPath = sys_get_temp_dir().'/framecast-transcribe-'.Str::uuid().'.'.$extension;
-        file_put_contents($localPath, Storage::disk('b2')->get($path));
+        file_put_contents($localPath, $storage->get($rawUrl));
 
         return $localPath;
     }
@@ -204,25 +205,6 @@ class MediaTranscriptionService
             'provider_key' => 'local_fallback',
             'model' => 'deterministic',
         ];
-    }
-
-    private function extractB2Path(string $storageUrl): ?string
-    {
-        $url = trim($storageUrl);
-
-        if ($url === '') {
-            return null;
-        }
-
-        if (str_starts_with($url, 'b2://')) {
-            return ltrim(substr($url, 5), '/');
-        }
-
-        if (! str_contains($url, '://') && ! str_starts_with($url, '/')) {
-            return ltrim($url, '/');
-        }
-
-        return null;
     }
 
     private function extensionFromMime(string $mimeType): string

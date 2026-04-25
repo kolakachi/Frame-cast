@@ -6,6 +6,7 @@ use App\Events\GenerationProgressed;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Series;
 use App\Services\Generation\Visual\VisualProviderAdapter;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -99,8 +100,6 @@ class MatchVisualsJob implements ShouldQueue
         $tone = $project->tone ?: 'neutral';
         $stylePart = $scene->visual_style ? ", {$scene->visual_style}" : '';
 
-        // Build a brief anchor from the project's visual_brief if available.
-        // This keeps all scene searches within the same visual universe.
         $brief = is_array($project->visual_brief) ? $project->visual_brief : [];
         $briefAnchor = '';
 
@@ -129,6 +128,15 @@ class MatchVisualsJob implements ShouldQueue
             }
         }
 
-        return trim("{$briefAnchor}{$tone} style{$stylePart}, {$sceneText}");
+        // Prepend series visual identity description when set.
+        $seriesPrefix = '';
+        if ($project->series_id) {
+            $series = Series::query()->find($project->series_id);
+            if ($series && $series->visual_description) {
+                $seriesPrefix = trim((string) $series->visual_description).', ';
+            }
+        }
+
+        return trim("{$seriesPrefix}{$briefAnchor}{$tone} style{$stylePart}, {$sceneText}");
     }
 }

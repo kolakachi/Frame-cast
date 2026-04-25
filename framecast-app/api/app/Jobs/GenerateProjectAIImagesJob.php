@@ -7,11 +7,11 @@ use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Services\Generation\Image\ImageGenerationAdapter;
+use App\Services\Media\StorageService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class GenerateProjectAIImagesJob implements ShouldQueue
@@ -97,8 +97,8 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             'asset_type' => 'image',
             'title' => "AI B-roll — {$style} — Scene {$scene->scene_order}",
             'description' => $prompt,
-            'storage_url' => 'b2://'.$storagePath,
-            'thumbnail_url' => 'b2://'.$storagePath,
+            'storage_url' => $storagePath,
+            'thumbnail_url' => $storagePath,
             'duration_seconds' => null,
             'dimensions_json' => [
                 'width' => $result['width'],
@@ -153,8 +153,6 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             Str::uuid(),
         );
 
-        Storage::disk('b2')->put($path, $contents);
-
-        return $path;
+        return app(StorageService::class)->put($path, $contents);
     }
 }

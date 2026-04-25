@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ApiUsageEvent;
 use App\Models\Asset;
 use App\Models\BrandKit;
 use App\Models\Channel;
@@ -150,8 +151,17 @@ class WorkspaceUsageService
         ];
     }
 
+    public static function isAdmin(User $user): bool
+    {
+        return in_array($user->role, ['super_admin', 'platform_admin'], true);
+    }
+
     public function hasReachedChannelLimit(User $user): bool
     {
+        if (self::isAdmin($user)) {
+            return false;
+        }
+
         $planTier = (string) ($user->workspace?->plan_tier ?: 'studio');
         $plan = self::plans()[$planTier] ?? self::plans()['studio'];
 
@@ -159,5 +169,114 @@ class WorkspaceUsageService
             ->where('workspace_id', $user->workspace_id)
             ->where('status', 'active')
             ->count() >= (int) $plan['channel_limit'];
+    }
+
+    public function hasReachedExportLimit(User $user): bool
+    {
+        if (self::isAdmin($user)) {
+            return false;
+        }
+
+        $planTier = (string) ($user->workspace?->plan_tier ?: 'studio');
+        $plan = self::plans()[$planTier] ?? self::plans()['studio'];
+
+        $used = ExportJob::query()
+            ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id))
+            ->where('status', 'completed')
+            ->count();
+
+        return $used >= (int) $plan['render_limit'];
+    }
+
+    public function hasExceededApiBudget(User $user): bool
+    {
+        if (self::isAdmin($user)) {
+            return false;
+        }
+
+        $planTier = (string) ($user->workspace?->plan_tier ?: 'studio');
+        $plan = self::plans()[$planTier] ?? self::plans()['studio'];
+        $budget = (float) $plan['api_budget_usd'];
+
+        $monthSpend = (float) ApiUsageEvent::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where('occurred_at', '>=', now()->startOfMonth())
+            ->sum('estimated_cost_usd');
+
+        return $monthSpend >= $budget;
+    }
+
+    /**
+     * @return array{plan:string,used:int,limit:int}
+     */
+    public function exportLimitContext(User $user): array
+    {
+        $planTier = (string) ($user->workspace?->plan_tier ?: 'studio');
+        $plan = self::plans()[$planTier] ?? self::plans()['studio'];
+        $used = ExportJob::query()
+            ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id))
+            ->where('status', 'completed')
+            ->count();
+
+        return [
+            'plan' => (string) $plan['name'],
+            'used' => $used,
+            'limit' => (int) $plan['render_limit'],
+        ];
+    }
+
+    public function hasReachedVoiceLimit(User $user): bool
+    {
+        if (self::isAdmin($user)) {
+            return false;
+        }
+
+        $planTier = (string) ($user->workspace?->plan_tier ?: 'studio');
+        $plan = self::plans()[$planTier] ?? self::plans()['studio'];
+
+        $voiceSeconds = (float) Scene::query()
+            ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id))
+            ->sum('duration_seconds');
+
+        return (int) ceil($voiceSeconds / 60) >= (int) $plan['voice_minutes_limit'];
+    }
+
+    /**
+     * @return array{plan:string,used:int,limit:int}
+     */
+    public function voiceLimitContext(User $user): array
+    {
+        $planTier = (string) ($user->workspace?->plan_tier ?: 'studio');
+        $plan = self::plans()[$planTier] ?? self::plans()['studio'];
+
+        $voiceSeconds = (float) Scene::query()
+            ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id))
+            ->sum('duration_seconds');
+
+        return [
+            'plan' => (string) $plan['name'],
+            'used' => (int) ceil($voiceSeconds / 60),
+            'limit' => (int) $plan['voice_minutes_limit'],
+        ];
+    }
+
+    /**
+     * @return array{plan:string,spent_usd:float,budget_usd:float}
+     */
+    public function apiBudgetContext(User $user): array
+    {
+        $planTier = (string) ($user->workspace?->plan_tier ?: 'studio');
+        $plan = self::plans()[$planTier] ?? self::plans()['studio'];
+
+        $spent = (float) ApiUsageEvent::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where('occurred_at', '>=', now()->startOfMonth())
+            ->sum('estimated_cost_usd');
+
+        return [
+            'plan' => (string) $plan['name'],
+            'spent_usd' => round($spent, 4),
+            'budget_usd' => (float) $plan['api_budget_usd'],
+        ];
     }
 }

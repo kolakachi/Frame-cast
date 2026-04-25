@@ -6,9 +6,11 @@ use App\Events\GenerationProgressed;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Models\User;
 use App\Services\Notification\NotificationService;
 use App\Services\Generation\TTS\TTSAdapter;
 use App\Services\Media\MediaTranscriptionService;
+use App\Services\WorkspaceUsageService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -26,13 +28,33 @@ class GenerateTTSJob implements ShouldQueue
         $this->onQueue('generation');
     }
 
-    public function handle(TTSAdapter $tts, NotificationService $notifications, MediaTranscriptionService $transcription): void
+    public function handle(TTSAdapter $tts, NotificationService $notifications, MediaTranscriptionService $transcription, WorkspaceUsageService $usageService): void
     {
         GenerationProgressed::dispatch($this->projectId, 'tts', 'processing');
 
         $project = Project::query()->find($this->projectId);
 
         if (! $project) {
+            return;
+        }
+
+        $creator = $project->created_by_user_id
+            ? User::query()->with('workspace')->find($project->created_by_user_id)
+            : null;
+
+        if ($creator && $usageService->hasReachedVoiceLimit($creator)) {
+            $ctx = $usageService->voiceLimitContext($creator);
+            $project->forceFill(['status' => 'failed'])->save();
+            $notifications->create(
+                (int) $project->workspace_id,
+                'Voice limit reached',
+                "Project #{$project->getKey()} could not generate voice audio — your workspace has used {$ctx['used']} of {$ctx['limit']} voice minutes on the {$ctx['plan']} plan.",
+                'error',
+                $creator ? (int) $creator->getKey() : null,
+                ['project_id' => $project->getKey(), 'limit_context' => $ctx],
+            );
+            GenerationProgressed::dispatch($this->projectId, 'tts', 'failed');
+
             return;
         }
 
@@ -128,6 +150,10 @@ class GenerateTTSJob implements ShouldQueue
         );
 
         GenerationProgressed::dispatch($this->projectId, 'tts', 'completed');
+
+        if ($project->series_id) {
+            SummarizeEpisodeJob::dispatch($project->getKey());
+        }
     }
 
     private function attachCaptionTiming(Asset $asset, MediaTranscriptionService $transcription): void

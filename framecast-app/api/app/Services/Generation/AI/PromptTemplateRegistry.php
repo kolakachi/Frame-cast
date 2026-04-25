@@ -68,6 +68,10 @@ class PromptTemplateRegistry
                 'system' => 'You analyze reference images uploaded by a creator and extract a concise visual style description for use as a prefix in AI image generation prompts. Return plain text only — one to two sentences. Describe: the apparent character (if people appear: age range, gender, clothing, hair), the setting or backdrop, the lighting mood, and the overall aesthetic. Write it as a ready-to-use prompt prefix (e.g. "Photorealistic, young professional woman in her early 30s, dark shoulder-length hair, wearing a navy blazer, warm studio lighting, clean modern office background.").',
                 'user' => "Analyze these reference images and describe the visual style for AI image generation.\nTone: {{tone}}",
             ],
+            'summarize_episode' => [
+                'system' => 'You summarize short-form video episodes for a series memory system. Return plain text only — 2 to 4 sentences, under 150 words. Capture: the episode title/topic, the core narrative angle, any characters or recurring themes mentioned, and the key takeaway or CTA. Write in third person, past tense. This summary will be injected as context for future episode generation.',
+                'user' => "Summarize this episode for the series memory log.\nSeries: {{series_name}}\nEpisode: {{episode_label}} — {{episode_title}}\nScript:\n{{script_text}}",
+            ],
             default => throw new InvalidArgumentException("Unknown prompt template key: {$key}"),
         };
     }

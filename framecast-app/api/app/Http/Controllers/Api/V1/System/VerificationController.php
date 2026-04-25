@@ -88,7 +88,7 @@ class VerificationController extends Controller
             'ContentType' => 'text/plain',
         ]);
 
-        $temporaryUrl = $disk->temporaryUrl($path, now()->addMinutes(10));
+        $temporaryUrl = $disk->url($path);
 
         return response()->json([
             'data' => [

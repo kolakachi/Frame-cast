@@ -3,6 +3,7 @@
 namespace App\Services\Generation\TTS;
 
 use App\Services\ApiUsageService;
+use App\Services\Media\StorageService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -82,7 +83,7 @@ class OpenAITTSAdapter implements TTSAdapter
 
         $path = 'audio/tts/'.Str::uuid().'.mp3';
 
-        \Illuminate\Support\Facades\Storage::disk('b2')->put($path, $response->body(), [
+        $audioStorageUrl = app(StorageService::class)->put($path, $response->body(), [
             'ContentType' => 'audio/mpeg',
         ]);
 
@@ -103,7 +104,7 @@ class OpenAITTSAdapter implements TTSAdapter
         ]);
 
         return [
-            'audio_url' => 'b2://'.$path,
+            'audio_url' => $audioStorageUrl,
             'duration_seconds' => $this->estimateDuration($text, $speed),
             'provider_key' => 'openai',
             'provider_voice_id' => $safeVoice,
