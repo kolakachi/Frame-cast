@@ -4922,7 +4922,7 @@ button {
 .export-fail-tooltip {
   display: none;
   position: absolute;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 8px);
   right: 0;
   background: #1e1e2e;
   border: 1px solid rgba(255, 107, 107, 0.35);
