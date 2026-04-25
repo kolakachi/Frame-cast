@@ -991,8 +991,8 @@ class ProcessExportJob implements ShouldQueue
 
         $events = match ($highlightMode) {
             'word_by_word' => $this->buildWordByWordEvents($text, $captionStyle, $duration, $timedWords, $captionHighlightColor),
-            'line_by_line' => $this->buildLineByLineEvents($text, $captionStyle, $duration, $timedWords, $captionHighlightColor),
-            default => [['0:00:00.00', $this->formatASSTime($duration), $this->buildASSStyledText($text, $captionStyle, $captionHighlightColor)]],
+            'line_by_line', 'keywords' => $this->buildKaraokeLineEvents($text, $captionStyle, $duration, $timedWords, $captionHighlightColor),
+            default => $this->buildKaraokeLineEvents($text, $captionStyle, $duration, $timedWords, $captionHighlightColor),
         };
 
         $dialogueLines = array_map(
@@ -1123,6 +1123,85 @@ class ProcessExportJob implements ShouldQueue
             $styledText = $this->buildASSStyledText(implode(' ', $lineWords), $captionStyle, $highlightColor);
             $events[] = [$start, $end, $styledText];
             $elapsed += $lineDuration;
+        }
+
+        return $events;
+    }
+
+    /**
+     * Karaoke-line: shows a full chunk of ~4 words, one event per word,
+     * highlighting only the active word while the rest render normally.
+     * Matches the editor's word-highlight-within-line behaviour.
+     *
+     * @return list<array{string, string, string}>
+     */
+    private function buildKaraokeLineEvents(string $text, string $captionStyle, float $duration, ?array $timedWords = null, string $highlightColor = '#ff6b35'): array
+    {
+        $words = array_values(array_filter(preg_split('/\s+/', trim($text)) ?: []));
+
+        if (empty($words)) {
+            return [['0:00:00.00', $this->formatASSTime($duration), '']];
+        }
+
+        $highlightASS = $this->hexToASS($highlightColor);
+        $underline = $captionStyle === 'editorial' ? '\\u1' : '';
+
+        $makeEvent = function (array $lineWords, int $activeIdx, float $start, float $end) use ($highlightASS, $underline): array {
+            $parts = [];
+            foreach ($lineWords as $j => $w) {
+                $escaped = $this->escapeASSText($w);
+                if ($j === $activeIdx) {
+                    $parts[] = "{\\c{$highlightASS}{$underline}}{$escaped}{\\r}";
+                } else {
+                    $parts[] = $escaped;
+                }
+            }
+
+            return [$this->formatASSTime($start), $this->formatASSTime($end), implode(' ', $parts)];
+        };
+
+        if (! empty($timedWords)) {
+            $chunks = array_chunk($timedWords, 4);
+            $events = [];
+
+            foreach ($chunks as $chunk) {
+                $valid = array_values(array_filter($chunk, static function (array $w): bool {
+                    return trim((string) ($w['text'] ?? '')) !== ''
+                        && (float) ($w['start'] ?? -1) >= 0
+                        && (float) ($w['end'] ?? -1) > (float) ($w['start'] ?? -1);
+                }));
+
+                if (empty($valid)) {
+                    continue;
+                }
+
+                $lineWords = array_map(static fn (array $w): string => (string) $w['text'], $valid);
+
+                foreach ($valid as $wi => $timedWord) {
+                    $start = max(0.0, min($duration, (float) $timedWord['start']));
+                    $end   = max($start + 0.03, min($duration, (float) $timedWord['end']));
+                    $events[] = $makeEvent($lineWords, $wi, $start, $end);
+                }
+            }
+
+            if (! empty($events)) {
+                return $events;
+            }
+        }
+
+        // Fallback: no timing data — evenly distribute, still highlight active word in context
+        $wordDuration = $duration / count($words);
+        $chunks = array_chunk($words, 4);
+        $events = [];
+        $offset = 0;
+
+        foreach ($chunks as $chunk) {
+            foreach ($chunk as $wi => $word) {
+                $start = $offset * $wordDuration;
+                $end   = ($offset + 1) * $wordDuration;
+                $events[] = $makeEvent($chunk, $wi, $start, $end);
+                $offset++;
+            }
         }
 
         return $events;
