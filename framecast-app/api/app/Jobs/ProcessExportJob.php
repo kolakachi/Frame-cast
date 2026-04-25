@@ -569,9 +569,9 @@ class ProcessExportJob implements ShouldQueue
 
             $vizFilter = match ($audiogramStyle) {
                 'mirror'  => "showwaves=s={$W}x{$vizH}:mode=cline:split_channels=0:colors={$ffmpegColor}:scale=sqrt",
-                'circle'  => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=log:ascale=log:averaging=1:win_func=hanning:win_size=w256",
+                'circle'  => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=log:ascale=log:averaging=1:win_func=hanning:win_size=256",
                 'minimal' => "showwaves=s={$W}x{$vizH}:mode=line:split_channels=0:colors={$ffmpegColor}:scale=lin",
-                default   => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=log:ascale=log:averaging=1:win_func=hanning:win_size=w128",
+                default   => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=log:ascale=log:averaging=1:win_func=hanning:win_size=128",
             };
 
             $monoFont = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf';
