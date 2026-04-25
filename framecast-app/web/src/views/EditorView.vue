@@ -40,6 +40,8 @@ const mediaCache = ref({
   audio: {},
 });
 const mediaPreloaders = new Map();
+const MEDIA_ELEMENT_CROSS_ORIGIN = "anonymous";
+const API_ORIGIN = new URL(api.defaults.baseURL, window.location.origin).origin;
 
 const addScenePanelPosition = ref("");
 const selectedSceneType = ref("Narration");
@@ -328,52 +330,112 @@ const showWaveformPreview = computed(
 const waveformLive = ref([0.28, 0.52, 0.34, 0.76, 0.42, 0.88, 0.48, 0.66, 0.31, 0.58, 0.40, 0.72, 0.35, 0.65]);
 let waveformRafId = null;
 
-// Web Audio API state — try to read real frequency data from the narration element
+// Web Audio API state — read the live mix from narration and music elements
 let waveformAudioCtx = null;
 let waveformAnalyser = null;
-let waveformConnected = false;
-const waveformConnectedEls = new WeakSet();
+let waveformConnectedCount = 0;
+let waveformUserActivated = false;
+const waveformConnectedEls = new WeakMap();
 
 // Simulation fallback state (speech-like energy distribution)
 let waveformSimBands = new Array(14).fill(0.05);
 let waveformSimLastMs = 0;
 
-function waveformTryConnect() {
-  const el = audioRef.value;
-  if (!el || waveformConnectedEls.has(el)) return;
+function waveformEnsureContext() {
+  if (waveformAudioCtx && waveformAnalyser) return true;
+
   try {
-    if (!waveformAudioCtx) {
-      waveformAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      waveformAnalyser = waveformAudioCtx.createAnalyser();
-      waveformAnalyser.fftSize = 64;             // 32 frequency bins
-      waveformAnalyser.smoothingTimeConstant = 0.8;
-      waveformAnalyser.connect(waveformAudioCtx.destination); // pass audio through to speakers
-    }
-    if (waveformAudioCtx.state === "suspended") waveformAudioCtx.resume().catch(() => {});
+    waveformAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    waveformAnalyser = waveformAudioCtx.createAnalyser();
+    waveformAnalyser.fftSize = 128;
+    waveformAnalyser.smoothingTimeConstant = 0.82;
+    waveformAnalyser.connect(waveformAudioCtx.destination);
+    return true;
+  } catch {
+    waveformAudioCtx = null;
+    waveformAnalyser = null;
+    return false;
+  }
+}
+
+function mediaCrossOriginMode(url) {
+  if (!url) return null;
+
+  try {
+    const resolved = new URL(url, window.location.origin);
+    return resolved.origin === window.location.origin || resolved.origin === API_ORIGIN
+      ? MEDIA_ELEMENT_CROSS_ORIGIN
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function unlockWaveformAudio() {
+  waveformUserActivated = true;
+  if (!waveformEnsureContext()) return false;
+
+  if (waveformAudioCtx?.state === "suspended") {
+    waveformAudioCtx.resume().catch(() => {});
+  }
+
+  waveformTryConnect();
+  return true;
+}
+
+function waveformTryConnectElement(el) {
+  if (!el || waveformConnectedEls.has(el)) return Boolean(el && waveformConnectedEls.has(el));
+  if (!waveformUserActivated || !waveformAudioCtx || !waveformAnalyser) return false;
+  if (!mediaCrossOriginMode(el.currentSrc || el.src)) return false;
+
+  try {
     const src = waveformAudioCtx.createMediaElementSource(el);
     src.connect(waveformAnalyser);
-    waveformConnectedEls.add(el);
-    waveformConnected = true;
+    waveformConnectedEls.set(el, src);
+    waveformConnectedCount += 1;
+    return true;
   } catch {
-    // SecurityError (CORS) or already connected — fall through to simulation
-    waveformConnected = false;
+    // SecurityError (CORS) or already connected elsewhere — fall through to simulation
+    return false;
   }
+}
+
+function waveformTryConnect() {
+  return [audioRef.value, musicAudioRef.value].some((el) => waveformTryConnectElement(el));
+}
+
+function waveformHasActiveSource() {
+  const narrationPlaying = Boolean(audioRef.value && !audioRef.value.paused && activeSceneAudioUrl.value);
+  const musicPlaying = Boolean(musicAudioRef.value && !musicAudioRef.value.paused && activeMusicTrackUrl.value);
+  return narrationPlaying || musicPlaying;
 }
 
 function tickWaveform(ts) {
   const playing = isPreviewPlaying.value;
-  const audioActive = playing && isAudioPlaying.value;
+  const audioActive = playing && waveformHasActiveSource();
 
-  if (audioActive && waveformConnected && waveformAnalyser) {
-    // Real frequency data from the audio element
+  if (audioActive && waveformConnectedCount > 0 && waveformAnalyser) {
+    // Real frequency data from the active audio mix
+    waveformTryConnect();
     if (waveformAudioCtx?.state === "suspended") waveformAudioCtx.resume().catch(() => {});
     const data = new Uint8Array(waveformAnalyser.frequencyBinCount);
     waveformAnalyser.getByteFrequencyData(data);
     const count = waveformLive.value.length;
-    // Map bars to lower 65% of bins (speech sits in lower-mid frequencies)
+    const usableBins = Math.max(count, Math.floor(data.length * 0.8));
+    const binsPerBar = Math.max(1, Math.floor(usableBins / count));
+
+    // Average small frequency ranges so voice and music both produce stable motion.
     waveformLive.value = Array.from({ length: count }, (_, i) => {
-      const bin = Math.floor((i / count) * Math.floor(waveformAnalyser.frequencyBinCount * 0.65));
-      return Math.max(0.04, Math.min(1, data[bin] / 200));
+      const start = i * binsPerBar;
+      const end = i === count - 1 ? usableBins : Math.min(usableBins, start + binsPerBar);
+      let total = 0;
+
+      for (let bin = start; bin < end; bin += 1) {
+        total += data[bin] ?? 0;
+      }
+
+      const avg = total / Math.max(1, end - start);
+      return Math.max(0.04, Math.min(1, avg / 180));
     });
   } else if (playing) {
     // Fallback: speech-like pseudo-reactive simulation
@@ -401,7 +463,6 @@ function tickWaveform(ts) {
 
 function startWaveformAnimation() {
   if (!waveformRafId) {
-    waveformTryConnect();
     waveformRafId = requestAnimationFrame(tickWaveform);
   }
 }
@@ -1417,6 +1478,7 @@ function preloadSceneAudio(scene) {
   updateAudioCache(sceneId, { url, loaded: false, failed: false });
 
   const audio = new Audio();
+  audio.crossOrigin = MEDIA_ELEMENT_CROSS_ORIGIN;
   audio.preload = "metadata";
   const clear = () => mediaPreloaders.delete(preloadKey);
 
@@ -1905,6 +1967,7 @@ async function setPreviewMode(mode) {
 }
 
 function togglePreviewPlay() {
+  unlockWaveformAudio();
   isPreviewPlaying.value ? stopPreviewPlay() : startPreviewPlay();
 }
 
@@ -2192,6 +2255,7 @@ function selectMusicTrack(trackId) {
 function toggleMusicAudition(track) {
   if (!track?.storage_url || !musicAuditionRef.value) return;
 
+  unlockWaveformAudio();
   stopPreviewPlay();
 
   if (auditionMusicTrackId.value === track.id && !musicAuditionRef.value.paused) {
@@ -3080,6 +3144,7 @@ async function flushActiveSceneDrafts() {
 
 function toggleAudioPlayback() {
   if (!audioRef.value || !activeSceneAudioUrl.value) return;
+  unlockWaveformAudio();
   isAudioLoading.value = true;
   preloadSceneAudio(activeScene.value);
   if (isAudioPlaying.value) {
@@ -3120,7 +3185,11 @@ watch(showWaveformPreview, (active) => {
 
 // Reconnect Web Audio when the narration audio element is replaced (scene change)
 watch(audioRef, (el) => {
-  if (el && showWaveformPreview.value) waveformTryConnect();
+  if (el && showWaveformPreview.value && waveformUserActivated) waveformTryConnectElement(el);
+});
+
+watch(musicAudioRef, (el) => {
+  if (el && showWaveformPreview.value && waveformUserActivated) waveformTryConnectElement(el);
 });
 
 onBeforeUnmount(() => {
@@ -3129,7 +3198,8 @@ onBeforeUnmount(() => {
     try { waveformAudioCtx.close(); } catch {}
     waveformAudioCtx = null;
     waveformAnalyser = null;
-    waveformConnected = false;
+    waveformConnectedCount = 0;
+    waveformUserActivated = false;
   }
   if (scriptSaveTimer) {
     window.clearTimeout(scriptSaveTimer);
@@ -4581,6 +4651,7 @@ onBeforeUnmount(() => {
       v-if="activeSceneAudioUrl"
       ref="audioRef"
       :src="activeSceneAudioUrl"
+      :crossorigin="mediaCrossOriginMode(activeSceneAudioUrl)"
       preload="metadata"
       @loadstart="isAudioLoading = true"
       @canplay="isAudioLoading = false"
@@ -4594,6 +4665,7 @@ onBeforeUnmount(() => {
       v-if="activeMusicTrackUrl"
       ref="musicAudioRef"
       :src="activeMusicTrackUrl"
+      :crossorigin="mediaCrossOriginMode(activeMusicTrackUrl)"
       preload="metadata"
       :loop="musicLoop"
       @loadedmetadata="syncPreviewMusicVolume"
@@ -4602,6 +4674,7 @@ onBeforeUnmount(() => {
       v-if="auditionMusicTrack?.storage_url"
       ref="musicAuditionRef"
       :src="auditionMusicTrack.storage_url"
+      :crossorigin="mediaCrossOriginMode(auditionMusicTrack?.storage_url)"
       preload="metadata"
       @ended="auditionMusicTrackId = null"
       @pause="auditionMusicTrackId = null"

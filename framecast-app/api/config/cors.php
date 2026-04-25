@@ -6,7 +6,7 @@ $allowedOrigins = array_filter(array_map(
 ));
 
 return [
-    'paths' => ['api/*', 'broadcasting/auth', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*', 'media/assets/*', 'broadcasting/auth', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
 

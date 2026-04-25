@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Media\StorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\URL;
@@ -249,6 +250,10 @@ class AssetController extends Controller
         if ($path === null) {
             $externalUrl = trim($rawStorageUrl);
             if (filter_var($externalUrl, FILTER_VALIDATE_URL)) {
+                if ($this->shouldProxyAudio($asset)) {
+                    return $this->streamExternalAsset($externalUrl, $asset);
+                }
+
                 return redirect()->away($externalUrl);
             }
 
@@ -260,12 +265,11 @@ class AssetController extends Controller
             ], 422);
         }
 
-        // For large media redirect to a direct storage URL to avoid streaming overhead.
-        $isLargeMedia = in_array($asset->asset_type ?? '', ['video', 'audio'], true)
-            || str_starts_with((string) ($asset->mime_type ?? ''), 'video/')
-            || str_starts_with((string) ($asset->mime_type ?? ''), 'audio/');
+        // Keep audio on this signed route so the editor can analyse it with Web Audio.
+        $isVideoMedia = ($asset->asset_type ?? '') === 'video'
+            || str_starts_with((string) ($asset->mime_type ?? ''), 'video/');
 
-        if ($isLargeMedia) {
+        if ($isVideoMedia) {
             try {
                 return redirect()->away($storageService->url($rawStorageUrl));
             } catch (\Throwable) {
@@ -430,7 +434,7 @@ class AssetController extends Controller
 
     private function signedAssetUrl(Asset $asset): string
     {
-        if (app(StorageService::class)->extractPath((string) $asset->storage_url) === null) {
+        if (! $this->shouldServeThroughSignedRoute($asset)) {
             return (string) $asset->storage_url;
         }
 
@@ -446,6 +450,63 @@ class AssetController extends Controller
         return in_array($assetType, ['audio', 'video'], true)
             || str_starts_with($mimeType, 'audio/')
             || str_starts_with($mimeType, 'video/');
+    }
+
+    private function shouldServeThroughSignedRoute(Asset $asset): bool
+    {
+        return app(StorageService::class)->extractPath((string) $asset->storage_url) !== null
+            || $this->shouldProxyAudio($asset);
+    }
+
+    private function shouldProxyAudio(Asset $asset): bool
+    {
+        return (string) $asset->asset_type === 'audio'
+            || str_starts_with((string) ($asset->mime_type ?? ''), 'audio/');
+    }
+
+    private function streamExternalAsset(string $url, Asset $asset): StreamedResponse|JsonResponse
+    {
+        try {
+            $response = Http::withOptions(['stream' => true])
+                ->connectTimeout(15)
+                ->timeout(180)
+                ->get($url);
+        } catch (\Throwable) {
+            return response()->json([
+                'error' => [
+                    'code' => 'asset_proxy_failed',
+                    'message' => 'Asset file could not be retrieved from source storage.',
+                ],
+            ], 502);
+        }
+
+        if (! $response->successful()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'asset_proxy_failed',
+                    'message' => 'Asset source returned an unexpected response.',
+                ],
+            ], $response->status() >= 400 ? $response->status() : 502);
+        }
+
+        $stream = $response->toPsrResponse()->getBody();
+        $headers = [
+            'Content-Type' => $response->header('Content-Type') ?: ($asset->mime_type ?: 'application/octet-stream'),
+            'Cache-Control' => 'private, max-age=3600',
+            'Accept-Ranges' => $response->header('Accept-Ranges') ?: 'bytes',
+            'Content-Disposition' => 'inline; filename="'.$this->downloadName($asset).'"',
+        ];
+
+        $contentLength = $response->header('Content-Length');
+        if (is_string($contentLength) && trim($contentLength) !== '') {
+            $headers['Content-Length'] = trim($contentLength);
+        }
+
+        return response()->stream(function () use ($stream): void {
+            while (! $stream->eof()) {
+                echo $stream->read(8192);
+            }
+        }, 200, $headers);
     }
 
     /**

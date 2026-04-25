@@ -525,7 +525,7 @@ class VariantController extends Controller
             return null;
         }
 
-        if ($this->isB2Url($storageUrl)) {
+        if ($this->isB2Url($storageUrl) || $this->shouldProxyAudio($asset)) {
             return URL::temporarySignedRoute(
                 'media.assets.content',
                 now()->addHours(6),
@@ -539,6 +539,12 @@ class VariantController extends Controller
     private function isB2Url(string $url): bool
     {
         return app(StorageService::class)->isManagedUrl($url);
+    }
+
+    private function shouldProxyAudio(Asset $asset): bool
+    {
+        return (string) $asset->asset_type === 'audio'
+            || str_starts_with((string) ($asset->mime_type ?? ''), 'audio/');
     }
 
     /**
