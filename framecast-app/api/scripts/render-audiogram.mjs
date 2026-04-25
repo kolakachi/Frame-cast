@@ -18,6 +18,11 @@ const width = Math.max(270, Number(payload.width || 1080));
 const height = Math.max(480, Number(payload.height || 1920));
 // Always 14 bars — matches editor's waveformLive ref length exactly
 const BAR_COUNT = 14;
+// AnalyserNode settings — must match EditorView.vue exactly
+const FFT_SIZE = 64;
+const FFT_SMOOTHING = 0.8;
+const MIN_DB = -100;
+const MAX_DB = -30;
 const sampleRate = Math.max(8000, Number(payload.sampleRate || 16000));
 const pcm = payload.pcmPath ? await readPcmFloat32(payload.pcmPath) : new Float32Array(0);
 const totalFrames = Math.max(1, Math.ceil(duration * fps));
@@ -103,11 +108,6 @@ async function readPcmFloat32(pcmPath) {
 //         minDecibels=-100, maxDecibels=-30
 //         bar[i] = data[Math.floor(i/14 * Math.floor(32*0.65))] / 200
 // We replicate this with a 64-pt FFT + identical smoothing + same bin mapping.
-
-const FFT_SIZE = 64;           // matches editor's fftSize
-const FFT_SMOOTHING = 0.8;    // matches editor's smoothingTimeConstant
-const MIN_DB = -100;           // matches AnalyserNode default
-const MAX_DB = -30;            // matches AnalyserNode default
 
 function buildBandFrames({ pcm, duration, fps, sampleRate, style }) {
   const totalFrames = Math.max(1, Math.ceil(duration * fps));
