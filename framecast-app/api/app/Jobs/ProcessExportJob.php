@@ -536,7 +536,7 @@ class ProcessExportJob implements ShouldQueue
 
         $W = $dimensions['width'];
         $H = $dimensions['height'];
-        $vizH = (int) round($H * 0.4);
+        $vizH = (int) round($H * 0.28);
 
         $captionSettings = is_array($scene->caption_settings_json) ? $scene->caption_settings_json : [];
         $captionEnabled = ($captionSettings['enabled'] ?? true) !== false;
@@ -569,9 +569,9 @@ class ProcessExportJob implements ShouldQueue
 
             $vizFilter = match ($audiogramStyle) {
                 'mirror'  => "showwaves=s={$W}x{$vizH}:mode=cline:split_channels=0:colors={$ffmpegColor}:scale=sqrt",
-                'circle'  => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=log:ascale=log:averaging=1:win_func=hanning",
+                'circle'  => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=log:ascale=log:averaging=1:win_func=hanning:win_size=w256",
                 'minimal' => "showwaves=s={$W}x{$vizH}:mode=line:split_channels=0:colors={$ffmpegColor}:scale=lin",
-                default   => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=lin:ascale=log:averaging=1:win_func=hanning",
+                default   => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=log:ascale=log:averaging=1:win_func=hanning:win_size=w128",
             };
 
             $monoFont = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf';
@@ -584,7 +584,7 @@ class ProcessExportJob implements ShouldQueue
                 $parts[] = "[0:a]asplit=2[a_viz][a_out]";
                 $parts[] = "[a_viz]{$vizFilter}[viz_raw]";
                 $parts[] = "[viz_raw]format=rgba,colorkey=black:similarity=0.15:blend=0.0[viz_key]";
-                $parts[] = "[bg][viz_key]overlay=x=0:y=(H-h)/2[video_ovl]";
+                $parts[] = "[bg][viz_key]overlay=x=0:y=H*0.12[video_ovl]";
                 $audioOutMap = '[a_out]';
             } else {
                 $parts[] = "[bg]copy[video_ovl]";
