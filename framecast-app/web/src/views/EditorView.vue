@@ -5,6 +5,8 @@ import api from "../services/api";
 import { getEcho } from "../services/echo";
 import { useAuthStore } from "../stores/auth";
 import AppSidebar from "../components/AppSidebar.vue";
+import EditorTimeline from "../components/EditorTimeline.vue";
+import MediaPickerModal from "../components/MediaPickerModal.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -72,6 +74,17 @@ const projectDefaultsSaveState = ref("idle");
 const projectDefaultsSaveError = ref("");
 const musicTracks = ref([]);
 const selectedMusicTrackId = ref(null);
+// My Asset image browser
+const myImageAssets = ref([]);
+const myImageSearch = ref('');
+const myImageLoading = ref(false);
+// Custom audio picker
+const customAudioAssets = ref([]);
+const customAudioSearch = ref('');
+const customAudioLoading = ref(false);
+const mediaPickerVisible = ref(false);
+const mediaPickerMode = ref("visual"); // 'visual' | 'music' | 'sound'
+const musicPanelTab = ref("library"); // 'library' | 'uploads'
 const musicVolume = ref(30);
 const musicDuckVolume = ref(8);
 const musicFadeInMs = ref(500);
@@ -80,6 +93,28 @@ const musicDuckDuringVoice = ref(true);
 let musicSaveTimer = null;
 const musicSaveState = ref("idle");
 const musicSaveError = ref("");
+// Audiogram settings
+const audiogramStyle = ref("bars");
+const audiogramColor = ref("#ff6b35");
+const audiogramBg = ref("dark");
+let audiogramSaveTimer = null;
+const audiogramSaveState = ref("idle");
+
+const AUDIOGRAM_STYLES = [
+  { key: "bars",    label: "Classic" },
+  { key: "mirror",  label: "Mirror"  },
+  { key: "circle",  label: "Radial"  },
+  { key: "minimal", label: "Minimal" },
+];
+const AUDIOGRAM_COLORS = [
+  "#ff6b35", "#60a5fa", "#34d399", "#a78bfa", "#f472b6", "#fbbf24", "#ffffff",
+];
+const AUDIOGRAM_BACKGROUNDS = [
+  { key: "dark",   label: "Dark",   css: "linear-gradient(180deg,#0d0d1a 0%,#0a0a14 100%)" },
+  { key: "black",  label: "Black",  css: "#000" },
+  { key: "purple", label: "Purple", css: "linear-gradient(135deg,#1a0a2e 0%,#0d0d2b 50%,#14102a 100%)" },
+  { key: "ocean",  label: "Ocean",  css: "linear-gradient(135deg,#0a1628 0%,#0d1f3c 50%,#0a0e1a 100%)" },
+];
 const voiceProfileKey = ref("alloy");
 const voiceSpeedDraft = ref("1.0");
 const voiceStabilityDraft = ref("medium");
@@ -93,17 +128,30 @@ const aiImagePromptOverride = ref("");
 const aiImagePending = ref(false);
 const aiImageError = ref("");
 const AI_IMAGE_STYLES = [
-  { key: "cinematic",   label: "Cinematic",   icon: "🎬" },
-  { key: "dark",        label: "Dark",         icon: "🌑" },
-  { key: "documentary", label: "Documentary",  icon: "📽️" },
-  { key: "anime",       label: "Anime",        icon: "🌸" },
-  { key: "minimalist",  label: "Minimalist",   icon: "◽" },
-  { key: "realistic",   label: "Realistic",    icon: "📸" },
-  { key: "vintage",     label: "Vintage",      icon: "🌅" },
-  { key: "neon",        label: "Neon",         icon: "⚡" },
+  { key: "cinematic",     label: "Cinematic",     icon: "🎬" },
+  { key: "dark",          label: "Dark",           icon: "🌑" },
+  { key: "documentary",   label: "Documentary",    icon: "📽️" },
+  { key: "anime",         label: "Anime",          icon: "🌸" },
+  { key: "minimalist",    label: "Minimalist",     icon: "◽" },
+  { key: "realistic",     label: "Realistic",      icon: "📸" },
+  { key: "vintage",       label: "Vintage",        icon: "🌅" },
+  { key: "neon",          label: "Neon",           icon: "⚡" },
+  { key: "photorealistic",label: "Photorealistic", icon: "📷" },
+  { key: "cyberpunk_80s", label: "Cyberpunk 80s",  icon: "🕹️" },
+  { key: "anime_80s",     label: "Anime 80s",      icon: "🌟" },
+  { key: "anime_90s",     label: "Anime 90s",      icon: "💫" },
+  { key: "dark_fantasy",  label: "Dark Fantasy",   icon: "🐉" },
+  { key: "fantasy_retro", label: "Fantasy Retro",  icon: "🧙" },
+  { key: "comic",         label: "Comic",          icon: "💥" },
+  { key: "film_noir",     label: "Film Noir",      icon: "🎩" },
+  { key: "line_drawing",  label: "Line Drawing",   icon: "✏️" },
+  { key: "watercolor",    label: "Watercolor",     icon: "🎨" },
+  { key: "paper_cutout",  label: "Paper Cutout",   icon: "✂️" },
+  { key: "cartoon",       label: "Cartoon",        icon: "🎭" },
 ];
 const exportPending = ref(false);
 const exportState = ref("idle");
+const timelineOpen = ref(false);
 const previewMode = ref("scene");
 const stockVideoSubType = ref("stock_clip");
 const playProgress = ref(0);
@@ -126,9 +174,16 @@ const DEFAULT_CAPTION_SETTINGS = Object.freeze({
   position: "bottom_third",
   font: DEFAULT_CAPTION_FONT,
   highlight_color: "#ff6b35",
+  color: "#ffffff",
+  size: "medium",
   preset_id: null,
 });
 const captionFontDraft = ref(DEFAULT_CAPTION_FONT);
+const captionColorDraft = ref("#ffffff");
+const captionSizeDraft = ref("medium");
+const captionHighlightColorDraft = ref("#ff6b35");
+const CAPTION_COLOR_SWATCHES = ["#ffffff","#ffff00","#ff6b35","#ff4444","#44ff88","#44aaff","#cc88ff","#000000"];
+const CAPTION_SIZE_MAP = { small: "13px", medium: "17px", large: "23px", xlarge: "30px" };
 const fontDropdownOpen = ref(false);
 const captionSaveState = ref("idle");
 const captionSaveError = ref("");
@@ -152,6 +207,7 @@ const panelState = ref({
   visual: false,
   motion: false,
   voice: false,
+  sounds: false,
   captions: false,
   music: false,
   brand: false,
@@ -196,9 +252,18 @@ const activeSceneVisualIsVideo = computed(() => {
   if (!asset) return false;
   return asset.asset_type === "video" || String(asset.mime_type || "").startsWith("video/");
 });
+// True only when the scene visual is a user library asset (not AI broll, not stock/matched)
+const activeSceneVisualIsFromLibrary = computed(() => {
+  const asset = activeSceneVisualAsset.value;
+  if (!asset) return false;
+  if (activeScene.value?.visual_type === "ai_image") return false;
+  const tags = Array.isArray(asset.tags) ? asset.tags : [];
+  return !tags.includes("matched_visual");
+});
 const activeSceneAudioUrl = computed(
   () => activeScene.value?.audio_asset?.storage_url ?? null
 );
+const activeSceneSoundAsset = computed(() => activeScene.value?.sound_asset ?? null);
 const selectedProjectChannel = computed(() =>
   channels.value.find((channel) => String(channel.id) === String(projectChannelId.value)) || null
 );
@@ -223,6 +288,18 @@ const filteredMusicTracks = computed(() => {
     (t.tags ?? []).some((tag) => tag.toLowerCase() === musicMoodFilter.value)
   );
 });
+const myImageAssetsFiltered = computed(() => {
+  const q = myImageSearch.value.toLowerCase();
+  if (!q) return myImageAssets.value;
+  return myImageAssets.value.filter(a => String(a.title ?? '').toLowerCase().includes(q));
+});
+
+const customAudioAssetsFiltered = computed(() => {
+  const q = customAudioSearch.value.toLowerCase();
+  if (!q) return customAudioAssets.value;
+  return customAudioAssets.value.filter(a => String(a.title ?? '').toLowerCase().includes(q));
+});
+
 const musicTrackGroups = computed(() => {
   const groups = {};
   for (const track of filteredMusicTracks.value) {
@@ -246,11 +323,32 @@ const showTextCardPreview = computed(
   () => !currentVisualUrl.value && activeSceneVisualType.value === "text_card"
 );
 const showWaveformPreview = computed(
-  () => !currentVisualUrl.value && activeSceneVisualType.value === "waveform"
+  () => activeSceneVisualType.value === "waveform"
 );
-const waveformBars = computed(() =>
-  [0.28, 0.52, 0.34, 0.76, 0.42, 0.88, 0.48, 0.66, 0.31, 0.58, 0.4, 0.72]
-);
+const waveformLive = ref([0.28, 0.52, 0.34, 0.76, 0.42, 0.88, 0.48, 0.66, 0.31, 0.58, 0.40, 0.72, 0.35, 0.65]);
+let waveformRafId = null;
+let waveformT = 0;
+
+function tickWaveform() {
+  waveformT += 0.035;
+  waveformLive.value = waveformLive.value.map((_, i) => {
+    const p = i * 0.55 + waveformT;
+    return Math.min(1, Math.max(0.08, 0.32 + 0.55 * Math.abs(Math.sin(p) * 0.7 + Math.sin(p * 2.1 + 1.3) * 0.3)));
+  });
+  waveformRafId = requestAnimationFrame(tickWaveform);
+}
+
+function startWaveformAnimation() {
+  if (!waveformRafId) tickWaveform();
+}
+
+function stopWaveformAnimation() {
+  if (waveformRafId) { cancelAnimationFrame(waveformRafId); waveformRafId = null; }
+}
+const audiogramBgStyle = computed(() => {
+  const bg = AUDIOGRAM_BACKGROUNDS.find(b => b.key === audiogramBg.value);
+  return { background: bg ? bg.css : AUDIOGRAM_BACKGROUNDS[0].css };
+});
 const activeVoiceName = computed(() => {
   const voiceId = activeScene.value?.voice_settings?.voice_id;
   const match = voiceProfiles.value.find(
@@ -337,6 +435,7 @@ const selectedCaptionFont = computed(
 );
 const captionFontStyle = computed(() => ({
   fontFamily: fontFamilyValue(captionFontDraft.value || DEFAULT_CAPTION_FONT),
+  fontSize: CAPTION_SIZE_MAP[captionSizeDraft.value] || "17px",
 }));
 const activeCaptionSettings = computed(
   () => activeScene.value?.caption_settings ?? activeScene.value?.caption_settings_json ?? {}
@@ -349,7 +448,7 @@ const sceneTypeOptions = [
   "Text Card",
   "Quote",
 ];
-const addSceneStockTypeOptions = ["Stock Clip", "BG Loop", "Text Only", "Waveform"];
+const addSceneStockTypeOptions = ["Stock Clip", "BG Loop", "Text Only", "Audiogram"];
 const visualSourceTypeMap = {
   "Stock Video": "stock_clip",
   "Stock Image": "image_montage",
@@ -357,7 +456,7 @@ const visualSourceTypeMap = {
   "BG Loop": "background_loop",
   "AI Image": "ai_image",
   "Text Only": "text_card",
-  Waveform: "waveform",
+  Audiogram: "waveform",
 };
 const visualTypeLabelMap = {
   image_montage: "Stock Clip",
@@ -365,7 +464,7 @@ const visualTypeLabelMap = {
   background_loop: "BG Loop",
   ai_image: "AI Image",
   text_card: "Text Only",
-  waveform: "Waveform",
+  waveform: "Audiogram",
 };
 const rewriteOptions = [
   "Shorten",
@@ -409,10 +508,19 @@ watch(
       voiceStabilityDraft.value = String(scene?.voice_settings?.stability ?? "medium");
       visualQueryDraft.value = scene?.visual_prompt || "";
       const rawType = String(scene?.visual_type || "");
+      const assetTags = Array.isArray(scene?.visual_asset?.tags) ? scene.visual_asset.tags : [];
+      const isLibraryAsset = scene?.visual_asset && !assetTags.includes("matched_visual") && rawType !== "ai_image";
       if (rawType === "ai_image") selectedSwapVisualSource.value = "AI Image";
+      else if (rawType === "waveform") selectedSwapVisualSource.value = "Audiogram";
+      else if (isLibraryAsset) selectedSwapVisualSource.value = "My Assets";
       else if (rawType === "image_montage") selectedSwapVisualSource.value = "Stock Image";
       else if (rawType === "background_loop") selectedSwapVisualSource.value = "Stock Video";
       else selectedSwapVisualSource.value = "Stock Video";
+      // Restore audiogram settings
+      const imgSettings = scene?.image_generation_settings ?? scene?.image_generation_settings_json ?? {};
+      audiogramStyle.value = imgSettings.audiogram_style ?? "bars";
+      audiogramColor.value = imgSettings.audiogram_color ?? "#ff6b35";
+      audiogramBg.value = imgSettings.audiogram_bg ?? "dark";
       const captionSettings = normalizeCaptionSettings(
         scene?.caption_settings || scene?.caption_settings_json
       );
@@ -421,11 +529,14 @@ watch(
       captionHighlightDraft.value = String(captionSettings.highlight_mode);
       captionPositionDraft.value = String(captionSettings.position);
       captionFontDraft.value = String(captionSettings.font);
+      captionColorDraft.value = captionSettings.color || "#ffffff";
+      captionSizeDraft.value = captionSettings.size || "medium";
+      captionHighlightColorDraft.value = captionSettings.highlight_color || "#ff6b35";
       fontDropdownOpen.value = false;
       const motionSettings = scene?.motion_settings || scene?.motion_settings_json || {};
       motionEffectDraft.value = String(motionSettings.effect || "zoom_in");
       motionIntensityDraft.value = String(motionSettings.intensity || "moderate");
-      visualStyleDraft.value = scene?.visual_style ?? null;
+      visualStyleDraft.value = scene?.visual_style ?? scene?.image_generation_settings?.style ?? project.value?.ai_broll_style ?? null;
       visualStyleSaveState.value = "idle";
       visualSwapPending.value = false;
       visualSwapError.value = "";
@@ -573,7 +684,7 @@ watch(sceneScriptDraft, (draft) => {
   }, 700);
 });
 
-watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPositionDraft, captionFontDraft], () => {
+watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPositionDraft, captionFontDraft, captionColorDraft, captionSizeDraft, captionHighlightColorDraft], () => {
   const scene = activeScene.value;
 
   if (!scene) return;
@@ -585,7 +696,9 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
     highlight_mode: captionHighlightDraft.value,
     position: captionPositionDraft.value,
     font: captionFontDraft.value,
-    highlight_color: savedCaptions.highlight_color || "#ff6b35",
+    highlight_color: captionHighlightColorDraft.value,
+    color: captionColorDraft.value,
+    size: captionSizeDraft.value,
     preset_id: savedCaptions.preset_id || null,
   };
 
@@ -594,7 +707,10 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
     String(savedCaptions.style_key || "impact") === nextSettings.style_key &&
     String(savedCaptions.highlight_mode || "keywords") === nextSettings.highlight_mode &&
     String(savedCaptions.position || "bottom_third") === nextSettings.position &&
-    String(savedCaptions.font || DEFAULT_CAPTION_FONT) === nextSettings.font
+    String(savedCaptions.font || DEFAULT_CAPTION_FONT) === nextSettings.font &&
+    String(savedCaptions.color || "#ffffff") === nextSettings.color &&
+    String(savedCaptions.size || "medium") === nextSettings.size &&
+    String(savedCaptions.highlight_color || "#ff6b35") === nextSettings.highlight_color
   ) {
     if (captionSaveTimer) {
       window.clearTimeout(captionSaveTimer);
@@ -731,7 +847,7 @@ function sceneTypeLabel(scene) {
 
 function sceneVisualLabel(scene) {
   if (scene?.visual_type === "text_card") return "text card";
-  if (scene?.visual_type === "waveform") return "waveform";
+  if (scene?.visual_type === "waveform") return "audiogram";
   if (scene?.visual_type === "ai_image") return "ai image";
   if (scene?.visual_type === "background_loop") return "bg loop";
   if (scene?.visual_type === "stock_clip") return "stock clip";
@@ -789,6 +905,8 @@ function normalizeCaptionSettings(settings, fallback = {}) {
       source.highlight_color ||
       fallbackSource.highlight_color ||
       DEFAULT_CAPTION_SETTINGS.highlight_color,
+    color: source.color || fallbackSource.color || DEFAULT_CAPTION_SETTINGS.color,
+    size: source.size || fallbackSource.size || DEFAULT_CAPTION_SETTINGS.size,
     preset_id: source.preset_id ?? fallbackSource.preset_id ?? DEFAULT_CAPTION_SETTINGS.preset_id,
   };
 }
@@ -1366,6 +1484,177 @@ async function loadMusicTracks() {
   }
 }
 
+async function loadMyImageAssets() {
+  if (myImageLoading.value) return;
+  myImageLoading.value = true;
+  try {
+    const response = await api.get("/assets", { params: { asset_type: "image", per_page: 60 } });
+    myImageAssets.value = response.data?.data?.assets ?? [];
+  } catch {
+    myImageAssets.value = [];
+  } finally {
+    myImageLoading.value = false;
+  }
+}
+
+async function loadCustomAudioAssets() {
+  if (customAudioLoading.value) return;
+  customAudioLoading.value = true;
+  try {
+    const response = await api.get("/assets", { params: { asset_type: "audio", per_page: 60 } });
+    customAudioAssets.value = response.data?.data?.assets ?? [];
+  } catch {
+    customAudioAssets.value = [];
+  } finally {
+    customAudioLoading.value = false;
+  }
+}
+
+async function assignAssetImage(asset) {
+  if (!activeScene.value || visualSwapPending.value) return;
+  visualSwapPending.value = true;
+  visualSwapError.value = "";
+  visualLoadFailed.value = false;
+  try {
+    const response = await api.patch(`/scenes/${activeScene.value.id}`, {
+      visual_asset_id: asset.id,
+      visual_type: "image_montage",
+      visual_prompt: asset.title || "",
+    });
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+    if (updatedScene) {
+      replaceSceneInCollection(updatedScene);
+      preloadSceneVisual(updatedScene);
+    }
+  } catch (err) {
+    visualSwapError.value = err?.response?.data?.error?.message || "Failed to assign image.";
+  } finally {
+    visualSwapPending.value = false;
+  }
+}
+
+async function assignCustomAudio(asset) {
+  if (!activeScene.value) return;
+  const currentVoiceSettings = activeScene.value.voice_settings || {};
+  try {
+    const response = await api.patch(`/scenes/${activeScene.value.id}`, {
+      voice_settings_json: {
+        ...currentVoiceSettings,
+        audio_asset_id: asset.id,
+        is_outdated: false,
+        custom_audio: true,
+      },
+    });
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+    if (updatedScene) replaceSceneInCollection(updatedScene);
+  } catch (err) {
+    console.error("Failed to assign custom audio", err);
+  }
+}
+
+function openMediaPicker(mode) {
+  mediaPickerMode.value = mode;
+  mediaPickerVisible.value = true;
+}
+
+async function saveAudiogramSettings({ apply = false } = {}) {
+  if (!activeScene.value) return;
+  clearTimeout(audiogramSaveTimer);
+  audiogramSaveState.value = "saving";
+  const existing = activeScene.value.image_generation_settings ?? activeScene.value.image_generation_settings_json ?? {};
+  const payload = {
+    image_generation_settings_json: {
+      ...existing,
+      audiogram_style: audiogramStyle.value,
+      audiogram_color: audiogramColor.value,
+      audiogram_bg: audiogramBg.value,
+    },
+  };
+  if (apply) {
+    payload.visual_type = "waveform";
+    payload.visual_asset_id = null;
+  }
+  try {
+    const response = await api.patch(`/scenes/${activeScene.value.id}`, payload);
+    const updated = normalizeScenePayload(response.data?.data?.scene ?? null);
+    if (updated) replaceSceneInCollection(updated);
+    audiogramSaveState.value = "saved";
+    setTimeout(() => { audiogramSaveState.value = "idle"; }, 1400);
+  } catch {
+    audiogramSaveState.value = "idle";
+  }
+}
+
+function selectAudiogramStyle(key) {
+  audiogramStyle.value = key;
+  saveAudiogramSettings();
+}
+function selectAudiogramColor(color) {
+  audiogramColor.value = color;
+  saveAudiogramSettings();
+}
+function queueAudiogramColorSave() {
+  clearTimeout(audiogramSaveTimer);
+  audiogramSaveTimer = setTimeout(() => saveAudiogramSettings(), 600);
+}
+function selectAudiogramBg(key) {
+  audiogramBg.value = key;
+  saveAudiogramSettings();
+}
+
+function handleMediaPickerSelect({ mode, item }) {
+  if (mode === "visual") {
+    if (item._type === "asset") {
+      const isVid = item.asset_type === "video" || String(item.mime_type ?? "").startsWith("video/");
+      assignAssetVisual(item, isVid ? "background_loop" : "image_montage");
+    }
+  } else if (mode === "music") {
+    if (item._type === "no-music") {
+      selectMusicTrack(null);
+    } else if (item._type === "track" || item._type === "asset") {
+      selectMusicTrack(item.id);
+    }
+  } else if (mode === "sound") {
+    if (item._type === "asset") assignSceneSound(item);
+  }
+}
+
+async function assignSceneSound(asset) {
+  if (!activeScene.value) return;
+  try {
+    const response = await api.patch(`/scenes/${activeScene.value.id}`, {
+      sound_asset_id: asset ? asset.id : null,
+    });
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+    if (updatedScene) replaceSceneInCollection(updatedScene);
+  } catch (err) {
+    console.error("Failed to assign sound", err);
+  }
+}
+
+async function assignAssetVisual(asset, visualType) {
+  if (!activeScene.value || visualSwapPending.value) return;
+  visualSwapPending.value = true;
+  visualSwapError.value = "";
+  visualLoadFailed.value = false;
+  try {
+    const response = await api.patch(`/scenes/${activeScene.value.id}`, {
+      visual_asset_id: asset.id,
+      visual_type: visualType,
+      visual_prompt: asset.title || "",
+    });
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+    if (updatedScene) {
+      replaceSceneInCollection(updatedScene);
+      preloadSceneVisual(updatedScene);
+    }
+  } catch (err) {
+    visualSwapError.value = err?.response?.data?.error?.message || "Failed to assign visual.";
+  } finally {
+    visualSwapPending.value = false;
+  }
+}
+
 async function persistMusicSettings() {
   if (!project.value) return;
   musicSaveState.value = "saving";
@@ -1623,6 +1912,39 @@ function stopPreviewPlay() {
     audioRef.value.pause();
   }
   stopPreviewMusic();
+}
+
+async function timelineSeek(pct) {
+  if (previewMode.value !== "full") await setPreviewMode("full");
+  playProgress.value = Math.max(0, Math.min(100, pct));
+  syncFullPreviewScene();
+  if (isPreviewPlaying.value) {
+    nextTick(() => playActiveSceneAudio(currentSceneAudioOffset()));
+    nextTick(() => playPreviewMusic());
+  } else if (audioRef.value) {
+    audioRef.value.currentTime = currentSceneAudioOffset();
+  }
+}
+
+async function timelineReorder(newSceneIds) {
+  const previousScenes = [...scenes.value];
+  const reordered = newSceneIds.map((id, orderIndex) => {
+    const sc = scenes.value.find(s => s.id === id);
+    return { ...sc, scene_order: orderIndex + 1 };
+  }).filter(Boolean);
+  scenes.value = reordered;
+
+  try {
+    const response = await api.patch("/scenes/reorder", {
+      project_id: project.value.id,
+      scene_ids: newSceneIds,
+    });
+    scenes.value = sortScenesByOrder(
+      (response.data?.data?.scenes ?? []).map(s => normalizeScenePayload(s)).filter(Boolean)
+    );
+  } catch {
+    scenes.value = previousScenes;
+  }
 }
 
 function scrubberSeek(event) {
@@ -2230,10 +2552,11 @@ async function generateAIImage() {
 
   try {
     await api.post(`/scenes/${activeScene.value.id}/generate-image`, {
-      style: visualStyleDraft.value || "cinematic",
+      style: visualStyleDraft.value ?? activeScene.value?.visual_style ?? activeScene.value?.image_generation_settings?.style ?? "cinematic",
       prompt_override: aiImagePromptOverride.value || undefined,
     });
-    // Result comes back via Reverb generation.progress event — no polling needed
+    // Reverb fires the result — polling is a safety net if the socket drops
+    pollSceneUntilVisual(activeScene.value.id)
   } catch (err) {
     // 409 means the backend already has a generation in progress — treat as pending, not an error
     if (err.response?.status === 409) {
@@ -2726,7 +3049,13 @@ onMounted(() => {
   loadProject();
 });
 
+watch(showWaveformPreview, (active) => {
+  if (active) startWaveformAnimation();
+  else stopWaveformAnimation();
+}, { immediate: true });
+
 onBeforeUnmount(() => {
+  stopWaveformAnimation();
   if (scriptSaveTimer) {
     window.clearTimeout(scriptSaveTimer);
   }
@@ -2757,9 +3086,9 @@ onBeforeUnmount(() => {
     <section v-else-if="error" class="state-card error">{{ error }}</section>
 
     <div v-else class="editor-shell">
-      <AppSidebar :user="mePayload" active-page="editor" @logout="logout" />
+      <AppSidebar :user="mePayload" active-page="editor" :collapsed="timelineOpen" @logout="logout" />
 
-      <div class="main">
+      <div :class="['main', timelineOpen ? 'sidebar-collapsed' : '']">
         <header class="topbar">
           <div class="topbar-left">
             <div class="topbar-title">Editor</div>
@@ -2790,8 +3119,11 @@ onBeforeUnmount(() => {
                 >Download ↓</a>
               </template>
             </div>
-            <button class="btn btn-ghost" type="button" @click="router.push({ name: 'dashboard' })">+ New Video</button>
-            <button class="btn btn-ghost" type="button" @click="router.push({ name: 'project-variants', params: { projectId } })">Variants</button>
+            <button :class="['btn btn-ghost btn-timeline-toggle', timelineOpen ? 'active' : '']" type="button" @click="timelineOpen = !timelineOpen">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="11" height="4" rx="1"/><rect x="3" y="17" width="15" height="4" rx="1"/></svg>
+              Timeline
+            </button>
+
             <button class="btn btn-primary" type="button" :disabled="exportPending" @click="queueExport">
               {{ exportPending ? "Exporting..." : "Export" }}
             </button>
@@ -2815,6 +3147,7 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
+        <div class="editor-body">
         <div class="editor active">
           <div class="editor-sidebar">
             <div class="editor-sidebar-header">
@@ -2871,7 +3204,7 @@ onBeforeUnmount(() => {
                         <option value="stock_clip">Clip</option>
                         <option value="background_loop">BG Loop</option>
                         <option value="text_card">Text Only</option>
-                        <option value="waveform">Waveform</option>
+                        <option value="waveform">Audiogram</option>
                       </select>
                     </div>
                     <div class="scene-query-label">Search query</div>
@@ -3051,7 +3384,7 @@ onBeforeUnmount(() => {
                           <option value="stock_clip">Clip</option>
                           <option value="background_loop">BG Loop</option>
                           <option value="text_card">Text Only</option>
-                          <option value="waveform">Waveform</option>
+                          <option value="waveform">Audiogram</option>
                         </select>
                       </div>
                       <div class="scene-query-label">Search query</div>
@@ -3142,15 +3475,52 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </div>
-                <div v-else-if="showWaveformPreview" class="preview-fallback preview-fallback-waveform">
+                <div v-else-if="showWaveformPreview" class="preview-fallback preview-fallback-waveform" :style="audiogramBgStyle">
                   <div class="waveform-shell">
-                    <div class="waveform-label">WAVEFORM</div>
-                    <div class="waveform-bars">
+                    <!-- Classic bars: upward from bottom -->
+                    <div v-if="audiogramStyle === 'bars'" class="ag-bars">
                       <span
-                        v-for="(bar, index) in waveformBars"
-                        :key="`wave-${index}`"
-                        class="waveform-bar"
-                        :style="{ height: `${Math.round(bar * 100)}%` }"
+                        v-for="(bar, i) in waveformLive" :key="`bar-${i}`"
+                        class="ag-bar"
+                        :style="{ height: `${Math.round(bar * 100)}%`, background: `linear-gradient(to top, ${audiogramColor}99, ${audiogramColor})`, boxShadow: `0 0 12px ${audiogramColor}44` }"
+                      ></span>
+                    </div>
+
+                    <!-- Mirror wave: grows from center up and down -->
+                    <div v-else-if="audiogramStyle === 'mirror'" class="ag-mirror">
+                      <span
+                        v-for="(bar, i) in waveformLive" :key="`mir-${i}`"
+                        class="ag-mirror-bar"
+                        :style="{ height: `${Math.round(bar * 100)}%`, background: audiogramColor, boxShadow: `0 0 10px ${audiogramColor}55` }"
+                      ></span>
+                    </div>
+
+                    <!-- Radial / circle: SVG bars radiating from center -->
+                    <div v-else-if="audiogramStyle === 'circle'" class="ag-circle-wrap">
+                      <svg viewBox="0 0 200 200" width="200" height="200">
+                        <g transform="translate(100,100)">
+                          <line
+                            v-for="(bar, i) in waveformLive" :key="`rad-${i}`"
+                            :transform="`rotate(${i * (360 / waveformLive.length)})`"
+                            x1="0" :y1="38"
+                            x2="0" :y2="`${38 + bar * 52}`"
+                            :stroke="audiogramColor"
+                            stroke-width="6"
+                            stroke-linecap="round"
+                            :opacity="0.6 + bar * 0.4"
+                          />
+                        </g>
+                        <circle cx="100" cy="100" r="30" :fill="audiogramColor" opacity="0.15" />
+                        <circle cx="100" cy="100" r="20" :fill="audiogramColor" opacity="0.25" />
+                      </svg>
+                    </div>
+
+                    <!-- Minimal: thin compact bars -->
+                    <div v-else-if="audiogramStyle === 'minimal'" class="ag-minimal">
+                      <span
+                        v-for="(bar, i) in [...waveformLive, ...waveformLive.slice().reverse()]" :key="`min-${i}`"
+                        class="ag-minimal-bar"
+                        :style="{ height: `${Math.round(bar * 80) + 8}%`, background: audiogramColor, opacity: 0.5 + bar * 0.5 }"
                       ></span>
                     </div>
                   </div>
@@ -3191,6 +3561,7 @@ onBeforeUnmount(() => {
                     )"
                     :key="`${index}-${word.text}`"
                     :class="`caption-word ${word.highlighted ? 'highlight' : 'normal'}`"
+                    :style="{ color: word.highlighted ? captionHighlightColorDraft : captionColorDraft }"
                   >
                     {{ word.text }}
                   </span>
@@ -3331,12 +3702,13 @@ onBeforeUnmount(() => {
                 <div class="panel-chevron">▾</div>
               </div>
               <div class="panel-section-body">
-                <!-- Visual type tabs — 4 options -->
+                <!-- Visual type tabs -->
                 <div class="visual-type-tabs">
                   <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Stock Video' ? 'active' : '']" @click="selectedSwapVisualSource = 'Stock Video'">Video</button>
                   <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Stock Image' ? 'active' : '']" @click="selectedSwapVisualSource = 'Stock Image'">Image</button>
                   <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'AI Image' ? 'active ai' : '']" @click="selectedSwapVisualSource = 'AI Image'">✦ AI</button>
                   <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'My Assets' ? 'active' : '']" @click="selectedSwapVisualSource = 'My Assets'">Assets</button>
+                  <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Audiogram' ? 'active' : '']" @click="selectedSwapVisualSource = 'Audiogram'">Audio</button>
                 </div>
 
                 <!-- Stock Video -->
@@ -3387,12 +3759,15 @@ onBeforeUnmount(() => {
                     Style
                     <span v-if="visualStyleSaveState === 'saved'" style="opacity:.5; font-weight:400; margin-left:4px;">saved</span>
                   </div>
+                  <div v-if="activeScene?.visual_type === 'ai_image' && (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style)" class="current-style-note">
+                    Last generated with <strong>{{ AI_IMAGE_STYLES.find(s => s.key === (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style))?.label ?? (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style) }}</strong>
+                  </div>
                   <div class="style-picker-grid">
                     <div
                       v-for="s in AI_IMAGE_STYLES"
                       :key="s.key"
-                      :class="['style-opt', visualStyleDraft === s.key ? 'selected' : '']"
-                      @click="visualStyleDraft = visualStyleDraft === s.key ? null : s.key"
+                      :class="['style-opt', (visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style) === s.key ? 'selected' : '']"
+                      @click="visualStyleDraft = (visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style) === s.key ? null : s.key"
                     >
                       <span class="style-opt-ico">{{ s.icon }}</span>
                       <div class="style-opt-name">{{ s.label }}</div>
@@ -3421,17 +3796,136 @@ onBeforeUnmount(() => {
                   </div>
                   <div v-if="aiImageError" class="panel-error-copy">{{ aiImageError }}</div>
                   <div v-if="aiImagePending" class="panel-hint-copy">This takes ~15s</div>
-                  <div v-if="visualStyleDraft && activeScene?.visual_type === 'ai_image' && !aiImagePending" class="style-regen-hint">
+                  <div v-if="visualStyleDraft && activeScene?.visual_type === 'ai_image' && !aiImagePending && visualStyleDraft !== (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style ?? visualStyleDraft)" class="style-regen-hint">
                     Style changed — regenerate to apply.
                   </div>
                 </template>
 
                 <!-- My Assets -->
                 <template v-else-if="selectedSwapVisualSource === 'My Assets'">
-                  <div class="panel-hint-copy" style="margin-top:12px;text-align:center;padding:24px 0;">
-                    <div style="font-size:20px;margin-bottom:8px;">📁</div>
-                    Asset picker coming soon.<br>Upload assets in the Asset Library.
+                  <!-- Has a visual asset assigned from library -->
+                  <template v-if="activeSceneVisualIsFromLibrary">
+                    <div class="asset-current-preview">
+                      <div class="asset-current-thumb">
+                        <!-- Videos: thumbnail (SVG placeholder) only — never load full video in img tag -->
+                        <!-- Images: thumbnail preferred, fall back to actual image URL -->
+                        <img
+                          v-if="activeSceneVisualAsset.thumbnail_url || (!activeSceneVisualIsVideo && currentVisualUrl)"
+                          :src="activeSceneVisualAsset.thumbnail_url || currentVisualUrl"
+                          alt=""
+                        />
+                        <div v-else class="asset-current-placeholder">
+                          <span style="font-size:20px;">{{ activeSceneVisualIsVideo ? '🎥' : '🖼️' }}</span>
+                        </div>
+                        <div class="asset-current-badge">{{ activeSceneVisualIsVideo ? 'VIDEO' : 'IMG' }}</div>
+                      </div>
+                      <div class="asset-current-title">{{ activeSceneVisualAsset.title || 'Asset' }}</div>
+                      <div class="asset-current-type">{{ activeSceneVisualIsVideo ? 'Video' : 'Image' }} · From library</div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm panel-full-btn" type="button" :disabled="visualSwapPending" @click="openMediaPicker('visual')">
+                      Change Visual
+                    </button>
+                  </template>
+                  <!-- No asset from library yet -->
+                  <template v-else>
+                    <div class="asset-empty-state">
+                      <div class="asset-empty-icon">🗂️</div>
+                      <div class="asset-empty-title">Pick from your library</div>
+                      <div class="asset-empty-sub">Browse and assign images or videos you've uploaded to your workspace</div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm panel-full-btn" type="button" @click="openMediaPicker('visual')">
+                      Open Library
+                    </button>
+                  </template>
+                  <div v-if="visualSwapError" class="panel-error-copy">{{ visualSwapError }}</div>
+                </template>
+
+                <!-- Audiogram -->
+                <template v-else-if="selectedSwapVisualSource === 'Audiogram'">
+                  <!-- Apply button if not yet set -->
+                  <div v-if="activeScene?.visual_type !== 'waveform'" class="audiogram-apply-state">
+                    <div class="asset-empty-state">
+                      <div class="asset-empty-icon">🎙️</div>
+                      <div class="asset-empty-title">Audiogram</div>
+                      <div class="asset-empty-sub">Animated waveform visualization — great for podcast clips and voice-led scenes</div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm panel-full-btn" type="button" @click="saveAudiogramSettings({ apply: true })">Apply Audiogram</button>
                   </div>
+
+                  <template v-else>
+                    <!-- Design picker -->
+                    <div class="micro-label" style="margin-top:10px;margin-bottom:6px;">
+                      Design
+                      <span v-if="audiogramSaveState === 'saved'" style="opacity:.45;font-weight:400;margin-left:4px;">saved</span>
+                    </div>
+                    <div class="ag-style-grid">
+                      <button
+                        v-for="s in AUDIOGRAM_STYLES" :key="s.key"
+                        :class="['ag-style-opt', audiogramStyle === s.key ? 'selected' : '']"
+                        type="button"
+                        @click="selectAudiogramStyle(s.key)"
+                      >
+                        <!-- Mini preview of each style -->
+                        <div class="ag-style-mini" :style="audiogramBgStyle">
+                          <!-- bars -->
+                          <template v-if="s.key === 'bars'">
+                            <span v-for="(h, i) in [0.4,0.7,0.55,0.9,0.6,0.8,0.45]" :key="i" class="ag-mini-bar" :style="{ height: `${h*100}%`, background: audiogramColor }"></span>
+                          </template>
+                          <!-- mirror -->
+                          <template v-else-if="s.key === 'mirror'">
+                            <span v-for="(h, i) in [0.4,0.7,0.55,0.9,0.6,0.8,0.45]" :key="i" class="ag-mini-bar ag-mini-mirror" :style="{ height: `${h*100}%`, background: audiogramColor }"></span>
+                          </template>
+                          <!-- circle -->
+                          <template v-else-if="s.key === 'circle'">
+                            <svg viewBox="0 0 40 40" width="38" height="38" style="overflow:visible">
+                              <g transform="translate(20,20)">
+                                <line v-for="(h, i) in [0.5,0.8,0.6,0.9,0.55,0.75,0.65,0.85]" :key="i" :transform="`rotate(${i*45})`" x1="0" y1="7" :x2="0" :y2="`${7+h*10}`" :stroke="audiogramColor" stroke-width="2.5" stroke-linecap="round" />
+                              </g>
+                            </svg>
+                          </template>
+                          <!-- minimal -->
+                          <template v-else-if="s.key === 'minimal'">
+                            <span v-for="(h, i) in [0.3,0.5,0.4,0.7,0.5,0.6,0.35,0.55,0.45,0.65]" :key="i" class="ag-mini-minimal" :style="{ height: `${h*100}%`, background: audiogramColor }"></span>
+                          </template>
+                        </div>
+                        <div class="ag-style-label">{{ s.label }}</div>
+                      </button>
+                    </div>
+
+                    <!-- Color presets + custom -->
+                    <div class="micro-label" style="margin-top:12px;margin-bottom:6px;">Color</div>
+                    <div class="ag-colors">
+                      <button
+                        v-for="c in AUDIOGRAM_COLORS" :key="c"
+                        :class="['ag-color-swatch', audiogramColor === c ? 'selected' : '']"
+                        :style="{ background: c }"
+                        type="button"
+                        @click="selectAudiogramColor(c)"
+                        :title="c"
+                      ></button>
+                      <label class="ag-color-custom" title="Custom color">
+                        <input type="color" :value="audiogramColor" @input="e => { audiogramColor = e.target.value; queueAudiogramColorSave(); }" />
+                        <span class="ag-color-custom-icon">＋</span>
+                      </label>
+                    </div>
+
+                    <!-- Background -->
+                    <div class="micro-label" style="margin-top:12px;margin-bottom:6px;">Background</div>
+                    <div class="ag-bg-row">
+                      <button
+                        v-for="bg in AUDIOGRAM_BACKGROUNDS" :key="bg.key"
+                        :class="['ag-bg-opt', audiogramBg === bg.key ? 'selected' : '']"
+                        :style="{ background: bg.css }"
+                        type="button"
+                        @click="selectAudiogramBg(bg.key)"
+                      >{{ bg.label }}</button>
+                    </div>
+
+                    <!-- Reset to stock -->
+                    <button class="btn btn-ghost btn-sm panel-full-btn" style="margin-top:12px;opacity:.5;" type="button" @click="selectedSwapVisualSource = 'Stock Video'; swapVisual()">
+                      Switch to Video instead
+                    </button>
+                  </template>
                 </template>
               </div>
             </div>
@@ -3542,6 +4036,73 @@ onBeforeUnmount(() => {
                 <div v-if="isAudioLoading" class="voice-loading-copy">
                   Loading audio...
                 </div>
+
+                <!-- Custom audio from assets -->
+                <div class="micro-label" style="margin-top:12px;margin-bottom:6px;">
+                  Custom audio
+                  <span style="font-weight:400;opacity:.5;"> (replaces generated voice)</span>
+                </div>
+                <button
+                  v-if="customAudioAssets.length === 0 && !customAudioLoading"
+                  class="btn btn-ghost btn-sm panel-full-btn"
+                  type="button"
+                  @click="loadCustomAudioAssets"
+                >Browse audio assets</button>
+                <template v-else>
+                  <input v-model="customAudioSearch" class="asset-search-input" placeholder="Search audio…" style="margin-bottom:6px;" />
+                  <div v-if="customAudioLoading" class="asset-loading">Loading...</div>
+                  <div v-else-if="customAudioAssetsFiltered.length === 0" class="asset-empty">No audio assets found.</div>
+                  <div v-else class="custom-audio-list">
+                    <div
+                      v-for="asset in customAudioAssetsFiltered"
+                      :key="asset.id"
+                      :class="['custom-audio-row', activeScene?.voice_settings?.audio_asset_id === asset.id && activeScene?.voice_settings?.custom_audio ? 'active' : '']"
+                      @click="assignCustomAudio(asset)"
+                    >
+                      <span class="custom-audio-icon">🎵</span>
+                      <span class="custom-audio-name">{{ asset.title || 'Untitled' }}</span>
+                      <span v-if="activeScene?.voice_settings?.audio_asset_id === asset.id && activeScene?.voice_settings?.custom_audio" class="custom-audio-check">✓</span>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Sounds panel — per-scene SFX -->
+            <div :class="`panel-section ${panelState.sounds ? 'collapsed' : ''}`">
+              <div class="panel-section-header" @click="togglePanel('sounds')">
+                <div class="panel-label-row">
+                  <div class="panel-label panel-label-tight">Sounds</div>
+                  <span v-if="activeSceneSoundAsset" class="panel-badge new">Set</span>
+                  <span class="panel-scope-hint">Per scene</span>
+                </div>
+                <div class="panel-chevron">▾</div>
+              </div>
+              <div class="panel-section-body">
+                <!-- Currently assigned sound -->
+                <template v-if="activeSceneSoundAsset">
+                  <div class="sound-current-row">
+                    <span class="sound-current-icon">🔊</span>
+                    <div class="sound-current-info">
+                      <div class="sound-current-name">{{ activeSceneSoundAsset.title }}</div>
+                      <div class="sound-current-meta">Sound effect · This scene</div>
+                    </div>
+                    <button class="sound-remove-btn" type="button" title="Remove sound" @click="assignSceneSound(null)">✕</button>
+                  </div>
+                  <button class="btn btn-ghost btn-sm panel-full-btn" type="button" @click="openMediaPicker('sound')">
+                    Change Sound
+                  </button>
+                </template>
+                <template v-else>
+                  <div class="asset-empty-state">
+                    <div class="asset-empty-icon">🔊</div>
+                    <div class="asset-empty-title">No sound effect</div>
+                    <div class="asset-empty-sub">Add a sound that plays alongside the voice for this scene</div>
+                  </div>
+                  <button class="btn btn-ghost btn-sm panel-full-btn" type="button" @click="openMediaPicker('sound')">
+                    Pick Sound
+                  </button>
+                </template>
               </div>
             </div>
 
@@ -3552,7 +4113,10 @@ onBeforeUnmount(() => {
                 class="panel-section-header"
                 @click="togglePanel('captions')"
               >
-                <div class="panel-label panel-label-tight">Captions</div>
+                <div class="panel-label-row">
+                  <div class="panel-label panel-label-tight">Captions</div>
+                  <span class="panel-scope-hint">All scenes</span>
+                </div>
                 <div class="panel-chevron">▾</div>
               </div>
               <div class="panel-section-body">
@@ -3644,6 +4208,51 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </div>
+
+                <!-- Caption text color -->
+                <div class="micro-label" style="margin-top:12px;margin-bottom:6px;">Text color</div>
+                <div class="caption-color-row">
+                  <div
+                    v-for="swatch in CAPTION_COLOR_SWATCHES"
+                    :key="'tc-'+swatch"
+                    :class="['color-swatch', captionColorDraft === swatch ? 'active' : '']"
+                    :style="{ background: swatch, borderColor: swatch === '#ffffff' ? '#555' : swatch }"
+                    @click="captionColorDraft = swatch"
+                  ></div>
+                  <label class="color-custom-wrap" title="Custom color">
+                    <span class="color-custom-preview color-custom-square" :style="{ background: captionColorDraft }"></span>
+                    <input type="color" v-model="captionColorDraft" class="color-custom-input" />
+                  </label>
+                </div>
+
+                <!-- Highlight color -->
+                <div class="micro-label" style="margin-top:10px;margin-bottom:6px;">Highlight color</div>
+                <div class="caption-color-row">
+                  <div
+                    v-for="swatch in CAPTION_COLOR_SWATCHES"
+                    :key="'hc-'+swatch"
+                    :class="['color-swatch', captionHighlightColorDraft === swatch ? 'active' : '']"
+                    :style="{ background: swatch, borderColor: swatch === '#ffffff' ? '#555' : swatch }"
+                    @click="captionHighlightColorDraft = swatch"
+                  ></div>
+                  <label class="color-custom-wrap" title="Custom highlight color">
+                    <span class="color-custom-preview color-custom-square" :style="{ background: captionHighlightColorDraft }"></span>
+                    <input type="color" v-model="captionHighlightColorDraft" class="color-custom-input" />
+                  </label>
+                </div>
+
+                <!-- Caption size -->
+                <div class="micro-label" style="margin-top:10px;margin-bottom:6px;">Text size</div>
+                <div class="caption-size-row">
+                  <button
+                    v-for="sz in [['small','S'],['medium','M'],['large','L'],['xlarge','XL']]"
+                    :key="sz[0]"
+                    type="button"
+                    :class="['size-opt', captionSizeDraft === sz[0] ? 'active' : '']"
+                    @click="captionSizeDraft = sz[0]"
+                  >{{ sz[1] }}</button>
+                </div>
+
               </div>
             </div>
 
@@ -3653,65 +4262,77 @@ onBeforeUnmount(() => {
               <div class="panel-section-header" @click="togglePanel('music')">
                 <div class="panel-label-row">
                   <div class="panel-label panel-label-tight">Music</div>
-                  <span class="panel-badge new">New</span>
+                  <span class="panel-scope-hint">All scenes</span>
                 </div>
                 <div class="panel-chevron">▾</div>
               </div>
               <div class="panel-section-body">
-                <div class="hint-box">
-                  Music plays under narration for the full video. Duck volume kicks in automatically during voice segments.
-                </div>
-
+                <!-- Selected track summary -->
                 <div class="music-selected-summary">
                   <div class="music-selected-copy">
-                    <span class="music-selected-label">Selected</span>
+                    <span class="music-selected-label">Now</span>
                     <strong>{{ activeMusicTrack ? activeMusicTrack.title : "No music" }}</strong>
                   </div>
                   <span>{{ activeMusicTrack ? trackMoodLabel(activeMusicTrack) : "Silence" }}</span>
                 </div>
 
-                <!-- Mood filter chips -->
-                <div class="music-filter-row">
-                  <div v-for="mood in ['all','dark','upbeat','calm','epic']" :key="mood"
-                    :class="['filter-chip', musicMoodFilter === mood ? 'active' : '']"
-                    @click="musicMoodFilter = mood"
-                  >{{ mood.charAt(0).toUpperCase() + mood.slice(1) }}</div>
+                <!-- Music panel tabs -->
+                <div class="music-panel-tabs">
+                  <button type="button"
+                    :class="['music-panel-tab', musicPanelTab === 'library' ? 'active' : '']"
+                    @click="musicPanelTab = 'library'"
+                  >Library</button>
+                  <button type="button"
+                    :class="['music-panel-tab', musicPanelTab === 'uploads' ? 'active' : '']"
+                    @click="musicPanelTab = 'uploads'; openMediaPicker('music')"
+                  >My Uploads</button>
                 </div>
 
-                <!-- Track list -->
-                <div class="music-track-scroll">
-                  <!-- No music option -->
-                  <div :class="['music-track', selectedMusicTrackId === null ? 'selected' : '']"
-                    @click="selectMusicTrack(null)">
-                    <div class="music-track-thumb" style="background:var(--bg-elevated);">🚫</div>
-                    <div class="music-track-info">
-                      <div class="music-track-name">No music</div>
-                      <div class="music-track-meta">Silence</div>
-                    </div>
-                    <button class="music-play-btn" type="button" disabled @click.stop>▶</button>
+                <!-- Library tab -->
+                <template v-if="musicPanelTab === 'library'">
+                  <!-- Mood filter chips -->
+                  <div class="music-filter-row">
+                    <div v-for="mood in ['all','dark','upbeat','calm','epic']" :key="mood"
+                      :class="['filter-chip', musicMoodFilter === mood ? 'active' : '']"
+                      @click="musicMoodFilter = mood"
+                    >{{ mood.charAt(0).toUpperCase() + mood.slice(1) }}</div>
                   </div>
-                  <div v-for="group in musicTrackGroups" :key="group.mood" class="music-category">
-                    <div class="music-category-title">
-                      <span>{{ moodEmoji(group.mood) }}</span>
-                      {{ moodLabel(group.mood) }}
+
+                  <!-- Track list -->
+                  <div class="music-track-scroll">
+                    <!-- No music option -->
+                    <div :class="['music-track', selectedMusicTrackId === null ? 'selected' : '']"
+                      @click="selectMusicTrack(null)">
+                      <div class="music-track-thumb" style="background:var(--bg-elevated);">🚫</div>
+                      <div class="music-track-info">
+                        <div class="music-track-name">No music</div>
+                        <div class="music-track-meta">Silence</div>
+                      </div>
+                      <button class="music-play-btn" type="button" disabled @click.stop>▶</button>
                     </div>
-                    <div class="music-track-list">
-                      <div v-for="track in group.tracks" :key="track.id"
-                        :class="['music-track', selectedMusicTrackId === track.id ? 'selected' : '']"
-                        @click="selectMusicTrack(track.id)">
-                        <div class="music-track-thumb" :style="{ background: moodGradient((track.tags ?? []).find(t => t !== 'music')) }">{{ moodEmoji((track.tags ?? []).find(t => t !== 'music')) }}</div>
-                        <div class="music-track-info">
-                          <div class="music-track-name">{{ track.title }}</div>
-                          <div class="music-track-meta">{{ trackMoodLabel(track) }}</div>
+                    <div v-for="group in musicTrackGroups" :key="group.mood" class="music-category">
+                      <div class="music-category-title">
+                        <span>{{ moodEmoji(group.mood) }}</span>
+                        {{ moodLabel(group.mood) }}
+                      </div>
+                      <div class="music-track-list">
+                        <div v-for="track in group.tracks" :key="track.id"
+                          :class="['music-track', selectedMusicTrackId === track.id ? 'selected' : '']"
+                          @click="selectMusicTrack(track.id)">
+                          <div class="music-track-thumb" :style="{ background: moodGradient((track.tags ?? []).find(t => t !== 'music')) }">{{ moodEmoji((track.tags ?? []).find(t => t !== 'music')) }}</div>
+                          <div class="music-track-info">
+                            <div class="music-track-name">{{ track.title }}</div>
+                            <div class="music-track-meta">{{ trackMoodLabel(track) }}</div>
+                          </div>
+                          <div class="music-track-duration">{{ formatTrackDuration(track.duration_seconds) }}</div>
+                          <button class="music-play-btn" type="button" @click.stop="toggleMusicAudition(track)">
+                            {{ auditionMusicTrackId === track.id ? "⏸" : "▶" }}
+                          </button>
                         </div>
-                        <div class="music-track-duration">{{ formatTrackDuration(track.duration_seconds) }}</div>
-                        <button class="music-play-btn" type="button" @click.stop="toggleMusicAudition(track)">
-                          {{ auditionMusicTrackId === track.id ? "⏸" : "▶" }}
-                        </button>
                       </div>
                     </div>
                   </div>
-                </div>
+                </template>
 
                 <!-- Music controls -->
                 <div class="music-controls">
@@ -3749,7 +4370,6 @@ onBeforeUnmount(() => {
                   <div v-if="musicSaveError" class="micro-error">{{ musicSaveError }}</div>
                   <div v-if="musicSaveState === 'saved'" class="micro-copy" style="margin-top:4px;">Saved</div>
                 </div>
-                <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;" type="button">Browse Full Music Library →</button>
               </div>
             </div>
 
@@ -3806,6 +4426,22 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
+        <EditorTimeline
+          v-if="timelineOpen"
+          style="height: 210px;"
+          :scenes="scenes"
+          :active-scene-id="activeSceneId"
+          :play-progress="playProgress"
+          :total-duration="totalVideoDuration"
+          :is-playing="isPreviewPlaying"
+          :music-track="activeMusicTrack"
+          :preview-mode="previewMode"
+          @scene-select="selectScene"
+          @seek="timelineSeek"
+          @reorder="timelineReorder"
+          @close="timelineOpen = false"
+        />
+        </div><!-- end editor-body -->
       </div>
     </div>
 
@@ -3895,6 +4531,16 @@ onBeforeUnmount(() => {
       @ended="auditionMusicTrackId = null"
       @pause="auditionMusicTrackId = null"
     ></audio>
+
+    <MediaPickerModal
+      :mode="mediaPickerMode"
+      :visible="mediaPickerVisible"
+      :music-tracks="musicTracks"
+      :selected-music-track-id="selectedMusicTrackId"
+      :current-asset-id="mediaPickerMode === 'visual' ? (activeScene?.visual_asset_id ?? null) : null"
+      @close="mediaPickerVisible = false"
+      @select="handleMediaPickerSelect"
+    />
   </main>
 </template>
 
@@ -3977,6 +4623,10 @@ button {
 .main {
   margin-left: 220px;
   min-height: 100vh;
+  transition: margin-left 0.2s ease;
+}
+.main.sidebar-collapsed {
+  margin-left: 56px;
 }
 
 .topbar {
@@ -4053,6 +4703,18 @@ button {
 
 .btn-back {
   white-space: nowrap;
+}
+
+.btn-timeline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.btn-timeline-toggle.active {
+  background: rgba(255, 107, 53, 0.08);
+  border-color: rgba(255, 107, 53, 0.3);
+  color: var(--accent);
 }
 
 .topbar-title {
@@ -4372,9 +5034,17 @@ button {
   border: 2px solid var(--bg-deep);
 }
 
+.editor-body {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  overflow: hidden;
+}
+
 .editor {
   display: flex;
-  height: calc(100vh - 64px);
+  flex: 1;
+  min-height: 0;
 }
 
 .editor-sidebar,
@@ -4552,6 +5222,14 @@ button {
   font-size: 11px;
   color: #fbbf24;
   opacity: 0.85;
+}
+.current-style-note {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+}
+.current-style-note strong {
+  color: var(--color-text-secondary);
 }
 
 /* Font picker */
@@ -5036,8 +5714,7 @@ button {
   gap: 18px;
 }
 
-.text-only-label,
-.waveform-label {
+.text-only-label {
   font-family: "Space Mono", monospace;
   font-size: 11px;
   letter-spacing: 0.18em;
@@ -5055,33 +5732,197 @@ button {
 .waveform-shell {
   width: 100%;
   height: 100%;
-  border-radius: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background:
-    radial-gradient(circle at bottom right, rgba(85, 114, 255, 0.22), transparent 30%),
-    linear-gradient(180deg, rgba(14, 15, 24, 0.96), rgba(20, 16, 38, 0.98));
-  padding: 28px 24px;
+  padding: 28px 20px;
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 28px;
+  gap: 24px;
 }
 
-.waveform-bars {
-  height: 220px;
+/* ── Classic bars ── */
+.ag-bars {
+  height: 200px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
+  width: 100%;
+}
+.ag-bar {
+  flex: 1;
+  max-width: 18px;
+  min-height: 14%;
+  border-radius: 4px 4px 0 0;
+  animation: ag-bounce 1.5s ease-in-out infinite alternate;
 }
 
-.waveform-bar {
-  width: 18px;
-  min-height: 18%;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #ff6b35 0%, #ffbe55 100%);
-  box-shadow: 0 0 18px rgba(255, 107, 53, 0.24);
+/* ── Mirror wave ── */
+.ag-mirror {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
 }
+.ag-mirror-bar {
+  flex: 1;
+  max-width: 16px;
+  border-radius: 999px;
+  animation: ag-bounce 1.5s ease-in-out infinite alternate;
+}
+
+/* ── Radial / Circle ── */
+.ag-circle-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Minimal ── */
+.ag-minimal {
+  height: 120px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+}
+.ag-minimal-bar {
+  flex: 1;
+  max-width: 8px;
+  min-height: 8%;
+  border-radius: 2px 2px 0 0;
+  animation: ag-bounce 1.5s ease-in-out infinite alternate;
+}
+
+/* ── Animations ── */
+@keyframes ag-bounce {
+  0%   { transform: scaleY(0.55); }
+  100% { transform: scaleY(1); }
+}
+@keyframes ag-rad-pulse {
+  0%   { transform: scaleY(0.5); opacity: 0.6; }
+  100% { transform: scaleY(1); opacity: 1; }
+}
+
+/* ── Panel: audiogram settings ── */
+.ag-style-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.ag-style-opt {
+  background: var(--color-bg-elevated);
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 6px 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.15s;
+}
+.ag-style-opt:hover { border-color: var(--color-border-active); }
+.ag-style-opt.selected { border-color: var(--color-accent); }
+.ag-style-mini {
+  width: 100%;
+  height: 44px;
+  border-radius: 5px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+  padding: 4px 4px 3px;
+}
+.ag-mini-bar {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  opacity: 0.9;
+}
+.ag-mini-mirror {
+  border-radius: 999px;
+  align-self: center;
+}
+.ag-mini-minimal {
+  flex: 1;
+  max-width: 4px;
+  border-radius: 1px 1px 0 0;
+  opacity: 0.85;
+}
+.ag-style-label {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+/* Color swatches */
+.ag-colors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ag-color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.12s;
+  padding: 0;
+}
+.ag-color-swatch:hover { transform: scale(1.15); }
+.ag-color-swatch.selected { border-color: #fff; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+.ag-color-custom {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--color-border-active);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.ag-color-custom input[type="color"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.ag-color-custom-icon {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* Background row */
+.ag-bg-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+.ag-bg-opt {
+  height: 32px;
+  border-radius: 6px;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255,255,255,.7);
+  letter-spacing: .04em;
+  transition: border-color 0.12s;
+}
+.ag-bg-opt:hover { border-color: var(--color-border-active); }
+.ag-bg-opt.selected { border-color: #fff; }
 
 .preview-loading {
   position: absolute;
@@ -5257,6 +6098,18 @@ button {
 .panel-badge.new {
   background: rgba(167, 139, 250, 0.15);
   color: #a78bfa;
+}
+
+.panel-scope-hint {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--color-text-muted);
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 2px 7px;
 }
 
 .visual-type-tabs {
@@ -5735,6 +6588,118 @@ select.control-value {
   line-height: 1.5;
 }
 
+/* Asset current preview (My Assets tab) */
+.asset-current-preview {
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+.asset-current-thumb {
+  width: 100%;
+  height: 160px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+  position: relative;
+  margin-bottom: 8px;
+}
+.asset-current-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.asset-current-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-card);
+}
+.asset-current-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0,0,0,.7);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-text-muted);
+}
+.asset-current-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.asset-current-type {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* Asset empty state */
+.asset-empty-state {
+  text-align: center;
+  padding: 20px 8px 14px;
+}
+.asset-empty-icon { font-size: 24px; margin-bottom: 8px; }
+.asset-empty-title { font-size: 13px; font-weight: 700; color: var(--color-text-primary); margin-bottom: 4px; }
+.asset-empty-sub { font-size: 11px; color: var(--color-text-muted); line-height: 1.5; }
+
+/* Sounds panel */
+.sound-current-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 10px;
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+.sound-current-icon { font-size: 16px; flex-shrink: 0; }
+.sound-current-info { flex: 1; min-width: 0; }
+.sound-current-name { font-size: 12px; font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sound-current-meta { font-size: 11px; color: var(--color-text-muted); margin-top: 1px; }
+.sound-remove-btn {
+  width: 22px; height: 22px; border-radius: 50%; border: none;
+  background: rgba(255,255,255,.06); color: var(--color-text-muted);
+  cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: .15s;
+}
+.sound-remove-btn:hover { background: rgba(255,60,60,.15); color: #ef4444; }
+
+/* Music panel tabs */
+.music-panel-tabs {
+  display: flex;
+  background: var(--color-bg-deep, var(--bg-deep));
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.music-panel-tab {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-text-muted, var(--text-muted));
+  background: transparent;
+  border: none;
+  transition: .15s;
+}
+.music-panel-tab.active {
+  background: var(--color-bg-panel, var(--bg-panel));
+  color: var(--color-text-primary, var(--text-primary));
+}
+.music-panel-tab:hover:not(.active) {
+  color: var(--color-text-primary, var(--text-primary));
+}
+
 /* Mood filter chips */
 .filter-chip {
   padding: 6px 12px;
@@ -6185,6 +7150,74 @@ select.control-value {
 .style-opt.selected .style-opt-name {
   color: #a78bfa;
 }
+
+/* Asset image browser */
+.asset-search-input {
+  width: 100%; box-sizing: border-box; height: 32px; border-radius: 6px;
+  border: 1px solid var(--color-border); background: var(--color-bg-elevated);
+  color: var(--color-text-primary); padding: 0 8px; font-size: 12px;
+}
+.asset-search-input:focus { outline: none; border-color: var(--color-accent); }
+.asset-loading { font-size: 12px; color: var(--color-text-muted); padding: 12px 0; text-align: center; }
+.asset-empty { font-size: 12px; color: var(--color-text-muted); padding: 20px 0; text-align: center; }
+.asset-image-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 8px; max-height: 240px; overflow-y: auto;
+}
+.asset-thumb {
+  position: relative; aspect-ratio: 1; border-radius: 5px; overflow: hidden;
+  border: 2px solid transparent; cursor: pointer; transition: 0.12s;
+}
+.asset-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.asset-thumb:hover { border-color: rgba(167,139,250,.5); }
+.asset-thumb.active { border-color: #a78bfa; }
+.asset-thumb-badge {
+  position: absolute; top: 3px; right: 3px; width: 16px; height: 16px;
+  border-radius: 50%; background: #a78bfa; color: #fff; font-size: 9px;
+  display: flex; align-items: center; justify-content: center; font-weight: 700;
+}
+
+/* Custom audio list */
+.custom-audio-list { max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.custom-audio-row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px;
+  border: 1px solid var(--color-border); cursor: pointer; transition: 0.12s;
+  font-size: 12px; color: var(--color-text-secondary);
+}
+.custom-audio-row:hover { border-color: rgba(167,139,250,.4); }
+.custom-audio-row.active { border-color: #a78bfa; background: rgba(167,139,250,.08); color: var(--color-text-primary); }
+.custom-audio-icon { flex-shrink: 0; }
+.custom-audio-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.custom-audio-check { flex-shrink: 0; color: #a78bfa; font-weight: 700; }
+
+/* Caption color + size */
+.caption-color-row { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.color-swatch {
+  width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent; flex-shrink: 0; transition: 0.12s;
+}
+.color-swatch:hover { transform: scale(1.15); }
+.color-swatch.active { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.color-custom-wrap {
+  position: relative; width: 22px; height: 22px; cursor: pointer; flex-shrink: 0;
+}
+.color-custom-preview {
+  display: block; width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--color-border); pointer-events: none;
+}
+.color-custom-square {
+  border-radius: 4px;
+}
+.color-custom-input {
+  position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; padding: 0;
+}
+.caption-size-row { display: flex; gap: 5px; }
+.size-opt {
+  flex: 1; height: 28px; border-radius: 6px; border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated); color: var(--color-text-muted);
+  font-size: 11px; font-family: var(--font-mono); cursor: pointer; transition: 0.12s;
+}
+.size-opt:hover { border-color: rgba(167,139,250,.4); }
+.size-opt.active { border-color: #a78bfa; background: rgba(167,139,250,.1); color: #a78bfa; }
 
 /* AI image result preview */
 .ai-image-result {

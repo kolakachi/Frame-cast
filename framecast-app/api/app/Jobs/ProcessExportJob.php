@@ -15,8 +15,9 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
+use App\Services\Media\StorageService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
 
@@ -39,6 +40,11 @@ class ProcessExportJob implements ShouldQueue
         $exportJob = ExportJob::query()->find($this->exportJobId);
 
         if (! $exportJob) {
+            return;
+        }
+
+        // Already completed on a prior attempt — nothing to do.
+        if ($exportJob->status === 'completed' && $exportJob->output_asset_id) {
             return;
         }
 
@@ -81,6 +87,19 @@ class ProcessExportJob implements ShouldQueue
             throw new \RuntimeException('Unable to allocate export temp directory.');
         }
 
+        try {
+            $this->processInTempDir($exportJob, $project, $scenes, $dimensions, $tempDir);
+        } finally {
+            $this->cleanupTempDir($tempDir);
+        }
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Scene>  $scenes
+     * @param  array{width:int,height:int}  $dimensions
+     */
+    private function processInTempDir(ExportJob $exportJob, Project $project, $scenes, array $dimensions, string $tempDir): void
+    {
         $outputFile = $tempDir.'/output.mp4';
 
         $assetIds = $scenes
@@ -176,7 +195,8 @@ class ProcessExportJob implements ShouldQueue
             }
         }
 
-        $storagePath = 'exports/'.Str::uuid().'.mp4';
+        // Deterministic path so retries overwrite rather than leak a second file.
+        $storagePath = 'exports/export-'.$exportJob->getKey().'.mp4';
         $stream = fopen($outputFile, 'rb');
 
         if (! is_resource($stream)) {
@@ -184,38 +204,48 @@ class ProcessExportJob implements ShouldQueue
             throw new \RuntimeException('Unable to open rendered export output.');
         }
 
-        Storage::disk('b2')->put($storagePath, $stream, [
+        $exportStorageUrl = app(StorageService::class)->put($storagePath, $stream, [
             'ContentType' => 'video/mp4',
         ]);
         fclose($stream);
 
         $fileSize = filesize($outputFile) ?: null;
         @unlink($outputFile);
-        @rmdir($tempDir);
 
-        $asset = Asset::query()->create([
-            'workspace_id' => $exportJob->workspace_id,
-            'channel_id' => null,
-            'asset_type' => 'video',
-            'title' => $exportJob->file_name,
-            'description' => 'Rendered export output',
-            'storage_url' => 'b2://'.$storagePath,
-            'duration_seconds' => (float) $scenes->sum(fn (Scene $scene): float => (float) ($scene->duration_seconds ?: 0)),
-            'dimensions_json' => $dimensions,
-            'file_size_bytes' => $fileSize,
-            'mime_type' => 'video/mp4',
-            'tags' => ['export', $exportJob->aspect_ratio, $exportJob->language],
-            'usage_count' => 1,
-            'status' => 'active',
-            'created_by_user_id' => null,
-        ]);
+        $totalDurationSeconds = (float) $scenes->sum(fn (Scene $scene): float => (float) ($scene->duration_seconds ?: 0));
 
-        $exportJob->forceFill([
-            'status' => 'completed',
-            'progress_percent' => 100,
-            'completed_at' => now(),
-            'output_asset_id' => $asset->getKey(),
-        ])->save();
+        DB::transaction(function () use ($exportJob, $storagePath, $fileSize, $totalDurationSeconds, $dimensions): void {
+            $fresh = ExportJob::query()->lockForUpdate()->find($exportJob->getKey());
+
+            // Another attempt already completed — skip asset creation.
+            if ($fresh && $fresh->output_asset_id) {
+                return;
+            }
+
+            $asset = Asset::query()->create([
+                'workspace_id' => $exportJob->workspace_id,
+                'channel_id' => null,
+                'asset_type' => 'video',
+                'title' => $exportJob->file_name,
+                'description' => 'Rendered export output',
+                'storage_url' => $exportStorageUrl,
+                'duration_seconds' => $totalDurationSeconds,
+                'dimensions_json' => $dimensions,
+                'file_size_bytes' => $fileSize,
+                'mime_type' => 'video/mp4',
+                'tags' => ['export', $exportJob->aspect_ratio, $exportJob->language],
+                'usage_count' => 1,
+                'status' => 'active',
+                'created_by_user_id' => null,
+            ]);
+
+            $exportJob->forceFill([
+                'status' => 'completed',
+                'progress_percent' => 100,
+                'completed_at' => now(),
+                'output_asset_id' => $asset->getKey(),
+            ])->save();
+        });
 
         if ($exportJob->variant_id) {
             Variant::query()
@@ -231,6 +261,21 @@ class ProcessExportJob implements ShouldQueue
             100,
             'Export complete.'
         );
+    }
+
+    private function cleanupTempDir(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+
+        foreach (glob($dir.'/*') ?: [] as $file) {
+            if (is_file($file)) {
+                @unlink($file);
+            }
+        }
+
+        @rmdir($dir);
     }
 
     public function failed(\Throwable $exception): void
@@ -292,6 +337,11 @@ class ProcessExportJob implements ShouldQueue
         float $totalSeconds
     ): string {
         $duration = max(1.0, (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0));
+
+        if ($scene->visual_type === 'waveform') {
+            return $this->renderAudiogramSegment($scene, $audioAsset, $dimensions, $tempDir, $index, $elapsedSeconds, $totalSeconds);
+        }
+
         $segmentPath = sprintf('%s/segment-%03d.mp4', $tempDir, $index + 1);
         $captionSettings = is_array($scene->caption_settings_json) ? $scene->caption_settings_json : [];
         $captionEnabled = ($captionSettings['enabled'] ?? true) !== false;
@@ -299,6 +349,9 @@ class ProcessExportJob implements ShouldQueue
         $captionPosition = (string) ($captionSettings['position'] ?? 'bottom_third');
         $captionFont = (string) ($captionSettings['font'] ?? 'Bebas Neue');
         $captionHighlightMode = (string) ($captionSettings['highlight_mode'] ?? 'keywords');
+        $captionColor = (string) ($captionSettings['color'] ?? '#ffffff');
+        $captionSize = (string) ($captionSettings['size'] ?? 'medium');
+        $captionHighlightColor = (string) ($captionSettings['highlight_color'] ?? '#ff6b35');
         $captionText = (string) ($scene->script_text ?: $scene->label ?: 'Framecast');
 
         // 'none' mode disables captions entirely
@@ -372,7 +425,10 @@ class ProcessExportJob implements ShouldQueue
                     $dimensions,
                     $assFile,
                     $captionHighlightMode,
-                    $this->captionTimingWordsFromAsset($audioAsset)
+                    $this->captionTimingWordsFromAsset($audioAsset),
+                    $captionColor,
+                    $captionSize,
+                    $captionHighlightColor,
                 );
                 $filters[] = "subtitles={$assFile}";
                 $cleanupPaths[] = $assFile;
@@ -436,6 +492,147 @@ class ProcessExportJob implements ShouldQueue
                 '-shortest',
                 '-movflags',
                 '+faststart',
+                $segmentPath
+            );
+
+            $process = new Process($command);
+            $process->setTimeout(180);
+            $process->mustRun();
+
+            return $segmentPath;
+        } finally {
+            foreach ($cleanupPaths as $cleanupPath) {
+                if (is_file($cleanupPath)) {
+                    @unlink($cleanupPath);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param array{width:int,height:int} $dimensions
+     */
+    private function renderAudiogramSegment(
+        Scene $scene,
+        ?Asset $audioAsset,
+        array $dimensions,
+        string $tempDir,
+        int $index,
+        float $elapsedSeconds,
+        float $totalSeconds
+    ): string {
+        $imgSettings = is_array($scene->image_generation_settings_json) ? $scene->image_generation_settings_json : [];
+        $audiogramStyle = (string) ($imgSettings['audiogram_style'] ?? 'bars');
+        $colorHex = ltrim(trim((string) ($imgSettings['audiogram_color'] ?? 'ff6b35')), '#');
+        $colorHex = ctype_xdigit($colorHex) && strlen($colorHex) === 6 ? $colorHex : 'ff6b35';
+        $ffmpegColor = '0x'.$colorHex;
+
+        $bgHex = match ((string) ($imgSettings['audiogram_bg'] ?? 'dark')) {
+            'black'  => '000000',
+            'purple' => '1a0a2e',
+            'ocean'  => '0a1628',
+            default  => '0d0d1a',
+        };
+
+        $W = $dimensions['width'];
+        $H = $dimensions['height'];
+        $vizH = (int) round($H * 0.4);
+
+        $captionSettings = is_array($scene->caption_settings_json) ? $scene->caption_settings_json : [];
+        $captionEnabled = ($captionSettings['enabled'] ?? true) !== false;
+        $captionHighlightMode = (string) ($captionSettings['highlight_mode'] ?? 'keywords');
+        if ($captionHighlightMode === 'none') {
+            $captionEnabled = false;
+        }
+        $captionStyle = (string) ($captionSettings['style_key'] ?? 'impact');
+        $captionPosition = (string) ($captionSettings['position'] ?? 'bottom_third');
+        $captionFont = (string) ($captionSettings['font'] ?? 'Bebas Neue');
+        $captionColor = (string) ($captionSettings['color'] ?? '#ffffff');
+        $captionSize = (string) ($captionSettings['size'] ?? 'medium');
+        $captionHighlightColor = (string) ($captionSettings['highlight_color'] ?? '#ff6b35');
+        $captionText = (string) ($scene->script_text ?: $scene->label ?: 'Framecast');
+
+        $segmentPath = sprintf('%s/segment-%03d.mp4', $tempDir, $index + 1);
+        $cleanupPaths = [];
+
+        try {
+            $duration = max(1.0, (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0));
+            $audioPath = null;
+
+            if ($audioAsset) {
+                $audioPath = $this->materializeAsset($audioAsset, $tempDir, 'audio-'.$index);
+                $cleanupPaths[] = $audioPath;
+                $duration = max(0.1, $this->probeMediaDuration($audioPath) ?? $duration);
+            }
+
+            $durationForFilter = $this->formatFilterDuration($duration);
+
+            $vizFilter = match ($audiogramStyle) {
+                'mirror'  => "showwaves=s={$W}x{$vizH}:mode=cline:split_channels=0:colors={$ffmpegColor}:scale=sqrt",
+                'circle'  => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=log:ascale=log:averaging=1:win_func=hanning",
+                'minimal' => "showwaves=s={$W}x{$vizH}:mode=line:split_channels=0:colors={$ffmpegColor}:scale=lin",
+                default   => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=lin:ascale=log:averaging=1:win_func=hanning",
+            };
+
+            $monoFont = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf';
+            $elapsedStr = $this->escapeDrawtext($this->formatClock($elapsedSeconds).' / '.$this->formatClock($totalSeconds));
+
+            $parts = [];
+            $parts[] = "color=c=#{$bgHex}:s={$W}x{$H}:r=30:d={$durationForFilter}[bg]";
+
+            if ($audioPath !== null) {
+                $parts[] = "[0:a]asplit=2[a_viz][a_out]";
+                $parts[] = "[a_viz]{$vizFilter}[viz_raw]";
+                $parts[] = "[viz_raw]format=rgba,colorkey=black:similarity=0.15:blend=0.0[viz_key]";
+                $parts[] = "[bg][viz_key]overlay=x=0:y=(H-h)/2[video_ovl]";
+                $audioOutMap = '[a_out]';
+            } else {
+                $parts[] = "[bg]copy[video_ovl]";
+                $audioOutMap = '0:a';
+            }
+
+            $parts[] = "[video_ovl]drawtext=fontfile={$monoFont}:text='FRAMECAST':fontcolor=white@0.3:fontsize=20:x=16:y=20[bg_wm]";
+            $parts[] = "[bg_wm]drawtext=fontfile={$monoFont}:text='{$elapsedStr}':fontcolor=white@0.5:fontsize=22:x=w-text_w-16:y=18:box=1:boxcolor=black@0.4:boxborderw=12[video_dt]";
+
+            $assFile = null;
+            if ($captionEnabled && trim($captionText) !== '') {
+                $assFile = sprintf('%s/caption-%03d.ass', $tempDir, $index);
+                $this->buildASSCaption(
+                    $captionText, $captionStyle, $captionPosition, $captionFont, $duration,
+                    $dimensions, $assFile, $captionHighlightMode,
+                    $this->captionTimingWordsFromAsset($audioAsset),
+                    $captionColor, $captionSize, $captionHighlightColor,
+                );
+                $cleanupPaths[] = $assFile;
+                $parts[] = "[video_dt]subtitles={$assFile}[outv]";
+                $videoOutMap = '[outv]';
+            } else {
+                $videoOutMap = '[video_dt]';
+            }
+
+            $filterComplex = implode(';', $parts);
+
+            $command = ['ffmpeg', '-y'];
+
+            if ($audioPath !== null) {
+                array_push($command, '-i', $audioPath);
+            } else {
+                array_push($command, '-f', 'lavfi', '-i', "anullsrc=r=44100:cl=stereo");
+                array_push($command, '-t', (string) $duration);
+            }
+
+            array_push(
+                $command,
+                '-filter_complex', $filterComplex,
+                '-map', $videoOutMap,
+                '-map', $audioOutMap,
+                '-r', '30',
+                '-c:v', 'libx264',
+                '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac',
+                '-ar', '44100',
+                '-shortest',
+                '-movflags', '+faststart',
                 $segmentPath
             );
 
@@ -616,9 +813,8 @@ class ProcessExportJob implements ShouldQueue
         $extension = pathinfo(parse_url($storageUrl, PHP_URL_PATH) ?: '', PATHINFO_EXTENSION) ?: 'bin';
         $targetPath = sprintf('%s/%s-%s.%s', $tempDir, $prefix, Str::uuid(), $extension);
 
-        if (str_starts_with($storageUrl, 'b2://')) {
-            $diskPath = ltrim(substr($storageUrl, 5), '/');
-            $stream = Storage::disk('b2')->readStream($diskPath);
+        if (app(StorageService::class)->isManagedUrl($storageUrl)) {
+            $stream = app(StorageService::class)->readStream($storageUrl);
 
             if (! is_resource($stream)) {
                 throw new \RuntimeException('Unable to read asset from storage.');
@@ -700,6 +896,25 @@ class ProcessExportJob implements ShouldQueue
         return implode("\n", array_slice($lines, 0, 5));
     }
 
+    private function hexToASS(string $hex): string
+    {
+        $hex = ltrim(trim($hex), '#');
+
+        if (strlen($hex) === 3) {
+            $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+        }
+
+        if (strlen($hex) !== 6 || ! ctype_xdigit($hex)) {
+            return '&H00FFFFFF&';
+        }
+
+        $r = strtoupper(substr($hex, 0, 2));
+        $g = strtoupper(substr($hex, 2, 2));
+        $b = strtoupper(substr($hex, 4, 2));
+
+        return "&H00{$b}{$g}{$r}&";
+    }
+
     private function buildHighlightedCaption(string $text, string $captionStyle): string
     {
         return $this->escapeDrawtext($text, true);
@@ -735,7 +950,10 @@ class ProcessExportJob implements ShouldQueue
         array $dimensions,
         string $outputPath,
         string $highlightMode = 'keywords',
-        ?array $timedWords = null
+        ?array $timedWords = null,
+        string $captionColor = '#ffffff',
+        string $captionSize = 'medium',
+        string $captionHighlightColor = '#ff6b35',
     ): void {
         $playResX = $dimensions['width'];
         $playResY = $dimensions['height'];
@@ -754,16 +972,27 @@ class ProcessExportJob implements ShouldQueue
         $marginLR = (int) round(60 * $playResX / 1080);
 
         $fontName = $this->sanitizeASSFontName($captionFont);
-        [$fontSize, $bold, $italic] = match ($captionStyle) {
+
+        [$baseFontSize, $bold, $italic] = match ($captionStyle) {
             'editorial' => [(int) round(22 * $playResY / 480), 0, 1],
             'hacker' => [(int) round(16 * $playResY / 480), -1, 0],
             default => [(int) round(22 * $playResY / 480), -1, 0],
         };
 
+        $sizeMultiplier = match ($captionSize) {
+            'small' => 0.72,
+            'large' => 1.35,
+            'xlarge' => 1.72,
+            default => 1.0,
+        };
+        $fontSize = (int) round($baseFontSize * $sizeMultiplier);
+
+        $primaryColor = $this->hexToASS($captionColor);
+
         $events = match ($highlightMode) {
-            'word_by_word' => $this->buildWordByWordEvents($text, $captionStyle, $duration, $timedWords),
-            'line_by_line' => $this->buildLineByLineEvents($text, $captionStyle, $duration, $timedWords),
-            default => [['0:00:00.00', $this->formatASSTime($duration), $this->buildASSStyledText($text, $captionStyle)]],
+            'word_by_word' => $this->buildWordByWordEvents($text, $captionStyle, $duration, $timedWords, $captionHighlightColor),
+            'line_by_line' => $this->buildLineByLineEvents($text, $captionStyle, $duration, $timedWords, $captionHighlightColor),
+            default => [['0:00:00.00', $this->formatASSTime($duration), $this->buildASSStyledText($text, $captionStyle, $captionHighlightColor)]],
         };
 
         $dialogueLines = array_map(
@@ -781,7 +1010,7 @@ class ProcessExportJob implements ShouldQueue
             '',
             '[V4+ Styles]',
             'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-            "Style: Default,{$fontName},{$fontSize},&H00FFFFFF&,&H000000FF&,&H00000000&,&H80000000&,{$bold},{$italic},0,0,100,100,0,0,1,3,2,{$alignment},{$marginLR},{$marginLR},{$marginV},1",
+            "Style: Default,{$fontName},{$fontSize},{$primaryColor},&H000000FF&,&H00000000&,&H80000000&,{$bold},{$italic},0,0,100,100,0,0,1,3,2,{$alignment},{$marginLR},{$marginLR},{$marginV},1",
             '',
             '[Events]',
             'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
@@ -796,7 +1025,7 @@ class ProcessExportJob implements ShouldQueue
      *
      * @return list<array{string, string, string}>
      */
-    private function buildWordByWordEvents(string $text, string $captionStyle, float $duration, ?array $timedWords = null): array
+    private function buildWordByWordEvents(string $text, string $captionStyle, float $duration, ?array $timedWords = null, string $highlightColor = '#ff6b35'): array
     {
         $words = array_values(array_filter(preg_split('/\\s+/', trim($text)) ?: []));
 
@@ -804,11 +1033,9 @@ class ProcessExportJob implements ShouldQueue
             return [['0:00:00.00', $this->formatASSTime($duration), '']];
         }
 
-        $highlightCode = match ($captionStyle) {
-            'hacker' => '\\c&H0000FFFF&',
-            'editorial' => '\\c&H00CCCCFF&\\u1',
-            default => '\\c&H00356BFF&',
-        };
+        $highlightASS = $this->hexToASS($highlightColor);
+        $underline = $captionStyle === 'editorial' ? '\\u1' : '';
+        $highlightCode = "\\c{$highlightASS}{$underline}";
 
         if (! empty($timedWords)) {
             $events = [];
@@ -850,7 +1077,7 @@ class ProcessExportJob implements ShouldQueue
      *
      * @return list<array{string, string, string}>
      */
-    private function buildLineByLineEvents(string $text, string $captionStyle, float $duration, ?array $timedWords = null): array
+    private function buildLineByLineEvents(string $text, string $captionStyle, float $duration, ?array $timedWords = null, string $highlightColor = '#ff6b35'): array
     {
         $words = array_values(array_filter(preg_split('/\\s+/', trim($text)) ?: []));
 
@@ -876,7 +1103,7 @@ class ProcessExportJob implements ShouldQueue
                 $start = max(0.0, min($duration, (float) $validWords[0]['start']));
                 $end = max($start + 0.03, min($duration, (float) $validWords[array_key_last($validWords)]['end']));
                 $line = implode(' ', array_map(static fn (array $word): string => (string) $word['text'], $validWords));
-                $events[] = [$this->formatASSTime($start), $this->formatASSTime($end), $this->buildASSStyledText($line, $captionStyle)];
+                $events[] = [$this->formatASSTime($start), $this->formatASSTime($end), $this->buildASSStyledText($line, $captionStyle, $highlightColor)];
             }
 
             if (! empty($events)) {
@@ -893,7 +1120,7 @@ class ProcessExportJob implements ShouldQueue
             $lineDuration = ($duration * count($lineWords)) / $totalWords;
             $start = $this->formatASSTime($elapsed);
             $end = $this->formatASSTime($elapsed + $lineDuration);
-            $styledText = $this->buildASSStyledText(implode(' ', $lineWords), $captionStyle);
+            $styledText = $this->buildASSStyledText(implode(' ', $lineWords), $captionStyle, $highlightColor);
             $events[] = [$start, $end, $styledText];
             $elapsed += $lineDuration;
         }
@@ -944,7 +1171,7 @@ class ProcessExportJob implements ShouldQueue
         return $fontName !== '' ? $fontName : 'Bebas Neue';
     }
 
-    private function buildASSStyledText(string $text, string $captionStyle): string
+    private function buildASSStyledText(string $text, string $captionStyle, string $highlightColor = '#ff6b35'): string
     {
         $normalized = trim(preg_replace('/[\r\n]+/', ' ', $text));
         $words = array_values(array_filter(preg_split('/\s+/', $normalized) ?: []));
@@ -957,14 +1184,9 @@ class ProcessExportJob implements ShouldQueue
         $highlightStart = min(1, count($words) - 1);
         $highlightEnd = min(count($words), $highlightStart + 2);
 
-        // ASS color override format: {\c&HAABBGGRR&} (note: BGR order, not RGB)
-        // Orange #FF6B35 → BB=35, GG=6B, RR=FF → &H00356BFF&
-        // Yellow #FFFF00 → BB=00, GG=FF, RR=FF → &H0000FFFF&
-        $highlightCode = match ($captionStyle) {
-            'hacker' => '\c&H0000FFFF&',
-            'editorial' => '\c&H00CCCCFF&\u1',
-            default => '\c&H00356BFF&',
-        };
+        $highlightASS = $this->hexToASS($highlightColor);
+        $underline = $captionStyle === 'editorial' ? '\\u1' : '';
+        $highlightCode = "\\c{$highlightASS}{$underline}";
 
         $result = '';
         foreach ($words as $i => $word) {
@@ -973,7 +1195,7 @@ class ProcessExportJob implements ShouldQueue
             }
             $escaped = $this->escapeASSText($word);
             if ($i >= $highlightStart && $i < $highlightEnd) {
-                $result .= '{' . $highlightCode . '}' . $escaped . '{\r}';
+                $result .= '{' . $highlightCode . '}' . $escaped . '{\\r}';
             } else {
                 $result .= $escaped;
             }
