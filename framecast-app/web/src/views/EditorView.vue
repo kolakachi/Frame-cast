@@ -525,6 +525,22 @@ const latestExportJob = computed(() => exportJobs.value[0] ?? null);
 const latestExportDownloadUrl = computed(
   () => latestExportJob.value?.output_asset?.storage_url ?? null
 );
+const exportBlockerMessage = computed(() => {
+  const VISUAL_OPTIONAL = ["text_card", "waveform"];
+  for (const scene of scenes.value) {
+    const label = scene.label || `Scene ${scene.scene_order ?? ""}`;
+    if (!String(scene.script_text || "").trim()) {
+      return `"${label}" has no script — add copy before exporting.`;
+    }
+    if (!scene.visual_asset_id && !VISUAL_OPTIONAL.includes(String(scene.visual_type || ""))) {
+      return `"${label}" is missing a visual — pick a clip or image first.`;
+    }
+    if (!scene.voice_settings?.audio_asset_id) {
+      return `"${label}" has no generated voice — wait for TTS or regenerate.`;
+    }
+  }
+  return null;
+});
 const captionPreviewClass = computed(() => {
   if (!captionEnabledDraft.value || !captionsCanRender.value) return "caption-hidden";
   if (captionStyleDraft.value === "editorial") return "caption-style-editorial";
@@ -3280,9 +3296,20 @@ onBeforeUnmount(() => {
               Timeline
             </button>
 
-            <button class="btn btn-primary" type="button" :disabled="exportPending" @click="queueExport">
-              {{ exportPending ? "Exporting..." : "Export" }}
-            </button>
+            <div class="export-btn-wrap">
+              <button
+                class="btn btn-primary"
+                type="button"
+                :disabled="exportPending || !!exportBlockerMessage"
+                :title="exportBlockerMessage || ''"
+                @click="queueExport"
+              >
+                {{ exportPending ? "Exporting..." : "Export" }}
+              </button>
+              <div v-if="exportBlockerMessage" class="export-blocker-tip">
+                {{ exportBlockerMessage }}
+              </div>
+            </div>
             <button class="btn btn-ghost btn-back" type="button" @click="router.push({ name: 'dashboard' })">
               Back to Dashboard
             </button>
@@ -4844,6 +4871,32 @@ button {
 .export-pill-failed {
   color: #ff8f8f;
   border-color: rgba(255, 107, 107, 0.3);
+}
+
+.export-btn-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.export-blocker-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #2a1010;
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  color: #ff9999;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  max-width: 320px;
+  white-space: normal;
+  z-index: 50;
+  pointer-events: none;
 }
 
 .export-pill-sep {
