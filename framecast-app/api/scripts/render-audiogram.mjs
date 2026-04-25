@@ -16,7 +16,8 @@ const fps = Math.max(12, Number(payload.fps || 20));
 const duration = Math.max(0.1, Number(payload.duration || 3));
 const width = Math.max(270, Number(payload.width || 1080));
 const height = Math.max(480, Number(payload.height || 1920));
-const barCount = payload.style === "minimal" ? 20 : payload.style === "mirror" ? 18 : 16;
+// Always 14 bars — matches editor's waveformLive ref length exactly
+const BAR_COUNT = 14;
 const sampleRate = Math.max(8000, Number(payload.sampleRate || 16000));
 const pcm = payload.pcmPath ? await readPcmFloat32(payload.pcmPath) : new Float32Array(0);
 const totalFrames = Math.max(1, Math.ceil(duration * fps));
@@ -24,7 +25,6 @@ const bandFrames = buildBandFrames({
   pcm,
   duration,
   fps,
-  barCount,
   sampleRate,
   style: payload.style || "bars",
 });
@@ -98,112 +98,122 @@ async function readPcmFloat32(pcmPath) {
   return new Float32Array(bytes);
 }
 
-function buildBandFrames({ pcm, duration, fps, barCount, sampleRate, style }) {
+// ─── Frequency analysis matching editor's Web Audio API exactly ───────────────
+// Editor: AnalyserNode fftSize=64, smoothingTimeConstant=0.8,
+//         minDecibels=-100, maxDecibels=-30
+//         bar[i] = data[Math.floor(i/14 * Math.floor(32*0.65))] / 200
+// We replicate this with a 64-pt FFT + identical smoothing + same bin mapping.
+
+const FFT_SIZE = 64;           // matches editor's fftSize
+const FFT_SMOOTHING = 0.8;    // matches editor's smoothingTimeConstant
+const MIN_DB = -100;           // matches AnalyserNode default
+const MAX_DB = -30;            // matches AnalyserNode default
+
+function buildBandFrames({ pcm, duration, fps, sampleRate, style }) {
   const totalFrames = Math.max(1, Math.ceil(duration * fps));
-  const ranges = createBandRanges(barCount, sampleRate);
-  const windowSize = 1024;
-  const rawFrames = [];
+  // Persistent smoothed FFT magnitude across frames (like AnalyserNode)
+  let smoothedMag = new Float32Array(FFT_SIZE / 2);
+  // Per-frame lerp state (matches editor's 28% per rAF)
+  let previous = new Array(BAR_COUNT).fill(0.04);
+  const smoothedFrames = [];
 
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
     const currentSeconds = Math.min(duration, frameIndex / fps);
-    const bars = pcm.length > 0
-      ? analyzeBarsAtTime(pcm, sampleRate, currentSeconds, ranges, windowSize)
-      : simulatedBars(currentSeconds, barCount, style);
-    rawFrames.push(bars);
-  }
+    let bars;
 
-  const flattened = rawFrames.flat().filter((value) => Number.isFinite(value) && value > 0);
-  const reference = percentile(flattened, 0.985) || 1;
-  const smoothedFrames = [];
-  let previous = new Array(barCount).fill(0.04);
+    if (pcm.length > 0) {
+      const rawMag = fftMagnitude(pcm, sampleRate, currentSeconds, FFT_SIZE);
+      // Apply AnalyserNode smoothing
+      for (let i = 0; i < smoothedMag.length; i += 1) {
+        smoothedMag[i] = FFT_SMOOTHING * smoothedMag[i] + (1 - FFT_SMOOTHING) * rawMag[i];
+      }
+      // Convert to byte data and map bins — exact editor formula
+      const byteData = magnitudeToByteData(smoothedMag, FFT_SIZE);
+      const usableBins = Math.floor(byteData.length * 0.65); // first 65% of bins
+      bars = Array.from({ length: BAR_COUNT }, (_, i) => {
+        const bin = Math.floor((i / BAR_COUNT) * usableBins);
+        return clamp(byteData[bin] / 200, 0.04, 1);
+      });
+    } else {
+      bars = simulatedBars(currentSeconds, BAR_COUNT, style);
+    }
 
-  for (const rawBars of rawFrames) {
-    const normalized = rawBars.map((value, index) => {
-      const pos = index / Math.max(1, barCount - 1);
-      const scaled = Math.sqrt(Math.min(1, value / reference));
-      const voicedBias = 0.88 + Math.max(0, 1 - Math.abs(pos - 0.34) * 1.6) * 0.22;
-      return clamp(scaled * voicedBias, 0.04, 1);
-    });
-
-    previous = previous.map((current, index) =>
-      clamp(current + (normalized[index] - current) * 0.28, 0.04, 1),
-    );
+    // 28% lerp — matches editor's tickWaveform
+    previous = previous.map((cur, i) => clamp(cur + (bars[i] - cur) * 0.28, 0.04, 1));
     smoothedFrames.push([...previous]);
   }
 
   return smoothedFrames;
 }
 
-function analyzeBarsAtTime(pcm, sampleRate, currentSeconds, ranges, windowSize) {
-  const centerSample = Math.floor(currentSeconds * sampleRate);
-  const start = Math.max(0, centerSample - Math.floor(windowSize / 2));
-  const window = new Float32Array(windowSize);
+// 64-point FFT with Blackman window (same window the Web Audio API uses)
+function fftMagnitude(pcm, sampleRate, currentSeconds, fftSize) {
+  const center = Math.floor(currentSeconds * sampleRate);
+  const start = Math.max(0, center - Math.floor(fftSize / 2));
+  const real = new Array(fftSize).fill(0);
+  const imag = new Array(fftSize).fill(0);
 
-  for (let index = 0; index < windowSize; index += 1) {
-    const sourceIndex = Math.min(pcm.length - 1, Math.max(0, start + index));
-    const hann = 0.5 * (1 - Math.cos((2 * Math.PI * index) / Math.max(1, windowSize - 1)));
-    window[index] = (pcm[sourceIndex] || 0) * hann;
+  for (let i = 0; i < fftSize; i += 1) {
+    const idx = clamp(start + i, 0, pcm.length - 1);
+    const t = i / (fftSize - 1);
+    // Blackman window — same as Web Audio API AnalyserNode
+    const win = 0.42 - 0.5 * Math.cos(2 * Math.PI * t) + 0.08 * Math.cos(4 * Math.PI * t);
+    real[i] = (pcm[idx] || 0) * win;
   }
 
-  return ranges.map(([minFreq, maxFreq]) => {
-    const probes = geometricProbeFrequencies(minFreq, maxFreq, 4);
-    const total = probes.reduce(
-      (sum, frequency) => sum + goertzelPower(window, sampleRate, frequency),
-      0,
-    );
+  // Bit-reversal permutation
+  for (let i = 1, j = 0; i < fftSize; i += 1) {
+    let bit = fftSize >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [real[i], real[j]] = [real[j], real[i]];
+    }
+  }
 
-    return total / Math.max(1, probes.length);
-  });
+  // Cooley-Tukey butterfly
+  for (let len = 2; len <= fftSize; len <<= 1) {
+    const angle = -2 * Math.PI / len;
+    const wR = Math.cos(angle);
+    const wI = Math.sin(angle);
+    for (let i = 0; i < fftSize; i += len) {
+      let uR = 1; let uI = 0;
+      const half = len >> 1;
+      for (let k = 0; k < half; k += 1) {
+        const vR = real[i + k + half] * uR - imag[i + k + half] * uI;
+        const vI = real[i + k + half] * uI + imag[i + k + half] * uR;
+        real[i + k + half] = real[i + k] - vR;
+        imag[i + k + half] = imag[i + k] - vI;
+        real[i + k] += vR;
+        imag[i + k] += vI;
+        const t = uR * wR - uI * wI;
+        uI = uR * wI + uI * wR;
+        uR = t;
+      }
+    }
+  }
+
+  const mag = new Float32Array(fftSize / 2);
+  for (let i = 0; i < fftSize / 2; i += 1) {
+    mag[i] = Math.sqrt(real[i] * real[i] + imag[i] * imag[i]);
+  }
+  return mag;
 }
 
-function createBandRanges(barCount, sampleRate) {
-  const minFreq = 70;
-  const maxFreq = Math.min(sampleRate * 0.42, 3800);
-  const ranges = [];
-
-  for (let index = 0; index < barCount; index += 1) {
-    const start = minFreq * Math.pow(maxFreq / minFreq, index / barCount);
-    const end = minFreq * Math.pow(maxFreq / minFreq, (index + 1) / barCount);
-    ranges.push([start, end]);
+// Convert FFT magnitude to AnalyserNode.getByteFrequencyData() byte values
+function magnitudeToByteData(mag, fftSize) {
+  const out = new Uint8Array(mag.length);
+  for (let i = 0; i < mag.length; i += 1) {
+    const db = mag[i] > 0 ? 20 * Math.log10(mag[i] / fftSize) : -Infinity;
+    const normalized = (db - MIN_DB) / (MAX_DB - MIN_DB);
+    out[i] = Math.max(0, Math.min(255, Math.round(normalized * 255)));
   }
-
-  return ranges;
+  return out;
 }
 
-function geometricProbeFrequencies(minFreq, maxFreq, count) {
-  if (count <= 1 || minFreq <= 0 || maxFreq <= minFreq) {
-    return [Math.max(minFreq, maxFreq)];
-  }
-
+function simulatedBars(currentSeconds, count, style) {
   return Array.from({ length: count }, (_, index) => {
-    const t = (index + 0.5) / count;
-    return minFreq * Math.pow(maxFreq / minFreq, t);
-  });
-}
-
-function goertzelPower(samples, sampleRate, targetFrequency) {
-  if (!Number.isFinite(targetFrequency) || targetFrequency <= 0) {
-    return 0;
-  }
-
-  const omega = (2 * Math.PI * targetFrequency) / sampleRate;
-  const coeff = 2 * Math.cos(omega);
-  let s0 = 0;
-  let s1 = 0;
-  let s2 = 0;
-
-  for (let index = 0; index < samples.length; index += 1) {
-    s0 = samples[index] + coeff * s1 - s2;
-    s2 = s1;
-    s1 = s0;
-  }
-
-  return Math.max(0, s1 * s1 + s2 * s2 - coeff * s1 * s2);
-}
-
-function simulatedBars(currentSeconds, barCount, style) {
-  return Array.from({ length: barCount }, (_, index) => {
-    const pos = index / Math.max(1, barCount - 1);
+    const pos = index / Math.max(1, count - 1);
     const envelope = Math.max(0.15, 1 - Math.abs(pos - 0.3) * 1.3);
     const wobble = 0.55 + 0.45 * Math.sin(currentSeconds * 7.2 + index * 0.9);
     const micro = 0.65 + 0.35 * Math.sin(currentSeconds * 13.5 + index * 1.8);
@@ -354,16 +364,6 @@ function formatClock(seconds) {
   const mins = Math.floor(whole / 60);
   const secs = whole % 60;
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-}
-
-function percentile(values, ratio) {
-  if (!Array.isArray(values) || values.length === 0) {
-    return 0;
-  }
-
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor(sorted.length * ratio)));
-  return sorted[index];
 }
 
 function clamp(value, min, max) {
@@ -664,10 +664,10 @@ function buildHtml() {
         document.getElementById("preview-music-name").textContent = initialState.musicTitle || "";
         document.getElementById("preview-music-indicator").classList.toggle("hidden", !initialState.musicTitle);
 
-        buildBars(document.getElementById("bars-layer"), 16, "ag-bar");
-        buildBars(document.getElementById("mirror-layer"), 18, "ag-mirror-bar");
-        buildBars(document.getElementById("minimal-layer"), 40, "ag-minimal-bar");
-        buildCircleBars(document.getElementById("circle-bars"), 16);
+        buildBars(document.getElementById("bars-layer"), 14, "ag-bar");
+        buildBars(document.getElementById("mirror-layer"), 14, "ag-mirror-bar");
+        buildBars(document.getElementById("minimal-layer"), 28, "ag-minimal-bar");
+        buildCircleBars(document.getElementById("circle-bars"), 14);
         document.getElementById("circle-core-a").setAttribute("fill", initialState.color);
         document.getElementById("circle-core-a").setAttribute("opacity", "0.15");
         document.getElementById("circle-core-b").setAttribute("fill", initialState.color);
