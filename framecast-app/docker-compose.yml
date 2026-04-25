@@ -52,12 +52,12 @@ services:
   worker-exports:
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=exports,rendering --tries=1 --timeout=1800
+    command: php artisan queue:work redis --queue=exports,rendering --tries=1 --timeout=2700
     env_file:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
-      REDIS_QUEUE_RETRY_AFTER: 2400
+      REDIS_QUEUE_RETRY_AFTER: 3000
     working_dir: /var/www/html
     depends_on:
       postgres:

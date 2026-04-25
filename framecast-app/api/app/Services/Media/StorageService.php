@@ -28,6 +28,34 @@ class StorageService
         return 'minio://'.$path;
     }
 
+    // ── Deletes ──────────────────────────────────────────────────────────────
+
+    /**
+     * Delete a file from storage. Only acts on managed URLs (minio:// / b2://).
+     * External HTTP URLs are silently ignored (we don't own them).
+     * Returns true when the file was deleted, false when it was not found or
+     * is not a managed URL.
+     */
+    public function delete(string $storageUrl): bool
+    {
+        $path = $this->extractPath($storageUrl);
+
+        if ($path === null) {
+            return false; // external URL — not our file to delete
+        }
+
+        try {
+            if ($this->isMinio($storageUrl) || $this->minioHas($path)) {
+                return Storage::disk(self::MINIO)->delete($path);
+            }
+
+            // Legacy b2:// path not on MinIO — delete from B2.
+            return Storage::disk(self::B2)->delete($path);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     // ── Reads ────────────────────────────────────────────────────────────────
 
     /**

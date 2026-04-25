@@ -7,11 +7,13 @@ use App\Models\Project;
 use App\Models\ProjectHookOption;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use App\Traits\TracksJobFailure;
 use Illuminate\Foundation\Queue\Queueable;
 
 class ScoreHooksJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public int $tries = 2;
 
@@ -87,6 +89,8 @@ class ScoreHooksJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
+
         report($exception);
         GenerationProgressed::dispatch($this->projectId, 'hooks_scoring', 'failed', $exception->getMessage());
         $project = Project::query()->find($this->projectId);

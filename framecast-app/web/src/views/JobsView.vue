@@ -28,10 +28,17 @@ let pollTimer = null
 
 // ── Status / step helpers ─────────────────────────────────
 
-const STATUS_MAP = {
+const GEN_STATUS_MAP = {
   generating:       { cls: 'generating', label: 'Generating', pulsing: true,  progressCls: 'orange' },
   ready_for_review: { cls: 'completed',  label: 'Completed',  pulsing: false, progressCls: 'green'  },
   failed:           { cls: 'failed',     label: 'Failed',     pulsing: false, progressCls: 'red'    },
+}
+
+const EXPORT_STATUS_MAP = {
+  queued:     { cls: 'queued',      label: 'Queued',      pulsing: false, progressCls: 'slate'  },
+  processing: { cls: 'generating',  label: 'Processing',  pulsing: true,  progressCls: 'orange' },
+  completed:  { cls: 'completed',   label: 'Completed',   pulsing: false, progressCls: 'green'  },
+  failed:     { cls: 'failed',      label: 'Failed',      pulsing: false, progressCls: 'red'    },
 }
 
 const STEP_LABELS = {
@@ -48,25 +55,36 @@ const STEP_PROGRESS = {
   script: 10, scene_breakdown: 25, visual_match: 45, ai_image: 55, tts: 75, hooks: 88, hooks_scoring: 95,
 }
 
-function statusInfo(status) {
-  return STATUS_MAP[status] ?? { cls: 'queued', label: 'Queued', pulsing: false, progressCls: 'slate' }
+function statusInfo(job) {
+  if (job.job_type === 'export') {
+    return EXPORT_STATUS_MAP[job.status] ?? { cls: 'queued', label: job.status, pulsing: false, progressCls: 'slate' }
+  }
+  return GEN_STATUS_MAP[job.status] ?? { cls: 'queued', label: 'Queued', pulsing: false, progressCls: 'slate' }
+}
+
+function isActive(job) {
+  if (job.job_type === 'export') return job.status === 'queued' || job.status === 'processing'
+  return job.status === 'generating'
+}
+
+function isCompleted(job) {
+  if (job.job_type === 'export') return job.status === 'completed'
+  return job.status === 'ready_for_review'
 }
 
 function stepLabel(job) {
+  if (job.job_type === 'export') return null
   if (job.status !== 'generating') return null
   const step = job.generation_status_json?.step
   return step ? (STEP_LABELS[step] ?? null) : null
 }
 
-function jobQueue(job) {
-  if (job.status === 'generating') {
-    const step = job.generation_status_json?.step
-    return (step === 'ai_image') ? 'visual' : 'generation'
-  }
-  return null
-}
-
 function jobProgress(job) {
+  if (job.job_type === 'export') {
+    if (job.status === 'completed') return 100
+    if (job.status === 'failed') return 100
+    return job.progress_percent ?? 0
+  }
   if (job.status === 'ready_for_review') return 100
   if (job.status === 'failed') return 100
   if (job.status === 'generating') {
@@ -79,10 +97,10 @@ function jobProgress(job) {
 // ── Filter counts (from full loaded page) ─────────────────
 
 const filterTabs = computed(() => [
-  { key: 'all',        label: 'All',        count: jobs.value.length },
-  { key: 'generating', label: 'Generating', count: jobs.value.filter(j => j.status === 'generating').length },
-  { key: 'completed',  label: 'Completed',  count: jobs.value.filter(j => j.status === 'ready_for_review').length },
-  { key: 'failed',     label: 'Failed',     count: jobs.value.filter(j => j.status === 'failed').length },
+  { key: 'all',       label: 'All',        count: jobs.value.length },
+  { key: 'active',    label: 'In Progress', count: jobs.value.filter(j => isActive(j)).length },
+  { key: 'completed', label: 'Completed',  count: jobs.value.filter(j => isCompleted(j)).length },
+  { key: 'failed',    label: 'Failed',     count: jobs.value.filter(j => j.status === 'failed').length },
 ])
 
 // ── Visible jobs: filter → search → sort ─────────────────
@@ -90,9 +108,9 @@ const filterTabs = computed(() => [
 const visibleJobs = computed(() => {
   let list = jobs.value
 
-  if (activeFilter.value === 'generating') list = list.filter(j => j.status === 'generating')
-  if (activeFilter.value === 'completed')  list = list.filter(j => j.status === 'ready_for_review')
-  if (activeFilter.value === 'failed')     list = list.filter(j => j.status === 'failed')
+  if (activeFilter.value === 'active')    list = list.filter(j => isActive(j))
+  if (activeFilter.value === 'completed') list = list.filter(j => isCompleted(j))
+  if (activeFilter.value === 'failed')    list = list.filter(j => j.status === 'failed')
 
   if (filterChannelId.value) list = list.filter(j => String(j.channel_id) === String(filterChannelId.value))
 
@@ -192,10 +210,12 @@ const pageNumbers = computed(() => {
 
 function openJob(job) {
   if (!job?.id) return
-  if (job.status === 'generating') {
-    router.push({ name: 'generation-progress', params: { projectId: job.id } })
+  const projectId = job.job_type === 'export' ? job.project_id : job.id
+  if (!projectId) return
+  if (job.job_type === 'generation' && job.status === 'generating') {
+    router.push({ name: 'generation-progress', params: { projectId } })
   } else {
-    router.push({ name: 'project-editor', params: { projectId: job.id } })
+    router.push({ name: 'project-editor', params: { projectId } })
   }
 }
 
@@ -207,8 +227,18 @@ async function loadJobs() {
       params: { page: currentPage.value, per_page: perPage.value },
     })
     const pagination = response.data?.meta?.pagination ?? {}
-    jobs.value = response.data?.data?.queue_rows ?? []
-    totalJobs.value = Number(pagination.total || jobs.value.length)
+    const genRows = (response.data?.data?.queue_rows ?? []).map(r => ({ ...r, job_type: r.job_type ?? 'generation' }))
+    const exportRows = response.data?.data?.export_rows ?? []
+
+    // Merge and sort by recency (created_at / queued_at)
+    const merged = [...genRows, ...exportRows].sort((a, b) => {
+      const ta = new Date(a.created_at || a.queued_at || 0).getTime()
+      const tb = new Date(b.created_at || b.queued_at || 0).getTime()
+      return tb - ta
+    })
+
+    jobs.value = merged
+    totalJobs.value = Number(pagination.total || genRows.length) + exportRows.length
     lastPage.value = Math.max(1, Number(pagination.last_page || 1))
     currentPage.value = Math.min(Math.max(1, Number(pagination.current_page || currentPage.value)), lastPage.value)
   } catch {
@@ -350,30 +380,39 @@ onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer) })
             <tbody>
               <tr
                 v-for="job in visibleJobs"
-                :key="job.id"
+                :key="`${job.job_type}-${job.id}`"
                 class="job-row"
                 @click="openJob(job)"
               >
                 <!-- Job -->
                 <td>
                   <div class="job-cell">
-                    <div class="job-thumb" :style="{ background: thumbGrad(job.id) }">
+                    <div class="job-thumb" :style="{ background: thumbGrad(job.project_id ?? job.id) }">
                       <div class="job-thumb-gloss"></div>
                     </div>
                     <div class="job-info">
-                      <div class="job-title">{{ job.title || `Project #${job.id}` }}</div>
-                      <div class="job-id">#{{ job.id }}</div>
+                      <div class="job-title">{{ job.title || `Project #${job.project_id ?? job.id}` }}</div>
+                      <div class="job-id-row">
+                        <span class="job-id">#{{ job.project_id ?? job.id }}</span>
+                        <span v-if="job.job_type === 'export' && job.aspect_ratio" class="job-meta-tag">{{ job.aspect_ratio }}</span>
+                        <span v-if="job.job_type === 'export' && job.language" class="job-meta-tag">{{ job.language }}</span>
+                      </div>
                     </div>
                   </div>
                 </td>
 
-                <!-- Status -->
+                <!-- Status + Type -->
                 <td>
                   <div class="status-cell">
-                    <span :class="['status-badge', statusInfo(job.status).cls]">
-                      <span :class="['status-dot', statusInfo(job.status).pulsing ? 'pulsing' : '']"></span>
-                      {{ statusInfo(job.status).label }}
-                    </span>
+                    <div class="status-row">
+                      <span :class="['status-badge', statusInfo(job).cls]">
+                        <span :class="['status-dot', statusInfo(job).pulsing ? 'pulsing' : '']"></span>
+                        {{ statusInfo(job).label }}
+                      </span>
+                      <span :class="['type-pill', job.job_type === 'export' ? 'type-export' : 'type-gen']">
+                        {{ job.job_type === 'export' ? 'Export' : 'Generation' }}
+                      </span>
+                    </div>
                     <span v-if="stepLabel(job)" class="step-label">{{ stepLabel(job) }}</span>
                   </div>
                 </td>
@@ -383,7 +422,7 @@ onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer) })
                   <div class="progress-cell">
                     <div class="progress-track">
                       <div
-                        :class="['progress-fill', statusInfo(job.status).progressCls, job.status === 'generating' ? 'animated' : '']"
+                        :class="['progress-fill', statusInfo(job).progressCls, isActive(job) ? 'animated' : '']"
                         :style="{ width: `${jobProgress(job)}%` }"
                       ></div>
                     </div>
@@ -391,9 +430,10 @@ onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer) })
                   </div>
                 </td>
 
-                <!-- Duration -->
+                <!-- Duration / aspect -->
                 <td class="hide-md">
-                  <span class="mono-cell">{{ fmtDuration(job.duration_target_seconds) }}</span>
+                  <span v-if="job.job_type === 'generation'" class="mono-cell">{{ fmtDuration(job.duration_target_seconds) }}</span>
+                  <span v-else class="dim-cell">—</span>
                 </td>
 
                 <!-- Channel -->
@@ -445,7 +485,7 @@ onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer) })
                 aria-label="Previous"
                 @click="goToPage(currentPage - 1)"
               >‹</button>
-              <template v-for="p in pageNumbers" :key="p">
+              <span v-for="p in pageNumbers" :key="p">
                 <span v-if="p === '…'" class="page-ellipsis">…</span>
                 <button
                   v-else
@@ -453,7 +493,7 @@ onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer) })
                   type="button"
                   @click="goToPage(p)"
                 >{{ p }}</button>
-              </template>
+              </span>
               <button
                 class="page-btn"
                 type="button"
@@ -538,11 +578,19 @@ td { padding: 15px 20px; border-bottom: 1px solid var(--color-border); vertical-
 .job-thumb-gloss { position: absolute; inset: 0; background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.14), transparent 55%); }
 .job-info { min-width: 0; }
 .job-title { font-weight: 500; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; margin-bottom: 2px; }
+.job-id-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .job-id { font-family: "Space Mono", monospace; font-size: 10px; color: var(--color-text-muted); }
+.job-meta-tag { font-family: "Space Mono", monospace; font-size: 10px; color: var(--color-text-muted); background: rgba(255,255,255,0.05); border: 1px solid var(--color-border); border-radius: 3px; padding: 1px 5px; }
 
 /* ── Status ──────────────────────────────────────────────── */
 .status-cell { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.status-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .step-label { font-family: "Space Mono", monospace; font-size: 10px; color: var(--color-text-muted); letter-spacing: 0.02em; white-space: nowrap; }
+
+/* ── Type pill ───────────────────────────────────────────── */
+.type-pill { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600; font-family: "Space Mono", monospace; letter-spacing: 0.03em; white-space: nowrap; border: 1px solid; }
+.type-gen    { background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.3); color: #818cf8; }
+.type-export { background: rgba(20,184,166,0.1); border-color: rgba(20,184,166,0.3); color: #2dd4bf; }
 .status-badge { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; border: 1px solid; white-space: nowrap; }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .status-dot.pulsing { animation: dot-pulse 1.6s ease-in-out infinite; }

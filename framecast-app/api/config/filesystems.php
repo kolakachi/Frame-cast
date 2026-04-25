@@ -72,6 +72,10 @@ return [
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
+            'http' => [
+                'timeout' => 900,         // 15-minute socket timeout for large file uploads
+                'connect_timeout' => 15,  // 15s to establish TCP connection
+            ],
         ],
 
         'b2_legacy' => [

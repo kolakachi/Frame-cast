@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AdminAuditLog;
 use App\Models\ApiUsageEvent;
+use App\Models\JobFailureTrace;
+use App\Models\Asset;
 use App\Models\ExportJob;
 use App\Models\Project;
 use App\Models\User;
@@ -140,6 +142,9 @@ class AdminController extends Controller
         $wsId = (int) $user->workspace_id;
         $monthStart = now()->startOfMonth();
 
+        $storageBytes = (int) Asset::query()->where('workspace_id', $wsId)->where('status', 'active')->sum('file_size_bytes');
+        $storageCount = (int) Asset::query()->where('workspace_id', $wsId)->where('status', 'active')->count();
+
         $spendMonth = $this->money(ApiUsageEvent::query()->where('workspace_id', $wsId)->where('occurred_at', '>=', $monthStart)->sum('estimated_cost_usd'));
         $spendTotal = $this->money(ApiUsageEvent::query()->where('workspace_id', $wsId)->sum('estimated_cost_usd'));
 
@@ -209,6 +214,11 @@ class AdminController extends Controller
                 ],
                 'workspace' => $user->workspace ? $this->serializeWorkspace($user->workspace) : null,
                 'usage' => $user->workspace ? $this->usageService->summaryForWorkspace($user->workspace) : null,
+                'storage' => [
+                    'total_bytes' => $storageBytes,
+                    'total_human' => $this->humanBytes($storageBytes),
+                    'asset_count' => $storageCount,
+                ],
                 'spend_month_usd' => $spendMonth,
                 'spend_total_usd' => $spendTotal,
                 'spend_by_day' => $spendByDay,
@@ -468,18 +478,45 @@ class AdminController extends Controller
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $page);
 
+        // Resolve workspace names in one query.
+        $workspaceIds = $paginator->getCollection()
+            ->pluck('workspace_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $workspaceNames = Workspace::query()
+            ->whereIn('id', $workspaceIds)
+            ->pluck('name', 'id');
+
+        // Resolve render cost from ApiUsageEvent (recorded by ProcessExportJob on success).
+        $exportJobIds = $paginator->getCollection()->pluck('id')->values()->all();
+
+        $costByExportJob = DB::table('api_usage_events')
+            ->selectRaw("(metadata_json->>'export_job_id')::integer as ej_id, SUM(estimated_cost_usd) as cost")
+            ->whereRaw("metadata_json->>'export_job_id' IS NOT NULL")
+            ->where('service', 'export')
+            ->whereIn(DB::raw("(metadata_json->>'export_job_id')::integer"), $exportJobIds)
+            ->groupByRaw("(metadata_json->>'export_job_id')::integer")
+            ->pluck('cost', 'ej_id')
+            ->mapWithKeys(fn ($cost, $id) => [(int) $id => $this->money($cost)]);
+
         return response()->json([
             'data' => [
                 'jobs' => $paginator->getCollection()->map(fn (ExportJob $j) => [
                     'id' => $j->getKey(),
                     'project_id' => $j->project_id,
                     'project_title' => $j->project?->title,
-                    'workspace_id' => $j->project?->workspace_id,
-                    'workspace_name' => null,
+                    'workspace_id' => $j->workspace_id,
+                    'workspace_name' => $workspaceNames[$j->workspace_id] ?? null,
                     'status' => $j->status,
                     'progress_percent' => $j->progress_percent,
                     'failure_reason' => $j->failure_reason,
                     'aspect_ratio' => $j->aspect_ratio,
+                    'render_seconds' => ($j->started_at && $j->completed_at)
+                        ? $j->completed_at->diffInSeconds($j->started_at)
+                        : null,
+                    'render_cost_usd' => $costByExportJob[$j->getKey()] ?? null,
                     'queue' => 'exports',
                     'queued_at' => $j->queued_at?->toIso8601String(),
                     'started_at' => $j->started_at?->toIso8601String(),
@@ -609,6 +646,152 @@ class AdminController extends Controller
             'status' => $workspace->status,
             'created_at' => $workspace->created_at?->toIso8601String(),
         ];
+    }
+
+    public function failureTraces(Request $request): JsonResponse
+    {
+        $perPage = in_array((int) $request->query('per_page'), [20, 50, 100]) ? (int) $request->query('per_page') : 50;
+
+        $query = JobFailureTrace::query()->orderByDesc('failed_at');
+
+        if ($request->filled('entity_type')) {
+            $query->where('entity_type', $request->query('entity_type'));
+        }
+
+        if ($request->filled('job_class')) {
+            $query->where('job_class', 'like', '%'.$request->query('job_class').'%');
+        }
+
+        $paginator = $query->paginate($perPage, ['*'], 'page', (int) ($request->query('page', 1)));
+
+        $traces = collect($paginator->items())->map(fn (JobFailureTrace $t) => [
+            'id'                => $t->getKey(),
+            'job_class'         => $t->job_class,
+            'job_label'         => $t->jobLabel(),
+            'entity_type'       => $t->entity_type,
+            'entity_id'         => $t->entity_id,
+            'workspace_id'      => $t->workspace_id,
+            'project_id'        => $t->project_id,
+            'exception_class'   => $t->exception_class,
+            'exception_message' => $t->exception_message,
+            'exception_trace'   => $t->exception_trace,
+            'failed_at'         => $t->failed_at?->toIso8601String(),
+        ])->all();
+
+        return response()->json([
+            'data' => ['traces' => $traces],
+            'meta' => ['pagination' => ['current_page' => $paginator->currentPage(), 'last_page' => $paginator->lastPage(), 'per_page' => $paginator->perPage(), 'total' => $paginator->total()]],
+        ]);
+    }
+
+    public function storage(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'search'   => ['nullable', 'string', 'max:100'],
+            'plan'     => ['nullable', 'string', Rule::in(array_keys(WorkspaceUsageService::plans()))],
+            'page'     => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', Rule::in([10, 20, 50, 100])],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 20);
+        $page    = (int) ($validated['page'] ?? 1);
+        $search  = $validated['search'] ?? null;
+        $plan    = $validated['plan'] ?? null;
+
+        // System-wide totals (always unfiltered).
+        $totalBytes        = (int) Asset::query()->where('status', 'active')->sum('file_size_bytes');
+        $totalCount        = (int) Asset::query()->where('status', 'active')->count();
+        $workspaceCount    = (int) Asset::query()->where('status', 'active')->whereNotNull('workspace_id')->distinct()->count('workspace_id');
+        $videoCount        = (int) Asset::query()->where('status', 'active')->where('asset_type', 'video')->count();
+        $audioCount        = (int) Asset::query()->where('status', 'active')->where('asset_type', 'audio')->count();
+        $imageCount        = (int) Asset::query()->where('status', 'active')->where('asset_type', 'image')->count();
+
+        // Filtered count for pagination.
+        $countQuery = DB::table('assets')
+            ->join('workspaces', 'workspaces.id', '=', 'assets.workspace_id')
+            ->where('assets.status', 'active')
+            ->when($search, fn ($q) => $q->where('workspaces.name', 'ilike', "%{$search}%"))
+            ->when($plan, fn ($q) => $q->where('workspaces.plan_tier', $plan))
+            ->distinct()
+            ->count('workspaces.id');
+
+        // Per-workspace breakdown with filter + pagination.
+        $byWorkspace = DB::table('assets')
+            ->join('workspaces', 'workspaces.id', '=', 'assets.workspace_id')
+            ->where('assets.status', 'active')
+            ->when($search, fn ($q) => $q->where('workspaces.name', 'ilike', "%{$search}%"))
+            ->when($plan, fn ($q) => $q->where('workspaces.plan_tier', $plan))
+            ->select(
+                'workspaces.id as workspace_id',
+                'workspaces.name as workspace_name',
+                'workspaces.plan_tier',
+                DB::raw('COALESCE(SUM(assets.file_size_bytes), 0)::bigint AS total_bytes'),
+                DB::raw('COUNT(*) AS asset_count'),
+                DB::raw("COUNT(*) FILTER (WHERE assets.asset_type = 'video') AS video_count"),
+                DB::raw("COUNT(*) FILTER (WHERE assets.asset_type = 'audio') AS audio_count"),
+                DB::raw("COUNT(*) FILTER (WHERE assets.asset_type = 'image') AS image_count"),
+            )
+            ->groupBy('workspaces.id', 'workspaces.name', 'workspaces.plan_tier')
+            ->orderByDesc('total_bytes')
+            ->offset(($page - 1) * $perPage)
+            ->limit($perPage)
+            ->get();
+
+        $lastPage = max(1, (int) ceil($countQuery / $perPage));
+        $from     = $countQuery > 0 ? (($page - 1) * $perPage) + 1 : 0;
+        $to       = min($page * $perPage, $countQuery);
+
+        return response()->json([
+            'data' => [
+                'summary' => [
+                    'total_bytes'     => $totalBytes,
+                    'total_assets'    => $totalCount,
+                    'total_human'     => $this->humanBytes($totalBytes),
+                    'workspace_count' => $workspaceCount,
+                    'video_count'     => $videoCount,
+                    'audio_count'     => $audioCount,
+                    'image_count'     => $imageCount,
+                ],
+                'by_workspace' => $byWorkspace->map(fn ($row): array => [
+                    'workspace_id'   => $row->workspace_id,
+                    'workspace_name' => $row->workspace_name,
+                    'plan_tier'      => $row->plan_tier,
+                    'total_bytes'    => (int) $row->total_bytes,
+                    'total_human'    => $this->humanBytes((int) $row->total_bytes),
+                    'asset_count'    => (int) $row->asset_count,
+                    'video_count'    => (int) $row->video_count,
+                    'audio_count'    => (int) $row->audio_count,
+                    'image_count'    => (int) $row->image_count,
+                ])->values()->all(),
+            ],
+            'meta' => [
+                'pagination' => [
+                    'current_page' => $page,
+                    'last_page'    => $lastPage,
+                    'per_page'     => $perPage,
+                    'total'        => $countQuery,
+                    'from'         => $from,
+                    'to'           => $to,
+                ],
+            ],
+        ]);
+    }
+
+    private function humanBytes(int $bytes): string
+    {
+        if ($bytes >= 1073741824) {
+            return round($bytes / 1073741824, 2).' GB';
+        }
+
+        if ($bytes >= 1048576) {
+            return round($bytes / 1048576, 2).' MB';
+        }
+
+        if ($bytes >= 1024) {
+            return round($bytes / 1024, 1).' KB';
+        }
+
+        return $bytes.' B';
     }
 
     private function money(mixed $value): float

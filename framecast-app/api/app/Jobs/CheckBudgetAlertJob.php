@@ -6,12 +6,14 @@ use App\Models\ApiUsageEvent;
 use App\Models\WorkspaceNotification;
 use App\Services\Notification\NotificationService;
 use App\Services\WorkspaceUsageService;
+use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 class CheckBudgetAlertJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public int $tries = 1;
 
@@ -87,5 +89,10 @@ class CheckBudgetAlertJob implements ShouldQueue
                 ['alert_key' => $alertKey, 'spent_usd' => round($spent, 4), 'budget_usd' => $budget, 'plan' => $planTier],
             );
         }
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        $this->recordFailureTrace($exception, 'workspace', $this->workspaceId, $this->workspaceId);
     }
 }

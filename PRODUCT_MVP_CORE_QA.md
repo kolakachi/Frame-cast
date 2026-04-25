@@ -104,7 +104,7 @@ Status key:
 | M7.7 | Retry failed export | Export completes without duplicate output assets | `[ ]` |
 | M7.8 | Export 9:16 | Output dimensions are 1080x1920 | `[ ]` |
 | M7.9 | Export 16:9 | Output dimensions are 1920x1080 | `[ ]` |
-| M7.10 | Check temp export files after complete/failure | `/tmp/framecast-export-*` files are cleaned up | `[ ]` |
+| M7.10 | Check temp export files after complete/failure | `/tmp/framecast-export-*` files are cleaned up | `[x]` |
 
 ---
 

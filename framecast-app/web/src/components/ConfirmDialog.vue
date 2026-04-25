@@ -13,7 +13,7 @@ const emit = defineEmits(['close', 'confirm'])
 </script>
 
 <template>
-  <div v-if="open" class="modal-overlay" @click.self="emit('close')">
+  <div v-if="open" class="modal-overlay" @click.self="!pending && emit('close')">
     <div class="confirm-modal">
       <div class="confirm-title">{{ title }}</div>
       <div class="confirm-copy">{{ message }}</div>

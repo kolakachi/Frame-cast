@@ -7,6 +7,9 @@ use App\Jobs\GenerateAssetThumbnailJob;
 use App\Jobs\TranscribeAssetJob;
 use App\Models\Asset;
 use App\Models\Collection;
+use App\Models\ExportJob;
+use App\Models\Project;
+use App\Models\Scene;
 use App\Models\User;
 use App\Services\Media\StorageService;
 use Illuminate\Http\JsonResponse;
@@ -215,17 +218,127 @@ class AssetController extends Controller
             return $this->error('not_found', 'Asset not found.', 404);
         }
 
-        $asset->forceFill([
-            'status' => 'archived',
-        ])->save();
+        // Block deletion if the asset is linked to any scene or project.
+        $usageCount = $this->countAssetUsages($assetId, $user->workspace_id);
+
+        if ($usageCount > 0) {
+            return $this->error(
+                'asset_in_use',
+                "This asset is used in {$usageCount} scene(s) or project(s). Remove it there before deleting.",
+                422
+            );
+        }
+
+        // System/stock assets: only archive the record, never delete the file.
+        // User-uploaded assets: delete the file from storage too.
+        $isSystemAsset = $asset->created_by_user_id === null
+            || ! empty(array_intersect(
+                $asset->tags ?? [],
+                ['stock', 'system', 'matched_visual', 'stock_audio', 'stock_music']
+            ));
+
+        if (! $isSystemAsset && $asset->storage_url) {
+            app(StorageService::class)->delete((string) $asset->storage_url);
+        }
+
+        $asset->forceFill(['status' => 'archived'])->save();
+
+        return response()->json([
+            'data' => ['deleted' => true],
+            'meta' => [],
+        ]);
+    }
+
+    public function orphaned(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        // IDs of assets actively used by scenes in this workspace.
+        $workspaceProjectIds = Project::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->pluck('id');
+
+        $usedVisualIds = Scene::query()
+            ->whereIn('project_id', $workspaceProjectIds)
+            ->whereNotNull('visual_asset_id')
+            ->pluck('visual_asset_id');
+
+        $usedSoundIds = Scene::query()
+            ->whereIn('project_id', $workspaceProjectIds)
+            ->whereNotNull('sound_asset_id')
+            ->pluck('sound_asset_id');
+
+        // audio_asset_id lives inside voice_settings_json.
+        $usedAudioIds = Scene::query()
+            ->whereIn('project_id', $workspaceProjectIds)
+            ->whereNotNull(\Illuminate\Support\Facades\DB::raw("voice_settings_json->>'audio_asset_id'"))
+            ->selectRaw("(voice_settings_json->>'audio_asset_id')::integer as audio_asset_id")
+            ->pluck('audio_asset_id');
+
+        $usedMusicIds = Project::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->whereNotNull('music_asset_id')
+            ->pluck('music_asset_id');
+
+        // Exclude assets that are the output of an export job — they have their own lifecycle.
+        $usedExportOutputIds = ExportJob::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->whereNotNull('output_asset_id')
+            ->pluck('output_asset_id');
+
+        $usedIds = $usedVisualIds
+            ->merge($usedSoundIds)
+            ->merge($usedAudioIds)
+            ->merge($usedMusicIds)
+            ->merge($usedExportOutputIds)
+            ->filter()
+            ->unique()
+            ->values();
+
+        $orphans = Asset::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where('status', 'active')
+            ->whereNotIn('id', $usedIds->isEmpty() ? [0] : $usedIds)
+            ->orderByDesc('file_size_bytes')
+            ->get();
 
         return response()->json([
             'data' => [
-                'archived' => true,
-                'asset' => $this->serializeAsset($asset->fresh()),
+                'assets' => $orphans->map(fn (Asset $a): array => $this->serializeAsset($a))->values()->all(),
+                'total_bytes' => (int) $orphans->sum('file_size_bytes'),
             ],
             'meta' => [],
         ]);
+    }
+
+    private function countAssetUsages(int $assetId, int $workspaceId): int
+    {
+        $projectIds = Project::query()
+            ->where('workspace_id', $workspaceId)
+            ->pluck('id');
+
+        $sceneVisual = Scene::query()
+            ->whereIn('project_id', $projectIds)
+            ->where('visual_asset_id', $assetId)
+            ->count();
+
+        $sceneSound = Scene::query()
+            ->whereIn('project_id', $projectIds)
+            ->where('sound_asset_id', $assetId)
+            ->count();
+
+        $sceneAudio = Scene::query()
+            ->whereIn('project_id', $projectIds)
+            ->whereRaw("(voice_settings_json->>'audio_asset_id')::int = ?", [$assetId])
+            ->count();
+
+        $projectMusic = Project::query()
+            ->where('workspace_id', $workspaceId)
+            ->where('music_asset_id', $assetId)
+            ->count();
+
+        return $sceneVisual + $sceneSound + $sceneAudio + $projectMusic;
     }
 
     public function content(Request $request, int $assetId): StreamedResponse|RedirectResponse|\Illuminate\Http\JsonResponse

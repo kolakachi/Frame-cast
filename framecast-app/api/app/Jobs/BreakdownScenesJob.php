@@ -9,11 +9,13 @@ use App\Models\Scene;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use App\Traits\TracksJobFailure;
 use Illuminate\Support\Facades\DB;
 
 class BreakdownScenesJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public function __construct(
         public readonly int $projectId,
@@ -67,6 +69,8 @@ class BreakdownScenesJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
+
         Project::query()
             ->whereKey($this->projectId)
             ->update([

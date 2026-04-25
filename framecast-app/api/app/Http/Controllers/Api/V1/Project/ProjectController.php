@@ -181,22 +181,50 @@ class ProjectController extends Controller
 
         $projects = $paginator->getCollection();
 
+        // Recent export jobs: active ones + completed/failed within the last 7 days.
+        $exportRows = ExportJob::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where(function ($q): void {
+                $q->whereIn('status', ['queued', 'processing'])
+                  ->orWhere('queued_at', '>=', now()->subDays(7));
+            })
+            ->with('project:id,title')
+            ->orderByDesc('queued_at')
+            ->limit(50)
+            ->get()
+            ->map(fn (ExportJob $j): array => [
+                'job_type'        => 'export',
+                'id'              => $j->getKey(),
+                'project_id'      => $j->project_id,
+                'title'           => $j->project?->title ?? "Project #{$j->project_id}",
+                'status'          => $j->status,
+                'progress_percent' => (int) $j->progress_percent,
+                'aspect_ratio'    => $j->aspect_ratio,
+                'language'        => $j->language,
+                'failure_reason'  => $j->failure_reason,
+                'queued_at'       => $j->queued_at?->toIso8601String(),
+                'completed_at'    => $j->completed_at?->toIso8601String(),
+                'created_at'      => $j->queued_at?->toIso8601String(),
+            ])->all();
+
         return response()->json([
             'data' => [
                 'queue_rows' => $projects->map(fn (Project $project): array => [
                     ...$this->serializeProject($project),
-                    'scenes_count' => (int) ($project->scenes_count ?? 0),
+                    'job_type'      => 'generation',
+                    'scenes_count'  => (int) ($project->scenes_count ?? 0),
                     'variants_count' => (int) ($project->variants_count ?? 0),
                 ])->all(),
+                'export_rows' => $exportRows,
             ],
             'meta' => [
                 'pagination' => [
                     'current_page' => $paginator->currentPage(),
-                    'last_page' => $paginator->lastPage(),
-                    'per_page' => $paginator->perPage(),
-                    'total' => $paginator->total(),
-                    'from' => $paginator->firstItem(),
-                    'to' => $paginator->lastItem(),
+                    'last_page'    => $paginator->lastPage(),
+                    'per_page'     => $paginator->perPage(),
+                    'total'        => $paginator->total(),
+                    'from'         => $paginator->firstItem(),
+                    'to'           => $paginator->lastItem(),
                 ],
             ],
         ]);
@@ -1042,7 +1070,7 @@ class ProjectController extends Controller
             ->where('project_id', $projectId)
             ->where('status', 'processing')
             ->whereNotNull('started_at')
-            ->where('started_at', '<', now()->subHours(2))
+            ->where('started_at', '<', now()->subMinutes(70))
             ->update([
                 'status' => 'failed',
                 'failure_reason' => 'Export worker stopped before completing this render.',

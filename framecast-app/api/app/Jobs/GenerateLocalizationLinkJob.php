@@ -10,6 +10,7 @@ use App\Models\Scene;
 use App\Models\VoiceProfile;
 use App\Services\Generation\Translation\TranslationAdapter;
 use App\Services\Generation\TTS\TTSAdapter;
+use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,7 @@ use Throwable;
 class GenerateLocalizationLinkJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public int $timeout = 240;
 
@@ -157,6 +159,10 @@ class GenerateLocalizationLinkJob implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
+        if ($exception !== null) {
+            $this->recordFailureTrace($exception, 'localization_link', $this->localizationLinkId);
+        }
+
         $link = LocalizationLink::query()->find($this->localizationLinkId);
 
         if (! $link) {

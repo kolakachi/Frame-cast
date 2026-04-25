@@ -6,11 +6,13 @@ use App\Models\Variant;
 use App\Models\VariantSet;
 use App\Services\VariantGeneration\VariantGenerationService;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use App\Traits\TracksJobFailure;
 use Illuminate\Foundation\Queue\Queueable;
 
 class GenerateVariantSetJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public function __construct(
         public readonly int $variantSetId,
@@ -45,6 +47,10 @@ class GenerateVariantSetJob implements ShouldQueue
 
     public function failed(?\Throwable $exception): void
     {
+        if ($exception !== null) {
+            $this->recordFailureTrace($exception, 'variant_set', $this->variantSetId);
+        }
+
         app(VariantGenerationService::class)->refreshVariantSetStatus($this->variantSetId);
     }
 }

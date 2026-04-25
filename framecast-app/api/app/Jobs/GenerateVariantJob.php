@@ -7,11 +7,13 @@ use App\Services\Generation\TTS\TTSAdapter;
 use App\Services\Generation\Visual\VisualProviderAdapter;
 use App\Services\VariantGeneration\VariantGenerationService;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use App\Traits\TracksJobFailure;
 use Illuminate\Foundation\Queue\Queueable;
 
 class GenerateVariantJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public int $timeout = 180;
 
@@ -48,6 +50,10 @@ class GenerateVariantJob implements ShouldQueue
 
     public function failed(?\Throwable $exception): void
     {
+        if ($exception !== null) {
+            $this->recordFailureTrace($exception, 'variant', $this->variantId);
+        }
+
         $variant = Variant::query()->find($this->variantId);
 
         if (! $variant) {

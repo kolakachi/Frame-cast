@@ -5,11 +5,13 @@ namespace App\Jobs;
 use App\Models\Asset;
 use App\Services\Media\MediaTranscriptionService;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use App\Traits\TracksJobFailure;
 use Illuminate\Foundation\Queue\Queueable;
 
 class TranscribeAssetJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public int $timeout = 180;
 
@@ -58,6 +60,8 @@ class TranscribeAssetJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        $this->recordFailureTrace($exception, 'asset', $this->assetId);
+
         Asset::query()
             ->whereKey($this->assetId)
             ->update([

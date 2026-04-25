@@ -323,9 +323,81 @@ async function archiveAsset() {
     await Promise.all([fetchMe(), fetchAssets()])
     archiveTarget.value = null
   } catch (err) {
-    error.value = err?.response?.data?.error?.message || 'Could not archive the asset.'
+    error.value = err?.response?.data?.error?.message || 'Could not remove the asset.'
   } finally {
     archivePending.value = false
+  }
+}
+
+// ── Orphaned assets ───────────────────────────────────────────────────────────
+const orphanedAssets = ref([])
+const orphanedTotalBytes = ref(0)
+const orphanedLoading = ref(false)
+const orphanedError = ref('')
+const showOrphanedPanel = ref(false)
+const deletingOrphanedIds = ref(new Set())
+const orphanPreviewAsset = ref(null)
+const orphanDeleteTarget = ref(null)   // null = closed, asset = single, 'all' = bulk
+const orphanDeletePending = ref(false)
+
+function openOrphanPreview(asset) { orphanPreviewAsset.value = asset }
+function closeOrphanPreview() { orphanPreviewAsset.value = null }
+function promptOrphanDelete(asset) { orphanDeleteTarget.value = asset }
+function promptOrphanDeleteAll() { if (orphanedAssets.value.length) orphanDeleteTarget.value = 'all' }
+function closeOrphanDeleteConfirm() { orphanDeleteTarget.value = null }
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B'
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB'
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' MB'
+  if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return bytes + ' B'
+}
+
+async function loadOrphaned() {
+  orphanedLoading.value = true
+  orphanedError.value = ''
+  try {
+    const { data } = await api.get('/assets/orphaned')
+    orphanedAssets.value = data.data?.assets ?? []
+    orphanedTotalBytes.value = data.data?.total_bytes ?? 0
+  } catch (err) {
+    orphanedError.value = err?.response?.data?.error?.message || 'Could not load orphaned assets.'
+  } finally {
+    orphanedLoading.value = false
+  }
+}
+
+async function deleteOrphanedAsset(asset) {
+  if (deletingOrphanedIds.value.has(asset.id)) return
+  orphanDeletePending.value = true
+  deletingOrphanedIds.value = new Set([...deletingOrphanedIds.value, asset.id])
+  try {
+    await api.delete(`/assets/${asset.id}`)
+    orphanedAssets.value = orphanedAssets.value.filter(a => a.id !== asset.id)
+    orphanedTotalBytes.value = orphanedAssets.value.reduce((sum, a) => sum + (a.file_size_bytes || 0), 0)
+    orphanDeleteTarget.value = null
+    if (orphanPreviewAsset.value?.id === asset.id) orphanPreviewAsset.value = null
+    await fetchMe()
+  } catch (err) {
+    orphanedError.value = err?.response?.data?.error?.message || 'Could not delete asset.'
+  } finally {
+    deletingOrphanedIds.value = new Set([...deletingOrphanedIds.value].filter(id => id !== asset.id))
+    orphanDeletePending.value = false
+  }
+}
+
+async function deleteAllOrphaned() {
+  orphanDeleteTarget.value = null
+  for (const asset of [...orphanedAssets.value]) {
+    await deleteOrphanedAsset(asset)
+  }
+}
+
+function toggleOrphanedPanel() {
+  showOrphanedPanel.value = !showOrphanedPanel.value
+  if (showOrphanedPanel.value && orphanedAssets.value.length === 0) {
+    loadOrphaned()
   }
 }
 
@@ -395,6 +467,50 @@ watch([currentPage, perPage], () => {
               <div v-else class="mini-metric">
                 <strong>—</strong>
                 <span>No usage data yet</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Orphaned assets panel -->
+        <div class="orphan-bar" @click="toggleOrphanedPanel">
+          <div class="orphan-bar-left">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            <span>Orphaned Assets</span>
+            <span v-if="orphanedAssets.length" class="orphan-count">{{ orphanedAssets.length }}</span>
+          </div>
+          <div class="orphan-bar-right">
+            <span v-if="orphanedTotalBytes" class="orphan-size">{{ formatBytes(orphanedTotalBytes) }} recoverable</span>
+            <svg :style="{ transform: showOrphanedPanel ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </div>
+        </div>
+
+        <div v-if="showOrphanedPanel" class="orphan-panel surface-card">
+          <div class="orphan-panel-header">
+            <div>
+              <div class="orphan-panel-title">Assets not linked to any project or scene</div>
+              <div class="orphan-panel-sub">{{ orphanedAssets.length }} asset{{ orphanedAssets.length === 1 ? '' : 's' }} · {{ formatBytes(orphanedTotalBytes) }} recoverable</div>
+            </div>
+            <div class="orphan-panel-actions">
+              <button class="btn btn-ghost btn-sm" :disabled="orphanedLoading" @click.stop="loadOrphaned">Refresh</button>
+              <button v-if="orphanedAssets.length" class="btn btn-danger btn-sm" :disabled="orphanDeletePending" @click.stop="promptOrphanDeleteAll">Delete All</button>
+            </div>
+          </div>
+          <div v-if="orphanedError" class="orphan-error">{{ orphanedError }}</div>
+          <div v-if="orphanedLoading" class="orphan-empty">Scanning for orphaned assets...</div>
+          <div v-else-if="!orphanedAssets.length && !orphanedError" class="orphan-empty">No orphaned assets found. Your library is clean.</div>
+          <div v-else class="orphan-list">
+            <div v-for="asset in orphanedAssets" :key="asset.id" class="orphan-row">
+              <div class="orphan-info">
+                <span class="orphan-icon">{{ getTypeConfig(asset.asset_type).icon }}</span>
+                <div>
+                  <div class="orphan-name">{{ asset.title || 'Untitled' }}</div>
+                  <div class="orphan-meta">{{ asset.asset_type }} · {{ formatBytes(asset.file_size_bytes) }}</div>
+                </div>
+              </div>
+              <div class="orphan-row-actions">
+                <button class="btn btn-ghost btn-sm" :disabled="orphanDeletePending" @click.stop="openOrphanPreview(asset)">View</button>
+                <button class="btn btn-danger btn-sm" :disabled="orphanDeletePending" @click.stop="promptOrphanDelete(asset)">Delete</button>
               </div>
             </div>
           </div>
@@ -676,6 +792,75 @@ watch([currentPage, perPage], () => {
       @close="closeCollectionDeleteConfirm"
       @confirm="deleteCollection"
     />
+
+    <ConfirmDialog
+      :open="Boolean(orphanDeleteTarget)"
+      :title="orphanDeleteTarget === 'all' ? 'Delete All Orphaned Assets?' : 'Delete Asset?'"
+      :message="orphanDeleteTarget === 'all'
+        ? `All ${orphanedAssets.length} orphaned assets will be permanently removed from storage. This cannot be undone.`
+        : orphanDeleteTarget ? `'${orphanDeleteTarget.title || 'Untitled'}' will be permanently removed from storage. This cannot be undone.` : ''"
+      :confirm-label="orphanDeleteTarget === 'all' ? `Delete ${orphanedAssets.length} Assets` : 'Delete Asset'"
+      :pending="orphanDeletePending"
+      destructive
+      @close="closeOrphanDeleteConfirm"
+      @confirm="orphanDeleteTarget === 'all' ? deleteAllOrphaned() : deleteOrphanedAsset(orphanDeleteTarget)"
+    />
+
+  <!-- Orphaned asset preview modal -->
+  <teleport to="body">
+    <div v-if="orphanPreviewAsset" class="orphan-modal-backdrop" @click.self="closeOrphanPreview">
+      <div class="orphan-modal">
+        <div class="orphan-modal-header">
+          <div>
+            <div class="orphan-modal-title">{{ orphanPreviewAsset.title || 'Untitled' }}</div>
+            <div class="orphan-modal-sub">{{ orphanPreviewAsset.asset_type.replace('_', ' ') }} · {{ formatBytes(orphanPreviewAsset.file_size_bytes) }}</div>
+          </div>
+          <button class="orphan-modal-close" @click="closeOrphanPreview">×</button>
+        </div>
+
+        <div class="orphan-modal-body">
+          <!-- Image -->
+          <img
+            v-if="orphanPreviewAsset.asset_type === 'image'"
+            :src="orphanPreviewAsset.storage_url"
+            class="orphan-preview-img"
+            alt=""
+          />
+          <!-- Video -->
+          <video
+            v-else-if="orphanPreviewAsset.asset_type === 'video'"
+            :src="orphanPreviewAsset.storage_url"
+            class="orphan-preview-video"
+            controls
+          />
+          <!-- Audio / Voice -->
+          <div v-else-if="orphanPreviewAsset.asset_type === 'audio' || orphanPreviewAsset.asset_type === 'voice'" class="orphan-preview-audio-wrap">
+            <div class="orphan-preview-icon">{{ getTypeConfig(orphanPreviewAsset.asset_type).icon }}</div>
+            <audio :src="orphanPreviewAsset.storage_url" controls class="orphan-preview-audio" />
+          </div>
+          <!-- Fallback -->
+          <div v-else class="orphan-preview-fallback">
+            <div class="orphan-preview-icon">{{ getTypeConfig(orphanPreviewAsset.asset_type).icon }}</div>
+            <div class="orphan-preview-no-preview">No preview available</div>
+          </div>
+        </div>
+
+        <div class="orphan-modal-footer">
+          <div class="orphan-modal-meta">
+            <span v-if="orphanPreviewAsset.mime_type">{{ orphanPreviewAsset.mime_type }}</span>
+            <span v-if="orphanPreviewAsset.tags?.length">{{ orphanPreviewAsset.tags.join(', ') }}</span>
+          </div>
+          <div class="orphan-modal-footer-actions">
+            <button class="btn btn-ghost btn-sm" @click="closeOrphanPreview">Close</button>
+            <button
+              class="btn btn-danger btn-sm"
+              @click="promptOrphanDelete(orphanPreviewAsset)"
+            >Delete Asset</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </teleport>
   </div>
 </template>
 
@@ -737,6 +922,134 @@ watch([currentPage, perPage], () => {
 .mini-metric span { display: block; margin-top: 4px; font-size: 11px; color: #6a6a7c; }
 
 /* Section header */
+/* ── Orphaned assets ── */
+.orphan-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(239,68,68,0.07);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #fca5a5;
+  transition: background .15s;
+  user-select: none;
+}
+.orphan-bar:hover { background: rgba(239,68,68,0.12); }
+.orphan-bar-left { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.orphan-bar-right { display: flex; align-items: center; gap: 10px; color: rgba(252,165,165,0.7); font-size: 12px; }
+.orphan-count { background: rgba(239,68,68,0.25); color: #fca5a5; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 600; }
+.orphan-size { font-size: 12px; }
+.orphan-panel { margin-bottom: 16px; padding: 16px; }
+.orphan-panel-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
+.orphan-panel-title { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.75); }
+.orphan-panel-sub { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+.orphan-panel-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.orphan-error { color: #fca5a5; font-size: 13px; margin-bottom: 8px; }
+.orphan-empty { text-align: center; padding: 24px; color: rgba(255,255,255,0.35); font-size: 13px; }
+.orphan-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.orphan-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 6px; }
+.orphan-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.orphan-icon { font-size: 18px; flex-shrink: 0; }
+.orphan-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+.orphan-meta { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 1px; }
+.orphan-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ── Orphan preview modal ── */
+.orphan-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.orphan-modal {
+  background: #17171f;
+  border: 1px solid #2a2a36;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.orphan-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid #2a2a36;
+  gap: 12px;
+}
+.orphan-modal-title { font-size: 15px; font-weight: 600; color: #fff; }
+.orphan-modal-sub { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 3px; text-transform: capitalize; }
+.orphan-modal-close {
+  background: none; border: none; color: rgba(255,255,255,0.4);
+  font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px;
+  flex-shrink: 0;
+}
+.orphan-modal-close:hover { color: #fff; }
+.orphan-modal-body {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d0d14;
+  min-height: 260px;
+}
+.orphan-preview-img {
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  display: block;
+}
+.orphan-preview-video {
+  max-width: 100%;
+  max-height: 60vh;
+  display: block;
+}
+.orphan-preview-audio-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 40px 20px;
+}
+.orphan-preview-audio { width: 100%; max-width: 400px; }
+.orphan-preview-icon { font-size: 48px; }
+.orphan-preview-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px;
+  color: rgba(255,255,255,0.3);
+}
+.orphan-preview-no-preview { font-size: 13px; }
+.orphan-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-top: 1px solid #2a2a36;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.orphan-modal-meta { display: flex; gap: 12px; font-size: 11px; color: rgba(255,255,255,0.35); flex-wrap: wrap; }
+.orphan-modal-footer-actions { display: flex; gap: 8px; margin-left: auto; }
+.btn-danger { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+.btn-danger:hover:not(:disabled) { background: rgba(239,68,68,0.25); }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .section-header {
   display: flex;
   align-items: flex-end;

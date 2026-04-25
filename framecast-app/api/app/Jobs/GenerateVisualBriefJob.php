@@ -6,12 +6,14 @@ use App\Models\Asset;
 use App\Models\Project;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use App\Services\Media\StorageService;
+use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 class GenerateVisualBriefJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public function __construct(
         public readonly int $projectId,
@@ -66,6 +68,8 @@ class GenerateVisualBriefJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
+
         // Non-fatal — don't mark project as failed, just continue the chain
         GenerateHooksJob::dispatch($this->projectId);
     }

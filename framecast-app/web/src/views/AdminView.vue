@@ -13,6 +13,7 @@ const topbarTitles = {
   dashboard: 'Platform Overview', users: 'Users',
   workspaces: 'Workspaces', videos: 'All Videos',
   jobs: 'Queue & Jobs', billing: 'Billing & Spend', audit: 'Audit Log',
+  failures: 'Job Failures', storage: 'Storage',
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -216,6 +217,30 @@ async function loadJobs() {
 }
 function jobsPerPageChange() { jobsPage.value = 1; loadJobs() }
 
+// ── Failure Traces ────────────────────────────────────────────────────────────
+const failuresLoading = ref(false)
+const failuresData = ref([])
+const failuresPagination = ref({})
+const failuresPage = ref(1)
+const failuresPerPage = ref(50)
+const failuresEntityType = ref('')
+const failuresExpandedId = ref(null)
+
+async function loadFailures() {
+  failuresLoading.value = true
+  try {
+    const params = { page: failuresPage.value, per_page: failuresPerPage.value }
+    if (failuresEntityType.value) params.entity_type = failuresEntityType.value
+    const res = await api.get('/admin/failure-traces', { params })
+    failuresData.value = res.data.data?.traces ?? []
+    failuresPagination.value = res.data.meta?.pagination ?? {}
+  } finally {
+    failuresLoading.value = false
+  }
+}
+function failuresFilter() { failuresPage.value = 1; loadFailures() }
+function toggleTrace(id) { failuresExpandedId.value = failuresExpandedId.value === id ? null : id }
+
 // ── Audit Log ─────────────────────────────────────────────────────────────────
 const auditLoading = ref(false)
 const auditData = ref([])
@@ -280,6 +305,41 @@ const STATUS_CHIPS = [
   { value: 'failed', label: 'Failed' },
 ]
 
+// ── Storage ───────────────────────────────────────────────────────────────────
+const storageData = ref(null)
+const storageLoading = ref(false)
+const storagePage = ref(1)
+const storagePerPage = ref(20)
+const storageSearch = ref('')
+const storagePlan = ref('')
+const storagePagination = ref({})
+
+async function loadStorage() {
+  storageLoading.value = true
+  try {
+    const res = await api.get('/admin/storage', {
+      params: {
+        search: storageSearch.value || undefined,
+        plan: storagePlan.value || undefined,
+        page: storagePage.value,
+        per_page: storagePerPage.value,
+      },
+    })
+    storageData.value = res.data.data
+    storagePagination.value = res.data.meta?.pagination ?? {}
+  } finally {
+    storageLoading.value = false
+  }
+}
+
+function storageFilter() { storagePage.value = 1; loadStorage() }
+function storagePerPageChange() { storagePage.value = 1; loadStorage() }
+
+function storageBarWidth(bytes) {
+  const max = storageData.value?.by_workspace?.[0]?.total_bytes ?? 1
+  return max === 0 ? 0 : Math.round((bytes / max) * 100)
+}
+
 // ── Billing (reuses spend chart + audit log data) ─────────────────────────────
 const billingRange = ref(30)
 const billingChart = ref([])
@@ -333,7 +393,9 @@ function navigate(view) {
   if (view === 'videos') loadVideos()
   if (view === 'jobs') loadJobs()
   if (view === 'audit') loadAudit()
+  if (view === 'failures') loadFailures()
   if (view === 'billing') { loadBillingChart(); loadAudit() }
+  if (view === 'storage') loadStorage()
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -406,6 +468,14 @@ onMounted(() => {
         <button :class="['nav-item', activeView === 'audit' ? 'active' : '']" @click="navigate('audit')">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
           Audit Log
+        </button>
+        <button :class="['nav-item', activeView === 'failures' ? 'active' : '']" @click="navigate('failures')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          Job Failures
+        </button>
+        <button :class="['nav-item', activeView === 'storage' ? 'active' : '']" @click="navigate('storage')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+          Storage
         </button>
       </nav>
       <div class="gm-sidebar-foot">
@@ -775,25 +845,28 @@ onMounted(() => {
               <div class="table-wrap">
                 <table>
                   <thead>
-                    <tr><th>Project</th><th>Status</th><th>Progress</th><th>Aspect</th><th>Queued</th><th>Completed</th></tr>
+                    <tr><th>Project</th><th>Workspace</th><th>Status</th><th>Aspect</th><th>Duration</th><th>Cost</th><th>Queued</th><th>Completed</th></tr>
                   </thead>
                   <tbody>
                     <tr v-for="job in (jobsData.jobs ?? [])" :key="job.id">
                       <td>
                         <div class="cell-name">{{ job.project_title || `Project #${job.project_id}` }}</div>
+                        <div v-if="job.failure_reason" class="cell-sub cell-error" :title="job.failure_reason">{{ job.failure_reason }}</div>
                       </td>
+                      <td class="cell-muted">{{ job.workspace_name || `WS #${job.workspace_id}` }}</td>
                       <td>
                         <span :class="['badge', job.status === 'completed' ? 'badge-green' : job.status === 'failed' ? 'badge-red' : job.status === 'processing' ? 'badge-blue' : 'badge-gray']">
-                          {{ job.status }}
+                          {{ job.status }}{{ job.status === 'processing' && job.progress_percent != null ? ` ${job.progress_percent}%` : '' }}
                         </span>
                       </td>
-                      <td class="cell-muted">{{ job.progress_percent != null ? `${job.progress_percent}%` : '-' }}</td>
                       <td class="cell-muted">{{ job.aspect_ratio || '-' }}</td>
+                      <td class="cell-muted">{{ job.render_seconds != null ? `${Math.round(job.render_seconds)}s` : '-' }}</td>
+                      <td class="cell-muted">{{ job.render_cost_usd != null ? `$${Number(job.render_cost_usd).toFixed(4)}` : '-' }}</td>
                       <td class="cell-muted">{{ fmtDate(job.queued_at) }}</td>
                       <td class="cell-muted">{{ fmtDate(job.completed_at) }}</td>
                     </tr>
                     <tr v-if="!(jobsData.jobs?.length)">
-                      <td colspan="6" class="empty-cell">No recent jobs.</td>
+                      <td colspan="8" class="empty-cell">No recent jobs.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -849,6 +922,73 @@ onMounted(() => {
                 <button :disabled="auditPage <= 1" @click="auditPage--; loadAudit()">‹</button>
                 <span>{{ auditPage }} / {{ auditPagination.last_page ?? 1 }}</span>
                 <button :disabled="auditPage >= (auditPagination.last_page ?? 1)" @click="auditPage++; loadAudit()">›</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ═══ JOB FAILURES ═══ -->
+        <template v-if="activeView === 'failures'">
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Job Failure Traces</div>
+              <div class="section-actions">
+                <select v-model="failuresEntityType" class="pg-per-page" style="width:140px;" @change="failuresFilter">
+                  <option value="">All types</option>
+                  <option value="export">export</option>
+                  <option value="project">project</option>
+                  <option value="scene">scene</option>
+                  <option value="variant">variant</option>
+                  <option value="variant_set">variant_set</option>
+                  <option value="asset">asset</option>
+                  <option value="workspace">workspace</option>
+                  <option value="localization_link">localization_link</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <div v-if="failuresLoading" class="gm-spinner-wrap">Loading...</div>
+              <table v-else>
+                <thead>
+                  <tr><th>When</th><th>Job</th><th>Entity</th><th>Exception</th><th>Message</th><th>Trace</th></tr>
+                </thead>
+                <tbody v-for="t in failuresData" :key="t.id">
+                  <tr>
+                    <td class="cell-muted" style="white-space:nowrap">{{ fmtDate(t.failed_at) }}</td>
+                    <td><span class="badge badge-red">{{ t.job_label }}</span></td>
+                    <td class="cell-muted">
+                      <span v-if="t.entity_type">{{ t.entity_type }} #{{ t.entity_id }}</span>
+                      <span v-else>—</span>
+                    </td>
+                    <td class="cell-muted" style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="t.exception_class">{{ t.exception_class }}</td>
+                    <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;" :title="t.exception_message">{{ t.exception_message }}</td>
+                    <td>
+                      <button class="btn-link" @click="toggleTrace(t.id)">
+                        {{ failuresExpandedId === t.id ? 'hide' : 'show' }}
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="failuresExpandedId === t.id">
+                    <td colspan="6" style="padding:0">
+                      <pre style="margin:0;padding:12px 16px;background:#0d0d0d;color:#f87171;font-size:11px;line-height:1.5;overflow-x:auto;max-height:360px;white-space:pre-wrap;word-break:break-all">{{ t.exception_trace }}</pre>
+                    </td>
+                  </tr>
+                </tbody>
+                <tbody v-if="!failuresLoading && failuresData.length === 0">
+                  <tr><td colspan="6" class="empty-cell">No job failures recorded.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="gm-pagination">
+              <span class="pg-label">Rows per page</span>
+              <select v-model="failuresPerPage" class="pg-per-page" @change="failuresFilter">
+                <option v-for="n in [20, 50, 100]" :key="n" :value="n">{{ n }}</option>
+              </select>
+              <span class="pg-info">{{ failuresPagination.current_page ?? 1 }} / {{ failuresPagination.last_page ?? 1 }} · {{ failuresPagination.total ?? 0 }} total</span>
+              <div class="pg-controls">
+                <button :disabled="failuresPage <= 1" @click="failuresPage--; loadFailures()">‹</button>
+                <span>{{ failuresPage }}</span>
+                <button :disabled="failuresPage >= (failuresPagination.last_page ?? 1)" @click="failuresPage++; loadFailures()">›</button>
               </div>
             </div>
           </div>
@@ -1038,6 +1178,108 @@ onMounted(() => {
           </div>
         </template>
 
+        <!-- ═══ STORAGE ═══ -->
+        <template v-if="activeView === 'storage'">
+          <div v-if="storageLoading && !storageData" class="gm-spinner-wrap">Loading storage data...</div>
+          <template v-else>
+            <!-- Summary metric cards -->
+            <div class="metrics-grid metrics-grid-4">
+              <div class="metric-card">
+                <div class="metric-label">Total Storage Used</div>
+                <div class="metric-value">{{ storageData?.summary?.total_human ?? '—' }}</div>
+                <div class="metric-sub">across all workspaces</div>
+              </div>
+              <div class="metric-card blue">
+                <div class="metric-label">Total Assets</div>
+                <div class="metric-value">{{ (storageData?.summary?.total_assets ?? 0).toLocaleString() }}</div>
+                <div class="metric-sub">{{ (storageData?.summary?.workspace_count ?? 0) }} workspaces</div>
+              </div>
+              <div class="metric-card green">
+                <div class="metric-label">Videos</div>
+                <div class="metric-value">{{ (storageData?.summary?.video_count ?? 0).toLocaleString() }}</div>
+                <div class="metric-sub">{{ (storageData?.summary?.audio_count ?? 0).toLocaleString() }} audio files</div>
+              </div>
+              <div class="metric-card purple">
+                <div class="metric-label">Images</div>
+                <div class="metric-value">{{ (storageData?.summary?.image_count ?? 0).toLocaleString() }}</div>
+                <div class="metric-sub">image assets</div>
+              </div>
+            </div>
+
+            <!-- Per-workspace breakdown -->
+            <div class="section">
+              <div class="section-header">
+                <div class="section-title">Storage by Workspace</div>
+                <div class="section-actions">
+                  <span class="meta-count">{{ storagePagination.total ?? 0 }} workspaces</span>
+                  <button class="btn btn-ghost btn-sm" :disabled="storageLoading" @click="loadStorage">Refresh</button>
+                </div>
+              </div>
+
+              <div class="filters">
+                <input v-model="storageSearch" class="search-input" placeholder="Search workspace…" @input="storageFilter" />
+                <select v-model="storagePlan" class="filter-select" @change="storageFilter">
+                  <option value="">All Plans</option>
+                  <option value="free">Free</option>
+                  <option value="studio">Studio</option>
+                  <option value="scale">Scale</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
+              </div>
+
+              <div class="table-wrap">
+                <div v-if="storageLoading" class="gm-spinner-wrap">Loading...</div>
+                <table v-else>
+                  <thead>
+                    <tr>
+                      <th>Workspace</th>
+                      <th>Plan</th>
+                      <th>Storage Used</th>
+                      <th>Assets</th>
+                      <th>Videos</th>
+                      <th>Audio</th>
+                      <th>Images</th>
+                      <th style="width:160px;">Relative Usage</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!storageData?.by_workspace?.length">
+                      <td colspan="8" class="empty-cell">No storage data.</td>
+                    </tr>
+                    <tr v-for="row in storageData?.by_workspace" :key="row.workspace_id">
+                      <td class="cell-name">{{ row.workspace_name }}</td>
+                      <td><span :class="['badge', planBadgeClass(row.plan_tier)]">{{ row.plan_tier }}</span></td>
+                      <td style="font-weight:600;">{{ row.total_human }}</td>
+                      <td>{{ row.asset_count.toLocaleString() }}</td>
+                      <td class="cell-muted">{{ row.video_count.toLocaleString() }}</td>
+                      <td class="cell-muted">{{ row.audio_count.toLocaleString() }}</td>
+                      <td class="cell-muted">{{ row.image_count.toLocaleString() }}</td>
+                      <td>
+                        <div class="storage-bar-wrap">
+                          <div class="storage-bar-fill" :style="{ width: storageBarWidth(row.total_bytes) + '%' }"></div>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="gm-pagination">
+                <span class="pg-label">Rows per page</span>
+                <select v-model="storagePerPage" class="pg-per-page" @change="storagePerPageChange">
+                  <option v-for="n in PER_PAGE_OPTIONS" :key="n" :value="n">{{ n }}</option>
+                </select>
+                <span class="pg-info">{{ storagePagination.from ?? 0 }}–{{ storagePagination.to ?? 0 }} of {{ storagePagination.total ?? 0 }}</span>
+                <div class="pg-controls">
+                  <button :disabled="storagePage <= 1" @click="storagePage--; loadStorage()">‹</button>
+                  <span>{{ storagePage }} / {{ storagePagination.last_page ?? 1 }}</span>
+                  <button :disabled="storagePage >= (storagePagination.last_page ?? 1)" @click="storagePage++; loadStorage()">›</button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </template>
+
       </div>
     </main>
 
@@ -1085,7 +1327,7 @@ onMounted(() => {
 
           <!-- Overview tab -->
           <template v-if="panelTab === 'overview'">
-            <div class="mini-stats">
+            <div class="mini-stats mini-stats-3">
               <div class="mini-stat">
                 <div class="mini-stat-label">Spend (Month)</div>
                 <div class="mini-stat-value" style="color:#7c3aed">{{ money(panelData.spend_month_usd) }}</div>
@@ -1097,6 +1339,14 @@ onMounted(() => {
               <div class="mini-stat">
                 <div class="mini-stat-label">Projects</div>
                 <div class="mini-stat-value">{{ panelData.recent_projects?.length ?? 0 }}+</div>
+              </div>
+              <div class="mini-stat">
+                <div class="mini-stat-label">Storage Used</div>
+                <div class="mini-stat-value" style="color:#10b981;font-size:16px;margin-top:4px;">{{ panelData.storage?.total_human ?? '—' }}</div>
+              </div>
+              <div class="mini-stat">
+                <div class="mini-stat-label">Assets</div>
+                <div class="mini-stat-value">{{ (panelData.storage?.asset_count ?? 0).toLocaleString() }}</div>
               </div>
               <div class="mini-stat">
                 <div class="mini-stat-label">Role</div>
@@ -1365,6 +1615,8 @@ tr:hover td { background: #1e2129; }
 .cell-muted { color: #6b7280; font-size: 12px; }
 .cell-spend { color: #7c3aed; font-weight: 600; }
 .empty-cell { text-align: center; padding: 40px; color: #6b7280; }
+.storage-bar-wrap { height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+.storage-bar-fill { height: 100%; background: linear-gradient(90deg, #7c3aed, #a78bfa); border-radius: 4px; min-width: 2px; transition: width 0.4s; }
 
 /* Inline select */
 .inline-select {
@@ -1518,6 +1770,7 @@ tr:hover td { background: #1e2129; }
 
 /* Mini stats */
 .mini-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.mini-stats.mini-stats-3 { grid-template-columns: repeat(3, 1fr); }
 .mini-stat { background: #1e2129; border: 1px solid #2a2d38; border-radius: 8px; padding: 14px; }
 .mini-stat-label { font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
 .mini-stat-value { font-size: 20px; font-weight: 700; margin-top: 4px; }

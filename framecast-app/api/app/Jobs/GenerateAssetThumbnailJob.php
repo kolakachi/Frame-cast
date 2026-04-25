@@ -3,12 +3,14 @@
 namespace App\Jobs;
 
 use App\Models\Asset;
+use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 class GenerateAssetThumbnailJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public int $timeout = 60;
 
@@ -54,5 +56,10 @@ SVG;
         $asset->forceFill([
             'thumbnail_url' => 'data:image/svg+xml;base64,'.base64_encode($svg),
         ])->save();
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        $this->recordFailureTrace($exception, 'asset', $this->assetId);
     }
 }

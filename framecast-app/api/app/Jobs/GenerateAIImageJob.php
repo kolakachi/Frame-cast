@@ -7,6 +7,7 @@ use App\Models\Asset;
 use App\Models\Scene;
 use App\Services\Generation\Image\ImageGenerationAdapter;
 use App\Services\Media\StorageService;
+use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
@@ -17,6 +18,7 @@ use RuntimeException;
 class GenerateAIImageJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public int $tries = 2;
     public int $timeout = 120;
@@ -191,6 +193,11 @@ class GenerateAIImageJob implements ShouldQueue
                 'scene_id' => $this->sceneId,
             ]);
         }
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        $this->recordFailureTrace($exception, 'scene', $this->sceneId, null, $this->projectId);
     }
 
     private function isPolicyError(string $message): bool

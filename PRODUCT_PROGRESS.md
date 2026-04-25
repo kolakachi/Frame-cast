@@ -20,7 +20,7 @@ Execution tracker for the phases defined in `PRODUCT_PLAN.md`. Every task gets m
 ## Current State
 
 **Active phase:** Phase A — Stabilize  
-**Last updated:** 2026-04-18  
+**Last updated:** 2026-04-25  
 **Last updated by:** —
 
 Focused MVP source of truth:
@@ -37,13 +37,13 @@ Exit gate: Product is stable enough to charge real users. Billing enforces limit
 See QA gate: `PRODUCT_MVP_CORE_QA.md`
 
 ### Export Stability
-- [ ] Split `ProcessExportJob` into per-scene sub-jobs so large projects don't hit the monolithic timeout
-- [ ] Add idempotency guard on asset creation in export — retry must not create duplicate Asset records
-- [ ] Clean up temp directories on job failure
-- [~] Increase export worker timeout and document the new limit
-- [ ] Add `failed()` handler to `ProcessExportJob` — sets export status to `failed` with reason
-- [ ] Verify export Reverb events fire correctly for queued → processing → completed → failed transitions
-- [~] Export blocked (not silently failed) when required voice or visual is missing per scene
+- [x] Split `ProcessExportJob` into per-scene sub-jobs so large projects don't hit the monolithic timeout — Bus::batch() fan-out, RenderSceneSegmentJob per scene → MinIO → ConcatenateExportJob assembles final MP4
+- [x] Add idempotency guard on asset creation in export — retry must not create duplicate Asset records (deterministic storage path + lockForUpdate transaction)
+- [x] Clean up temp directories on job failure ($tempDir as instance property, cleaned in failed() and finally)
+- [x] Increase export worker timeout — job $timeout=2700s, worker --timeout=2700, REDIS_QUEUE_RETRY_AFTER=3000, 15-min MinIO socket timeout added
+- [x] Add `failed()` handler to `ProcessExportJob` — sets export status to `failed` with reason, dispatches Reverb event
+- [x] Verify export Reverb events fire correctly for queued → processing → completed → failed transitions
+- [x] Export blocked (not silently failed) when required voice or visual is missing per scene
 - [x] Bundle editor caption fonts into the export worker image so selected fonts render in MP4 exports
 - [~] Caption/music/export preview parity — selected font works; remaining caption preset and audio parity still needs QA
 
@@ -70,33 +70,33 @@ See QA gate: `PRODUCT_MVP_CORE_QA.md`
 - [ ] Wizard state persisted (refresh-safe)
 
 ### God-Mode Admin
-- [~] Workspace list with plan tier, usage, created date, status
-- [ ] User list with workspace, last login, role
-- [~] Per-workspace: API usage events, monthly spend estimate, failed provider calls
-- [ ] Recent generations list (last 50 across all workspaces)
-- [ ] Suspend workspace action (blocks all API calls for that workspace)
-- [~] Manually adjust plan tier and limits for a workspace
-- [ ] Audit trail for admin actions (who did what, when)
-- [~] Admin routes restricted to `super_admin` / `platform_admin` roles
+- [x] Workspace list with plan tier, usage, created date, status
+- [x] User list with workspace, last login, role
+- [x] Per-workspace: API usage events, monthly spend estimate, failed provider calls
+- [x] Recent generations list (last 50 across all workspaces) — videos() endpoint + frontend
+- [x] Suspend workspace action (blocks all API calls for that workspace)
+- [x] Manually adjust plan tier and limits for a workspace
+- [x] Audit trail for admin actions — AdminAuditLog model, auditLog() endpoint, frontend section
+- [x] Admin routes restricted to admin + admin.ip middleware
 
 ### Content Quality and Repeatability
-- [ ] Niche-specific script templates for launch niches
-- [ ] Hook alternatives before full generation
-- [ ] Scene pacing controls
-- [ ] One-click rewrite actions: shorter, scarier, more dramatic, simpler, more documentary
-- [ ] Series Lite: series name, niche, defaults, and "Create next episode"
-- [ ] Saved caption/voice/visual/music presets
-- [ ] Regenerate only the requested scene/media without touching voice or unrelated assets
-- [ ] Friendly rewrite suggestions when AI image/script prompts hit policy limits
+- [~] Niche-specific script templates for launch niches — Niche model has default_template_type/tone/style; PromptTemplateRegistry not yet niche-aware
+- [x] Hook alternatives before full generation — GenerateHooksJob + ScoreHooksJob; ProjectHookOption stores 3-10 scored hook options; frontend shows scored hooks for selection
+- [~] Scene pacing controls — Scene.duration_seconds + motion_settings_json (effect/intensity) exist; no per-scene pacing adjustment UI
+- [~] One-click rewrite actions — 7 modes live (shorten, expand, stronger_hook, more_punchy, more_educational, more_salesy, simplify); missing: scarier, more_dramatic, more_documentary
+- [x] Series Lite: series name, niche, defaults, and "Create next episode" — Series CRUD, episode linkage, SummarizeEpisodeJob, SeriesDetailView "Create next episode" flow, series memory window
+- [~] Saved caption/voice/visual/music presets — CaptionPreset and VoiceProfile models exist; Series stores default preset IDs; no workspace-level save/load preset UI
+- [x] Regenerate only the requested scene/media without touching voice or unrelated assets — per-scene voice regen, per-scene AI image gen, per-scene visual swap all live in SceneController
+- [x] Friendly rewrite suggestions when AI image/script prompts hit policy limits — GenerateAIImageJob auto-rewrites policy-rejected prompts via GPT-4o-mini and retries
 
 ### Cost Tracking and Unit Economics
-- [~] Record OpenAI text usage and estimated cost
-- [~] Record AI image usage and estimated cost
-- [~] Record TTS usage/failures and estimated cost
-- [ ] Record export compute/storage cost estimate
-- [ ] Show cost per completed export in god-mode
-- [ ] Enforce per-workspace API budget before expensive jobs start
-- [ ] Admin alert when workspace spend approaches plan budget
+- [x] Record OpenAI text usage and estimated cost — ApiUsageService + ApiUsageEvent
+- [x] Record AI image usage and estimated cost
+- [x] Record TTS usage/failures and estimated cost
+- [x] Record export compute/storage cost estimate — ProcessExportJob records ApiUsageEvent on completion (render_seconds × $0.0001 + MB × $0.00001)
+- [x] Show cost per completed export in god-mode jobs view — render_seconds + render_cost_usd columns added
+- [x] Enforce per-workspace API budget before expensive jobs start — ProjectController + SceneController
+- [x] Admin alert when workspace spend approaches plan budget — CheckBudgetAlertJob at 80% and 100%
 
 ### Production Infrastructure
 - [ ] Production `.env` — all secrets populated (OpenAI, B2, Reverb, Paddle, DB, Redis, mail)

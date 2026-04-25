@@ -59,8 +59,11 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/jobs', [AdminController::class, 'jobs']);
             Route::get('/spend-chart', [AdminController::class, 'spendChart']);
             Route::get('/audit-log', [AdminController::class, 'auditLog']);
+            Route::get('/failure-traces', [AdminController::class, 'failureTraces']);
+            Route::get('/storage', [AdminController::class, 'storage']);
         });
         Route::prefix('/assets')->group(function (): void {
+            Route::get('/orphaned', [AssetController::class, 'orphaned']);
             Route::get('/', [AssetController::class, 'index']);
             Route::post('/', [AssetController::class, 'store']);
             Route::get('/{assetId}', [AssetController::class, 'show'])->whereNumber('assetId');

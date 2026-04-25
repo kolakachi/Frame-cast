@@ -5,12 +5,14 @@ namespace App\Jobs;
 use App\Models\Project;
 use App\Models\Series;
 use App\Services\Generation\AI\AIGenerationAdapter;
+use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 class SummarizeEpisodeJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public int $tries = 2;
     public int $timeout = 60;
@@ -69,5 +71,10 @@ class SummarizeEpisodeJob implements ShouldQueue
         } catch (\Throwable $exception) {
             report($exception);
         }
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
     }
 }

@@ -14,11 +14,13 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use App\Traits\TracksJobFailure;
 use Illuminate\Support\Str;
 
 class GenerateScriptJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public function __construct(
         public readonly int $projectId,
@@ -163,6 +165,8 @@ class GenerateScriptJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
+
         Project::query()
             ->whereKey($this->projectId)
             ->update([

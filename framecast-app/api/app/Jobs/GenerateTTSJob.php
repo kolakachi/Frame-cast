@@ -11,6 +11,7 @@ use App\Services\Notification\NotificationService;
 use App\Services\Generation\TTS\TTSAdapter;
 use App\Services\Media\MediaTranscriptionService;
 use App\Services\WorkspaceUsageService;
+use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,7 @@ use Throwable;
 class GenerateTTSJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public int $timeout = 900;
 
@@ -204,6 +206,8 @@ class GenerateTTSJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
+
         Project::query()
             ->whereKey($this->projectId)
             ->update([

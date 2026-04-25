@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\Scene;
 use App\Services\Generation\Image\ImageGenerationAdapter;
 use App\Services\Media\StorageService;
+use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
@@ -17,6 +18,7 @@ use Illuminate\Support\Str;
 class GenerateProjectAIImagesJob implements ShouldQueue
 {
     use Queueable;
+    use TracksJobFailure;
 
     public int $tries = 1;
 
@@ -74,6 +76,11 @@ class GenerateProjectAIImagesJob implements ShouldQueue
 
         GenerationProgressed::dispatch($this->projectId, 'ai_image', 'completed');
         GenerateTTSJob::dispatch($project->getKey());
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
     }
 
     private function generateSceneImage(ImageGenerationAdapter $adapter, Project $project, Scene $scene): void
