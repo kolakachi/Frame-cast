@@ -58,6 +58,51 @@ class VoiceProfileController extends Controller
         ];
     }
 
+    public function store(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'name'               => ['required', 'string', 'max:80'],
+            'provider_voice_key' => ['required', 'string', 'max:120'],
+            'provider'           => ['sometimes', 'string', 'in:openai,elevenlabs,google'],
+            'language'           => ['sometimes', 'string', 'max:10'],
+            'gender_label'       => ['sometimes', 'nullable', 'string', 'max:40'],
+        ]);
+
+        $profile = VoiceProfile::query()->create([
+            'workspace_id'       => $user->workspace_id,
+            'name'               => $validated['name'],
+            'provider'           => $validated['provider'] ?? 'openai',
+            'provider_voice_key' => $validated['provider_voice_key'],
+            'language'           => $validated['language'] ?? 'en',
+            'gender_label'       => $validated['gender_label'] ?? 'Neutral',
+            'voice_type'         => 'synthetic',
+            'is_cloned'          => false,
+            'status'             => 'active',
+        ]);
+
+        return response()->json([
+            'data' => [
+                'voice_profile' => [
+                    'id'                 => $profile->getKey(),
+                    'workspace_id'       => $profile->workspace_id,
+                    'provider'           => $profile->provider,
+                    'name'               => $profile->name,
+                    'language'           => $profile->language,
+                    'accent'             => $profile->accent,
+                    'gender_label'       => $profile->gender_label,
+                    'voice_type'         => $profile->voice_type,
+                    'is_cloned'          => $profile->is_cloned,
+                    'provider_voice_key' => $profile->provider_voice_key,
+                    'status'             => $profile->status,
+                ],
+            ],
+            'meta' => [],
+        ], 201);
+    }
+
     public function index(Request $request): JsonResponse
     {
         /** @var User $user */

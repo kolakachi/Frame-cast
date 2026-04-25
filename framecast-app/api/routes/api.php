@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\System\HealthCheckController;
 use App\Http\Controllers\Api\V1\System\NotificationController;
 use App\Http\Controllers\Api\V1\System\VerificationController;
 use App\Http\Controllers\Api\V1\Variant\VariantController;
+use App\Http\Controllers\Api\V1\CaptionPreset\CaptionPresetController;
 use App\Http\Controllers\Api\V1\VoiceProfile\VoiceProfileController;
 use App\Http\Controllers\Api\V1\Workspace\WorkspaceController;
 use Illuminate\Broadcasting\BroadcastController;
@@ -43,6 +44,10 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
         Route::get('/voice-profiles', [VoiceProfileController::class, 'index']);
+        Route::post('/voice-profiles', [VoiceProfileController::class, 'store']);
+        Route::get('/caption-presets', [CaptionPresetController::class, 'index']);
+        Route::post('/caption-presets', [CaptionPresetController::class, 'store']);
+        Route::delete('/caption-presets/{presetId}', [CaptionPresetController::class, 'destroy'])->whereNumber('presetId');
         Route::get('/niches', [NicheController::class, 'index']);
         Route::get('/fonts', [FontController::class, 'index']);
         Route::get('/visual-styles', [ImageStyleController::class, 'index']);

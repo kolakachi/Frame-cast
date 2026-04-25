@@ -62,6 +62,14 @@ const rewriteApplyPending = ref(false);
 const rewriteError = ref("");
 const sceneDurationDraft = ref("");
 const sceneDurationSaving = ref(false);
+const captionPresets = ref([]);
+const captionPresetSaveOpen = ref(false);
+const captionPresetSaveName = ref("");
+const captionPresetSaving = ref(false);
+const captionPresetDeleting = ref(null);
+const voiceProfileSaveOpen = ref(false);
+const voiceProfileSaveName = ref("");
+const voiceProfileSaving = ref(false);
 const voiceRegeneratePending = ref(false);
 const voiceRegenerateError = ref("");
 const addSceneGeneratePending = ref(false);
@@ -1599,7 +1607,7 @@ async function loadMe() {
   try {
     const response = await api.get("/me");
     mePayload.value = response.data?.data?.user ?? null;
-    await Promise.all([loadVoiceProfiles(), loadChannels(), loadBrandKits(), loadMusicTracks()]);
+    await Promise.all([loadVoiceProfiles(), loadCaptionPresets(), loadChannels(), loadBrandKits(), loadMusicTracks()]);
     await loadNotifications();
     subscribeWorkspaceNotifications();
   } catch {
@@ -1616,6 +1624,15 @@ async function loadVoiceProfiles() {
     voiceProfiles.value = response.data?.data?.voice_profiles ?? [];
   } catch {
     voiceProfiles.value = [];
+  }
+}
+
+async function loadCaptionPresets() {
+  try {
+    const response = await api.get("/caption-presets");
+    captionPresets.value = response.data?.data?.caption_presets ?? [];
+  } catch {
+    captionPresets.value = [];
   }
 }
 
@@ -2347,6 +2364,77 @@ function closeAddScene() {
 
 function selectAddSceneVisualMode(mode) {
   addSceneVisualMode.value = mode;
+}
+
+function applyCaptionPreset(preset) {
+  if (preset.preset_type) captionStyleDraft.value = preset.preset_type;
+  if (preset.font) captionFontDraft.value = preset.font;
+  if (preset.font_size_rule) captionSizeDraft.value = preset.font_size_rule;
+  if (preset.highlight_mode) captionHighlightDraft.value = preset.highlight_mode;
+  if (preset.highlight_color) captionHighlightColorDraft.value = preset.highlight_color;
+  if (preset.caption_color) captionColorDraft.value = preset.caption_color;
+  if (preset.caption_position) captionPositionDraft.value = preset.caption_position;
+  // watcher autosaves
+}
+
+async function saveCaptionPreset() {
+  const name = captionPresetSaveName.value.trim();
+  if (!name) return;
+  captionPresetSaving.value = true;
+  try {
+    const response = await api.post("/caption-presets", {
+      name,
+      preset_type: captionStyleDraft.value || null,
+      font: captionFontDraft.value || null,
+      font_size_rule: captionSizeDraft.value || null,
+      highlight_mode: captionHighlightDraft.value || null,
+      highlight_color: captionHighlightColorDraft.value || null,
+      caption_color: captionColorDraft.value || null,
+      caption_position: captionPositionDraft.value || null,
+    });
+    const created = response.data?.data?.caption_preset;
+    if (created) captionPresets.value = [...captionPresets.value, created].sort((a, b) => a.name.localeCompare(b.name));
+    captionPresetSaveName.value = "";
+    captionPresetSaveOpen.value = false;
+  } catch (_) {
+    // non-critical
+  } finally {
+    captionPresetSaving.value = false;
+  }
+}
+
+async function deleteCaptionPreset(presetId) {
+  captionPresetDeleting.value = presetId;
+  try {
+    await api.delete(`/caption-presets/${presetId}`);
+    captionPresets.value = captionPresets.value.filter((p) => p.id !== presetId);
+  } catch (_) {
+    // non-critical
+  } finally {
+    captionPresetDeleting.value = null;
+  }
+}
+
+async function saveVoiceProfile() {
+  const name = voiceProfileSaveName.value.trim();
+  if (!name || !voiceProfileKey.value) return;
+  voiceProfileSaving.value = true;
+  try {
+    const response = await api.post("/voice-profiles", {
+      name,
+      provider_voice_key: voiceProfileKey.value,
+      provider: "openai",
+      language: activeScene.value?.voice_settings?.language || "en",
+    });
+    const created = response.data?.data?.voice_profile;
+    if (created) voiceProfiles.value = [...voiceProfiles.value, created].sort((a, b) => a.name.localeCompare(b.name));
+    voiceProfileSaveName.value = "";
+    voiceProfileSaveOpen.value = false;
+  } catch (_) {
+    // non-critical
+  } finally {
+    voiceProfileSaving.value = false;
+  }
 }
 
 async function saveSceneDuration() {
@@ -4297,6 +4385,32 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </template>
+
+                <!-- Save as voice profile -->
+                <div class="preset-save-row" style="margin-top:12px;">
+                  <template v-if="!voiceProfileSaveOpen">
+                    <button class="btn btn-ghost btn-sm" type="button" @click="voiceProfileSaveOpen = true">
+                      + Save voice as profile
+                    </button>
+                  </template>
+                  <template v-else>
+                    <input
+                      v-model="voiceProfileSaveName"
+                      class="preset-name-input"
+                      placeholder="Profile name…"
+                      maxlength="80"
+                      @keydown.enter="saveVoiceProfile"
+                      @keydown.escape="voiceProfileSaveOpen = false; voiceProfileSaveName = ''"
+                    />
+                    <button
+                      class="btn btn-primary btn-sm"
+                      type="button"
+                      :disabled="voiceProfileSaving || !voiceProfileSaveName.trim()"
+                      @click="saveVoiceProfile"
+                    >{{ voiceProfileSaving ? "Saving…" : "Save" }}</button>
+                    <button class="btn btn-ghost btn-sm" type="button" @click="voiceProfileSaveOpen = false; voiceProfileSaveName = ''">Cancel</button>
+                  </template>
+                </div>
               </div>
             </div>
 
@@ -4352,6 +4466,55 @@ onBeforeUnmount(() => {
                 <div class="panel-chevron">▾</div>
               </div>
               <div class="panel-section-body">
+                <!-- Preset selector -->
+                <div v-if="captionPresets.length > 0" class="preset-row">
+                  <select class="preset-select" @change="applyCaptionPreset(captionPresets.find(p => p.id === Number($event.target.value)) || {}); $event.target.value = ''">
+                    <option value="">Apply a preset…</option>
+                    <option v-for="p in captionPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
+                  </select>
+                  <button
+                    v-for="p in captionPresets"
+                    :key="'del-'+p.id"
+                    v-show="false"
+                  ></button>
+                </div>
+                <!-- Preset management: delete chips -->
+                <div v-if="captionPresets.length > 0" class="preset-chips">
+                  <div v-for="p in captionPresets" :key="p.id" class="preset-chip">
+                    <span class="preset-chip-name" @click="applyCaptionPreset(p)">{{ p.name }}</span>
+                    <button
+                      class="preset-chip-del"
+                      type="button"
+                      :disabled="captionPresetDeleting === p.id"
+                      @click.stop="deleteCaptionPreset(p.id)"
+                    >✕</button>
+                  </div>
+                </div>
+                <!-- Save as preset -->
+                <div class="preset-save-row">
+                  <template v-if="!captionPresetSaveOpen">
+                    <button class="btn btn-ghost btn-sm" type="button" @click="captionPresetSaveOpen = true">
+                      + Save as preset
+                    </button>
+                  </template>
+                  <template v-else>
+                    <input
+                      v-model="captionPresetSaveName"
+                      class="preset-name-input"
+                      placeholder="Preset name…"
+                      maxlength="80"
+                      @keydown.enter="saveCaptionPreset"
+                      @keydown.escape="captionPresetSaveOpen = false; captionPresetSaveName = ''"
+                    />
+                    <button
+                      class="btn btn-primary btn-sm"
+                      type="button"
+                      :disabled="captionPresetSaving || !captionPresetSaveName.trim()"
+                      @click="saveCaptionPreset"
+                    >{{ captionPresetSaving ? "Saving…" : "Save" }}</button>
+                    <button class="btn btn-ghost btn-sm" type="button" @click="captionPresetSaveOpen = false; captionPresetSaveName = ''">Cancel</button>
+                  </template>
+                </div>
                 <div class="caption-toggle-row">
                   <span></span>
                   <label class="caption-toggle">
@@ -6555,6 +6718,81 @@ button {
   color: var(--text-muted, #888);
   opacity: 0.6;
   flex-basis: 100%;
+}
+
+/* Caption / Voice presets */
+.preset-row {
+  margin-bottom: 8px;
+}
+
+.preset-select {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border, #333);
+  border-radius: 5px;
+  background: var(--input-bg, #1a1a1a);
+  color: var(--text, #eee);
+  font-size: 12px;
+}
+
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.preset-chip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 7px;
+  border-radius: 12px;
+  background: var(--bg-elevated, #222);
+  border: 1px solid var(--border, #333);
+  font-size: 11px;
+}
+
+.preset-chip-name {
+  cursor: pointer;
+  color: var(--text, #eee);
+}
+
+.preset-chip-name:hover {
+  color: var(--accent, #ff6b35);
+}
+
+.preset-chip-del {
+  background: none;
+  border: none;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 1px;
+  line-height: 1;
+}
+
+.preset-chip-del:hover {
+  color: var(--danger, #e05);
+}
+
+.preset-save-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.preset-name-input {
+  flex: 1;
+  min-width: 100px;
+  padding: 4px 8px;
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+  background: var(--input-bg, #1a1a1a);
+  color: var(--text, #eee);
+  font-size: 12px;
 }
 
 .panel-inline-actions {

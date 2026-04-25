@@ -18,6 +18,8 @@ class CaptionPreset extends Model
         'font_size_rule',
         'highlight_mode',
         'highlight_color',
+        'caption_color',
+        'caption_position',
         'animation_type',
         'safe_area_profile',
         'line_break_rules_json',

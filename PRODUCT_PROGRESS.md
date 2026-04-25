@@ -85,7 +85,7 @@ See QA gate: `PRODUCT_MVP_CORE_QA.md`
 - [x] Scene pacing controls — duration_seconds editable per scene in Editor script panel with autosave; motion_settings_json (effect/intensity) controls Ken Burns motion
 - [x] One-click rewrite actions — 10 modes live (shorten, expand, stronger_hook, more_punchy, more_educational, more_salesy, simplify, scarier, more_dramatic, more_documentary)
 - [x] Series Lite: series name, niche, defaults, and "Create next episode" — Series CRUD, episode linkage, SummarizeEpisodeJob, SeriesDetailView "Create next episode" flow, series memory window
-- [~] Saved caption/voice/visual/music presets — CaptionPreset and VoiceProfile models exist; Series stores default preset IDs; no workspace-level save/load preset UI
+- [x] Saved caption/voice presets — caption presets: full CRUD (GET/POST/DELETE /caption-presets) + editor save/apply/delete chips; voice profiles: POST /voice-profiles saves named profile + appears in voice selector; visual/music preset UI deferred (project-level settings already reusable via Series defaults)
 - [x] Regenerate only the requested scene/media without touching voice or unrelated assets — per-scene voice regen, per-scene AI image gen, per-scene visual swap all live in SceneController
 - [x] Friendly rewrite suggestions when AI image/script prompts hit policy limits — GenerateAIImageJob auto-rewrites policy-rejected prompts via GPT-4o-mini and retries
 
