@@ -1171,7 +1171,7 @@ function captionSaveCopy() {
 function exportStatusCopy(job) {
   if (!job) return "";
   if (job.status === "completed") return "Export ready";
-  if (job.status === "failed") return job.failure_reason || "Export failed";
+  if (job.status === "failed") return "Export failed";
   if (job.status === "processing") return `Exporting ${job.progress_percent || 0}%`;
   if (job.status === "queued") return "Export queued";
   return `Export ${job.status}`;
@@ -3276,6 +3276,14 @@ onBeforeUnmount(() => {
               :class="['export-pill', `export-pill-${latestExportJob.status}`]"
             >
               {{ exportStatusCopy(latestExportJob) }}
+              <span
+                v-if="latestExportJob.status === 'failed' && latestExportJob.failure_reason"
+                class="export-fail-info"
+                tabindex="0"
+              >
+                <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-8-5a1 1 0 0 0-1 1v4a1 1 0 1 0 2 0V6a1 1 0 0 0-1-1Zm0 8a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" clip-rule="evenodd"/></svg>
+                <span class="export-fail-tooltip">{{ latestExportJob.failure_reason }}</span>
+              </span>
               <template v-if="latestExportJob.status === 'completed' && latestExportDownloadUrl">
                 <span class="export-pill-sep">·</span>
                 <a
@@ -4896,6 +4904,36 @@ button {
   max-width: 320px;
   white-space: normal;
   z-index: 50;
+  pointer-events: none;
+}
+
+.export-fail-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+  opacity: 0.8;
+  margin-left: 4px;
+}
+.export-fail-info:hover .export-fail-tooltip,
+.export-fail-info:focus .export-fail-tooltip {
+  display: block;
+}
+.export-fail-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: #1e1e2e;
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  color: #ff9999;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px 12px;
+  border-radius: 7px;
+  white-space: normal;
+  width: 240px;
+  z-index: 100;
   pointer-events: none;
 }
 
