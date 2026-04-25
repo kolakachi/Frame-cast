@@ -614,12 +614,14 @@ class ProjectController extends Controller
             return $this->error('export_blocked', 'At least one scene is required before export.', 422);
         }
 
+        $visualOptionalTypes = ['text_card', 'waveform'];
+
         foreach ($scenes as $scene) {
             if (trim((string) $scene->script_text) === '') {
                 return $this->error('export_blocked', 'All scenes must have script content before export.', 422);
             }
 
-            if (! $scene->visual_asset_id) {
+            if (! $scene->visual_asset_id && ! in_array((string) $scene->visual_type, $visualOptionalTypes, true)) {
                 return $this->error('export_blocked', 'Missing visual blocks export.', 422);
             }
 
