@@ -60,6 +60,8 @@ const rewriteMode = ref("");
 const rewritePending = ref(false);
 const rewriteApplyPending = ref(false);
 const rewriteError = ref("");
+const sceneDurationDraft = ref("");
+const sceneDurationSaving = ref(false);
 const voiceRegeneratePending = ref(false);
 const voiceRegenerateError = ref("");
 const addSceneGeneratePending = ref(false);
@@ -614,6 +616,9 @@ const rewriteOptions = [
   "Stronger hook",
   "More punchy",
   "More educational",
+  "More dramatic",
+  "Scarier",
+  "More documentary",
   "Simplify",
 ];
 const rewriteModeMap = {
@@ -622,6 +627,9 @@ const rewriteModeMap = {
   "Stronger hook": "stronger_hook",
   "More punchy": "more_punchy",
   "More educational": "more_educational",
+  "More dramatic": "more_dramatic",
+  Scarier: "scarier",
+  "More documentary": "more_documentary",
   Simplify: "simplify",
 };
 
@@ -694,6 +702,8 @@ watch(
       rewriteCustomInstruction.value = "";
       rewriteMode.value = "";
       rewriteError.value = "";
+      sceneDurationDraft.value = String(scene?.duration_seconds ?? "");
+      sceneDurationSaving.value = false;
       // Reset and reload both visual and audio
       if (audioRef.value) {
         audioRef.value.pause();
@@ -2339,6 +2349,22 @@ function selectAddSceneVisualMode(mode) {
   addSceneVisualMode.value = mode;
 }
 
+async function saveSceneDuration() {
+  if (!activeScene.value) return;
+  const val = parseFloat(sceneDurationDraft.value);
+  if (isNaN(val) || val < 1 || val > 600) return;
+  sceneDurationSaving.value = true;
+  try {
+    const response = await api.patch(`/scenes/${activeScene.value.id}`, { duration_seconds: val });
+    const updated = normalizeScenePayload(response.data?.data?.scene ?? null);
+    if (updated) replaceSceneInCollection(updated);
+  } catch (_) {
+    // non-critical — leave draft value as-is
+  } finally {
+    sceneDurationSaving.value = false;
+  }
+}
+
 function toggleRewriteTools() {
   rewriteToolsVisible.value = !rewriteToolsVisible.value;
   if (!rewriteToolsVisible.value) {
@@ -3808,6 +3834,21 @@ onBeforeUnmount(() => {
                 ></textarea>
                 <div class="helper-copy">
                   This text is spoken by the voice and rendered as captions.
+                </div>
+                <div class="duration-row">
+                  <label class="duration-label">Duration (s)</label>
+                  <input
+                    v-model="sceneDurationDraft"
+                    class="duration-input"
+                    type="number"
+                    min="1"
+                    max="600"
+                    step="0.5"
+                    :placeholder="String(activeScene?.duration_seconds ?? 12)"
+                    @change="saveSceneDuration"
+                  />
+                  <span v-if="sceneDurationSaving" class="duration-saving">saving…</span>
+                  <span class="duration-hint">Fallback when no voice is generated</span>
                 </div>
                 <div v-if="scriptSaveCopy()" :class="scriptSaveState === 'error' ? 'script-save-copy error' : 'script-save-copy'">
                   {{ scriptSaveCopy() }}
@@ -6478,6 +6519,42 @@ button {
 
 .helper-copy {
   margin-top: 6px;
+}
+
+.duration-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.duration-label {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
+.duration-input {
+  width: 72px;
+  padding: 4px 6px;
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+  background: var(--input-bg, #1a1a1a);
+  color: var(--text, #eee);
+  font-size: 12px;
+}
+
+.duration-saving {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+}
+
+.duration-hint {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  opacity: 0.6;
+  flex-basis: 100%;
 }
 
 .panel-inline-actions {

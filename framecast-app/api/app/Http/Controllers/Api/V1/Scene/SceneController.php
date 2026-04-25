@@ -361,7 +361,7 @@ class SceneController extends Controller
         }
 
         $validated = $request->validate([
-            'mode' => ['required', 'string', 'in:shorten,expand,stronger_hook,more_punchy,more_educational,more_salesy,simplify'],
+            'mode' => ['required', 'string', 'in:shorten,expand,stronger_hook,more_punchy,more_educational,more_salesy,simplify,scarier,more_dramatic,more_documentary'],
             'apply' => ['nullable', 'boolean'],
         ]);
 

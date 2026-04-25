@@ -80,10 +80,10 @@ See QA gate: `PRODUCT_MVP_CORE_QA.md`
 - [x] Admin routes restricted to admin + admin.ip middleware
 
 ### Content Quality and Repeatability
-- [~] Niche-specific script templates for launch niches — Niche model has default_template_type/tone/style; PromptTemplateRegistry not yet niche-aware
+- [x] Niche-specific script templates for launch niches — {{niche}} injected into all script_from_* prompt templates; GenerateScriptJob loads Niche.name + default_voice_tone as tone fallback
 - [x] Hook alternatives before full generation — GenerateHooksJob + ScoreHooksJob; ProjectHookOption stores 3-10 scored hook options; frontend shows scored hooks for selection
-- [~] Scene pacing controls — Scene.duration_seconds + motion_settings_json (effect/intensity) exist; no per-scene pacing adjustment UI
-- [~] One-click rewrite actions — 7 modes live (shorten, expand, stronger_hook, more_punchy, more_educational, more_salesy, simplify); missing: scarier, more_dramatic, more_documentary
+- [x] Scene pacing controls — duration_seconds editable per scene in Editor script panel with autosave; motion_settings_json (effect/intensity) controls Ken Burns motion
+- [x] One-click rewrite actions — 10 modes live (shorten, expand, stronger_hook, more_punchy, more_educational, more_salesy, simplify, scarier, more_dramatic, more_documentary)
 - [x] Series Lite: series name, niche, defaults, and "Create next episode" — Series CRUD, episode linkage, SummarizeEpisodeJob, SeriesDetailView "Create next episode" flow, series memory window
 - [~] Saved caption/voice/visual/music presets — CaptionPreset and VoiceProfile models exist; Series stores default preset IDs; no workspace-level save/load preset UI
 - [x] Regenerate only the requested scene/media without touching voice or unrelated assets — per-scene voice regen, per-scene AI image gen, per-scene visual swap all live in SceneController

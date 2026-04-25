@@ -14,31 +14,31 @@ class PromptTemplateRegistry
         return match ($key) {
             'script_from_prompt' => [
                 'system' => 'You are a short-form video script writer. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines, no character cues. Write only the words the narrator will speak aloud.',
-                'user' => "Create a concise social video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nSource: {{source_content}}",
+                'user' => "Create a concise social video script.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nSource: {{source_content}}",
             ],
             'script_from_url' => [
                 'system' => 'You are a short-form video script writer. Rewrite source material into plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines, no character cues. Write only the words the narrator will speak aloud. Preserve factual claims, do not invent statistics.',
-                'user' => "Rewrite this URL/article-derived content into a short-form video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: preserve factual claims from the source, do not invent statistics, use short caption-friendly lines.\nSource:\n{{source_content}}",
+                'user' => "Rewrite this URL/article-derived content into a short-form video script.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: preserve factual claims from the source, do not invent statistics, use short caption-friendly lines.\nSource:\n{{source_content}}",
             ],
             'script_from_images' => [
                 'system' => 'You write short-form narration from uploaded image references. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
-                'user' => "Create a short-form video script from these uploaded image references.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: write one concise narration beat per image in the same order, separate each beat with a blank line, do not invent exact dates or identities unless provided.\nImage references and user context:\n{{source_content}}",
+                'user' => "Create a short-form video script from these uploaded image references.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: write one concise narration beat per image in the same order, separate each beat with a blank line, do not invent exact dates or identities unless provided.\nImage references and user context:\n{{source_content}}",
             ],
             'script_from_product' => [
                 'system' => 'You write short-form product explainer and UGC-style ad scripts. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
-                'user' => "Create a short-form product video script.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: use only product details provided, do not invent testimonials/pricing/guarantees, include a clear CTA.\nProduct source:\n{{source_content}}",
+                'user' => "Create a short-form product video script.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: use only product details provided, do not invent testimonials/pricing/guarantees, include a clear CTA.\nProduct source:\n{{source_content}}",
             ],
             'script_from_csv' => [
                 'system' => 'You turn CSV topic rows into short-form video scripts. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
-                'user' => "Create one short-form video script from this CSV. Use the first topic row as the primary video unless the source clearly asks for a batch. Preserve fields like topic, angle, audience, and CTA.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nCSV:\n{{source_content}}",
+                'user' => "Create one short-form video script from this CSV. Use the first topic row as the primary video unless the source clearly asks for a batch. Preserve fields like topic, angle, audience, and CTA.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nCSV:\n{{source_content}}",
             ],
             'script_from_audio_reference' => [
                 'system' => 'You prepare a short-form repurposing draft from an existing audio reference. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
-                'user' => "Create a short-form repurposing draft for this existing audio source.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, note this is a draft based on the provided reference.\nAudio reference:\n{{source_content}}",
+                'user' => "Create a short-form repurposing draft for this existing audio source.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, note this is a draft based on the provided reference.\nAudio reference:\n{{source_content}}",
             ],
             'script_from_video_reference' => [
                 'system' => 'You prepare a short-form repurposing draft from an existing video reference. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
-                'user' => "Create a short-form repurposing draft for this existing video source.\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, note this is a draft based on the provided reference.\nVideo reference:\n{{source_content}}",
+                'user' => "Create a short-form repurposing draft for this existing video source.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, note this is a draft based on the provided reference.\nVideo reference:\n{{source_content}}",
             ],
             'scene_breakdown' => [
                 'system' => 'You split scripts into scenes. Return JSON only in this shape: {"scenes":[{"scene_type":"hook|narration|transition|text_card|quote","label":"...","script_text":"...","duration_seconds":number}]}. The script_text for every scene must be clean spoken narration only — the exact words a narrator will read aloud. Never include stage directions, scene transitions, [CUT TO:], [INT/EXT], FADE IN/OUT, parenthetical actions, or any screenplay formatting.',

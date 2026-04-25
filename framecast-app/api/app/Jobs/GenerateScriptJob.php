@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Jobs\BreakdownScenesJob;
 use App\Events\GenerationProgressed;
 use App\Models\Asset;
+use App\Models\Niche;
 use App\Models\Project;
 use App\Models\Series;
 use App\Services\Media\MediaTranscriptionService;
@@ -52,11 +53,16 @@ class GenerateScriptJob implements ShouldQueue
             $options['system_prefix'] = $seriesContext;
         }
 
+        $niche = $project->niche_id ? Niche::query()->find($project->niche_id) : null;
+        $nicheLabel = $niche ? trim((string) $niche->name) : '';
+        $nicheTone = $niche ? trim((string) ($niche->default_voice_tone ?: '')) : '';
+
         $result = $aiGeneration->generate($promptTemplateKey, [
             'source_type' => $project->source_type ?: 'prompt',
-            'tone' => $project->tone ?: 'neutral',
+            'tone' => $project->tone ?: ($nicheTone ?: 'neutral'),
             'content_goal' => $project->content_goal ?: 'educational',
             'language' => $project->primary_language ?: 'en',
+            'niche' => $nicheLabel !== '' ? $nicheLabel : 'general',
             'source_content' => $sourceContent,
         ], 1400, 0.35, $options);
 
