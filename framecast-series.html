@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Framecast — New Series</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:          #09090b;
+    --bg-el:       #111113;
+    --bg-card:     #0f0f12;
+    --bg-hover:    #17171b;
+    --border:      #1e1e24;
+    --border-hi:   #2a2a33;
+    --text:        #e8e8ea;
+    --text-dim:    #8a8a95;
+    --text-faint:  #4a4a55;
+    --accent:      #f97316;
+    --accent-soft: rgba(249,115,22,0.10);
+    --accent-bd:   rgba(249,115,22,0.35);
+    --green:       #22c55e;
+    --green-soft:  rgba(34,197,94,0.10);
+    --blue:        #3b82f6;
+    --blue-soft:   rgba(59,130,246,0.10);
+    --purple:      #a855f7;
+    --purple-soft: rgba(168,85,247,0.10);
+    --red:         #f87171;
+    --red-soft:    rgba(248,113,113,0.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: "DM Sans", sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; }
+
+  /* Layout */
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar { width: 220px; background: var(--bg-el); border-right: 1px solid var(--border); flex-shrink: 0; padding: 18px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .logo { display: flex; align-items: center; gap: 10px; padding: 0 8px 16px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+  .logo-mark { width: 28px; height: 28px; border-radius: 7px; background: var(--accent); display: flex; align-items: center; justify-content: center; font-family: "Space Mono", monospace; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .logo-text { font-size: 14px; font-weight: 700; letter-spacing: -0.3px; }
+  .nav-label { font-family: "Space Mono", monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); padding: 10px 10px 4px; }
+  .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-dim); cursor: pointer; border: 1px solid transparent; }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-bd); }
+  .nav-item svg { flex-shrink: 0; opacity: 0.7; }
+  .nav-item.active svg { opacity: 1; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .topbar { height: 58px; border-bottom: 1px solid var(--border); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; background: rgba(9,9,11,0.95); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 80; }
+  .bc { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .bc-dim { color: var(--text-dim); }
+  .bc-active { font-weight: 600; }
+  .bc-sep { color: var(--text-faint); }
+  .topbar-right { display: flex; align-items: center; gap: 8px; }
+  .page-body { display: flex; flex: 1; overflow: hidden; }
+
+  /* Step rail */
+  .step-rail { width: 240px; flex-shrink: 0; padding: 28px 16px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+  .step-rail-title { font-family: "Space Mono", monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 14px; padding-left: 2px; }
+  .step-nav-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 10px; border-radius: 10px; cursor: pointer; transition: 0.15s; border: 1px solid transparent; }
+  .step-nav-item:hover:not(.active) { background: var(--bg-hover); }
+  .step-nav-item.active { background: var(--accent-soft); border-color: var(--accent-bd); }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-hi); display: flex; align-items: center; justify-content: center; font-family: "Space Mono", monospace; font-size: 10px; font-weight: 700; color: var(--text-dim); flex-shrink: 0; margin-top: 1px; transition: 0.15s; }
+  .step-nav-item.active .step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .step-nav-item.done .step-num { background: var(--green-soft); border-color: rgba(34,197,94,0.3); color: var(--green); font-size: 12px; }
+  .step-info { flex: 1; min-width: 0; }
+  .step-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .step-nav-item.active .step-name { color: var(--accent); }
+  .step-desc { font-size: 11px; color: var(--text-dim); margin-top: 2px; line-height: 1.45; }
+
+  /* Form area */
+  .form-area { flex: 1; padding: 36px 40px 60px; overflow-y: auto; min-width: 0; }
+  .step-panel { display: none; }
+  .step-panel.active { display: block; }
+  .form-step-title { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .form-step-sub { font-size: 13px; color: var(--text-dim); margin-bottom: 28px; line-height: 1.55; max-width: 600px; }
+
+  /* Fields */
+  .field-group { margin-bottom: 22px; }
+  .field-label { font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 7px; display: flex; align-items: center; gap: 6px; }
+  .field-hint { font-size: 11px; color: var(--text-faint); font-weight: 400; }
+  .field-input { width: 100%; padding: 10px 13px; background: var(--bg-el); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: "DM Sans", sans-serif; font-size: 13px; outline: none; transition: border-color 0.15s; }
+  .field-input:focus { border-color: var(--border-hi); }
+  .field-input::placeholder { color: var(--text-faint); }
+  textarea.field-input { min-height: 90px; resize: vertical; line-height: 1.6; }
+  textarea.tall { min-height: 130px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  select.field-input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8a95' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 34px; cursor: pointer; }
+
+  /* Toggle chips */
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border-hi); background: var(--bg-el); font-size: 13px; font-weight: 500; color: var(--text-dim); cursor: pointer; transition: 0.15s; user-select: none; }
+  .chip:hover { border-color: var(--border-hi); color: var(--text); }
+  .chip.selected { background: var(--accent-soft); border-color: var(--accent-bd); color: var(--accent); }
+  .chip svg { flex-shrink: 0; }
+
+  /* Callout */
+  .callout { border: 1px solid var(--border-hi); border-radius: 10px; padding: 14px 16px; background: var(--bg-el); margin-bottom: 22px; display: flex; gap: 12px; }
+  .callout-icon { flex-shrink: 0; width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .callout-icon.orange { background: var(--accent-soft); color: var(--accent); }
+  .callout-icon.blue { background: var(--blue-soft); color: var(--blue); }
+  .callout-icon.purple { background: var(--purple-soft); color: var(--purple); }
+  .callout-icon.green { background: var(--green-soft); color: var(--green); }
+  .callout-body { flex: 1; }
+  .callout-title { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+  .callout-text { font-size: 12px; color: var(--text-dim); line-height: 1.55; }
+  .callout-text strong { color: var(--text); font-weight: 600; }
+
+  /* Section divider */
+  .section-divider { border-top: 1px solid var(--border); margin: 28px 0; }
+  .section-label { font-family: "Space Mono", monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; }
+
+  /* Tags input */
+  .tags-wrap { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--bg-el); border: 1px solid var(--border); border-radius: 8px; min-height: 42px; }
+  .tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; background: var(--bg-hover); border: 1px solid var(--border-hi); font-size: 12px; color: var(--text-dim); }
+  .tag-x { cursor: pointer; color: var(--text-faint); font-size: 14px; line-height: 1; }
+  .tag.accent { background: var(--accent-soft); border-color: var(--accent-bd); color: var(--accent); }
+  .tag.red { background: var(--red-soft); border-color: rgba(248,113,113,0.3); color: var(--red); }
+  .tags-input { border: none; background: transparent; outline: none; font-size: 12px; color: var(--text); font-family: "DM Sans", sans-serif; flex: 1; min-width: 80px; }
+  .tags-input::placeholder { color: var(--text-faint); }
+
+  /* Range */
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .range-row { display: flex; align-items: center; gap: 12px; }
+  .range-val { font-family: "Space Mono", monospace; font-size: 12px; color: var(--text-dim); min-width: 44px; text-align: right; }
+
+  /* Toggle switch */
+  .toggle-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-el); border: 1px solid var(--border); border-radius: 8px; }
+  .toggle-track { width: 36px; height: 20px; border-radius: 999px; background: var(--accent); position: relative; flex-shrink: 0; cursor: pointer; }
+  .toggle-track.off { background: var(--border-hi); }
+  .toggle-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; position: absolute; top: 2px; right: 2px; transition: 0.2s; }
+  .toggle-track.off .toggle-thumb { right: auto; left: 2px; }
+  .toggle-info { flex: 1; }
+  .toggle-label { font-size: 13px; font-weight: 600; }
+  .toggle-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  /* Visual style grid */
+  .visual-style-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 6px; }
+  .vs-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: 0.15s; }
+  .vs-card:hover { border-color: var(--border-hi); }
+  .vs-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .vs-thumb { height: 60px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+  .vs-thumb.cinematic { background: linear-gradient(135deg, #0a0a1a, #1a1a3a); }
+  .vs-thumb.editorial { background: linear-gradient(135deg, #1a1a1a, #3a3a3a); }
+  .vs-thumb.vivid { background: linear-gradient(135deg, #1a0020, #3a0040); }
+  .vs-thumb.documentary { background: linear-gradient(135deg, #0a1a0a, #1a3a1a); }
+  .vs-thumb.minimal { background: linear-gradient(135deg, #18181b, #27272a); }
+  .vs-thumb.neon { background: linear-gradient(135deg, #0a001a, #1a003a); }
+  .vs-thumb.warm { background: linear-gradient(135deg, #1a0a00, #3a1a00); }
+  .vs-thumb.corporate { background: linear-gradient(135deg, #00101a, #00203a); }
+  .vs-label { padding: 7px 10px; font-size: 11px; font-weight: 600; text-align: center; background: var(--bg-el); }
+
+  /* Palette picker */
+  .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 6px; }
+  .palette-card { border: 2px solid transparent; border-radius: 8px; overflow: hidden; cursor: pointer; transition: 0.15s; }
+  .palette-card.selected { border-color: var(--accent); }
+  .palette-swatch { height: 40px; display: flex; }
+  .palette-swatch span { flex: 1; }
+  .palette-name { font-size: 10px; text-align: center; padding: 5px 0; color: var(--text-dim); }
+
+  /* Character cards */
+  .character-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .character-card { background: var(--bg-el); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; position: relative; }
+  .char-remove { position: absolute; top: 10px; right: 10px; width: 22px; height: 22px; border-radius: 50%; background: transparent; border: none; color: var(--text-faint); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .char-remove:hover { background: var(--red-soft); color: var(--red); }
+  .add-char-card { background: transparent; border: 1px dashed var(--border-hi); border-radius: 12px; padding: 16px; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: 0.15s; color: var(--text-faint); font-size: 13px; font-weight: 500; }
+  .add-char-card:hover { border-color: var(--accent-bd); color: var(--accent); }
+  .char-avatar { width: 48px; height: 48px; border-radius: 10px; background: linear-gradient(135deg, var(--bg-card), var(--border-hi)); border: 1px solid var(--border-hi); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: var(--text-faint); font-family: "Space Mono", monospace; }
+  .char-name-text { font-size: 13px; font-weight: 700; }
+  .char-role-text { font-size: 11px; color: var(--text-dim); }
+  .char-desc-text { font-size: 11px; color: var(--text-faint); line-height: 1.5; }
+  .char-visual-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--purple-soft); border: 1px solid rgba(168,85,247,0.2); border-radius: 4px; color: var(--purple); font-family: "Space Mono", monospace; font-size: 9px; font-weight: 700; }
+
+  /* Voice profile selector */
+  .voice-option { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-el); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: 0.15s; margin-bottom: 8px; }
+  .voice-option.selected { border-color: var(--accent-bd); background: var(--accent-soft); }
+  .voice-avatar { width: 36px; height: 36px; border-radius: 999px; background: linear-gradient(135deg, #1d4ed8, #7c3aed); display: flex; align-items: center; justify-content: center; font-family: "Space Mono", monospace; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .voice-info { flex: 1; }
+  .voice-name { font-size: 13px; font-weight: 600; }
+  .voice-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .voice-play { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-hover); border: 1px solid var(--border-hi); display: flex; align-items: center; justify-content: center; color: var(--text-dim); cursor: pointer; flex-shrink: 0; }
+  .voice-play:hover { border-color: var(--accent-bd); color: var(--accent); }
+
+  /* Caption preview */
+  .caption-preview-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 14px; }
+  .caption-preview-card { border: 2px solid var(--border); border-radius: 8px; padding: 12px; min-width: 110px; text-align: center; cursor: pointer; flex-shrink: 0; transition: 0.15s; }
+  .caption-preview-card.selected { border-color: var(--accent); }
+  .caption-preview-text { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .caption-preview-name { font-size: 10px; color: var(--text-dim); font-family: "Space Mono", monospace; }
+
+  /* Context preview (episode memory) */
+  .context-preview { background: var(--bg-el); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
+  .context-preview-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .context-preview-title { font-family: "Space Mono", monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
+  .context-chain { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .context-node { display: flex; gap: 12px; align-items: flex-start; }
+  .context-node-line { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .context-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-hi); flex-shrink: 0; margin-top: 5px; }
+  .context-dot.accent { background: var(--accent); }
+  .context-dot.active { background: var(--green); box-shadow: 0 0 0 3px rgba(34,197,94,0.15); }
+  .context-connector { width: 1px; flex: 1; background: var(--border); min-height: 16px; }
+  .context-card { flex: 1; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .context-ep { font-family: "Space Mono", monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 3px; }
+  .context-ep-title { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .context-ep-summary { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+  .context-card.new { border-style: dashed; border-color: var(--accent-bd); background: var(--accent-soft); }
+  .context-card.new .context-ep { color: var(--accent); }
+  .context-card.new .context-ep-title { color: var(--accent); }
+  .bible-inject-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 4px; background: var(--blue-soft); border: 1px solid rgba(59,130,246,0.25); color: var(--blue); font-family: "Space Mono", monospace; font-size: 9px; font-weight: 700; letter-spacing: 0.06em; }
+
+  /* Mood board */
+  .moodboard-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .moodboard-cell { aspect-ratio: 16/9; border-radius: 8px; border: 1px dashed var(--border-hi); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: 0.15s; color: var(--text-faint); font-size: 11px; gap: 6px; overflow: hidden; position: relative; }
+  .moodboard-cell:hover { border-color: var(--accent-bd); color: var(--accent); }
+  .moodboard-cell.filled { border-style: solid; border-color: var(--border-hi); }
+  .moodboard-cell img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: 0.15s; font-family: "DM Sans", sans-serif; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #ea6a0e; }
+  .btn-ghost { background: transparent; border-color: var(--border-hi); color: var(--text-dim); }
+  .btn-ghost:hover { color: var(--text); background: var(--bg-hover); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  /* Bottom actions */
+  .form-actions { display: flex; align-items: center; justify-content: space-between; padding-top: 28px; margin-top: 28px; border-top: 1px solid var(--border); }
+  .form-actions-right { display: flex; gap: 8px; }
+  .step-counter { font-family: "Space Mono", monospace; font-size: 11px; color: var(--text-faint); }
+
+  /* Preview panel */
+  .preview-panel { width: 264px; flex-shrink: 0; border-left: 1px solid var(--border); padding: 24px 18px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+  .preview-label { font-family: "Space Mono", monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 10px; }
+  .series-preview-card { background: var(--bg-el); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .series-preview-cover { height: 90px; background: linear-gradient(135deg, #0a0a2a 0%, #1a0a3a 50%, #0a1a2a 100%); display: flex; align-items: center; justify-content: center; position: relative; }
+  .series-preview-initial { font-family: "Space Mono", monospace; font-size: 32px; font-weight: 700; color: rgba(255,255,255,0.12); }
+  .series-preview-badge { position: absolute; top: 8px; right: 8px; padding: 2px 8px; border-radius: 4px; background: var(--accent-soft); border: 1px solid var(--accent-bd); color: var(--accent); font-family: "Space Mono", monospace; font-size: 9px; font-weight: 700; }
+  .series-preview-body { padding: 10px 12px; }
+  .series-preview-name { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .series-preview-meta { font-size: 11px; color: var(--text-dim); display: flex; flex-direction: column; gap: 3px; }
+  .series-preview-meta span { display: flex; align-items: center; gap: 6px; }
+
+  .context-pill-list { display: flex; flex-direction: column; gap: 6px; }
+  .context-pill { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg-el); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; transition: 0.15s; }
+  .context-pill.dim { opacity: 0.45; }
+  .context-pill-icon { width: 20px; height: 20px; border-radius: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px; }
+  .context-pill-icon.ok { background: var(--green-soft); color: var(--green); }
+  .context-pill-icon.pending { background: var(--accent-soft); color: var(--accent); }
+  .context-pill-icon.dim { background: var(--bg-hover); color: var(--text-faint); }
+  .context-pill-icon.purple { background: var(--purple-soft); color: var(--purple); }
+  .context-pill-label { flex: 1; color: var(--text-dim); line-height: 1.4; }
+  .context-pill-label strong { color: var(--text); font-weight: 600; display: block; }
+  .context-pill-val { font-family: "Space Mono", monospace; font-size: 10px; color: var(--text-faint); flex-shrink: 0; }
+
+  .consist-list { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .consist-row { display: flex; align-items: center; gap: 8px; }
+  .consist-row.ok { color: var(--text-dim); }
+  .consist-row.done { color: var(--green); }
+  .consist-row.pending { opacity: 0.4; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">F</div>
+      <div class="logo-text">Framecast</div>
+    </div>
+    <div class="nav-label">Workspace</div>
+    <div class="nav-item">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9s10.3-3.9 14.2 0"/><path d="m7.5 7.5 9 9M7.5 16.5l9-9"/></svg>
+      Channels
+    </div>
+    <div class="nav-item active">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M2 6h4v4H2zM2 14h4v4H2zM10 6h12M10 10h12M10 14h12M10 18h12"/></svg>
+      Series
+    </div>
+    <div class="nav-item">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      All Videos
+    </div>
+  </nav>
+
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="bc">
+        <span class="bc-dim">Series</span>
+        <span class="bc-sep">/</span>
+        <span class="bc-active">New Series</span>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm">Save draft</button>
+        <button class="btn btn-primary btn-sm">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create Series
+        </button>
+      </div>
+    </div>
+
+    <div class="page-body">
+
+      <!-- Step rail -->
+      <div class="step-rail">
+        <div class="step-rail-title">Setup steps</div>
+
+        <div class="step-nav-item" id="nav-1" onclick="goStep(1)">
+          <div class="step-num" id="num-1"><span>1</span></div>
+          <div class="step-info">
+            <div class="step-name">Basics</div>
+            <div class="step-desc">Name, channel &amp; format</div>
+          </div>
+        </div>
+        <div class="step-nav-item active" id="nav-2" onclick="goStep(2)">
+          <div class="step-num" id="num-2"><span>2</span></div>
+          <div class="step-info">
+            <div class="step-name">Series Bible</div>
+            <div class="step-desc">AI context for every episode</div>
+          </div>
+        </div>
+        <div class="step-nav-item" id="nav-3" onclick="goStep(3)">
+          <div class="step-num" id="num-3"><span>3</span></div>
+          <div class="step-info">
+            <div class="step-name">Visual Identity</div>
+            <div class="step-desc">Style, palette &amp; mood board</div>
+          </div>
+        </div>
+        <div class="step-nav-item" id="nav-4" onclick="goStep(4)">
+          <div class="step-num" id="num-4"><span>4</span></div>
+          <div class="step-info">
+            <div class="step-name">Characters</div>
+            <div class="step-desc">Recurring personas &amp; visuals</div>
+          </div>
+        </div>
+        <div class="step-nav-item" id="nav-5" onclick="goStep(5)">
+          <div class="step-num" id="num-5"><span>5</span></div>
+          <div class="step-info">
+            <div class="step-name">Production Defaults</div>
+            <div class="step-desc">Voice, captions &amp; music</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Form area -->
+      <div class="form-area">
+
+        <!-- ─── STEP 1: Basics ─────────────────────────── -->
+        <div class="step-panel" id="step-1">
+          <div class="form-step-title">Series Basics</div>
+          <div class="form-step-sub">Give your series an identity. This is what appears on your dashboard and in your channel library.</div>
+
+          <div class="field-group">
+            <div class="field-label">Series name *</div>
+            <input class="field-input" type="text" placeholder="e.g. African Tech Startups, 60-Second Finance, The Build Log" />
+          </div>
+
+          <div class="field-group">
+            <div class="field-label">Description <span class="field-hint">— shown on your series card</span></div>
+            <textarea class="field-input" rows="2" placeholder="One line about what this series covers and why people should follow it…"></textarea>
+          </div>
+
+          <div class="field-group">
+            <div class="field-label">Channel</div>
+            <select class="field-input">
+              <option value="">No channel — standalone series</option>
+              <option>@africantechstartups</option>
+              <option>@financebreakdowns</option>
+              <option>+ Create new channel</option>
+            </select>
+          </div>
+
+          <div class="section-divider"></div>
+          <div class="section-label">Format &amp; platform</div>
+
+          <div class="field-group">
+            <div class="field-label">Target platforms</div>
+            <div class="chip-row">
+              <div class="chip selected" onclick="this.classList.toggle('selected')">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 2H3v16h5v4l4-4h5l4-4V2zm-10 6.5v5m5-5v5"/></svg>
+                TikTok
+              </div>
+              <div class="chip" onclick="this.classList.toggle('selected')">
+                <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069z"/></svg>
+                Instagram
+              </div>
+              <div class="chip" onclick="this.classList.toggle('selected')">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 0 0-1.95 1.96A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"/></svg>
+                YouTube Shorts
+              </div>
+              <div class="chip" onclick="this.classList.toggle('selected')">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+                LinkedIn
+              </div>
+              <div class="chip" onclick="this.classList.toggle('selected')">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/></svg>
+                X / Twitter
+              </div>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <div class="field-label">Aspect ratio</div>
+              <div class="chip-row" style="gap:6px;">
+                <div class="chip selected" style="flex:1;justify-content:center;" onclick="toggleAspect(this)">9:16 Vertical</div>
+                <div class="chip" style="flex:1;justify-content:center;" onclick="toggleAspect(this)">16:9 Wide</div>
+                <div class="chip" style="flex:1;justify-content:center;" onclick="toggleAspect(this)">1:1 Square</div>
+              </div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Episode duration target</div>
+              <select class="field-input">
+                <option>30 seconds</option>
+                <option selected>60 seconds</option>
+                <option>90 seconds</option>
+                <option>2 minutes</option>
+                <option>3 minutes</option>
+                <option>5+ minutes</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-label">Posting cadence <span class="field-hint">— for scheduling, optional</span></div>
+            <div class="chip-row">
+              <div class="chip" onclick="this.classList.toggle('selected')">Daily</div>
+              <div class="chip selected" onclick="this.classList.toggle('selected')">3× per week</div>
+              <div class="chip" onclick="this.classList.toggle('selected')">Weekly</div>
+              <div class="chip" onclick="this.classList.toggle('selected')">Custom</div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <span class="step-counter">Step 1 of 5</span>
+            <div class="form-actions-right">
+              <button class="btn btn-primary" onclick="goStep(2)">Continue → Series Bible</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── STEP 2: Series Bible ───────────────────── -->
+        <div class="step-panel active" id="step-2">
+          <div class="form-step-title">Series Bible</div>
+          <div class="form-step-sub">The persistent context the AI receives every time it generates an episode. The more specific you are, the more consistent every episode will be.</div>
+
+          <div class="callout">
+            <div class="callout-icon blue">⚡</div>
+            <div class="callout-body">
+              <div class="callout-title">How the AI uses this</div>
+              <div class="callout-text">The bible is injected as a <strong>system prompt prefix</strong> before every episode generation. It combines with the rolling episode summary chain so the model always knows the show format, tone, audience, and recurring rules — without you repeating it per episode.</div>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-label">What is this series about? <span class="field-hint">— one sharp sentence</span></div>
+            <textarea class="field-input" placeholder="e.g. A daily 60-second breakdown of one African tech startup — their founding story, problem, and what makes them different."></textarea>
+          </div>
+
+          <div class="field-group">
+            <div class="field-label">Target audience</div>
+            <input class="field-input" type="text" placeholder="e.g. African professionals aged 25–40 interested in startups, investing, and tech culture" />
+          </div>
+
+          <div class="field-group">
+            <div class="field-label">Tone &amp; voice</div>
+            <div class="field-row">
+              <select class="field-input">
+                <option>Authoritative</option>
+                <option>Conversational</option>
+                <option selected>Informative</option>
+                <option>Entertaining</option>
+                <option>Inspirational</option>
+              </select>
+              <select class="field-input">
+                <option>Fast-paced</option>
+                <option selected>Balanced</option>
+                <option>Measured</option>
+                <option>Intense</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="section-divider"></div>
+          <div class="section-label">Episode structure</div>
+
+          <div class="callout">
+            <div class="callout-icon orange">◈</div>
+            <div class="callout-body">
+              <div class="callout-title">Recurring episode format</div>
+              <div class="callout-text">Define the <strong>scene-by-scene structure</strong> the AI follows for every episode. This keeps pacing and content beats consistent across the series.</div>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-label">Episode format template</div>
+            <textarea class="field-input tall" placeholder="Scene 1 — Hook (5–8s): Open with a surprising stat or bold claim.&#10;Scene 2 — Founding story (10s): Who built it and why.&#10;Scene 3 — The problem they solve (10s): One sentence, tangible.&#10;Scene 4 — What makes them different (15s): Their edge or insight.&#10;Scene 5 — Traction or status (10s): Funding, users, or current state.&#10;Scene 6 — CTA (5s): 'Follow for tomorrow's startup.'"></textarea>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <div class="field-label">Always include</div>
+              <div class="tags-wrap">
+                <span class="tag accent">company name in hook <span class="tag-x">×</span></span>
+                <span class="tag accent">founding year <span class="tag-x">×</span></span>
+                <span class="tag accent">country of origin <span class="tag-x">×</span></span>
+                <input class="tags-input" placeholder="+ add rule…" />
+              </div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Never include</div>
+              <div class="tags-wrap">
+                <span class="tag red">jargon or acronyms <span class="tag-x">×</span></span>
+                <span class="tag red">price comparisons <span class="tag-x">×</span></span>
+                <input class="tags-input" placeholder="+ add rule…" />
+              </div>
+            </div>
+          </div>
+
+          <div class="section-divider"></div>
+          <div class="section-label">Episode memory &amp; continuity</div>
+
+          <div class="callout">
+            <div class="callout-icon purple">⟳</div>
+            <div class="callout-body">
+              <div class="callout-title">How episode memory works</div>
+              <div class="callout-text">After each episode is marked complete, Framecast <strong>auto-generates a ~150 word summary</strong> and stores it. When the next episode is created, the last <strong>N summaries</strong> are injected as context — so the AI knows what was covered, avoids repetition, and can reference previous episodes naturally.</div>
+            </div>
+          </div>
+
+          <div class="context-preview">
+            <div class="context-preview-header">
+              <span class="context-preview-title">Context chain — episode 4 sees this history</span>
+              <span class="bible-inject-tag">
+                <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                Series bible always injected
+              </span>
+            </div>
+            <div class="context-chain">
+              <div class="context-node">
+                <div class="context-node-line"><div class="context-dot accent"></div><div class="context-connector"></div></div>
+                <div class="context-card">
+                  <div class="context-ep">Ep 01 · Auto-summary</div>
+                  <div class="context-ep-title">Paystack — Nigeria's first global fintech exit</div>
+                  <div class="context-ep-summary">Covered Paystack's founding in Lagos 2015, Y Combinator run, and Stripe's $200M acquisition. First episode — established series tone and hook style.</div>
+                </div>
+              </div>
+              <div class="context-node">
+                <div class="context-node-line"><div class="context-dot accent"></div><div class="context-connector"></div></div>
+                <div class="context-card">
+                  <div class="context-ep">Ep 02 · Auto-summary</div>
+                  <div class="context-ep-title">Flutterwave — Building Africa's payment rails</div>
+                  <div class="context-ep-summary">Covered Olugbenga Agboola's journey, $250M Series D, 34 countries. Second fintech episode — audience engagement trending up.</div>
+                </div>
+              </div>
+              <div class="context-node">
+                <div class="context-node-line"><div class="context-dot accent"></div><div class="context-connector"></div></div>
+                <div class="context-card">
+                  <div class="context-ep">Ep 03 · Auto-summary</div>
+                  <div class="context-ep-title">Andela — The talent export engine</div>
+                  <div class="context-ep-summary">Covered Andela's model, pivot to marketplace, $200M Series E. First non-fintech episode — diversifying the series intentionally.</div>
+                </div>
+              </div>
+              <div class="context-node">
+                <div class="context-node-line"><div class="context-dot active"></div></div>
+                <div class="context-card new">
+                  <div class="context-ep">Ep 04 · Generating now</div>
+                  <div class="context-ep-title">Your next episode</div>
+                  <div class="context-ep-summary">AI receives the 3 summaries above + full series bible. It knows to avoid fintech-heavy framing and that viewers follow for startup diversity.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-label">Memory window <span class="field-hint">— how many past episodes the AI sees</span></div>
+            <div class="range-row">
+              <input type="range" min="0" max="10" value="3" oninput="this.nextElementSibling.textContent=this.value+' eps'" />
+              <span class="range-val">3 eps</span>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="toggle-row">
+              <div class="toggle-track"><div class="toggle-thumb"></div></div>
+              <div class="toggle-info">
+                <div class="toggle-label">Auto-summarise completed episodes</div>
+                <div class="toggle-sub">When an episode moves to Ready for Review, a summary is generated and stored automatically.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <span class="step-counter">Step 2 of 5</span>
+            <div class="form-actions-right">
+              <button class="btn btn-ghost" onclick="goStep(1)">← Back</button>
+              <button class="btn btn-primary" onclick="goStep(3)">Continue → Visual Identity</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── STEP 3: Visual Identity ───────────────── -->
+        <div class="step-panel" id="step-3">
+          <div class="form-step-title">Visual Identity</div>
+          <div class="form-step-sub">Define the visual language of the series. This feeds into AI image generation and stock clip matching so every episode looks and feels consistent.</div>
+
+          <div class="callout">
+            <div class="callout-icon green">◼</div>
+            <div class="callout-body">
+              <div class="callout-title">What this controls</div>
+              <div class="callout-text">The visual style, palette, and mood board are injected into every scene's <strong>visual prompt</strong> as a style anchor. Pexels searches and AI image prompts both draw from this to keep the look consistent across episodes.</div>
+            </div>
+          </div>
+
+          <div class="section-label">Visual generation</div>
+
+          <div class="field-group">
+            <div class="field-label">Default visual mode</div>
+            <div class="chip-row">
+              <div class="chip selected" onclick="toggleSingle(this)">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Stock clips (Pexels)
+              </div>
+              <div class="chip" onclick="toggleSingle(this)">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                AI-generated images
+              </div>
+              <div class="chip" onclick="toggleSingle(this)">Mixed — stocks first, AI for gaps</div>
+            </div>
+          </div>
+
+          <div class="section-divider"></div>
+          <div class="section-label">AI image style</div>
+
+          <div class="visual-style-grid">
+            <div class="vs-card selected" onclick="toggleVS(this)">
+              <div class="vs-thumb cinematic">🎬</div>
+              <div class="vs-label">Cinematic</div>
+            </div>
+            <div class="vs-card" onclick="toggleVS(this)">
+              <div class="vs-thumb editorial">📰</div>
+              <div class="vs-label">Editorial</div>
+            </div>
+            <div class="vs-card" onclick="toggleVS(this)">
+              <div class="vs-thumb vivid">🎨</div>
+              <div class="vs-label">Vivid</div>
+            </div>
+            <div class="vs-card" onclick="toggleVS(this)">
+              <div class="vs-thumb documentary">🌍</div>
+              <div class="vs-label">Documentary</div>
+            </div>
+            <div class="vs-card" onclick="toggleVS(this)">
+              <div class="vs-thumb minimal">⬜</div>
+              <div class="vs-label">Minimal</div>
+            </div>
+            <div class="vs-card" onclick="toggleVS(this)">
+              <div class="vs-thumb neon">🔮</div>
+              <div class="vs-label">Neon / Cyber</div>
+            </div>
+            <div class="vs-card" onclick="toggleVS(this)">
+              <div class="vs-thumb warm">🌅</div>
+              <div class="vs-label">Warm / Earthy</div>
+            </div>
+            <div class="vs-card" onclick="toggleVS(this)">
+              <div class="vs-thumb corporate">💼</div>
+              <div class="vs-label">Corporate</div>
+            </div>
+          </div>
+
+          <div class="section-divider"></div>
+          <div class="section-label">Colour palette</div>
+
+          <div class="palette-grid">
+            <div class="palette-card selected" onclick="togglePalette(this)">
+              <div class="palette-swatch">
+                <span style="background:#0a0a2a;"></span>
+                <span style="background:#1a1a4a;"></span>
+                <span style="background:#f97316;"></span>
+                <span style="background:#e8e8ea;"></span>
+              </div>
+              <div class="palette-name">Night Orange</div>
+            </div>
+            <div class="palette-card" onclick="togglePalette(this)">
+              <div class="palette-swatch">
+                <span style="background:#071a2f;"></span>
+                <span style="background:#0c3a6b;"></span>
+                <span style="background:#3b82f6;"></span>
+                <span style="background:#e8f4fd;"></span>
+              </div>
+              <div class="palette-name">Deep Blue</div>
+            </div>
+            <div class="palette-card" onclick="togglePalette(this)">
+              <div class="palette-swatch">
+                <span style="background:#0a1a0a;"></span>
+                <span style="background:#14532d;"></span>
+                <span style="background:#22c55e;"></span>
+                <span style="background:#f0fdf4;"></span>
+              </div>
+              <div class="palette-name">Forest</div>
+            </div>
+            <div class="palette-card" onclick="togglePalette(this)">
+              <div class="palette-swatch">
+                <span style="background:#1a0a00;"></span>
+                <span style="background:#7c2d12;"></span>
+                <span style="background:#ea580c;"></span>
+                <span style="background:#fff7ed;"></span>
+              </div>
+              <div class="palette-name">Ember</div>
+            </div>
+            <div class="palette-card" onclick="togglePalette(this)">
+              <div class="palette-swatch">
+                <span style="background:#18181b;"></span>
+                <span style="background:#3f3f46;"></span>
+                <span style="background:#d4d4d8;"></span>
+                <span style="background:#fafafa;"></span>
+              </div>
+              <div class="palette-name">Mono</div>
+            </div>
+          </div>
+
+          <div class="field-group" style="margin-top:14px;">
+            <div class="field-label">Visual style description <span class="field-hint">— used as a prefix in all scene prompts</span></div>
+            <textarea class="field-input" rows="2" placeholder="e.g. Photorealistic, wide lens, dramatic side lighting, African urban settings, warm orange and blue tones, high contrast, slightly grainy…"></textarea>
+          </div>
+
+          <div class="section-divider"></div>
+          <div class="section-label">Mood board</div>
+
+          <div class="field-group">
+            <div class="field-label">Reference images <span class="field-hint">— AI will extract your visual style from these</span></div>
+            <div class="moodboard-grid">
+              <div class="moodboard-cell filled" style="background:linear-gradient(135deg,#0a0a2a,#1a1a4a);">
+                <svg width="18" height="18" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              </div>
+              <div class="moodboard-cell filled" style="background:linear-gradient(135deg,#1a0a00,#3a1a00);">
+                <svg width="18" height="18" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              </div>
+              <div class="moodboard-cell">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add reference
+              </div>
+              <div class="moodboard-cell">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add reference
+              </div>
+              <div class="moodboard-cell">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add reference
+              </div>
+              <div class="moodboard-cell">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add reference
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <span class="step-counter">Step 3 of 5</span>
+            <div class="form-actions-right">
+              <button class="btn btn-ghost" onclick="goStep(2)">← Back</button>
+              <button class="btn btn-primary" onclick="goStep(4)">Continue → Characters</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── STEP 4: Characters ─────────────────────── -->
+        <div class="step-panel" id="step-4">
+          <div class="form-step-title">Characters</div>
+          <div class="form-step-sub">Define recurring personas that appear in your series. Character descriptions are injected into visual prompts to keep faces, style, and presence consistent across episodes.</div>
+
+          <div class="callout">
+            <div class="callout-icon purple">☻</div>
+            <div class="callout-body">
+              <div class="callout-title">How character descriptions are used</div>
+              <div class="callout-text">
+                <strong>Personality notes</strong> get injected into the script generation prompt — so the narrator's voice or a character's dialogue stays true to how you defined them. <strong>Visual descriptions</strong> are prepended to every AI image and scene matching prompt that involves this character.
+              </div>
+            </div>
+          </div>
+
+          <div class="character-grid">
+            <!-- Character 1 -->
+            <div class="character-card">
+              <button class="char-remove">✕</button>
+              <div class="char-avatar">A</div>
+              <div>
+                <div class="char-name-text">Alex — The Narrator</div>
+                <div class="char-role-text">Host voice</div>
+              </div>
+              <div class="char-desc-text">Confident, direct, and curious. Speaks like someone who has done the research but isn't showing off. No filler phrases.</div>
+              <div><span class="char-visual-tag">◼ Visual</span></div>
+              <div class="char-desc-text" style="color:var(--text-faint);">Nigerian male, late 20s, clean corporate-casual look, warm skin tone, studio lighting, neutral background.</div>
+            </div>
+
+            <!-- Character 2 -->
+            <div class="character-card">
+              <button class="char-remove">✕</button>
+              <div class="char-avatar">F</div>
+              <div>
+                <div class="char-name-text">Founder Archetype</div>
+                <div class="char-role-text">Recurring persona</div>
+              </div>
+              <div class="char-desc-text">The startup founder being profiled. Shown in brief cutaway-style visuals. Represents ambition and grit.</div>
+              <div><span class="char-visual-tag">◼ Visual</span></div>
+              <div class="char-desc-text" style="color:var(--text-faint);">African tech founder, mixed age range, diverse gender, always shot in a working environment — office, co-working, or outdoor urban.</div>
+            </div>
+
+            <!-- Add card -->
+            <div class="add-char-card" onclick="alert('Add character form would open here')">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add character
+            </div>
+          </div>
+
+          <div class="section-divider"></div>
+          <div class="section-label">Add a new character</div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <div class="field-label">Name or role</div>
+              <input class="field-input" type="text" placeholder="e.g. The Narrator, Expert Guest, Product Demo" />
+            </div>
+            <div class="field-group">
+              <div class="field-label">Character type</div>
+              <select class="field-input">
+                <option>Narrator / Host</option>
+                <option>On-screen character</option>
+                <option>Archetype / Persona</option>
+                <option>Brand mascot</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Personality &amp; script notes <span class="field-hint">— injected into script generation</span></div>
+            <textarea class="field-input" rows="2" placeholder="How they speak, their role in the episode, their personality traits, what they should and shouldn't say…"></textarea>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Visual description <span class="field-hint">— injected into image &amp; clip prompts</span></div>
+            <textarea class="field-input" rows="2" placeholder="Physical appearance, style, clothing, setting context. Write as a prompt prefix: 'Photorealistic, young Nigerian man, 28, clean fade haircut, wearing a navy blazer…'"></textarea>
+          </div>
+          <div style="display:flex;justify-content:flex-end;">
+            <button class="btn btn-ghost btn-sm" onclick="alert('Character added')">+ Add to series</button>
+          </div>
+
+          <div class="form-actions">
+            <span class="step-counter">Step 4 of 5</span>
+            <div class="form-actions-right">
+              <button class="btn btn-ghost" onclick="goStep(3)">← Back</button>
+              <button class="btn btn-primary" onclick="goStep(5)">Continue → Production Defaults</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── STEP 5: Production Defaults ───────────── -->
+        <div class="step-panel" id="step-5">
+          <div class="form-step-title">Production Defaults</div>
+          <div class="form-step-sub">Set the default voice, captions, music, and language for every episode in this series. You can still override these per episode.</div>
+
+          <div class="section-label">Voice</div>
+
+          <div class="voice-option selected">
+            <div class="voice-avatar">N</div>
+            <div class="voice-info">
+              <div class="voice-name">Nova (OpenAI)</div>
+              <div class="voice-meta">English · Female · Warm, clear</div>
+            </div>
+            <div class="voice-play">
+              <svg width="11" height="11" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </div>
+          </div>
+          <div class="voice-option">
+            <div class="voice-avatar" style="background:linear-gradient(135deg,#059669,#0d9488);">O</div>
+            <div class="voice-info">
+              <div class="voice-name">Onyx (OpenAI)</div>
+              <div class="voice-meta">English · Male · Deep, authoritative</div>
+            </div>
+            <div class="voice-play">
+              <svg width="11" height="11" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </div>
+          </div>
+          <div class="voice-option">
+            <div class="voice-avatar" style="background:linear-gradient(135deg,#7c3aed,#db2777);">S</div>
+            <div class="voice-info">
+              <div class="voice-name">Shimmer (OpenAI)</div>
+              <div class="voice-meta">English · Female · Bright, energetic</div>
+            </div>
+            <div class="voice-play">
+              <svg width="11" height="11" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </div>
+          </div>
+          <div style="margin-bottom:22px;margin-top:4px;">
+            <button class="btn btn-ghost btn-sm">+ Browse all voices</button>
+          </div>
+
+          <div class="section-divider"></div>
+          <div class="section-label">Captions</div>
+
+          <div class="caption-preview-strip">
+            <div class="caption-preview-card selected">
+              <div class="caption-preview-text" style="font-size:15px;font-weight:800;letter-spacing:-0.3px;">Word</div>
+              <div class="caption-preview-name">Bold Pop</div>
+            </div>
+            <div class="caption-preview-card">
+              <div class="caption-preview-text" style="font-family:'Space Mono',monospace;font-size:12px;">Word</div>
+              <div class="caption-preview-name">Mono</div>
+            </div>
+            <div class="caption-preview-card">
+              <div class="caption-preview-text" style="font-size:13px;font-weight:500;opacity:0.85;">Word</div>
+              <div class="caption-preview-name">Subtle</div>
+            </div>
+            <div class="caption-preview-card">
+              <div class="caption-preview-text" style="font-size:14px;font-weight:700;color:var(--accent);">Word</div>
+              <div class="caption-preview-name">Accent</div>
+            </div>
+            <div class="caption-preview-card">
+              <div class="caption-preview-text" style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;">Word</div>
+              <div class="caption-preview-name">Uppercase</div>
+            </div>
+          </div>
+
+          <div class="section-divider"></div>
+          <div class="section-label">Music</div>
+
+          <div class="field-group">
+            <div class="field-label">Background music</div>
+            <div class="chip-row">
+              <div class="chip" onclick="toggleSingle(this)">None</div>
+              <div class="chip selected" onclick="toggleSingle(this)">Auto-match to tone</div>
+              <div class="chip" onclick="toggleSingle(this)">Always instrumental</div>
+              <div class="chip" onclick="toggleSingle(this)">Pick from library</div>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-label">Music volume</div>
+            <div class="range-row">
+              <input type="range" min="0" max="100" value="20" oninput="this.nextElementSibling.textContent=this.value+'%'" />
+              <span class="range-val">20%</span>
+            </div>
+          </div>
+
+          <div class="section-divider"></div>
+          <div class="section-label">Language &amp; localisation</div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <div class="field-label">Primary language</div>
+              <select class="field-input">
+                <option selected>English</option>
+                <option>French</option>
+                <option>Swahili</option>
+                <option>Portuguese</option>
+                <option>Arabic</option>
+                <option>Spanish</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Auto-localise new episodes</div>
+              <div class="toggle-row" style="margin-top:0;border:none;padding:0;background:transparent;">
+                <div class="toggle-track off"><div class="toggle-thumb"></div></div>
+                <div class="toggle-info">
+                  <div class="toggle-label">Off</div>
+                  <div class="toggle-sub">You can enable per-episode localisation after creation.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <span class="step-counter">Step 5 of 5</span>
+            <div class="form-actions-right">
+              <button class="btn btn-ghost" onclick="goStep(4)">← Back</button>
+              <button class="btn btn-primary">
+                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Create Series
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Preview panel -->
+      <div class="preview-panel">
+        <div>
+          <div class="preview-label">Series preview</div>
+          <div class="series-preview-card">
+            <div class="series-preview-cover">
+              <div class="series-preview-initial">A</div>
+              <div class="series-preview-badge">NEW</div>
+            </div>
+            <div class="series-preview-body">
+              <div class="series-preview-name">African Tech Startups</div>
+              <div class="series-preview-meta">
+                <span>
+                  <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  TikTok · 9:16 · 60s
+                </span>
+                <span>
+                  <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M2 6h4v4H2zM2 14h4v4H2zM10 6h12M10 10h12M10 14h12M10 18h12"/></svg>
+                  0 episodes so far
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="preview-label">AI context layers</div>
+          <div class="context-pill-list" id="context-pills">
+            <div class="context-pill dim" id="pill-bible">
+              <div class="context-pill-icon dim">◼</div>
+              <div class="context-pill-label"><strong>Series bible</strong>Step 2</div>
+              <div class="context-pill-val">Always</div>
+            </div>
+            <div class="context-pill dim" id="pill-format">
+              <div class="context-pill-icon dim">◈</div>
+              <div class="context-pill-label"><strong>Episode format</strong>Step 2</div>
+              <div class="context-pill-val">Always</div>
+            </div>
+            <div class="context-pill dim" id="pill-memory">
+              <div class="context-pill-icon dim">⟳</div>
+              <div class="context-pill-label"><strong>Episode memory</strong>Step 2</div>
+              <div class="context-pill-val">Per ep</div>
+            </div>
+            <div class="context-pill dim" id="pill-visual">
+              <div class="context-pill-icon dim">◼</div>
+              <div class="context-pill-label"><strong>Visual identity</strong>Step 3</div>
+              <div class="context-pill-val">Prompts</div>
+            </div>
+            <div class="context-pill dim" id="pill-chars">
+              <div class="context-pill-icon dim">☻</div>
+              <div class="context-pill-label"><strong>Characters</strong>Step 4</div>
+              <div class="context-pill-val">Prompts</div>
+            </div>
+            <div class="context-pill dim" id="pill-prod">
+              <div class="context-pill-icon dim">🔊</div>
+              <div class="context-pill-label"><strong>Production</strong>Step 5</div>
+              <div class="context-pill-val">Default</div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="preview-label">Consistency locked by</div>
+          <div class="consist-list" id="consist-list">
+            <div class="consist-row pending" id="c-format">◯ Episode scene structure</div>
+            <div class="consist-row pending" id="c-tone">◯ Tone &amp; voice style</div>
+            <div class="consist-row pending" id="c-audience">◯ Audience framing</div>
+            <div class="consist-row pending" id="c-rules">◯ Always / never rules</div>
+            <div class="consist-row pending" id="c-memory">◯ Episode memory chain</div>
+            <div class="consist-row pending" id="c-visual">◯ Visual style &amp; palette</div>
+            <div class="consist-row pending" id="c-chars">◯ Character descriptions</div>
+            <div class="consist-row pending" id="c-voice">◯ Voice &amp; captions</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const STEP_PILLS = {
+  1: [],
+  2: ['pill-bible','pill-format','pill-memory'],
+  3: ['pill-visual'],
+  4: ['pill-chars'],
+  5: ['pill-prod'],
+};
+
+const STEP_CONSIST = {
+  1: [],
+  2: ['c-format','c-tone','c-audience','c-rules','c-memory'],
+  3: ['c-visual'],
+  4: ['c-chars'],
+  5: ['c-voice'],
+};
+
+let completedSteps = new Set();
+let currentStep = 2;
+
+function goStep(n) {
+  // Mark old step done
+  completedSteps.add(currentStep);
+  currentStep = n;
+
+  // Update step panels
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('step-' + n).classList.add('active');
+
+  // Update rail
+  for (let i = 1; i <= 5; i++) {
+    const nav = document.getElementById('nav-' + i);
+    const num = document.getElementById('num-' + i);
+    nav.classList.remove('active', 'done');
+    if (i === n) {
+      nav.classList.add('active');
+      num.innerHTML = '<span>' + i + '</span>';
+    } else if (completedSteps.has(i)) {
+      nav.classList.add('done');
+      num.innerHTML = '✓';
+    } else {
+      num.innerHTML = '<span>' + i + '</span>';
+    }
+  }
+
+  // Update context pills
+  const allPills = ['pill-bible','pill-format','pill-memory','pill-visual','pill-chars','pill-prod'];
+  const resolved = new Set();
+  for (let s = 1; s <= 5; s++) {
+    if (completedSteps.has(s)) {
+      (STEP_PILLS[s] || []).forEach(p => resolved.add(p));
+    }
+  }
+  // Current step is partially resolved
+  (STEP_PILLS[n] || []).forEach(p => resolved.add(p));
+
+  allPills.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const icon = el.querySelector('.context-pill-icon');
+    if (resolved.has(id)) {
+      el.classList.remove('dim');
+      icon.classList.remove('dim');
+      icon.classList.add('ok');
+    } else {
+      el.classList.add('dim');
+      icon.classList.remove('ok');
+      icon.classList.add('dim');
+    }
+  });
+
+  // Update consistency list
+  const allConsist = ['c-format','c-tone','c-audience','c-rules','c-memory','c-visual','c-chars','c-voice'];
+  const doneConsist = new Set();
+  for (let s = 1; s <= 5; s++) {
+    if (completedSteps.has(s)) {
+      (STEP_CONSIST[s] || []).forEach(c => doneConsist.add(c));
+    }
+  }
+  (STEP_CONSIST[n] || []).forEach(c => doneConsist.add(c));
+
+  allConsist.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (doneConsist.has(id)) {
+      el.classList.remove('pending');
+      el.classList.add('done');
+      el.textContent = '✓ ' + el.textContent.replace(/^[✓◯]\s*/, '');
+    } else {
+      el.classList.remove('done');
+      el.classList.add('pending');
+      el.textContent = '◯ ' + el.textContent.replace(/^[✓◯]\s*/, '');
+    }
+  });
+}
+
+// Chip toggle helpers
+function toggleSingle(el) {
+  const siblings = el.parentElement.querySelectorAll('.chip');
+  siblings.forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function toggleAspect(el) {
+  const siblings = el.parentElement.querySelectorAll('.chip');
+  siblings.forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function toggleVS(el) {
+  document.querySelectorAll('.vs-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function togglePalette(el) {
+  document.querySelectorAll('.palette-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// Init step 2 as active with step 1 "done" for demo
+goStep(2);
+</script>
+</body>
+</html>

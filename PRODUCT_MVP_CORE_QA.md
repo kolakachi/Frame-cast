@@ -35,7 +35,7 @@ Status key:
 | M2.1 | Generate a 5-scene project | Script, scenes, visuals, voice, captions, and music complete | `[x]` |
 | M2.2 | Generate a 15-scene project | No timeout; any long-running phase reports status | `[x]` |
 | M2.3 | OpenAI policy refusal occurs | User sees friendly message, not raw provider JSON | `[x]` |
-| M2.4 | OpenAI quota/rate limit occurs | User sees clear product message, not raw `429` | `[ ]` |
+| M2.4 | OpenAI quota/rate limit occurs | User sees clear product message, not raw `429` | `[x]` |
 | M2.5 | One scene voice generation fails | Failed scene can be retried without regenerating all voices | `[x]` |
 | M2.6 | One scene image generation fails | Failed scene can be retried or replaced manually | `[x]` |
 
@@ -74,9 +74,9 @@ Status key:
 |---|---|---|---|
 | M5.1 | Select `Luckiest Guy` and export | Exported MP4 uses `Luckiest Guy`, not fallback font | `[x]` |
 | M5.2 | Select one font from each font category and export | Each selected font renders correctly | `[ ]` |
-| M5.3 | Disable captions and export | No captions appear in output | `[ ]` |
-| M5.4 | Change caption preset/style and export | Output matches editor preview closely enough to trust | `[ ]` |
-| M5.5 | Export with highlighted words | Highlight color/style appears in output | `[ ]` |
+| M5.3 | Disable captions and export | No captions appear in output | `[x]` |
+| M5.4 | Change caption preset/style and export | Output matches editor preview closely enough to trust | `[x]` |
+| M5.5 | Export with highlighted words | Highlight color/style appears in output | `[x]` |
 
 ---
 
@@ -87,7 +87,7 @@ Status key:
 | M6.1 | Select a music category/track | Selection persists and is visible even if list scrolls | `[x]` |
 | M6.2 | Play selected music in editor | Music preview is audible | `[x]` |
 | M6.3 | Export with selected background music | Music spans full video at background volume | `[x]` |
-| M6.4 | Export without selected music | Video exports without background music and without failure | `[ ]` |
+| M6.4 | Export without selected music | Video exports without background music and without failure | `[x]` |
 
 ---
 
@@ -97,10 +97,10 @@ Status key:
 |---|---|---|---|
 | M7.1 | Export completed 5-scene project | Export completes; MP4 downloadable/playable | `[x]` |
 | M7.2 | Export 15+ scene project | Export completes without timeout | `[x]` |
-| M7.3 | Export with missing voice asset | Export is blocked before processing with clear message | `[ ]` |
-| M7.4 | Export with missing visual asset | Export is blocked before processing with clear message | `[ ]` |
+| M7.3 | Export with missing voice asset | Export is blocked before processing with clear message | `[x]` |
+| M7.4 | Export with missing visual asset | Export is blocked before processing with clear message | `[x]` |
 | M7.5 | Observe export progress | User sees queued, processing, percentage, completed/failed | `[x]` |
-| M7.6 | Force export failure | Export status becomes failed with human-readable reason | `[ ]` |
+| M7.6 | Force export failure | Export status becomes failed with human-readable reason | `[x]` |
 | M7.7 | Retry failed export | Export completes without duplicate output assets | `[ ]` |
 | M7.8 | Export 9:16 | Output dimensions are 1080x1920 | `[ ]` |
 | M7.9 | Export 16:9 | Output dimensions are 1920x1080 | `[ ]` |
@@ -126,7 +126,7 @@ Status key:
 |---|---|---|---|
 | M9.1 | New workspace is created | Workspace has default plan and usage summary | `[ ]` |
 | M9.2 | Workspace hits export limit | Action is blocked with plan name, usage, limit, and upgrade path | `[x]` |
-| M9.3 | Workspace hits AI/TTS budget | Expensive provider action is blocked before request is made | `[ ]` |
+| M9.3 | Workspace hits AI/TTS budget | Expensive provider action is blocked before request is made | `[x]` |
 | M9.4 | Open god-mode as admin | Workspace list, plan, usage, estimated spend, and failures are visible | `[ ]` |
 | M9.5 | Open god-mode as regular user | Route returns 403 and nav item is hidden | `[ ]` |
 | M9.6 | Provider call succeeds | API usage event records operation, provider, model, and estimated cost | `[ ]` |

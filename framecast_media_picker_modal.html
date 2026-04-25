@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Framecast — Media Picker Modal</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0B0B0E;
+    --panel:     #13131A;
+    --elevated:  #1A1A24;
+    --border:    #22222E;
+    --border-hi: #2E2E3E;
+    --accent:    #FF6B35;
+    --accent-lo: rgba(255,107,53,.10);
+    --accent-md: rgba(255,107,53,.22);
+    --text:      #E5E5E7;
+    --muted:     #9A9AA3;
+    --dim:       #5A5A65;
+    --blue:      #4A7FCA;
+    --green:     #34C77B;
+    --purple:    #9B6DFF;
+    --radius:    10px;
+  }
+
+  body {
+    background: #08080C;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Trigger buttons (demo only) ──────────────────────── */
+  .demo-triggers {
+    display: flex;
+    gap: 12px;
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+  }
+  .trigger-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border-hi);
+    background: var(--elevated);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: .15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .trigger-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .trigger-btn.active { background: var(--accent-lo); border-color: var(--accent); color: var(--accent); }
+
+  /* ── Overlay ───────────────────────────────────────────── */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.72);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s;
+    padding: 24px;
+  }
+  .overlay.visible { opacity: 1; pointer-events: all; }
+
+  /* ── Modal shell ───────────────────────────────────────── */
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border-hi);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 860px;
+    height: min(680px, 90vh);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 32px 80px rgba(0,0,0,.6);
+    transform: translateY(12px);
+    transition: transform .2s;
+  }
+  .overlay.visible .modal { transform: translateY(0); }
+
+  /* ── Header ────────────────────────────────────────────── */
+  .modal-header {
+    padding: 18px 20px 0;
+    flex-shrink: 0;
+  }
+  .modal-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .modal-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 700;
+  }
+  .modal-type-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .icon-visual { background: rgba(74,127,202,.15); }
+  .icon-music  { background: rgba(155,109,255,.15); }
+  .icon-sound  { background: rgba(52,199,123,.15); }
+
+  .modal-close {
+    width: 28px; height: 28px; border-radius: 6px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--muted); cursor: pointer; display: flex;
+    align-items: center; justify-content: center; font-size: 16px;
+    transition: .15s;
+  }
+  .modal-close:hover { background: var(--elevated); color: var(--text); }
+
+  /* ── Search + tabs row ─────────────────────────────────── */
+  .search-tabs-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 0;
+  }
+  .search-box {
+    flex: 1; position: relative;
+  }
+  .search-box input {
+    width: 100%;
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px 8px 34px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    transition: .15s;
+  }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box input::placeholder { color: var(--dim); }
+  .search-icon {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--dim); font-size: 13px; pointer-events: none;
+  }
+
+  .tabs {
+    display: flex; background: var(--elevated);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 3px; gap: 2px; flex-shrink: 0;
+  }
+  .tab {
+    padding: 6px 12px; border-radius: 5px;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    color: var(--muted); transition: .15s; white-space: nowrap;
+  }
+  .tab.active { background: var(--panel); color: var(--text); }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* ── Filters ───────────────────────────────────────────── */
+  .filters {
+    display: flex; gap: 6px; padding: 12px 20px 0; flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .chip {
+    padding: 4px 10px; border-radius: 20px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--muted); font-size: 11px; font-weight: 600;
+    cursor: pointer; transition: .15s; font-family: inherit;
+  }
+  .chip.active { border-color: var(--accent); background: var(--accent-lo); color: var(--accent); }
+  .chip:hover:not(.active) { border-color: var(--border-hi); color: var(--text); }
+
+  /* ── Body (grid + preview) ─────────────────────────────── */
+  .modal-body {
+    display: flex; flex: 1; overflow: hidden;
+    margin-top: 12px;
+  }
+
+  /* Grid pane */
+  .grid-pane {
+    flex: 1; overflow-y: auto; padding: 0 20px 16px;
+  }
+  .grid-pane::-webkit-scrollbar { width: 5px; }
+  .grid-pane::-webkit-scrollbar-track { background: transparent; }
+  .grid-pane::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 99px; }
+
+  .source-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--dim); margin-bottom: 10px; display: flex;
+    align-items: center; gap: 6px;
+  }
+  .source-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* Visual grid */
+  .visual-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .visual-card {
+    border-radius: 8px; overflow: hidden; position: relative;
+    aspect-ratio: 9/16; background: var(--elevated);
+    border: 2px solid transparent; cursor: pointer;
+    transition: border-color .15s, transform .15s;
+  }
+  .visual-card:hover { border-color: var(--border-hi); transform: scale(1.02); }
+  .visual-card.selected { border-color: var(--accent); }
+  .visual-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .visual-card .card-type {
+    position: absolute; top: 5px; left: 5px;
+    background: rgba(0,0,0,.7); border-radius: 4px;
+    padding: 2px 5px; font-size: 9px; font-weight: 700;
+    font-family: 'Space Mono', monospace; color: var(--muted);
+  }
+  .visual-card.selected .check {
+    position: absolute; top: 5px; right: 5px;
+    width: 18px; height: 18px; background: var(--accent);
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 9px; color: #fff;
+  }
+  .visual-card .play-icon {
+    position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.3); opacity: 0; transition: .15s;
+  }
+  .visual-card:hover .play-icon { opacity: 1; }
+  .visual-card .play-btn {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: rgba(255,107,53,.9);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+  }
+
+  /* Audio (music/sound) list */
+  .audio-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 20px; }
+  .audio-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 8px;
+    border: 1px solid transparent; cursor: pointer;
+    background: var(--elevated); transition: .15s;
+  }
+  .audio-row:hover { border-color: var(--border-hi); }
+  .audio-row.selected { border-color: var(--accent); background: var(--accent-lo); }
+  .audio-play {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border: none; cursor: pointer; font-size: 11px; transition: .15s;
+    background: var(--panel);
+    color: var(--muted);
+  }
+  .audio-row.selected .audio-play { background: var(--accent); color: #fff; }
+  .audio-row:hover .audio-play { background: var(--border-hi); color: var(--text); }
+  .audio-info { flex: 1; min-width: 0; }
+  .audio-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .audio-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .audio-duration {
+    font-family: 'Space Mono', monospace; font-size: 11px;
+    color: var(--dim); flex-shrink: 0;
+  }
+  .audio-wave {
+    width: 80px; height: 24px; flex-shrink: 0;
+    display: flex; align-items: center; gap: 1px;
+  }
+  .audio-wave span {
+    flex: 1; border-radius: 2px; background: var(--border-hi);
+    transition: background .15s;
+  }
+  .audio-row.selected .audio-wave span { background: var(--accent); opacity: .6; }
+  .audio-row.selected .audio-wave span:nth-child(3),
+  .audio-row.selected .audio-wave span:nth-child(5) { opacity: 1; }
+
+  .audio-check {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 1.5px solid var(--border); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; transition: .15s;
+  }
+  .audio-row.selected .audio-check {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+
+  /* Upload tab */
+  .upload-zone {
+    border: 2px dashed var(--border-hi); border-radius: 12px;
+    padding: 40px 20px; text-align: center;
+    cursor: pointer; transition: .2s; margin-bottom: 20px;
+  }
+  .upload-zone:hover { border-color: var(--accent); background: var(--accent-lo); }
+  .upload-icon { font-size: 28px; margin-bottom: 10px; }
+  .upload-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .upload-hint { font-size: 12px; color: var(--muted); }
+  .upload-hint span { color: var(--accent); }
+
+  .my-assets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 8px;
+  }
+  .my-asset-card {
+    border-radius: 8px; overflow: hidden; position: relative;
+    aspect-ratio: 9/16; background: var(--elevated);
+    border: 2px solid transparent; cursor: pointer; transition: .15s;
+  }
+  .my-asset-card:hover { border-color: var(--border-hi); transform: scale(1.02); }
+  .my-asset-card.selected { border-color: var(--accent); }
+  .my-asset-card img { width: 100%; height: 100%; object-fit: cover; }
+
+  .my-audio-list { display: flex; flex-direction: column; gap: 4px; }
+
+  /* Preview pane */
+  .preview-pane {
+    width: 200px; flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    padding: 16px;
+    overflow: hidden;
+  }
+  .preview-pane.hidden { display: none; }
+  .preview-label {
+    font-size: 10px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--dim); margin-bottom: 10px;
+  }
+  .preview-thumb {
+    width: 100%; aspect-ratio: 9/16;
+    background: var(--elevated); border-radius: 8px; overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .preview-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .preview-name { font-size: 13px; font-weight: 700; margin-bottom: 3px; word-break: break-word; }
+  .preview-meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .preview-tag {
+    display: inline-block; padding: 2px 7px;
+    border-radius: 20px; font-size: 10px; font-weight: 700;
+    font-family: 'Space Mono', monospace; margin-bottom: 12px;
+  }
+  .tag-video { background: rgba(74,127,202,.15); color: var(--blue); }
+  .tag-image { background: rgba(155,109,255,.15); color: var(--purple); }
+  .tag-music { background: rgba(155,109,255,.15); color: var(--purple); }
+  .tag-sound { background: rgba(52,199,123,.15); color: var(--green); }
+  .preview-audio-player {
+    background: var(--elevated); border-radius: 8px;
+    padding: 10px; margin-bottom: 12px;
+  }
+  .preview-audio-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .preview-play-btn {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 10px;
+  }
+  .preview-waveform {
+    flex: 1; height: 28px;
+    background: var(--border); border-radius: 4px;
+    overflow: hidden; position: relative;
+  }
+  .preview-waveform-fill {
+    position: absolute; inset: 0; width: 35%;
+    background: rgba(255,107,53,.3); border-right: 2px solid var(--accent);
+  }
+  .preview-time {
+    font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted);
+    text-align: right;
+  }
+  .preview-spacer { flex: 1; }
+
+  /* Footer */
+  .modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .footer-info { font-size: 12px; color: var(--muted); }
+  .footer-info span { color: var(--text); font-weight: 600; }
+  .footer-actions { display: flex; gap: 8px; }
+  .btn {
+    padding: 8px 16px; border-radius: 8px;
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; border: 1px solid transparent; transition: .15s;
+  }
+  .btn-ghost { background: transparent; border-color: var(--border); color: var(--muted); }
+  .btn-ghost:hover { border-color: var(--border-hi); color: var(--text); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #e85f2a; }
+  .btn-primary:disabled { opacity: .4; cursor: default; }
+
+  /* Freesound attribution badge */
+  .attribution {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; color: var(--dim);
+    padding: 0 20px 10px;
+  }
+  .attribution a { color: var(--muted); text-decoration: none; }
+  .attribution a:hover { color: var(--text); }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center; padding: 40px 20px;
+    color: var(--muted);
+  }
+  .empty-state .e-icon { font-size: 32px; margin-bottom: 10px; }
+  .empty-state .e-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .empty-state .e-sub { font-size: 12px; }
+
+  /* ── Colour fills for placeholder images ──────────────────── */
+  .fill-1 { background: linear-gradient(160deg,#1a1228,#2d1f3d); }
+  .fill-2 { background: linear-gradient(160deg,#12201a,#1d3529); }
+  .fill-3 { background: linear-gradient(160deg,#1c1218,#2e1a22); }
+  .fill-4 { background: linear-gradient(160deg,#121828,#1a2440); }
+  .fill-5 { background: linear-gradient(160deg,#201410,#382018); }
+  .fill-6 { background: linear-gradient(160deg,#141420,#1e1e34); }
+</style>
+</head>
+<body>
+
+<div class="demo-triggers">
+  <button class="trigger-btn active" onclick="open('visual')">🖼 Visual Picker</button>
+  <button class="trigger-btn" onclick="open('music')">🎵 Music Picker</button>
+  <button class="trigger-btn" onclick="open('sound')">🔊 Sound Picker</button>
+</div>
+
+<!-- MODAL OVERLAY -->
+<div class="overlay visible" id="overlay" onclick="closeOnBackdrop(event)">
+  <div class="modal" id="modal">
+
+    <!-- HEADER -->
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <div class="modal-title">
+          <div class="modal-type-icon icon-visual" id="type-icon">🖼</div>
+          <span id="modal-title-text">Pick a Visual</span>
+        </div>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+
+      <div class="search-tabs-row">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-input" placeholder="Search visuals…" oninput="handleSearch()" />
+        </div>
+        <div class="tabs">
+          <div class="tab active" id="tab-library" onclick="switchTab('library')">Browse</div>
+          <div class="tab" id="tab-mine" onclick="switchTab('mine')">My Uploads</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILTERS (visual only) -->
+    <div class="filters" id="filter-row">
+      <button class="chip active" onclick="setChip(this)">All</button>
+      <button class="chip" onclick="setChip(this)">Video</button>
+      <button class="chip" onclick="setChip(this)">Image</button>
+      <button class="chip" onclick="setChip(this)">Portrait</button>
+      <button class="chip" onclick="setChip(this)">Landscape</button>
+    </div>
+
+    <!-- BODY -->
+    <div class="modal-body">
+
+      <!-- GRID PANE -->
+      <div class="grid-pane" id="grid-pane">
+
+        <!-- TAB: LIBRARY (visual) -->
+        <div id="view-library-visual">
+          <div class="source-label">Pexels Stock</div>
+          <div class="visual-grid">
+            <div class="visual-card selected" onclick="selectVisual(this)">
+              <div class="fill-1" style="width:100%;height:100%;"></div>
+              <div class="card-type">VIDEO</div>
+              <div class="check">✓</div>
+              <div class="play-icon"><div class="play-btn">▶</div></div>
+            </div>
+            <div class="visual-card" onclick="selectVisual(this)">
+              <div class="fill-2" style="width:100%;height:100%;"></div>
+              <div class="card-type">VIDEO</div>
+              <div class="play-icon"><div class="play-btn">▶</div></div>
+            </div>
+            <div class="visual-card" onclick="selectVisual(this)">
+              <div class="fill-3" style="width:100%;height:100%;"></div>
+              <div class="card-type">IMG</div>
+            </div>
+            <div class="visual-card" onclick="selectVisual(this)">
+              <div class="fill-4" style="width:100%;height:100%;"></div>
+              <div class="card-type">VIDEO</div>
+              <div class="play-icon"><div class="play-btn">▶</div></div>
+            </div>
+            <div class="visual-card" onclick="selectVisual(this)">
+              <div class="fill-5" style="width:100%;height:100%;"></div>
+              <div class="card-type">IMG</div>
+            </div>
+            <div class="visual-card" onclick="selectVisual(this)">
+              <div class="fill-6" style="width:100%;height:100%;"></div>
+              <div class="card-type">VIDEO</div>
+              <div class="play-icon"><div class="play-btn">▶</div></div>
+            </div>
+            <div class="visual-card" onclick="selectVisual(this)">
+              <div class="fill-1" style="width:100%;height:100%;filter:hue-rotate(40deg)"></div>
+              <div class="card-type">IMG</div>
+            </div>
+            <div class="visual-card" onclick="selectVisual(this)">
+              <div class="fill-3" style="width:100%;height:100%;filter:hue-rotate(90deg)"></div>
+              <div class="card-type">VIDEO</div>
+              <div class="play-icon"><div class="play-btn">▶</div></div>
+            </div>
+            <div class="visual-card" onclick="selectVisual(this)">
+              <div class="fill-2" style="width:100%;height:100%;filter:hue-rotate(200deg)"></div>
+              <div class="card-type">IMG</div>
+            </div>
+            <div class="visual-card" onclick="selectVisual(this)">
+              <div class="fill-5" style="width:100%;height:100%;filter:hue-rotate(150deg)"></div>
+              <div class="card-type">VIDEO</div>
+              <div class="play-icon"><div class="play-btn">▶</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: LIBRARY (music) -->
+        <div id="view-library-music" style="display:none">
+          <div class="source-label">Framecast Music Library</div>
+          <div class="audio-list">
+            <div class="audio-row selected" onclick="selectAudio(this,'Calm Waters','Ambient · 2:34')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">Calm Waters</div>
+                <div class="audio-meta">Ambient · Relaxing</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:40%"></span><span style="height:70%"></span>
+                <span style="height:90%"></span><span style="height:55%"></span>
+                <span style="height:100%"></span><span style="height:65%"></span>
+                <span style="height:45%"></span><span style="height:80%"></span>
+              </div>
+              <div class="audio-duration">2:34</div>
+              <div class="audio-check">✓</div>
+            </div>
+            <div class="audio-row" onclick="selectAudio(this,'Deep Focus','Lo-Fi · 3:12')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">Deep Focus</div>
+                <div class="audio-meta">Lo-Fi · Productivity</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:60%"></span><span style="height:40%"></span>
+                <span style="height:75%"></span><span style="height:90%"></span>
+                <span style="height:50%"></span><span style="height:100%"></span>
+                <span style="height:70%"></span><span style="height:45%"></span>
+              </div>
+              <div class="audio-duration">3:12</div>
+              <div class="audio-check"></div>
+            </div>
+            <div class="audio-row" onclick="selectAudio(this,'Rise Up','Motivational · 1:58')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">Rise Up</div>
+                <div class="audio-meta">Motivational · Energetic</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:80%"></span><span style="height:55%"></span>
+                <span style="height:100%"></span><span style="height:70%"></span>
+                <span style="height:90%"></span><span style="height:45%"></span>
+                <span style="height:65%"></span><span style="height:80%"></span>
+              </div>
+              <div class="audio-duration">1:58</div>
+              <div class="audio-check"></div>
+            </div>
+            <div class="audio-row" onclick="selectAudio(this,'Night City','Electronic · 2:48')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">Night City</div>
+                <div class="audio-meta">Electronic · Cinematic</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:45%"></span><span style="height:90%"></span>
+                <span style="height:60%"></span><span style="height:100%"></span>
+                <span style="height:75%"></span><span style="height:50%"></span>
+                <span style="height:85%"></span><span style="height:65%"></span>
+              </div>
+              <div class="audio-duration">2:48</div>
+              <div class="audio-check"></div>
+            </div>
+            <div class="audio-row" onclick="selectAudio(this,'Sunrise','Cinematic · 3:30')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">Sunrise</div>
+                <div class="audio-meta">Cinematic · Inspiring</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:55%"></span><span style="height:75%"></span>
+                <span style="height:40%"></span><span style="height:95%"></span>
+                <span style="height:65%"></span><span style="height:80%"></span>
+                <span style="height:50%"></span><span style="height:70%"></span>
+              </div>
+              <div class="audio-duration">3:30</div>
+              <div class="audio-check"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: LIBRARY (sound) -->
+        <div id="view-library-sound" style="display:none">
+          <div class="source-label">Freesound.org</div>
+          <div class="audio-list">
+            <div class="audio-row" onclick="selectAudio(this,'Crowd Applause','Crowd · 0:08')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">Crowd Applause</div>
+                <div class="audio-meta">Crowd · Celebration</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:70%"></span><span style="height:90%"></span>
+                <span style="height:60%"></span><span style="height:100%"></span>
+                <span style="height:80%"></span><span style="height:50%"></span>
+                <span style="height:75%"></span><span style="height:65%"></span>
+              </div>
+              <div class="audio-duration">0:08</div>
+              <div class="audio-check"></div>
+            </div>
+            <div class="audio-row selected" onclick="selectAudio(this,'Whoosh Fast','Transition · 0:02')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">Whoosh Fast</div>
+                <div class="audio-meta">Transition · Impact</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:30%"></span><span style="height:55%"></span>
+                <span style="height:80%"></span><span style="height:100%"></span>
+                <span style="height:90%"></span><span style="height:60%"></span>
+                <span style="height:35%"></span><span style="height:20%"></span>
+              </div>
+              <div class="audio-duration">0:02</div>
+              <div class="audio-check">✓</div>
+            </div>
+            <div class="audio-row" onclick="selectAudio(this,'Cash Register','Notification · 0:01')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">Cash Register</div>
+                <div class="audio-meta">Notification · Alert</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:50%"></span><span style="height:100%"></span>
+                <span style="height:80%"></span><span style="height:40%"></span>
+                <span style="height:60%"></span><span style="height:90%"></span>
+                <span style="height:45%"></span><span style="height:30%"></span>
+              </div>
+              <div class="audio-duration">0:01</div>
+              <div class="audio-check"></div>
+            </div>
+            <div class="audio-row" onclick="selectAudio(this,'Ding Notification','UI · 0:01')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">Ding Notification</div>
+                <div class="audio-meta">UI · Clean</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:100%"></span><span style="height:70%"></span>
+                <span style="height:45%"></span><span style="height:30%"></span>
+                <span style="height:20%"></span><span style="height:15%"></span>
+                <span style="height:10%"></span><span style="height:5%"></span>
+              </div>
+              <div class="audio-duration">0:01</div>
+              <div class="audio-check"></div>
+            </div>
+            <div class="audio-row" onclick="selectAudio(this,'Vinyl Scratch','Transition · 0:03')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">Vinyl Scratch</div>
+                <div class="audio-meta">Transition · Retro</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:60%"></span><span style="height:100%"></span>
+                <span style="height:75%"></span><span style="height:50%"></span>
+                <span style="height:90%"></span><span style="height:40%"></span>
+                <span style="height:70%"></span><span style="height:55%"></span>
+              </div>
+              <div class="audio-duration">0:03</div>
+              <div class="audio-check"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: MY UPLOADS (visual) -->
+        <div id="view-mine-visual" style="display:none">
+          <div class="upload-zone" onclick="triggerUpload()">
+            <div class="upload-icon">📁</div>
+            <div class="upload-title">Drop files here or click to upload</div>
+            <div class="upload-hint">MP4, MOV, JPG, PNG, WebP · Max <span>500MB</span></div>
+          </div>
+          <div class="source-label">Your Uploads</div>
+          <div class="visual-grid my-assets-grid">
+            <div class="my-asset-card" onclick="selectVisual(this)">
+              <div class="fill-4" style="width:100%;height:100%;filter:saturate(1.5)"></div>
+              <div class="card-type">MY VIDEO</div>
+            </div>
+            <div class="my-asset-card" onclick="selectVisual(this)">
+              <div class="fill-2" style="width:100%;height:100%;filter:saturate(1.8)"></div>
+              <div class="card-type">MY IMG</div>
+            </div>
+            <div class="my-asset-card" onclick="selectVisual(this)">
+              <div class="fill-5" style="width:100%;height:100%;filter:saturate(2)"></div>
+              <div class="card-type">MY IMG</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: MY UPLOADS (music) -->
+        <div id="view-mine-music" style="display:none">
+          <div class="upload-zone" onclick="triggerUpload()">
+            <div class="upload-icon">🎵</div>
+            <div class="upload-title">Upload your own music</div>
+            <div class="upload-hint">MP3, WAV, AAC, M4A · Max <span>50MB</span></div>
+          </div>
+          <div class="source-label">Your Uploads</div>
+          <div class="audio-list my-audio-list">
+            <div class="audio-row" onclick="selectAudio(this,'My Custom Track','Uploaded · 3:44')">
+              <button class="audio-play">▶</button>
+              <div class="audio-info">
+                <div class="audio-name">My Custom Track</div>
+                <div class="audio-meta">Uploaded · 3:44</div>
+              </div>
+              <div class="audio-wave">
+                <span style="height:65%"></span><span style="height:85%"></span>
+                <span style="height:50%"></span><span style="height:100%"></span>
+                <span style="height:70%"></span><span style="height:45%"></span>
+                <span style="height:80%"></span><span style="height:60%"></span>
+              </div>
+              <div class="audio-duration">3:44</div>
+              <div class="audio-check"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: MY UPLOADS (sound) -->
+        <div id="view-mine-sound" style="display:none">
+          <div class="upload-zone" onclick="triggerUpload()">
+            <div class="upload-icon">🔊</div>
+            <div class="upload-title">Upload your own sound effects</div>
+            <div class="upload-hint">MP3, WAV · Max <span>20MB</span></div>
+          </div>
+          <div class="empty-state">
+            <div class="e-icon">📂</div>
+            <div class="e-title">No uploads yet</div>
+            <div class="e-sub">Drop a file above to get started</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- PREVIEW PANE (visual) -->
+      <div class="preview-pane" id="preview-visual">
+        <div class="preview-label">Selected</div>
+        <div class="preview-thumb">
+          <div class="fill-1" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="preview-name">City Night Timelapse</div>
+        <div class="preview-meta">Pexels Stock</div>
+        <div class="preview-tag tag-video">VIDEO · 0:12</div>
+      </div>
+
+      <!-- PREVIEW PANE (audio) -->
+      <div class="preview-pane hidden" id="preview-audio">
+        <div class="preview-label">Selected</div>
+        <div class="preview-audio-player">
+          <div class="preview-audio-row">
+            <button class="preview-play-btn">▶</button>
+            <div class="preview-waveform">
+              <div class="preview-waveform-fill"></div>
+            </div>
+          </div>
+          <div class="preview-time" id="preview-time">0:08 / 2:34</div>
+        </div>
+        <div class="preview-name" id="preview-audio-name">Calm Waters</div>
+        <div class="preview-meta" id="preview-audio-meta">Ambient · Relaxing</div>
+        <div class="preview-tag tag-music" id="preview-audio-tag">MUSIC</div>
+        <div class="preview-spacer"></div>
+      </div>
+
+    </div><!-- end body -->
+
+    <!-- FREESOUND ATTRIBUTION -->
+    <div class="attribution" id="freesound-credit" style="display:none">
+      <span>🎵</span>
+      Sounds by <a href="https://freesound.org" target="_blank">Freesound.org</a> under CC licences
+    </div>
+
+    <!-- FOOTER -->
+    <div class="modal-footer">
+      <div class="footer-info" id="footer-info">
+        <span id="selected-label">1</span> visual selected
+      </div>
+      <div class="footer-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="use-btn">Use Visual</button>
+      </div>
+    </div>
+
+  </div><!-- end modal -->
+</div><!-- end overlay -->
+
+<script>
+  let currentMode = 'visual';
+  let currentTab  = 'library';
+  let selectedName = '';
+
+  function open(mode) {
+    currentMode = mode;
+    currentTab  = 'library';
+    updateMode();
+    document.getElementById('overlay').classList.add('visible');
+    document.querySelectorAll('.trigger-btn').forEach((b,i) => {
+      b.classList.toggle('active', ['visual','music','sound'][i] === mode);
+    });
+  }
+
+  function closeModal() {
+    document.getElementById('overlay').classList.remove('visible');
+  }
+
+  function closeOnBackdrop(e) {
+    if (e.target === document.getElementById('overlay')) closeModal();
+  }
+
+  function updateMode() {
+    const icons  = { visual:'🖼', music:'🎵', sound:'🔊' };
+    const titles = { visual:'Pick a Visual', music:'Pick Music', sound:'Pick a Sound' };
+    const useLabels = { visual:'Use Visual', music:'Use Music', sound:'Use Sound' };
+    const footerLabels = { visual:'visual', music:'track', sound:'sound' };
+    const placeholders = { visual:'Search Pexels stock…', music:'Search music…', sound:'Search Freesound…' };
+    const iconClass = { visual:'icon-visual', music:'icon-music', sound:'icon-sound' };
+
+    document.getElementById('type-icon').textContent = icons[currentMode];
+    document.getElementById('type-icon').className = 'modal-type-icon ' + iconClass[currentMode];
+    document.getElementById('modal-title-text').textContent = titles[currentMode];
+    document.getElementById('search-input').placeholder = placeholders[currentMode];
+    document.getElementById('use-btn').textContent = useLabels[currentMode];
+    document.getElementById('filter-row').style.display = currentMode === 'visual' ? 'flex' : 'none';
+    document.getElementById('freesound-credit').style.display = currentMode === 'sound' && currentTab === 'library' ? 'flex' : 'none';
+
+    // Footer info
+    const count = document.getElementById('selected-label').textContent;
+    document.getElementById('footer-info').innerHTML = `<span>${count}</span> ${footerLabels[currentMode]} selected`;
+
+    // Preview panes
+    document.getElementById('preview-visual').classList.toggle('hidden', currentMode !== 'visual');
+    document.getElementById('preview-audio').classList.toggle('hidden', currentMode === 'visual');
+
+    // Audio preview tag
+    if (currentMode === 'music') {
+      document.getElementById('preview-audio-tag').className = 'preview-tag tag-music';
+      document.getElementById('preview-audio-tag').textContent = 'MUSIC';
+    } else if (currentMode === 'sound') {
+      document.getElementById('preview-audio-tag').className = 'preview-tag tag-sound';
+      document.getElementById('preview-audio-tag').textContent = 'SFX';
+    }
+
+    switchTab(currentTab);
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById('tab-library').classList.toggle('active', tab === 'library');
+    document.getElementById('tab-mine').classList.toggle('active', tab === 'mine');
+
+    const all = ['view-library-visual','view-library-music','view-library-sound',
+                 'view-mine-visual','view-mine-music','view-mine-sound'];
+    all.forEach(id => document.getElementById(id).style.display = 'none');
+
+    const view = `view-${tab}-${currentMode}`;
+    document.getElementById(view).style.display = 'block';
+
+    document.getElementById('freesound-credit').style.display =
+      currentMode === 'sound' && tab === 'library' ? 'flex' : 'none';
+  }
+
+  function setChip(el) {
+    el.closest('.filters').querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function selectVisual(card) {
+    card.closest('.visual-grid, .my-assets-grid').querySelectorAll('.visual-card, .my-asset-card')
+      .forEach(c => { c.classList.remove('selected'); const ch = c.querySelector('.check'); if(ch) ch.remove(); });
+    card.classList.add('selected');
+    if (!card.querySelector('.check')) {
+      const ch = document.createElement('div');
+      ch.className = 'check'; ch.textContent = '✓';
+      card.appendChild(ch);
+    }
+  }
+
+  function selectAudio(row, name, meta) {
+    row.closest('.audio-list').querySelectorAll('.audio-row').forEach(r => {
+      r.classList.remove('selected');
+      const ch = r.querySelector('.audio-check');
+      if (ch) ch.textContent = '';
+      const pl = r.querySelector('.audio-play');
+      if (pl) pl.textContent = '▶';
+    });
+    row.classList.add('selected');
+    const ch = row.querySelector('.audio-check');
+    if (ch) ch.textContent = '✓';
+
+    document.getElementById('preview-audio-name').textContent = name;
+    document.getElementById('preview-audio-meta').textContent = meta;
+  }
+
+  function handleSearch() {
+    const q = document.getElementById('search-input').value;
+  }
+
+  function triggerUpload() {
+    // Would open file input
+  }
+
+  // Boot default
+  open('visual');
+</script>
+</body>
+</html>

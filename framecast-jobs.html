@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Framecast — Jobs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0b;
+    --bg-elevated: #121214;
+    --bg-row: #0f0f11;
+    --bg-row-hover: #16161a;
+    --border: #1f1f23;
+    --border-strong: #2a2a30;
+    --text: #e8e8ea;
+    --text-dim: #8a8a92;
+    --text-faint: #5a5a62;
+
+    /* Accent — warm amber/orange from the screenshot */
+    --accent: #f97316;
+    --accent-soft: rgba(249, 115, 22, 0.12);
+    --accent-border: rgba(249, 115, 22, 0.45);
+    --accent-glow: rgba(249, 115, 22, 0.25);
+
+    /* Status palette */
+    --generating: #f97316;       /* orange */
+    --generating-bg: rgba(249, 115, 22, 0.1);
+    --generating-border: rgba(249, 115, 22, 0.3);
+
+    --exporting: #3b82f6;        /* blue */
+    --exporting-bg: rgba(59, 130, 246, 0.1);
+    --exporting-border: rgba(59, 130, 246, 0.3);
+
+    --variants: #a855f7;         /* purple */
+    --variants-bg: rgba(168, 85, 247, 0.1);
+    --variants-border: rgba(168, 85, 247, 0.3);
+
+    --transcribing: #14b8a6;     /* teal */
+    --transcribing-bg: rgba(20, 184, 166, 0.1);
+    --transcribing-border: rgba(20, 184, 166, 0.3);
+
+    --completed: #22c55e;        /* green */
+    --completed-bg: rgba(34, 197, 94, 0.1);
+    --completed-border: rgba(34, 197, 94, 0.3);
+
+    --failed: #ef4444;           /* red */
+    --failed-bg: rgba(239, 68, 68, 0.1);
+    --failed-border: rgba(239, 68, 68, 0.3);
+
+    --queued: #64748b;           /* slate */
+    --queued-bg: rgba(100, 116, 139, 0.1);
+    --queued-border: rgba(100, 116, 139, 0.3);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "DM Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "ss02";
+  }
+
+  body {
+    min-height: 100vh;
+    padding: 48px 32px;
+    background:
+      radial-gradient(ellipse 800px 400px at 20% -10%, rgba(249, 115, 22, 0.06), transparent 60%),
+      radial-gradient(ellipse 600px 300px at 90% 10%, rgba(59, 130, 246, 0.04), transparent 60%),
+      var(--bg);
+  }
+
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .page-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .page-title {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .page-subtitle {
+    font-family: "Space Mono", monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 6px;
+    letter-spacing: 0.02em;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn:hover { background: var(--bg-row-hover); border-color: #3a3a42; }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0a0a0b;
+  }
+  .btn-primary:hover {
+    background: #ea6a0e;
+    border-color: #ea6a0e;
+  }
+
+  /* Filter pills (matching screenshot) */
+  .filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    font-family: inherit;
+  }
+  .pill:hover {
+    border-color: #3a3a42;
+    color: var(--text);
+  }
+  .pill-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    font-family: "Space Mono", monospace;
+  }
+  .pill.active {
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+    color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.06);
+  }
+  .pill.active .pill-count {
+    background: rgba(249, 115, 22, 0.15);
+    color: var(--accent);
+  }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .search {
+    flex: 1;
+    max-width: 360px;
+    position: relative;
+  }
+  .search input {
+    width: 100%;
+    padding: 10px 14px 10px 38px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .search input::placeholder { color: var(--text-faint); }
+  .search input:focus { border-color: var(--border-strong); }
+  .search svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-faint);
+  }
+
+  .toolbar-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* Table */
+  .table-wrap {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead {
+    background: rgba(255, 255, 255, 0.015);
+  }
+
+  th {
+    text-align: left;
+    padding: 14px 20px;
+    font-family: "Space Mono", monospace;
+    font-size: 11px;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--text-dim); }
+
+  td {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  tbody tr {
+    transition: background 0.12s ease;
+    cursor: pointer;
+  }
+  tbody tr:hover { background: var(--bg-row-hover); }
+
+  /* Job cell */
+  .job-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 280px;
+  }
+
+  .job-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    background-size: cover;
+    background-position: center;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .thumb-1 { background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 50%, #db2777 100%); }
+  .thumb-2 { background: linear-gradient(135deg, #065f46 0%, #0891b2 100%); }
+  .thumb-3 { background: linear-gradient(135deg, #7c2d12 0%, #f97316 50%, #facc15 100%); }
+  .thumb-4 { background: linear-gradient(135deg, #312e81 0%, #6366f1 100%); }
+  .thumb-5 { background: linear-gradient(135deg, #0c4a6e 0%, #0284c7 50%, #06b6d4 100%); }
+  .thumb-6 { background: linear-gradient(135deg, #4c1d95 0%, #a855f7 100%); }
+  .thumb-7 { background: linear-gradient(135deg, #134e4a 0%, #14b8a6 100%); }
+
+  .job-thumb::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.15), transparent 50%);
+  }
+
+  .job-info { min-width: 0; }
+  .job-title {
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 280px;
+  }
+  .job-id {
+    font-family: "Space Mono", monospace;
+    font-size: 11px;
+    color: var(--text-faint);
+  }
+
+  /* Status badge */
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 10px 5px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Animated dots for in-progress states */
+  .status-dot.pulsing {
+    animation: pulse 1.6s ease-in-out infinite;
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+    50% { box-shadow: 0 0 0 4px transparent; opacity: 0.6; }
+  }
+
+  .status.generating { background: var(--generating-bg); border-color: var(--generating-border); color: var(--generating); }
+  .status.generating .status-dot { background: var(--generating); color: var(--generating); }
+
+  .status.exporting { background: var(--exporting-bg); border-color: var(--exporting-border); color: var(--exporting); }
+  .status.exporting .status-dot { background: var(--exporting); color: var(--exporting); }
+
+  .status.variants { background: var(--variants-bg); border-color: var(--variants-border); color: var(--variants); }
+  .status.variants .status-dot { background: var(--variants); color: var(--variants); }
+
+  .status.transcribing { background: var(--transcribing-bg); border-color: var(--transcribing-border); color: var(--transcribing); }
+  .status.transcribing .status-dot { background: var(--transcribing); color: var(--transcribing); }
+
+  .status.completed { background: var(--completed-bg); border-color: var(--completed-border); color: var(--completed); }
+  .status.completed .status-dot { background: var(--completed); }
+
+  .status.failed { background: var(--failed-bg); border-color: var(--failed-border); color: var(--failed); }
+  .status.failed .status-dot { background: var(--failed); }
+
+  .status.queued { background: var(--queued-bg); border-color: var(--queued-border); color: var(--queued); }
+  .status.queued .status-dot { background: var(--queued); }
+
+  /* Progress bar */
+  .progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 140px;
+  }
+  .progress-track {
+    flex: 1;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.3s ease;
+    position: relative;
+  }
+  .progress-fill.animated::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: shimmer 1.6s linear infinite;
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  .progress-fill.blue { background: var(--exporting); }
+  .progress-fill.purple { background: var(--variants); }
+  .progress-fill.teal { background: var(--transcribing); }
+  .progress-fill.green { background: var(--completed); }
+  .progress-fill.red { background: var(--failed); }
+  .progress-fill.slate { background: var(--queued); }
+
+  .progress-value {
+    font-family: "Space Mono", monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    min-width: 34px;
+    text-align: right;
+  }
+
+  /* Mono cells */
+  .mono {
+    font-family: "Space Mono", monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .duration {
+    font-family: "Space Mono", monospace;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  /* Aspect ratios */
+  .aspects {
+    display: inline-flex;
+    gap: 4px;
+  }
+  .aspect-tag {
+    font-family: "Space Mono", monospace;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+
+  /* Row action button */
+  .row-action {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-faint);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+  .row-action:hover {
+    background: rgba(255,255,255,0.04);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+
+  /* Footer */
+  .table-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: rgba(255, 255, 255, 0.015);
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .pagination {
+    display: flex;
+    gap: 4px;
+  }
+  .page-btn {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+  .page-btn:hover { border-color: var(--border-strong); color: var(--text); }
+  .page-btn.active {
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+    color: var(--accent);
+  }
+
+  @media (max-width: 900px) {
+    body { padding: 24px 16px; }
+    .hide-md { display: none; }
+    th, td { padding: 12px 14px; }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <!-- Page header -->
+    <header class="page-header">
+      <div>
+        <h1 class="page-title">Jobs</h1>
+        <div class="page-subtitle">// real-time rendering queue</div>
+      </div>
+      <div class="header-actions">
+        <button class="btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export CSV
+        </button>
+        <button class="btn btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New job
+        </button>
+      </div>
+    </header>
+
+    <!-- Filter pills -->
+    <div class="filters">
+      <button class="pill active">All <span class="pill-count">7</span></button>
+      <button class="pill">Generating <span class="pill-count">2</span></button>
+      <button class="pill">Exporting <span class="pill-count">3</span></button>
+      <button class="pill">Variants <span class="pill-count">1</span></button>
+      <button class="pill">Transcribing <span class="pill-count">1</span></button>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" placeholder="Search by title or job ID…" />
+      </div>
+      <div class="toolbar-right">
+        <button class="btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Filter
+        </button>
+        <button class="btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          Sort: Newest
+        </button>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Status</th>
+            <th class="hide-md">Progress</th>
+            <th class="hide-md">Duration</th>
+            <th class="hide-md">Aspects</th>
+            <th class="hide-md">Created</th>
+            <th style="width: 40px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Generating -->
+          <tr>
+            <td>
+              <div class="job-cell">
+                <div class="job-thumb thumb-1"></div>
+                <div class="job-info">
+                  <div class="job-title">5 Morning Habits That Changed My Life</div>
+                  <div class="job-id">job_01HXZ2K9PQRF</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="status generating">
+                <span class="status-dot pulsing"></span>
+                Generating
+              </span>
+            </td>
+            <td class="hide-md">
+              <div class="progress">
+                <div class="progress-track"><div class="progress-fill animated" style="width: 42%;"></div></div>
+                <span class="progress-value">42%</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="duration">0:47</span></td>
+            <td class="hide-md">
+              <div class="aspects">
+                <span class="aspect-tag">9:16</span>
+                <span class="aspect-tag">1:1</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="mono">2m ago</span></td>
+            <td>
+              <button class="row-action" aria-label="More">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+              </button>
+            </td>
+          </tr>
+
+          <!-- Generating 2 -->
+          <tr>
+            <td>
+              <div class="job-cell">
+                <div class="job-thumb thumb-3"></div>
+                <div class="job-info">
+                  <div class="job-title">Why AI Will Replace Developers (Hot Take)</div>
+                  <div class="job-id">job_01HXZ2N7M4VB</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="status generating">
+                <span class="status-dot pulsing"></span>
+                Generating
+              </span>
+            </td>
+            <td class="hide-md">
+              <div class="progress">
+                <div class="progress-track"><div class="progress-fill animated" style="width: 18%;"></div></div>
+                <span class="progress-value">18%</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="duration">1:22</span></td>
+            <td class="hide-md">
+              <div class="aspects">
+                <span class="aspect-tag">9:16</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="mono">5m ago</span></td>
+            <td>
+              <button class="row-action" aria-label="More">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+              </button>
+            </td>
+          </tr>
+
+          <!-- Exporting 1 -->
+          <tr>
+            <td>
+              <div class="job-cell">
+                <div class="job-thumb thumb-2"></div>
+                <div class="job-info">
+                  <div class="job-title">Top 10 Productivity Apps for 2026</div>
+                  <div class="job-id">job_01HXZ2F3B8KQ</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="status exporting">
+                <span class="status-dot pulsing"></span>
+                Exporting
+              </span>
+            </td>
+            <td class="hide-md">
+              <div class="progress">
+                <div class="progress-track"><div class="progress-fill animated blue" style="width: 76%;"></div></div>
+                <span class="progress-value">76%</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="duration">2:15</span></td>
+            <td class="hide-md">
+              <div class="aspects">
+                <span class="aspect-tag">16:9</span>
+                <span class="aspect-tag">9:16</span>
+                <span class="aspect-tag">1:1</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="mono">12m ago</span></td>
+            <td>
+              <button class="row-action" aria-label="More">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+              </button>
+            </td>
+          </tr>
+
+          <!-- Exporting 2 -->
+          <tr>
+            <td>
+              <div class="job-cell">
+                <div class="job-thumb thumb-5"></div>
+                <div class="job-info">
+                  <div class="job-title">Lagos Traffic Explained in 60 Seconds</div>
+                  <div class="job-id">job_01HXZ2H9XT2C</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="status exporting">
+                <span class="status-dot pulsing"></span>
+                Exporting
+              </span>
+            </td>
+            <td class="hide-md">
+              <div class="progress">
+                <div class="progress-track"><div class="progress-fill animated blue" style="width: 54%;"></div></div>
+                <span class="progress-value">54%</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="duration">1:03</span></td>
+            <td class="hide-md">
+              <div class="aspects">
+                <span class="aspect-tag">9:16</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="mono">18m ago</span></td>
+            <td>
+              <button class="row-action" aria-label="More">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+              </button>
+            </td>
+          </tr>
+
+          <!-- Exporting 3 -->
+          <tr>
+            <td>
+              <div class="job-cell">
+                <div class="job-thumb thumb-4"></div>
+                <div class="job-info">
+                  <div class="job-title">How I Saved $10k in 6 Months (Real Story)</div>
+                  <div class="job-id">job_01HXZ2J1W8NR</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="status exporting">
+                <span class="status-dot pulsing"></span>
+                Exporting
+              </span>
+            </td>
+            <td class="hide-md">
+              <div class="progress">
+                <div class="progress-track"><div class="progress-fill animated blue" style="width: 91%;"></div></div>
+                <span class="progress-value">91%</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="duration">1:48</span></td>
+            <td class="hide-md">
+              <div class="aspects">
+                <span class="aspect-tag">16:9</span>
+                <span class="aspect-tag">9:16</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="mono">23m ago</span></td>
+            <td>
+              <button class="row-action" aria-label="More">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+              </button>
+            </td>
+          </tr>
+
+          <!-- Variants -->
+          <tr>
+            <td>
+              <div class="job-cell">
+                <div class="job-thumb thumb-6"></div>
+                <div class="job-info">
+                  <div class="job-title">The Truth About Remote Work in 2026</div>
+                  <div class="job-id">job_01HXZ2D6Y4PL</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="status variants">
+                <span class="status-dot pulsing"></span>
+                Variants
+              </span>
+            </td>
+            <td class="hide-md">
+              <div class="progress">
+                <div class="progress-track"><div class="progress-fill animated purple" style="width: 33%;"></div></div>
+                <span class="progress-value">33%</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="duration">0:58</span></td>
+            <td class="hide-md">
+              <div class="aspects">
+                <span class="aspect-tag">9:16</span>
+                <span class="aspect-tag">1:1</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="mono">31m ago</span></td>
+            <td>
+              <button class="row-action" aria-label="More">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+              </button>
+            </td>
+          </tr>
+
+          <!-- Transcribing -->
+          <tr>
+            <td>
+              <div class="job-cell">
+                <div class="job-thumb thumb-7"></div>
+                <div class="job-info">
+                  <div class="job-title">Interview: The Future of African Fintech</div>
+                  <div class="job-id">job_01HXZ2A5R7GX</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="status transcribing">
+                <span class="status-dot pulsing"></span>
+                Transcribing
+              </span>
+            </td>
+            <td class="hide-md">
+              <div class="progress">
+                <div class="progress-track"><div class="progress-fill animated teal" style="width: 62%;"></div></div>
+                <span class="progress-value">62%</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="duration">4:12</span></td>
+            <td class="hide-md">
+              <div class="aspects">
+                <span class="aspect-tag">16:9</span>
+              </div>
+            </td>
+            <td class="hide-md"><span class="mono">44m ago</span></td>
+            <td>
+              <button class="row-action" aria-label="More">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Footer -->
+      <div class="table-footer">
+        <div class="mono">Showing 7 of 7 jobs</div>
+        <div class="pagination">
+          <button class="page-btn" aria-label="Previous">‹</button>
+          <button class="page-btn active">1</button>
+          <button class="page-btn" aria-label="Next">›</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Simple filter interaction for the pills
+    document.querySelectorAll('.pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

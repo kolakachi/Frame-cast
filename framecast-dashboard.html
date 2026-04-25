@@ -1,0 +1,1802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Framecast — Dashboard Mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg-deep:     #0a0a0f;
+  --bg-panel:    #111118;
+  --bg-card:     #17171f;
+  --bg-elevated: #1d1d28;
+  --bg-soft:     #15151d;
+  --border:      #2a2a36;
+  --border-act:  #494960;
+  --text-pri:    #ececf3;
+  --text-sec:    #a1a1b5;
+  --text-muted:  #6a6a7c;
+  --accent:      #ff6b35;
+  --accent-h:    #ff875a;
+  --accent-dim:  rgba(255,107,53,0.12);
+  --accent-glow: rgba(255,107,53,0.22);
+  --font:        "DM Sans", sans-serif;
+  --mono:        "Space Mono", monospace;
+}
+body { font-family: var(--font); background: var(--bg-deep); color: var(--text-pri); min-height: 100vh; display: flex; -webkit-font-smoothing: antialiased; }
+
+/* ── SIDEBAR ─────────────────────────────────────────────── */
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+.sidebar-logo {
+  padding: 20px 18px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-mark {
+  width: 30px; height: 30px;
+  background: var(--accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700; color: #fff;
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+.logo-text { font-size: 15px; font-weight: 700; color: var(--text-pri); letter-spacing: -0.3px; }
+
+/* Workspace switcher */
+.ws-switcher {
+  margin: 12px 10px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: 0.15s;
+}
+.ws-switcher:hover { border-color: var(--border-act); }
+.ws-avatar {
+  width: 28px; height: 28px;
+  background: linear-gradient(135deg, #7c3aed, #db2777);
+  border-radius: 7px;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff; font-family: var(--mono);
+}
+.ws-info { flex: 1; min-width: 0; }
+.ws-name { font-size: 12px; font-weight: 600; color: var(--text-pri); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-plan { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+.ws-caret { color: var(--text-muted); font-size: 10px; flex-shrink: 0; }
+
+/* Nav */
+.sidebar-nav { flex: 1; padding: 6px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.nav-section-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 12px 8px 4px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-sec);
+  cursor: pointer;
+  transition: 0.15s;
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+.nav-item:hover { background: var(--bg-elevated); color: var(--text-pri); }
+.nav-item.active { background: var(--accent-dim); color: var(--accent); border-color: rgba(255,107,53,0.18); }
+.nav-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+.nav-badge { margin-left: auto; background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 6px; font-size: 9px; font-weight: 700; font-family: var(--mono); }
+
+.sidebar-bottom { padding: 10px; border-top: 1px solid var(--border); }
+.user-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.user-row:hover { background: var(--bg-elevated); }
+.user-avatar { width: 28px; height: 28px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 999px; flex-shrink: 0; }
+.user-name { font-size: 12px; font-weight: 600; color: var(--text-pri); }
+.user-email { font-size: 10px; color: var(--text-muted); }
+
+/* ── MAIN ────────────────────────────────────────────────── */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: auto; }
+
+/* Topbar */
+.topbar {
+  height: 58px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  background: rgba(10,10,15,0.8);
+  backdrop-filter: blur(12px);
+  position: sticky; top: 0; z-index: 10;
+  flex-shrink: 0;
+}
+.topbar-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.bc-sep { color: var(--text-muted); }
+.bc-ws { color: var(--text-muted); }
+.bc-page { font-weight: 600; color: var(--text-pri); }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); color: var(--text-sec); background: var(--bg-elevated); transition: 0.15s; }
+.btn:hover { border-color: var(--border-act); color: var(--text-pri); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn-primary:hover { background: var(--accent-h); border-color: var(--accent-h); }
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-ghost:hover { background: var(--bg-elevated); border-color: var(--border); }
+.btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 6px; }
+.btn-icon { padding: 7px; aspect-ratio: 1; }
+
+/* Content */
+.content { padding: 28px; display: flex; flex-direction: column; gap: 28px; max-width: 1280px; width: 100%; }
+
+/* Quick actions */
+.quick-actions { display: flex; gap: 10px; align-items: center; }
+.quick-action {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  font-size: 13px; font-weight: 500; color: var(--text-sec);
+  cursor: pointer; transition: 0.15s;
+}
+.quick-action:hover { border-color: var(--border-act); color: var(--text-pri); transform: translateY(-1px); }
+.quick-action.primary { background: var(--accent-dim); border-color: rgba(255,107,53,0.28); color: var(--accent); font-weight: 600; }
+.quick-action.primary:hover { background: rgba(255,107,53,0.2); }
+.qa-icon { font-size: 16px; }
+
+/* Section header */
+.section-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.section-hd-left { display: flex; flex-direction: column; gap: 2px; }
+.eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.section-title { font-size: 17px; font-weight: 700; color: var(--text-pri); }
+
+/* Stats row */
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.stat-val { font-size: 26px; font-weight: 700; color: var(--text-pri); font-family: var(--mono); }
+.stat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.07em; font-family: var(--mono); }
+.stat-card.accent-card { background: var(--accent-dim); border-color: rgba(255,107,53,0.25); }
+.stat-card.accent-card .stat-val { color: var(--accent); }
+
+/* Continue editing */
+.continue-strip { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+.continue-card {
+  flex-shrink: 0; width: 200px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.continue-card:hover { border-color: var(--border-act); transform: translateY(-2px); }
+.continue-thumb { height: 110px; position: relative; overflow: hidden; }
+.continue-thumb-inner { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.continue-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.6)); }
+.continue-badge { position: absolute; top: 8px; right: 8px; padding: 3px 7px; border-radius: 4px; font-size: 9px; font-family: var(--mono); font-weight: 700; }
+.badge-draft { background: rgba(30,30,50,0.85); color: var(--text-muted); border: 1px solid var(--border); }
+.badge-ready { background: rgba(34,197,94,0.18); color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
+.badge-gen { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.25); }
+.continue-body { padding: 10px 12px; }
+.continue-title { font-size: 12px; font-weight: 600; color: var(--text-pri); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.continue-meta { font-size: 10px; color: var(--text-muted); margin-top: 3px; display: flex; gap: 6px; }
+.continue-channel { color: var(--accent); font-size: 10px; font-weight: 500; }
+
+/* Channel cards */
+.channel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.channel-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+.channel-card:hover { border-color: var(--border-act); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.channel-cover {
+  height: 80px;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  padding: 12px;
+}
+.channel-icon { font-size: 28px; position: relative; z-index: 1; }
+.channel-body { padding: 14px 16px 16px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.channel-name { font-size: 15px; font-weight: 700; color: var(--text-pri); }
+.channel-desc { font-size: 12px; color: var(--text-sec); line-height: 1.5; flex: 1; }
+.channel-stats { display: flex; gap: 12px; }
+.ch-stat { display: flex; flex-direction: column; gap: 2px; }
+.ch-stat-val { font-size: 15px; font-weight: 700; color: var(--text-pri); font-family: var(--mono); }
+.ch-stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--mono); }
+.channel-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--border); }
+.channel-kit { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
+.kit-dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+.channel-action { font-size: 12px; font-weight: 600; color: var(--accent); }
+
+/* New channel card */
+.channel-card-new {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  cursor: pointer;
+  transition: 0.15s;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.channel-card-new:hover { border-color: rgba(255,107,53,0.35); color: var(--accent); }
+.channel-card-new-icon { font-size: 28px; }
+
+/* Series cards */
+.series-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.series-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  cursor: pointer;
+  transition: 0.2s;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.series-card:hover { border-color: var(--border-act); transform: translateY(-1px); }
+.series-num { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--border-act); flex-shrink: 0; width: 36px; text-align: center; padding-top: 2px; }
+.series-info { flex: 1; min-width: 0; }
+.series-name { font-size: 14px; font-weight: 700; color: var(--text-pri); margin-bottom: 4px; }
+.series-channel { font-size: 11px; color: var(--accent); font-weight: 500; margin-bottom: 6px; }
+.series-meta { display: flex; gap: 10px; }
+.series-pill { font-size: 10px; font-family: var(--mono); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px; color: var(--text-muted); }
+.series-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.series-eps { font-size: 11px; color: var(--text-muted); font-family: var(--mono); white-space: nowrap; }
+
+/* ── CHANNEL PAGE MOCK ───────────────────────────────────── */
+.page-section { display: none; flex-direction: column; gap: 28px; }
+.page-section.visible { display: flex; }
+
+/* Channel hero */
+.channel-hero {
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+  height: 180px;
+  display: flex;
+  align-items: flex-end;
+  padding: 24px;
+}
+.channel-hero-bg { position: absolute; inset: 0; }
+.channel-hero-overlay { position: absolute; inset: 0; background: linear-gradient(135deg, rgba(0,0,0,0.55) 0%, transparent 60%, rgba(0,0,0,0.3)); }
+.channel-hero-content { position: relative; z-index: 1; display: flex; align-items: flex-end; gap: 18px; width: 100%; }
+.channel-hero-icon { font-size: 48px; line-height: 1; }
+.channel-hero-text { flex: 1; }
+.channel-hero-name { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.channel-hero-desc { font-size: 13px; color: rgba(255,255,255,0.7); }
+.channel-hero-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* Channel tabs */
+.channel-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+.ch-tab {
+  padding: 10px 18px 11px;
+  font-size: 13px; font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: 0.15s;
+}
+.ch-tab:hover { color: var(--text-pri); }
+.ch-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* Brand defaults card */
+.brand-defaults { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.brand-item { display: flex; flex-direction: column; gap: 6px; }
+.brand-item-label { font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.brand-item-val { font-size: 13px; font-weight: 600; color: var(--text-pri); display: flex; align-items: center; gap: 8px; }
+.brand-color-swatch { width: 14px; height: 14px; border-radius: 4px; }
+.brand-item-sub { font-size: 11px; color: var(--text-muted); }
+
+/* Nav toggle (for mock switching) */
+.mock-nav { position: fixed; bottom: 20px; right: 20px; display: flex; gap: 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 8px; z-index: 100; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+.mock-tab { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: 0.15s; border: none; background: none; }
+.mock-tab:hover { color: var(--text-pri); background: var(--bg-card); }
+.mock-tab.active { background: var(--accent); color: #fff; }
+
+/* Gradient helpers */
+.grad-purple { background: linear-gradient(135deg, #1a0a2e 0%, #2d1457 50%, #0a0a1a 100%); }
+.grad-amber  { background: linear-gradient(135deg, #1a0e00 0%, #3d2600 50%, #0a0a1a 100%); }
+.grad-teal   { background: linear-gradient(135deg, #001a18 0%, #003d36 50%, #0a0a1a 100%); }
+.grad-red    { background: linear-gradient(135deg, #1a0005 0%, #3d0010 50%, #0a0a1a 100%); }
+.grad-blue   { background: linear-gradient(135deg, #000d1a 0%, #001a3d 50%, #0a0a1a 100%); }
+.grad-pink   { background: linear-gradient(135deg, #1a000d 0%, #3d0026 50%, #0a0a1a 100%); }
+
+/* Video thumb gradients */
+.vt-1 { background: linear-gradient(135deg, #141729, #1a223d); }
+.vt-2 { background: linear-gradient(135deg, #1a1407, #2d220a); }
+.vt-3 { background: linear-gradient(135deg, #0a1a14, #0d2a1f); }
+.vt-4 { background: linear-gradient(135deg, #1a0a0a, #2a1010); }
+.vt-5 { background: linear-gradient(135deg, #0d0d1a, #1a1a2d); }
+
+/* Divider */
+.divider { height: 1px; background: var(--border); }
+
+/* Tooltip label */
+.mock-label {
+  display: inline-block;
+  background: rgba(255,107,53,0.15);
+  border: 1px solid rgba(255,107,53,0.25);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* Mini video grid */
+.video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.video-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; cursor: pointer; transition: 0.2s; }
+.video-card:hover { border-color: var(--border-act); transform: translateY(-2px); }
+.video-thumb { height: 130px; position: relative; overflow: hidden; }
+.video-thumb-overlay { position: absolute; inset: auto 0 0; height: 50%; background: linear-gradient(180deg, transparent, rgba(0,0,0,0.4)); }
+.video-ar { position: absolute; top: 8px; right: 8px; font-family: var(--mono); font-size: 9px; background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.1); color: var(--text-sec); padding: 2px 6px; border-radius: 4px; }
+.video-dur { position: absolute; bottom: 8px; left: 8px; font-family: var(--mono); font-size: 9px; background: rgba(0,0,0,0.6); color: var(--text-sec); padding: 2px 6px; border-radius: 4px; }
+.video-body { padding: 10px 12px 12px; }
+.video-title { font-size: 12px; font-weight: 600; color: var(--text-pri); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+.video-meta { font-size: 10px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
+.video-status { padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; font-family: var(--mono); }
+.vs-ready { background: rgba(34,197,94,0.12); color: #4ade80; }
+.vs-draft { background: rgba(100,116,139,0.15); color: var(--text-muted); }
+.vs-gen   { background: rgba(251,191,36,0.12); color: #fbbf24; }
+
+/* ── ADAPTIVE BANNER ──────────────────────────────────────── */
+.adaptive-note { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 10px; }
+.adaptive-note strong { color: var(--text-sec); }
+
+/* ── SERIES PAGE ──────────────────────────────────────────── */
+.series-hero { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; display: flex; gap: 20px; align-items: center; }
+.series-badge { font-size: 48px; flex-shrink: 0; }
+.series-hero-body { flex: 1; }
+.series-hero-label { font-size: 11px; font-family: var(--mono); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+.series-hero-title { font-size: 22px; font-weight: 700; color: var(--text-pri); margin-bottom: 6px; }
+.series-hero-channel { font-size: 13px; color: var(--accent); font-weight: 500; margin-bottom: 10px; }
+.series-defaults { display: flex; gap: 8px; flex-wrap: wrap; }
+.s-default-pill { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--text-sec); display: flex; gap: 6px; align-items: center; }
+.s-default-pill span { color: var(--text-muted); font-size: 10px; }
+.series-hero-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; flex-shrink: 0; }
+
+/* Usage snapshot */
+.usage-snap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.usage-item { display: flex; flex-direction: column; gap: 6px; }
+.usage-label { font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.usage-val { font-size: 18px; font-weight: 700; font-family: var(--mono); color: var(--text-pri); }
+.usage-bar { height: 4px; background: var(--bg-elevated); border-radius: 999px; overflow: hidden; }
+.usage-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.usage-note { font-size: 11px; color: var(--text-muted); }
+
+/* ── JOBS PAGE ────────────────────────────────────────────── */
+.jobs-filter-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+.jobs-filter-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text-sec); transition: 0.15s;
+}
+.jobs-filter-chip:hover { border-color: var(--border-act); color: var(--text-pri); }
+.jobs-filter-chip.active { background: var(--accent-dim); border-color: rgba(255,107,53,0.3); color: var(--accent); }
+.jobs-filter-chip .chip-count {
+  font-family: var(--mono); font-size: 10px;
+  background: rgba(255,255,255,0.08); border-radius: 999px; padding: 1px 6px;
+}
+.jobs-filter-chip.active .chip-count { background: rgba(255,107,53,0.2); }
+
+.jobs-group { display: flex; flex-direction: column; gap: 10px; }
+.jobs-group-header {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 11px; font-family: var(--mono); text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--text-muted);
+}
+.jobs-group-header::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.group-count { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; font-size: 10px; }
+
+.job-row {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; display: flex; align-items: center; gap: 14px;
+  transition: 0.15s;
+}
+.job-row:hover { border-color: var(--border-act); }
+.job-row.job-failed { border-color: rgba(248,113,113,0.25); }
+.job-row.job-running { border-color: rgba(251,191,36,0.2); }
+
+.job-type-icon {
+  width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; flex-shrink: 0;
+}
+.jt-generate { background: rgba(251,191,36,0.1); }
+.jt-export   { background: rgba(96,165,250,0.1); }
+.jt-variant  { background: rgba(167,139,250,0.1); }
+.jt-transcribe { background: rgba(52,211,153,0.1); }
+.jt-failed   { background: rgba(248,113,113,0.1); }
+
+.job-info { flex: 1; min-width: 0; }
+.job-title { font-size: 13px; font-weight: 600; color: var(--text-pri); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 8px; }
+.job-channel { color: var(--accent); font-weight: 500; }
+.job-type-badge {
+  display: inline-block; padding: 2px 7px; border-radius: 4px;
+  font-size: 9px; font-weight: 700; font-family: var(--mono);
+  text-transform: uppercase;
+}
+.jtb-generate { background: rgba(251,191,36,0.12); color: #fbbf24; }
+.jtb-export   { background: rgba(96,165,250,0.12); color: #60a5fa; }
+.jtb-variant  { background: rgba(167,139,250,0.12); color: #a78bfa; }
+.jtb-transcribe { background: rgba(52,211,153,0.12); color: #34d399; }
+.jtb-failed   { background: rgba(248,113,113,0.12); color: #f87171; }
+.jtb-done     { background: rgba(52,211,153,0.1); color: #34d399; }
+.jtb-queued   { background: rgba(100,116,139,0.15); color: var(--text-muted); }
+
+.job-progress { width: 140px; flex-shrink: 0; }
+.job-progress-bar { height: 5px; background: var(--bg-elevated); border-radius: 999px; overflow: hidden; margin-bottom: 4px; }
+.job-progress-fill { height: 100%; border-radius: 999px; }
+.jf-generate { background: #fbbf24; }
+.jf-export   { background: #60a5fa; }
+.jf-variant  { background: #a78bfa; }
+.jf-transcribe { background: #34d399; }
+.job-progress-label { font-size: 10px; font-family: var(--mono); color: var(--text-muted); }
+
+.job-time { font-size: 11px; color: var(--text-muted); font-family: var(--mono); white-space: nowrap; flex-shrink: 0; width: 80px; text-align: right; }
+.job-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.job-btn { padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-sec); transition: 0.15s; }
+.job-btn:hover { border-color: var(--border-act); color: var(--text-pri); }
+.job-btn.cancel { border-color: rgba(248,113,113,0.25); color: #f87171; background: rgba(248,113,113,0.06); }
+.job-btn.cancel:hover { background: rgba(248,113,113,0.12); }
+.job-btn.retry { border-color: rgba(96,165,250,0.25); color: #60a5fa; background: rgba(96,165,250,0.06); }
+.job-btn.retry:hover { background: rgba(96,165,250,0.12); }
+
+.job-spinner {
+  width: 14px; height: 14px; border-radius: 999px;
+  border: 2px solid rgba(251,191,36,0.2); border-top-color: #fbbf24;
+  animation: spin 0.8s linear infinite; flex-shrink: 0;
+}
+.job-spinner.sp-export { border-color: rgba(96,165,250,0.2); border-top-color: #60a5fa; }
+.job-spinner.sp-variant { border-color: rgba(167,139,250,0.2); border-top-color: #a78bfa; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.jobs-empty { text-align: center; padding: 48px 0; color: var(--text-muted); font-size: 13px; }
+.jobs-empty-icon { font-size: 36px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<!-- ────────────────────────────────────────────────── -->
+<!-- SIDEBAR (shared across all views)                 -->
+<!-- ────────────────────────────────────────────────── -->
+<div class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">F</div>
+    <div class="logo-text">Framecast</div>
+  </div>
+
+  <!-- Workspace switcher -->
+  <div class="ws-switcher">
+    <div class="ws-avatar">FS</div>
+    <div class="ws-info">
+      <div class="ws-name">Framecast Studio</div>
+      <div class="ws-plan">Studio Plan</div>
+    </div>
+    <div class="ws-caret">⌄</div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Workspace</div>
+    <a class="nav-item active" id="nav-dash" onclick="showPage('dashboard')">
+      <span class="nav-icon">⊞</span> Dashboard
+    </a>
+    <a class="nav-item" id="nav-channels" onclick="showPage('channels')">
+      <span class="nav-icon">📡</span> Channels
+      <span class="nav-badge">3</span>
+    </a>
+    <a class="nav-item" id="nav-series" onclick="showPage('series')">
+      <span class="nav-icon">🗂</span> Series
+    </a>
+    <a class="nav-item" id="nav-videos" onclick="showPage('videos')">
+      <span class="nav-icon">▶</span> All Videos
+    </a>
+    <a class="nav-item" id="nav-jobs" onclick="showPage('jobs')">
+      <span class="nav-icon">⚙</span> Jobs
+      <span class="nav-badge">7</span>
+    </a>
+
+    <div class="nav-section-label">Library</div>
+    <a class="nav-item">
+      <span class="nav-icon">🎨</span> Brand Kits
+    </a>
+    <a class="nav-item">
+      <span class="nav-icon">🗄</span> Assets
+    </a>
+
+    <div class="nav-section-label">Account</div>
+    <a class="nav-item">
+      <span class="nav-icon">📊</span> Usage
+    </a>
+    <a class="nav-item">
+      <span class="nav-icon">⚙</span> Settings
+    </a>
+  </nav>
+
+  <div class="sidebar-bottom">
+    <div class="user-row">
+      <div class="user-avatar"></div>
+      <div>
+        <div class="user-name">Kolawole</div>
+        <div class="user-email">kola@framecast.io</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ────────────────────────────────────────────────── -->
+<!-- MAIN CONTENT AREA                                 -->
+<!-- ────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-breadcrumb">
+      <span class="bc-ws">Framecast Studio</span>
+      <span class="bc-sep">/</span>
+      <span class="bc-page" id="bc-page">Dashboard</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost btn-sm">🔔</button>
+      <button class="btn btn-primary" onclick="showPage('dashboard'); document.querySelector('.mock-nav .mock-tab').click()">+ New Video</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════ DASHBOARD PAGE ═══════════════ -->
+  <div class="content page-section visible" id="page-dashboard">
+
+    <!-- Quick actions -->
+    <div>
+      <div class="mock-label">Quick actions</div>
+      <div class="quick-actions">
+        <button class="quick-action primary"><span class="qa-icon">✦</span> New Video</button>
+        <button class="quick-action"><span class="qa-icon">🗂</span> New Series</button>
+        <button class="quick-action"><span class="qa-icon">📡</span> New Channel</button>
+        <button class="quick-action"><span class="qa-icon">📁</span> Upload Asset</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div>
+      <div class="mock-label">This month</div>
+      <div class="stats-row">
+        <div class="stat-card accent-card">
+          <div class="stat-val">12</div>
+          <div class="stat-label">Videos Created</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val">3</div>
+          <div class="stat-label">Active Channels</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val">5</div>
+          <div class="stat-label">Series Running</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val">2</div>
+          <div class="stat-label">Queued Renders</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Continue editing -->
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">In progress</div>
+          <div class="section-title">Continue editing</div>
+        </div>
+        <button class="btn btn-ghost btn-sm">View all →</button>
+      </div>
+      <div class="continue-strip">
+        <div class="continue-card">
+          <div class="continue-thumb vt-1">
+            <div class="continue-thumb-inner" style="font-size:32px;">🌆</div>
+            <div class="continue-overlay"></div>
+            <span class="continue-badge badge-draft">Draft</span>
+          </div>
+          <div class="continue-body">
+            <div class="continue-title">Dubai Real Estate — Ep 12</div>
+            <div class="continue-meta">
+              <span class="continue-channel">Dubai Property Tips</span>
+              <span>5 scenes</span>
+            </div>
+          </div>
+        </div>
+        <div class="continue-card">
+          <div class="continue-thumb vt-4">
+            <div class="continue-thumb-inner" style="font-size:32px;">🕵️</div>
+            <div class="continue-overlay"></div>
+            <span class="continue-badge badge-gen">Generating</span>
+          </div>
+          <div class="continue-body">
+            <div class="continue-title">The Romanov Betrayal</div>
+            <div class="continue-meta">
+              <span class="continue-channel">Dark History</span>
+              <span>8 scenes</span>
+            </div>
+          </div>
+        </div>
+        <div class="continue-card">
+          <div class="continue-thumb vt-2">
+            <div class="continue-thumb-inner" style="font-size:32px;">📈</div>
+            <div class="continue-overlay"></div>
+            <span class="continue-badge badge-ready">Ready</span>
+          </div>
+          <div class="continue-body">
+            <div class="continue-title">5 Stocks for Q2 2026</div>
+            <div class="continue-meta">
+              <span class="continue-channel">AI Finance Desk</span>
+              <span>6 scenes</span>
+            </div>
+          </div>
+        </div>
+        <div class="continue-card">
+          <div class="continue-thumb vt-5">
+            <div class="continue-thumb-inner" style="font-size:32px;">⚡</div>
+            <div class="continue-overlay"></div>
+            <span class="continue-badge badge-draft">Draft</span>
+          </div>
+          <div class="continue-body">
+            <div class="continue-title">What is GPT-5?</div>
+            <div class="continue-meta">
+              <span class="continue-channel">AI Finance Desk</span>
+              <span>4 scenes</span>
+            </div>
+          </div>
+        </div>
+        <div class="continue-card">
+          <div class="continue-thumb vt-3">
+            <div class="continue-thumb-inner" style="font-size:32px;">🌿</div>
+            <div class="continue-overlay"></div>
+            <span class="continue-badge badge-ready">Ready</span>
+          </div>
+          <div class="continue-body">
+            <div class="continue-title">Haunted Lighthouse</div>
+            <div class="continue-meta">
+              <span class="continue-channel">Dark History</span>
+              <span>7 scenes</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Channels -->
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">Content lanes</div>
+          <div class="section-title">Channels</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="showPage('channels')">Manage channels →</button>
+      </div>
+
+      <!-- Adaptive note — shows when 2+ channels -->
+      <div class="adaptive-note" style="margin-bottom:14px;">
+        <span style="font-size:16px;">📡</span>
+        <div>You have <strong>3 channels</strong>. Click a channel to see its videos, series, and brand defaults.</div>
+      </div>
+
+      <div class="channel-grid">
+        <!-- Channel 1 -->
+        <div class="channel-card" onclick="showPage('channel-detail')">
+          <div class="channel-cover grad-red">
+            <div style="position:absolute;inset:0;opacity:0.2;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><defs><radialGradient id=%22g%22><stop offset=%220%25%22 stop-color=%22%23ff0000%22 stop-opacity=%220.4%22/><stop offset=%22100%25%22 stop-opacity=%220%22/></radialGradient></defs><rect width=%22100%22 height=%22100%22 fill=%22url(%23g)%22/></svg>') center/cover"></div>
+            <span class="channel-icon">🕵️</span>
+          </div>
+          <div class="channel-body">
+            <div class="channel-name">Dark History Shorts</div>
+            <div class="channel-desc">Unsolved mysteries, betrayals, and dark chapters of history.</div>
+            <div class="channel-stats">
+              <div class="ch-stat">
+                <div class="ch-stat-val">24</div>
+                <div class="ch-stat-label">Videos</div>
+              </div>
+              <div class="ch-stat">
+                <div class="ch-stat-val">3</div>
+                <div class="ch-stat-label">Series</div>
+              </div>
+              <div class="ch-stat">
+                <div class="ch-stat-val">9:16</div>
+                <div class="ch-stat-label">Format</div>
+              </div>
+            </div>
+            <div class="channel-footer">
+              <div class="channel-kit">
+                <div class="kit-dot" style="background:#7c1a1a;"></div>
+                Horror Stories Kit
+              </div>
+              <span class="channel-action">Open →</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Channel 2 -->
+        <div class="channel-card">
+          <div class="channel-cover grad-amber">
+            <span class="channel-icon">🌆</span>
+          </div>
+          <div class="channel-body">
+            <div class="channel-name">Dubai Property Tips</div>
+            <div class="channel-desc">Luxury real estate insights for investors and buyers in the UAE.</div>
+            <div class="channel-stats">
+              <div class="ch-stat">
+                <div class="ch-stat-val">18</div>
+                <div class="ch-stat-label">Videos</div>
+              </div>
+              <div class="ch-stat">
+                <div class="ch-stat-val">2</div>
+                <div class="ch-stat-label">Series</div>
+              </div>
+              <div class="ch-stat">
+                <div class="ch-stat-val">9:16</div>
+                <div class="ch-stat-label">Format</div>
+              </div>
+            </div>
+            <div class="channel-footer">
+              <div class="channel-kit">
+                <div class="kit-dot" style="background:#c8860a;"></div>
+                Real Estate Premium
+              </div>
+              <span class="channel-action">Open →</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Channel 3 -->
+        <div class="channel-card">
+          <div class="channel-cover grad-teal">
+            <span class="channel-icon">📈</span>
+          </div>
+          <div class="channel-body">
+            <div class="channel-name">AI Finance Desk</div>
+            <div class="channel-desc">Bite-size AI and stock market news for smart investors.</div>
+            <div class="channel-stats">
+              <div class="ch-stat">
+                <div class="ch-stat-val">31</div>
+                <div class="ch-stat-label">Videos</div>
+              </div>
+              <div class="ch-stat">
+                <div class="ch-stat-val">2</div>
+                <div class="ch-stat-label">Series</div>
+              </div>
+              <div class="ch-stat">
+                <div class="ch-stat-val">1:1</div>
+                <div class="ch-stat-label">Format</div>
+              </div>
+            </div>
+            <div class="channel-footer">
+              <div class="channel-kit">
+                <div class="kit-dot" style="background:#0a6b6b;"></div>
+                Main Studio Kit
+              </div>
+              <span class="channel-action">Open →</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- New channel -->
+        <div class="channel-card-new">
+          <div class="channel-card-new-icon">+</div>
+          <div>New Channel</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Series -->
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">Repeatable formats</div>
+          <div class="section-title">Series</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="showPage('series')">View all →</button>
+      </div>
+      <div class="series-grid">
+        <div class="series-card">
+          <div class="series-num">01</div>
+          <div class="series-info">
+            <div class="series-name">Betrayals That Changed History</div>
+            <div class="series-channel">Dark History Shorts</div>
+            <div class="series-meta">
+              <span class="series-pill">8 episodes</span>
+              <span class="series-pill">Cinematic</span>
+              <span class="series-pill">~60s</span>
+            </div>
+          </div>
+          <div class="series-actions">
+            <span class="series-eps">ep 9 due</span>
+            <button class="btn btn-primary btn-sm">+ Episode</button>
+          </div>
+        </div>
+        <div class="series-card">
+          <div class="series-num">02</div>
+          <div class="series-info">
+            <div class="series-name">Weekly Market Roundup</div>
+            <div class="series-channel">AI Finance Desk</div>
+            <div class="series-meta">
+              <span class="series-pill">12 episodes</span>
+              <span class="series-pill">Minimal</span>
+              <span class="series-pill">~90s</span>
+            </div>
+          </div>
+          <div class="series-actions">
+            <span class="series-eps">ep 13 due</span>
+            <button class="btn btn-primary btn-sm">+ Episode</button>
+          </div>
+        </div>
+        <div class="series-card">
+          <div class="series-num">03</div>
+          <div class="series-info">
+            <div class="series-name">Dubai District Spotlight</div>
+            <div class="series-channel">Dubai Property Tips</div>
+            <div class="series-meta">
+              <span class="series-pill">5 episodes</span>
+              <span class="series-pill">Realistic</span>
+              <span class="series-pill">~60s</span>
+            </div>
+          </div>
+          <div class="series-actions">
+            <span class="series-eps">ep 6 due</span>
+            <button class="btn btn-primary btn-sm">+ Episode</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Usage snapshot -->
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">Studio Plan</div>
+          <div class="section-title">Usage this month</div>
+        </div>
+        <button class="btn btn-ghost btn-sm">Billing →</button>
+      </div>
+      <div class="usage-snap">
+        <div class="usage-item">
+          <div class="usage-label">Renders</div>
+          <div class="usage-val">12 <span style="font-size:13px;color:var(--text-muted)">/ 60</span></div>
+          <div class="usage-bar"><div class="usage-fill" style="width:20%"></div></div>
+          <div class="usage-note">48 remaining</div>
+        </div>
+        <div class="usage-item">
+          <div class="usage-label">API Spend</div>
+          <div class="usage-val">$3.42 <span style="font-size:13px;color:var(--text-muted)">/ $50</span></div>
+          <div class="usage-bar"><div class="usage-fill" style="width:7%;background:#60a5fa"></div></div>
+          <div class="usage-note">$46.58 remaining</div>
+        </div>
+        <div class="usage-item">
+          <div class="usage-label">Voice Minutes</div>
+          <div class="usage-val">38 <span style="font-size:13px;color:var(--text-muted)">/ 120</span></div>
+          <div class="usage-bar"><div class="usage-fill" style="width:32%;background:#a78bfa"></div></div>
+          <div class="usage-note">82 remaining</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-dashboard -->
+
+
+  <!-- ═══════════════ CHANNEL DETAIL PAGE ═══════════════ -->
+  <div class="content page-section" id="page-channel-detail">
+
+    <!-- Hero -->
+    <div>
+      <div class="channel-hero grad-red">
+        <div class="channel-hero-bg" style="background:linear-gradient(135deg,#1a0005 0%,#3d0010 40%,#0a0a0f 100%)"></div>
+        <div class="channel-hero-overlay"></div>
+        <div class="channel-hero-content">
+          <div class="channel-hero-icon">🕵️</div>
+          <div class="channel-hero-text">
+            <div class="channel-hero-name">Dark History Shorts</div>
+            <div class="channel-hero-desc">Unsolved mysteries, betrayals, and dark chapters of history. · 24 videos · 3 series</div>
+          </div>
+          <div class="channel-hero-actions">
+            <button class="btn btn-primary">+ New Video</button>
+            <button class="btn">⚙ Settings</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div>
+      <div class="channel-tabs">
+        <div class="ch-tab active">Overview</div>
+        <div class="ch-tab">Videos <span style="color:var(--text-muted);font-size:11px;margin-left:4px;">24</span></div>
+        <div class="ch-tab">Series <span style="color:var(--text-muted);font-size:11px;margin-left:4px;">3</span></div>
+        <div class="ch-tab">Brand</div>
+        <div class="ch-tab">Assets</div>
+        <div class="ch-tab">Settings</div>
+      </div>
+    </div>
+
+    <!-- Brand defaults -->
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">Inherited from Horror Stories Kit</div>
+          <div class="section-title">Channel defaults</div>
+        </div>
+        <button class="btn btn-ghost btn-sm">Edit →</button>
+      </div>
+      <div class="brand-defaults">
+        <div class="brand-item">
+          <div class="brand-item-label">Brand Kit</div>
+          <div class="brand-item-val">Horror Stories</div>
+          <div class="brand-item-sub">Workspace brand kit</div>
+        </div>
+        <div class="brand-item">
+          <div class="brand-item-label">Primary Color</div>
+          <div class="brand-item-val">
+            <div class="brand-color-swatch" style="background:#c0392b;"></div>
+            #c0392b
+          </div>
+          <div class="brand-item-sub">Deep crimson</div>
+        </div>
+        <div class="brand-item">
+          <div class="brand-item-label">Caption Style</div>
+          <div class="brand-item-val">Word by word</div>
+          <div class="brand-item-sub">Luckiest Guy · centered</div>
+        </div>
+        <div class="brand-item">
+          <div class="brand-item-label">Default Voice</div>
+          <div class="brand-item-val">Onyx — Deep</div>
+          <div class="brand-item-sub">Speed 0.95 · medium stability</div>
+        </div>
+        <div class="brand-item">
+          <div class="brand-item-label">Visual Style</div>
+          <div class="brand-item-val">Dark Fantasy</div>
+          <div class="brand-item-sub">AI image generation</div>
+        </div>
+        <div class="brand-item">
+          <div class="brand-item-label">Music Mood</div>
+          <div class="brand-item-val">Dark ambient</div>
+          <div class="brand-item-sub">Duck at 8% under voice</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Channel series -->
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">Repeatable formats</div>
+          <div class="section-title">Series in this channel</div>
+        </div>
+        <button class="btn btn-primary btn-sm">+ New Series</button>
+      </div>
+      <div class="series-grid">
+        <div class="series-card" onclick="showPage('series-detail')">
+          <div class="series-num">01</div>
+          <div class="series-info">
+            <div class="series-name">Betrayals That Changed History</div>
+            <div class="series-channel">Dark History Shorts</div>
+            <div class="series-meta">
+              <span class="series-pill">8 episodes</span>
+              <span class="series-pill">Cinematic</span>
+              <span class="series-pill">~60s</span>
+            </div>
+          </div>
+          <div class="series-actions">
+            <span class="series-eps">ep 9 due</span>
+            <button class="btn btn-primary btn-sm">+ Episode</button>
+          </div>
+        </div>
+        <div class="series-card">
+          <div class="series-num">02</div>
+          <div class="series-info">
+            <div class="series-name">Haunted Places</div>
+            <div class="series-channel">Dark History Shorts</div>
+            <div class="series-meta">
+              <span class="series-pill">5 episodes</span>
+              <span class="series-pill">Dark Fantasy</span>
+              <span class="series-pill">~45s</span>
+            </div>
+          </div>
+          <div class="series-actions">
+            <span class="series-eps">ep 6 due</span>
+            <button class="btn btn-primary btn-sm">+ Episode</button>
+          </div>
+        </div>
+        <div class="series-card">
+          <div class="series-num">03</div>
+          <div class="series-info">
+            <div class="series-name">Last Words</div>
+            <div class="series-channel">Dark History Shorts</div>
+            <div class="series-meta">
+              <span class="series-pill">3 episodes</span>
+              <span class="series-pill">Film Noir</span>
+              <span class="series-pill">~30s</span>
+            </div>
+          </div>
+          <div class="series-actions">
+            <span class="series-eps">ep 4 due</span>
+            <button class="btn btn-primary btn-sm">+ Episode</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent videos in channel -->
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">Latest output</div>
+          <div class="section-title">Recent videos</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm">Filter</button>
+          <button class="btn btn-primary btn-sm">+ New Video</button>
+        </div>
+      </div>
+      <div class="video-grid">
+        <div class="video-card">
+          <div class="video-thumb vt-4">
+            <div class="continue-thumb-inner" style="font-size:36px;display:flex;align-items:center;justify-content:center;height:100%;">🕵️</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span>
+            <span class="video-dur">1:02</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">The Romanov Betrayal</div>
+            <div class="video-meta">
+              <span class="video-status vs-gen">Generating</span>
+              <span>8 scenes</span>
+            </div>
+          </div>
+        </div>
+        <div class="video-card">
+          <div class="video-thumb" style="background:linear-gradient(135deg,#1a0005,#2d0008);">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">⚔️</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span>
+            <span class="video-dur">0:58</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">Caesar's Final Hours</div>
+            <div class="video-meta">
+              <span class="video-status vs-ready">Ready</span>
+              <span>6 scenes</span>
+            </div>
+          </div>
+        </div>
+        <div class="video-card">
+          <div class="video-thumb" style="background:linear-gradient(135deg,#120005,#200010);">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">🌿</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span>
+            <span class="video-dur">0:47</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">The Haunted Lighthouse</div>
+            <div class="video-meta">
+              <span class="video-status vs-ready">Ready</span>
+              <span>5 scenes</span>
+            </div>
+          </div>
+        </div>
+        <div class="video-card">
+          <div class="video-thumb" style="background:linear-gradient(135deg,#0d0005,#1a000a);">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">💀</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span>
+            <span class="video-dur">1:05</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">Marie Antoinette's Last Day</div>
+            <div class="video-meta">
+              <span class="video-status vs-ready">Ready</span>
+              <span>7 scenes</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-channel-detail -->
+
+
+  <!-- ═══════════════ SERIES DETAIL PAGE ═══════════════ -->
+  <div class="content page-section" id="page-series-detail">
+
+    <div>
+      <div class="series-hero">
+        <div class="series-badge">📜</div>
+        <div class="series-hero-body">
+          <div class="series-hero-label">Series · Dark History Shorts</div>
+          <div class="series-hero-title">Betrayals That Changed History</div>
+          <div class="series-hero-channel">Dark History Shorts</div>
+          <div class="series-defaults">
+            <div class="s-default-pill"><span>Voice</span> Onyx — Deep</div>
+            <div class="s-default-pill"><span>Visual</span> Dark Fantasy</div>
+            <div class="s-default-pill"><span>Duration</span> ~60s</div>
+            <div class="s-default-pill"><span>Captions</span> Word-by-word</div>
+            <div class="s-default-pill"><span>Music</span> Dark ambient</div>
+            <div class="s-default-pill"><span>Format</span> 9:16</div>
+          </div>
+        </div>
+        <div class="series-hero-actions">
+          <button class="btn btn-primary">✦ Generate Ep 9</button>
+          <button class="btn btn-ghost btn-sm">Edit defaults</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Episodes -->
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">8 episodes</div>
+          <div class="section-title">Episodes</div>
+        </div>
+        <button class="btn btn-primary btn-sm">+ New Episode</button>
+      </div>
+      <div class="video-grid">
+        <div class="video-card" style="border-color:rgba(255,107,53,0.25);">
+          <div class="video-thumb vt-4">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">👑</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span>
+            <span class="video-dur">1:02</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">Ep 8 — The Romanov Betrayal</div>
+            <div class="video-meta">
+              <span class="video-status vs-ready">Ready</span>
+              <span>8 scenes</span>
+            </div>
+          </div>
+        </div>
+        <div class="video-card">
+          <div class="video-thumb" style="background:linear-gradient(135deg,#1a0005,#2d0008);">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">⚔️</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span>
+            <span class="video-dur">0:58</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">Ep 7 — Caesar's Inner Circle</div>
+            <div class="video-meta">
+              <span class="video-status vs-ready">Ready</span>
+              <span>6 scenes</span>
+            </div>
+          </div>
+        </div>
+        <div class="video-card">
+          <div class="video-thumb" style="background:linear-gradient(135deg,#120008,#200012);">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">🗡️</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span>
+            <span class="video-dur">0:55</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">Ep 6 — The Medici Assassination</div>
+            <div class="video-meta">
+              <span class="video-status vs-ready">Ready</span>
+              <span>7 scenes</span>
+            </div>
+          </div>
+        </div>
+        <div class="video-card" style="opacity:0.45;border-style:dashed;">
+          <div class="video-thumb" style="background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;">
+            <div style="text-align:center;color:var(--text-muted);">
+              <div style="font-size:28px;margin-bottom:6px;">+</div>
+              <div style="font-size:11px;">Episode 9</div>
+            </div>
+          </div>
+          <div class="video-body">
+            <div class="video-title" style="color:var(--text-muted);">Generate next episode</div>
+            <div class="video-meta"><span style="color:var(--accent);">Uses series defaults →</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-series-detail -->
+
+
+  <!-- ═══════════════ CHANNELS LIST PAGE ═══════════════ -->
+  <div class="content page-section" id="page-channels">
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">Content lanes</div>
+          <div class="section-title">All Channels</div>
+        </div>
+        <button class="btn btn-primary">+ New Channel</button>
+      </div>
+      <div class="channel-grid">
+        <div class="channel-card" onclick="showPage('channel-detail')">
+          <div class="channel-cover grad-red"><span class="channel-icon">🕵️</span></div>
+          <div class="channel-body">
+            <div class="channel-name">Dark History Shorts</div>
+            <div class="channel-desc">Unsolved mysteries, betrayals, and dark chapters of history.</div>
+            <div class="channel-stats">
+              <div class="ch-stat"><div class="ch-stat-val">24</div><div class="ch-stat-label">Videos</div></div>
+              <div class="ch-stat"><div class="ch-stat-val">3</div><div class="ch-stat-label">Series</div></div>
+              <div class="ch-stat"><div class="ch-stat-val">9:16</div><div class="ch-stat-label">Format</div></div>
+            </div>
+            <div class="channel-footer">
+              <div class="channel-kit"><div class="kit-dot" style="background:#7c1a1a;"></div>Horror Stories Kit</div>
+              <span class="channel-action">Open →</span>
+            </div>
+          </div>
+        </div>
+        <div class="channel-card">
+          <div class="channel-cover grad-amber"><span class="channel-icon">🌆</span></div>
+          <div class="channel-body">
+            <div class="channel-name">Dubai Property Tips</div>
+            <div class="channel-desc">Luxury real estate insights for investors and buyers in the UAE.</div>
+            <div class="channel-stats">
+              <div class="ch-stat"><div class="ch-stat-val">18</div><div class="ch-stat-label">Videos</div></div>
+              <div class="ch-stat"><div class="ch-stat-val">2</div><div class="ch-stat-label">Series</div></div>
+              <div class="ch-stat"><div class="ch-stat-val">9:16</div><div class="ch-stat-label">Format</div></div>
+            </div>
+            <div class="channel-footer">
+              <div class="channel-kit"><div class="kit-dot" style="background:#c8860a;"></div>Real Estate Premium</div>
+              <span class="channel-action">Open →</span>
+            </div>
+          </div>
+        </div>
+        <div class="channel-card">
+          <div class="channel-cover grad-teal"><span class="channel-icon">📈</span></div>
+          <div class="channel-body">
+            <div class="channel-name">AI Finance Desk</div>
+            <div class="channel-desc">Bite-size AI and stock market news for smart investors.</div>
+            <div class="channel-stats">
+              <div class="ch-stat"><div class="ch-stat-val">31</div><div class="ch-stat-label">Videos</div></div>
+              <div class="ch-stat"><div class="ch-stat-val">2</div><div class="ch-stat-label">Series</div></div>
+              <div class="ch-stat"><div class="ch-stat-val">1:1</div><div class="ch-stat-label">Format</div></div>
+            </div>
+            <div class="channel-footer">
+              <div class="channel-kit"><div class="kit-dot" style="background:#0a6b6b;"></div>Main Studio Kit</div>
+              <span class="channel-action">Open →</span>
+            </div>
+          </div>
+        </div>
+        <div class="channel-card-new">
+          <div class="channel-card-new-icon">+</div>
+          <div>New Channel</div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /page-channels -->
+
+
+  <!-- ═══════════════ SERIES LIST PAGE ═══════════════ -->
+  <div class="content page-section" id="page-series">
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">Repeatable formats</div>
+          <div class="section-title">All Series</div>
+        </div>
+        <button class="btn btn-primary">+ New Series</button>
+      </div>
+      <div class="series-grid">
+        <div class="series-card" onclick="showPage('series-detail')">
+          <div class="series-num">01</div>
+          <div class="series-info">
+            <div class="series-name">Betrayals That Changed History</div>
+            <div class="series-channel">Dark History Shorts</div>
+            <div class="series-meta"><span class="series-pill">8 eps</span><span class="series-pill">Cinematic</span><span class="series-pill">~60s</span></div>
+          </div>
+          <div class="series-actions"><span class="series-eps">ep 9 due</span><button class="btn btn-primary btn-sm">+ Episode</button></div>
+        </div>
+        <div class="series-card">
+          <div class="series-num">02</div>
+          <div class="series-info">
+            <div class="series-name">Haunted Places</div>
+            <div class="series-channel">Dark History Shorts</div>
+            <div class="series-meta"><span class="series-pill">5 eps</span><span class="series-pill">Dark Fantasy</span><span class="series-pill">~45s</span></div>
+          </div>
+          <div class="series-actions"><span class="series-eps">ep 6 due</span><button class="btn btn-primary btn-sm">+ Episode</button></div>
+        </div>
+        <div class="series-card">
+          <div class="series-num">03</div>
+          <div class="series-info">
+            <div class="series-name">Last Words</div>
+            <div class="series-channel">Dark History Shorts</div>
+            <div class="series-meta"><span class="series-pill">3 eps</span><span class="series-pill">Film Noir</span><span class="series-pill">~30s</span></div>
+          </div>
+          <div class="series-actions"><span class="series-eps">ep 4 due</span><button class="btn btn-primary btn-sm">+ Episode</button></div>
+        </div>
+        <div class="series-card">
+          <div class="series-num">04</div>
+          <div class="series-info">
+            <div class="series-name">Weekly Market Roundup</div>
+            <div class="series-channel">AI Finance Desk</div>
+            <div class="series-meta"><span class="series-pill">12 eps</span><span class="series-pill">Minimal</span><span class="series-pill">~90s</span></div>
+          </div>
+          <div class="series-actions"><span class="series-eps">ep 13 due</span><button class="btn btn-primary btn-sm">+ Episode</button></div>
+        </div>
+        <div class="series-card">
+          <div class="series-num">05</div>
+          <div class="series-info">
+            <div class="series-name">Dubai District Spotlight</div>
+            <div class="series-channel">Dubai Property Tips</div>
+            <div class="series-meta"><span class="series-pill">5 eps</span><span class="series-pill">Realistic</span><span class="series-pill">~60s</span></div>
+          </div>
+          <div class="series-actions"><span class="series-eps">ep 6 due</span><button class="btn btn-primary btn-sm">+ Episode</button></div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /page-series -->
+
+
+  <!-- ═══════════════ VIDEOS PAGE ═══════════════ -->
+  <div class="content page-section" id="page-videos">
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">All workspace videos</div>
+          <div class="section-title">Videos</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <div class="channel-filter-bar" style="margin-bottom:0;">
+            <div class="channel-filter-tab active" style="font-size:11px;">All</div>
+            <div class="channel-filter-tab" style="font-size:11px;">🕵️ Dark History</div>
+            <div class="channel-filter-tab" style="font-size:11px;">🌆 Dubai Property</div>
+            <div class="channel-filter-tab" style="font-size:11px;">📈 AI Finance</div>
+          </div>
+          <button class="btn btn-primary btn-sm">+ New Video</button>
+        </div>
+      </div>
+      <div class="video-grid">
+        <div class="video-card">
+          <div class="video-thumb vt-4">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">🕵️</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span><span class="video-dur">1:02</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">The Romanov Betrayal</div>
+            <div class="video-meta"><span class="video-status vs-gen">Generating</span><span>Dark History</span></div>
+          </div>
+        </div>
+        <div class="video-card">
+          <div class="video-thumb vt-2">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">📈</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">1:1</span><span class="video-dur">1:28</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">5 Stocks for Q2 2026</div>
+            <div class="video-meta"><span class="video-status vs-ready">Ready</span><span>AI Finance</span></div>
+          </div>
+        </div>
+        <div class="video-card">
+          <div class="video-thumb vt-1">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">🌆</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span><span class="video-dur">0:58</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">Dubai Marina Spotlight</div>
+            <div class="video-meta"><span class="video-status vs-ready">Ready</span><span>Dubai Property</span></div>
+          </div>
+        </div>
+        <div class="video-card">
+          <div class="video-thumb vt-5">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">⚡</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">1:1</span><span class="video-dur">0:45</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">What is GPT-5?</div>
+            <div class="video-meta"><span class="video-status vs-draft">Draft</span><span>AI Finance</span></div>
+          </div>
+        </div>
+        <div class="video-card">
+          <div class="video-thumb vt-3">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">🌿</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span><span class="video-dur">0:47</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">The Haunted Lighthouse</div>
+            <div class="video-meta"><span class="video-status vs-ready">Ready</span><span>Dark History</span></div>
+          </div>
+        </div>
+        <div class="video-card">
+          <div class="video-thumb" style="background:linear-gradient(135deg,#1a0005,#2d0008);">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:36px;">💰</div>
+            <div class="video-thumb-overlay"></div>
+            <span class="video-ar">9:16</span><span class="video-dur">0:52</span>
+          </div>
+          <div class="video-body">
+            <div class="video-title">Buy vs Rent in Dubai 2026</div>
+            <div class="video-meta"><span class="video-status vs-ready">Ready</span><span>Dubai Property</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /page-videos -->
+
+
+  <!-- ═══════════════ JOBS PAGE ═══════════════ -->
+  <div class="content page-section" id="page-jobs">
+
+    <!-- Header -->
+    <div>
+      <div class="section-hd">
+        <div class="section-hd-left">
+          <div class="eyebrow">Background work</div>
+          <div class="section-title">Jobs</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.jobs-filter-chip').forEach(c=>c.classList.remove('active'));document.querySelector('.jobs-filter-chip').classList.add('active');filterJobs('all')">Clear filters</button>
+      </div>
+
+      <!-- Filter chips -->
+      <div class="jobs-filter-bar" style="margin-top:14px;">
+        <div class="jobs-filter-chip active" onclick="filterJobs('all',this)">
+          All <span class="chip-count">7</span>
+        </div>
+        <div class="jobs-filter-chip" onclick="filterJobs('generate',this)">
+          Generating <span class="chip-count">2</span>
+        </div>
+        <div class="jobs-filter-chip" onclick="filterJobs('export',this)">
+          Exporting <span class="chip-count">3</span>
+        </div>
+        <div class="jobs-filter-chip" onclick="filterJobs('variant',this)">
+          Variants <span class="chip-count">1</span>
+        </div>
+        <div class="jobs-filter-chip" onclick="filterJobs('transcribe',this)">
+          Transcribing <span class="chip-count">1</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Running -->
+    <div class="jobs-group" data-group="running">
+      <div class="jobs-group-header">Running <span class="group-count">3</span></div>
+
+      <!-- Generating -->
+      <div class="job-row job-running" data-type="generate">
+        <div class="job-spinner"></div>
+        <div class="job-type-icon jt-generate">🎬</div>
+        <div class="job-info">
+          <div class="job-title">The Romanov Betrayal</div>
+          <div class="job-sub">
+            <span class="job-channel">Dark History Shorts</span>
+            <span class="job-type-badge jtb-generate">Generating</span>
+          </div>
+        </div>
+        <div class="job-progress">
+          <div class="job-progress-bar"><div class="job-progress-fill jf-generate" style="width:62%"></div></div>
+          <div class="job-progress-label">62% · 8 scenes</div>
+        </div>
+        <div class="job-time">3m 14s</div>
+        <div class="job-actions">
+          <button class="job-btn cancel">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Exporting -->
+      <div class="job-row job-running" data-type="export">
+        <div class="job-spinner sp-export"></div>
+        <div class="job-type-icon jt-export">📦</div>
+        <div class="job-info">
+          <div class="job-title">Dubai Episode 12 — Final Export</div>
+          <div class="job-sub">
+            <span class="job-channel">Dubai Property Tips</span>
+            <span class="job-type-badge jtb-export">Exporting</span>
+          </div>
+        </div>
+        <div class="job-progress">
+          <div class="job-progress-bar"><div class="job-progress-fill jf-export" style="width:45%"></div></div>
+          <div class="job-progress-label">45% · rendering</div>
+        </div>
+        <div class="job-time">1m 02s</div>
+        <div class="job-actions">
+          <button class="job-btn cancel">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Variant -->
+      <div class="job-row job-running" data-type="variant">
+        <div class="job-spinner sp-variant"></div>
+        <div class="job-type-icon jt-variant">🌐</div>
+        <div class="job-info">
+          <div class="job-title">Haunted Lighthouse — Spanish Variant</div>
+          <div class="job-sub">
+            <span class="job-channel">Dark History Shorts</span>
+            <span class="job-type-badge jtb-variant">Variant</span>
+          </div>
+        </div>
+        <div class="job-progress">
+          <div class="job-progress-bar"><div class="job-progress-fill jf-variant" style="width:18%"></div></div>
+          <div class="job-progress-label">18% · translating</div>
+        </div>
+        <div class="job-time">0m 31s</div>
+        <div class="job-actions">
+          <button class="job-btn cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Queued -->
+    <div class="jobs-group" data-group="queued">
+      <div class="jobs-group-header">Queued <span class="group-count">2</span></div>
+
+      <div class="job-row" data-type="generate">
+        <div class="job-type-icon jt-generate">🎬</div>
+        <div class="job-info">
+          <div class="job-title">What is GPT-5?</div>
+          <div class="job-sub">
+            <span class="job-channel">AI Finance Desk</span>
+            <span class="job-type-badge jtb-generate">Generating</span>
+          </div>
+        </div>
+        <div class="job-progress">
+          <div class="job-progress-bar"><div class="job-progress-fill jf-generate" style="width:0%"></div></div>
+          <div class="job-progress-label">Waiting in queue…</div>
+        </div>
+        <div class="job-time">queued</div>
+        <div class="job-actions">
+          <button class="job-btn cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div class="job-row" data-type="export">
+        <div class="job-type-icon jt-export">📦</div>
+        <div class="job-info">
+          <div class="job-title">5 Stocks for Q2 2026</div>
+          <div class="job-sub">
+            <span class="job-channel">AI Finance Desk</span>
+            <span class="job-type-badge jtb-export">Exporting</span>
+          </div>
+        </div>
+        <div class="job-progress">
+          <div class="job-progress-bar"><div class="job-progress-fill jf-export" style="width:0%"></div></div>
+          <div class="job-progress-label">Waiting in queue…</div>
+        </div>
+        <div class="job-time">queued</div>
+        <div class="job-actions">
+          <button class="job-btn cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Failed -->
+    <div class="jobs-group" data-group="failed">
+      <div class="jobs-group-header">Failed <span class="group-count">1</span></div>
+
+      <div class="job-row job-failed" data-type="export">
+        <div class="job-type-icon jt-failed">⚠</div>
+        <div class="job-info">
+          <div class="job-title">Dubai Skyline Tour — Export</div>
+          <div class="job-sub">
+            <span class="job-channel">Dubai Property Tips</span>
+            <span class="job-type-badge jtb-failed">Failed</span>
+            <span style="color:var(--text-muted);font-size:10px;">Storage timeout</span>
+          </div>
+        </div>
+        <div class="job-progress">
+          <div class="job-progress-bar"><div class="job-progress-fill" style="width:71%;background:#f87171;"></div></div>
+          <div class="job-progress-label" style="color:#f87171;">Stopped at 71%</div>
+        </div>
+        <div class="job-time">3h ago</div>
+        <div class="job-actions">
+          <button class="job-btn retry">Retry</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Completed today -->
+    <div class="jobs-group" data-group="completed">
+      <div class="jobs-group-header">Completed today <span class="group-count">3</span></div>
+
+      <div class="job-row" data-type="export">
+        <div class="job-type-icon jt-export" style="opacity:0.5;">📦</div>
+        <div class="job-info">
+          <div class="job-title" style="color:var(--text-sec);">Weekly Market Roundup Ep 13</div>
+          <div class="job-sub">
+            <span class="job-channel">AI Finance Desk</span>
+            <span class="job-type-badge jtb-done">Done</span>
+          </div>
+        </div>
+        <div class="job-progress">
+          <div class="job-progress-bar"><div class="job-progress-fill" style="width:100%;background:#34d399;"></div></div>
+          <div class="job-progress-label">Completed · 1.2s render</div>
+        </div>
+        <div class="job-time">12m ago</div>
+        <div class="job-actions">
+          <button class="job-btn">Download</button>
+        </div>
+      </div>
+
+      <div class="job-row" data-type="transcribe">
+        <div class="job-type-icon jt-transcribe" style="opacity:0.5;">🎙</div>
+        <div class="job-info">
+          <div class="job-title" style="color:var(--text-sec);">Betrayals S1 Ep 7 — Transcription</div>
+          <div class="job-sub">
+            <span class="job-channel">Dark History Shorts</span>
+            <span class="job-type-badge jtb-done">Done</span>
+          </div>
+        </div>
+        <div class="job-progress">
+          <div class="job-progress-bar"><div class="job-progress-fill" style="width:100%;background:#34d399;"></div></div>
+          <div class="job-progress-label">Completed · Whisper v3</div>
+        </div>
+        <div class="job-time">2h ago</div>
+        <div class="job-actions">
+          <button class="job-btn">View</button>
+        </div>
+      </div>
+
+      <div class="job-row" data-type="export">
+        <div class="job-type-icon jt-export" style="opacity:0.5;">📦</div>
+        <div class="job-info">
+          <div class="job-title" style="color:var(--text-sec);">Haunted Lighthouse — Final</div>
+          <div class="job-sub">
+            <span class="job-channel">Dark History Shorts</span>
+            <span class="job-type-badge jtb-done">Done</span>
+          </div>
+        </div>
+        <div class="job-progress">
+          <div class="job-progress-bar"><div class="job-progress-fill" style="width:100%;background:#34d399;"></div></div>
+          <div class="job-progress-label">Completed · 0.9s render</div>
+        </div>
+        <div class="job-time">4h ago</div>
+        <div class="job-actions">
+          <button class="job-btn">Download</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-jobs -->
+
+
+</div><!-- /main -->
+
+
+<!-- ── MOCK NAV ─────────────────────────────────────────── -->
+<div class="mock-nav">
+  <span style="font-size:10px;color:var(--text-muted);padding:7px 6px;font-family:var(--mono);">VIEW →</span>
+  <button class="mock-tab active" onclick="showPage('dashboard')">Dashboard</button>
+  <button class="mock-tab" onclick="showPage('channel-detail')">Channel</button>
+  <button class="mock-tab" onclick="showPage('series-detail')">Series</button>
+  <button class="mock-tab" onclick="showPage('channels')">Channels</button>
+  <button class="mock-tab" onclick="showPage('videos')">Videos</button>
+  <button class="mock-tab" onclick="showPage('jobs')">Jobs</button>
+</div>
+
+<script>
+const pages = {
+  'dashboard':      'page-dashboard',
+  'channel-detail': 'page-channel-detail',
+  'series-detail':  'page-series-detail',
+  'channels':       'page-channels',
+  'series':         'page-series',
+  'videos':         'page-videos',
+  'jobs':           'page-jobs',
+};
+const navItems = {
+  'dashboard':      'nav-dash',
+  'channel-detail': 'nav-channels',
+  'series-detail':  'nav-series',
+  'channels':       'nav-channels',
+  'series':         'nav-series',
+  'videos':         'nav-videos',
+  'jobs':           'nav-jobs',
+};
+const breadcrumbs = {
+  'dashboard':      'Dashboard',
+  'channel-detail': 'Channels / Dark History Shorts',
+  'series-detail':  'Channels / Dark History / Betrayals That Changed History',
+  'channels':       'Channels',
+  'series':         'Series',
+  'videos':         'Videos',
+  'jobs':           'Jobs',
+};
+const mockTabMap = {
+  'dashboard':      0,
+  'channel-detail': 1,
+  'series-detail':  2,
+  'channels':       3,
+  'videos':         4,
+  'jobs':           5,
+};
+
+function showPage(key) {
+  // hide all
+  document.querySelectorAll('.page-section').forEach(el => el.classList.remove('visible'));
+  // show target
+  const target = document.getElementById(pages[key]);
+  if (target) target.classList.add('visible');
+  // breadcrumb
+  document.getElementById('bc-page').textContent = breadcrumbs[key] || key;
+  // sidebar nav
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const navEl = document.getElementById(navItems[key]);
+  if (navEl) navEl.classList.add('active');
+  // mock tabs
+  const tabs = document.querySelectorAll('.mock-tab');
+  tabs.forEach(t => t.classList.remove('active'));
+  const idx = mockTabMap[key];
+  if (tabs[idx]) tabs[idx].classList.add('active');
+  // scroll top
+  document.querySelector('.main').scrollTop = 0;
+}
+
+function filterJobs(type, chipEl) {
+  // update active chip
+  document.querySelectorAll('.jobs-filter-chip').forEach(c => c.classList.remove('active'));
+  if (chipEl) chipEl.classList.add('active');
+  else document.querySelector('.jobs-filter-chip').classList.add('active');
+
+  // filter job rows
+  document.querySelectorAll('#page-jobs .job-row').forEach(row => {
+    const match = type === 'all' || row.dataset.type === type;
+    row.style.display = match ? '' : 'none';
+  });
+
+  // hide empty groups
+  document.querySelectorAll('#page-jobs .jobs-group').forEach(group => {
+    const visibleRows = group.querySelectorAll('.job-row:not([style*="display: none"]):not([style*="display:none"])');
+    // count rows that aren't hidden
+    const anyVisible = Array.from(group.querySelectorAll('.job-row')).some(r => r.style.display !== 'none');
+    group.style.display = anyVisible ? '' : 'none';
+  });
+}
+</script>
+
+</body>
+</html>

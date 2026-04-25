@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Framecast — Timeline Layout Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: #0a0a0f;
+    color: #e5e5e7;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+  }
+
+  /* ── App Sidebar ── */
+  .app-sidebar {
+    width: 56px;
+    background: #0f0f14;
+    border-right: 1px solid #1e1e28;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+    gap: 6px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .app-sidebar-logo {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: #FF6B35; display: flex; align-items: center;
+    justify-content: center; font-size: 14px; font-weight: 700;
+    color: #fff; margin-bottom: 12px; flex-shrink: 0;
+  }
+  .app-sidebar-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: #4a4a58; cursor: pointer; font-size: 16px;
+    transition: .15s;
+  }
+  .app-sidebar-icon:hover { background: #1e1e28; color: #9a9aab; }
+  .app-sidebar-icon.active { background: rgba(255,107,53,.12); color: #FF6B35; }
+
+  /* ── Editor shell ── */
+  .editor-shell {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    height: 56px;
+    background: #0f0f14;
+    border-bottom: 1px solid #1e1e28;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 14px;
+    flex-shrink: 0;
+    z-index: 5;
+  }
+  .topbar-bc { font-size: 12px; color: #4a4a58; }
+  .topbar-bc span { color: #e5e5e7; font-weight: 600; }
+  .topbar-sep { color: #2a2a35; }
+  .topbar-status {
+    font-size: 11px; padding: 3px 9px; border-radius: 5px;
+    background: rgba(34,197,94,.1); color: #22c55e;
+    font-weight: 600;
+  }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .topbar-btn {
+    font-size: 12px; padding: 6px 14px; border-radius: 6px;
+    border: 1px solid #1e1e28; background: transparent;
+    color: #9a9aab; cursor: pointer; font-family: inherit;
+  }
+  .topbar-btn.primary {
+    background: #FF6B35; border-color: #FF6B35; color: #fff; font-weight: 600;
+  }
+  .topbar-btn.timeline-toggle {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(255,107,53,.08);
+    border-color: rgba(255,107,53,.25);
+    color: #FF6B35;
+  }
+  .topbar-btn.timeline-toggle.active {
+    background: rgba(255,107,53,.15);
+    border-color: rgba(255,107,53,.4);
+  }
+
+  /* ── Editor body ── */
+  .editor-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: all .25s ease;
+  }
+
+  /* ── Editor columns ── */
+  .editor-cols {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    transition: height .25s ease;
+  }
+
+  /* Left panel */
+  .editor-left {
+    width: 280px;
+    background: #0f0f14;
+    border-right: 1px solid #1e1e28;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .panel-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid #1e1e28;
+    font-size: 12px;
+    font-weight: 600;
+    color: #9a9aab;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .scene-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .scene-item {
+    padding: 10px 12px; border-radius: 7px; margin-bottom: 3px;
+    border: 1px solid #1e1e28; cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .scene-item.active { border-color: #FF6B35; background: rgba(255,107,53,.06); }
+  .scene-thumb {
+    width: 36px; height: 36px; border-radius: 5px; flex-shrink: 0;
+    background: #1e1e28;
+  }
+  .scene-thumb.s1 { background: linear-gradient(135deg,#1a1060,#7c3aed); }
+  .scene-thumb.s2 { background: linear-gradient(135deg,#0d3d2a,#059669); }
+  .scene-thumb.s3 { background: linear-gradient(135deg,#3d1a0d,#ea580c); }
+  .scene-thumb.s4 { background: linear-gradient(135deg,#0d2040,#0284c7); }
+  .scene-thumb.s5 { background: linear-gradient(135deg,#2d1060,#a855f7); }
+  .scene-thumb.s6 { background: linear-gradient(135deg,#0d3d2a,#14b8a6); }
+  .scene-thumb.s7 { background: linear-gradient(135deg,#3d2a0d,#f59e0b); }
+  .scene-meta { min-width: 0; }
+  .scene-label { font-size: 11px; color: #4a4a58; font-family: 'Space Mono', monospace; }
+  .scene-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #e5e5e7; margin-top: 2px; }
+
+  /* Center canvas */
+  .editor-canvas {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #0b0b10;
+    overflow: hidden;
+    padding: 20px 20px 12px;
+    gap: 12px;
+  }
+
+  .preview-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  .preview-box {
+    aspect-ratio: 9/16;
+    height: 100%;
+    max-height: 100%;
+    max-width: 100%;
+    background: #0f0f14;
+    border: 1px solid #1e1e28;
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .preview-bg {
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, #1a1060 0%, #7c3aed 60%, #db2777 100%);
+    opacity: .7;
+  }
+  .preview-caption-demo {
+    position: absolute; bottom: 48px; left: 0; right: 0;
+    text-align: center; font-size: 14px; font-weight: 700;
+    color: #fff; padding: 0 16px; text-shadow: 0 1px 4px rgba(0,0,0,.6);
+    line-height: 1.4;
+  }
+  .preview-watermark {
+    position: absolute; top: 10px; right: 10px;
+    font-size: 8px; color: rgba(255,255,255,.25); letter-spacing: .1em;
+    font-family: 'Space Mono', monospace;
+  }
+  .preview-timer {
+    position: absolute; bottom: 8px; right: 10px;
+    font-size: 9px; color: rgba(255,255,255,.4); font-family: 'Space Mono', monospace;
+  }
+
+  .playback-bar {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .scrubber-track {
+    height: 3px; background: #1e1e28; border-radius: 2px;
+    position: relative; cursor: pointer;
+  }
+  .scrubber-fill { height: 100%; width: 35%; background: #FF6B35; border-radius: 2px; }
+  .scrubber-thumb {
+    width: 10px; height: 10px; border-radius: 50%; background: #FF6B35;
+    position: absolute; top: -3.5px; left: calc(35% - 5px);
+    box-shadow: 0 0 0 2px rgba(255,107,53,.3);
+  }
+  .scrubber-marker {
+    position: absolute; top: -2px; width: 1px; height: 7px;
+    background: #2a2a38;
+  }
+  .playback-btns-row {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .play-btns { display: flex; align-items: center; gap: 6px; }
+  .skip-btn {
+    width: 26px; height: 26px; border-radius: 50%; background: #17171c;
+    border: 1px solid #1e1e28; color: #9a9aab; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 10px;
+  }
+  .play-btn {
+    width: 32px; height: 32px; border-radius: 50%; background: #FF6B35;
+    border: none; color: #fff; cursor: pointer; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .time-display {
+    font-family: 'Space Mono', monospace; font-size: 11px; color: #9a9aab;
+  }
+  .mode-toggle {
+    margin-left: auto; display: flex; background: #17171c;
+    border-radius: 5px; padding: 2px; gap: 2px;
+  }
+  .mode-btn {
+    font-size: 11px; padding: 4px 10px; border-radius: 3px;
+    border: none; background: transparent; color: #6b6b73; cursor: pointer;
+    font-family: inherit;
+  }
+  .mode-btn.active { background: #24242b; color: #e5e5e7; }
+
+  /* Right panel */
+  .editor-right {
+    width: 300px;
+    background: #0f0f14;
+    border-left: 1px solid #1e1e28;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+  .right-section {
+    border-bottom: 1px solid #1e1e28;
+    padding: 14px 16px;
+  }
+  .right-section-title {
+    font-size: 11px; font-weight: 600; color: #6b6b73;
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .script-box {
+    background: #17171c; border: 1px solid #1e1e28; border-radius: 7px;
+    padding: 10px 12px; font-size: 12px; color: #c5c5d0; line-height: 1.6;
+    min-height: 80px;
+  }
+  .voice-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 0; border-bottom: 1px solid #1e1e28;
+  }
+  .voice-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(135deg, #7c3aed, #db2777);
+    flex-shrink: 0;
+  }
+  .voice-label { font-size: 12px; color: #e5e5e7; }
+  .voice-sub { font-size: 10px; color: #6b6b73; }
+  .mini-btn {
+    margin-left: auto; font-size: 10px; padding: 3px 8px;
+    border-radius: 4px; border: 1px solid #1e1e28; background: transparent;
+    color: #9a9aab; cursor: pointer; font-family: inherit;
+  }
+  .caption-row {
+    display: flex; align-items: center; gap: 8px; padding: 6px 0;
+    font-size: 12px; color: #9a9aab;
+  }
+  .caption-swatch {
+    width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+  }
+
+  /* ── Timeline drawer ── */
+  .timeline-drawer {
+    background: #0b0b10;
+    border-top: 1px solid #1e1e28;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    transition: height .25s ease;
+    overflow: hidden;
+  }
+  .timeline-drawer.open { height: 200px; }
+  .timeline-drawer.closed { height: 0; border-top-color: transparent; }
+
+  .timeline-header {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    border-bottom: 1px solid #1e1e28;
+    flex-shrink: 0;
+  }
+  .tl-header-label {
+    font-size: 10px; font-weight: 600; color: #4a4a58;
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+  .tl-zoom-btns { display: flex; gap: 2px; margin-left: auto; }
+  .tl-zoom-btn {
+    font-size: 10px; padding: 2px 8px; border-radius: 4px;
+    border: 1px solid #1e1e28; background: transparent; color: #4a4a58; cursor: pointer;
+    font-family: inherit;
+  }
+  .tl-zoom-btn.active { background: #17171c; color: #9a9aab; border-color: #2a2a38; }
+  .tl-close-btn {
+    width: 20px; height: 20px; border-radius: 4px;
+    border: 1px solid #1e1e28; background: transparent; color: #4a4a58;
+    cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center;
+  }
+
+  .timeline-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Track labels */
+  .tl-labels {
+    width: 72px;
+    flex-shrink: 0;
+    border-right: 1px solid #1e1e28;
+    display: flex;
+    flex-direction: column;
+    padding-top: 20px; /* align with ruler */
+  }
+  .tl-label-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 10px;
+    font-size: 10px;
+    color: #4a4a58;
+    flex-shrink: 0;
+  }
+  .tl-label-row.scenes { height: 40px; }
+  .tl-label-row.voice  { height: 28px; }
+  .tl-label-row.music  { height: 28px; }
+  .tl-label-row.captions { height: 24px; }
+  .tl-track-icon {
+    width: 14px; height: 14px; border-radius: 3px; background: #17171c;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 8px; color: #6b6b73; flex-shrink: 0;
+  }
+
+  /* Track area */
+  .tl-tracks {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 0 8px;
+    gap: 4px;
+    padding-top: 0;
+  }
+
+  /* Time ruler */
+  .tl-ruler {
+    height: 20px;
+    position: relative;
+    flex-shrink: 0;
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    color: #2a2a38;
+  }
+  .tl-ruler-tick {
+    position: absolute;
+    top: 8px;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+  .tl-ruler-line {
+    position: absolute; top: 0; width: 1px; height: 6px; background: #1e1e28;
+    transform: translateX(-50%);
+  }
+
+  /* Scene track */
+  .tl-scene-track {
+    height: 40px;
+    background: #0d0d10;
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    flex-shrink: 0;
+  }
+  .tl-scene-block {
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    font-size: 10px;
+    color: #c4a590;
+    overflow: hidden;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: .12s;
+    background: #1f1a17;
+    border-left: 2px solid #FF6B35;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .tl-scene-block.active {
+    background: #2a1f16;
+    border: 1.5px solid #FF6B35;
+    color: #ff9d6b;
+  }
+  .tl-scene-block:hover { filter: brightness(1.15); }
+
+  /* Voice track */
+  .tl-voice-track {
+    height: 28px;
+    background: #0d0d10;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+    padding: 5px 4px;
+  }
+
+  /* Music track */
+  .tl-music-track {
+    height: 28px;
+    background: #0d0d10;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+  }
+  .tl-music-fill {
+    flex: 1;
+    height: 14px;
+    background: linear-gradient(to right, #2a2438 0%, #3d3352 50%, #2a2438 100%);
+    border-radius: 3px;
+    opacity: 0.65;
+  }
+
+  /* Captions track */
+  .tl-captions-track {
+    height: 24px;
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .tl-caption-block {
+    background: #0d0d10;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    font-size: 9px;
+    color: #4a4a58;
+    overflow: hidden;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Playhead */
+  .tl-playhead {
+    position: absolute;
+    top: 20px; /* below ruler */
+    bottom: 8px;
+    width: 1.5px;
+    background: #FF6B35;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .tl-playhead-dot {
+    position: absolute;
+    top: -4px; left: -4px;
+    width: 9px; height: 9px;
+    background: #FF6B35;
+    border-radius: 50%;
+  }
+
+  /* The track container needs relative positioning for the playhead */
+  .tl-tracks-relative {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 8px;
+    overflow: hidden;
+    min-width: 700px; /* ensures timeline has enough room */
+  }
+
+  /* ── Annotation labels ── */
+  .layout-annotation {
+    position: fixed;
+    font-size: 10px;
+    font-family: 'Space Mono', monospace;
+    color: rgba(255,107,53,.6);
+    border: 1px dashed rgba(255,107,53,.2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    pointer-events: none;
+    white-space: nowrap;
+    background: rgba(255,107,53,.04);
+  }
+
+  /* ── Option B overlay ── */
+  .option-b-note {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #0f0f14;
+    border: 1px solid #1e1e28;
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 12px;
+    max-width: 280px;
+    z-index: 100;
+  }
+  .option-b-note h3 { font-size: 12px; color: #FF6B35; margin-bottom: 6px; }
+  .option-b-note p { color: #6b6b73; line-height: 1.6; font-size: 11px; }
+  .option-b-note .note-toggle {
+    margin-top: 10px; display: flex; gap: 6px;
+  }
+  .note-btn {
+    flex: 1; font-size: 11px; padding: 5px 10px; border-radius: 5px;
+    border: 1px solid #1e1e28; background: transparent; color: #9a9aab;
+    cursor: pointer; font-family: inherit; text-align: center;
+  }
+  .note-btn.active {
+    background: rgba(255,107,53,.1); border-color: rgba(255,107,53,.3); color: #FF6B35;
+  }
+</style>
+</head>
+<body>
+
+<!-- App sidebar -->
+<nav class="app-sidebar">
+  <div class="app-sidebar-logo">F</div>
+  <div class="app-sidebar-icon active" title="Editor">✦</div>
+  <div class="app-sidebar-icon" title="Jobs">◌</div>
+  <div class="app-sidebar-icon" title="Assets">⊞</div>
+  <div class="app-sidebar-icon" title="Channels">⊕</div>
+</nav>
+
+<!-- Main editor -->
+<div class="editor-shell">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <span class="topbar-bc">My Workspace <span class="topbar-sep">/</span> <span>Start Before You Feel Ready</span></span>
+    <span class="topbar-status">Ready</span>
+    <div class="topbar-right">
+      <button class="topbar-btn timeline-toggle active" id="timelineToggleBtn" onclick="toggleTimeline()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="11" height="4" rx="1"/><rect x="3" y="17" width="15" height="4" rx="1"/></svg>
+        Timeline
+      </button>
+      <button class="topbar-btn">Export</button>
+      <button class="topbar-btn primary">Publish</button>
+    </div>
+  </div>
+
+  <!-- Editor body -->
+  <div class="editor-body" id="editorBody">
+
+    <!-- 3-column editor -->
+    <div class="editor-cols" id="editorCols">
+
+      <!-- Left: scene list -->
+      <div class="editor-left">
+        <div class="panel-header">Scenes · 7</div>
+        <div class="scene-list">
+          <div class="scene-item">
+            <div class="scene-thumb s1"></div>
+            <div class="scene-meta">
+              <div class="scene-label">S01 · 3.8s</div>
+              <div class="scene-title">But the moment...</div>
+            </div>
+          </div>
+          <div class="scene-item">
+            <div class="scene-thumb s2"></div>
+            <div class="scene-meta">
+              <div class="scene-label">S02 · 3.4s</div>
+              <div class="scene-title">You keep waiting</div>
+            </div>
+          </div>
+          <div class="scene-item active">
+            <div class="scene-thumb s3"></div>
+            <div class="scene-meta">
+              <div class="scene-label">S03 · 3.6s</div>
+              <div class="scene-title">The truth is...</div>
+            </div>
+          </div>
+          <div class="scene-item">
+            <div class="scene-thumb s4"></div>
+            <div class="scene-meta">
+              <div class="scene-label">S04 · 6.4s</div>
+              <div class="scene-title">Real growth begins when you take action</div>
+            </div>
+          </div>
+          <div class="scene-item">
+            <div class="scene-thumb s5"></div>
+            <div class="scene-meta">
+              <div class="scene-label">S05 · 4.4s</div>
+              <div class="scene-title">Discipline over emotion</div>
+            </div>
+          </div>
+          <div class="scene-item">
+            <div class="scene-thumb s6"></div>
+            <div class="scene-meta">
+              <div class="scene-label">S06 · 4.8s</div>
+              <div class="scene-title">Momentum is created</div>
+            </div>
+          </div>
+          <div class="scene-item">
+            <div class="scene-thumb s7"></div>
+            <div class="scene-meta">
+              <div class="scene-label">S07 · 4.4s</div>
+              <div class="scene-title">Every small step...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: preview + controls -->
+      <div class="editor-canvas">
+        <div class="preview-wrap">
+          <div class="preview-box">
+            <div class="preview-bg"></div>
+            <div class="preview-caption-demo">The truth is...<br/>you were ready all along.</div>
+            <div class="preview-watermark">FRAMECAST</div>
+            <div class="preview-timer">00:08</div>
+          </div>
+        </div>
+
+        <div class="playback-bar">
+          <div class="scrubber-track">
+            <div class="scrubber-fill"></div>
+            <span class="scrubber-marker" style="left:11%"></span>
+            <span class="scrubber-marker" style="left:21%"></span>
+            <span class="scrubber-marker" style="left:32%"></span>
+            <span class="scrubber-marker" style="left:51%"></span>
+            <span class="scrubber-marker" style="left:64%"></span>
+            <span class="scrubber-marker" style="left:78%"></span>
+            <div class="scrubber-thumb"></div>
+          </div>
+          <div class="playback-btns-row">
+            <div class="play-btns">
+              <button class="skip-btn">⏮</button>
+              <button class="play-btn">▶</button>
+              <button class="skip-btn">⏭</button>
+            </div>
+            <span class="time-display">00:08 / 00:34</span>
+            <div class="mode-toggle">
+              <button class="mode-btn">Scene</button>
+              <button class="mode-btn active">Full Video</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: script / settings -->
+      <div class="editor-right">
+        <div class="right-section">
+          <div class="right-section-title">
+            Scene Script
+            <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(245,158,11,.1);color:#f59e0b;">Voice outdated</span>
+          </div>
+          <div class="script-box">The truth is, you were never waiting for the right moment. You were waiting for permission that was never coming.</div>
+          <div style="display:flex;gap:6px;margin-top:10px;">
+            <button class="mini-btn" style="flex:1;">Rewrite</button>
+            <button class="mini-btn" style="flex:1;color:#FF6B35;border-color:rgba(255,107,53,.3);">↺ Voice</button>
+          </div>
+        </div>
+        <div class="right-section">
+          <div class="right-section-title">Voice</div>
+          <div class="voice-row">
+            <div class="voice-avatar"></div>
+            <div>
+              <div class="voice-label">Alloy</div>
+              <div class="voice-sub">OpenAI · Neutral</div>
+            </div>
+            <button class="mini-btn">Change</button>
+          </div>
+        </div>
+        <div class="right-section">
+          <div class="right-section-title">Captions</div>
+          <div class="caption-row">
+            <div class="caption-swatch" style="background:#ff6b35;"></div>
+            Impact · Bold Highlight
+          </div>
+          <div class="caption-row">
+            <div class="caption-swatch" style="background:#1e1e28;border:1px solid #2a2a38;"></div>
+            <span style="color:#4a4a58;">Position · Bottom Center</span>
+          </div>
+        </div>
+        <div class="right-section">
+          <div class="right-section-title">Visual</div>
+          <div class="caption-row">Stock Clip · Energetic</div>
+          <button class="mini-btn" style="width:100%;margin-top:6px;">Swap Visual</button>
+        </div>
+        <div class="right-section">
+          <div class="right-section-title">Music</div>
+          <div class="caption-row">
+            <span style="color:#22c55e;font-size:10px;">♫</span>
+            Uplifting Corporate
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end editor-cols -->
+
+    <!-- ═══ TIMELINE DRAWER ═══ -->
+    <div class="timeline-drawer open" id="timelineDrawer">
+
+      <div class="timeline-header">
+        <span class="tl-header-label">Timeline</span>
+        <span style="font-size:10px;color:#4a4a58;font-family:'Space Mono',monospace;">00:08.2 / 00:34.8</span>
+        <div class="tl-zoom-btns">
+          <button class="tl-zoom-btn">Fit</button>
+          <button class="tl-zoom-btn active">1×</button>
+          <button class="tl-zoom-btn">2×</button>
+        </div>
+        <button class="tl-close-btn" onclick="toggleTimeline()">×</button>
+      </div>
+
+      <div class="timeline-body">
+
+        <!-- Track labels -->
+        <div class="tl-labels">
+          <div class="tl-label-row scenes">
+            <span class="tl-track-icon">▦</span>
+            Scenes
+          </div>
+          <div class="tl-label-row voice">
+            <span class="tl-track-icon">♪</span>
+            Voice
+          </div>
+          <div class="tl-label-row music">
+            <span class="tl-track-icon">♫</span>
+            Music
+          </div>
+          <div class="tl-label-row captions">
+            <span class="tl-track-icon">T</span>
+            Captions
+          </div>
+        </div>
+
+        <!-- Scrollable track area -->
+        <div style="flex:1;overflow-x:auto;overflow-y:hidden;">
+          <div class="tl-tracks-relative">
+
+            <!-- Time ruler -->
+            <div class="tl-ruler">
+              <span class="tl-ruler-line" style="left:0%"></span>
+              <span class="tl-ruler-tick" style="left:0%">0s</span>
+              <span class="tl-ruler-line" style="left:14.7%"></span>
+              <span class="tl-ruler-tick" style="left:14.7%">5s</span>
+              <span class="tl-ruler-line" style="left:29.4%"></span>
+              <span class="tl-ruler-tick" style="left:29.4%">10s</span>
+              <span class="tl-ruler-line" style="left:44.1%"></span>
+              <span class="tl-ruler-tick" style="left:44.1%">15s</span>
+              <span class="tl-ruler-line" style="left:58.8%"></span>
+              <span class="tl-ruler-tick" style="left:58.8%">20s</span>
+              <span class="tl-ruler-line" style="left:73.5%"></span>
+              <span class="tl-ruler-tick" style="left:73.5%">25s</span>
+              <span class="tl-ruler-line" style="left:88.2%"></span>
+              <span class="tl-ruler-tick" style="left:88.2%">30s</span>
+            </div>
+
+            <!-- Scenes track -->
+            <div class="tl-scene-track">
+              <div class="tl-scene-block" style="width:11%">S1 · 3.8s</div>
+              <div class="tl-scene-block" style="width:10%">S2 · 3.4s</div>
+              <div class="tl-scene-block active" style="width:11%">S3 · 3.6s</div>
+              <div class="tl-scene-block" style="width:19%">S4 · 6.4s</div>
+              <div class="tl-scene-block" style="width:13%">S5 · 4.4s</div>
+              <div class="tl-scene-block" style="width:14%">S6 · 4.8s</div>
+              <div class="tl-scene-block" style="width:13%">S7 · 4.4s</div>
+            </div>
+
+            <!-- Voice track -->
+            <div class="tl-voice-track">
+              <svg width="100%" height="18" viewBox="0 0 700 18" preserveAspectRatio="none" style="display:block;">
+                <path d="M0,9 Q8,4 16,9 T32,9 T48,7 T64,11 T80,5 T96,10 T112,7 T128,9 T144,4 T160,10 T176,7 T192,9 T208,6 T224,11 T240,5 T256,9 T272,7 T288,10 T304,6 T320,9 T336,11 T352,5 T368,9 T384,7 T400,9 T416,11 T432,5 T448,9 T464,7 T480,10 T496,6 T512,9 T528,7 T544,10 T560,6 T576,9 T592,7 T608,10 T624,8 T640,9 T656,7 T672,10 T688,8 T700,9" stroke="#4A7FCA" stroke-width="1.2" fill="none" opacity="0.7"/>
+                <path d="M0,9 Q8,14 16,9 T32,9 T48,11 T64,7 T80,13 T96,8 T112,11 T128,9 T144,14 T160,8 T176,11 T192,9 T208,12 T224,7 T240,13 T256,9 T272,11 T288,8 T304,12 T320,9 T336,7 T352,13 T368,9 T384,11 T400,9 T416,7 T432,13 T448,9 T464,11 T480,8 T496,12 T512,9 T528,11 T544,8 T560,12 T576,9 T592,11 T608,8 T624,10 T640,9 T656,11 T672,8 T688,10 T700,9" stroke="#4A7FCA" stroke-width="1.2" fill="none" opacity="0.7"/>
+              </svg>
+            </div>
+
+            <!-- Music track -->
+            <div class="tl-music-track">
+              <div class="tl-music-fill"></div>
+            </div>
+
+            <!-- Captions track -->
+            <div class="tl-captions-track">
+              <div class="tl-caption-block" style="width:11%">But the moment...</div>
+              <div class="tl-caption-block" style="width:10%">You keep waiting</div>
+              <div class="tl-caption-block" style="width:11%;color:#9a9aab;background:#131318;border:1px solid #1e1e28;">The truth is...</div>
+              <div class="tl-caption-block" style="width:19%">Real growth begins...</div>
+              <div class="tl-caption-block" style="width:13%">Discipline over...</div>
+              <div class="tl-caption-block" style="width:14%">Momentum is...</div>
+              <div class="tl-caption-block" style="width:13%">Every small step...</div>
+            </div>
+
+            <!-- Playhead at ~35% (08s/34s) -->
+            <div class="tl-playhead" style="left: calc(35% + 8px);">
+              <div class="tl-playhead-dot"></div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div><!-- end timeline-drawer -->
+
+  </div><!-- end editor-body -->
+
+</div><!-- end editor-shell -->
+
+<!-- Info card -->
+<div class="option-b-note">
+  <h3>Option A — Full-width bottom drawer</h3>
+  <p>Spans all 3 columns. Collapsible with the Timeline button in the topbar. Preview shrinks proportionally when open.</p>
+  <div class="note-toggle">
+    <button class="note-btn active" id="btnOpen" onclick="setTimeline(true)">Timeline open</button>
+    <button class="note-btn" id="btnClosed" onclick="setTimeline(false)">Timeline closed</button>
+  </div>
+</div>
+
+<script>
+  function toggleTimeline() {
+    const drawer = document.getElementById('timelineDrawer');
+    const btn = document.getElementById('timelineToggleBtn');
+    const isOpen = drawer.classList.contains('open');
+    setTimeline(!isOpen);
+  }
+
+  function setTimeline(open) {
+    const drawer = document.getElementById('timelineDrawer');
+    const btn = document.getElementById('timelineToggleBtn');
+    const btnOpen = document.getElementById('btnOpen');
+    const btnClosed = document.getElementById('btnClosed');
+
+    if (open) {
+      drawer.classList.add('open');
+      drawer.classList.remove('closed');
+      btn.classList.add('active');
+      btnOpen.classList.add('active');
+      btnClosed.classList.remove('active');
+    } else {
+      drawer.classList.remove('open');
+      drawer.classList.add('closed');
+      btn.classList.remove('active');
+      btnOpen.classList.remove('active');
+      btnClosed.classList.add('active');
+    }
+  }
+</script>
+
+</body>
+</html>
