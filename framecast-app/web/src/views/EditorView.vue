@@ -162,6 +162,7 @@ let previewPlayTimer = null;
 let pendingPreviewAudioOffset = 0;
 const musicMoodFilter = ref("all");
 const queuedExportJobId = ref(null);
+let exportPollTimer = null;
 const scriptSaveState = ref("idle");
 const scriptSaveError = ref("");
 const captionEnabledDraft = ref(true);
@@ -959,6 +960,15 @@ watch(
   },
   { deep: true }
 );
+
+// Poll export status while a job is pending — WebSocket is best-effort,
+// polling ensures the UI always catches completed/failed state.
+watch(queuedExportJobId, (id) => {
+  if (exportPollTimer) { clearInterval(exportPollTimer); exportPollTimer = null; }
+  if (id) {
+    exportPollTimer = setInterval(() => loadExportJobs(), 6000);
+  }
+}, { immediate: true });
 
 function humanizeSceneType(sceneType) {
   return String(sceneType || "narration")
@@ -3193,6 +3203,7 @@ watch(musicAudioRef, (el) => {
 });
 
 onBeforeUnmount(() => {
+  if (exportPollTimer) { clearInterval(exportPollTimer); exportPollTimer = null; }
   stopWaveformAnimation();
   if (waveformAudioCtx) {
     try { waveformAudioCtx.close(); } catch {}
