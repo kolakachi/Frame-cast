@@ -327,19 +327,83 @@ const showWaveformPreview = computed(
 );
 const waveformLive = ref([0.28, 0.52, 0.34, 0.76, 0.42, 0.88, 0.48, 0.66, 0.31, 0.58, 0.40, 0.72, 0.35, 0.65]);
 let waveformRafId = null;
-let waveformT = 0;
 
-function tickWaveform() {
-  waveformT += 0.035;
-  waveformLive.value = waveformLive.value.map((_, i) => {
-    const p = i * 0.55 + waveformT;
-    return Math.min(1, Math.max(0.08, 0.32 + 0.55 * Math.abs(Math.sin(p) * 0.7 + Math.sin(p * 2.1 + 1.3) * 0.3)));
-  });
+// Web Audio API state — try to read real frequency data from the narration element
+let waveformAudioCtx = null;
+let waveformAnalyser = null;
+let waveformConnected = false;
+const waveformConnectedEls = new WeakSet();
+
+// Simulation fallback state (speech-like energy distribution)
+let waveformSimBands = new Array(14).fill(0.05);
+let waveformSimLastMs = 0;
+
+function waveformTryConnect() {
+  const el = audioRef.value;
+  if (!el || waveformConnectedEls.has(el)) return;
+  try {
+    if (!waveformAudioCtx) {
+      waveformAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      waveformAnalyser = waveformAudioCtx.createAnalyser();
+      waveformAnalyser.fftSize = 64;             // 32 frequency bins
+      waveformAnalyser.smoothingTimeConstant = 0.8;
+      waveformAnalyser.connect(waveformAudioCtx.destination); // pass audio through to speakers
+    }
+    if (waveformAudioCtx.state === "suspended") waveformAudioCtx.resume().catch(() => {});
+    const src = waveformAudioCtx.createMediaElementSource(el);
+    src.connect(waveformAnalyser);
+    waveformConnectedEls.add(el);
+    waveformConnected = true;
+  } catch {
+    // SecurityError (CORS) or already connected — fall through to simulation
+    waveformConnected = false;
+  }
+}
+
+function tickWaveform(ts) {
+  const playing = isPreviewPlaying.value;
+  const audioActive = playing && isAudioPlaying.value;
+
+  if (audioActive && waveformConnected && waveformAnalyser) {
+    // Real frequency data from the audio element
+    if (waveformAudioCtx?.state === "suspended") waveformAudioCtx.resume().catch(() => {});
+    const data = new Uint8Array(waveformAnalyser.frequencyBinCount);
+    waveformAnalyser.getByteFrequencyData(data);
+    const count = waveformLive.value.length;
+    // Map bars to lower 65% of bins (speech sits in lower-mid frequencies)
+    waveformLive.value = Array.from({ length: count }, (_, i) => {
+      const bin = Math.floor((i / count) * Math.floor(waveformAnalyser.frequencyBinCount * 0.65));
+      return Math.max(0.04, Math.min(1, data[bin] / 200));
+    });
+  } else if (playing) {
+    // Fallback: speech-like pseudo-reactive simulation
+    // Refresh target band heights every ~80 ms with a realistic speech energy envelope
+    if (!waveformSimLastMs || ts - waveformSimLastMs > 80) {
+      waveformSimLastMs = ts;
+      const energy = 0.3 + Math.random() * 0.7;
+      const n = waveformSimBands.length;
+      waveformSimBands = waveformSimBands.map((_, i) => {
+        const pos = i / n;
+        // Energy peaks in low-mid range (speech formants), tapers at extremes
+        const envelope = Math.max(0, 1 - Math.pow(pos * 2.5 - 0.5, 2) * 2.2);
+        return Math.max(0.06, Math.min(1, energy * envelope * (0.3 + Math.random() * 0.7)));
+      });
+    }
+    // Lerp smoothly toward target heights
+    waveformLive.value = waveformLive.value.map((cur, i) => cur + (waveformSimBands[i] - cur) * 0.28);
+  } else {
+    // Paused or stopped: decay to near-zero idle dots
+    waveformLive.value = waveformLive.value.map(v => Math.max(0.04, v * 0.75));
+  }
+
   waveformRafId = requestAnimationFrame(tickWaveform);
 }
 
 function startWaveformAnimation() {
-  if (!waveformRafId) tickWaveform();
+  if (!waveformRafId) {
+    waveformTryConnect();
+    waveformRafId = requestAnimationFrame(tickWaveform);
+  }
 }
 
 function stopWaveformAnimation() {
@@ -3054,8 +3118,19 @@ watch(showWaveformPreview, (active) => {
   else stopWaveformAnimation();
 }, { immediate: true });
 
+// Reconnect Web Audio when the narration audio element is replaced (scene change)
+watch(audioRef, (el) => {
+  if (el && showWaveformPreview.value) waveformTryConnect();
+});
+
 onBeforeUnmount(() => {
   stopWaveformAnimation();
+  if (waveformAudioCtx) {
+    try { waveformAudioCtx.close(); } catch {}
+    waveformAudioCtx = null;
+    waveformAnalyser = null;
+    waveformConnected = false;
+  }
   if (scriptSaveTimer) {
     window.clearTimeout(scriptSaveTimer);
   }
