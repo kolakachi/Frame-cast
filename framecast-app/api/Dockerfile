@@ -7,6 +7,8 @@ WORKDIR /var/www/html
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        chromium \
         curl \
         ffmpeg \
         fontconfig \
@@ -14,6 +16,8 @@ RUN apt-get update \
         libicu-dev \
         libpq-dev \
         libzip-dev \
+        nodejs \
+        npm \
         unzip \
         wget \
         zip \
@@ -65,6 +69,10 @@ RUN composer install \
     --no-scripts
 
 COPY . .
+
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+RUN npm install --omit=dev --no-audit --no-fund
 
 RUN if [ -d /var/www/html/resources/fonts ]; then \
         cp -R /var/www/html/resources/fonts/. /usr/local/share/fonts/framecast/; \

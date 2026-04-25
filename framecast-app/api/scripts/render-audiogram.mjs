@@ -16,14 +16,16 @@ const fps = Math.max(12, Number(payload.fps || 20));
 const duration = Math.max(0.1, Number(payload.duration || 3));
 const width = Math.max(270, Number(payload.width || 1080));
 const height = Math.max(480, Number(payload.height || 1920));
+const style = normalizeStyle(payload.style || "bars");
 // Always 14 bars — matches editor's waveformLive ref length exactly
 const BAR_COUNT = 14;
 // AnalyserNode settings — must match EditorView.vue exactly
-const FFT_SIZE = 64;
-const FFT_SMOOTHING = 0.8;
+const FFT_SIZE = 128;
+const FFT_SMOOTHING = 0.82;
 const MIN_DB = -100;
 const MAX_DB = -30;
 const sampleRate = Math.max(8000, Number(payload.sampleRate || 16000));
+const analysisOffsetSeconds = Math.max(0, Number(payload.analysisOffsetSeconds || 0));
 const pcm = payload.pcmPath ? await readPcmFloat32(payload.pcmPath) : new Float32Array(0);
 const totalFrames = Math.max(1, Math.ceil(duration * fps));
 const bandFrames = buildBandFrames({
@@ -31,7 +33,8 @@ const bandFrames = buildBandFrames({
   duration,
   fps,
   sampleRate,
-  style: payload.style || "bars",
+  style,
+  analysisOffsetSeconds,
 });
 
 const browser = await puppeteer.launch({
@@ -78,9 +81,8 @@ try {
       window.renderFrame(frame);
     }, {
       bars,
-      timerText: formatClock((payload.elapsedSeconds || 0) + localSeconds),
+      localSeconds,
       captionWords,
-      musicWaveHeights: buildMusicWaveHeights(localSeconds),
     });
 
     await page.screenshot({
@@ -104,12 +106,13 @@ async function readPcmFloat32(pcmPath) {
 }
 
 // ─── Frequency analysis matching editor's Web Audio API exactly ───────────────
-// Editor: AnalyserNode fftSize=64, smoothingTimeConstant=0.8,
+// Editor: AnalyserNode fftSize=128, smoothingTimeConstant=0.82,
 //         minDecibels=-100, maxDecibels=-30
-//         bar[i] = data[Math.floor(i/14 * Math.floor(32*0.65))] / 200
-// We replicate this with a 64-pt FFT + identical smoothing + same bin mapping.
+//         usableBins = Math.max(14, Math.floor(data.length * 0.8))
+//         each bar averages its small frequency range and maps avg / 180
+// We replicate that with a 128-pt FFT + identical smoothing + the same bar mapping.
 
-function buildBandFrames({ pcm, duration, fps, sampleRate, style }) {
+function buildBandFrames({ pcm, duration, fps, sampleRate, style, analysisOffsetSeconds = 0 }) {
   const totalFrames = Math.max(1, Math.ceil(duration * fps));
   // Persistent smoothed FFT magnitude across frames (like AnalyserNode)
   let smoothedMag = new Float32Array(FFT_SIZE / 2);
@@ -122,17 +125,27 @@ function buildBandFrames({ pcm, duration, fps, sampleRate, style }) {
     let bars;
 
     if (pcm.length > 0) {
-      const rawMag = fftMagnitude(pcm, sampleRate, currentSeconds, FFT_SIZE);
+      const analysisSeconds = currentSeconds + analysisOffsetSeconds;
+      const rawMag = fftMagnitude(pcm, sampleRate, analysisSeconds, FFT_SIZE);
       // Apply AnalyserNode smoothing
       for (let i = 0; i < smoothedMag.length; i += 1) {
         smoothedMag[i] = FFT_SMOOTHING * smoothedMag[i] + (1 - FFT_SMOOTHING) * rawMag[i];
       }
       // Convert to byte data and map bins — exact editor formula
       const byteData = magnitudeToByteData(smoothedMag, FFT_SIZE);
-      const usableBins = Math.floor(byteData.length * 0.65); // first 65% of bins
+      const usableBins = Math.max(BAR_COUNT, Math.floor(byteData.length * 0.8));
+      const binsPerBar = Math.max(1, Math.floor(usableBins / BAR_COUNT));
       bars = Array.from({ length: BAR_COUNT }, (_, i) => {
-        const bin = Math.floor((i / BAR_COUNT) * usableBins);
-        return clamp(byteData[bin] / 200, 0.04, 1);
+        const start = i * binsPerBar;
+        const end = i === BAR_COUNT - 1 ? usableBins : Math.min(usableBins, start + binsPerBar);
+        let total = 0;
+
+        for (let bin = start; bin < end; bin += 1) {
+          total += byteData[bin] ?? 0;
+        }
+
+        const avg = total / Math.max(1, end - start);
+        return clamp(avg / 180, 0.04, 1);
       });
     } else {
       bars = simulatedBars(currentSeconds, BAR_COUNT, style);
@@ -144,6 +157,20 @@ function buildBandFrames({ pcm, duration, fps, sampleRate, style }) {
   }
 
   return smoothedFrames;
+}
+
+function normalizeStyle(rawStyle) {
+  const style = String(rawStyle || "bars").trim().toLowerCase();
+
+  if (style === "radial") {
+    return "circle";
+  }
+
+  if (["bars", "mirror", "circle", "minimal"].includes(style)) {
+    return style;
+  }
+
+  return "bars";
 }
 
 // 64-point FFT with Blackman window (same window the Web Audio API uses)
@@ -303,17 +330,11 @@ function previewTimedWords(timedWords, mode, currentSeconds) {
   }));
 }
 
-function buildMusicWaveHeights(currentSeconds) {
-  return [0, 1, 2, 3].map((index) =>
-    clamp(0.35 + 0.65 * (0.5 + 0.5 * Math.sin(currentSeconds * 8 + index * 0.8)), 0.2, 1),
-  );
-}
-
 function buildInitialState(payload) {
   return {
     width: Number(payload.width || 1080),
     height: Number(payload.height || 1920),
-    style: payload.style || "bars",
+    style: normalizeStyle(payload.style || "bars"),
     color: payload.color || "#ff6b35",
     backgroundCss: payload.backgroundCss || "linear-gradient(180deg,#0d0d1a 0%,#0a0a14 100%)",
     captionEnabled: payload.captionEnabled !== false,
@@ -323,7 +344,6 @@ function buildInitialState(payload) {
     captionFontSize: captionFontSize(payload.captionSize || "medium", Number(payload.height || 1920)),
     captionColor: payload.captionColor || "#ffffff",
     captionHighlightColor: payload.captionHighlightColor || "#ff6b35",
-    musicTitle: String(payload.musicTitle || ""),
   };
 }
 
@@ -357,13 +377,6 @@ function captionFontSize(size, height) {
 
 function fontFamilyValue(font) {
   return `"${font}", sans-serif`;
-}
-
-function formatClock(seconds) {
-  const whole = Math.max(0, Math.round(Number(seconds || 0)));
-  const mins = Math.floor(whole / 60);
-  const secs = whole % 60;
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
 function clamp(value, min, max) {
@@ -428,11 +441,11 @@ function buildHtml() {
       .waveform-shell {
         width: 100%;
         height: 100%;
-        padding: calc(28px * var(--scale)) calc(20px * var(--scale));
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
+        padding: calc(28px * var(--scale)) calc(20px * var(--scale));
         gap: calc(24px * var(--scale));
       }
 
@@ -453,8 +466,8 @@ function buildHtml() {
       .ag-bar {
         flex: 1;
         max-width: calc(18px * var(--scale));
-        min-height: calc(28px * var(--scale));
-        border-radius: calc(8px * var(--scale)) calc(8px * var(--scale)) 0 0;
+        min-height: 14%;
+        border-radius: calc(4px * var(--scale)) calc(4px * var(--scale)) 0 0;
       }
 
       .ag-mirror {
@@ -470,16 +483,14 @@ function buildHtml() {
       }
 
       .ag-circle-wrap {
-        width: calc(200px * var(--scale));
-        height: calc(200px * var(--scale));
         display: flex;
         align-items: center;
         justify-content: center;
       }
 
       .ag-circle-wrap svg {
-        width: 100%;
-        height: 100%;
+        width: calc(200px * var(--scale));
+        height: calc(200px * var(--scale));
         overflow: visible;
       }
 
@@ -492,30 +503,8 @@ function buildHtml() {
       .ag-minimal-bar {
         flex: 1;
         max-width: calc(8px * var(--scale));
-        min-height: calc(16px * var(--scale));
-        border-radius: calc(3px * var(--scale)) calc(3px * var(--scale)) 0 0;
-      }
-
-      .preview-watermark {
-        position: absolute;
-        top: calc(16px * var(--scale));
-        left: calc(16px * var(--scale));
-        font-family: "Space Mono", monospace;
-        font-size: calc(10px * var(--scale));
-        color: rgba(255, 255, 255, 0.3);
-        letter-spacing: 0.02em;
-      }
-
-      .preview-timer {
-        position: absolute;
-        top: calc(16px * var(--scale));
-        right: calc(16px * var(--scale));
-        font-family: "Space Mono", monospace;
-        font-size: calc(11px * var(--scale));
-        color: rgba(255, 255, 255, 0.5);
-        background: rgba(0, 0, 0, 0.4);
-        padding: calc(3px * var(--scale)) calc(8px * var(--scale));
-        border-radius: calc(4px * var(--scale));
+        min-height: 8%;
+        border-radius: calc(2px * var(--scale)) calc(2px * var(--scale)) 0 0;
       }
 
       .preview-caption {
@@ -581,44 +570,6 @@ function buildHtml() {
         color: rgba(255, 255, 255, 0.9);
       }
 
-      .preview-music-indicator {
-        position: absolute;
-        bottom: calc(16px * var(--scale));
-        left: calc(16px * var(--scale));
-        right: calc(16px * var(--scale));
-        display: flex;
-        align-items: center;
-        gap: calc(6px * var(--scale));
-        padding: calc(6px * var(--scale)) calc(10px * var(--scale));
-        border-radius: calc(6px * var(--scale));
-        background: rgba(0, 0, 0, 0.5);
-        backdrop-filter: blur(calc(4px * var(--scale)));
-      }
-
-      .preview-music-indicator.hidden {
-        display: none;
-      }
-
-      .preview-music-waves {
-        display: flex;
-        align-items: center;
-        gap: calc(2px * var(--scale));
-      }
-
-      .music-wave {
-        width: calc(2px * var(--scale));
-        border-radius: 999px;
-        background: var(--accent);
-      }
-
-      .preview-music-name {
-        font-size: calc(10px * var(--scale));
-        color: rgba(255,255,255,0.7);
-        font-family: "Space Mono", monospace;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
     </style>
   </head>
   <body>
@@ -629,7 +580,7 @@ function buildHtml() {
             <div class="ag-bars" id="bars-layer"></div>
             <div class="ag-mirror" id="mirror-layer" hidden></div>
             <div class="ag-circle-wrap" id="circle-layer" hidden>
-              <svg viewBox="0 0 200 200" aria-hidden="true">
+              <svg viewBox="0 0 200 200" width="200" height="200" aria-hidden="true">
                 <g id="circle-bars" transform="translate(100,100)"></g>
                 <circle id="circle-core-a" cx="100" cy="100" r="30"></circle>
                 <circle id="circle-core-b" cx="100" cy="100" r="20"></circle>
@@ -638,31 +589,30 @@ function buildHtml() {
             <div class="ag-minimal" id="minimal-layer" hidden></div>
           </div>
         </div>
-        <div class="preview-watermark">FRAMECAST</div>
-        <div class="preview-timer" id="preview-timer">00:00</div>
         <div class="preview-caption" id="preview-caption"></div>
-        <div class="preview-music-indicator hidden" id="preview-music-indicator">
-          <div class="preview-music-waves">
-            <div class="music-wave"></div>
-            <div class="music-wave"></div>
-            <div class="music-wave"></div>
-            <div class="music-wave"></div>
-          </div>
-          <span class="preview-music-name" id="preview-music-name"></span>
-        </div>
       </div>
     </div>
     <script>
+      function normalizeStyle(rawStyle) {
+        const style = String(rawStyle || "bars").trim().toLowerCase();
+
+        if (style === "radial") return "circle";
+        if (style === "bars" || style === "mirror" || style === "circle" || style === "minimal") {
+          return style;
+        }
+
+        return "bars";
+      }
+
       window.initializeRenderer = function initializeRenderer(initialState) {
         const scale = initialState.height / 480;
+        initialState.style = normalizeStyle(initialState.style);
         document.documentElement.style.setProperty("--scale", String(scale));
         document.documentElement.style.setProperty("--accent", initialState.color);
         document.getElementById("preview-video-bg").style.background = initialState.backgroundCss;
         document.getElementById("preview-caption").style.fontFamily = initialState.captionFontFamily;
         document.getElementById("preview-caption").style.fontSize = initialState.captionFontSize;
         document.getElementById("preview-caption").className = "preview-caption " + initialState.captionClass + " " + captionPositionClass(initialState.captionPosition);
-        document.getElementById("preview-music-name").textContent = initialState.musicTitle || "";
-        document.getElementById("preview-music-indicator").classList.toggle("hidden", !initialState.musicTitle);
 
         buildBars(document.getElementById("bars-layer"), 14, "ag-bar");
         buildBars(document.getElementById("mirror-layer"), 14, "ag-mirror-bar");
@@ -678,11 +628,21 @@ function buildHtml() {
 
       window.renderFrame = function renderFrame(frame) {
         const state = window.__rendererState;
-        document.getElementById("preview-timer").textContent = frame.timerText;
         renderCaption(frame.captionWords, state);
-        renderMusicWaves(frame.musicWaveHeights, state);
-        renderWaveform(frame.bars, state);
+        renderWaveform(frame.bars, frame.localSeconds || 0, state);
       };
+
+      // Mirrors the editor's ag-bounce: scaleY 0.55→1.0, 1.5s ease-in-out infinite alternate
+      function computeBounceScale(t) {
+        const period = 1.5;
+        const phase = (t % period) / period;
+        const cycleIndex = Math.floor(t / period);
+        // alternate: even cycles go 0→1, odd cycles go 1→0
+        const normalized = cycleIndex % 2 === 0 ? phase : 1 - phase;
+        // smoothstep ease-in-out (matches CSS ease-in-out closely)
+        const eased = normalized * normalized * (3 - 2 * normalized);
+        return 0.55 + eased * 0.45;
+      }
 
       function captionPositionClass(position) {
         if (position === "center") return "position-center";
@@ -715,14 +675,24 @@ function buildHtml() {
       }
 
       function setActiveStyle(style) {
-        document.getElementById("bars-layer").style.display = style === "bars" ? "flex" : "none";
-        document.getElementById("mirror-layer").style.display = style === "mirror" ? "flex" : "none";
-        document.getElementById("circle-layer").style.display = style === "circle" ? "flex" : "none";
-        document.getElementById("minimal-layer").style.display = style === "minimal" ? "flex" : "none";
+        const normalizedStyle = normalizeStyle(style);
+        const toggleLayer = (id, isActive) => {
+          const el = document.getElementById(id);
+          el.hidden = !isActive;
+          el.style.display = isActive ? "flex" : "none";
+        };
+
+        toggleLayer("bars-layer", normalizedStyle === "bars");
+        toggleLayer("mirror-layer", normalizedStyle === "mirror");
+        toggleLayer("circle-layer", normalizedStyle === "circle");
+        toggleLayer("minimal-layer", normalizedStyle === "minimal");
       }
 
-      function renderWaveform(bars, state) {
-        if (state.style === "circle") {
+      function renderWaveform(bars, localSeconds, state) {
+        const bounceScale = computeBounceScale(localSeconds);
+        const activeStyle = normalizeStyle(state.style);
+
+        if (activeStyle === "circle") {
           const lines = [...document.querySelectorAll("#circle-bars line")];
           lines.forEach((line, index) => {
             const bar = bars[index] || 0.04;
@@ -733,18 +703,19 @@ function buildHtml() {
           return;
         }
 
-        if (state.style === "mirror") {
+        if (activeStyle === "mirror") {
           const barEls = [...document.querySelectorAll("#mirror-layer .ag-mirror-bar")];
           barEls.forEach((el, index) => {
             const bar = bars[index] || 0.04;
             el.style.height = Math.round(bar * 100) + "%";
             el.style.background = state.color;
             el.style.boxShadow = "0 0 calc(10px * var(--scale)) " + state.color + "55";
+            el.style.transform = "scaleY(" + bounceScale + ")";
           });
           return;
         }
 
-        if (state.style === "minimal") {
+        if (activeStyle === "minimal") {
           const mirrored = [...bars, ...bars.slice().reverse()];
           const barEls = [...document.querySelectorAll("#minimal-layer .ag-minimal-bar")];
           barEls.forEach((el, index) => {
@@ -752,6 +723,7 @@ function buildHtml() {
             el.style.height = Math.round(bar * 80 + 8) + "%";
             el.style.background = state.color;
             el.style.opacity = String(0.5 + bar * 0.5);
+            el.style.transform = "scaleY(" + bounceScale + ")";
           });
           return;
         }
@@ -762,6 +734,7 @@ function buildHtml() {
           el.style.height = Math.round(bar * 100) + "%";
           el.style.background = "linear-gradient(to top, " + state.color + "99, " + state.color + ")";
           el.style.boxShadow = "0 0 calc(12px * var(--scale)) " + state.color + "44";
+          el.style.transform = "scaleY(" + bounceScale + ")";
         });
       }
 
@@ -784,20 +757,6 @@ function buildHtml() {
         });
       }
 
-      function renderMusicWaves(heights, state) {
-        const container = document.getElementById("preview-music-indicator");
-        if (!state.musicTitle) {
-          container.classList.add("hidden");
-          return;
-        }
-
-        const waveEls = [...container.querySelectorAll(".music-wave")];
-        waveEls.forEach((wave, index) => {
-          const height = heights[index] || 0.4;
-          wave.style.height = "calc(" + (4 + height * 8) + "px * var(--scale))";
-          wave.style.opacity = String(0.45 + height * 0.55);
-        });
-      }
     </script>
   </body>
 </html>`;

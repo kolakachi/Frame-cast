@@ -493,6 +493,15 @@ class VariantController extends Controller
         $outputAsset = $assetMap && $exportJob->output_asset_id
             ? $assetMap->get((int) $exportJob->output_asset_id)
             : null;
+        $status = $exportJob->status;
+        $failureReason = $exportJob->failure_reason;
+
+        if ($status === 'completed' && $outputAsset && $this->managedAssetMissing($outputAsset)) {
+            $failureReason = 'Export output is missing from storage. Please export again.';
+            $status = 'failed';
+            $outputAsset = null;
+            $this->markExportOutputMissing($exportJob, $failureReason);
+        }
 
         return [
             'id' => $exportJob->getKey(),
@@ -503,9 +512,9 @@ class VariantController extends Controller
             'aspect_ratio' => $exportJob->aspect_ratio,
             'language' => $exportJob->language,
             'file_name' => $exportJob->file_name,
-            'status' => $exportJob->status,
+            'status' => $status,
             'progress_percent' => (int) $exportJob->progress_percent,
-            'failure_reason' => $exportJob->failure_reason,
+            'failure_reason' => $failureReason,
             'output_asset' => $outputAsset ? [
                 'id' => $outputAsset->getKey(),
                 'storage_url' => $this->assetUrl($outputAsset),
@@ -515,6 +524,36 @@ class VariantController extends Controller
             'started_at' => $exportJob->started_at?->toIso8601String(),
             'completed_at' => $exportJob->completed_at?->toIso8601String(),
         ];
+    }
+
+    private function managedAssetMissing(Asset $asset): bool
+    {
+        $storageUrl = trim((string) $asset->storage_url);
+
+        if ($storageUrl === '') {
+            return true;
+        }
+
+        $storage = app(StorageService::class);
+
+        if (! $storage->isManagedUrl($storageUrl)) {
+            return false;
+        }
+
+        return ! $storage->exists($storageUrl);
+    }
+
+    private function markExportOutputMissing(ExportJob $exportJob, string $failureReason): void
+    {
+        ExportJob::query()
+            ->whereKey($exportJob->getKey())
+            ->where('status', 'completed')
+            ->update([
+                'status' => 'failed',
+                'failure_reason' => $failureReason,
+                'output_asset_id' => null,
+                'completed_at' => now(),
+            ]);
     }
 
     private function assetUrl(Asset $asset): ?string

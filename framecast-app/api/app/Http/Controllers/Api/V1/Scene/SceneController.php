@@ -161,6 +161,7 @@ class SceneController extends Controller
             'motion_settings_json' => ['sometimes', 'nullable', 'array'],
             'motion_settings_json.effect' => ['sometimes', 'string', 'in:zoom_in,zoom_out,pan_left,pan_right,pan_up,pan_down,pan_zoom,static'],
             'motion_settings_json.intensity' => ['sometimes', 'string', 'in:subtle,moderate,dramatic'],
+            'image_generation_settings_json' => ['sometimes', 'nullable', 'array'],
             'locked_fields_json' => ['sometimes', 'nullable', 'array'],
             'status' => ['sometimes', 'nullable', 'string', 'max:64'],
         ]);

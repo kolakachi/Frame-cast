@@ -12,8 +12,10 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   worker-default:
     build:
@@ -26,8 +28,10 @@ services:
       REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   worker-generation:
     build:
@@ -40,8 +44,10 @@ services:
       REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   worker-exports:
     build:
@@ -54,8 +60,10 @@ services:
       REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   scheduler:
     build:
@@ -68,8 +76,10 @@ services:
       REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   reverb:
     build:
@@ -84,7 +94,8 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
 
   horizon:
     build:
@@ -97,8 +108,10 @@ services:
       REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   web:
     image: node:22-alpine
@@ -135,7 +148,8 @@ services:
   createbuckets:
     image: minio/mc
     depends_on:
-      - minio
+      minio:
+        condition: service_started
     entrypoint: >
       /bin/sh -c "
       sleep 5;
@@ -156,6 +170,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U framecast -d framecast"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
 
   redis:
     image: redis:7-alpine
@@ -163,6 +183,12 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
 
 volumes:
   postgres_data:

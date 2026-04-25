@@ -43,9 +43,21 @@ class ProcessExportJob implements ShouldQueue
             return;
         }
 
-        // Already completed on a prior attempt — nothing to do.
+        // Already completed on a prior attempt — nothing to do unless the file vanished.
         if ($exportJob->status === 'completed' && $exportJob->output_asset_id) {
-            return;
+            $outputAsset = Asset::query()->find((int) $exportJob->output_asset_id);
+
+            if ($outputAsset && $this->storageUrlExists((string) $outputAsset->storage_url)) {
+                return;
+            }
+
+            $exportJob->forceFill([
+                'status' => 'queued',
+                'progress_percent' => 0,
+                'failure_reason' => null,
+                'output_asset_id' => null,
+                'completed_at' => null,
+            ])->save();
         }
 
         $exportJob->forceFill([
@@ -120,11 +132,18 @@ class ProcessExportJob implements ShouldQueue
             ->unique()
             ->values();
 
+        if ($project->music_asset_id) {
+            $assetIds->push((int) $project->music_asset_id);
+        }
+
         /** @var Collection<int, Asset> $assetMap */
         $assetMap = Asset::query()
             ->whereIn('id', $assetIds)
             ->get()
             ->keyBy('id');
+        $projectMusicAsset = $project->music_asset_id
+            ? $assetMap->get((int) $project->music_asset_id)
+            : null;
 
         $segmentPaths = [];
         $totalDuration = max(
@@ -142,9 +161,11 @@ class ProcessExportJob implements ShouldQueue
                 $audioAsset = $audioAssetId > 0 ? $assetMap->get($audioAssetId) : null;
 
                 $segmentPaths[] = $this->renderSceneSegment(
+                    $project,
                     $scene,
                     $visualAsset,
                     $audioAsset,
+                    $projectMusicAsset,
                     $dimensions,
                     $tempDir,
                     $index,
@@ -208,6 +229,11 @@ class ProcessExportJob implements ShouldQueue
             'ContentType' => 'video/mp4',
         ]);
         fclose($stream);
+
+        if (! $this->storageUrlExists($exportStorageUrl)) {
+            @unlink($outputFile);
+            throw new \RuntimeException('Export output could not be verified in storage.');
+        }
 
         $fileSize = filesize($outputFile) ?: null;
         @unlink($outputFile);
@@ -327,9 +353,11 @@ class ProcessExportJob implements ShouldQueue
      * @param array{width:int,height:int} $dimensions
      */
     private function renderSceneSegment(
+        Project $project,
         Scene $scene,
         ?Asset $visualAsset,
         ?Asset $audioAsset,
+        ?Asset $projectMusicAsset,
         array $dimensions,
         string $tempDir,
         int $index,
@@ -339,7 +367,17 @@ class ProcessExportJob implements ShouldQueue
         $duration = max(1.0, (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0));
 
         if ($scene->visual_type === 'waveform') {
-            return $this->renderAudiogramSegment($scene, $audioAsset, $dimensions, $tempDir, $index, $elapsedSeconds, $totalSeconds);
+            return $this->renderAudiogramSegment(
+                $project,
+                $scene,
+                $audioAsset,
+                $projectMusicAsset,
+                $dimensions,
+                $tempDir,
+                $index,
+                $elapsedSeconds,
+                $totalSeconds
+            );
         }
 
         $segmentPath = sprintf('%s/segment-%03d.mp4', $tempDir, $index + 1);
@@ -359,8 +397,6 @@ class ProcessExportJob implements ShouldQueue
             $captionEnabled = false;
         }
         $durationForFilter = $this->formatFilterDuration($duration);
-
-        $monoFont = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf';
 
         $command = ['ffmpeg', '-y'];
         $cleanupPaths = [];
@@ -406,11 +442,6 @@ class ProcessExportJob implements ShouldQueue
                 // setpts=PTS-STARTPTS normalises non-zero start PTS from stock clips so
                 // audio and video start at exactly the same moment within the segment.
                 $baseFilter,
-                "drawtext=fontfile={$monoFont}:text='FRAMECAST':fontcolor=white@0.3:fontsize=20:x=16:y=20",
-                sprintf(
-                    "drawtext=fontfile={$monoFont}:text='%s':fontcolor=white@0.5:fontsize=22:x=w-text_w-16:y=18:box=1:boxcolor=black@0.4:boxborderw=12",
-                    $this->escapeDrawtext($this->formatClock($elapsedSeconds).' / '.$this->formatClock($totalSeconds))
-                ),
             ];
 
             $assFile = null;
@@ -513,8 +544,10 @@ class ProcessExportJob implements ShouldQueue
      * @param array{width:int,height:int} $dimensions
      */
     private function renderAudiogramSegment(
+        Project $project,
         Scene $scene,
         ?Asset $audioAsset,
+        ?Asset $projectMusicAsset,
         array $dimensions,
         string $tempDir,
         int $index,
@@ -522,111 +555,104 @@ class ProcessExportJob implements ShouldQueue
         float $totalSeconds
     ): string {
         $imgSettings = is_array($scene->image_generation_settings_json) ? $scene->image_generation_settings_json : [];
-        $audiogramStyle = (string) ($imgSettings['audiogram_style'] ?? 'bars');
-        $colorHex = ltrim(trim((string) ($imgSettings['audiogram_color'] ?? 'ff6b35')), '#');
-        $colorHex = ctype_xdigit($colorHex) && strlen($colorHex) === 6 ? $colorHex : 'ff6b35';
-        $ffmpegColor = '0x'.$colorHex;
-
-        $bgHex = match ((string) ($imgSettings['audiogram_bg'] ?? 'dark')) {
-            'black'  => '000000',
-            'purple' => '1a0a2e',
-            'ocean'  => '0a1628',
-            default  => '0d0d1a',
-        };
-
-        $W = $dimensions['width'];
-        $H = $dimensions['height'];
-        $vizH = (int) round($H * 0.28);
-
         $captionSettings = is_array($scene->caption_settings_json) ? $scene->caption_settings_json : [];
-        $captionEnabled = ($captionSettings['enabled'] ?? true) !== false;
-        $captionHighlightMode = (string) ($captionSettings['highlight_mode'] ?? 'keywords');
-        if ($captionHighlightMode === 'none') {
-            $captionEnabled = false;
-        }
-        $captionStyle = (string) ($captionSettings['style_key'] ?? 'impact');
-        $captionPosition = (string) ($captionSettings['position'] ?? 'bottom_third');
-        $captionFont = (string) ($captionSettings['font'] ?? 'Bebas Neue');
-        $captionColor = (string) ($captionSettings['color'] ?? '#ffffff');
-        $captionSize = (string) ($captionSettings['size'] ?? 'medium');
-        $captionHighlightColor = (string) ($captionSettings['highlight_color'] ?? '#ff6b35');
-        $captionText = (string) ($scene->script_text ?: $scene->label ?: 'Framecast');
-
         $segmentPath = sprintf('%s/segment-%03d.mp4', $tempDir, $index + 1);
-        $cleanupPaths = [];
+        $framesDir = sprintf('%s/audiogram-frames-%03d', $tempDir, $index + 1);
+        $payloadPath = sprintf('%s/audiogram-%03d.json', $tempDir, $index + 1);
+        $cleanupPaths = [$payloadPath];
+        $duration = max(1.0, (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0));
+        $audioPath = null;
+        $analysisAudioPath = null;
+        $musicAnalysisPath = null;
+        $pcmPath = null;
 
         try {
-            $duration = max(1.0, (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0));
-            $audioPath = null;
-
             if ($audioAsset) {
                 $audioPath = $this->materializeAsset($audioAsset, $tempDir, 'audio-'.$index);
                 $cleanupPaths[] = $audioPath;
                 $duration = max(0.1, $this->probeMediaDuration($audioPath) ?? $duration);
+                $analysisAudioPath = $audioPath;
             }
 
-            $durationForFilter = $this->formatFilterDuration($duration);
-
-            $vizFilter = match ($audiogramStyle) {
-                'mirror'  => "showwaves=s={$W}x{$vizH}:mode=cline:split_channels=0:colors={$ffmpegColor}:scale=sqrt",
-                'circle'  => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=log:ascale=log:averaging=1:win_func=hanning:win_size=256",
-                'minimal' => "showwaves=s={$W}x{$vizH}:mode=line:split_channels=0:colors={$ffmpegColor}:scale=lin",
-                default   => "showfreqs=s={$W}x{$vizH}:mode=bar:cmode=combined:colors={$ffmpegColor}:fscale=log:ascale=log:averaging=1:win_func=hanning:win_size=128",
-            };
-
-            $monoFont = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf';
-            $elapsedStr = $this->escapeDrawtext($this->formatClock($elapsedSeconds).' / '.$this->formatClock($totalSeconds));
-
-            $parts = [];
-            $parts[] = "color=c=#{$bgHex}:s={$W}x{$H}:r=30:d={$durationForFilter}[bg]";
-
-            if ($audioPath !== null) {
-                $parts[] = "[0:a]asplit=2[a_viz][a_out]";
-                $parts[] = "[a_viz]{$vizFilter}[viz_raw]";
-                $parts[] = "[viz_raw]format=rgba,colorkey=black:similarity=0.15:blend=0.0[viz_key]";
-                $parts[] = "[bg][viz_key]overlay=x=0:y=H*0.12[video_ovl]";
-                $audioOutMap = '[a_out]';
-            } else {
-                $parts[] = "[bg]copy[video_ovl]";
-                $audioOutMap = '0:a';
+            if ($projectMusicAsset) {
+                $musicAnalysisPath = $this->materializeAsset($projectMusicAsset, $tempDir, 'analysis-music-'.$index);
+                $cleanupPaths[] = $musicAnalysisPath;
             }
 
-            $parts[] = "[video_ovl]drawtext=fontfile={$monoFont}:text='FRAMECAST':fontcolor=white@0.3:fontsize=20:x=16:y=20[bg_wm]";
-            $parts[] = "[bg_wm]drawtext=fontfile={$monoFont}:text='{$elapsedStr}':fontcolor=white@0.5:fontsize=22:x=w-text_w-16:y=18:box=1:boxcolor=black@0.4:boxborderw=12[video_dt]";
-
-            $assFile = null;
-            if ($captionEnabled && trim($captionText) !== '') {
-                $assFile = sprintf('%s/caption-%03d.ass', $tempDir, $index);
-                $this->buildASSCaption(
-                    $captionText, $captionStyle, $captionPosition, $captionFont, $duration,
-                    $dimensions, $assFile, $captionHighlightMode,
-                    $this->captionTimingWordsFromAsset($audioAsset),
-                    $captionColor, $captionSize, $captionHighlightColor,
+            if ($musicAnalysisPath !== null) {
+                $analysisAudioPath = $this->buildAudiogramAnalysisMix(
+                    $project,
+                    $audioPath,
+                    $musicAnalysisPath,
+                    $tempDir,
+                    $index,
+                    $duration,
+                    $elapsedSeconds
                 );
-                $cleanupPaths[] = $assFile;
-                $parts[] = "[video_dt]subtitles={$assFile}[outv]";
-                $videoOutMap = '[outv]';
-            } else {
-                $videoOutMap = '[video_dt]';
+                $cleanupPaths[] = $analysisAudioPath;
             }
 
-            $filterComplex = implode(';', $parts);
+            if ($analysisAudioPath !== null) {
+                $pcmPath = $this->buildBrowserPcmFile($analysisAudioPath, $tempDir, $index);
+                $cleanupPaths[] = $pcmPath;
+            }
 
-            $command = ['ffmpeg', '-y'];
+            if (! is_dir($framesDir) && ! @mkdir($framesDir, 0777, true) && ! is_dir($framesDir)) {
+                throw new \RuntimeException('Unable to allocate audiogram frames directory.');
+            }
+
+            $cleanupPaths[] = $framesDir;
+
+            $payload = [
+                'width' => $dimensions['width'],
+                'height' => $dimensions['height'],
+                'duration' => $duration,
+                'fps' => 20,
+                'sampleRate' => 16000,
+                'style' => $this->normalizeAudiogramStyle((string) ($imgSettings['audiogram_style'] ?? 'bars')),
+                'color' => $this->normalizeHexColor((string) ($imgSettings['audiogram_color'] ?? '#ff6b35')),
+                'backgroundCss' => $this->audiogramBackgroundCss((string) ($imgSettings['audiogram_bg'] ?? 'dark')),
+                'captionEnabled' => ($captionSettings['enabled'] ?? true) !== false
+                    && (string) ($captionSettings['highlight_mode'] ?? 'keywords') !== 'none',
+                'captionStyle' => (string) ($captionSettings['style_key'] ?? 'impact'),
+                'captionHighlightMode' => (string) ($captionSettings['highlight_mode'] ?? 'keywords'),
+                'captionPosition' => (string) ($captionSettings['position'] ?? 'bottom_third'),
+                'captionFont' => (string) ($captionSettings['font'] ?? 'Bebas Neue'),
+                'captionColor' => $this->normalizeHexColor((string) ($captionSettings['color'] ?? '#ffffff')),
+                'captionSize' => (string) ($captionSettings['size'] ?? 'medium'),
+                'captionHighlightColor' => $this->normalizeHexColor((string) ($captionSettings['highlight_color'] ?? '#ff6b35')),
+                'captionText' => (string) ($scene->script_text ?: $scene->label ?: 'Framecast'),
+                'timedWords' => $this->captionTimingWordsFromAsset($audioAsset),
+                'pcmPath' => $pcmPath,
+            ];
+
+            file_put_contents(
+                $payloadPath,
+                json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+            );
+
+            $renderer = new Process([
+                'node',
+                base_path('scripts/render-audiogram.mjs'),
+                $payloadPath,
+                $framesDir,
+            ], base_path());
+            $renderer->setTimeout(900);
+            $renderer->mustRun();
+
+            $command = ['ffmpeg', '-y', '-framerate', '20', '-i', $framesDir.'/frame-%06d.png'];
 
             if ($audioPath !== null) {
                 array_push($command, '-i', $audioPath);
             } else {
-                array_push($command, '-f', 'lavfi', '-i', "anullsrc=r=44100:cl=stereo");
-                array_push($command, '-t', (string) $duration);
+                array_push($command, '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', (string) $duration);
             }
 
             array_push(
                 $command,
-                '-filter_complex', $filterComplex,
-                '-map', $videoOutMap,
-                '-map', $audioOutMap,
                 '-r', '30',
+                '-map', '0:v:0',
+                '-map', '1:a:0',
                 '-c:v', 'libx264',
                 '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac',
@@ -637,35 +663,188 @@ class ProcessExportJob implements ShouldQueue
             );
 
             $process = new Process($command);
-            $process->setTimeout(180);
+            $process->setTimeout(600);
             $process->mustRun();
 
             return $segmentPath;
         } finally {
             foreach ($cleanupPaths as $cleanupPath) {
-                if (is_file($cleanupPath)) {
+                if (is_string($cleanupPath) && is_dir($cleanupPath)) {
+                    $this->cleanupTempDir($cleanupPath);
+                    continue;
+                }
+
+                if (is_string($cleanupPath) && is_file($cleanupPath)) {
                     @unlink($cleanupPath);
                 }
             }
         }
     }
 
+    private function buildAudiogramAnalysisMix(
+        Project $project,
+        ?string $voicePath,
+        string $musicPath,
+        string $tempDir,
+        int $index,
+        float $duration,
+        float $elapsedSeconds
+    ): string {
+        $musicSettings = is_array($project->music_settings_json) ? $project->music_settings_json : [];
+        $volume = max(0, (int) ($musicSettings['volume'] ?? 30));
+        $fadeInMs = max(0, (int) ($musicSettings['fade_in_ms'] ?? 500));
+        $loop = (bool) ($musicSettings['loop'] ?? true);
+        $duckDuringVoice = (bool) ($musicSettings['duck_during_voice'] ?? true);
+        $volumeFraction = $volume / 100.0;
+        $fadeInSec = $fadeInMs / 1000.0;
+        $analysisPath = sprintf('%s/audiogram-analysis-%03d.wav', $tempDir, $index + 1);
+
+        $command = ['ffmpeg', '-y'];
+        $voiceInputIndex = null;
+        $musicInputIndex = null;
+
+        if ($voicePath !== null) {
+            array_push($command, '-i', $voicePath);
+            $voiceInputIndex = 0;
+            $musicInputIndex = 1;
+        } else {
+            $musicInputIndex = 0;
+        }
+
+        if ($loop) {
+            array_push($command, '-stream_loop', '-1');
+        }
+
+        array_push($command, '-i', $musicPath);
+
+        $musicFilters = [
+            sprintf('[%d:a]atrim=start=%.3f:duration=%.3f', $musicInputIndex, max(0.0, $elapsedSeconds), max(0.1, $duration)),
+            'asetpts=PTS-STARTPTS',
+        ];
+
+        if ($fadeInSec > 0) {
+            $musicFilters[] = sprintf('afade=t=in:st=0:d=%.3f', $fadeInSec);
+        }
+
+        $musicFilters[] = sprintf('volume=%.4f', $volumeFraction);
+
+        $filters = [
+            implode(',', $musicFilters).'[music_bed]',
+        ];
+
+        if ($voiceInputIndex !== null) {
+            $filters[] = sprintf('[%d:a]atrim=duration=%.3f,asetpts=PTS-STARTPTS[voice_main]', $voiceInputIndex, max(0.1, $duration));
+
+            if ($duckDuringVoice) {
+                $filters[] = sprintf('[%d:a]atrim=duration=%.3f,asetpts=PTS-STARTPTS[voice_sc]', $voiceInputIndex, max(0.1, $duration));
+                $filters[] = '[music_bed][voice_sc]sidechaincompress=threshold=0.02:ratio=8:attack=200:release=1000[music_ducked]';
+                $filters[] = '[voice_main][music_ducked]amix=inputs=2:normalize=0[outa]';
+            } else {
+                $filters[] = '[voice_main][music_bed]amix=inputs=2:normalize=0[outa]';
+            }
+        }
+
+        array_push(
+            $command,
+            '-filter_complex',
+            implode(';', $filters),
+            '-map',
+            $voiceInputIndex !== null ? '[outa]' : '[music_bed]',
+            '-t',
+            (string) max(0.1, $duration),
+            '-ac',
+            '1',
+            '-ar',
+            '44100',
+            '-c:a',
+            'pcm_s16le',
+            $analysisPath
+        );
+
+        $process = new Process($command);
+        $process->setTimeout(180);
+        $process->mustRun();
+
+        return $analysisPath;
+    }
+
+    private function buildBrowserPcmFile(string $audioPath, string $tempDir, int $index): string
+    {
+        $pcmPath = sprintf('%s/audio-%03d.pcm', $tempDir, $index + 1);
+        $process = new Process([
+            'ffmpeg',
+            '-y',
+            '-i',
+            $audioPath,
+            '-vn',
+            '-ac',
+            '1',
+            '-ar',
+            '16000',
+            '-f',
+            'f32le',
+            $pcmPath,
+        ]);
+        $process->setTimeout(180);
+        $process->mustRun();
+
+        return $pcmPath;
+    }
+
+    private function normalizeHexColor(string $value, string $fallback = '#ff6b35'): string
+    {
+        $hex = ltrim(trim($value), '#');
+
+        if (strlen($hex) === 3 && ctype_xdigit($hex)) {
+            $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+        }
+
+        if (strlen($hex) !== 6 || ! ctype_xdigit($hex)) {
+            return $fallback;
+        }
+
+        return '#'.strtolower($hex);
+    }
+
+    private function normalizeAudiogramStyle(string $style): string
+    {
+        $normalized = strtolower(trim($style));
+
+        return match ($normalized) {
+            'radial' => 'circle',
+            'bars', 'mirror', 'circle', 'minimal' => $normalized,
+            default => 'bars',
+        };
+    }
+
+    private function audiogramBackgroundCss(string $backgroundKey): string
+    {
+        return match ($backgroundKey) {
+            'black' => '#000',
+            'purple' => 'linear-gradient(135deg,#1a0a2e 0%,#0d0d2b 50%,#14102a 100%)',
+            'ocean' => 'linear-gradient(135deg,#0a1628 0%,#0d1f3c 50%,#0a0e1a 100%)',
+            default => 'linear-gradient(180deg,#0d0d1a 0%,#0a0a14 100%)',
+        };
+    }
+
     private function applyMusicMix(Project $project, Asset $musicAsset, string $videoFile, string $outputFile, string $tempDir): void
     {
         $musicSettings = is_array($project->music_settings_json) ? $project->music_settings_json : [];
         $volume = (int) ($musicSettings['volume'] ?? 30);
-        $duckVolume = (int) ($musicSettings['duck_volume'] ?? 8);
         $fadeInMs = (int) ($musicSettings['fade_in_ms'] ?? 500);
         $loop = (bool) ($musicSettings['loop'] ?? true);
         $duckDuringVoice = (bool) ($musicSettings['duck_during_voice'] ?? true);
 
         $musicPath = $this->materializeAsset($musicAsset, $tempDir, 'music');
 
+        if (! $this->probeHasAudioStream($musicPath)) {
+            return;
+        }
+
         // Probe video duration to know how long to trim/loop the music.
         $videoDuration = $this->probeMediaDuration($videoFile) ?? 60.0;
 
         $volumeFraction = $volume / 100.0;
-        $duckFraction = $duckVolume / 100.0;
         $fadeInSec = $fadeInMs / 1000.0;
 
         // Build the music processing chain.
@@ -797,17 +976,67 @@ class ProcessExportJob implements ShouldQueue
         return $duration > 0 ? $duration : null;
     }
 
+    private function probeHasAudioStream(string $path): bool
+    {
+        $process = new Process([
+            'ffprobe',
+            '-v',
+            'error',
+            '-select_streams',
+            'a:0',
+            '-show_entries',
+            'stream=codec_type',
+            '-of',
+            'default=noprint_wrappers=1:nokey=1',
+            $path,
+        ]);
+        $process->setTimeout(30);
+
+        try {
+            $process->mustRun();
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return trim($process->getOutput()) === 'audio';
+    }
+
     private function formatFilterDuration(float $duration): string
     {
         return sprintf('%.3F', max(0.1, $duration));
     }
 
+    private function storageUrlExists(string $storageUrl): bool
+    {
+        $storageUrl = trim($storageUrl);
+
+        if ($storageUrl === '') {
+            return false;
+        }
+
+        $storage = app(StorageService::class);
+
+        if ($storage->isManagedUrl($storageUrl)) {
+            return $storage->exists($storageUrl);
+        }
+
+        try {
+            return Http::connectTimeout(5)
+                ->timeout(10)
+                ->head($storageUrl)
+                ->successful();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     private function materializeAsset(Asset $asset, string $tempDir, string $prefix): string
     {
         $storageUrl = trim((string) $asset->storage_url);
+        $label = $asset->title ? "\"{$asset->title}\"" : "asset #{$asset->id}";
 
         if ($storageUrl === '') {
-            throw new \RuntimeException('Asset storage URL is empty.');
+            throw new \RuntimeException("ASSET_MISSING: {$label} has no storage URL.");
         }
 
         $extension = pathinfo(parse_url($storageUrl, PHP_URL_PATH) ?: '', PATHINFO_EXTENSION) ?: 'bin';
@@ -817,14 +1046,14 @@ class ProcessExportJob implements ShouldQueue
             $stream = app(StorageService::class)->readStream($storageUrl);
 
             if (! is_resource($stream)) {
-                throw new \RuntimeException('Unable to read asset from storage.');
+                throw new \RuntimeException("ASSET_MISSING: {$label} could not be read from storage.");
             }
 
             $target = fopen($targetPath, 'wb');
 
             if (! is_resource($target)) {
                 fclose($stream);
-                throw new \RuntimeException('Unable to write temp asset file.');
+                throw new \RuntimeException("ASSET_MISSING: Could not write temp file for {$label}.");
             }
 
             stream_copy_to_stream($stream, $target);
@@ -834,23 +1063,19 @@ class ProcessExportJob implements ShouldQueue
             return $targetPath;
         }
 
-        try {
-            $response = Http::connectTimeout(10)
-                ->timeout(20)
-                ->retry(1, 250)
-                ->withOptions(['allow_redirects' => true])
-                ->get($storageUrl);
+        $response = Http::connectTimeout(10)
+            ->timeout(180)
+            ->retry(2, 500)
+            ->withOptions(['allow_redirects' => true])
+            ->sink($targetPath)
+            ->get($storageUrl);
 
-            if (! $response->successful()) {
-                throw new \RuntimeException('Unable to download asset from source URL.');
-            }
-
-            file_put_contents($targetPath, $response->body());
-
-            return $targetPath;
-        } catch (\Throwable $exception) {
-            return $this->fallbackAssetFile($asset, $tempDir, $prefix);
+        if (! $response->successful()) {
+            @unlink($targetPath);
+            throw new \RuntimeException("ASSET_MISSING: {$label} returned HTTP {$response->status()} and could not be downloaded.");
         }
+
+        return $targetPath;
     }
 
     private function escapeDrawtext(string $text, bool $preserveNewlines = false): string
@@ -1310,51 +1535,6 @@ class ProcessExportJob implements ShouldQueue
         return sprintf('%02d:%02d', $mins, $secs);
     }
 
-    private function fallbackAssetFile(Asset $asset, string $tempDir, string $prefix): string
-    {
-        $extension = str_starts_with((string) $asset->mime_type, 'video/') ? 'mp4' : 'png';
-        $targetPath = sprintf('%s/%s-fallback-%s.%s', $tempDir, $prefix, Str::uuid(), $extension);
-
-        if (str_starts_with((string) $asset->mime_type, 'video/')) {
-            $process = new Process([
-                'ffmpeg',
-                '-y',
-                '-f',
-                'lavfi',
-                '-i',
-                'color=c=#111111:s=1080x1920:d=3',
-                '-vf',
-                "drawtext=text='MEDIA UNAVAILABLE':fontcolor=white@0.65:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2",
-                '-c:v',
-                'libx264',
-                '-pix_fmt',
-                'yuv420p',
-                $targetPath,
-            ]);
-            $process->setTimeout(60);
-            $process->mustRun();
-
-            return $targetPath;
-        }
-
-        $process = new Process([
-            'ffmpeg',
-            '-y',
-            '-f',
-            'lavfi',
-            '-i',
-            'color=c=#111111:s=1080x1920',
-            '-frames:v',
-            '1',
-            '-vf',
-            "drawtext=text='MEDIA UNAVAILABLE':fontcolor=white@0.65:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2",
-            $targetPath,
-        ]);
-        $process->setTimeout(60);
-        $process->mustRun();
-
-        return $targetPath;
-    }
 
     private function dispatchProgress(
         ExportJob $exportJob,
@@ -1423,6 +1603,13 @@ class ProcessExportJob implements ShouldQueue
 
         if ($message === '') {
             return 'Export failed before a video could be produced.';
+        }
+
+        // Asset-not-found errors from materializeAsset — surface the label directly.
+        if (str_starts_with($message, 'ASSET_MISSING:')) {
+            $detail = trim(substr($message, strlen('ASSET_MISSING:')));
+
+            return "A media file could not be loaded for export: {$detail} Please check your assets and try again.";
         }
 
         if (str_contains($message, 'do not match the corresponding output link') || str_contains($message, 'Failed to configure output pad on Parsed_concat')) {
