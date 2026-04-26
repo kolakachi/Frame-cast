@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Admin\AdminController;
+use App\Http\Controllers\Api\V1\Billing\BillingController;
+use App\Http\Controllers\Api\V1\Billing\PaddleWebhookController;
 use App\Http\Controllers\Api\V1\Niche\NicheController;
 use App\Http\Controllers\Api\V1\Asset\AssetController;
 use App\Http\Controllers\Api\V1\Asset\CollectionController;
@@ -26,6 +28,9 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function (): void {
     Route::get('/health', HealthCheckController::class);
 
+    // Paddle webhooks — unauthenticated, HMAC-verified inside the controller
+    Route::post('/webhooks/paddle', PaddleWebhookController::class);
+
     Route::prefix('/auth')->group(function (): void {
         Route::post('/login', [AuthController::class, 'login']);
         Route::post('/magic-link', [AuthController::class, 'magicLink']);
@@ -38,6 +43,8 @@ Route::prefix('v1')->group(function (): void {
     Route::post('/broadcasting/auth', [BroadcastController::class, 'authenticate'])->middleware('auth.jwt');
 
     Route::middleware('auth.jwt')->group(function (): void {
+        Route::get('/billing/status', [BillingController::class, 'status']);
+        Route::post('/billing/portal', [BillingController::class, 'portal']);
         Route::get('/me', [VerificationController::class, 'me']);
         Route::patch('/me', [VerificationController::class, 'updateMe']);
         Route::post('/verification/storage-smoke', [VerificationController::class, 'storageSmoke']);

@@ -22,6 +22,38 @@ const limitModalOpen = ref(false)
 const deleteTarget = ref(null)
 const deletePending = ref(false)
 
+// ── Billing ───────────────────────────────────────────────
+const billing = ref(null)
+const billingPortalPending = ref(false)
+const billingError = ref('')
+
+const planLabel = computed(() => {
+  const tier = billing.value?.plan_tier || 'free'
+  return { free: 'Free', studio: 'Studio', scale: 'Scale', enterprise: 'Enterprise' }[tier] || tier
+})
+
+const planStatusLabel = computed(() => {
+  const s = billing.value?.plan_status || 'active'
+  return { active: 'Active', past_due: 'Past Due', paused: 'Paused', cancelled: 'Cancelled' }[s] || s
+})
+
+const planStatusColor = computed(() => {
+  const s = billing.value?.plan_status || 'active'
+  return { active: '#34d399', past_due: '#fbbf24', paused: '#a78bfa', cancelled: '#f87171' }[s] || '#a1a1b5'
+})
+
+const isFreePlan = computed(() => !billing.value?.plan_tier || billing.value.plan_tier === 'free')
+const hasPaddleSubscription = computed(() => Boolean(billing.value?.paddle_customer_id))
+
+function openPaddleCheckout(priceId) {
+  if (!priceId || !window.Paddle) return
+  const paddleCfg = billing.value?.paddle_sandbox ? { environment: 'sandbox' } : {}
+  window.Paddle.Setup({ ...paddleCfg, token: billing.value?.paddle_client_token })
+  window.Paddle.Checkout.open({
+    items: [{ priceId, quantity: 1 }],
+  })
+}
+
 const fontOptions = [
   'DM Sans',
   'Space Mono',
@@ -137,6 +169,28 @@ const deleteDialogMessage = computed(() => deleteTarget.value?.message || '')
 const deleteDialogConfirmLabel = computed(() => deleteTarget.value?.confirmLabel || 'Confirm')
 
 // ── API calls ─────────────────────────────────────────────
+async function loadBillingStatus() {
+  try {
+    const { data } = await api.get('/billing/status')
+    billing.value = data.data.billing
+  } catch {
+    // non-fatal — billing section will show gracefully without data
+  }
+}
+
+async function openBillingPortal() {
+  billingPortalPending.value = true
+  billingError.value = ''
+  try {
+    const { data } = await api.post('/billing/portal')
+    window.open(data.data.url, '_blank')
+  } catch (err) {
+    billingError.value = err?.response?.data?.error?.message || 'Could not open billing portal.'
+  } finally {
+    billingPortalPending.value = false
+  }
+}
+
 async function loadSettings() {
   loading.value = true
   saveError.value = ''
@@ -244,7 +298,10 @@ async function logout() {
   router.push({ name: 'login' })
 }
 
-onMounted(loadSettings)
+onMounted(() => {
+  loadSettings()
+  loadBillingStatus()
+})
 </script>
 
 <template>
@@ -449,6 +506,19 @@ onMounted(loadSettings)
             <div class="section-title">Usage and Billing</div>
             <div class="settings-section-desc">Current plan usage and upgrade options.</div>
 
+            <!-- Current plan pill -->
+            <div v-if="billing" class="plan-status-row">
+              <div class="plan-pill">
+                <span class="plan-name">{{ planLabel }}</span>
+                <span class="plan-status-badge" :style="{ color: planStatusColor }">{{ planStatusLabel }}</span>
+              </div>
+              <div v-if="billing.plan_renews_at" class="plan-renews">
+                Renews {{ new Date(billing.plan_renews_at).toLocaleDateString() }}
+              </div>
+            </div>
+
+            <div v-if="billingError" class="banner error" style="margin-bottom:12px;">{{ billingError }}</div>
+
             <div v-if="usage">
               <div v-for="row in usageProgress" :key="row.label" class="usage-bar-container">
                 <div class="usage-label-row">
@@ -461,18 +531,39 @@ onMounted(loadSettings)
               </div>
             </div>
 
-            <div style="display:flex; gap:10px; margin:16px 0 22px;">
-              <button class="btn btn-primary" type="button" @click="limitModalOpen = true">Upgrade to Agency</button>
-              <button class="btn btn-ghost" type="button">Manage Billing</button>
+            <div style="display:flex; gap:10px; margin:16px 0 22px; flex-wrap:wrap;">
+              <!-- Upgrade buttons — one per paid plan -->
+              <template v-if="isFreePlan && billing">
+                <button
+                  v-if="billing.price_ids?.studio"
+                  class="btn btn-primary"
+                  type="button"
+                  @click="openPaddleCheckout(billing.price_ids.studio)"
+                >Upgrade to Studio</button>
+                <button
+                  v-if="billing.price_ids?.scale"
+                  class="btn btn-ghost"
+                  type="button"
+                  @click="openPaddleCheckout(billing.price_ids.scale)"
+                >Upgrade to Scale</button>
+              </template>
+              <button
+                v-if="hasPaddleSubscription"
+                class="btn btn-ghost"
+                type="button"
+                :disabled="billingPortalPending"
+                @click="openBillingPortal"
+              >{{ billingPortalPending ? 'Opening…' : 'Manage Billing' }}</button>
+              <button v-if="isFreePlan && !billing?.price_ids?.studio" class="btn btn-primary" type="button" @click="limitModalOpen = true">Upgrade</button>
             </div>
 
             <table class="table-clean">
-              <thead><tr><th>Feature</th><th>Creator</th><th>Studio</th><th>Agency</th></tr></thead>
+              <thead><tr><th>Feature</th><th>Free</th><th>Studio</th><th>Scale</th></tr></thead>
               <tbody>
-                <tr><td>Renders / mo</td><td>60</td><td class="col-accent">200</td><td>600</td></tr>
-                <tr><td>Voice min</td><td>30</td><td class="col-accent">120</td><td>400</td></tr>
-                <tr><td>Channels</td><td>2</td><td class="col-accent">5</td><td>15</td></tr>
-                <tr><td>Dub languages</td><td>-</td><td class="col-accent">3</td><td>10</td></tr>
+                <tr><td>Renders / mo</td><td>10</td><td class="col-accent">200</td><td>1,000</td></tr>
+                <tr><td>Voice min</td><td>20</td><td class="col-accent">120</td><td>600</td></tr>
+                <tr><td>Channels</td><td>1</td><td class="col-accent">5</td><td>25</td></tr>
+                <tr><td>Dub languages</td><td>1</td><td class="col-accent">3</td><td>12</td></tr>
                 <tr><td>Voice cloning</td><td>-</td><td class="col-accent">2 voices</td><td>10 voices</td></tr>
               </tbody>
             </table>
@@ -793,6 +884,42 @@ onMounted(loadSettings)
 .modal-actions.no-border {
   padding-top: 0;
   border-top: none;
+}
+
+/* ── Billing section ── */
+.plan-status-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.plan-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid #2a2a36;
+  border-radius: 20px;
+  padding: 6px 14px;
+}
+
+.plan-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ececf3;
+}
+
+.plan-status-badge {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.plan-renews {
+  font-size: 12px;
+  color: #6a6a7c;
 }
 
 @media (max-width: 1000px) {

@@ -48,16 +48,17 @@ See QA gate: `PRODUCT_MVP_CORE_QA.md`
 - [~] Caption/music/export preview parity — selected font works; remaining caption preset and audio parity still needs QA
 
 ### Paddle Billing
-- [ ] Install and configure Paddle SDK in Laravel
-- [ ] Define Free / Creator / Studio / Agency plan IDs in config
-- [ ] Workspace model: add `plan`, `plan_status`, `paddle_customer_id`, `paddle_subscription_id`
-- [ ] Paddle webhook handler — update workspace plan on subscription created/updated/cancelled/failed
+- [x] Install and configure Paddle SDK in Laravel — `config/billing.php` + `PaddleService`; uses Http facade (no SDK needed)
+- [x] Define Free / Studio / Scale / Enterprise plan IDs in config — `billing.paddle.price_ids` maps tier → Paddle price
+- [x] Workspace model: add `plan_status`, `paddle_customer_id`, `paddle_subscription_id`, `plan_renews_at` — migration 2026_04_26_000001
+- [x] Paddle webhook handler — `PaddleWebhookController` (HMAC-SHA256 verified); handles subscription.created/updated/cancelled/past_due/paused
+- [x] Upgrade flow — `GET /billing/status` returns price IDs + client_token; frontend opens Paddle.js checkout overlay
+- [x] Downgrade flow — cancellation webhook sets `plan_tier = free` on next billing cycle event
+- [x] Failed payment state — `subscription.past_due` sets `plan_status = past_due`; SettingsView shows status badge
+- [x] Manage Billing — `POST /billing/portal` returns Paddle customer portal URL; opens in new tab
+- [x] Admin can manually override plan tier for a workspace — already live via PATCH /admin/workspaces/{id}/plan
 - [ ] Plan gating middleware — enforce limits before expensive calls (exports, AI image, TTS, variants)
 - [ ] Over-limit response returns plan name, current usage, and limit to the frontend
-- [ ] Upgrade flow — checkout link opens Paddle overlay/redirect
-- [ ] Downgrade flow — plan changes on next billing cycle
-- [ ] Failed payment state — workspace flagged, user sees graceful "payment failed" message
-- [ ] Admin can manually override plan tier for a workspace
 
 ### Onboarding Wizard
 - [ ] First-login detection — redirect new users to wizard instead of dashboard

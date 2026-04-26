@@ -21,7 +21,15 @@ class Workspace extends Model
         'name',
         'owner_user_id',
         'plan_tier',
+        'plan_status',
+        'plan_renews_at',
+        'paddle_customer_id',
+        'paddle_subscription_id',
         'status',
+    ];
+
+    protected $casts = [
+        'plan_renews_at' => 'datetime',
     ];
 
     public function owner(): BelongsTo
