@@ -61,14 +61,14 @@ See QA gate: `PRODUCT_MVP_CORE_QA.md`
 - [x] Over-limit response returns plan name, current usage, and limit to the frontend — global axios interceptor in api.js catches `limit_context`, opens LimitModal via Pinia limitStore; "View Plans" deep-links to Settings billing section
 
 ### Onboarding Wizard
-- [ ] First-login detection — redirect new users to wizard instead of dashboard
-- [ ] Wizard step 1: pick niche (or custom)
-- [ ] Wizard step 2: pick source type and enter content
-- [ ] Wizard step 3: configure voice, style, aspect ratio
-- [ ] Wizard step 4: launch generation with progress view
-- [ ] Wizard step 5: land in Editor with scenes populated
-- [ ] Skip option available at each step
-- [ ] Wizard state persisted (refresh-safe)
+- [x] First-login detection — router guard checks `preferences.onboarded`; redirects to /onboarding if false; auth response now includes preferences
+- [x] Wizard step 1: pick niche (or custom) — grid of niche cards from /niches; "Other/General" option
+- [x] Wizard step 2: pick source type and enter content — 4 source types (prompt/script/url/product); textarea with contextual placeholder
+- [x] Wizard step 3: configure voice, style, aspect ratio — aspect ratio picker, voice dropdown, visual style chips
+- [x] Wizard step 4: launch generation with progress view — POST /projects → redirect to generation-progress route
+- [x] Wizard step 5: land in Editor with scenes populated — handled by existing GenerationProgressView → EditorView flow
+- [x] Skip option available at each step — global skip button + per-step skip; PATCH /me sets preferences.onboarded=true
+- [x] Wizard state persisted (refresh-safe) — localStorage fc_wizard key; restored on mount
 
 ### God-Mode Admin
 - [x] Workspace list with plan tier, usage, created date, status

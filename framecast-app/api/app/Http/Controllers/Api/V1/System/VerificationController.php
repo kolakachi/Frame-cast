@@ -42,6 +42,7 @@ class VerificationController extends Controller
             'preferences.preview_before_render' => ['sometimes', 'boolean'],
             'preferences.auto_music' => ['sometimes', 'boolean'],
             'preferences.watermark_enabled' => ['sometimes', 'boolean'],
+            'preferences.onboarded' => ['sometimes', 'boolean'],
         ]);
 
         $user->fill(collect($validated)->except('preferences')->all());
@@ -127,6 +128,7 @@ class VerificationController extends Controller
             'preview_before_render' => true,
             'auto_music' => true,
             'watermark_enabled' => false,
+            'onboarded' => false,
         ];
     }
 

@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import OnboardingView from '../views/OnboardingView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import EditorView from '../views/EditorView.vue'
 import GenerationProgressView from '../views/GenerationProgressView.vue'
@@ -21,6 +22,7 @@ import { useAuthStore } from '../stores/auth'
 
 const routes = [
   { path: '/', redirect: '/dashboard' },
+  { path: '/onboarding', name: 'onboarding', component: OnboardingView, meta: { requiresAuth: true, skipOnboardingGuard: true } },
   { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
   { path: '/register', name: 'register', component: RegisterView, meta: { guestOnly: true } },
   { path: '/auth/magic', name: 'magic-link', component: MagicLinkView },
@@ -59,6 +61,16 @@ router.beforeEach(function (to) {
 
   if (to.meta.adminOnly && !['super_admin', 'platform_admin'].includes(authStore.user?.role)) {
     return { name: 'dashboard' }
+  }
+
+  // Redirect unonboarded users to the wizard (except the wizard itself and auth routes)
+  if (
+    authStore.isAuthenticated &&
+    !authStore.isOnboarded &&
+    !to.meta.skipOnboardingGuard &&
+    !to.meta.guestOnly
+  ) {
+    return { name: 'onboarding' }
   }
 
   return true

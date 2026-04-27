@@ -11,6 +11,7 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     isAuthenticated: (state) => Boolean(state.accessToken),
+    isOnboarded: (state) => Boolean(state.user?.preferences?.onboarded),
   },
 
   actions: {
@@ -88,6 +89,12 @@ export const useAuthStore = defineStore('auth', {
       })
 
       return accessToken
+    },
+
+    markOnboarded() {
+      if (!this.user) return
+      this.user = { ...this.user, preferences: { ...(this.user.preferences ?? {}), onboarded: true } }
+      this.persist()
     },
 
     _applySessionData(data) {

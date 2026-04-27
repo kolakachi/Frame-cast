@@ -225,6 +225,10 @@ class AuthController extends Controller
                     'email' => $user->email,
                     'role' => $user->role,
                     'status' => $user->status,
+                    'preferences' => array_merge(
+                        ['auto_generate_captions' => true, 'preview_before_render' => true, 'auto_music' => true, 'watermark_enabled' => false, 'onboarded' => false],
+                        $user->preferences_json ?? [],
+                    ),
                 ],
             ],
             'meta' => [],
