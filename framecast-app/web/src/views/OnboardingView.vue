@@ -32,7 +32,7 @@ const selectedVoiceKey  = ref('')
 const selectedStyle     = ref('cinematic')
 
 const sourceTypes = [
-  { key: 'prompt',              label: 'Topic / Idea',          hint: 'Describe a topic and we\'ll write the script' },
+  { key: 'prompt',              label: 'Topic / Idea',          hint: "Describe a topic and we'll write the script" },
   { key: 'script',              label: 'Full Script',           hint: 'Paste your own script' },
   { key: 'url',                 label: 'Article / URL',         hint: 'Paste a link and we\'ll summarise it' },
   { key: 'product_description', label: 'Product',               hint: 'Describe a product for a review video' },
@@ -57,8 +57,8 @@ const contentPlaceholder = computed(() => {
 })
 
 const stepTitles = [
-  'What's your content niche?',
-  'What's your first video about?',
+  "What's your content niche?",
+  "What's your first video about?",
   'Customize your style',
   'Ready to create',
 ]
