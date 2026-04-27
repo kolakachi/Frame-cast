@@ -3458,14 +3458,10 @@ onBeforeUnmount(() => {
                 class="btn btn-primary"
                 type="button"
                 :disabled="exportPending || !!exportBlockerMessage"
-                :title="exportBlockerMessage || ''"
                 @click="queueExport"
               >
                 {{ exportPending ? "Exporting..." : "Export" }}
               </button>
-              <div v-if="exportBlockerMessage" class="export-blocker-tip">
-                {{ exportBlockerMessage }}
-              </div>
             </div>
             <button class="btn btn-ghost btn-back" type="button" @click="router.push({ name: 'dashboard' })">
               Back to Dashboard
