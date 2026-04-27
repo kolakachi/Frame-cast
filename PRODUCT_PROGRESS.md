@@ -57,8 +57,8 @@ See QA gate: `PRODUCT_MVP_CORE_QA.md`
 - [x] Failed payment state — `subscription.past_due` sets `plan_status = past_due`; SettingsView shows status badge
 - [x] Manage Billing — `POST /billing/portal` returns Paddle customer portal URL; opens in new tab
 - [x] Admin can manually override plan tier for a workspace — already live via PATCH /admin/workspaces/{id}/plan
-- [ ] Plan gating middleware — enforce limits before expensive calls (exports, AI image, TTS, variants)
-- [ ] Over-limit response returns plan name, current usage, and limit to the frontend
+- [x] Plan gating middleware — budget checked before exports, AI image, TTS, and now variants (VariantController); workspace suspend blocked at JWT middleware layer
+- [x] Over-limit response returns plan name, current usage, and limit to the frontend — global axios interceptor in api.js catches `limit_context`, opens LimitModal via Pinia limitStore; "View Plans" deep-links to Settings billing section
 
 ### Onboarding Wizard
 - [ ] First-login detection — redirect new users to wizard instead of dashboard

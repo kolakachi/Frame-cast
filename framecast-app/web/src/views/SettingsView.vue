@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
@@ -8,6 +8,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import LimitModal from '../components/LimitModal.vue'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const mePayload = ref(null)
@@ -299,6 +300,7 @@ async function logout() {
 }
 
 onMounted(() => {
+  if (route.query.section) activeSection.value = route.query.section
   loadSettings()
   loadBillingStatus()
 })
@@ -590,6 +592,7 @@ onMounted(() => {
       subtitle="Upgrade before your next batch so channels, renders, and voice capacity do not block production."
       :rows="limitRows"
       @close="limitModalOpen = false"
+      @upgrade="limitModalOpen = false; activeSection = 'usage'"
     />
 
   </div>

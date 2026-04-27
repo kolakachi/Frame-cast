@@ -6,7 +6,7 @@ const props = defineProps({
   rows: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'upgrade'])
 </script>
 
 <template>
@@ -30,7 +30,7 @@ const emit = defineEmits(['close'])
 
       <div class="limit-actions">
         <button class="btn btn-ghost" type="button" @click="emit('close')">Close</button>
-        <button class="btn btn-primary" type="button">Upgrade to Agency</button>
+        <button class="btn btn-primary" type="button" @click="emit('upgrade')">View Plans</button>
       </div>
     </div>
   </div>

@@ -18,6 +18,7 @@ use App\Models\VariantSet;
 use App\Models\VoiceProfile;
 use App\Services\Media\StorageService;
 use App\Services\VariantGeneration\VariantGenerationService;
+use App\Services\WorkspaceUsageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -28,6 +29,8 @@ use Illuminate\Validation\Rule;
 
 class VariantController extends Controller
 {
+    public function __construct(private readonly WorkspaceUsageService $usageService) {}
+
     public function index(Request $request, int $projectId): JsonResponse
     {
         /** @var User $user */
@@ -145,6 +148,15 @@ class VariantController extends Controller
 
         if (count($plan) > 20) {
             return $this->error('variant_limit_exceeded', 'Variant requests are limited to 20 per batch in the current build.', 422);
+        }
+
+        if ($this->usageService->hasExceededApiBudget($user)) {
+            $ctx = $this->usageService->apiBudgetContext($user);
+            return $this->limitError(
+                'api_budget_exceeded',
+                "Your workspace has reached its \${$ctx['budget_usd']} AI budget for the {$ctx['plan']} plan this month.",
+                $ctx,
+            );
         }
 
         $variantSet = DB::transaction(function () use ($project, $validated, $lockRules, $user, $plan): VariantSet {

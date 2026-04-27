@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useLimitStore } from '../stores/limit'
 
 const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 const defaultHeaders = {
@@ -37,6 +38,16 @@ export function configureApiClient(authStore) {
     async (error) => {
       const status = error.response?.status
       const originalRequest = error.config
+
+      // Surface plan limit errors globally via the limit modal
+      if (status === 422 && error.response?.data?.error?.limit_context) {
+        try {
+          const limitStore = useLimitStore()
+          limitStore.openFromContext(error.response.data.error.limit_context)
+        } catch {
+          // store not ready yet — fall through to normal rejection
+        }
+      }
 
       if (status !== 401 || originalRequest?._retry) {
         return Promise.reject(error)
