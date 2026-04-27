@@ -27,6 +27,8 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
       REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     restart: unless-stopped
@@ -45,6 +47,8 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
       REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     restart: unless-stopped
@@ -79,6 +83,8 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
       REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
     restart: unless-stopped
@@ -96,6 +102,8 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
     working_dir: /var/www/html
     restart: unless-stopped
     depends_on:
@@ -113,6 +121,8 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
     working_dir: /var/www/html
     restart: unless-stopped
     depends_on:
