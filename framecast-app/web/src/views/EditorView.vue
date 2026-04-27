@@ -551,6 +551,33 @@ const exportBlockerMessage = computed(() => {
   }
   return null;
 });
+
+// Per-section error indicators for the active scene
+const activeSceneVisualError = computed(() => {
+  const scene = activeScene.value;
+  if (!scene) return null;
+  const VISUAL_OPTIONAL = ['text_card', 'waveform'];
+  if (!scene.visual_asset_id && !VISUAL_OPTIONAL.includes(String(scene.visual_type || '')))
+    return 'No visual assigned — pick a stock clip, image, or generate with AI.'
+  return null;
+});
+
+const activeSceneVoiceError = computed(() => {
+  const scene = activeScene.value;
+  if (!scene) return null;
+  if (!scene.voice_settings?.audio_asset_id)
+    return 'No voice generated — wait for TTS to finish or click Regenerate.'
+  return null;
+});
+
+const activeSceneScriptError = computed(() => {
+  const scene = activeScene.value;
+  if (!scene) return null;
+  if (!String(scene.script_text || '').trim())
+    return 'Scene has no script — add copy before this scene can be exported.'
+  return null;
+});
+
 const captionPreviewClass = computed(() => {
   if (!captionEnabledDraft.value || !captionsCanRender.value) return "caption-hidden";
   if (captionStyleDraft.value === "editorial") return "caption-style-editorial";
@@ -3920,6 +3947,7 @@ onBeforeUnmount(() => {
                   <span :class="activeVoiceOutdated ? 'panel-badge warn' : 'panel-badge warn state-hidden'">
                     Voice outdated
                   </span>
+                  <span v-if="activeSceneScriptError" class="section-error-icon" :data-tip="activeSceneScriptError" @click.stop>ⓘ</span>
                 </div>
                 <div class="panel-chevron">▾</div>
               </div>
@@ -4026,6 +4054,7 @@ onBeforeUnmount(() => {
                 <div class="panel-label-row">
                   <div class="panel-label panel-label-tight">Visual Source</div>
                   <span v-if="activeScene?.visual_type === 'ai_image'" class="panel-badge new">AI</span>
+                  <span v-if="activeSceneVisualError" class="section-error-icon" :data-tip="activeSceneVisualError" @click.stop>ⓘ</span>
                 </div>
                 <div class="panel-chevron">▾</div>
               </div>
@@ -4305,6 +4334,7 @@ onBeforeUnmount(() => {
                   <span :class="activeVoiceOutdated ? 'panel-badge warn' : 'panel-badge warn state-hidden'">
                     Outdated
                   </span>
+                  <span v-if="activeSceneVoiceError" class="section-error-icon" :data-tip="activeSceneVoiceError" @click.stop>ⓘ</span>
                 </div>
                 <div class="panel-chevron">▾</div>
               </div>
@@ -6560,6 +6590,50 @@ button {
 .panel-badge.new {
   background: rgba(167, 139, 250, 0.15);
   color: #a78bfa;
+}
+
+/* ── Section error info icon + tooltip ── */
+.section-error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  font-size: 11px;
+  cursor: default;
+  position: relative;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.section-error-icon::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  background: #1e1e2a;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #fbbf24;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: 8px 12px;
+  border-radius: 8px;
+  white-space: normal;
+  width: 220px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 200;
+}
+
+.section-error-icon:hover::after {
+  opacity: 1;
 }
 
 .panel-scope-hint {
