@@ -37,7 +37,7 @@ Exit gate: Product is stable enough to charge real users. Billing enforces limit
 See QA gate: `PRODUCT_MVP_CORE_QA.md`
 
 ### Export Stability
-- [x] Split `ProcessExportJob` into per-scene sub-jobs so large projects don't hit the monolithic timeout — Bus::batch() fan-out, RenderSceneSegmentJob per scene → MinIO → ConcatenateExportJob assembles final MP4
+- [x] Split `ProcessExportJob` into per-scene sub-jobs so large projects don't hit the monolithic timeout — Bus::batch() fan-out, RenderSceneSegmentJob per scene → B2 → ConcatenateExportJob assembles final MP4; Batchable trait fix applied in prod
 - [x] Add idempotency guard on asset creation in export — retry must not create duplicate Asset records (deterministic storage path + lockForUpdate transaction)
 - [x] Clean up temp directories on job failure ($tempDir as instance property, cleaned in failed() and finally)
 - [x] Increase export worker timeout — job $timeout=2700s, worker --timeout=2700, REDIS_QUEUE_RETRY_AFTER=3000, 15-min MinIO socket timeout added
@@ -100,20 +100,20 @@ See QA gate: `PRODUCT_MVP_CORE_QA.md`
 - [x] Admin alert when workspace spend approaches plan budget — CheckBudgetAlertJob at 80% and 100%
 
 ### Production Infrastructure
-- [ ] Production `.env` — all secrets populated (OpenAI, B2, Reverb, Paddle, DB, Redis, mail)
-- [ ] Postmark or SES configured — magic link email delivers in prod
-- [ ] SSL certificate provisioned and auto-renewing
-- [ ] Domain DNS pointed correctly (API, web, Reverb)
-- [ ] CORS configured for production domain
-- [ ] Queue workers supervised (Supervisor or similar) — auto-restart on crash
-- [ ] All 4 queues running: `generation`, `visual`, `exports`, `default`
-- [ ] Reverb server supervised and reachable from frontend
-- [ ] PostgreSQL backups scheduled
-- [ ] Redis persistence decision made and configured
-- [ ] Docker production build pipeline working (`docker-compose.prod.yml`)
-- [ ] All seeders and migrations clean — no dev-only data in prod
-- [ ] No local URLs or dev credentials in production code paths
-- [ ] B2 production bucket configured with correct CORS and ACL
+- [x] Production `.env` — all secrets populated (OpenAI, B2, Reverb, Paddle, DB, Redis, mail) on server at /opt/framecast/app/framecast-app/api/.env
+- [x] SMTP mail configured — magic link email delivers via server344.web-hosting.com (hello@lumiodocs.com); tested and working
+- [x] SSL certificate provisioned and auto-renewing — Cloudflare terminates TLS; no cert needed on origin; AppServiceProvider forces https:// URL generation
+- [x] Domain DNS pointed correctly — framecast.lumiodocs.com live on Oracle Cloud (132.145.195.157) behind Cloudflare proxy
+- [x] CORS configured for production domain — CORS_ALLOWED_ORIGINS=https://framecast.lumiodocs.com
+- [x] Queue workers supervised — Docker restart: unless-stopped on all workers; Docker daemon starts on boot
+- [x] All 4 queues running — worker-generation (generation/tts/visual/translation), worker-exports (exports/rendering), worker-default (default), scheduler all live
+- [x] Reverb server supervised and reachable from frontend — reverb container with restart policy; /app/ proxied through Nginx; polling fallback in EditorView for WebSocket gaps
+- [ ] PostgreSQL backups scheduled — not yet configured
+- [x] Redis persistence decision made and configured — AOF persistence (appendonly yes, appendfsync everysec) in docker-compose.prod.yml
+- [x] Docker production build pipeline working — docker-compose.prod.yml + nginx/Dockerfile + git push prod master deploys via post-receive hook
+- [x] All seeders and migrations clean — NicheSeeder, MusicTrackSeeder, VoiceProfileSeeder, CaptionPresetSeeder run in prod; all 27 migrations applied; hook runs seeders on every deploy
+- [x] No local URLs or dev credentials in production code paths — AppServiceProvider trustProxies + forceScheme('https'); MinIO disk aliased to B2 in prod .env; MINIO env removed from code paths
+- [x] B2 production bucket configured — frame-cast bucket in use; MINIO disk credentials point to B2 in prod; signed URL streaming working
 
 **Phase A exit gate:** `PRODUCT_QA.md § Phase A` must pass before Phase B starts.
 
