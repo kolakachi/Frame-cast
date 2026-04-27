@@ -995,14 +995,22 @@ watch(
   { deep: true }
 );
 
-// Poll export status while a job is pending — WebSocket is best-effort,
-// polling ensures the UI always catches completed/failed state.
-watch(queuedExportJobId, (id) => {
-  if (exportPollTimer) { clearInterval(exportPollTimer); exportPollTimer = null; }
-  if (id) {
-    exportPollTimer = setInterval(() => loadExportJobs(), 6000);
-  }
-}, { immediate: true });
+// Poll export status while any job is pending — covers WebSocket gaps and
+// server-side retried jobs that weren't initiated from this UI session.
+const hasActiveExport = computed(() =>
+  exportJobs.value.some((j) => ['queued', 'processing'].includes(j.status))
+)
+
+watch(
+  () => queuedExportJobId.value || hasActiveExport.value,
+  (active) => {
+    if (exportPollTimer) { clearInterval(exportPollTimer); exportPollTimer = null; }
+    if (active) {
+      exportPollTimer = setInterval(() => loadExportJobs(), 5000);
+    }
+  },
+  { immediate: true }
+);
 
 function humanizeSceneType(sceneType) {
   return String(sceneType || "narration")
