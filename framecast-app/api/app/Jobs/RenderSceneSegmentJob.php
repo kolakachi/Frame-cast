@@ -9,6 +9,7 @@ use App\Models\Scene;
 use App\Services\Media\StorageService;
 use App\Traits\RendersExportScenes;
 use App\Traits\TracksJobFailure;
+use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Str;
@@ -20,6 +21,7 @@ use Illuminate\Support\Str;
  */
 class RenderSceneSegmentJob implements ShouldQueue
 {
+    use Batchable;
     use Queueable;
     use TracksJobFailure;
     use RendersExportScenes;
