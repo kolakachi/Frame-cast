@@ -52,7 +52,7 @@ const addSceneVisualStyle = ref(null);
 const addSceneVisualQuery = ref("");
 const selectedSwapVisualSource = ref("Stock Clip");
 const newSceneScript = ref("");
-const rewriteToolsVisible = ref(false);
+const rewriteToolsVisible = ref(true);
 const rewritePreviewVisible = ref(false);
 const rewritePreviewCopy = ref("");
 const rewriteCustomInstruction = ref("");
@@ -731,7 +731,7 @@ watch(
       scriptSaveError.value = "";
       captionSaveState.value = "idle";
       captionSaveError.value = "";
-      rewriteToolsVisible.value = false;
+      rewriteToolsVisible.value = true;
       rewritePreviewVisible.value = false;
       rewritePreviewCopy.value = "";
       rewriteCustomInstruction.value = "";
@@ -3983,7 +3983,7 @@ onBeforeUnmount(() => {
                     type="button"
                     @click.stop="toggleRewriteTools"
                   >
-                    {{ rewritePending ? "Working..." : "✦ Rewrite with AI" }}
+                    {{ rewriteToolsVisible ? "Hide rewrite tools" : "✦ Rewrite with AI" }}
                   </button>
                 </div>
                 <div v-if="rewriteToolsVisible" class="rewrite-tools">
