@@ -12,6 +12,7 @@ use App\Services\Generation\Translation\OpenAITranslationAdapter;
 use App\Services\Generation\Translation\TranslationAdapter;
 use App\Services\Generation\Visual\PexelsVisualProviderAdapter;
 use App\Services\Generation\Visual\VisualProviderAdapter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -34,6 +35,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        if ($this->app->isProduction()) {
+            URL::forceScheme('https');
+        }
     }
 }
