@@ -108,7 +108,7 @@ See QA gate: `PRODUCT_MVP_CORE_QA.md`
 - [x] Queue workers supervised — Docker restart: unless-stopped on all workers; Docker daemon starts on boot
 - [x] All 4 queues running — worker-generation (generation/tts/visual/translation), worker-exports (exports/rendering), worker-default (default), scheduler all live
 - [x] Reverb server supervised and reachable from frontend — reverb container with restart policy; /app/ proxied through Nginx; polling fallback in EditorView for WebSocket gaps
-- [ ] PostgreSQL backups scheduled — not yet configured
+- [x] PostgreSQL backups scheduled — daily cron at 02:00 UTC; pg_dump → gzip → B2 backups/ folder; 30-day rolling window; log at /var/log/framecast-backup.log
 - [x] Redis persistence decision made and configured — AOF persistence (appendonly yes, appendfsync everysec) in docker-compose.prod.yml
 - [x] Docker production build pipeline working — docker-compose.prod.yml + nginx/Dockerfile + git push prod master deploys via post-receive hook
 - [x] All seeders and migrations clean — NicheSeeder, MusicTrackSeeder, VoiceProfileSeeder, CaptionPresetSeeder run in prod; all 27 migrations applied; hook runs seeders on every deploy
