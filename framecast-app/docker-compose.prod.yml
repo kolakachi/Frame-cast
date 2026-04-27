@@ -1,32 +1,161 @@
 services:
+
+  # ── Nginx: serves Vue SPA + reverse proxies API + Reverb ──────────────────
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+      args:
+        VITE_API_URL: ${APP_URL}
+        VITE_REVERB_APP_KEY: ${REVERB_APP_KEY}
+        VITE_REVERB_HOST: ${REVERB_HOST}
+        VITE_REVERB_PORT: ${REVERB_PORT:-443}
+        VITE_REVERB_SCHEME: ${REVERB_SCHEME:-https}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certbot_www:/var/www/certbot:ro
+      - certbot_certs:/etc/letsencrypt:ro
+    restart: unless-stopped
+    depends_on:
+      - api
+      - reverb
+
+  # ── Laravel API ────────────────────────────────────────────────────────────
   api:
     build:
       context: ./api
-    command: php-fpm
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    env_file:
+      - ./api/.env
+    environment:
+      REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 2400
+    working_dir: /var/www/html
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
-  worker:
+  # ── Queue workers ──────────────────────────────────────────────────────────
+  worker-generation:
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=default,generation,tts,visual,translation,rendering --tries=1
+    command: php artisan queue:work redis --queue=generation,tts,visual,translation --tries=1 --sleep=3
+    env_file:
+      - ./api/.env
+    environment:
+      REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 2400
+    working_dir: /var/www/html
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker-exports:
+    build:
+      context: ./api
+    command: php artisan queue:work redis --queue=exports,rendering --tries=1 --timeout=2700 --sleep=3
+    env_file:
+      - ./api/.env
+    environment:
+      REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 3000
+    working_dir: /var/www/html
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker-default:
+    build:
+      context: ./api
+    command: php artisan queue:work redis --queue=default --tries=1 --sleep=3
+    env_file:
+      - ./api/.env
+    environment:
+      REVERB_HOST: reverb
+      REDIS_QUEUE_RETRY_AFTER: 2400
+    working_dir: /var/www/html
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   scheduler:
     build:
       context: ./api
     command: php artisan schedule:work
+    env_file:
+      - ./api/.env
+    environment:
+      REVERB_HOST: reverb
+    working_dir: /var/www/html
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
+  # ── Reverb WebSocket ───────────────────────────────────────────────────────
   reverb:
     build:
       context: ./api
     command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    env_file:
+      - ./api/.env
+    environment:
+      REVERB_HOST: reverb
+    working_dir: /var/www/html
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
 
-  horizon:
-    build:
-      context: ./api
-    command: php artisan horizon
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-framecast}
+      POSTGRES_USER: ${DB_USERNAME:-framecast}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-framecast} -d ${DB_DATABASE:-framecast}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
 
-  web:
-    build:
-      context: ./web
-      target: production
-    ports:
-      - "8081:80"
+  # ── Redis (AOF persistence) ────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  postgres_data:
+  redis_data:
+  certbot_www:
+  certbot_certs:
