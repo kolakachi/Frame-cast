@@ -2273,7 +2273,15 @@ function syncFullPreviewScene() {
   pendingPreviewAudioOffset = Math.max(0, elapsed - match.start);
   if (activeSceneId.value !== match.scene.id) {
     activeSceneId.value = match.scene.id;
+    scrollSceneIntoView(match.scene.id);
   }
+}
+
+function scrollSceneIntoView(sceneId) {
+  nextTick(() => {
+    const el = document.getElementById(`scene-item-${sceneId}`);
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
 }
 
 function playActiveSceneAudio(offsetSeconds = 0) {
@@ -3651,6 +3659,7 @@ onBeforeUnmount(() => {
 
               <template v-for="(scene, index) in scenes" :key="scene.id">
                 <div
+                  :id="`scene-item-${scene.id}`"
                   :class="`scene-item ${
                     activeSceneId === scene.id ? 'active' : ''
                   }`"
@@ -3999,6 +4008,47 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="editor-right">
+            <!-- Project metadata — first section -->
+            <div :class="`panel-section ${panelState.project ? 'collapsed' : ''}`">
+              <div class="panel-section-header" @click="togglePanel('project')">
+                <div class="panel-label panel-label-tight">Project Settings</div>
+                <div class="panel-chevron">▾</div>
+              </div>
+              <div class="panel-section-body">
+                <div class="control-row">
+                  <span class="control-name">Name</span>
+                  <input
+                    v-if="editingTitle"
+                    id="editor-title-input-panel"
+                    v-model="titleDraft"
+                    class="control-value-input"
+                    type="text"
+                    @blur="commitTitle"
+                    @keydown.enter.prevent="commitTitle"
+                    @keydown.esc.prevent="editingTitle = false"
+                  />
+                  <span
+                    v-else
+                    class="control-value control-value-editable"
+                    @click="startEditTitle"
+                  >{{ projectTitle }}</span>
+                </div>
+                <div class="control-row">
+                  <span class="control-name">Aspect Ratio</span>
+                  <select
+                    class="control-value"
+                    :value="project?.aspect_ratio || '9:16'"
+                    :disabled="aspectRatioSaving"
+                    @change="changeAspectRatio($event.target.value)"
+                  >
+                    <option value="9:16">9:16 — Shorts / TikTok</option>
+                    <option value="1:1">1:1 — Square</option>
+                    <option value="16:9">16:9 — YouTube</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div
               :class="`panel-section ${panelState.script ? 'collapsed' : ''}`"
             >
@@ -4919,46 +4969,6 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- Project metadata -->
-            <div :class="`panel-section ${panelState.project ? 'collapsed' : ''}`">
-              <div class="panel-section-header" @click="togglePanel('project')">
-                <div class="panel-label panel-label-tight">Project Settings</div>
-                <div class="panel-chevron">▾</div>
-              </div>
-              <div class="panel-section-body">
-                <div class="control-row">
-                  <span class="control-name">Name</span>
-                  <input
-                    v-if="editingTitle"
-                    id="editor-title-input-panel"
-                    v-model="titleDraft"
-                    class="control-value-input"
-                    type="text"
-                    @blur="commitTitle"
-                    @keydown.enter.prevent="commitTitle"
-                    @keydown.esc.prevent="editingTitle = false"
-                  />
-                  <span
-                    v-else
-                    class="control-value control-value-editable"
-                    @click="startEditTitle"
-                  >{{ projectTitle }}</span>
-                </div>
-                <div class="control-row">
-                  <span class="control-name">Aspect Ratio</span>
-                  <select
-                    class="control-value"
-                    :value="project?.aspect_ratio || '9:16'"
-                    :disabled="aspectRatioSaving"
-                    @change="changeAspectRatio($event.target.value)"
-                  >
-                    <option value="9:16">9:16 — Shorts / TikTok</option>
-                    <option value="1:1">1:1 — Square</option>
-                    <option value="16:9">16:9 — YouTube</option>
-                  </select>
-                </div>
-              </div>
-            </div>
 
           </div>
         </div>
