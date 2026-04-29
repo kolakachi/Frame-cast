@@ -4255,7 +4255,6 @@ onBeforeUnmount(() => {
                   ></textarea>
 
                   <div class="ai-gen-footer">
-                    <div class="ai-gen-meta">Provider: <span>DALL-E 3</span> · ~$0.04</div>
                     <button class="btn btn-primary btn-sm" type="button" :disabled="aiImagePending" @click="generateAIImage">
                       {{ aiImagePending ? '✦ Generating…' : '✦ Generate' }}
                     </button>
