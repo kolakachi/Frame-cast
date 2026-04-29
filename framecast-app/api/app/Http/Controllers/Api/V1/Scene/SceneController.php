@@ -19,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Throwable;
 
 class SceneController extends Controller
@@ -737,12 +738,15 @@ class SceneController extends Controller
         // Prefer request style, then scene-level visual_style, then default.
         $style = $validated['style'] ?? $scene->visual_style ?? 'cinematic';
 
+        $generationToken = (string) Str::uuid();
+
         // Lock the scene immediately so rapid re-clicks and pipeline overlap are rejected.
         $scene->forceFill([
             'image_generation_settings_json' => array_merge($imageSettings, [
                 'in_progress' => true,
                 'last_error'  => null,
                 'needs_visual' => false,
+                'generation_token' => $generationToken,
             ]),
         ])->save();
 
@@ -751,7 +755,8 @@ class SceneController extends Controller
             $scene->project_id,
             $style,
             $validated['prompt_override'] ?? null,
-            $scene->visual_style,
+            $style,
+            $generationToken,
         );
 
         return response()->json([
@@ -843,7 +848,7 @@ class SceneController extends Controller
             'visual_asset_id' => $scene->visual_asset_id,
             'visual_prompt' => $scene->visual_prompt,
             'visual_style' => $scene->visual_style,
-            'image_generation_settings' => $scene->image_generation_settings_json,
+            'image_generation_settings' => $this->normalizeImageGenerationSettings($scene),
             'motion_settings' => $scene->motion_settings_json,
             'transition_rule' => $scene->transition_rule,
             'status' => $scene->status,
@@ -877,6 +882,30 @@ class SceneController extends Controller
             'transcription_status' => $asset->transcription_status,
             'metadata_json' => $asset->metadata_json,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function normalizeImageGenerationSettings(Scene $scene): ?array
+    {
+        $settings = is_array($scene->image_generation_settings_json) ? $scene->image_generation_settings_json : null;
+
+        if (! $settings) {
+            return $settings;
+        }
+
+        if (
+            $scene->visual_type === 'ai_image' &&
+            $scene->visual_asset_id !== null &&
+            (int) ($settings['asset_id'] ?? 0) === (int) $scene->visual_asset_id &&
+            empty($settings['in_progress'])
+        ) {
+            $settings['needs_visual'] = false;
+            $settings['last_error'] = null;
+        }
+
+        return $settings;
     }
 
     private function assetUrl(Asset $asset): ?string

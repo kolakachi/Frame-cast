@@ -944,8 +944,8 @@ class ProjectController extends Controller
             'visual_asset_id' => $scene->visual_asset_id,
             'visual_prompt' => $scene->visual_prompt,
             'visual_style' => $scene->visual_style,
-            'image_generation_settings' => $scene->image_generation_settings_json,
-            'image_generation_settings_json' => $scene->image_generation_settings_json,
+            'image_generation_settings' => $this->normalizeImageGenerationSettings($scene),
+            'image_generation_settings_json' => $this->normalizeImageGenerationSettings($scene),
             'motion_settings' => $scene->motion_settings_json,
             'motion_settings_json' => $scene->motion_settings_json,
             'transition_rule' => $scene->transition_rule,
@@ -980,6 +980,30 @@ class ProjectController extends Controller
             'transcription_status' => $asset->transcription_status,
             'metadata_json' => $asset->metadata_json,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function normalizeImageGenerationSettings(Scene $scene): ?array
+    {
+        $settings = is_array($scene->image_generation_settings_json) ? $scene->image_generation_settings_json : null;
+
+        if (! $settings) {
+            return $settings;
+        }
+
+        if (
+            $scene->visual_type === 'ai_image' &&
+            $scene->visual_asset_id !== null &&
+            (int) ($settings['asset_id'] ?? 0) === (int) $scene->visual_asset_id &&
+            empty($settings['in_progress'])
+        ) {
+            $settings['needs_visual'] = false;
+            $settings['last_error'] = null;
+        }
+
+        return $settings;
     }
 
     private function assetUrl(Asset $asset): ?string

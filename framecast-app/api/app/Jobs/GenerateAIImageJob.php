@@ -29,6 +29,7 @@ class GenerateAIImageJob implements ShouldQueue
         public readonly string $style = 'cinematic',
         public readonly ?string $promptOverride = null,
         public readonly ?string $visualStyle = null,
+        public readonly ?string $generationToken = null,
     ) {
         $this->onQueue('visual');
     }
@@ -60,6 +61,10 @@ class GenerateAIImageJob implements ShouldQueue
                 ],
             ]);
 
+            if (! $this->sceneStillMatchesGeneration($scene)) {
+                return;
+            }
+
             // Download the image and store in B2 so it persists beyond provider URL TTL
             $storagePath = $this->storeImage($result['image_url'], $scene);
 
@@ -84,6 +89,10 @@ class GenerateAIImageJob implements ShouldQueue
                 'created_by_user_id' => $scene->project->created_by_user_id,
             ]);
 
+            if (! $this->sceneStillMatchesGeneration($scene)) {
+                return;
+            }
+
             $scene->forceFill([
                 'visual_type'                    => 'ai_image',
                 'visual_asset_id'                => $asset->getKey(),
@@ -91,11 +100,14 @@ class GenerateAIImageJob implements ShouldQueue
                 'visual_style'                   => $this->style,
                 'image_generation_settings_json' => [
                     'in_progress'    => false,
+                    'needs_visual'   => false,
+                    'last_error'     => null,
                     'style'          => $this->style,
                     'provider_key'   => $result['provider_key'],
                     'revised_prompt' => $result['revised_prompt'],
                     'seed'           => $result['seed'],
                     'asset_id'       => $asset->getKey(),
+                    'generation_token' => $this->generationToken,
                 ],
             ])->save();
 
@@ -124,6 +136,10 @@ class GenerateAIImageJob implements ShouldQueue
                         ],
                     ]);
 
+                    if (! $this->sceneStillMatchesGeneration($scene)) {
+                        return;
+                    }
+
                     $storagePath = $this->storeImage($result['image_url'], $scene);
 
                     $asset = Asset::query()->create([
@@ -144,6 +160,10 @@ class GenerateAIImageJob implements ShouldQueue
                         'created_by_user_id' => $scene->project->created_by_user_id,
                     ]);
 
+                    if (! $this->sceneStillMatchesGeneration($scene)) {
+                        return;
+                    }
+
                     $scene->forceFill([
                         'visual_type'                    => 'ai_image',
                         'visual_asset_id'                => $asset->getKey(),
@@ -151,12 +171,15 @@ class GenerateAIImageJob implements ShouldQueue
                         'visual_style'                   => $this->style,
                         'image_generation_settings_json' => [
                             'in_progress'    => false,
+                            'needs_visual'   => false,
+                            'last_error'     => null,
                             'style'          => $this->style,
                             'provider_key'   => $result['provider_key'],
                             'revised_prompt' => $result['revised_prompt'],
                             'seed'           => $result['seed'],
                             'asset_id'       => $asset->getKey(),
                             'policy_rewritten' => true,
+                            'generation_token' => $this->generationToken,
                         ],
                     ])->save();
 
@@ -181,11 +204,20 @@ class GenerateAIImageJob implements ShouldQueue
                 'error'    => $e->getMessage(),
             ]);
 
+            if (! $this->sceneStillMatchesGeneration($scene)) {
+                return;
+            }
+
             // Flag scene so the editor can surface the failure without blocking the project
             $scene->forceFill([
                 'image_generation_settings_json' => array_merge(
                     $scene->image_generation_settings_json ?? [],
-                    ['in_progress' => false, 'needs_visual' => true, 'last_error' => $e->getMessage()]
+                    [
+                        'in_progress' => false,
+                        'needs_visual' => true,
+                        'last_error' => $e->getMessage(),
+                        'generation_token' => $this->generationToken,
+                    ]
                 ),
             ])->save();
 
@@ -285,5 +317,17 @@ class GenerateAIImageJob implements ShouldQueue
         );
 
         return app(StorageService::class)->put($path, $contents);
+    }
+
+    private function sceneStillMatchesGeneration(Scene $scene): bool
+    {
+        if (! $this->generationToken) {
+            return true;
+        }
+
+        $scene->refresh();
+        $settings = is_array($scene->image_generation_settings_json) ? $scene->image_generation_settings_json : [];
+
+        return (string) ($settings['generation_token'] ?? '') === $this->generationToken;
     }
 }

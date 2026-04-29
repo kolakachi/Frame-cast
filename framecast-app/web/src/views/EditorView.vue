@@ -250,6 +250,11 @@ const activeSceneVisualAsset = computed(() => activeScene.value?.visual_asset ??
 const activeSceneVisualType = computed(
   () => String(activeScene.value?.visual_type || "")
 );
+function sceneHasResolvedAIImage(scene) {
+  if (!scene || String(scene.visual_type || "") !== "ai_image") return false;
+  return Boolean(scene.visual_asset || scene.visual_asset_id);
+}
+
 const activeSceneAIImagePending = computed(() => {
   const scene = activeScene.value;
   if (!scene) return false;
@@ -260,8 +265,19 @@ const activeSceneAIImagePending = computed(() => {
   if (scene.visual_asset) return false;
   return !settings.needs_visual;
 });
+
+// When switching to a scene that has in_progress=true, auto-start the poll
+// so the UI unsticks itself even if Reverb dropped the event
+watch(activeSceneAIImagePending, (pending) => {
+  if (pending && !aiImagePending.value) {
+    aiImagePending.value = true;
+    if (activeScene.value?.id) pollSceneUntilVisual(activeScene.value.id);
+  }
+});
 const activeSceneVisualGenerationError = computed(() => {
-  const settings = activeScene.value?.image_generation_settings;
+  const scene = activeScene.value;
+  const settings = scene?.image_generation_settings;
+  if (sceneHasResolvedAIImage(scene) && !settings?.in_progress) return "";
   if (!settings?.needs_visual) return "";
   return (
     settings.last_error ||
@@ -766,6 +782,8 @@ watch(
       motionIntensityDraft.value = String(motionSettings.intensity || "moderate");
       visualStyleDraft.value = scene?.visual_style ?? scene?.image_generation_settings?.style ?? project.value?.ai_broll_style ?? null;
       visualStyleSaveState.value = "idle";
+      aiImagePending.value = false;
+      aiImageError.value = "";
       visualSwapPending.value = false;
       visualSwapError.value = "";
       voiceSaveState.value = "idle";
@@ -811,6 +829,10 @@ watch(
     if (visualChanged) {
       visualLoadFailed.value = false;
       syncActiveSceneMedia(scene);
+      if (sceneHasResolvedAIImage(scene)) {
+        aiImagePending.value = false;
+        aiImageError.value = "";
+      }
     }
 
     if (audioChanged) {
@@ -1126,10 +1148,29 @@ function normalizeScenePayload(scene) {
     voice_settings: scene.voice_settings ?? scene.voice_settings_json ?? null,
     caption_settings: captionSettings,
     caption_settings_json: captionSettings,
-    image_generation_settings:
-      scene.image_generation_settings ?? scene.image_generation_settings_json ?? null,
+    image_generation_settings: normalizeImageGenerationSettings(scene),
     locked_fields: scene.locked_fields ?? scene.locked_fields_json ?? null,
   };
+}
+
+function normalizeImageGenerationSettings(scene) {
+  const settings = scene?.image_generation_settings ?? scene?.image_generation_settings_json ?? null;
+  if (!settings || typeof settings !== "object") return settings;
+
+  if (
+    String(scene?.visual_type || "") === "ai_image" &&
+    scene?.visual_asset_id &&
+    Number(settings.asset_id || 0) === Number(scene.visual_asset_id) &&
+    !settings.in_progress
+  ) {
+    return {
+      ...settings,
+      needs_visual: false,
+      last_error: null,
+    };
+  }
+
+  return settings;
 }
 
 function normalizeCaptionSettings(settings, fallback = {}) {
