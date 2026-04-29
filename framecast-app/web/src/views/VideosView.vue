@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
@@ -132,6 +132,32 @@ function goToPage(p) {
   syncQuery()
   loadProjects()
   window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// ── Inline rename ─────────────────────────────────────────
+const renamingId = ref(null)
+const renameDraft = ref('')
+
+async function startRename(project, event) {
+  event.stopPropagation()
+  renamingId.value = project.id
+  renameDraft.value = project.title || ''
+  await nextTick()
+  document.getElementById(`rename-${project.id}`)?.select()
+}
+
+async function commitRename(project) {
+  const title = renameDraft.value.trim()
+  renamingId.value = null
+  if (!title || title === project.title) return
+  try {
+    await api.patch(`/projects/${project.id}`, { title })
+    project.title = title
+  } catch { /* revert silently */ }
+}
+
+function cancelRename() {
+  renamingId.value = null
 }
 
 function openProject(project) {
@@ -287,7 +313,23 @@ onMounted(async () => {
               </div>
 
               <div class="project-info">
-                <div class="project-name">{{ project.title || `Project #${project.id}` }}</div>
+                <input
+                  v-if="renamingId === project.id"
+                  :id="`rename-${project.id}`"
+                  v-model="renameDraft"
+                  class="project-name-input"
+                  type="text"
+                  @click.stop
+                  @blur="commitRename(project)"
+                  @keydown.enter.prevent="commitRename(project)"
+                  @keydown.esc.prevent="cancelRename"
+                />
+                <div
+                  v-else
+                  class="project-name"
+                  title="Click to rename"
+                  @click.stop="startRename(project, $event)"
+                >{{ project.title || `Project #${project.id}` }}</div>
 
                 <div class="project-meta">
                   <span v-if="channelName(project.channel_id)" class="channel-badge" @click.stop="openChannel(project.channel_id)">
@@ -403,7 +445,9 @@ onMounted(async () => {
 
 /* Info */
 .project-info { padding: 12px 14px 14px; }
-.project-name { font-size: 13px; font-weight: 700; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 7px; }
+.project-name { font-size: 13px; font-weight: 700; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 7px; cursor: text; }
+.project-name:hover { color: var(--color-accent); }
+.project-name-input { width: 100%; font-size: 13px; font-weight: 700; font-family: inherit; color: var(--color-text-primary); background: var(--color-bg-elevated); border: 1px solid var(--color-accent); border-radius: 4px; padding: 1px 6px; margin-bottom: 7px; outline: none; }
 .project-meta { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--color-text-muted); flex-wrap: wrap; margin-bottom: 8px; }
 .channel-badge { display: inline-block; padding: 1px 8px; background: rgba(255,107,53,0.1); border: 1px solid rgba(255,107,53,0.25); color: var(--color-accent); border-radius: 999px; font-size: 10px; font-weight: 600; cursor: pointer; transition: 0.15s; white-space: nowrap; }
 .channel-badge:hover { background: rgba(255,107,53,0.18); }

@@ -730,6 +730,8 @@ class ProjectController extends Controller
         }
 
         $validated = $request->validate([
+            'title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'aspect_ratio' => ['sometimes', 'nullable', 'string', 'in:9:16,1:1,16:9'],
             'channel_id' => ['sometimes', 'nullable', 'integer'],
             'brand_kit_id' => ['sometimes', 'nullable', 'integer'],
             'music_asset_id' => ['sometimes', 'nullable', 'integer'],

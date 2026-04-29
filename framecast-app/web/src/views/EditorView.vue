@@ -534,6 +534,41 @@ const activeSceneIndex = computed(() =>
 const projectTitle = computed(
   () => project.value?.title || `Project #${projectId.value}`
 );
+const editingTitle = ref(false);
+const titleDraft = ref('');
+const titleSaving = ref(false);
+
+async function startEditTitle() {
+  titleDraft.value = project.value?.title || '';
+  editingTitle.value = true;
+  await nextTick();
+  document.getElementById('editor-title-input')?.select();
+}
+
+async function commitTitle() {
+  editingTitle.value = false;
+  const title = titleDraft.value.trim();
+  if (!title || title === project.value?.title) return;
+  titleSaving.value = true;
+  try {
+    await api.patch(`/projects/${projectId.value}`, { title });
+    if (project.value) project.value.title = title;
+  } catch { /* revert silently */ } finally {
+    titleSaving.value = false;
+  }
+}
+
+const aspectRatioSaving = ref(false);
+async function changeAspectRatio(ratio) {
+  if (!project.value || ratio === project.value.aspect_ratio) return;
+  aspectRatioSaving.value = true;
+  try {
+    await api.patch(`/projects/${projectId.value}`, { aspect_ratio: ratio });
+    if (project.value) project.value.aspect_ratio = ratio;
+  } catch { /* revert silently */ } finally {
+    aspectRatioSaving.value = false;
+  }
+}
 const unreadCount = computed(() =>
   notifications.value.filter((item) => !item.is_read).length
 );
@@ -3432,8 +3467,33 @@ onBeforeUnmount(() => {
           <div class="topbar-left">
             <div class="topbar-title">Editor</div>
             <div class="topbar-breadcrumb">
-              <span>{{ projectTitle }}</span> · Scenes, preview, and brand
-              controls
+              <input
+                v-if="editingTitle"
+                id="editor-title-input"
+                v-model="titleDraft"
+                class="topbar-title-input"
+                type="text"
+                @blur="commitTitle"
+                @keydown.enter.prevent="commitTitle"
+                @keydown.esc.prevent="editingTitle = false"
+              />
+              <span
+                v-else
+                class="topbar-project-name"
+                title="Click to rename"
+                @click="startEditTitle"
+              >{{ projectTitle }}</span>
+              <span class="topbar-sep">·</span>
+              <select
+                class="topbar-ratio-select"
+                :value="project?.aspect_ratio || '9:16'"
+                :disabled="aspectRatioSaving"
+                @change="changeAspectRatio($event.target.value)"
+              >
+                <option value="9:16">9:16</option>
+                <option value="1:1">1:1</option>
+                <option value="16:9">16:9</option>
+              </select>
             </div>
           </div>
 
@@ -5241,11 +5301,45 @@ button {
 .topbar-breadcrumb {
   color: var(--text-muted);
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.topbar-breadcrumb span {
+.topbar-project-name {
   color: var(--text-secondary);
+  cursor: text;
 }
+.topbar-project-name:hover { color: var(--color-accent); }
+
+.topbar-sep { color: var(--text-muted); }
+
+.topbar-title-input {
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  padding: 1px 8px;
+  outline: none;
+  min-width: 160px;
+}
+
+.topbar-ratio-select {
+  font-size: 11px;
+  font-family: "Space Mono", monospace;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  padding: 2px 6px;
+  cursor: pointer;
+  outline: none;
+}
+.topbar-ratio-select:hover { border-color: var(--color-border-active); color: var(--text-secondary); }
 
 .btn {
   display: inline-flex;

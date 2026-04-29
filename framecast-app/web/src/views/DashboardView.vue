@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
@@ -107,6 +107,32 @@ function channelName(channelId) {
 
 function channelNameById(id) {
   return channelName(id)
+}
+
+// ── Inline rename ─────────────────────────────────────────
+const renamingId = ref(null)
+const renameDraft = ref('')
+
+async function startRename(project, event) {
+  event.stopPropagation()
+  renamingId.value = project.id
+  renameDraft.value = project.title || ''
+  await nextTick()
+  document.getElementById(`rename-${project.id}`)?.select()
+}
+
+async function commitRename(project) {
+  const title = renameDraft.value.trim()
+  renamingId.value = null
+  if (!title || title === project.title) return
+  try {
+    await api.patch(`/projects/${project.id}`, { title })
+    project.title = title
+  } catch { /* revert silently */ }
+}
+
+function cancelRename() {
+  renamingId.value = null
 }
 
 function openProject(project) {
@@ -535,7 +561,23 @@ onBeforeUnmount(() => {
                 <span class="aspect-badge">{{ project.aspect_ratio || '9:16' }}</span>
               </div>
               <div class="continue-body">
-                <div class="continue-title">{{ project.title || `Project #${project.id}` }}</div>
+                <input
+                  v-if="renamingId === project.id"
+                  :id="`rename-${project.id}`"
+                  v-model="renameDraft"
+                  class="continue-title-input"
+                  type="text"
+                  @click.stop
+                  @blur="commitRename(project)"
+                  @keydown.enter.prevent="commitRename(project)"
+                  @keydown.esc.prevent="cancelRename"
+                />
+                <div
+                  v-else
+                  class="continue-title"
+                  title="Click to rename"
+                  @click.stop="startRename(project, $event)"
+                >{{ project.title || `Project #${project.id}` }}</div>
                 <div class="continue-meta">
                   <span v-if="channelName(project.channel_id)" class="continue-channel">{{ channelName(project.channel_id) }}</span>
                   <span v-else class="continue-meta-muted">No channel</span>
@@ -864,7 +906,9 @@ onBeforeUnmount(() => {
 .continue-overlay { position: absolute; inset: auto 0 0; height: 50%; background: linear-gradient(180deg, transparent, rgba(0,0,0,0.45)); }
 .continue-badge { position: absolute; bottom: 8px; left: 8px; padding: 2px 7px; border-radius: 4px; font-size: 9px; font-weight: 700; font-family: "Space Mono", monospace; }
 .continue-body { padding: 10px 12px; }
-.continue-title { font-size: 12px; font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.continue-title { font-size: 12px; font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; }
+.continue-title:hover { color: var(--color-accent); }
+.continue-title-input { width: 100%; font-size: 12px; font-weight: 600; font-family: inherit; color: var(--color-text-primary); background: var(--color-bg-elevated); border: 1px solid var(--color-accent); border-radius: 4px; padding: 1px 6px; outline: none; }
 .continue-meta { font-size: 10px; color: var(--color-text-muted); margin-top: 3px; display: flex; gap: 6px; align-items: center; }
 .continue-channel { color: var(--color-accent); font-weight: 500; }
 .continue-meta-muted { color: var(--color-text-muted); }
