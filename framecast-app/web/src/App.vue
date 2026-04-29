@@ -1,10 +1,12 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { useLimitStore } from './stores/limit'
+import { useSidebarStore } from './stores/sidebar'
 import LimitModal from './components/LimitModal.vue'
 
 const router = useRouter()
 const limitStore = useLimitStore()
+const sidebarStore = useSidebarStore()
 
 function handleUpgrade() {
   limitStore.close()
@@ -13,7 +15,7 @@ function handleUpgrade() {
 </script>
 
 <template>
-  <div>
+  <div :class="{ 'sb-collapsed': sidebarStore.collapsed }">
     <RouterView />
 
     <LimitModal
@@ -28,8 +30,10 @@ function handleUpgrade() {
 </template>
 
 <style>
-/* Smooth sidebar collapse — applies to all views */
 .main {
   transition: margin-left 0.2s ease;
+}
+.sb-collapsed .main {
+  margin-left: 56px !important;
 }
 </style>
