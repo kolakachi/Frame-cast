@@ -9,6 +9,9 @@ function applyWidth(collapsed) {
   )
 }
 
+// Apply immediately on module load so there's no flash before the sidebar mounts
+applyWidth(localStorage.getItem(STORAGE_KEY) === 'true')
+
 export const useSidebarStore = defineStore('sidebar', {
   state: () => ({
     collapsed: localStorage.getItem(STORAGE_KEY) === 'true',

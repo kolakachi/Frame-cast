@@ -26,3 +26,10 @@ function handleUpgrade() {
     />
   </div>
 </template>
+
+<style>
+/* Smooth sidebar collapse — applies to all views */
+.main {
+  transition: margin-left 0.2s ease;
+}
+</style>
