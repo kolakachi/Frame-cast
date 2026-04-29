@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useSidebarStore } from '../stores/sidebar'
 
 const props = defineProps({
   user: { type: Object, default: null },
@@ -11,21 +12,8 @@ const props = defineProps({
 
 const emit = defineEmits(['logout'])
 
-const STORAGE_KEY = 'fc_sidebar_collapsed'
-const isCollapsed = ref(localStorage.getItem(STORAGE_KEY) === 'true')
-
-function applySidebarWidth() {
-  document.documentElement.style.setProperty(
-    '--sidebar-width',
-    isCollapsed.value ? '56px' : '220px'
-  )
-}
-
-function toggleSidebar() {
-  isCollapsed.value = !isCollapsed.value
-  localStorage.setItem(STORAGE_KEY, String(isCollapsed.value))
-  applySidebarWidth()
-}
+const sidebarStore = useSidebarStore()
+const isCollapsed = computed(() => sidebarStore.collapsed)
 
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
@@ -73,7 +61,7 @@ function handleOutsideClick(e) {
 }
 
 onMounted(() => {
-  applySidebarWidth()
+  sidebarStore.applyStored()
   document.addEventListener('click', handleOutsideClick)
   const wsId = props.user?.workspace_id
   if (wsId && !workspaceStore.workspace && !workspaceStore.loading) {
@@ -214,7 +202,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="sidebar-bottom">
-      <button class="sidebar-toggle-btn" type="button" :title="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'" @click="toggleSidebar">
+      <button class="sidebar-toggle-btn" type="button" :title="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'" @click="sidebarStore.toggle()">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path v-if="isCollapsed" d="M9 18l6-6-6-6"></path>
           <path v-else d="M15 18l-6-6 6-6"></path>

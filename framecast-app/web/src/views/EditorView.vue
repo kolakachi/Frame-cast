@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import api from "../services/api";
 import { getEcho } from "../services/echo";
 import { useAuthStore } from "../stores/auth";
+import { useSidebarStore } from "../stores/sidebar";
 import AppSidebar from "../components/AppSidebar.vue";
 import EditorTimeline from "../components/EditorTimeline.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
@@ -11,6 +12,7 @@ import MediaPickerModal from "../components/MediaPickerModal.vue";
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const sidebarStore = useSidebarStore();
 
 const projectId = computed(() => route.params.projectId);
 const loading = ref(true);
@@ -164,6 +166,10 @@ const AI_IMAGE_STYLES = [
 const exportPending = ref(false);
 const exportState = ref("idle");
 const timelineOpen = ref(false);
+watch(timelineOpen, (open) => {
+  if (open) sidebarStore.collapse();
+  else sidebarStore.restore();
+});
 const previewMode = ref("scene");
 const stockVideoSubType = ref("stock_clip");
 const playProgress = ref(0);
@@ -3419,7 +3425,7 @@ onBeforeUnmount(() => {
     <section v-else-if="error" class="state-card error">{{ error }}</section>
 
     <div v-else class="editor-shell">
-      <AppSidebar :user="mePayload" active-page="editor" :collapsed="timelineOpen" @logout="logout" />
+      <AppSidebar :user="mePayload" active-page="editor" @logout="logout" />
 
       <div :class="['main', timelineOpen ? 'sidebar-collapsed' : '']">
         <header class="topbar">
