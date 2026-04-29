@@ -449,7 +449,7 @@ onMounted(load)
 
 <style scoped>
 .shell { display: flex; min-height: 100vh; background: var(--color-bg-base); }
-.main { margin-left: 220px; flex: 1; padding: 32px 36px; min-width: 0; }
+.main { margin-left: var(--sidebar-width, 220px); flex: 1; padding: 32px 36px; min-width: 0; }
 
 .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; font-size: 13px; color: var(--color-text-muted); }
 .breadcrumb-link { background: transparent; border: none; color: var(--color-text-muted); font-size: 13px; cursor: pointer; padding: 0; }

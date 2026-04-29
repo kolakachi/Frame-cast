@@ -7,10 +7,25 @@ const props = defineProps({
   user: { type: Object, default: null },
   activePage: { type: String, default: '' },
   channelCount: { type: Number, default: 0 },
-  collapsed: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['logout'])
+
+const STORAGE_KEY = 'fc_sidebar_collapsed'
+const isCollapsed = ref(localStorage.getItem(STORAGE_KEY) === 'true')
+
+function applySidebarWidth() {
+  document.documentElement.style.setProperty(
+    '--sidebar-width',
+    isCollapsed.value ? '56px' : '220px'
+  )
+}
+
+function toggleSidebar() {
+  isCollapsed.value = !isCollapsed.value
+  localStorage.setItem(STORAGE_KEY, String(isCollapsed.value))
+  applySidebarWidth()
+}
 
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
@@ -58,6 +73,7 @@ function handleOutsideClick(e) {
 }
 
 onMounted(() => {
+  applySidebarWidth()
   document.addEventListener('click', handleOutsideClick)
   const wsId = props.user?.workspace_id
   if (wsId && !workspaceStore.workspace && !workspaceStore.loading) {
@@ -71,7 +87,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <nav :class="['sidebar', collapsed ? 'collapsed' : '']">
+  <nav :class="['sidebar', isCollapsed ? 'collapsed' : '']">
     <div class="sidebar-logo">
       <div class="logo-mark">F</div>
       <div class="logo-text">Framecast</div>
@@ -198,6 +214,13 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="sidebar-bottom">
+      <button class="sidebar-toggle-btn" type="button" :title="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'" @click="toggleSidebar">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path v-if="isCollapsed" d="M9 18l6-6-6-6"></path>
+          <path v-else d="M15 18l-6-6 6-6"></path>
+        </svg>
+        <span class="sidebar-toggle-label">Collapse</span>
+      </button>
       <div class="user-row" role="button" tabindex="0" @click.stop="openUserPopover">
         <div class="user-avatar">{{ user?.name?.[0]?.toUpperCase() || 'U' }}</div>
         <div class="user-info">
@@ -266,7 +289,13 @@ onBeforeUnmount(() => {
 .nav-item:disabled { opacity: 0.4; cursor: default; }
 .nav-item:disabled:hover { background: transparent; color: var(--color-text-secondary); }
 
-.sidebar-bottom { border-top: 1px solid var(--color-border); padding: 10px 8px; position: relative; flex-shrink: 0; }
+.sidebar-bottom { border-top: 1px solid var(--color-border); padding: 6px 8px 10px; position: relative; flex-shrink: 0; }
+
+.sidebar-toggle-btn { width: 100%; display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 8px; font-size: 12px; font-weight: 500; color: var(--color-text-muted); background: transparent; border: none; cursor: pointer; transition: 0.15s; margin-bottom: 4px; }
+.sidebar-toggle-btn:hover { background: var(--color-bg-elevated); color: var(--color-text-secondary); }
+.sidebar-toggle-label { flex: 1; text-align: left; }
+.sidebar.collapsed .sidebar-toggle-btn { justify-content: center; padding: 7px; }
+.sidebar.collapsed .sidebar-toggle-label { display: none; }
 .user-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: 0.15s; }
 .user-row:hover { background: var(--color-bg-elevated); }
 .user-avatar { width: 28px; height: 28px; border-radius: 999px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }

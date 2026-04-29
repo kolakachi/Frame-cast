@@ -746,7 +746,7 @@ onMounted(async () => {
 <style scoped>
 /* Layout */
 .shell { display: flex; min-height: 100vh; background: var(--color-bg-base); }
-.main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.main { margin-left: var(--sidebar-width, 220px); flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .topbar { height: 56px; border-bottom: 1px solid var(--color-border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; background: var(--color-bg-base); position: sticky; top: 0; z-index: 80; }
 .bc { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .bc-link { background: transparent; border: none; color: var(--color-text-muted); font-size: 13px; cursor: pointer; padding: 0; }

@@ -513,7 +513,7 @@ onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer) })
 <style scoped>
 /* ── Shell ───────────────────────────────────────────────── */
 .fc-shell { min-height: 100vh; background: var(--color-bg-deep); color: var(--color-text-primary); font-family: "DM Sans", sans-serif; display: flex; }
-.main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+.main { margin-left: var(--sidebar-width, 220px); flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
 
 /* ── Topbar ──────────────────────────────────────────────── */
 .topbar { position: sticky; top: 0; z-index: 90; height: 58px; background: rgba(10,10,15,0.88); border-bottom: 1px solid var(--color-border); backdrop-filter: blur(14px); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }

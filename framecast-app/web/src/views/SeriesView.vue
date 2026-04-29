@@ -98,7 +98,7 @@ onMounted(loadSeries)
 
 <style scoped>
 .shell { display: flex; min-height: 100vh; background: var(--color-bg-base); }
-.main { margin-left: 220px; flex: 1; padding: 32px 36px; min-width: 0; }
+.main { margin-left: var(--sidebar-width, 220px); flex: 1; padding: 32px 36px; min-width: 0; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; }
 .page-title { font-size: 22px; font-weight: 700; color: var(--color-text-primary); margin: 0 0 4px; }
 .page-sub { font-size: 13px; color: var(--color-text-muted); margin: 0; }

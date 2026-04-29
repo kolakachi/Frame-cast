@@ -809,7 +809,7 @@ onBeforeUnmount(() => {
 .fc-shell { min-height: 100vh; background: var(--color-bg-deep); color: var(--color-text-primary); font-family: "DM Sans", sans-serif; display: flex; }
 
 /* ── MAIN ──────────────────────────────────────────────── */
-.main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+.main { margin-left: var(--sidebar-width, 220px); flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
 .topbar { position: sticky; top: 0; z-index: 90; height: 58px; background: rgba(10,10,15,0.88); border-bottom: 1px solid var(--color-border); backdrop-filter: blur(14px); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 .topbar-left { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .bc-ws { color: var(--color-text-muted); }

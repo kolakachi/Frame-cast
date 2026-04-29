@@ -1173,7 +1173,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .variants-shell { min-height: 100vh; background: radial-gradient(circle at top right, rgba(255, 107, 53, 0.09), transparent 28%), radial-gradient(circle at bottom left, rgba(96, 165, 250, 0.08), transparent 24%), var(--color-bg-deep); color: var(--color-text-primary); font-family: "DM Sans", sans-serif; }
-.main { margin-left: 220px; min-height: 100vh; }
+.main { margin-left: var(--sidebar-width, 220px); min-height: 100vh; }
 .topbar { position: sticky; top: 0; z-index: 90; min-height: 64px; background: rgba(17, 17, 24, 0.88); border-bottom: 1px solid var(--color-border); backdrop-filter: blur(14px); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .topbar-title { font-size: 16px; font-weight: 600; }
 .topbar-subtitle { margin-top: 4px; color: var(--color-text-muted); font-size: 13px; }

@@ -609,7 +609,7 @@ onMounted(() => {
   font-family: "DM Sans", sans-serif;
 }
 
-.main { margin-left: 220px; min-height: 100vh; padding: 24px; }
+.main { margin-left: var(--sidebar-width, 220px); min-height: 100vh; padding: 24px; }
 
 .page-state { margin-top: 24px; color: #6a6a7c; font-size: 13px; }
 

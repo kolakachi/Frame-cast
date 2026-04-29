@@ -241,7 +241,7 @@ onMounted(async () => {
 
 <style scoped>
 .app-layout { display: flex; min-height: 100vh; background: var(--color-bg-base); }
-.main-content { flex: 1; margin-left: 220px; padding: 32px 40px; overflow-y: auto; }
+.main-content { flex: 1; margin-left: var(--sidebar-width, 220px); padding: 32px 40px; overflow-y: auto; }
 
 .ws-page { max-width: 820px; }
 

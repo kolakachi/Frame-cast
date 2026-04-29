@@ -5075,7 +5075,7 @@ button {
 }
 
 .main {
-  margin-left: 220px;
+  margin-left: var(--sidebar-width, 220px);
   min-height: 100vh;
   transition: margin-left 0.2s ease;
 }
