@@ -1739,6 +1739,7 @@ async function assignAssetImage(asset) {
     if (updatedScene) {
       replaceSceneInCollection(updatedScene);
       preloadSceneVisual(updatedScene);
+      pushToast({ id: `visual-done-${updatedScene.id}-${Date.now()}`, title: 'Visual updated', message: `Scene ${updatedScene.scene_order ?? ''} visual swapped.` });
     }
   } catch (err) {
     visualSwapError.value = err?.response?.data?.error?.message || "Failed to assign image.";
@@ -1861,6 +1862,7 @@ async function assignAssetVisual(asset, visualType) {
     if (updatedScene) {
       replaceSceneInCollection(updatedScene);
       preloadSceneVisual(updatedScene);
+      pushToast({ id: `visual-done-${updatedScene.id}-${Date.now()}`, title: 'Visual updated', message: `Scene ${updatedScene.scene_order ?? ''} visual swapped.` });
     }
   } catch (err) {
     visualSwapError.value = err?.response?.data?.error?.message || "Failed to assign visual.";
@@ -2589,6 +2591,14 @@ async function acceptRewrite() {
   rewritePreviewVisible.value = false;
 }
 
+async function regenerateVoiceForScene(sceneId) {
+  if (voiceRegeneratePending.value) return
+  // If not already active, select it first so the panel shows the right scene
+  if (activeSceneId.value !== sceneId) selectScene(sceneId)
+  await nextTick()
+  regenerateVoice()
+}
+
 async function regenerateVoice() {
   if (!activeScene.value || voiceRegeneratePending.value) return;
 
@@ -2623,6 +2633,7 @@ async function regenerateVoice() {
     voiceSaveState.value = "saved";
     scriptSaveState.value = "idle";
     preloadSceneAudio(updatedScene);
+    pushToast({ id: `voice-done-${updatedScene.id}-${Date.now()}`, title: 'Voice ready', message: `Scene ${updatedScene.scene_order ?? ''} voice regenerated.` });
   } catch (requestError) {
     voiceRegenerateError.value =
       requestError.response?.data?.error?.message ||
@@ -2892,6 +2903,7 @@ async function pollSceneUntilVisual(sceneId, attempt = 0) {
         if (refreshed.visual_asset) {
           aiImagePending.value = false;
           aiImageError.value = "";
+          pushToast({ id: `ai-image-done-${refreshed.id}-${Date.now()}`, title: 'Image ready', message: `Scene ${refreshed.scene_order ?? ''} AI image generated.` });
           return;
         }
         if (refreshed.image_generation_settings?.needs_visual) {
@@ -3613,6 +3625,16 @@ onBeforeUnmount(() => {
                     </span>
                   </div>
                   <div class="scene-text">{{ scene.script_text }}</div>
+                  <div v-if="sceneVoiceOutdated(scene)" class="scene-regen-row" @click.stop>
+                    <button
+                      class="scene-regen-btn"
+                      type="button"
+                      :disabled="voiceRegeneratePending && activeSceneId === scene.id"
+                      @click="regenerateVoiceForScene(scene.id)"
+                    >
+                      {{ voiceRegeneratePending && activeSceneId === scene.id ? '↺ Regenerating…' : '↺ Regenerate voice' }}
+                    </button>
+                  </div>
                   <div class="scene-meta">
                     <span class="scene-tag">{{ sceneVisualLabel(scene) }}</span>
                     <span v-if="scene.visual_style" class="scene-style-badge">{{ scene.visual_style }}</span>
@@ -5607,6 +5629,31 @@ button {
 
 .state-hidden {
   display: none !important;
+}
+
+.scene-regen-row {
+  margin-top: 6px;
+}
+
+.scene-regen-btn {
+  font-size: 10px;
+  font-family: inherit;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.08);
+  color: #fbbf24;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.scene-regen-btn:hover:not(:disabled) {
+  background: rgba(251, 191, 36, 0.16);
+}
+
+.scene-regen-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .scene-text {
