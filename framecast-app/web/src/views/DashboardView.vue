@@ -867,7 +867,7 @@ onBeforeUnmount(() => {
 .notif-badge { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; border-radius: 999px; background: var(--color-accent); color: #fff; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; padding: 0 4px; font-family: "Space Mono", monospace; }
 
 /* ── DASHBOARD ─────────────────────────────────────────── */
-.dashboard { padding: 28px; display: flex; flex-direction: column; gap: 32px; width: 100%; flex: 1; }
+.dashboard { padding: 28px; display: flex; flex-direction: column; gap: 32px; width: 100%; flex: 1; margin: 0 auto; }
 .dash-section { display: flex; flex-direction: column; gap: 14px; }
 .section-hd { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .section-hd-left { display: flex; flex-direction: column; gap: 2px; }

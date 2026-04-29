@@ -32,6 +32,7 @@ function handleUpgrade() {
 <style>
 .main {
   transition: margin-left 0.2s ease;
+  overflow-x: hidden;
 }
 .sb-collapsed .main {
   margin-left: 56px !important;
