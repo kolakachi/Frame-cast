@@ -43,6 +43,7 @@ class DalleImageAdapter implements ImageGenerationAdapter
         'watercolor' => 'soft watercolor illustration, paper texture, delicate color washes,',
         'paper_cutout' => 'paper cutout collage style, layered paper texture, graphic shapes,',
         'cartoon' => 'modern cartoon illustration, clean shapes, expressive character style,',
+        '3d_animated' => '3D animated film style, Pixar-quality rendering, volumetric lighting, subsurface scattering, soft rim light, cinematic depth of field, detailed facial features,',
     ];
 
     public function __construct(
@@ -62,8 +63,15 @@ class DalleImageAdapter implements ImageGenerationAdapter
         $stylePrefix = self::STYLE_PROMPT_MAP[$style] ?? '';
         $composition = self::ASPECT_RATIO_COMPOSITION[$aspectRatio] ?? self::ASPECT_RATIO_COMPOSITION['9:16'];
         $fullPrompt = trim("{$stylePrefix} {$prompt}. {$composition} No text, no writing, no letters, no words, no watermarks, no captions, no signs with readable text.");
-        $model = 'dall-e-3';
-        $quality = (string) ($options['quality'] ?? 'standard');
+        $model = config('services.openai.image_model', 'gpt-image-1');
+        // gpt-image-1 uses low/medium/high; dall-e-3 used standard/hd
+        $rawQuality = (string) ($options['quality'] ?? 'medium');
+        $quality = match ($rawQuality) {
+            'hd', 'high'        => 'high',
+            'standard', 'medium' => 'medium',
+            'low'               => 'low',
+            default             => 'medium',
+        };
         $usageContext = $this->usage->contextFromOptions($options);
 
         if (empty($apiKey)) {
@@ -87,6 +95,13 @@ class DalleImageAdapter implements ImageGenerationAdapter
             $image = $response['data'][0];
             [$width, $height] = explode('x', $size);
 
+            // gpt-image-1 may return b64_json instead of url — normalise to a data URI so
+            // downstream storeImage() can still Http::get() it or we decode directly.
+            $imageUrl = $image['url'] ?? null;
+            if ($imageUrl === null && isset($image['b64_json'])) {
+                $imageUrl = 'data:image/png;base64,' . $image['b64_json'];
+            }
+
             $this->usage->record([
                 ...$usageContext,
                 'provider' => 'openai',
@@ -106,7 +121,7 @@ class DalleImageAdapter implements ImageGenerationAdapter
 
             return [
                 'provider_key'    => 'dalle',
-                'image_url'       => $image['url'],
+                'image_url'       => $imageUrl,
                 'width'           => (int) $width,
                 'height'          => (int) $height,
                 'seed'            => null,

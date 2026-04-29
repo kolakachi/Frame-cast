@@ -270,7 +270,14 @@ class GenerateAIImageJob implements ShouldQueue
 
     private function storeImage(string $url, Scene $scene): string
     {
-        $contents = Http::timeout(30)->get($url)->body();
+        // Handle base64 data URIs returned by gpt-image-1 when url format is unavailable
+        if (str_starts_with($url, 'data:')) {
+            $base64 = preg_replace('/^data:[^;]+;base64,/', '', $url);
+            $contents = base64_decode($base64, true) ?: '';
+        } else {
+            $contents = Http::timeout(30)->get($url)->body();
+        }
+
         $path = sprintf(
             'workspaces/%s/assets/ai-images/%s.png',
             $scene->project->workspace_id,

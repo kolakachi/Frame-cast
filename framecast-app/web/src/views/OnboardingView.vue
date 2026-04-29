@@ -30,6 +30,12 @@ const sourceContent = ref('')
 const aspectRatio       = ref('9:16')
 const selectedVoiceKey  = ref('')
 const selectedStyle     = ref('cinematic')
+const visualType        = ref('stock_video') // 'stock_video' | 'ai_images'
+
+const visualTypes = [
+  { key: 'stock_video', label: 'Stock Video',  hint: 'Real footage matched to your script' },
+  { key: 'ai_images',   label: 'AI Images',    hint: 'AI-generated images in your chosen style' },
+]
 
 const sourceTypes = [
   { key: 'prompt',              label: 'Topic / Idea',          hint: "Describe a topic and we'll write the script" },
@@ -74,6 +80,7 @@ function saveState() {
       aspectRatio: aspectRatio.value,
       selectedVoiceKey: selectedVoiceKey.value,
       selectedStyle: selectedStyle.value,
+      visualType: visualType.value,
     }))
   } catch { /* ignore */ }
 }
@@ -90,6 +97,7 @@ function restoreState() {
     aspectRatio.value     = s.aspectRatio ?? '9:16'
     selectedVoiceKey.value = s.selectedVoiceKey ?? ''
     selectedStyle.value   = s.selectedStyle ?? 'cinematic'
+    visualType.value      = s.visualType ?? 'stock_video'
   } catch { /* ignore */ }
 }
 
@@ -140,6 +148,8 @@ async function launch() {
       aspect_ratio: aspectRatio.value,
       voice_settings_json: selectedVoiceKey.value ? { voice_id: selectedVoiceKey.value } : null,
       visual_style: selectedStyle.value,
+      visual_generation_mode: visualType.value === 'ai_images' ? 'ai_images' : 'stock',
+      ai_broll_style: visualType.value === 'ai_images' ? selectedStyle.value : null,
     }
 
     const { data } = await api.post('/projects', payload)
@@ -255,6 +265,22 @@ onMounted(async () => {
       <!-- ── Step 3: Style ── -->
       <template v-else-if="step === 3">
         <div class="ob-field">
+          <div class="ob-label">Visual Type</div>
+          <div class="ob-source-grid">
+            <button
+              v-for="vt in visualTypes"
+              :key="vt.key"
+              :class="['ob-source-card', visualType === vt.key ? 'selected' : '']"
+              type="button"
+              @click="visualType = vt.key"
+            >
+              <div class="ob-source-label">{{ vt.label }}</div>
+              <div class="ob-source-hint">{{ vt.hint }}</div>
+            </button>
+          </div>
+        </div>
+
+        <div class="ob-field">
           <div class="ob-label">Aspect Ratio</div>
           <div class="ob-ratio-grid">
             <button
@@ -279,8 +305,8 @@ onMounted(async () => {
           </select>
         </div>
 
-        <div class="ob-field">
-          <div class="ob-label">Visual Style</div>
+        <div v-if="visualType === 'ai_images'" class="ob-field">
+          <div class="ob-label">AI Image Style</div>
           <div class="ob-style-grid">
             <button
               v-for="s in styles"

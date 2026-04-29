@@ -39,7 +39,7 @@ class SceneController extends Controller
             'duration_seconds' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:600'],
             'visual_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'visual_prompt' => ['sometimes', 'nullable', 'string'],
-            'visual_style' => ['sometimes', 'nullable', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon,photorealistic,cyberpunk_80s,anime_80s,anime_90s,dark_fantasy,fantasy_retro,comic,film_noir,line_drawing,watercolor,paper_cutout,cartoon'],
+            'visual_style' => ['sometimes', 'nullable', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon,photorealistic,cyberpunk_80s,anime_80s,anime_90s,dark_fantasy,fantasy_retro,comic,film_noir,line_drawing,watercolor,paper_cutout,cartoon,3d_animated'],
         ]);
 
         $project = Project::query()
@@ -730,7 +730,7 @@ class SceneController extends Controller
         }
 
         $validated = $request->validate([
-            'style'           => ['sometimes', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon,photorealistic,cyberpunk_80s,anime_80s,anime_90s,dark_fantasy,fantasy_retro,comic,film_noir,line_drawing,watercolor,paper_cutout,cartoon'],
+            'style'           => ['sometimes', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon,photorealistic,cyberpunk_80s,anime_80s,anime_90s,dark_fantasy,fantasy_retro,comic,film_noir,line_drawing,watercolor,paper_cutout,cartoon,3d_animated'],
             'prompt_override' => ['sometimes', 'nullable', 'string', 'max:500'],
         ]);
 

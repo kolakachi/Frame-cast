@@ -162,6 +162,7 @@ const AI_IMAGE_STYLES = [
   { key: "watercolor",    label: "Watercolor",     icon: "🎨" },
   { key: "paper_cutout",  label: "Paper Cutout",   icon: "✂️" },
   { key: "cartoon",       label: "Cartoon",        icon: "🎭" },
+  { key: "3d_animated",  label: "3D Animated",    icon: "🎬" },
 ];
 const exportPending = ref(false);
 const exportState = ref("idle");
