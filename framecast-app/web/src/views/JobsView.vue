@@ -525,7 +525,7 @@ onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer) })
 .topbar-hint { font-family: "Space Mono", monospace; font-size: 11px; color: var(--color-text-muted); letter-spacing: 0.02em; }
 
 /* ── Page layout ─────────────────────────────────────────── */
-.jobs-page { padding: 28px; display: flex; flex-direction: column; gap: 16px; max-width: 1280px; width: 100%; }
+.jobs-page { padding: 28px; display: flex; flex-direction: column; gap: 16px; width: 100%; }
 
 /* ── Buttons ─────────────────────────────────────────────── */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 6px; cursor: pointer; transition: 0.15s ease; font-size: 13px; font-weight: 500; border: 1px solid transparent; font-family: "DM Sans", sans-serif; }

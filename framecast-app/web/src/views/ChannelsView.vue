@@ -454,7 +454,7 @@ onMounted(loadData)
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 
 /* Content */
-.content { padding: 28px; max-width: 1280px; width: 100%; display: flex; flex-direction: column; gap: 28px; }
+.content { padding: 28px; width: 100%; display: flex; flex-direction: column; gap: 28px; }
 .dash-section { display: flex; flex-direction: column; gap: 14px; }
 
 /* Stats */
