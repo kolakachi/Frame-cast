@@ -5501,7 +5501,7 @@ button {
 .toast-container {
   position: fixed;
   right: 20px;
-  bottom: 20px;
+  top: 20px;
   display: grid;
   gap: 12px;
   z-index: 220;
