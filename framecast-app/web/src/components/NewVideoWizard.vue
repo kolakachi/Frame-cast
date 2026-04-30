@@ -81,18 +81,27 @@ const durationOptions = [
 ]
 
 const aiBrollStyleOptions = [
+  { key: 'cinematic',      label: 'Cinematic',      hint: 'Dramatic film-style shots',    tone: 'rgba(251,191,36,0.22)' },
   { key: 'photorealistic', label: 'Photorealistic', hint: 'Cinematic real-world stills',  tone: 'rgba(167,139,250,0.24)' },
   { key: 'realistic',      label: 'Realistic',      hint: 'Natural people and places',    tone: 'rgba(96,165,250,0.2)' },
+  { key: '3d_animated',    label: '3D Animated',    hint: 'Pixar-quality 3D renders',     tone: 'rgba(34,211,238,0.22)' },
   { key: 'cyberpunk_80s',  label: '80s Cyberpunk',  hint: 'Neon retro future',            tone: 'rgba(236,72,153,0.22)' },
   { key: 'anime_80s',      label: '80s Anime',      hint: 'Vintage cel animation',        tone: 'rgba(52,211,153,0.18)' },
   { key: 'anime_90s',      label: '90s Anime',      hint: 'Painted anime worlds',         tone: 'rgba(251,191,36,0.2)' },
+  { key: 'anime',          label: 'Anime',          hint: 'Vibrant cel-shaded art',       tone: 'rgba(244,114,182,0.22)' },
   { key: 'dark_fantasy',   label: 'Dark Fantasy',   hint: 'Gothic and ethereal',          tone: 'rgba(148,163,184,0.24)' },
   { key: 'fantasy_retro',  label: 'Fantasy Retro',  hint: 'Painterly storybook magic',    tone: 'rgba(129,140,248,0.2)' },
   { key: 'comic',          label: 'Comic',          hint: 'Bold ink and action',          tone: 'rgba(248,113,113,0.22)' },
   { key: 'film_noir',      label: 'Film Noir',      hint: 'Black and white shadows',      tone: 'rgba(255,255,255,0.16)' },
+  { key: 'dark',           label: 'Dark',           hint: 'Moody high-contrast noir',     tone: 'rgba(30,30,50,0.8)' },
   { key: 'line_drawing',   label: 'Line Drawing',   hint: 'Clean monochrome sketch',      tone: 'rgba(255,255,255,0.26)' },
   { key: 'watercolor',     label: 'Watercolor',     hint: 'Soft illustrated washes',      tone: 'rgba(45,212,191,0.2)' },
+  { key: 'paper_cutout',   label: 'Paper Cutout',   hint: 'Layered paper collage',        tone: 'rgba(251,146,60,0.18)' },
   { key: 'cartoon',        label: 'Cartoon',        hint: 'Simple expressive art',        tone: 'rgba(251,146,60,0.22)' },
+  { key: 'documentary',    label: 'Documentary',    hint: 'Natural light realism',        tone: 'rgba(74,222,128,0.18)' },
+  { key: 'minimalist',     label: 'Minimalist',     hint: 'Clean muted composition',      tone: 'rgba(148,163,184,0.18)' },
+  { key: 'vintage',        label: 'Vintage',        hint: 'Retro film grain aesthetic',   tone: 'rgba(217,119,6,0.22)' },
+  { key: 'neon',           label: 'Neon',           hint: 'Glowing cyberpunk night',      tone: 'rgba(139,92,246,0.26)' },
 ]
 
 watch(channelId, (next, prev) => {

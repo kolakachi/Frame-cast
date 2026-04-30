@@ -2992,17 +2992,28 @@ async function pollSceneUntilVisual(sceneId, attempt = 0) {
 
       if (refreshed) {
         replaceSceneInCollection(refreshed);
+        const settings = refreshed.image_generation_settings ?? {};
+
+        // Job still running — keep polling
+        if (settings.in_progress) {
+          pollSceneUntilVisual(sceneId, attempt + 1);
+          return;
+        }
+
+        // Job failed
+        if (settings.needs_visual) {
+          aiImagePending.value = false;
+          aiImageError.value =
+            settings.last_error ||
+            "Image generation failed. Please revise the prompt and try again.";
+          return;
+        }
+
+        // Job succeeded — visual_asset is now the newly generated image
         if (refreshed.visual_asset) {
           aiImagePending.value = false;
           aiImageError.value = "";
           pushToast({ id: `ai-image-done-${refreshed.id}-${Date.now()}`, title: 'Image ready', message: `Scene ${refreshed.scene_order ?? ''} AI image generated.` });
-          return;
-        }
-        if (refreshed.image_generation_settings?.needs_visual) {
-          aiImagePending.value = false;
-          aiImageError.value =
-            refreshed.image_generation_settings?.last_error ||
-            "Image generation failed. Please revise the prompt and try again.";
           return;
         }
       }

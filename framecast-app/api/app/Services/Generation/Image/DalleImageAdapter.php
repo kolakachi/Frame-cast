@@ -11,8 +11,8 @@ use RuntimeException;
 class DalleImageAdapter implements ImageGenerationAdapter
 {
     private const ASPECT_RATIO_MAP = [
-        '9:16' => '1024x1792',
-        '16:9' => '1792x1024',
+        '9:16' => '1024x1536',
+        '16:9' => '1536x1024',
         '1:1'  => '1024x1024',
     ];
 
@@ -82,12 +82,11 @@ class DalleImageAdapter implements ImageGenerationAdapter
             $response = Http::withToken($apiKey)
                 ->timeout(60)
                 ->post('https://api.openai.com/v1/images/generations', [
-                    'model'           => $model,
-                    'prompt'          => $fullPrompt,
-                    'n'               => 1,
-                    'size'            => $size,
-                    'quality'         => $quality,
-                    'response_format' => 'url',
+                    'model'   => $model,
+                    'prompt'  => $fullPrompt,
+                    'n'       => 1,
+                    'size'    => $size,
+                    'quality' => $quality,
                 ])
                 ->throw()
                 ->json();
