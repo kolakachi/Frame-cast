@@ -49,8 +49,7 @@ const imageContext = ref('')
 const sourceImageAssetIds = ref([])
 const imageVisualMode = ref('upload')
 const aiBrollStyle = ref('photorealistic')
-// 'stock_video' | 'stock_images' | 'ai_images' | 'waveform'
-const globalVisualMode = ref('stock_video')
+const globalVisualMode = ref('stock') // 'stock' | 'ai' — for all non-images source types
 const brandKits = ref([])
 
 const selectedNiche = computed(() => niches.value.find((n) => n.id === selectedNicheId.value) ?? null)
@@ -82,35 +81,28 @@ const durationOptions = [
   { label: '3 min', value: '180' },
 ]
 
-const visualTypeOptions = [
-  { key: 'stock_video',  icon: '🎬', label: 'Stock Video',  hint: 'Real video clips per scene' },
-  { key: 'stock_images', icon: '🖼️', label: 'Stock Images', hint: 'Stock photos per scene' },
-  { key: 'ai_images',   icon: '✦',  label: 'AI Images',    hint: 'AI-generated art per scene' },
-  { key: 'waveform',    icon: '🌊', label: 'Audio Wave',   hint: 'Animated waveform visual' },
-]
-
 const aiBrollStyleOptions = [
-  { key: 'cinematic',      label: 'Cinematic',      hint: 'Dramatic film-style shots'    },
-  { key: 'photorealistic', label: 'Photorealistic', hint: 'Cinematic real-world stills'  },
-  { key: 'realistic',      label: 'Realistic',      hint: 'Natural people and places'    },
-  { key: '3d_animated',    label: '3D Animated',    hint: 'Pixar-quality 3D renders'     },
-  { key: 'cyberpunk_80s',  label: '80s Cyberpunk',  hint: 'Neon retro future'            },
-  { key: 'anime_80s',      label: '80s Anime',      hint: 'Vintage cel animation'        },
-  { key: 'anime_90s',      label: '90s Anime',      hint: 'Painted anime worlds'         },
-  { key: 'anime',          label: 'Anime',          hint: 'Vibrant cel-shaded art'       },
-  { key: 'dark_fantasy',   label: 'Dark Fantasy',   hint: 'Gothic and ethereal'          },
-  { key: 'fantasy_retro',  label: 'Fantasy Retro',  hint: 'Painterly storybook magic'    },
-  { key: 'comic',          label: 'Comic',          hint: 'Bold ink and action'          },
-  { key: 'film_noir',      label: 'Film Noir',      hint: 'Black and white shadows'      },
-  { key: 'dark',           label: 'Dark',           hint: 'Moody high-contrast noir'     },
-  { key: 'line_drawing',   label: 'Line Drawing',   hint: 'Clean monochrome sketch'      },
-  { key: 'watercolor',     label: 'Watercolor',     hint: 'Soft illustrated washes'      },
-  { key: 'paper_cutout',   label: 'Paper Cutout',   hint: 'Layered paper collage'        },
-  { key: 'cartoon',        label: 'Cartoon',        hint: 'Simple expressive art'        },
-  { key: 'documentary',    label: 'Documentary',    hint: 'Natural light realism'        },
-  { key: 'minimalist',     label: 'Minimalist',     hint: 'Clean muted composition'      },
-  { key: 'vintage',        label: 'Vintage',        hint: 'Retro film grain aesthetic'   },
-  { key: 'neon',           label: 'Neon',           hint: 'Glowing cyberpunk night'      },
+  { key: 'cinematic',      label: 'Cinematic',      hint: 'Dramatic film-style shots',    tone: 'rgba(251,191,36,0.22)' },
+  { key: 'photorealistic', label: 'Photorealistic', hint: 'Cinematic real-world stills',  tone: 'rgba(167,139,250,0.24)' },
+  { key: 'realistic',      label: 'Realistic',      hint: 'Natural people and places',    tone: 'rgba(96,165,250,0.2)' },
+  { key: '3d_animated',    label: '3D Animated',    hint: 'Pixar-quality 3D renders',     tone: 'rgba(34,211,238,0.22)' },
+  { key: 'cyberpunk_80s',  label: '80s Cyberpunk',  hint: 'Neon retro future',            tone: 'rgba(236,72,153,0.22)' },
+  { key: 'anime_80s',      label: '80s Anime',      hint: 'Vintage cel animation',        tone: 'rgba(52,211,153,0.18)' },
+  { key: 'anime_90s',      label: '90s Anime',      hint: 'Painted anime worlds',         tone: 'rgba(251,191,36,0.2)' },
+  { key: 'anime',          label: 'Anime',          hint: 'Vibrant cel-shaded art',       tone: 'rgba(244,114,182,0.22)' },
+  { key: 'dark_fantasy',   label: 'Dark Fantasy',   hint: 'Gothic and ethereal',          tone: 'rgba(148,163,184,0.24)' },
+  { key: 'fantasy_retro',  label: 'Fantasy Retro',  hint: 'Painterly storybook magic',    tone: 'rgba(129,140,248,0.2)' },
+  { key: 'comic',          label: 'Comic',          hint: 'Bold ink and action',          tone: 'rgba(248,113,113,0.22)' },
+  { key: 'film_noir',      label: 'Film Noir',      hint: 'Black and white shadows',      tone: 'rgba(255,255,255,0.16)' },
+  { key: 'dark',           label: 'Dark',           hint: 'Moody high-contrast noir',     tone: 'rgba(30,30,50,0.8)' },
+  { key: 'line_drawing',   label: 'Line Drawing',   hint: 'Clean monochrome sketch',      tone: 'rgba(255,255,255,0.26)' },
+  { key: 'watercolor',     label: 'Watercolor',     hint: 'Soft illustrated washes',      tone: 'rgba(45,212,191,0.2)' },
+  { key: 'paper_cutout',   label: 'Paper Cutout',   hint: 'Layered paper collage',        tone: 'rgba(251,146,60,0.18)' },
+  { key: 'cartoon',        label: 'Cartoon',        hint: 'Simple expressive art',        tone: 'rgba(251,146,60,0.22)' },
+  { key: 'documentary',    label: 'Documentary',    hint: 'Natural light realism',        tone: 'rgba(74,222,128,0.18)' },
+  { key: 'minimalist',     label: 'Minimalist',     hint: 'Clean muted composition',      tone: 'rgba(148,163,184,0.18)' },
+  { key: 'vintage',        label: 'Vintage',        hint: 'Retro film grain aesthetic',   tone: 'rgba(217,119,6,0.22)' },
+  { key: 'neon',           label: 'Neon',           hint: 'Glowing cyberpunk night',      tone: 'rgba(139,92,246,0.26)' },
 ]
 
 watch(channelId, (next, prev) => {
@@ -147,7 +139,7 @@ function selectCustomNiche() {
 
 function setWizardSourceType(sourceType) {
   wizardSourceType.value = sourceType
-  globalVisualMode.value = 'stock_video'
+  globalVisualMode.value = 'stock'
   if (sourceType !== 'images') {
     sourceImageAssetIds.value = []
     imageFiles.value = []
@@ -282,7 +274,7 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   sourceImageAssetIds.value = []
   imageVisualMode.value = 'upload'
   aiBrollStyle.value = 'photorealistic'
-  globalVisualMode.value = 'stock_video'
+  globalVisualMode.value = 'stock'
   channelId.value = presetChannelId ? String(presetChannelId) : ''
   title.value = ''
   promptText.value = ''
@@ -343,9 +335,7 @@ async function submitWizardProject() {
       ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
       ...(sourceType === 'images' && imageVisualMode.value === 'upload' ? { source_image_asset_ids: sourceImageAssetIds.value } : {}),
       ...(sourceType === 'images' && imageVisualMode.value === 'ai' ? { visual_generation_mode: 'ai_images', ai_broll_style: aiBrollStyle.value } : {}),
-      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'ai_images' ? { visual_generation_mode: 'ai_images', ai_broll_style: aiBrollStyle.value } : {}),
-      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'stock_images' ? { visual_generation_mode: 'stock_images' } : {}),
-      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'waveform' ? { visual_generation_mode: 'waveform' } : {}),
+      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'ai' ? { visual_generation_mode: 'ai_images', ai_broll_style: aiBrollStyle.value } : {}),
     })
 
     const projectId = res.data?.data?.project?.id
@@ -595,10 +585,11 @@ defineExpose({ open })
                 v-for="style in aiBrollStyleOptions"
                 :key="style.key"
                 :class="['ai-broll-card', aiBrollStyle === style.key ? 'selected' : '']"
+                :style="{ '--style-tone': style.tone }"
                 type="button"
                 @click="aiBrollStyle = style.key"
               >
-                <span :class="['ai-style-art', `art-${style.key}`]"></span>
+                <span class="ai-broll-art"></span>
                 <span class="ai-broll-label">{{ style.label }}</span>
                 <span class="ai-broll-hint">{{ style.hint }}</span>
               </button>
@@ -640,31 +631,25 @@ defineExpose({ open })
         <!-- Visual type picker — shown for all text/media source types except images (which has its own) -->
         <div v-if="wizardSourceType && wizardSourceType !== 'images' && wizardSourceType !== 'blank'" class="input-group mt">
           <div class="input-label" style="margin-bottom:8px;">Visuals</div>
-          <div class="visual-type-cards">
-            <button
-              v-for="vt in visualTypeOptions"
-              :key="vt.key"
-              :class="['visual-type-card', globalVisualMode === vt.key ? 'selected' : '']"
-              type="button"
-              @click="globalVisualMode = vt.key"
-            >
-              <span class="vtc-art" :data-vt="vt.key"></span>
-              <span class="vtc-icon">{{ vt.icon }}</span>
-              <span class="vtc-label">{{ vt.label }}</span>
-              <span class="vtc-hint">{{ vt.hint }}</span>
-            </button>
+          <div class="image-mode-toggle">
+            <button :class="['image-mode-btn', globalVisualMode === 'stock' ? 'active' : '']" type="button" @click="globalVisualMode = 'stock'">Stock video clips</button>
+            <button :class="['image-mode-btn', globalVisualMode === 'ai' ? 'active' : '']" type="button" @click="globalVisualMode = 'ai'">✦ AI generated images</button>
           </div>
-          <template v-if="globalVisualMode === 'ai_images'">
-            <div class="input-label" style="margin:14px 0 8px;">Select AI style</div>
-            <div class="ai-broll-grid">
+          <template v-if="globalVisualMode === 'ai'">
+            <div class="image-ai-hint" style="margin-top:10px;">
+              <span>✦</span>
+              <span>AI generates a custom image for every scene. Pick the visual style below.</span>
+            </div>
+            <div class="ai-broll-grid" style="margin-top:10px;">
               <button
                 v-for="style in aiBrollStyleOptions"
                 :key="style.key"
                 :class="['ai-broll-card', aiBrollStyle === style.key ? 'selected' : '']"
+                :style="{ '--style-tone': style.tone }"
                 type="button"
                 @click="aiBrollStyle = style.key"
               >
-                <span :class="['ai-style-art', `art-${style.key}`]"></span>
+                <span class="ai-broll-art"></span>
                 <span class="ai-broll-label">{{ style.label }}</span>
                 <span class="ai-broll-hint">{{ style.hint }}</span>
               </button>
@@ -837,44 +822,6 @@ defineExpose({ open })
 .ai-broll-art { display: block; height: 58px; background: radial-gradient(circle at 30% 20%, var(--style-tone), transparent 34%), linear-gradient(135deg, var(--style-tone), rgba(255,255,255,0.05)); border-bottom: 1px solid var(--color-border); }
 .ai-broll-label { display: block; padding: 8px 8px 2px; color: var(--color-text-primary); font-size: 12px; font-weight: 700; }
 .ai-broll-hint { display: block; padding: 0 8px 8px; color: var(--color-text-muted); font-size: 10px; line-height: 1.3; }
-
-/* Visual type cards */
-.visual-type-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
-.visual-type-card { border-radius: 10px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; padding: 0; overflow: hidden; transition: 0.15s; display: flex; flex-direction: column; }
-.visual-type-card:hover { border-color: rgba(255,107,53,0.4); transform: translateY(-1px); }
-.visual-type-card.selected { border-color: var(--color-accent); box-shadow: 0 0 0 1px rgba(255,107,53,0.25); }
-.vtc-art { display: block; height: 52px; }
-.vtc-art[data-vt="stock_video"] { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 70%, #533483 100%); }
-.vtc-art[data-vt="stock_images"] { background: linear-gradient(135deg, #1e3a2f 0%, #2d6a4f 50%, #52b788 100%); }
-.vtc-art[data-vt="ai_images"] { background: linear-gradient(135deg, #2d1b69 0%, #7c3aed 50%, #f59e0b 100%); }
-.vtc-art[data-vt="waveform"] { background: linear-gradient(135deg, #0c1445 0%, #1e3a5f 40%, #0891b2 80%, #22d3ee 100%); }
-.vtc-icon { display: block; padding: 8px 8px 1px; font-size: 14px; }
-.vtc-label { display: block; padding: 0 8px 2px; font-size: 12px; font-weight: 700; color: var(--color-text-primary); }
-.vtc-hint { display: block; padding: 0 8px 10px; font-size: 10px; color: var(--color-text-muted); line-height: 1.3; }
-
-/* Per-style CSS art previews */
-.ai-style-art { display: block; height: 58px; border-bottom: 1px solid var(--color-border); }
-.art-cinematic      { background: linear-gradient(180deg, #0a0a0a 0%, #1a1208 40%, #3d2b00 70%, #6b4a00 100%); box-shadow: inset 0 0 20px rgba(255,180,0,0.15); }
-.art-photorealistic { background: linear-gradient(160deg, #1a2a3a 0%, #2c4a6e 40%, #3d6b9e 70%, #5a8fc0 100%); }
-.art-realistic      { background: linear-gradient(180deg, #87ceeb 0%, #b8d4e8 35%, #6b8e6b 60%, #4a7c4a 100%); }
-.art-3d_animated    { background: linear-gradient(135deg, #0d9488 0%, #06b6d4 35%, #818cf8 65%, #c084fc 100%); }
-.art-cyberpunk_80s  { background: linear-gradient(135deg, #0f0020 0%, #2d0057 35%, #7c00b4 60%, #ff00ff 85%, #00ffff 100%); }
-.art-anime_80s      { background: linear-gradient(160deg, #fce4ec 0%, #f8bbd0 30%, #b2dfdb 60%, #e0f2f1 100%); }
-.art-anime_90s      { background: linear-gradient(160deg, #ff8f00 0%, #ffa726 30%, #ffcc02 55%, #ff7043 80%, #d32f2f 100%); }
-.art-anime          { background: linear-gradient(135deg, #ff6ec7 0%, #bf5af2 40%, #5e5ce6 70%, #30d0fb 100%); }
-.art-dark_fantasy   { background: linear-gradient(180deg, #0d0015 0%, #1a003a 40%, #2d0057 65%, #6600cc 90%, rgba(180,100,255,0.3) 100%); }
-.art-fantasy_retro  { background: linear-gradient(135deg, #2d1b00 0%, #7c4500 30%, #c47a2b 55%, #8b4cc8 80%, #4a1080 100%); }
-.art-comic          { background: linear-gradient(135deg, #fff200 0%, #ff6b00 25%, #e8001a 50%, #1a1aff 75%, #000 100%); }
-.art-film_noir      { background: linear-gradient(160deg, #000 0%, #1a1a1a 30%, #555 55%, #888 75%, #ccc 100%); }
-.art-dark           { background: radial-gradient(circle at 30% 40%, #2a1a00 0%, #1a0a00 40%, #080808 100%); }
-.art-line_drawing   { background: #f8f8f0; background-image: repeating-linear-gradient(0deg, transparent, transparent 9px, rgba(0,0,0,0.06) 9px, rgba(0,0,0,0.06) 10px), repeating-linear-gradient(90deg, transparent, transparent 9px, rgba(0,0,0,0.04) 9px, rgba(0,0,0,0.04) 10px); }
-.art-watercolor     { background: linear-gradient(135deg, #e0f7fa 0%, #80deea 25%, #b2ebf2 50%, #c8e6c9 75%, #f8bbd0 100%); opacity: 0.95; }
-.art-paper_cutout   { background: linear-gradient(160deg, #fdf5e0 0%, #f5d78e 30%, #e8a04a 55%, #c87920 80%, #8b4500 100%); }
-.art-cartoon        { background: linear-gradient(135deg, #ff4444 0%, #ff8800 25%, #ffee00 50%, #44cc00 75%, #0088ff 100%); }
-.art-documentary    { background: linear-gradient(160deg, #2d3a1a 0%, #4a6030 35%, #7a9458 60%, #c4b478 85%, #e8d8a0 100%); }
-.art-minimalist     { background: linear-gradient(160deg, #f5f5f0 0%, #e8e8e2 50%, #d8d8d0 100%); }
-.art-vintage        { background: linear-gradient(135deg, #3d2b00 0%, #7a5200 30%, #b8843f 55%, #d4a96a 75%, #e8c896 100%); filter: sepia(0.3); }
-.art-neon           { background: linear-gradient(135deg, #0a0015 0%, #15003a 35%, #4b006e 60%, #9400d3 80%, #ff00ff 100%); box-shadow: inset 0 0 20px rgba(148,0,211,0.4); }
 
 .image-upload-zone { display: block; border: 1.5px dashed var(--color-border); border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: 0.2s; background: var(--color-bg-elevated); margin-bottom: 14px; }
 .image-upload-zone:hover { border-color: var(--color-accent); background: rgba(255,107,53,0.08); }

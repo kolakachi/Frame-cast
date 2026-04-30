@@ -253,7 +253,7 @@ class ProjectController extends Controller
             'source_content_raw' => ['nullable', 'string'],
             'source_image_asset_ids' => ['nullable', 'array', 'max:15'],
             'source_image_asset_ids.*' => ['integer'],
-            'visual_generation_mode' => ['nullable', Rule::in(['stock', 'ai_images', 'stock_images', 'waveform'])],
+            'visual_generation_mode' => ['nullable', Rule::in(['stock', 'ai_images'])],
             'ai_broll_style' => ['nullable', 'string', 'max:64'],
             'languages' => ['nullable', 'array', 'min:1'],
             'languages.*' => ['required', 'string', 'max:16'],
