@@ -49,6 +49,7 @@ const imageContext = ref('')
 const sourceImageAssetIds = ref([])
 const imageVisualMode = ref('upload')
 const aiBrollStyle = ref('photorealistic')
+const globalVisualMode = ref('stock') // 'stock' | 'ai' — for all non-images source types
 const brandKits = ref([])
 
 const selectedNiche = computed(() => niches.value.find((n) => n.id === selectedNicheId.value) ?? null)
@@ -138,6 +139,7 @@ function selectCustomNiche() {
 
 function setWizardSourceType(sourceType) {
   wizardSourceType.value = sourceType
+  globalVisualMode.value = 'stock'
   if (sourceType !== 'images') {
     sourceImageAssetIds.value = []
     imageFiles.value = []
@@ -272,6 +274,7 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   sourceImageAssetIds.value = []
   imageVisualMode.value = 'upload'
   aiBrollStyle.value = 'photorealistic'
+  globalVisualMode.value = 'stock'
   channelId.value = presetChannelId ? String(presetChannelId) : ''
   title.value = ''
   promptText.value = ''
@@ -332,6 +335,7 @@ async function submitWizardProject() {
       ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
       ...(sourceType === 'images' && imageVisualMode.value === 'upload' ? { source_image_asset_ids: sourceImageAssetIds.value } : {}),
       ...(sourceType === 'images' && imageVisualMode.value === 'ai' ? { visual_generation_mode: 'ai_images', ai_broll_style: aiBrollStyle.value } : {}),
+      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'ai' ? { visual_generation_mode: 'ai_images', ai_broll_style: aiBrollStyle.value } : {}),
     })
 
     const projectId = res.data?.data?.project?.id
@@ -622,6 +626,35 @@ defineExpose({ open })
             <span>{{ videoFile ? videoFile.name : '🎬  Drop your video file here — MP4, MOV · max 2GB' }}</span>
             <input class="hidden-file-input" type="file" accept="video/*" @change="videoFile = selectedFile($event)" />
           </label>
+        </div>
+
+        <!-- Visual type picker — shown for all text/media source types except images (which has its own) -->
+        <div v-if="wizardSourceType && wizardSourceType !== 'images' && wizardSourceType !== 'blank'" class="input-group mt">
+          <div class="input-label" style="margin-bottom:8px;">Visuals</div>
+          <div class="image-mode-toggle">
+            <button :class="['image-mode-btn', globalVisualMode === 'stock' ? 'active' : '']" type="button" @click="globalVisualMode = 'stock'">Stock video clips</button>
+            <button :class="['image-mode-btn', globalVisualMode === 'ai' ? 'active' : '']" type="button" @click="globalVisualMode = 'ai'">✦ AI generated images</button>
+          </div>
+          <template v-if="globalVisualMode === 'ai'">
+            <div class="image-ai-hint" style="margin-top:10px;">
+              <span>✦</span>
+              <span>AI generates a custom image for every scene. Pick the visual style below.</span>
+            </div>
+            <div class="ai-broll-grid" style="margin-top:10px;">
+              <button
+                v-for="style in aiBrollStyleOptions"
+                :key="style.key"
+                :class="['ai-broll-card', aiBrollStyle === style.key ? 'selected' : '']"
+                :style="{ '--style-tone': style.tone }"
+                type="button"
+                @click="aiBrollStyle = style.key"
+              >
+                <span class="ai-broll-art"></span>
+                <span class="ai-broll-label">{{ style.label }}</span>
+                <span class="ai-broll-hint">{{ style.hint }}</span>
+              </button>
+            </div>
+          </template>
         </div>
 
         <!-- Settings -->
