@@ -51,7 +51,9 @@ class MatchVisualsJob implements ShouldQueue
 
                 $prompt = $this->buildPrompt($scene, $project);
                 $orientation = in_array((string) ($project->aspect_ratio ?? ''), ['16:9'], true) ? 'landscape' : 'portrait';
-                $match = $visualProvider->match($prompt, $orientation, 'stock_clip');
+                $useImages = $project->visual_generation_mode === 'stock_images';
+                $matchType = $useImages ? 'image_montage' : 'stock_clip';
+                $match = $visualProvider->match($prompt, $orientation, $matchType);
 
                 $asset = Asset::query()->create([
                     'workspace_id' => $project->workspace_id,
@@ -74,7 +76,7 @@ class MatchVisualsJob implements ShouldQueue
                 ]);
 
                 $scene->forceFill([
-                    'visual_type' => 'stock_clip',
+                    'visual_type' => $matchType,
                     'visual_asset_id' => $asset->getKey(),
                     'visual_prompt' => $prompt,
                 ])->save();

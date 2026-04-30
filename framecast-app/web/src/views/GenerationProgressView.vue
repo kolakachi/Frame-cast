@@ -25,7 +25,11 @@ const baseStages = [
 function stageDefinitions(project = null) {
   const visualStage = project?.visual_generation_mode === 'ai_images'
     ? { key: 'ai_image', label: 'Generating AI visuals' }
-    : { key: 'visual_match', label: 'Matching visuals' }
+    : project?.visual_generation_mode === 'stock_images'
+      ? { key: 'visual_match', label: 'Matching stock images' }
+      : project?.visual_generation_mode === 'waveform'
+        ? { key: 'visual_match', label: 'Preparing audiogram' }
+        : { key: 'visual_match', label: 'Matching stock video' }
 
   return [
     ...baseStages.slice(0, 4),
