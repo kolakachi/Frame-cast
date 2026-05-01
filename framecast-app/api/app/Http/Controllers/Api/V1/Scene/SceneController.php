@@ -725,9 +725,16 @@ class SceneController extends Controller
         }
 
         // Guard: reject concurrent requests — only one generation per scene at a time.
+        // Allow override if the lock is stale (job crashed > 5 minutes ago).
         $imageSettings = $scene->image_generation_settings_json ?? [];
         if (! empty($imageSettings['in_progress'])) {
-            return $this->error('generation_in_progress', 'Image generation is already in progress for this scene.', 409);
+            $startedAt = isset($imageSettings['generation_started_at'])
+                ? \Carbon\Carbon::parse($imageSettings['generation_started_at'])
+                : null;
+            $isStale = $startedAt === null || $startedAt->diffInMinutes(now()) >= 5;
+            if (! $isStale) {
+                return $this->error('generation_in_progress', 'Image generation is already in progress for this scene.', 409);
+            }
         }
 
         $validated = $request->validate([
@@ -743,10 +750,11 @@ class SceneController extends Controller
         // Lock the scene immediately so rapid re-clicks and pipeline overlap are rejected.
         $scene->forceFill([
             'image_generation_settings_json' => array_merge($imageSettings, [
-                'in_progress' => true,
-                'last_error'  => null,
-                'needs_visual' => false,
-                'generation_token' => $generationToken,
+                'in_progress'           => true,
+                'last_error'            => null,
+                'needs_visual'          => false,
+                'generation_token'      => $generationToken,
+                'generation_started_at' => now()->toIso8601String(),
             ]),
         ])->save();
 

@@ -230,6 +230,22 @@ class GenerateAIImageJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         $this->recordFailureTrace($exception, 'scene', $this->sceneId, null, $this->projectId);
+
+        // Clear the in_progress lock so the scene isn't permanently stuck after a crash/timeout.
+        $scene = Scene::query()->find($this->sceneId);
+        if (! $scene) {
+            return;
+        }
+        $settings = $scene->image_generation_settings_json ?? [];
+        if (! empty($settings['in_progress']) && ($settings['generation_token'] ?? null) === $this->generationToken) {
+            $scene->forceFill([
+                'image_generation_settings_json' => array_merge($settings, [
+                    'in_progress'  => false,
+                    'needs_visual' => true,
+                    'last_error'   => mb_substr($exception->getMessage(), 0, 500),
+                ]),
+            ])->save();
+        }
     }
 
     private function isPolicyError(string $message): bool
