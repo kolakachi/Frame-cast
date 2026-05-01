@@ -66,7 +66,7 @@ class GenerateAIImageJob implements ShouldQueue
             }
 
             // Download the image and store in B2 so it persists beyond provider URL TTL
-            $storagePath = $this->storeImage($result['image_url'], $scene);
+            $storagePath = $this->storeImage($result['image_url'] ?? null, $scene, $result['image_b64'] ?? null);
 
             $asset = Asset::query()->create([
                 'workspace_id'      => $scene->project->workspace_id,
@@ -140,7 +140,7 @@ class GenerateAIImageJob implements ShouldQueue
                         return;
                     }
 
-                    $storagePath = $this->storeImage($result['image_url'], $scene);
+                    $storagePath = $this->storeImage($result['image_url'] ?? null, $scene, $result['image_b64'] ?? null);
 
                     $asset = Asset::query()->create([
                         'workspace_id'       => $scene->project->workspace_id,
@@ -215,7 +215,7 @@ class GenerateAIImageJob implements ShouldQueue
                     [
                         'in_progress' => false,
                         'needs_visual' => true,
-                        'last_error' => $e->getMessage(),
+                        'last_error' => mb_substr(preg_replace('/data:[^,]+,\S+/', '[binary data omitted]', $e->getMessage()) ?? $e->getMessage(), 0, 500),
                         'generation_token' => $this->generationToken,
                     ]
                 ),
@@ -300,14 +300,12 @@ class GenerateAIImageJob implements ShouldQueue
         return trim("{$stylePrefix}{$label} for a {$tone} video{$stylePart}: {$script}");
     }
 
-    private function storeImage(string $url, Scene $scene): string
+    private function storeImage(string|null $url, Scene $scene, string|null $b64 = null): string
     {
-        // Handle base64 data URIs returned by gpt-image-1 when url format is unavailable
-        if (str_starts_with($url, 'data:')) {
-            $base64 = preg_replace('/^data:[^;]+;base64,/', '', $url);
-            $contents = base64_decode($base64, true) ?: '';
+        if ($b64 !== null) {
+            $contents = base64_decode($b64, true) ?: '';
         } else {
-            $contents = Http::timeout(30)->get($url)->body();
+            $contents = Http::timeout(30)->get((string) $url)->body();
         }
 
         $path = sprintf(

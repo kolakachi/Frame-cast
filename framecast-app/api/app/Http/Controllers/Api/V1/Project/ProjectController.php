@@ -253,8 +253,26 @@ class ProjectController extends Controller
             'source_content_raw' => ['nullable', 'string'],
             'source_image_asset_ids' => ['nullable', 'array', 'max:15'],
             'source_image_asset_ids.*' => ['integer'],
+            'visual_type' => ['nullable', Rule::in(['stock_clip', 'stock_image', 'ai_image', 'waveform'])],
             'visual_generation_mode' => ['nullable', Rule::in(['stock', 'ai_images', 'stock_images', 'waveform'])],
             'ai_broll_style' => ['nullable', 'string', 'max:64'],
+            'visual_style' => ['nullable', 'string', 'max:64'],
+            'voice_settings' => ['nullable', 'array'],
+            'voice_settings_json' => ['nullable', 'array'],
+            'voice_settings_json.voice_id' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'voice_settings_json.speed' => ['sometimes', 'numeric', 'min:0.25', 'max:4'],
+            'voice_settings_json.stability' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'voice_settings.voice_id' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'voice_settings.speed' => ['sometimes', 'numeric', 'min:0.25', 'max:4'],
+            'voice_settings.stability' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'image_generation_settings_json' => ['nullable', 'array'],
+            'image_generation_settings_json.audiogram_style' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'image_generation_settings_json.audiogram_color' => ['sometimes', 'nullable', 'string', 'max:16'],
+            'image_generation_settings_json.audiogram_bg' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'waveform_settings_json' => ['nullable', 'array'],
+            'waveform_settings_json.audiogram_style' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'waveform_settings_json.audiogram_color' => ['sometimes', 'nullable', 'string', 'max:16'],
+            'waveform_settings_json.audiogram_bg' => ['sometimes', 'nullable', 'string', 'max:32'],
             'languages' => ['nullable', 'array', 'min:1'],
             'languages.*' => ['required', 'string', 'max:16'],
             'platform_target' => ['nullable', 'string', 'max:64'],
@@ -270,6 +288,10 @@ class ProjectController extends Controller
             'series_id' => ['nullable', 'integer'],
             'series_episode_number' => ['nullable', 'integer', 'min:1'],
         ]);
+
+        if (isset($validated['visual_type'])) {
+            $validated['visual_generation_mode'] = $this->visualGenerationModeFromVisualType($validated['visual_type']);
+        }
 
         $sourceError = $this->validateSourceContent($validated['source_type'], $validated['source_content_raw'] ?? null);
 
@@ -354,6 +376,7 @@ class ProjectController extends Controller
         $niche = null;
         $nicheMusicAssetId = null;
         $nicheTone = null;
+        $nicheVisualStyle = null;
 
         if (! empty($validated['niche_id'])) {
             $niche = Niche::query()->find($validated['niche_id']);
@@ -362,6 +385,10 @@ class ProjectController extends Controller
                 // Inherit tone from niche if not explicitly set.
                 if (empty($validated['tone'])) {
                     $nicheTone = $niche->default_voice_tone;
+                }
+
+                if (empty($validated['visual_style'])) {
+                    $nicheVisualStyle = $niche->default_visual_style;
                 }
 
                 // Pick a music asset matching the niche's mood if no template already sets one.
@@ -430,6 +457,43 @@ class ProjectController extends Controller
             $validated['languages'] = ['en'];
         }
 
+        if (! isset($validated['voice_settings_json']) && isset($validated['voice_settings'])) {
+            $validated['voice_settings_json'] = $validated['voice_settings'];
+        }
+
+        if (
+            isset($validated['image_generation_settings_json']) &&
+            ($validated['visual_generation_mode'] ?? null) === 'waveform'
+        ) {
+            $validated['waveform_settings_json'] = $validated['image_generation_settings_json'];
+        }
+
+        $defaultVisualStyle = $validated['visual_style']
+            ?? $validated['ai_broll_style']
+            ?? $nicheVisualStyle;
+
+        if (
+            empty($validated['ai_broll_style'])
+            && ($validated['visual_generation_mode'] ?? null) === 'ai_images'
+            && $defaultVisualStyle
+        ) {
+            $validated['ai_broll_style'] = $defaultVisualStyle;
+        }
+
+        $defaultVoiceSettings = is_array($validated['voice_settings_json'] ?? null)
+            ? array_filter(
+                $validated['voice_settings_json'],
+                static fn (mixed $value): bool => $value !== null && $value !== ''
+            )
+            : null;
+
+        $waveformSettings = is_array($validated['waveform_settings_json'] ?? null)
+            ? array_filter(
+                $validated['waveform_settings_json'],
+                static fn (mixed $value): bool => $value !== null && $value !== ''
+            )
+            : null;
+
         $project = Project::query()->create([
             'workspace_id' => $user->workspace_id,
             'channel_id' => $channel?->getKey() ?? $series?->channel_id,
@@ -444,11 +508,14 @@ class ProjectController extends Controller
             'source_image_asset_ids' => $sourceImageAssetIds,
             'visual_generation_mode' => $validated['visual_generation_mode'] ?? null,
             'ai_broll_style' => $validated['ai_broll_style'] ?? null,
+            'waveform_settings_json' => $waveformSettings,
+            'default_visual_style' => $defaultVisualStyle,
             'content_goal' => $validated['content_goal'] ?? null,
             'platform_target' => $validated['platform_target'],
             'duration_target_seconds' => $validated['duration_target_seconds'] ?? null,
             'aspect_ratio' => $validated['aspect_ratio'],
             'tone' => $validated['tone'] ?? $nicheTone,
+            'default_voice_settings_json' => $defaultVoiceSettings,
             'primary_language' => $validated['languages'][0],
             'title' => $validated['title'] ?? null,
             'status' => $validated['source_type'] === 'blank' ? 'ready_for_review' : 'generating',
@@ -1172,13 +1239,20 @@ class ProjectController extends Controller
             'source_content_raw' => $project->source_content_raw,
             'source_content_normalized' => $project->source_content_normalized,
             'source_image_asset_ids' => $project->source_image_asset_ids,
+            'visual_type' => $this->projectVisualTypeFromGenerationMode($project->visual_generation_mode),
             'visual_generation_mode' => $project->visual_generation_mode,
             'ai_broll_style' => $project->ai_broll_style,
+            'image_generation_settings_json' => $project->waveform_settings_json,
+            'waveform_settings_json' => $project->waveform_settings_json,
+            'visual_style' => $project->default_visual_style,
+            'default_visual_style' => $project->default_visual_style,
+            'voice_settings_json' => $project->default_voice_settings_json,
             'content_goal' => $project->content_goal,
             'platform_target' => $project->platform_target,
             'duration_target_seconds' => $project->duration_target_seconds,
             'aspect_ratio' => $project->aspect_ratio,
             'tone' => $project->tone,
+            'default_voice_settings_json' => $project->default_voice_settings_json,
             'primary_language' => $project->primary_language,
             'title' => $project->title,
             'script_text' => $project->script_text,
@@ -1191,6 +1265,28 @@ class ProjectController extends Controller
             'created_at' => $project->created_at?->toIso8601String(),
             'updated_at' => $project->updated_at?->toIso8601String(),
         ];
+    }
+
+    private function visualGenerationModeFromVisualType(?string $visualType): ?string
+    {
+        return match ($visualType) {
+            'ai_image' => 'ai_images',
+            'stock_image' => 'stock_images',
+            'waveform' => 'waveform',
+            'stock_clip' => 'stock',
+            default => null,
+        };
+    }
+
+    private function projectVisualTypeFromGenerationMode(?string $visualGenerationMode): ?string
+    {
+        return match ($visualGenerationMode) {
+            'ai_images' => 'ai_image',
+            'stock_images' => 'stock_image',
+            'waveform' => 'waveform',
+            'stock', null => 'stock_clip',
+            default => 'stock_clip',
+        };
     }
 
     protected function error(string $code, string $message, int $status = 422): JsonResponse

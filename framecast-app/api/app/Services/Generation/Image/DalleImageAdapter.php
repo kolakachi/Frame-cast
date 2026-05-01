@@ -97,9 +97,7 @@ class DalleImageAdapter implements ImageGenerationAdapter
             // gpt-image-1 may return b64_json instead of url — normalise to a data URI so
             // downstream storeImage() can still Http::get() it or we decode directly.
             $imageUrl = $image['url'] ?? null;
-            if ($imageUrl === null && isset($image['b64_json'])) {
-                $imageUrl = 'data:image/png;base64,' . $image['b64_json'];
-            }
+            $imageB64 = ($imageUrl === null && isset($image['b64_json'])) ? $image['b64_json'] : null;
 
             $this->usage->record([
                 ...$usageContext,
@@ -121,6 +119,7 @@ class DalleImageAdapter implements ImageGenerationAdapter
             return [
                 'provider_key'    => 'dalle',
                 'image_url'       => $imageUrl,
+                'image_b64'       => $imageB64,
                 'width'           => (int) $width,
                 'height'          => (int) $height,
                 'seed'            => null,

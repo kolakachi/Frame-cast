@@ -11,56 +11,138 @@ const STORAGE_KEY = 'fc_wizard'
 const TOTAL_STEPS = 4
 
 // ── State ────────────────────────────────────────────────
-const step        = ref(1)
-const niches      = ref([])
-const voices      = ref([])
-const styles      = ref([])
-const loading     = ref(true)
-const submitting  = ref(false)
-const error       = ref('')
+const step       = ref(1)
+const niches     = ref([])
+const voices     = ref([])
+const styles     = ref([])
+const loading    = ref(true)
+const submitting = ref(false)
+const error      = ref('')
 
 // Step 1
-const selectedNicheId   = ref(null)
+const selectedNicheId = ref(null)
 
 // Step 2
 const sourceType    = ref('prompt')
 const sourceContent = ref('')
 
 // Step 3
-const aspectRatio       = ref('9:16')
-const selectedVoiceKey  = ref('')
-const selectedStyle     = ref('cinematic')
-const visualType        = ref('stock_video') // 'stock_video' | 'stock_images' | 'ai_images' | 'waveform'
+const aspectRatio      = ref('9:16')
+const selectedVoiceKey = ref('')
+const selectedStyle    = ref('cinematic')
+const visualType       = ref('stock_video')
+
+// Audiogram settings (stored locally; applied per-scene in the editor)
+const audiogramStyle = ref('bars')
+const audiogramColor = ref('#ff6b35')
+const audiogramBg    = ref('dark')
+
+// ── Constants ────────────────────────────────────────────
+const stepMeta = [
+  { title: "What's your content niche?",     subtitle: 'This helps us tailor scripts and visuals to your audience.' },
+  { title: "What's your first video about?", subtitle: 'Pick how you want to start — a topic, a script, a link, or a product.' },
+  { title: 'Customize your style',           subtitle: 'Set the look, format, and voice. You can change these later.' },
+  { title: 'Ready to create',                subtitle: "Review your setup and we'll get to work." },
+]
+
+const sourceTypes = [
+  {
+    key: 'prompt',
+    label: 'Topic / Idea',
+    hint: "We'll write the script for you",
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1M5.6 5.6l.7.7M3 12h1M20 12h1M18.4 5.6l-.7.7M8 14a4 4 0 1 1 8 0c0 1.5-1 2.5-1.5 3.5h-5C9 16.5 8 15.5 8 14z"/></svg>`,
+  },
+  {
+    key: 'script',
+    label: 'Full Script',
+    hint: 'Paste your own script',
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>`,
+  },
+  {
+    key: 'url',
+    label: 'Article / URL',
+    hint: "We'll summarise the link",
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+  },
+  {
+    key: 'product_description',
+    label: 'Product',
+    hint: 'For a review or promo video',
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg>`,
+  },
+]
 
 const visualTypes = [
-  { key: 'stock_video', label: 'Stock Video',  hint: 'Real footage matched to your script' },
-  { key: 'stock_images', label: 'Stock Images', hint: 'Editorial stills and stock photos per scene' },
-  { key: 'ai_images',   label: 'AI Images',    hint: 'AI-generated frames in the style you choose' },
-  { key: 'waveform',    label: 'Audiogram',    hint: 'Audio-reactive bars for voice-led or podcast clips' },
+  {
+    key: 'stock_video',
+    label: 'Stock Video',
+    hint: 'Real footage matched to script',
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`,
+  },
+  {
+    key: 'stock_images',
+    label: 'Stock Images',
+    hint: 'Editorial stills per scene',
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+  },
+  {
+    key: 'ai_images',
+    label: 'AI Images',
+    hint: 'Generated frames in your style',
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>`,
+  },
+  {
+    key: 'waveform',
+    label: 'Audiogram',
+    hint: 'Audio-reactive bars for podcasts',
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="6" x2="10" y2="18"/><line x1="14" y1="8" x2="14" y2="16"/><line x1="18" y1="11" x2="18" y2="13"/><line x1="2" y1="12" x2="2" y2="12"/><line x1="22" y1="12" x2="22" y2="12"/></svg>`,
+  },
+]
+
+const aspectRatios = [
+  { value: '9:16', label: '9:16', hint: 'Shorts / TikTok', shapeClass: 'r-9-16' },
+  { value: '1:1',  label: '1:1',  hint: 'Square',          shapeClass: 'r-1-1' },
+  { value: '16:9', label: '16:9', hint: 'YouTube',          shapeClass: 'r-16-9' },
+]
+
+const audiogramStyles = [
+  { key: 'bars',    label: 'Bars' },
+  { key: 'mirror',  label: 'Mirror' },
+  { key: 'circle',  label: 'Circle' },
+  { key: 'minimal', label: 'Minimal' },
+]
+
+const audiogramColorPresets = ['#ff6b35', '#60a5fa', '#34d399', '#a78bfa', '#f472b6', '#fbbf24', '#ffffff']
+
+const audiogramBgs = [
+  { key: 'dark',   label: 'Dark',   style: 'linear-gradient(180deg, #0d0d1a 0%, #0a0a14 100%)' },
+  { key: 'black',  label: 'Black',  style: '#000' },
+  { key: 'purple', label: 'Purple', style: 'linear-gradient(135deg, #1a0a2e 0%, #0d0d2b 50%, #14102a 100%)' },
+  { key: 'ocean',  label: 'Ocean',  style: 'linear-gradient(135deg, #0a1628 0%, #0d1f3c 50%, #0a0e1a 100%)' },
 ]
 
 const STYLE_PREVIEW_META = {
-  cinematic: { preview: 'Golden-hour drama', gradient: 'linear-gradient(135deg, #22130a 0%, #6b3418 45%, #f59e0b 100%)', accent: '#fbbf24' },
-  dark: { preview: 'Shadow-heavy noir', gradient: 'linear-gradient(135deg, #06070b 0%, #191b28 45%, #3f3f46 100%)', accent: '#a1a1aa' },
-  documentary: { preview: 'Natural real world', gradient: 'linear-gradient(135deg, #0d1b1e 0%, #224e54 50%, #7dd3c7 100%)', accent: '#99f6e4' },
-  anime: { preview: 'Vibrant cel shading', gradient: 'linear-gradient(135deg, #43155b 0%, #db2777 50%, #f59e0b 100%)', accent: '#f9a8d4' },
-  minimalist: { preview: 'Clean editorial frames', gradient: 'linear-gradient(135deg, #dbe4ee 0%, #b9c5d3 45%, #7c8796 100%)', accent: '#e2e8f0' },
-  realistic: { preview: 'Natural faces and places', gradient: 'linear-gradient(135deg, #132235 0%, #2563eb 50%, #7dd3fc 100%)', accent: '#93c5fd' },
-  vintage: { preview: 'Retro grain and warmth', gradient: 'linear-gradient(135deg, #3b1f14 0%, #9a3412 45%, #fbbf24 100%)', accent: '#fdba74' },
-  neon: { preview: 'Glowing night scenes', gradient: 'linear-gradient(135deg, #19083d 0%, #7c3aed 45%, #06b6d4 100%)', accent: '#c4b5fd' },
-  photorealistic: { preview: 'Glossy studio realism', gradient: 'linear-gradient(135deg, #0f172a 0%, #475569 45%, #cbd5e1 100%)', accent: '#e2e8f0' },
-  cyberpunk_80s: { preview: 'Retro-future neon city', gradient: 'linear-gradient(135deg, #1e0b4b 0%, #ec4899 50%, #22d3ee 100%)', accent: '#f0abfc' },
-  anime_80s: { preview: 'Vintage cel anime', gradient: 'linear-gradient(135deg, #16312b 0%, #059669 45%, #fde68a 100%)', accent: '#bbf7d0' },
-  anime_90s: { preview: 'Painted anime worlds', gradient: 'linear-gradient(135deg, #10235e 0%, #2563eb 45%, #f472b6 100%)', accent: '#bfdbfe' },
-  dark_fantasy: { preview: 'Gothic mythic worlds', gradient: 'linear-gradient(135deg, #120b17 0%, #3f1d52 45%, #64748b 100%)', accent: '#cbd5e1' },
-  fantasy_retro: { preview: 'Storybook adventure', gradient: 'linear-gradient(135deg, #31214f 0%, #6366f1 45%, #f59e0b 100%)', accent: '#c7d2fe' },
-  comic: { preview: 'Bold graphic panels', gradient: 'linear-gradient(135deg, #3b0b0b 0%, #ef4444 45%, #facc15 100%)', accent: '#fecaca' },
-  film_noir: { preview: 'Monochrome suspense', gradient: 'linear-gradient(135deg, #050505 0%, #2f2f2f 45%, #d4d4d8 100%)', accent: '#f4f4f5' },
-  line_drawing: { preview: 'Monochrome sketch', gradient: 'linear-gradient(135deg, #ffffff 0%, #d4d4d8 45%, #71717a 100%)', accent: '#111827' },
-  watercolor: { preview: 'Soft painterly wash', gradient: 'linear-gradient(135deg, #0f3d4c 0%, #2dd4bf 45%, #f0abfc 100%)', accent: '#99f6e4' },
-  paper_cutout: { preview: 'Layered paper collage', gradient: 'linear-gradient(135deg, #4a1f10 0%, #f97316 45%, #fed7aa 100%)', accent: '#fdba74' },
-  cartoon: { preview: 'Playful expressive art', gradient: 'linear-gradient(135deg, #7c2d12 0%, #fb923c 45%, #fde68a 100%)', accent: '#fdba74' },
-  '3d_animated': { preview: 'Stylized 3D animation', gradient: 'linear-gradient(135deg, #0e2033 0%, #0ea5e9 45%, #f59e0b 100%)', accent: '#7dd3fc' },
+  cinematic:      { gradient: 'linear-gradient(135deg, #22130a, #f59e0b)' },
+  dark:           { gradient: 'linear-gradient(135deg, #06070b, #3f3f46)' },
+  documentary:    { gradient: 'linear-gradient(135deg, #0d1b1e, #7dd3c7)' },
+  anime:          { gradient: 'linear-gradient(135deg, #43155b, #f59e0b)' },
+  minimalist:     { gradient: 'linear-gradient(135deg, #dbe4ee, #7c8796)' },
+  realistic:      { gradient: 'linear-gradient(135deg, #132235, #7dd3fc)' },
+  vintage:        { gradient: 'linear-gradient(135deg, #3b1f14, #fbbf24)' },
+  neon:           { gradient: 'linear-gradient(135deg, #19083d, #06b6d4)' },
+  photorealistic: { gradient: 'linear-gradient(135deg, #0f172a, #cbd5e1)' },
+  cyberpunk_80s:  { gradient: 'linear-gradient(135deg, #1e0b4b, #22d3ee)' },
+  anime_80s:      { gradient: 'linear-gradient(135deg, #16312b, #fde68a)' },
+  anime_90s:      { gradient: 'linear-gradient(135deg, #10235e, #f472b6)' },
+  dark_fantasy:   { gradient: 'linear-gradient(135deg, #120b17, #64748b)' },
+  fantasy_retro:  { gradient: 'linear-gradient(135deg, #31214f, #f59e0b)' },
+  comic:          { gradient: 'linear-gradient(135deg, #3b0b0b, #facc15)' },
+  film_noir:      { gradient: 'linear-gradient(135deg, #050505, #d4d4d8)' },
+  line_drawing:   { gradient: 'linear-gradient(135deg, #ffffff, #71717a)' },
+  watercolor:     { gradient: 'linear-gradient(135deg, #0f3d4c, #f0abfc)' },
+  paper_cutout:   { gradient: 'linear-gradient(135deg, #4a1f10, #fed7aa)' },
+  cartoon:        { gradient: 'linear-gradient(135deg, #7c2d12, #fde68a)' },
+  '3d_animated':  { gradient: 'linear-gradient(135deg, #0e2033, #f59e0b)' },
 }
 
 const STYLE_ORDER = [
@@ -70,39 +152,28 @@ const STYLE_ORDER = [
   'cartoon', 'documentary', 'minimalist', 'vintage', 'neon',
 ]
 
-const sourceTypes = [
-  { key: 'prompt',              label: 'Topic / Idea',          hint: "Describe a topic and we'll write the script" },
-  { key: 'script',              label: 'Full Script',           hint: 'Paste your own script' },
-  { key: 'url',                 label: 'Article / URL',         hint: 'Paste a link and we\'ll summarise it' },
-  { key: 'product_description', label: 'Product',               hint: 'Describe a product for a review video' },
-]
-
-const aspectRatios = [
-  { value: '9:16', label: '9:16', hint: 'Shorts / TikTok' },
-  { value: '1:1',  label: '1:1',  hint: 'Square' },
-  { value: '16:9', label: '16:9', hint: 'YouTube' },
-]
-
+// ── Computed ─────────────────────────────────────────────
 const selectedNiche = computed(() => niches.value.find((n) => n.id === selectedNicheId.value))
-const selectedVisualTypeOption = computed(() => visualTypes.find((item) => item.key === visualType.value) ?? visualTypes[0])
-const selectedSourceTypeOption = computed(() => sourceTypes.find((item) => item.key === sourceType.value) ?? null)
-const selectedVoiceOption = computed(() => voices.value.find((voice) => voice.provider_voice_key === selectedVoiceKey.value) ?? null)
+const selectedSourceTypeOption = computed(() => sourceTypes.find((s) => s.key === sourceType.value) ?? null)
+const selectedVisualTypeOption = computed(() => visualTypes.find((v) => v.key === visualType.value) ?? visualTypes[0])
+const selectedAspectRatioOption = computed(() => aspectRatios.find((a) => a.value === aspectRatio.value) ?? aspectRatios[0])
+const selectedVoiceOption = computed(() => voices.value.find((v) => v.provider_voice_key === selectedVoiceKey.value) ?? null)
+
 const availableStyles = computed(() => {
   const list = Array.isArray(styles.value) ? styles.value : []
   return [...list]
-    .map((style) => ({
-      ...style,
-      preview: STYLE_PREVIEW_META[style.key]?.preview ?? style.description ?? style.label,
-      gradient: STYLE_PREVIEW_META[style.key]?.gradient ?? 'linear-gradient(135deg, #1f2937 0%, #4b5563 50%, #9ca3af 100%)',
-      accent: STYLE_PREVIEW_META[style.key]?.accent ?? '#e5e7eb',
+    .map((s) => ({
+      ...s,
+      gradient: STYLE_PREVIEW_META[s.key]?.gradient ?? 'linear-gradient(135deg, #1f2937, #9ca3af)',
     }))
     .sort((a, b) => {
-      const aIndex = STYLE_ORDER.indexOf(a.key)
-      const bIndex = STYLE_ORDER.indexOf(b.key)
-      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex)
+      const ai = STYLE_ORDER.indexOf(a.key)
+      const bi = STYLE_ORDER.indexOf(b.key)
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
     })
 })
-const selectedStyleOption = computed(() => availableStyles.value.find((style) => style.key === selectedStyle.value) ?? availableStyles.value[0] ?? null)
+
+const selectedStyleOption = computed(() => availableStyles.value.find((s) => s.key === selectedStyle.value) ?? availableStyles.value[0] ?? null)
 
 const contentPlaceholder = computed(() => {
   const map = {
@@ -113,13 +184,6 @@ const contentPlaceholder = computed(() => {
   }
   return map[sourceType.value] || ''
 })
-
-const stepTitles = [
-  "What's your content niche?",
-  "What's your first video about?",
-  'Customize your style',
-  'Ready to create',
-]
 
 // ── Persistence ──────────────────────────────────────────
 function saveState() {
@@ -133,6 +197,9 @@ function saveState() {
       selectedVoiceKey: selectedVoiceKey.value,
       selectedStyle: selectedStyle.value,
       visualType: visualType.value,
+      audiogramStyle: audiogramStyle.value,
+      audiogramColor: audiogramColor.value,
+      audiogramBg: audiogramBg.value,
     }))
   } catch { /* ignore */ }
 }
@@ -142,14 +209,17 @@ function restoreState() {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return
     const s = JSON.parse(raw)
-    step.value            = s.step ?? 1
-    selectedNicheId.value = s.selectedNicheId ?? null
-    sourceType.value      = s.sourceType ?? 'prompt'
-    sourceContent.value   = s.sourceContent ?? ''
-    aspectRatio.value     = s.aspectRatio ?? '9:16'
+    step.value             = s.step ?? 1
+    selectedNicheId.value  = s.selectedNicheId ?? null
+    sourceType.value       = s.sourceType ?? 'prompt'
+    sourceContent.value    = s.sourceContent ?? ''
+    aspectRatio.value      = s.aspectRatio ?? '9:16'
     selectedVoiceKey.value = s.selectedVoiceKey ?? ''
-    selectedStyle.value   = s.selectedStyle ?? 'cinematic'
-    visualType.value      = s.visualType ?? 'stock_video'
+    selectedStyle.value    = s.selectedStyle ?? 'cinematic'
+    visualType.value       = s.visualType ?? 'stock_video'
+    audiogramStyle.value   = s.audiogramStyle ?? 'bars'
+    audiogramColor.value   = s.audiogramColor ?? '#ff6b35'
+    audiogramBg.value      = s.audiogramBg ?? 'dark'
   } catch { /* ignore */ }
 }
 
@@ -157,19 +227,20 @@ function clearState() {
   try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
 }
 
+function selectedProjectVisualType() {
+  if (visualType.value === 'ai_images') return 'ai_image'
+  if (visualType.value === 'stock_images') return 'stock_image'
+  if (visualType.value === 'waveform') return 'waveform'
+  return 'stock_clip'
+}
+
 // ── Navigation ───────────────────────────────────────────
 function next() {
-  if (step.value < TOTAL_STEPS) {
-    step.value++
-    saveState()
-  }
+  if (step.value < TOTAL_STEPS) { step.value++; saveState() }
 }
 
 function back() {
-  if (step.value > 1) {
-    step.value--
-    saveState()
-  }
+  if (step.value > 1) { step.value--; saveState() }
 }
 
 async function skip() {
@@ -198,14 +269,17 @@ async function launch() {
       source_content_raw: sourceContent.value || null,
       niche_id: selectedNicheId.value || null,
       aspect_ratio: aspectRatio.value,
+      visual_type: selectedProjectVisualType(),
       voice_settings_json: selectedVoiceKey.value ? { voice_id: selectedVoiceKey.value } : null,
       visual_style: selectedStyle.value,
-      visual_generation_mode:
-        visualType.value === 'ai_images' ? 'ai_images'
-          : visualType.value === 'stock_images' ? 'stock_images'
-            : visualType.value === 'waveform' ? 'waveform'
-              : 'stock',
       ai_broll_style: visualType.value === 'ai_images' ? selectedStyle.value : null,
+      image_generation_settings_json: visualType.value === 'waveform'
+        ? {
+            audiogram_style: audiogramStyle.value,
+            audiogram_color: audiogramColor.value,
+            audiogram_bg: audiogramBg.value,
+          }
+        : null,
     }
 
     const { data } = await api.post('/projects', payload)
@@ -246,85 +320,93 @@ onMounted(async () => {
 
 <template>
   <div class="ob-shell">
-
-    <!-- Skip always visible -->
     <button class="ob-skip" type="button" @click="skip">Skip setup</button>
 
     <div class="ob-card">
 
-      <!-- Step dots -->
-      <div class="ob-dots">
-        <span
-          v-for="n in TOTAL_STEPS"
-          :key="n"
-          :class="['ob-dot', n === step ? 'active' : n < step ? 'done' : '']"
-        ></span>
+      <!-- Header -->
+      <div class="ob-header">
+        <div class="ob-dots">
+          <span
+            v-for="n in TOTAL_STEPS"
+            :key="n"
+            :class="['ob-dot', n === step ? 'active' : n < step ? 'done' : '']"
+          ></span>
+        </div>
+        <div class="ob-step-label">Step {{ step }} of {{ TOTAL_STEPS }}</div>
+        <h1 class="ob-title">{{ stepMeta[step - 1].title }}</h1>
+        <p class="ob-subtitle">{{ stepMeta[step - 1].subtitle }}</p>
       </div>
 
-      <div class="ob-step-label">Step {{ step }} of {{ TOTAL_STEPS }}</div>
-      <div class="ob-title">{{ stepTitles[step - 1] }}</div>
-
       <div v-if="loading" class="ob-loading">Loading…</div>
+      <div v-else>
+        <!-- ── Step 1: Niche ── -->
+        <div v-if="step === 1">
+          <div class="ob-niche-grid">
+            <button
+              v-for="niche in niches"
+              :key="niche.id"
+              :class="['ob-niche-card', selectedNicheId === niche.id ? 'selected' : '']"
+              type="button"
+              @click="selectedNicheId = niche.id"
+            >
+              <div class="ob-niche-name">{{ niche.name }}</div>
+              <div class="ob-niche-desc">{{ niche.description }}</div>
+            </button>
+            <button
+              :class="['ob-niche-card ob-niche-card--other', selectedNicheId === null ? 'selected' : '']"
+              type="button"
+              @click="selectedNicheId = null"
+            >
+              <div class="ob-niche-name">Other / General</div>
+              <div class="ob-niche-desc">I'll decide later</div>
+            </button>
+          </div>
+          <div class="ob-actions">
+            <button class="ob-btn ob-btn-ghost" type="button" @click="skip">Skip setup</button>
+            <div class="ob-actions-right">
+              <button class="ob-btn ob-btn-primary" type="button" @click="next">Continue</button>
+            </div>
+          </div>
+        </div>
 
-      <!-- ── Step 1: Niche ── -->
-      <template v-else-if="step === 1">
-        <div class="ob-niche-grid">
-          <button
-            v-for="niche in niches"
-            :key="niche.id"
-            :class="['ob-niche-card', selectedNicheId === niche.id ? 'selected' : '']"
-            type="button"
-            @click="selectedNicheId = niche.id"
-          >
-            <div class="ob-niche-name">{{ niche.name }}</div>
-            <div class="ob-niche-desc">{{ niche.description }}</div>
-          </button>
-          <button
-            :class="['ob-niche-card ob-niche-card--other', selectedNicheId === null ? 'selected' : '']"
-            type="button"
-            @click="selectedNicheId = null"
-          >
-            <div class="ob-niche-name">Other / General</div>
-            <div class="ob-niche-desc">I'll decide later or my niche isn't listed</div>
-          </button>
+        <!-- ── Step 2: Content ── -->
+        <div v-else-if="step === 2">
+          <div class="ob-source-grid">
+            <button
+              v-for="st in sourceTypes"
+              :key="st.key"
+              :class="['ob-source-card', sourceType === st.key ? 'selected' : '']"
+              type="button"
+              @click="sourceType = st.key"
+            >
+              <span class="ob-source-icon" v-html="st.svg"></span>
+              <div class="ob-source-body">
+                <div class="ob-source-label">{{ st.label }}</div>
+                <div class="ob-source-hint">{{ st.hint }}</div>
+              </div>
+            </button>
+          </div>
+          <textarea
+            v-model="sourceContent"
+            class="ob-textarea"
+            :placeholder="contentPlaceholder"
+            rows="4"
+          ></textarea>
+          <div class="ob-actions">
+            <button class="ob-btn ob-btn-ghost" type="button" @click="back">Back</button>
+            <div class="ob-actions-right">
+              <button class="ob-btn ob-btn-ghost" type="button" @click="next">Skip</button>
+              <button class="ob-btn ob-btn-primary" type="button" :disabled="!sourceContent.trim()" @click="next">Continue</button>
+            </div>
+          </div>
         </div>
-        <div class="ob-actions">
-          <button class="ob-btn ob-btn-ghost" type="button" @click="skip">Skip</button>
-          <button class="ob-btn ob-btn-primary" type="button" @click="next">Continue</button>
-        </div>
-      </template>
 
-      <!-- ── Step 2: Content ── -->
-      <template v-else-if="step === 2">
-        <div class="ob-source-grid">
-          <button
-            v-for="st in sourceTypes"
-            :key="st.key"
-            :class="['ob-source-card', sourceType === st.key ? 'selected' : '']"
-            type="button"
-            @click="sourceType = st.key"
-          >
-            <div class="ob-source-label">{{ st.label }}</div>
-            <div class="ob-source-hint">{{ st.hint }}</div>
-          </button>
-        </div>
-        <textarea
-          v-model="sourceContent"
-          class="ob-textarea"
-          :placeholder="contentPlaceholder"
-          rows="5"
-        ></textarea>
-        <div class="ob-actions">
-          <button class="ob-btn ob-btn-ghost" type="button" @click="back">Back</button>
-          <button class="ob-btn ob-btn-ghost" type="button" @click="next">Skip</button>
-          <button class="ob-btn ob-btn-primary" type="button" :disabled="!sourceContent.trim()" @click="next">Continue</button>
-        </div>
-      </template>
+        <!-- ── Step 3: Style ── -->
+        <div v-else-if="step === 3">
 
-      <!-- ── Step 3: Style ── -->
-      <template v-else-if="step === 3">
         <div class="ob-field">
-          <div class="ob-label">Visual Type</div>
+          <label class="ob-label">Visual type</label>
           <div class="ob-visual-grid">
             <button
               v-for="vt in visualTypes"
@@ -333,62 +415,18 @@ onMounted(async () => {
               type="button"
               @click="visualType = vt.key"
             >
-              <div class="ob-visual-art" :data-vt="vt.key">
-                <template v-if="vt.key === 'stock_video'">
-                  <span class="ob-reel-frame"></span>
-                  <span class="ob-reel-strip left"></span>
-                  <span class="ob-reel-strip right"></span>
-                </template>
-                <template v-else-if="vt.key === 'stock_images'">
-                  <span class="ob-photo-stack back"></span>
-                  <span class="ob-photo-stack front"></span>
-                </template>
-                <template v-else-if="vt.key === 'ai_images'">
-                  <span class="ob-ai-orb"></span>
-                  <span class="ob-ai-spark one"></span>
-                  <span class="ob-ai-spark two"></span>
-                  <span class="ob-ai-spark three"></span>
-                </template>
-                <template v-else>
-                  <span v-for="bar in 9" :key="bar" class="ob-wave-bar" :style="{ height: `${24 + ((bar * 13) % 42)}px` }"></span>
-                </template>
-              </div>
-              <div class="ob-visual-copy">
-                <div class="ob-source-label">{{ vt.label }}</div>
-                <div class="ob-source-hint">{{ vt.hint }}</div>
+              <span class="ob-visual-icon" v-html="vt.svg"></span>
+              <div class="ob-visual-body">
+                <div class="ob-visual-label">{{ vt.label }}</div>
+                <div class="ob-visual-hint">{{ vt.hint }}</div>
               </div>
             </button>
           </div>
         </div>
 
-        <div class="ob-field">
-          <div class="ob-label">Aspect Ratio</div>
-          <div class="ob-ratio-grid">
-            <button
-              v-for="ar in aspectRatios"
-              :key="ar.value"
-              :class="['ob-ratio-card', aspectRatio === ar.value ? 'selected' : '']"
-              type="button"
-              @click="aspectRatio = ar.value"
-            >
-              <div class="ob-ratio-label">{{ ar.label }}</div>
-              <div class="ob-ratio-hint">{{ ar.hint }}</div>
-            </button>
-          </div>
-        </div>
-
-        <div class="ob-field">
-          <div class="ob-label">Voice</div>
-          <select v-model="selectedVoiceKey" class="ob-select">
-            <option v-for="v in voices" :key="v.provider_voice_key" :value="v.provider_voice_key">
-              {{ v.name }} — {{ v.gender_label }}
-            </option>
-          </select>
-        </div>
-
+        <!-- AI image style — only when AI Images selected -->
         <div v-if="visualType === 'ai_images'" class="ob-field">
-          <div class="ob-label">AI Image Style</div>
-          <div class="ob-style-subtitle">Choose the visual language. Each card previews the kind of look the generated frames will lean toward.</div>
+          <label class="ob-label">AI image style</label>
           <div class="ob-style-grid">
             <button
               v-for="s in availableStyles"
@@ -397,100 +435,229 @@ onMounted(async () => {
               type="button"
               @click="selectedStyle = s.key"
             >
-              <div class="ob-style-preview" :style="{ '--style-gradient': s.gradient, '--style-accent': s.accent }">
-                <span class="ob-style-preview-glow"></span>
-                <span class="ob-style-preview-panel main"></span>
-                <span class="ob-style-preview-panel side"></span>
-                <span class="ob-style-preview-caption">{{ s.preview }}</span>
-              </div>
-              <div class="ob-style-card-body">
-                <div class="ob-style-card-title">{{ s.label }}</div>
-                <div class="ob-style-card-copy">{{ s.description }}</div>
-              </div>
+              <span class="ob-style-swatch" :style="{ background: s.gradient }"></span>
+              <span class="ob-style-name">{{ s.label }}</span>
             </button>
           </div>
         </div>
 
-        <div class="ob-actions">
-          <button class="ob-btn ob-btn-ghost" type="button" @click="back">Back</button>
-          <button class="ob-btn ob-btn-primary" type="button" @click="next">Continue</button>
+        <!-- Audiogram settings — only when Audiogram selected -->
+        <div v-if="visualType === 'waveform'" class="ob-field">
+          <label class="ob-label">Audiogram design</label>
+          <div class="ob-ag-grid">
+            <button
+              v-for="ws in audiogramStyles"
+              :key="ws.key"
+              :class="['ob-ag-card', audiogramStyle === ws.key ? 'selected' : '']"
+              type="button"
+              @click="audiogramStyle = ws.key"
+            >
+              <div class="ob-ag-preview">
+                <div v-if="ws.key === 'bars'">
+                  <span class="ob-ag-bar" style="height:40%"></span>
+                  <span class="ob-ag-bar" style="height:70%"></span>
+                  <span class="ob-ag-bar" style="height:55%"></span>
+                  <span class="ob-ag-bar" style="height:90%"></span>
+                  <span class="ob-ag-bar" style="height:60%"></span>
+                  <span class="ob-ag-bar" style="height:80%"></span>
+                  <span class="ob-ag-bar" style="height:45%"></span>
+                </div>
+                <div v-else-if="ws.key === 'mirror'">
+                  <span class="ob-ag-bar-mirror" style="height:40%"></span>
+                  <span class="ob-ag-bar-mirror" style="height:70%"></span>
+                  <span class="ob-ag-bar-mirror" style="height:55%"></span>
+                  <span class="ob-ag-bar-mirror" style="height:90%"></span>
+                  <span class="ob-ag-bar-mirror" style="height:60%"></span>
+                  <span class="ob-ag-bar-mirror" style="height:80%"></span>
+                  <span class="ob-ag-bar-mirror" style="height:45%"></span>
+                </div>
+                <div v-else-if="ws.key === 'circle'">
+                  <svg viewBox="0 0 40 40" width="36" height="36" style="overflow:visible">
+                    <g transform="translate(20,20)">
+                      <line
+                        v-for="(angle, i) in [0, 45, 90, 135, 180, 225, 270, 315]"
+                        :key="i"
+                        :transform="`rotate(${angle})`"
+                        x1="0" y1="7" x2="0"
+                        :y2="[12, 14, 13, 15, 12, 14, 13, 15][i]"
+                        stroke="#ff6b35" stroke-width="2" stroke-linecap="round"
+                      />
+                    </g>
+                  </svg>
+                </div>
+                <div v-else>
+                  <span
+                    v-for="(h, i) in [30, 50, 40, 70, 50, 60, 35, 55, 45, 65]"
+                    :key="i"
+                    class="ob-ag-bar-min"
+                    :style="`height:${h}%`"
+                  ></span>
+                </div>
+              </div>
+              <div class="ob-ag-name">{{ ws.label }}</div>
+            </button>
+          </div>
+
+          <span class="ob-ag-sublabel">Bar color</span>
+          <div class="ob-ag-colors">
+            <button
+              v-for="color in audiogramColorPresets"
+              :key="color"
+              :class="['ob-ag-color', audiogramColor === color ? 'selected' : '']"
+              type="button"
+              :style="{ background: color }"
+              :title="color"
+              @click="audiogramColor = color"
+            ></button>
+            <label class="ob-ag-color-custom" title="Custom color">
+              <input type="color" :value="audiogramColor" @input="audiogramColor = $event.target.value">
+              <span>＋</span>
+            </label>
+          </div>
+
+          <span class="ob-ag-sublabel">Background</span>
+          <div class="ob-ag-bg-row">
+            <button
+              v-for="bg in audiogramBgs"
+              :key="bg.key"
+              :class="['ob-ag-bg', audiogramBg === bg.key ? 'selected' : '']"
+              type="button"
+              :style="{ background: bg.style }"
+              @click="audiogramBg = bg.key"
+            >{{ bg.label }}</button>
+          </div>
         </div>
-      </template>
 
-      <!-- ── Step 4: Launch ── -->
-      <template v-else>
-        <div class="ob-summary">
-          <div class="ob-summary-row">
-            <span class="ob-summary-key">Niche</span>
-            <span class="ob-summary-val">{{ selectedNiche ? selectedNiche.name : 'General' }}</span>
-          </div>
-          <div class="ob-summary-row">
-            <span class="ob-summary-key">Source</span>
-            <span class="ob-summary-val">{{ selectedSourceTypeOption ? selectedSourceTypeOption.label : sourceType }}</span>
-          </div>
-          <div class="ob-summary-row">
-            <span class="ob-summary-key">Visuals</span>
-            <span class="ob-summary-val">{{ selectedVisualTypeOption.label }}</span>
-          </div>
-          <div v-if="visualType === 'ai_images'" class="ob-summary-row">
-            <span class="ob-summary-key">AI Style</span>
-            <span class="ob-summary-val">{{ selectedStyleOption ? selectedStyleOption.label : selectedStyle }}</span>
-          </div>
-          <div class="ob-summary-row">
-            <span class="ob-summary-key">Format</span>
-            <span class="ob-summary-val">{{ aspectRatio }}</span>
-          </div>
-          <div class="ob-summary-row">
-            <span class="ob-summary-key">Voice</span>
-            <span class="ob-summary-val">{{ selectedVoiceOption ? selectedVoiceOption.name : 'Default' }}</span>
+        <div class="ob-field">
+          <label class="ob-label">Aspect ratio</label>
+          <div class="ob-ratio-grid">
+            <button
+              v-for="ar in aspectRatios"
+              :key="ar.value"
+              :class="['ob-ratio-card', aspectRatio === ar.value ? 'selected' : '']"
+              type="button"
+              @click="aspectRatio = ar.value"
+            >
+              <span :class="['ob-ratio-shape', ar.shapeClass]"></span>
+              <div class="ob-ratio-label">{{ ar.label }}</div>
+              <div class="ob-ratio-hint">{{ ar.hint }}</div>
+            </button>
           </div>
         </div>
 
-        <p class="ob-launch-copy">
-          We'll generate your script, voice, and visuals automatically.
-          You can edit everything in the Editor before exporting.
-        </p>
-
-        <div v-if="error" class="ob-error">{{ error }}</div>
-
-        <div class="ob-actions">
-          <button class="ob-btn ob-btn-ghost" type="button" @click="back">Back</button>
-          <button
-            class="ob-btn ob-btn-primary ob-btn-launch"
-            type="button"
-            :disabled="submitting"
-            @click="launch"
-          >{{ submitting ? 'Creating…' : 'Create My First Video' }}</button>
+        <div class="ob-field">
+          <label class="ob-label">Voice</label>
+          <div class="ob-voice-wrap">
+            <select v-model="selectedVoiceKey" class="ob-select">
+              <option v-for="v in voices" :key="v.provider_voice_key" :value="v.provider_voice_key">
+                {{ v.name }} — {{ v.gender_label }}
+              </option>
+            </select>
+            <span class="ob-voice-chevron">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
         </div>
-      </template>
+
+          <div class="ob-actions">
+            <button class="ob-btn ob-btn-ghost" type="button" @click="back">Back</button>
+            <div class="ob-actions-right">
+              <button class="ob-btn ob-btn-primary" type="button" @click="next">Continue</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Step 4: Launch ── -->
+        <div v-else>
+          <div class="ob-summary">
+            <div class="ob-summary-row">
+              <span class="ob-summary-key">Niche</span>
+              <span class="ob-summary-val">{{ selectedNiche ? selectedNiche.name : 'General' }}</span>
+            </div>
+            <div class="ob-summary-row">
+              <span class="ob-summary-key">Source</span>
+              <span class="ob-summary-val">{{ selectedSourceTypeOption ? selectedSourceTypeOption.label : sourceType }}</span>
+            </div>
+            <div class="ob-summary-row">
+              <span class="ob-summary-key">Visuals</span>
+              <span class="ob-summary-val">{{ selectedVisualTypeOption.label }}</span>
+            </div>
+            <div v-if="visualType === 'ai_images'" class="ob-summary-row">
+              <span class="ob-summary-key">AI Style</span>
+              <span class="ob-summary-val">{{ selectedStyleOption ? selectedStyleOption.label : selectedStyle }}</span>
+            </div>
+            <div class="ob-summary-row">
+              <span class="ob-summary-key">Format</span>
+              <span class="ob-summary-val">{{ aspectRatio }} — {{ selectedAspectRatioOption.hint }}</span>
+            </div>
+            <div class="ob-summary-row">
+              <span class="ob-summary-key">Voice</span>
+              <span class="ob-summary-val">{{ selectedVoiceOption ? selectedVoiceOption.name : 'Default' }}</span>
+            </div>
+          </div>
+
+          <p class="ob-launch-copy">
+            We'll generate your script, voice, and visuals automatically.<br>
+            You can edit everything in the Editor before exporting.
+          </p>
+
+          <div v-if="error" class="ob-error">{{ error }}</div>
+
+          <div class="ob-actions">
+            <button class="ob-btn ob-btn-ghost" type="button" @click="back">Back</button>
+            <div class="ob-actions-right">
+              <button
+                class="ob-btn ob-btn-primary ob-btn-launch"
+                type="button"
+                :disabled="submitting"
+                @click="launch"
+              >{{ submitting ? 'Creating…' : 'Create my first video' }}</button>
+            </div>
+          </div>
+        </div>
+      </div>
 
     </div>
   </div>
 </template>
 
 <style scoped>
+/* ── Design tokens ── */
 .ob-shell {
+  --bg: #0a0a0f;
+  --surface: #14141c;
+  --surface-2: #1a1a24;
+  --border: #25252f;
+  --border-strong: #34343f;
+  --text: #ececf3;
+  --text-dim: #8b8b9a;
+  --text-faint: #5a5a68;
+  --accent: #ff6b35;
+  --accent-soft: rgba(255,107,53,0.10);
+  --accent-border: rgba(255,107,53,0.45);
+
   min-height: 100vh;
   background:
-    radial-gradient(circle at top right, rgba(255,107,53,0.12), transparent 30%),
-    radial-gradient(circle at bottom left, rgba(96,165,250,0.08), transparent 25%),
-    #0a0a0f;
+    radial-gradient(ellipse 60% 50% at 80% 0%, rgba(255,107,53,0.08), transparent 60%),
+    radial-gradient(ellipse 50% 50% at 0% 100%, rgba(96,165,250,0.05), transparent 60%),
+    var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  font-family: "DM Sans", sans-serif;
-  color: #ececf3;
+  padding: 32px 24px;
   position: relative;
+  font-family: "DM Sans", sans-serif;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
 .ob-skip {
   position: absolute;
-  top: 20px;
-  right: 24px;
+  top: 24px;
+  right: 28px;
   background: transparent;
   border: none;
-  color: #6a6a7c;
+  color: var(--text-faint);
   font-size: 13px;
   cursor: pointer;
   font-family: inherit;
@@ -498,325 +665,392 @@ onMounted(async () => {
   border-radius: 6px;
   transition: color 0.15s;
 }
-.ob-skip:hover { color: #a1a1b5; }
+.ob-skip:hover { color: var(--text-dim); }
 
 .ob-card {
-  width: min(680px, 100%);
-  background: linear-gradient(180deg, rgba(255,255,255,0.015), transparent), #17171f;
-  border: 1px solid #2a2a36;
-  border-radius: 16px;
-  padding: 36px;
-  box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+  width: min(640px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 36px 36px 28px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.45);
 }
 
-/* ── Progress dots ── */
+/* ── Header ── */
+.ob-header { margin-bottom: 28px; }
+
 .ob-dots {
   display: flex;
   gap: 8px;
-  margin-bottom: 20px;
+  align-items: center;
+  margin-bottom: 22px;
 }
 .ob-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #2a2a36;
-  transition: 0.2s;
+  background: var(--border);
+  transition: 0.25s ease;
 }
-.ob-dot.done { background: rgba(255,107,53,0.4); }
-.ob-dot.active { background: #ff6b35; width: 24px; border-radius: 4px; }
+.ob-dot.done { background: var(--accent-border); }
+.ob-dot.active { background: var(--accent); width: 26px; border-radius: 999px; }
 
-.ob-step-label { font-size: 11px; color: #6a6a7c; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
-.ob-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
-.ob-loading { color: #6a6a7c; font-size: 13px; padding: 24px 0; }
+.ob-step-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+.ob-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.ob-subtitle { font-size: 13px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+.ob-loading { color: var(--text-faint); font-size: 13px; padding: 24px 0; }
 
 /* ── Niche grid ── */
 .ob-niche-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
   margin-bottom: 28px;
 }
 .ob-niche-card {
-  background: rgba(255,255,255,0.02);
-  border: 1px solid #2a2a36;
+  background: transparent;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 14px;
+  padding: 12px 14px;
   text-align: left;
   cursor: pointer;
-  transition: 0.15s;
+  transition: all 0.15s;
   font-family: inherit;
-  color: #ececf3;
+  color: var(--text);
 }
-.ob-niche-card:hover { border-color: #3a3a4a; background: rgba(255,255,255,0.04); }
-.ob-niche-card.selected { border-color: #ff6b35; background: rgba(255,107,53,0.08); }
-.ob-niche-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-.ob-niche-desc { font-size: 11px; color: #6a6a7c; line-height: 1.5; }
+.ob-niche-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.ob-niche-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.ob-niche-name { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+.ob-niche-desc { font-size: 11px; color: var(--text-faint); line-height: 1.45; }
+.ob-niche-card.selected .ob-niche-desc { color: var(--text-dim); }
 .ob-niche-card--other { border-style: dashed; }
 
-/* ── Source type grid ── */
+/* ── Source grid ── */
 .ob-source-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 18px;
 }
 .ob-source-card {
-  background: rgba(255,255,255,0.02);
-  border: 1px solid #2a2a36;
+  background: transparent;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
   text-align: left;
   cursor: pointer;
-  transition: 0.15s;
+  transition: all 0.15s;
   font-family: inherit;
-  color: #ececf3;
-}
-.ob-source-card:hover { border-color: #3a3a4a; }
-.ob-source-card.selected { border-color: #ff6b35; background: rgba(255,107,53,0.08); }
-.ob-source-label { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
-.ob-source-hint { font-size: 11px; color: #6a6a7c; }
-
-.ob-visual-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  color: var(--text);
+  display: flex;
+  align-items: flex-start;
   gap: 12px;
 }
+.ob-source-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.ob-source-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.ob-source-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--text-dim);
+  transition: all 0.15s;
+}
+.ob-source-card.selected .ob-source-icon { background: rgba(255,107,53,0.15); color: var(--accent); }
+.ob-source-icon :deep(svg) { width: 14px; height: 14px; }
+.ob-source-body { flex: 1; min-width: 0; }
+.ob-source-label { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+.ob-source-hint { font-size: 11px; color: var(--text-faint); line-height: 1.45; }
+
+/* ── Textarea ── */
+.ob-textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 12px 14px;
+  resize: vertical;
+  margin-bottom: 28px;
+  outline: none;
+  transition: border-color 0.15s;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+.ob-textarea:focus { border-color: var(--accent-border); }
+.ob-textarea::placeholder { color: var(--text-faint); }
+
+/* ── Fields ── */
+.ob-field { margin-bottom: 22px; }
+.ob-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+  margin-bottom: 10px;
+  display: block;
+}
+
+/* ── Visual type ── */
+.ob-visual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
 .ob-visual-card {
-  background: rgba(255,255,255,0.02);
-  border: 1px solid #2a2a36;
-  border-radius: 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   padding: 14px;
   text-align: left;
   cursor: pointer;
-  transition: 0.15s;
+  transition: all 0.15s;
   font-family: inherit;
-  color: #ececf3;
-}
-.ob-visual-card:hover { border-color: #3a3a4a; transform: translateY(-1px); }
-.ob-visual-card.selected { border-color: #ff6b35; background: rgba(255,107,53,0.08); box-shadow: 0 0 0 1px rgba(255,107,53,0.16) inset; }
-.ob-visual-art {
-  height: 110px;
-  border-radius: 12px;
-  margin-bottom: 12px;
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.06);
-}
-.ob-visual-art[data-vt="stock_video"] { background: linear-gradient(135deg, #101426 0%, #1f3a5f 45%, #4f46e5 100%); }
-.ob-visual-art[data-vt="stock_images"] { background: linear-gradient(135deg, #10261d 0%, #1f6f52 45%, #6ee7b7 100%); }
-.ob-visual-art[data-vt="ai_images"] { background: linear-gradient(135deg, #28124b 0%, #7c3aed 48%, #f59e0b 100%); }
-.ob-visual-art[data-vt="waveform"] { background: linear-gradient(135deg, #091a3a 0%, #164e63 50%, #22d3ee 100%); display: flex; align-items: end; justify-content: center; gap: 4px; padding: 14px; }
-.ob-reel-frame {
-  position: absolute;
-  inset: 16px 18px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08));
-  box-shadow: 0 20px 40px rgba(0,0,0,0.24);
-}
-.ob-reel-strip {
-  position: absolute;
-  top: 16px;
-  bottom: 16px;
-  width: 14px;
-  border-radius: 10px;
-  background:
-    repeating-linear-gradient(
-      to bottom,
-      rgba(6,10,20,0.86) 0 10px,
-      rgba(255,255,255,0.95) 10px 15px
-    );
-}
-.ob-reel-strip.left { left: 8px; }
-.ob-reel-strip.right { right: 8px; }
-.ob-photo-stack {
-  position: absolute;
-  width: 58px;
-  height: 76px;
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(236,253,245,0.9));
-  box-shadow: 0 18px 34px rgba(0,0,0,0.22);
-}
-.ob-photo-stack.back { transform: rotate(-10deg); left: 22px; top: 18px; opacity: 0.8; }
-.ob-photo-stack.front { transform: rotate(7deg); right: 22px; bottom: 14px; }
-.ob-ai-orb {
-  position: absolute;
-  width: 84px;
-  height: 84px;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  border-radius: 999px;
-  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.86), rgba(255,255,255,0.12) 45%, rgba(245,158,11,0.42) 72%, rgba(124,58,237,0.08) 100%);
-  box-shadow: 0 0 35px rgba(245,158,11,0.28);
-}
-.ob-ai-spark {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  background: rgba(255,255,255,0.95);
-  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
-}
-.ob-ai-spark.one { top: 18px; left: 22px; }
-.ob-ai-spark.two { top: 24px; right: 24px; width: 10px; height: 10px; }
-.ob-ai-spark.three { bottom: 18px; right: 38px; width: 14px; height: 14px; }
-.ob-wave-bar {
-  width: 9px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.2));
-  box-shadow: 0 0 14px rgba(34,211,238,0.22);
-}
-.ob-visual-copy { display: grid; gap: 4px; }
-
-.ob-textarea {
-  width: 100%;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid #2a2a36;
-  border-radius: 8px;
-  color: #ececf3;
-  font-family: inherit;
-  font-size: 13px;
-  padding: 12px;
-  resize: vertical;
-  box-sizing: border-box;
-  margin-bottom: 24px;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.ob-textarea:focus { border-color: #ff6b35; }
-.ob-textarea::placeholder { color: #3a3a4a; }
-
-/* ── Style step ── */
-.ob-field { margin-bottom: 22px; }
-.ob-label { font-size: 12px; color: #a1a1b5; font-weight: 500; margin-bottom: 10px; }
-
-.ob-ratio-grid {
+  color: var(--text);
   display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.ob-visual-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.ob-visual-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.ob-visual-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--text-dim);
+  transition: all 0.15s;
+}
+.ob-visual-card.selected .ob-visual-icon { background: rgba(255,107,53,0.15); color: var(--accent); }
+.ob-visual-icon :deep(svg) { width: 16px; height: 16px; }
+.ob-visual-body { flex: 1; min-width: 0; }
+.ob-visual-label { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+.ob-visual-hint { font-size: 11px; color: var(--text-faint); line-height: 1.45; }
+
+/* ── AI style grid ── */
+.ob-style-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.ob-style-grid::-webkit-scrollbar { width: 4px; }
+.ob-style-grid::-webkit-scrollbar-track { background: transparent; }
+.ob-style-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.ob-style-card {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  font-family: inherit;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  display: flex;
+  align-items: center;
   gap: 10px;
 }
-.ob-ratio-card {
-  flex: 1;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid #2a2a36;
+.ob-style-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.ob-style-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.ob-style-swatch { width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.06); }
+.ob-style-name { font-size: 12px; font-weight: 500; }
+
+/* ── Audiogram ── */
+.ob-ag-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ob-ag-card {
+  background: transparent;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.ob-ag-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.ob-ag-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.ob-ag-preview {
+  width: 100%;
+  height: 44px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #0d0d1a 0%, #0a0a14 100%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  overflow: hidden;
+}
+.ob-ag-bar { width: 3px; background: var(--accent); border-radius: 1px; }
+.ob-ag-bar-mirror { width: 3px; background: var(--accent); border-radius: 1px; align-self: center; }
+.ob-ag-bar-min { width: 2px; background: var(--accent); border-radius: 1px; opacity: 0.85; }
+.ob-ag-name { font-size: 11px; font-weight: 500; }
+.ob-ag-sublabel {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 500;
+  margin-bottom: 6px;
+  margin-top: 12px;
+  display: block;
+}
+.ob-ag-colors { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ob-ag-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+.ob-ag-color:hover { transform: scale(1.08); }
+.ob-ag-color.selected { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.ob-ag-color-custom {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 14px;
+  position: relative;
+  overflow: hidden;
+}
+.ob-ag-color-custom input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.ob-ag-bg-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.ob-ag-bg {
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  transition: all 0.15s;
+}
+.ob-ag-bg:hover { border-color: var(--border-strong); }
+.ob-ag-bg.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* ── Ratio ── */
+.ob-ratio-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ob-ratio-card {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 8px;
   text-align: center;
   cursor: pointer;
   font-family: inherit;
-  color: #ececf3;
-  transition: 0.15s;
+  color: var(--text);
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
-.ob-ratio-card:hover { border-color: #3a3a4a; }
-.ob-ratio-card.selected { border-color: #ff6b35; background: rgba(255,107,53,0.08); }
-.ob-ratio-label { font-size: 14px; font-weight: 700; }
-.ob-ratio-hint { font-size: 11px; color: #6a6a7c; margin-top: 3px; }
+.ob-ratio-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.ob-ratio-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.ob-ratio-shape { background: var(--text-faint); border-radius: 2px; transition: background 0.15s; }
+.ob-ratio-card.selected .ob-ratio-shape { background: var(--accent); }
+.r-9-16 { width: 12px; height: 20px; }
+.r-1-1  { width: 18px; height: 18px; }
+.r-16-9 { width: 24px; height: 14px; }
+.ob-ratio-label { font-size: 13px; font-weight: 500; }
+.ob-ratio-hint { font-size: 11px; color: var(--text-faint); }
 
+/* ── Voice ── */
+.ob-voice-wrap { position: relative; }
 .ob-select {
   width: 100%;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid #2a2a36;
-  border-radius: 8px;
-  color: #ececf3;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
   font-family: inherit;
   font-size: 13px;
-  padding: 10px 12px;
+  padding: 12px 38px 12px 14px;
   appearance: none;
   outline: none;
-}
-
-.ob-style-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-.ob-style-subtitle {
-  color: #6a6a7c;
-  font-size: 12px;
-  line-height: 1.5;
-  margin-bottom: 12px;
-}
-.ob-style-card {
-  background: rgba(255,255,255,0.02);
-  border: 1px solid #2a2a36;
-  border-radius: 12px;
-  padding: 10px;
-  font-family: inherit;
-  color: #a1a1b5;
   cursor: pointer;
-  transition: 0.15s;
-  text-align: left;
+  transition: border-color 0.15s;
 }
-.ob-style-card:hover { border-color: #3a3a4a; color: #ececf3; transform: translateY(-1px); }
-.ob-style-card.selected { border-color: #ff6b35; background: rgba(255,107,53,0.08); color: #ff6b35; box-shadow: 0 0 0 1px rgba(255,107,53,0.16) inset; }
-.ob-style-preview {
-  height: 112px;
-  border-radius: 10px;
-  background: var(--style-gradient);
-  position: relative;
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-.ob-style-preview-glow {
+.ob-select:focus { border-color: var(--accent-border); }
+.ob-voice-chevron {
   position: absolute;
-  inset: auto auto 18px 18px;
-  width: 52px;
-  height: 52px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--style-accent) 60%, transparent);
-  filter: blur(16px);
-}
-.ob-style-preview-panel {
-  position: absolute;
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.38), rgba(255,255,255,0.08));
-  border: 1px solid rgba(255,255,255,0.16);
-}
-.ob-style-preview-panel.main {
-  width: 58px;
-  height: 82px;
-  right: 18px;
-  top: 14px;
-}
-.ob-style-preview-panel.side {
-  width: 40px;
-  height: 58px;
-  right: 54px;
-  bottom: 12px;
-  opacity: 0.72;
-}
-.ob-style-preview-caption {
-  position: absolute;
-  left: 14px;
   right: 14px;
-  bottom: 12px;
-  font-size: 11px;
-  line-height: 1.35;
-  color: rgba(255,255,255,0.94);
-  font-weight: 600;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.28);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
 }
-.ob-style-card-body { display: grid; gap: 4px; }
-.ob-style-card-title { font-size: 13px; font-weight: 700; color: #ececf3; }
-.ob-style-card-copy { font-size: 11px; color: #8f90a6; line-height: 1.45; }
 
 /* ── Summary ── */
 .ob-summary {
-  background: rgba(255,255,255,0.02);
-  border: 1px solid #2a2a36;
-  border-radius: 10px;
-  padding: 18px;
-  margin-bottom: 18px;
-  display: grid;
-  gap: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px 18px;
+  margin-bottom: 20px;
 }
-.ob-summary-row { display: flex; justify-content: space-between; font-size: 13px; }
-.ob-summary-key { color: #6a6a7c; }
-.ob-summary-val { font-weight: 500; }
+.ob-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ob-summary-row:last-child { border-bottom: none; }
+.ob-summary-key { color: var(--text-dim); }
+.ob-summary-val { font-weight: 500; color: var(--text); }
 
 .ob-launch-copy {
   font-size: 13px;
-  color: #6a6a7c;
+  color: var(--text-dim);
   line-height: 1.6;
   margin-bottom: 24px;
+  text-align: center;
 }
 
 .ob-error {
@@ -832,31 +1066,40 @@ onMounted(async () => {
 /* ── Actions ── */
 .ob-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 10px;
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
 }
+.ob-actions-right { display: flex; gap: 8px; }
 .ob-btn {
   padding: 10px 18px;
   border-radius: 8px;
-  border: 1px solid #2a2a36;
+  border: 1px solid var(--border);
   font-family: inherit;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  transition: 0.15s;
-  color: #ececf3;
+  transition: all 0.15s;
+  color: var(--text);
   background: transparent;
 }
 .ob-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.ob-btn-ghost:hover { background: rgba(255,255,255,0.04); }
-.ob-btn-primary { background: #ff6b35; border-color: #ff6b35; color: #fff; }
-.ob-btn-primary:hover:not(:disabled) { background: #ff875a; }
-.ob-btn-launch { padding: 12px 28px; font-size: 14px; font-weight: 600; }
+.ob-btn-ghost:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.ob-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ob-btn-primary:hover:not(:disabled) { background: #ff7a47; border-color: #ff7a47; }
+.ob-btn-launch { padding: 11px 24px; }
 
 @media (max-width: 600px) {
-  .ob-card { padding: 24px 18px; }
+  .ob-card { padding: 26px 20px 20px; border-radius: 14px; }
   .ob-niche-grid { grid-template-columns: 1fr; }
   .ob-source-grid { grid-template-columns: 1fr; }
   .ob-visual-grid { grid-template-columns: 1fr; }
-  .ob-style-grid { grid-template-columns: 1fr; }
+  .ob-style-grid { grid-template-columns: repeat(2, 1fr); }
+  .ob-ag-grid { grid-template-columns: repeat(2, 1fr); }
+  .ob-ag-bg-row { grid-template-columns: repeat(2, 1fr); }
+  .ob-title { font-size: 19px; }
 }
 </style>

@@ -30,10 +30,21 @@ class SetWaveformVisualsJob implements ShouldQueue
             return;
         }
 
+        $waveformSettings = is_array($project->waveform_settings_json) ? $project->waveform_settings_json : [];
+
         Scene::query()
             ->where('project_id', $this->projectId)
             ->whereNull('visual_asset_id')
-            ->update(['visual_type' => 'waveform']);
+            ->orderBy('scene_order')
+            ->get()
+            ->each(function (Scene $scene) use ($waveformSettings): void {
+                $scene->forceFill([
+                    'visual_type' => 'waveform',
+                    'image_generation_settings_json' => $waveformSettings !== []
+                        ? array_merge($scene->image_generation_settings_json ?? [], $waveformSettings)
+                        : $scene->image_generation_settings_json,
+                ])->save();
+            });
 
         GenerationProgressed::dispatch($this->projectId, 'visual_match', 'completed');
         GenerateTTSJob::dispatch($this->projectId);

@@ -71,6 +71,7 @@ class ReplicateImageAdapter implements ImageGenerationAdapter
             return [
                 'provider_key'   => 'replicate',
                 'image_url'      => $output['output'][0],
+                'image_b64'      => null,
                 'width'          => $dims['width'],
                 'height'         => $dims['height'],
                 'seed'           => $output['input']['seed'] ?? null,

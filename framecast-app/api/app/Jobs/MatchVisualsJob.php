@@ -34,6 +34,12 @@ class MatchVisualsJob implements ShouldQueue
             return;
         }
 
+        if ($project->visual_generation_mode === 'waveform') {
+            SetWaveformVisualsJob::dispatch($this->projectId);
+
+            return;
+        }
+
         $scenes = Scene::query()
             ->where('project_id', $project->getKey())
             ->orderBy('scene_order')

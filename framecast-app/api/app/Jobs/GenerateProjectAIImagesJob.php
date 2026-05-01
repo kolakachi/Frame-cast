@@ -96,7 +96,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                 'style' => $style,
             ],
         ]);
-        $storagePath = $this->storeImage($result['image_url'], $project);
+        $storagePath = $this->storeImage($result['image_url'] ?? null, $project, $result['image_b64'] ?? null);
 
         $asset = Asset::query()->create([
             'workspace_id' => $project->workspace_id,
@@ -151,9 +151,11 @@ class GenerateProjectAIImagesJob implements ShouldQueue
         return trim("{$stylePrefix}{$label} for a faceless {$tone} video. B-roll style: {$style}. Scene narration: {$sceneText}. Context: {$context}. Make it vertical-video friendly, visually specific, no text overlays.");
     }
 
-    private function storeImage(string $url, Project $project): string
+    private function storeImage(string|null $url, Project $project, string|null $b64 = null): string
     {
-        $contents = Http::timeout(30)->get($url)->body();
+        $contents = $b64 !== null
+            ? (base64_decode($b64, true) ?: '')
+            : Http::timeout(30)->get((string) $url)->body();
         $path = sprintf(
             'workspaces/%s/assets/ai-broll/%s.png',
             $project->workspace_id,

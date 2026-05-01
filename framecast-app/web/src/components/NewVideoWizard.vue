@@ -49,7 +49,7 @@ const imageContext = ref('')
 const sourceImageAssetIds = ref([])
 const imageVisualMode = ref('upload')
 const aiBrollStyle = ref('photorealistic')
-const globalVisualMode = ref('stock') // 'stock' | 'ai' — for all non-images source types
+const globalVisualMode = ref('stock_video') // 'stock_video' | 'stock_images' | 'ai_images' | 'waveform'
 const brandKits = ref([])
 
 const selectedNiche = computed(() => niches.value.find((n) => n.id === selectedNicheId.value) ?? null)
@@ -80,6 +80,20 @@ const durationOptions = [
   { label: '90s', value: '90' },
   { label: '3 min', value: '180' },
 ]
+
+const visualTypeOptions = [
+  { key: 'stock_video', label: 'Stock Video', hint: 'Real clips matched to each scene' },
+  { key: 'stock_images', label: 'Stock Images', hint: 'Editorial stills and image montages' },
+  { key: 'ai_images', label: 'AI Images', hint: 'Generated frames in your chosen style' },
+  { key: 'waveform', label: 'Audiogram', hint: 'Audio-reactive bars for podcasts and narration' },
+]
+
+function projectVisualTypeForMode(mode) {
+  if (mode === 'ai_images') return 'ai_image'
+  if (mode === 'stock_images') return 'stock_image'
+  if (mode === 'waveform') return 'waveform'
+  return 'stock_clip'
+}
 
 const aiBrollStyleOptions = [
   { key: 'cinematic',      label: 'Cinematic',      hint: 'Dramatic film-style shots',    tone: 'rgba(251,191,36,0.22)' },
@@ -139,7 +153,7 @@ function selectCustomNiche() {
 
 function setWizardSourceType(sourceType) {
   wizardSourceType.value = sourceType
-  globalVisualMode.value = 'stock'
+  globalVisualMode.value = 'stock_video'
   if (sourceType !== 'images') {
     sourceImageAssetIds.value = []
     imageFiles.value = []
@@ -274,7 +288,7 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   sourceImageAssetIds.value = []
   imageVisualMode.value = 'upload'
   aiBrollStyle.value = 'photorealistic'
-  globalVisualMode.value = 'stock'
+  globalVisualMode.value = 'stock_video'
   channelId.value = presetChannelId ? String(presetChannelId) : ''
   title.value = ''
   promptText.value = ''
@@ -334,8 +348,18 @@ async function submitWizardProject() {
       ...(title.value ? { title: title.value } : {}),
       ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
       ...(sourceType === 'images' && imageVisualMode.value === 'upload' ? { source_image_asset_ids: sourceImageAssetIds.value } : {}),
-      ...(sourceType === 'images' && imageVisualMode.value === 'ai' ? { visual_generation_mode: 'ai_images', ai_broll_style: aiBrollStyle.value } : {}),
-      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'ai' ? { visual_generation_mode: 'ai_images', ai_broll_style: aiBrollStyle.value } : {}),
+      ...(sourceType === 'images' && imageVisualMode.value === 'ai'
+        ? { visual_type: projectVisualTypeForMode('ai_images'), ai_broll_style: aiBrollStyle.value }
+        : {}),
+      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'ai_images'
+        ? { visual_type: projectVisualTypeForMode('ai_images'), ai_broll_style: aiBrollStyle.value }
+        : {}),
+      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'stock_images'
+        ? { visual_type: projectVisualTypeForMode('stock_images') }
+        : {}),
+      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'waveform'
+        ? { visual_type: projectVisualTypeForMode('waveform') }
+        : {}),
     })
 
     const projectId = res.data?.data?.project?.id
@@ -631,11 +655,21 @@ defineExpose({ open })
         <!-- Visual type picker — shown for all text/media source types except images (which has its own) -->
         <div v-if="wizardSourceType && wizardSourceType !== 'images' && wizardSourceType !== 'blank'" class="input-group mt">
           <div class="input-label" style="margin-bottom:8px;">Visuals</div>
-          <div class="image-mode-toggle">
-            <button :class="['image-mode-btn', globalVisualMode === 'stock' ? 'active' : '']" type="button" @click="globalVisualMode = 'stock'">Stock video clips</button>
-            <button :class="['image-mode-btn', globalVisualMode === 'ai' ? 'active' : '']" type="button" @click="globalVisualMode = 'ai'">✦ AI generated images</button>
+          <div class="wizard-visual-tabs">
+            <button
+              v-for="visual in visualTypeOptions"
+              :key="visual.key"
+              :class="['wizard-visual-tab', globalVisualMode === visual.key ? 'active' : '']"
+              type="button"
+              @click="globalVisualMode = visual.key"
+            >
+              {{ visual.label }}
+            </button>
           </div>
-          <template v-if="globalVisualMode === 'ai'">
+          <div class="wizard-visual-hint">
+            {{ visualTypeOptions.find((item) => item.key === globalVisualMode)?.hint }}
+          </div>
+          <div v-if="globalVisualMode === 'ai_images'">
             <div class="image-ai-hint" style="margin-top:10px;">
               <span>✦</span>
               <span>AI generates a custom image for every scene. Pick the visual style below.</span>
@@ -654,7 +688,15 @@ defineExpose({ open })
                 <span class="ai-broll-hint">{{ style.hint }}</span>
               </button>
             </div>
-          </template>
+          </div>
+          <div v-else-if="globalVisualMode === 'waveform'" class="image-ai-hint" style="margin-top:10px;">
+            <span>🌊</span>
+            <span>The project will start as an audiogram. The bar style, color, and background can be refined in the editor.</span>
+          </div>
+          <div v-else-if="globalVisualMode === 'stock_images'" class="image-ai-hint" style="margin-top:10px;">
+            <span>🖼️</span>
+            <span>Framecast will source still-image visuals scene by scene instead of video clips.</span>
+          </div>
         </div>
 
         <!-- Settings -->
@@ -822,6 +864,38 @@ defineExpose({ open })
 .ai-broll-art { display: block; height: 58px; background: radial-gradient(circle at 30% 20%, var(--style-tone), transparent 34%), linear-gradient(135deg, var(--style-tone), rgba(255,255,255,0.05)); border-bottom: 1px solid var(--color-border); }
 .ai-broll-label { display: block; padding: 8px 8px 2px; color: var(--color-text-primary); font-size: 12px; font-weight: 700; }
 .ai-broll-hint { display: block; padding: 0 8px 8px; color: var(--color-text-muted); font-size: 10px; line-height: 1.3; }
+
+.wizard-visual-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.wizard-visual-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: rgba(255,255,255,0.02);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+.wizard-visual-tab:hover {
+  border-color: rgba(255,107,53,0.35);
+  color: var(--color-text-primary);
+}
+.wizard-visual-tab.active {
+  background: rgba(255,107,53,0.12);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px rgba(255,107,53,0.18);
+}
+.wizard-visual-hint {
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
 
 .image-upload-zone { display: block; border: 1.5px dashed var(--color-border); border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: 0.2s; background: var(--color-bg-elevated); margin-bottom: 14px; }
 .image-upload-zone:hover { border-color: var(--color-accent); background: rgba(255,107,53,0.08); }

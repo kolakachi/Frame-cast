@@ -46,11 +46,20 @@ class BreakdownScenesJob implements ShouldQueue
         ]);
 
         $scenes = $this->extractScenes($result['content'], $project->script_text);
+        $defaultVoiceSettings = is_array($project->default_voice_settings_json) ? $project->default_voice_settings_json : [];
+        $defaultVisualStyle = $project->default_visual_style ?: $project->ai_broll_style;
+        $waveformSettings = is_array($project->waveform_settings_json) ? $project->waveform_settings_json : [];
 
-        DB::transaction(function () use ($project, $scenes): void {
+        DB::transaction(function () use ($project, $scenes, $defaultVoiceSettings, $defaultVisualStyle, $waveformSettings): void {
             Scene::query()->where('project_id', $project->getKey())->delete();
 
             foreach ($scenes as $index => $scene) {
+                $sceneVoiceSettings = $defaultVoiceSettings;
+
+                if ($sceneVoiceSettings !== [] && empty($sceneVoiceSettings['language']) && $project->primary_language) {
+                    $sceneVoiceSettings['language'] = $project->primary_language;
+                }
+
                 Scene::query()->create([
                     'project_id' => $project->getKey(),
                     'scene_order' => $index + 1,
@@ -58,6 +67,11 @@ class BreakdownScenesJob implements ShouldQueue
                     'label' => $scene['label'],
                     'script_text' => $scene['script_text'],
                     'duration_seconds' => $scene['duration_seconds'],
+                    'voice_settings_json' => $sceneVoiceSettings !== [] ? $sceneVoiceSettings : null,
+                    'visual_style' => $defaultVisualStyle,
+                    'image_generation_settings_json' => $project->visual_generation_mode === 'waveform' && $waveformSettings !== []
+                        ? $waveformSettings
+                        : null,
                     'status' => 'draft',
                 ]);
             }
