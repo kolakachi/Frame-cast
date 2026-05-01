@@ -4229,7 +4229,7 @@ onBeforeUnmount(() => {
                   <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Stock Image' ? 'active' : '']" @click="selectedSwapVisualSource = 'Stock Image'">Image</button>
                   <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'AI Image' ? 'active ai' : '']" @click="selectedSwapVisualSource = 'AI Image'">✦ AI</button>
                   <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'My Assets' ? 'active' : '']" @click="selectedSwapVisualSource = 'My Assets'">Assets</button>
-                  <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Audiogram' ? 'active' : '']" @click="selectedSwapVisualSource = 'Audiogram'">Audio</button>
+                  <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Audiogram' ? 'active' : '']" @click="selectedSwapVisualSource = 'Audiogram'; if (activeScene?.visual_type !== 'waveform') saveAudiogramSettings({ apply: true })">Audio</button>
                 </div>
 
                 <!-- Stock Video -->
@@ -4362,17 +4362,7 @@ onBeforeUnmount(() => {
 
                 <!-- Audiogram -->
                 <template v-else-if="selectedSwapVisualSource === 'Audiogram'">
-                  <!-- Apply button if not yet set -->
-                  <div v-if="activeScene?.visual_type !== 'waveform'" class="audiogram-apply-state">
-                    <div class="asset-empty-state">
-                      <div class="asset-empty-icon">🎙️</div>
-                      <div class="asset-empty-title">Audiogram</div>
-                      <div class="asset-empty-sub">Animated waveform visualization — great for podcast clips and voice-led scenes</div>
-                    </div>
-                    <button class="btn btn-ghost btn-sm panel-full-btn" type="button" @click="saveAudiogramSettings({ apply: true })">Apply Audiogram</button>
-                  </div>
-
-                  <template v-else>
+                  <template>
                     <!-- Design picker -->
                     <div class="micro-label" style="margin-top:10px;margin-bottom:6px;">
                       Design
@@ -4447,6 +4437,7 @@ onBeforeUnmount(() => {
                     </button>
                   </template>
                 </template>
+
               </div>
             </div>
 
