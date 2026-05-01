@@ -307,13 +307,18 @@ class GenerateAIImageJob implements ShouldQueue
         $styleModifier = $this->visualStyle ?? $scene->visual_style ?? null;
         $stylePart = $styleModifier ? ", {$styleModifier} visual style" : '';
 
-        // Prepend reference style from uploaded reference images so regenerated
-        // scenes stay visually consistent with the rest of the project.
         $brief = is_array($scene->project->visual_brief) ? $scene->project->visual_brief : [];
-        $referenceStyle = trim((string) ($brief['reference_style'] ?? ''));
-        $stylePrefix = $referenceStyle !== '' ? "{$referenceStyle} " : '';
 
-        return trim("{$stylePrefix}{$label} for a {$tone} video{$stylePart}: {$script}");
+        // Consistency card locks character appearance, lighting, and color grade
+        // across every scene so AI-generated images look like one cohesive video.
+        $consistencyCard = trim((string) ($brief['consistency_card'] ?? ''));
+
+        // Reference style from uploaded reference images takes precedence.
+        $referenceStyle = trim((string) ($brief['reference_style'] ?? ''));
+
+        $prefix = $referenceStyle !== '' ? "{$referenceStyle} " : ($consistencyCard !== '' ? "{$consistencyCard} " : '');
+
+        return trim("{$prefix}{$label} for a {$tone} video{$stylePart}: {$script}");
     }
 
     private function storeImage(string|null $url, Scene $scene, string|null $b64 = null): string

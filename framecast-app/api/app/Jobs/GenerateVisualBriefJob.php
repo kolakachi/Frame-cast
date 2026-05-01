@@ -56,6 +56,37 @@ class GenerateVisualBriefJob implements ShouldQueue
                 }
             }
 
+            // For AI image projects without uploaded references, generate a visual
+            // consistency card that locks character appearance, lighting, and color
+            // grade so every scene looks like it belongs to the same video.
+            if (
+                in_array($project->visual_generation_mode, ['ai_images', 'ai_broll'], true) &&
+                ! isset($brief['reference_style']) &&
+                ! empty($project->script_text)
+            ) {
+                try {
+                    $cardResult = $aiGeneration->generate('visual_consistency_card', [
+                        'script_text'  => mb_substr((string) $project->script_text, 0, 2000),
+                        'visual_style' => $project->ai_broll_style ?? $project->default_visual_style ?? 'cinematic',
+                        'tone'         => $project->tone ?: 'neutral',
+                    ], 200, 0.3, [
+                        'usage_context' => [
+                            'workspace_id' => $project->workspace_id,
+                            'project_id'   => $project->getKey(),
+                            'user_id'      => $project->created_by_user_id,
+                            'template'     => 'visual_consistency_card',
+                        ],
+                    ]);
+
+                    $card = trim($cardResult['content']);
+                    if ($card !== '') {
+                        $brief['consistency_card'] = $card;
+                    }
+                } catch (\Throwable) {
+                    // Non-fatal — generation continues without the consistency card
+                }
+            }
+
             if ($brief !== []) {
                 $project->forceFill(['visual_brief' => $brief])->save();
             }
