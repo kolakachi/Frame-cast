@@ -77,7 +77,9 @@ class BreakdownScenesJob implements ShouldQueue
             }
         });
 
-        GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'completed');
+        GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'completed', null, [
+            'total' => count($scenes),
+        ]);
         GenerateVisualBriefJob::dispatch($project->getKey());
     }
 

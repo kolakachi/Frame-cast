@@ -69,6 +69,9 @@ class GenerateTTSJob implements ShouldQueue
             return;
         }
 
+        $total = $scenes->count();
+        $done  = 0;
+
         foreach ($scenes as $scene) {
             $existingVoiceSettings = $scene->voice_settings_json ?? [];
             $existingAudioAssetId = (int) data_get($existingVoiceSettings, 'audio_asset_id', 0);
@@ -131,6 +134,11 @@ class GenerateTTSJob implements ShouldQueue
             if ($asset) {
                 $this->attachCaptionTiming($asset, $transcription);
             }
+
+            $done++;
+            GenerationProgressed::dispatch($this->projectId, 'tts', 'processing', null, [
+                'done' => $done, 'total' => $total,
+            ]);
         }
 
         DB::transaction(function () use ($project): void {

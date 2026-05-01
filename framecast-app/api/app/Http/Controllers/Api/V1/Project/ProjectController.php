@@ -1257,7 +1257,7 @@ class ProjectController extends Controller
             'title' => $project->title,
             'script_text' => $project->script_text,
             'status' => $project->status,
-            'generation_status_json' => $project->generation_status_json,
+            'generation_status_json' => \App\Events\GenerationProgressed::getProgress($project->getKey()),
             'music_asset_id' => $project->music_asset_id,
             'music_settings_json' => $project->music_settings_json,
             'variants_count' => isset($project->variants_count) ? (int) $project->variants_count : 0,

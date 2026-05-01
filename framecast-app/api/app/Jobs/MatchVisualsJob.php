@@ -49,18 +49,22 @@ class MatchVisualsJob implements ShouldQueue
             return;
         }
 
-        DB::transaction(function () use ($project, $scenes, $visualProvider): void {
-            foreach ($scenes as $scene) {
-                if ($scene->visual_asset_id) {
-                    continue;
-                }
+        $total       = $scenes->count();
+        $done        = 0;
+        $orientation = in_array((string) ($project->aspect_ratio ?? ''), ['16:9'], true) ? 'landscape' : 'portrait';
+        $useImages   = $project->visual_generation_mode === 'stock_images';
+        $matchType   = $useImages ? 'image_montage' : 'stock_clip';
 
-                $prompt = $this->buildPrompt($scene, $project);
-                $orientation = in_array((string) ($project->aspect_ratio ?? ''), ['16:9'], true) ? 'landscape' : 'portrait';
-                $useImages = $project->visual_generation_mode === 'stock_images';
-                $matchType = $useImages ? 'image_montage' : 'stock_clip';
-                $match = $visualProvider->match($prompt, $orientation, $matchType);
+        foreach ($scenes as $scene) {
+            if ($scene->visual_asset_id) {
+                $done++;
+                continue;
+            }
 
+            $prompt = $this->buildPrompt($scene, $project);
+            $match  = $visualProvider->match($prompt, $orientation, $matchType);
+
+            DB::transaction(function () use ($project, $scene, $prompt, $match, $matchType): void {
                 $asset = Asset::query()->create([
                     'workspace_id' => $project->workspace_id,
                     'channel_id' => $project->channel_id,
@@ -70,10 +74,7 @@ class MatchVisualsJob implements ShouldQueue
                     'storage_url' => $match['asset_url'],
                     'thumbnail_url' => $match['thumbnail_url'],
                     'duration_seconds' => $match['duration_seconds'],
-                    'dimensions_json' => [
-                        'width' => $match['width'],
-                        'height' => $match['height'],
-                    ],
+                    'dimensions_json' => ['width' => $match['width'], 'height' => $match['height']],
                     'mime_type' => $match['mime_type'],
                     'tags' => ['matched_visual', $match['provider_key']],
                     'usage_count' => 1,
@@ -86,8 +87,13 @@ class MatchVisualsJob implements ShouldQueue
                     'visual_asset_id' => $asset->getKey(),
                     'visual_prompt' => $prompt,
                 ])->save();
-            }
-        });
+            });
+
+            $done++;
+            GenerationProgressed::dispatch($this->projectId, 'visual_match', 'processing', null, [
+                'done' => $done, 'total' => $total,
+            ]);
+        }
 
         GenerationProgressed::dispatch($this->projectId, 'visual_match', 'completed');
         GenerateTTSJob::dispatch($project->getKey());

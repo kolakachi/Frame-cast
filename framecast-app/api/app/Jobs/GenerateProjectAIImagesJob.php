@@ -38,13 +38,18 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             return;
         }
 
-        GenerationProgressed::dispatch($this->projectId, 'ai_image', 'processing');
-
         $scenes = Scene::query()
             ->where('project_id', $project->getKey())
             ->whereNull('visual_asset_id')
             ->orderBy('scene_order')
             ->get();
+
+        $total = $scenes->count();
+        $done  = 0;
+
+        GenerationProgressed::dispatch($this->projectId, 'ai_image', 'processing', null, [
+            'done' => 0, 'total' => $total,
+        ]);
 
         foreach ($scenes as $scene) {
             // Lock the scene so the editor's manual generate-image endpoint is rejected
@@ -72,6 +77,11 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                     ),
                 ])->save();
             }
+
+            $done++;
+            GenerationProgressed::dispatch($this->projectId, 'ai_image', 'processing', null, [
+                'done' => $done, 'total' => $total,
+            ]);
         }
 
         GenerationProgressed::dispatch($this->projectId, 'ai_image', 'completed');
