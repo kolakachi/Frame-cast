@@ -237,16 +237,19 @@ class AdminController extends Controller
 
         $target = User::query()->with('workspace')->find($userId);
 
-        if (! $target) {
+        if (! $target || ! $target->workspace) {
             return $this->error('not_found', 'User not found.', 404);
         }
 
-        $ttl = (int) config('admin.impersonation_ttl_minutes', 15);
+        $ttl = (int) config('admin.impersonation_ttl_minutes', 60);
 
-        $token = $jwt->issue($target, $ttl, [
-            'impersonated_by' => $admin->getKey(),
-            'impersonation' => true,
+        $session = \App\Models\AuthSession::create([
+            'user_id'    => $target->getKey(),
+            'token_hash' => hash('sha256', \Illuminate\Support\Str::random(40)),
+            'expires_at' => now()->addMinutes($ttl),
         ]);
+
+        $token = $jwt->issue($target, $target->workspace, $session);
 
         AdminAuditLog::record(
             adminUserId: $admin->getKey(),

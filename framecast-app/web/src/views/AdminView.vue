@@ -7,6 +7,24 @@ import { useAuthStore } from '../stores/auth'
 const router = useRouter()
 const authStore = useAuthStore()
 
+// ── Confirm / Alert modal ─────────────────────────────────────────────────────
+const modal = ref({ open: false, type: 'confirm', title: '', message: '', confirmLabel: 'Confirm', danger: false, resolve: null })
+
+function showConfirm(message, { title = 'Are you sure?', confirmLabel = 'Confirm', danger = false } = {}) {
+  return new Promise((resolve) => {
+    modal.value = { open: true, type: 'confirm', title, message, confirmLabel, danger, resolve }
+  })
+}
+
+function showAlert(message, { title = 'Error' } = {}) {
+  return new Promise((resolve) => {
+    modal.value = { open: true, type: 'alert', title, message, confirmLabel: 'OK', danger: false, resolve }
+  })
+}
+
+function modalConfirm() { const r = modal.value.resolve; modal.value.open = false; r?.(true) }
+function modalCancel()  { const r = modal.value.resolve; modal.value.open = false; r?.(false) }
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 const activeView = ref('dashboard')
 const topbarTitles = {
@@ -104,7 +122,8 @@ async function openPanel(userId) {
 function closePanel() { panelOpen.value = false }
 
 async function impersonate(userId) {
-  if (!confirm('Start impersonation session as this user?')) return
+  const ok = await showConfirm('Start an impersonation session as this user? A new tab will open logged in as them.', { title: 'Impersonate user', confirmLabel: 'Impersonate', danger: true })
+  if (!ok) return
   impersonating.value = true
   try {
     const res = await api.post(`/admin/users/${userId}/impersonate`)
@@ -113,7 +132,7 @@ async function impersonate(userId) {
       window.open(`/?impersonate=${token}`, '_blank')
     }
   } catch (e) {
-    alert(e?.response?.data?.error?.message || 'Impersonation failed.')
+    await showAlert(e?.response?.data?.error?.message || 'Impersonation failed.')
   } finally {
     impersonating.value = false
   }
@@ -122,7 +141,8 @@ async function impersonate(userId) {
 async function suspendWorkspace(workspaceId, currentStatus) {
   const newStatus = currentStatus === 'active' ? 'suspended' : 'active'
   const label = newStatus === 'suspended' ? 'suspend' : 'unsuspend'
-  if (!confirm(`Are you sure you want to ${label} this workspace?`)) return
+  const ok = await showConfirm(`This will ${label} the workspace and affect all users in it.`, { title: `${label.charAt(0).toUpperCase() + label.slice(1)} workspace?`, confirmLabel: label.charAt(0).toUpperCase() + label.slice(1), danger: newStatus === 'suspended' })
+  if (!ok) return
   suspending.value = true
   try {
     await api.patch(`/admin/workspaces/${workspaceId}/status`, { status: newStatus })
@@ -132,7 +152,7 @@ async function suspendWorkspace(workspaceId, currentStatus) {
       panelData.value = res.data.data
     }
   } catch (e) {
-    alert(e?.response?.data?.error?.message || 'Could not update workspace status.')
+    await showAlert(e?.response?.data?.error?.message || 'Could not update workspace status.')
   } finally {
     suspending.value = false
   }
@@ -177,7 +197,7 @@ async function updateWsPlan(ws, newPlan) {
     await api.patch(`/admin/workspaces/${ws.id}/plan`, { plan_tier: newPlan })
     await loadWorkspaces()
   } catch (e) {
-    alert(e?.response?.data?.error?.message || 'Could not update plan.')
+    await showAlert(e?.response?.data?.error?.message || 'Could not update plan.')
   } finally {
     wsSaving.value = null
   }
@@ -186,13 +206,14 @@ async function updateWsPlan(ws, newPlan) {
 async function toggleWsStatus(ws) {
   const newStatus = ws.status === 'active' ? 'suspended' : 'active'
   const label = newStatus === 'suspended' ? 'suspend' : 'unsuspend'
-  if (!confirm(`Are you sure you want to ${label} "${ws.name}"?`)) return
+  const ok = await showConfirm(`This will ${label} "${ws.name}" and affect all its users.`, { title: `${label.charAt(0).toUpperCase() + label.slice(1)} workspace?`, confirmLabel: label.charAt(0).toUpperCase() + label.slice(1), danger: newStatus === 'suspended' })
+  if (!ok) return
   wsSaving.value = ws.id
   try {
     await api.patch(`/admin/workspaces/${ws.id}/status`, { status: newStatus })
     await loadWorkspaces()
   } catch (e) {
-    alert(e?.response?.data?.error?.message || 'Could not update status.')
+    await showAlert(e?.response?.data?.error?.message || 'Could not update status.')
   } finally {
     wsSaving.value = null
   }
@@ -372,13 +393,14 @@ const suspendingUsersWs = ref(null)
 async function suspendUserWorkspace(user) {
   const newStatus = user.workspace_status === 'active' ? 'suspended' : 'active'
   const label = newStatus === 'suspended' ? 'suspend' : 'unsuspend'
-  if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} workspace for ${user.name || user.email}?`)) return
+  const ok = await showConfirm(`This will ${label} the workspace for ${user.name || user.email}.`, { title: `${label.charAt(0).toUpperCase() + label.slice(1)} workspace?`, confirmLabel: label.charAt(0).toUpperCase() + label.slice(1), danger: newStatus === 'suspended' })
+  if (!ok) return
   suspendingUsersWs.value = user.workspace_id
   try {
     await api.patch(`/admin/workspaces/${user.workspace_id}/status`, { status: newStatus })
     await loadUsers()
   } catch (e) {
-    alert(e?.response?.data?.error?.message || 'Could not update status.')
+    await showAlert(e?.response?.data?.error?.message || 'Could not update status.')
   } finally {
     suspendingUsersWs.value = null
   }
@@ -1447,6 +1469,23 @@ onMounted(() => {
     </div>
 
   </div>
+
+  <!-- ── Confirm / Alert modal ── -->
+  <Teleport to="body">
+    <div v-if="modal.open" class="adm-modal-backdrop" @click.self="modalCancel">
+      <div class="adm-modal">
+        <div class="adm-modal-header">
+          <span class="adm-modal-title">{{ modal.title }}</span>
+        </div>
+        <p class="adm-modal-body">{{ modal.message }}</p>
+        <div class="adm-modal-actions">
+          <button v-if="modal.type === 'confirm'" class="adm-modal-btn adm-modal-btn-ghost" @click="modalCancel">Cancel</button>
+          <button :class="['adm-modal-btn', modal.danger ? 'adm-modal-btn-danger' : 'adm-modal-btn-primary']" @click="modalConfirm">{{ modal.confirmLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
 </template>
 
 <style scoped>
@@ -1829,4 +1868,44 @@ tr:hover td { background: #1e2129; }
   .metrics-grid { grid-template-columns: repeat(2, 1fr); }
   .mini-stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── Modal ── */
+.adm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(2px);
+}
+.adm-modal {
+  background: #1a1a24;
+  border: 1px solid #2a2a36;
+  border-radius: 12px;
+  padding: 24px;
+  width: min(420px, calc(100vw - 32px));
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+}
+.adm-modal-header { margin-bottom: 10px; }
+.adm-modal-title { font-size: 15px; font-weight: 600; color: #ececf3; }
+.adm-modal-body { font-size: 13px; color: #8b8b9a; line-height: 1.55; margin-bottom: 22px; }
+.adm-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.adm-modal-btn {
+  padding: 8px 16px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-family: inherit;
+  transition: 0.15s;
+}
+.adm-modal-btn-ghost { background: transparent; border-color: #2a2a36; color: #8b8b9a; }
+.adm-modal-btn-ghost:hover { background: #25252f; color: #ececf3; }
+.adm-modal-btn-primary { background: #6366f1; border-color: #6366f1; color: #fff; }
+.adm-modal-btn-primary:hover { background: #4f52d3; }
+.adm-modal-btn-danger { background: #ef4444; border-color: #ef4444; color: #fff; }
+.adm-modal-btn-danger:hover { background: #dc2626; }
 </style>
