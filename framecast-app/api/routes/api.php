@@ -22,6 +22,8 @@ use App\Http\Controllers\Api\V1\Variant\VariantController;
 use App\Http\Controllers\Api\V1\CaptionPreset\CaptionPresetController;
 use App\Http\Controllers\Api\V1\VoiceProfile\VoiceProfileController;
 use App\Http\Controllers\Api\V1\Workspace\WorkspaceController;
+use App\Http\Controllers\Api\V1\Publishing\SocialAccountController;
+use App\Http\Controllers\Api\V1\Publishing\ScheduledPostController;
 use Illuminate\Broadcasting\BroadcastController;
 use Illuminate\Support\Facades\Route;
 
@@ -41,6 +43,9 @@ Route::prefix('v1')->group(function (): void {
     });
 
     Route::post('/broadcasting/auth', [BroadcastController::class, 'authenticate'])->middleware('auth.jwt');
+
+    // OAuth callbacks — unauthenticated (platform redirects here after approval)
+    Route::get('/social/{platform}/callback', [SocialAccountController::class, 'callback'])->where('platform', 'youtube|tiktok');
 
     Route::middleware('auth.jwt')->group(function (): void {
         Route::get('/billing/status', [BillingController::class, 'status']);
@@ -147,6 +152,21 @@ Route::prefix('v1')->group(function (): void {
         });
 
         Route::delete('/variants/{variantId}', [VariantController::class, 'destroy'])->whereNumber('variantId');
+
+        // ── Social accounts & publishing ─────────────────────────────────────
+        Route::prefix('/social')->group(function (): void {
+            Route::get('/accounts', [SocialAccountController::class, 'index']);
+            Route::get('/{platform}/connect', [SocialAccountController::class, 'connect'])->where('platform', 'youtube|tiktok');
+            Route::delete('/accounts/{accountId}', [SocialAccountController::class, 'destroy'])->whereNumber('accountId');
+        });
+
+        Route::prefix('/scheduled-posts')->group(function (): void {
+            Route::get('/', [ScheduledPostController::class, 'index']);
+            Route::post('/', [ScheduledPostController::class, 'store']);
+            Route::patch('/{postId}', [ScheduledPostController::class, 'update'])->whereNumber('postId');
+            Route::delete('/{postId}', [ScheduledPostController::class, 'destroy'])->whereNumber('postId');
+            Route::post('/{postId}/retry', [ScheduledPostController::class, 'retry'])->whereNumber('postId');
+        });
         Route::post('/localization-links/{localizationLinkId}/retry', [LocalizationController::class, 'retry'])->whereNumber('localizationLinkId');
 
         Route::prefix('/scenes')->group(function (): void {

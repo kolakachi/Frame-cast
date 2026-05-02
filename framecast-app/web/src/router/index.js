@@ -18,6 +18,7 @@ import SeriesDetailView from '../views/SeriesDetailView.vue'
 import SeriesCreateView from '../views/SeriesCreateView.vue'
 import VideosView from '../views/VideosView.vue'
 import JobsView from '../views/JobsView.vue'
+import CalendarView from '../views/CalendarView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -37,6 +38,7 @@ const routes = [
   { path: '/channels', name: 'channels', component: ChannelsView, meta: { requiresAuth: true } },
   { path: '/channels/:channelId', name: 'channel-detail', component: ChannelDetailView, meta: { requiresAuth: true } },
   { path: '/videos', name: 'videos', component: VideosView, meta: { requiresAuth: true } },
+  { path: '/calendar', name: 'calendar', component: CalendarView, meta: { requiresAuth: true } },
   { path: '/jobs', name: 'jobs', component: JobsView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/generation', name: 'generation-progress', component: GenerationProgressView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/editor', name: 'project-editor', component: EditorView, meta: { requiresAuth: true } },

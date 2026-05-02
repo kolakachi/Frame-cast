@@ -8,6 +8,7 @@ import { useSidebarStore } from "../stores/sidebar";
 import AppSidebar from "../components/AppSidebar.vue";
 import EditorTimeline from "../components/EditorTimeline.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
+import SchedulePostModal from "../components/SchedulePostModal.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -26,7 +27,8 @@ const activeSceneId = ref(null);
 const notificationDrawerOpen = ref(false);
 const notifications = ref([]);
 const notificationToasts = ref([]);
-const exportJobs = ref([]);
+const exportJobs      = ref([]);
+const scheduleModalOpen = ref(false);
 let workspaceChannelName = null;
 
 const audioRef = ref(null);
@@ -3562,6 +3564,8 @@ onBeforeUnmount(() => {
                   :download="latestExportJob.file_name || 'export.mp4'"
                   class="export-pill-link"
                 >Download ↓</a>
+                <span class="export-pill-sep">·</span>
+                <button class="export-pill-link export-pill-schedule" @click="scheduleModalOpen = true">📅 Schedule</button>
               </template>
             </div>
             <button :class="['btn btn-ghost btn-timeline-toggle', timelineOpen ? 'active' : '']" type="button" @click="timelineOpen = !timelineOpen">
@@ -5133,6 +5137,12 @@ onBeforeUnmount(() => {
       @close="mediaPickerVisible = false"
       @select="handleMediaPickerSelect"
     />
+    <SchedulePostModal
+      v-if="scheduleModalOpen"
+      :export-job-id="latestExportJob?.id ?? null"
+      @close="scheduleModalOpen = false"
+      @scheduled="scheduleModalOpen = false"
+    />
   </main>
 </template>
 
@@ -5347,6 +5357,15 @@ button {
 
 .export-pill-link:hover {
   color: var(--accent);
+}
+
+.export-pill-schedule {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
 }
 
 .btn-back {

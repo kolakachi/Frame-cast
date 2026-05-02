@@ -125,6 +125,58 @@ const activeBrandKit = computed(() =>
 // ── Active nav ────────────────────────────────────────────
 const activeSection = ref('brand')
 
+// ── Connected Accounts ────────────────────────────────────
+const socialAccounts    = ref([])
+const socialLoading     = ref(false)
+const disconnecting     = ref(null)
+
+const PLATFORMS = [
+  { key: 'youtube',   label: 'YouTube',         icon: '▶', note: 'Upload and schedule YouTube Shorts & videos' },
+  { key: 'tiktok',    label: 'TikTok',           icon: '♪', note: 'Post directly to your TikTok account' },
+  { key: 'instagram', label: 'Instagram Reels',  icon: '◈', note: 'Coming soon', comingSoon: true },
+  { key: 'facebook',  label: 'Facebook Reels',   icon: 'f', note: 'Requires Instagram connection', comingSoon: true },
+]
+
+function accountForPlatform(platform) {
+  return socialAccounts.value.find(a => a.platform === platform) ?? null
+}
+
+async function loadSocialAccounts() {
+  socialLoading.value = true
+  try {
+    const res = await api.get('/social/accounts')
+    socialAccounts.value = res.data?.data?.accounts ?? []
+  } catch { /* ignore */ } finally {
+    socialLoading.value = false
+  }
+}
+
+function connectPlatform(platform) {
+  const popup = window.open(
+    `${import.meta.env.VITE_API_URL ?? ''}/api/v1/social/${platform}/connect`,
+    'fc_oauth',
+    'width=600,height=700,left=200,top=100'
+  )
+  const handler = (e) => {
+    if (!e.data?.framecastOAuth) return
+    window.removeEventListener('message', handler)
+    if (popup && !popup.closed) popup.close()
+    loadSocialAccounts()
+  }
+  window.addEventListener('message', handler)
+}
+
+async function disconnectAccount(accountId) {
+  if (!confirm('Disconnect this account? Scheduled posts using it will be cancelled.')) return
+  disconnecting.value = accountId
+  try {
+    await api.delete(`/social/accounts/${accountId}`)
+    socialAccounts.value = socialAccounts.value.filter(a => a.id !== accountId)
+  } catch { /* ignore */ } finally {
+    disconnecting.value = null
+  }
+}
+
 function hydrateBrandKitForm(brandKit) {
   brandKitForm.value = {
     id: brandKit?.id || null,
@@ -303,6 +355,7 @@ onMounted(() => {
   if (route.query.section) activeSection.value = route.query.section
   loadSettings()
   loadBillingStatus()
+  loadSocialAccounts()
 })
 </script>
 
@@ -321,9 +374,10 @@ onMounted(() => {
         <div class="surface-card settings-menu">
           <div class="settings-menu-title">Settings</div>
           <div class="settings-nav">
-            <div :class="['settings-tab', activeSection === 'brand'   ? 'active' : '']" @click="activeSection = 'brand'">Brand Kits</div>
-            <div :class="['settings-tab', activeSection === 'account' ? 'active' : '']" @click="activeSection = 'account'">Account</div>
-            <div :class="['settings-tab', activeSection === 'usage'   ? 'active' : '']" @click="activeSection = 'usage'">Usage and Billing</div>
+            <div :class="['settings-tab', activeSection === 'brand'    ? 'active' : '']" @click="activeSection = 'brand'">Brand Kits</div>
+            <div :class="['settings-tab', activeSection === 'account'  ? 'active' : '']" @click="activeSection = 'account'">Account</div>
+            <div :class="['settings-tab', activeSection === 'accounts' ? 'active' : '']" @click="activeSection = 'accounts'">Connected Accounts</div>
+            <div :class="['settings-tab', activeSection === 'usage'    ? 'active' : '']" @click="activeSection = 'usage'">Usage and Billing</div>
           </div>
         </div>
 
@@ -500,6 +554,52 @@ onMounted(() => {
               <button class="btn btn-primary" type="button" @click="saveAccount">
                 {{ saveState === 'saving' ? 'Saving…' : 'Save Account' }}
               </button>
+            </div>
+          </div>
+
+          <!-- Connected Accounts -->
+          <div v-else-if="activeSection === 'accounts'">
+            <div class="section-title">Connected Accounts</div>
+            <div class="settings-section-desc">Connect your social accounts to schedule and publish videos directly from Framecast.</div>
+
+            <div class="connect-grid">
+              <div
+                v-for="plat in PLATFORMS"
+                :key="plat.key"
+                :class="['connect-card', accountForPlatform(plat.key) ? 'connected' : '']"
+              >
+                <div :class="['plat-icon', `plat-${plat.key}`]">{{ plat.icon }}</div>
+                <div class="connect-card-info">
+                  <div class="connect-card-name">{{ plat.label }}</div>
+                  <div class="connect-card-detail">
+                    <template v-if="accountForPlatform(plat.key)">
+                      {{ accountForPlatform(plat.key).platform_display_name || accountForPlatform(plat.key).platform_username }}
+                      <span v-if="accountForPlatform(plat.key).status === 'expired'" style="color:#fbbf24"> · Token expired</span>
+                    </template>
+                    <template v-else>{{ plat.note }}</template>
+                  </div>
+                </div>
+                <div class="connect-card-actions">
+                  <template v-if="plat.comingSoon">
+                    <span class="plan-status-badge" style="color:#5a5a68">Coming soon</span>
+                  </template>
+                  <template v-else-if="accountForPlatform(plat.key)">
+                    <span class="plan-status-badge" style="color:#34d399">● Connected</span>
+                    <button
+                      class="settings-btn settings-btn-sm settings-btn-danger"
+                      :disabled="disconnecting === accountForPlatform(plat.key).id"
+                      @click="disconnectAccount(accountForPlatform(plat.key).id)"
+                    >Disconnect</button>
+                  </template>
+                  <template v-else>
+                    <button class="settings-btn settings-btn-sm settings-btn-primary" @click="connectPlatform(plat.key)">Connect →</button>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-hint">
+              Framecast only requests permissions to upload and post videos. We never read your messages, contacts, or follower list.
             </div>
           </div>
 
@@ -924,6 +1024,25 @@ onMounted(() => {
   font-size: 12px;
   color: #6a6a7c;
 }
+
+/* ── Connected Accounts ── */
+.connect-grid { display: grid; gap: 10px; margin-bottom: 20px; }
+.connect-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--color-border); background: transparent; transition: .15s; }
+.connect-card:hover { background: var(--color-bg-elevated); }
+.connect-card.connected { border-color: rgba(52,211,153,.2); background: rgba(52,211,153,.03); }
+.connect-card-info { flex: 1; min-width: 0; }
+.connect-card-name { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+.connect-card-detail { font-size: 11px; color: var(--color-text-muted); }
+.connect-card-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.plat-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+.plat-youtube { background: rgba(255,0,0,.1); color: #ff4444; }
+.plat-tiktok { background: rgba(255,255,255,.06); color: var(--color-text-primary); border: 1px solid var(--color-border); }
+.plat-instagram { background: rgba(225,48,108,.12); color: #e1306c; }
+.plat-facebook { background: rgba(24,119,242,.12); color: #1877f2; }
+.settings-btn-sm { padding: 5px 10px; font-size: 11px; }
+.settings-btn-danger { color: #f87171; border-color: rgba(248,113,113,.25); }
+.settings-btn-danger:hover { background: rgba(248,113,113,.1); }
+.settings-hint { font-size: 11px; color: var(--color-text-muted); line-height: 1.55; padding: 10px 14px; background: var(--color-bg-elevated); border-radius: 8px; border: 1px solid var(--color-border); }
 
 @media (max-width: 1000px) {
   .settings-shell { grid-template-columns: 1fr; }

@@ -162,6 +162,10 @@ onBeforeUnmount(() => {
         </svg>
         Series
       </button>
+      <button :class="['nav-item', activePage === 'calendar' ? 'active' : '']" data-tooltip="Calendar" type="button" @click="nav('calendar')">
+        <svg class="nav-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Calendar
+      </button>
       <button :class="['nav-item', activePage === 'videos' ? 'active' : '']" data-tooltip="All Videos" type="button" @click="nav('videos')">
         <svg class="nav-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
           <polygon points="5 3 19 12 5 21 5 3"></polygon>
