@@ -22,12 +22,24 @@ class ApiUsageService
     ];
 
     private const IMAGE_PRICING = [
+        // DALL-E 3
         'dall-e-3:standard:1024x1024' => 0.040,
         'dall-e-3:standard:1024x1792' => 0.080,
         'dall-e-3:standard:1792x1024' => 0.080,
-        'dall-e-3:hd:1024x1024' => 0.080,
-        'dall-e-3:hd:1024x1792' => 0.120,
-        'dall-e-3:hd:1792x1024' => 0.120,
+        'dall-e-3:hd:1024x1024'       => 0.080,
+        'dall-e-3:hd:1024x1792'       => 0.120,
+        'dall-e-3:hd:1792x1024'       => 0.120,
+
+        // gpt-image-1 — https://openai.com/api/pricing/
+        'gpt-image-1:low:1024x1024'   => 0.011,
+        'gpt-image-1:low:1024x1536'   => 0.016,
+        'gpt-image-1:low:1536x1024'   => 0.016,
+        'gpt-image-1:medium:1024x1024'=> 0.042,
+        'gpt-image-1:medium:1024x1536'=> 0.063,
+        'gpt-image-1:medium:1536x1024'=> 0.063,
+        'gpt-image-1:high:1024x1024'  => 0.167,
+        'gpt-image-1:high:1024x1536'  => 0.250,
+        'gpt-image-1:high:1536x1024'  => 0.250,
     ];
 
     /**
