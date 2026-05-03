@@ -454,7 +454,7 @@ onMounted(() => {
     <!-- Sidebar -->
     <aside class="gm-sidebar">
       <div class="gm-logo">
-        <span class="gm-logo-text">Framecast</span>
+        <span class="gm-logo-text">WyvStudio</span>
         <span class="god-badge">GOD MODE</span>
       </div>
       <nav class="gm-nav">

@@ -78,7 +78,7 @@ onBeforeUnmount(() => {
   <nav :class="['sidebar', isCollapsed ? 'collapsed' : '']">
     <div class="sidebar-logo">
       <div class="logo-mark">F</div>
-      <div class="logo-text">Framecast</div>
+      <div class="logo-text">WyvStudio</div>
     </div>
 
     <!-- Workspace switcher -->

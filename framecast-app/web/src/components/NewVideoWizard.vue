@@ -408,7 +408,7 @@ defineExpose({ open })
       <!-- Step 1: Pick Niche -->
       <div v-if="wizardStep === 1">
         <div class="modal-title">Quick Start</div>
-        <div class="modal-subtitle">Pick your content niche. Framecast pre-configures visuals, voice, captions, and music.</div>
+        <div class="modal-subtitle">Pick your content niche. WyvStudio pre-configures visuals, voice, captions, and music.</div>
         <div class="niche-grid">
           <div
             v-for="niche in niches"
@@ -519,7 +519,7 @@ defineExpose({ open })
             <span>✨</span>
             <div>
               <div class="custom-niche-title">Custom niche</div>
-              <div class="custom-niche-copy">Describe the channel lane and the defaults Framecast should lean toward.</div>
+              <div class="custom-niche-copy">Describe the channel lane and the defaults WyvStudio should lean toward.</div>
             </div>
           </div>
           <div class="settings-2col mt">
@@ -695,7 +695,7 @@ defineExpose({ open })
           </div>
           <div v-else-if="globalVisualMode === 'stock_images'" class="image-ai-hint" style="margin-top:10px;">
             <span>🖼️</span>
-            <span>Framecast will source still-image visuals scene by scene instead of video clips.</span>
+            <span>WyvStudio will source still-image visuals scene by scene instead of video clips.</span>
           </div>
         </div>
 

@@ -4014,7 +4014,7 @@ onBeforeUnmount(() => {
                   </div>
                   <span class="preview-music-name">{{ activeMusicTrack.title }}</span>
                 </div>
-                <div class="preview-watermark">FRAMECAST</div>
+                <div class="preview-watermark">WYVSTUDIO</div>
                 <div class="preview-timer">{{ previewTimer.elapsed }}</div>
                 <div
                   v-if="captionEnabledDraft && captionHighlightDraft !== 'none'"

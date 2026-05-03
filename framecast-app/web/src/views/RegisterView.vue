@@ -44,7 +44,7 @@ async function submit() {
       <template v-else>
         <div class="auth-logo">F</div>
         <h1 class="auth-title">Create your account</h1>
-        <p class="auth-subtitle">Set up your Framecast workspace. Takes 30 seconds.</p>
+        <p class="auth-subtitle">Set up your WyvStudio workspace. Takes 30 seconds.</p>
 
         <div v-if="state === 'error'" class="auth-error">
           {{ errorMessage }}

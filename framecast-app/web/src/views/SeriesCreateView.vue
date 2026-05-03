@@ -445,7 +445,7 @@ onMounted(async () => {
               <div class="callout-icon">⟳</div>
               <div>
                 <div class="callout-title">How episode memory works</div>
-                <div class="callout-text">After each episode is marked complete, Framecast <strong>auto-generates a ~150 word summary</strong>. When the next episode is created, the last <strong>N summaries</strong> are injected as context — so the AI knows what was covered and avoids repetition.</div>
+                <div class="callout-text">After each episode is marked complete, WyvStudio <strong>auto-generates a ~150 word summary</strong>. When the next episode is created, the last <strong>N summaries</strong> are injected as context — so the AI knows what was covered and avoids repetition.</div>
               </div>
             </div>
 

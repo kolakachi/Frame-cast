@@ -485,7 +485,7 @@ function trackMoodLabel(track) {
                     <div class="mp-empty-title">No tracks found</div>
                   </div>
                   <template v-else>
-                    <div class="mp-source-label">Framecast Music Library</div>
+                    <div class="mp-source-label">WyvStudio Music Library</div>
                     <div class="mp-audio-list">
                       <!-- No music option -->
                       <div

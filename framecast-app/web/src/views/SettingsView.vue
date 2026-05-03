@@ -545,7 +545,7 @@ onMounted(() => {
                 <div :class="['toggle', autoMusic ? 'on' : '']" @click="autoMusic = !autoMusic"></div>
               </div>
               <div class="toggle-row">
-                <div><div class="label-main">Watermark on free exports</div><div class="label-hint">Show Framecast branding on free tier</div></div>
+                <div><div class="label-main">Watermark on free exports</div><div class="label-hint">Show WyvStudio branding on free tier</div></div>
                 <div :class="['toggle', watermarkEnabled ? 'on' : '']" @click="watermarkEnabled = !watermarkEnabled"></div>
               </div>
             </div>
@@ -560,7 +560,7 @@ onMounted(() => {
           <!-- Connected Accounts -->
           <div v-else-if="activeSection === 'accounts'">
             <div class="section-title">Connected Accounts</div>
-            <div class="settings-section-desc">Connect your social accounts to schedule and publish videos directly from Framecast.</div>
+            <div class="settings-section-desc">Connect your social accounts to schedule and publish videos directly from WyvStudio.</div>
 
             <div class="connect-grid">
               <div
@@ -599,7 +599,7 @@ onMounted(() => {
             </div>
 
             <div class="settings-hint">
-              Framecast only requests permissions to upload and post videos. We never read your messages, contacts, or follower list.
+              WyvStudio only requests permissions to upload and post videos. We never read your messages, contacts, or follower list.
             </div>
           </div>
 
