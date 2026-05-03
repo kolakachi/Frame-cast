@@ -77,7 +77,7 @@ onBeforeUnmount(() => {
 <template>
   <nav :class="['sidebar', isCollapsed ? 'collapsed' : '']">
     <div class="sidebar-logo">
-      <div class="logo-mark">W</div>
+      <div class="logo-mark">Wy</div>
       <div class="logo-text">WyvStudio</div>
     </div>
 
@@ -234,7 +234,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .sidebar { position: fixed; inset: 0 auto 0 0; width: 220px; background: var(--color-bg-panel); border-right: 1px solid var(--color-border); display: flex; flex-direction: column; z-index: 100; overflow: hidden; }
 .sidebar-logo { padding: 18px 16px 12px; border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.logo-mark { width: 28px; height: 28px; border-radius: 7px; background: var(--color-accent); display: flex; align-items: center; justify-content: center; color: #fff; font-family: "Space Mono", monospace; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+.logo-mark { width: 28px; height: 28px; border-radius: 7px; background: var(--color-accent); display: flex; align-items: center; justify-content: center; color: #fff; font-family: "Space Mono", monospace; font-size: 11px; font-weight: 700; flex-shrink: 0; letter-spacing: -0.5px; }
 .logo-text { font-size: 14px; font-weight: 700; color: var(--color-text-primary); letter-spacing: -0.3px; }
 
 .ws-switcher { margin: 10px 8px 0; padding: 9px 10px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 10px; display: flex; align-items: center; gap: 9px; cursor: pointer; transition: 0.15s; flex-shrink: 0; position: relative; z-index: 102; }
