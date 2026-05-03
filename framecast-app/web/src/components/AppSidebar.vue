@@ -77,7 +77,7 @@ onBeforeUnmount(() => {
 <template>
   <nav :class="['sidebar', isCollapsed ? 'collapsed' : '']">
     <div class="sidebar-logo">
-      <div class="logo-mark">F</div>
+      <div class="logo-mark">W</div>
       <div class="logo-text">WyvStudio</div>
     </div>
 
