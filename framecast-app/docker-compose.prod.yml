@@ -6,8 +6,6 @@ services:
     volumes:
       - ./marketing:/usr/share/nginx/html:ro
       - ./nginx-marketing/default.conf:/etc/nginx/conf.d/default.conf:ro
-    ports:
-      - "8100:80"
     restart: unless-stopped
 
   # ── Nginx: serves Vue SPA + reverse proxies API + Reverb ──────────────────
