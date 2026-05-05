@@ -86,7 +86,11 @@ onBeforeUnmount(() => {
 <template>
   <nav :class="['sidebar', isCollapsed ? 'collapsed' : '']">
     <div class="sidebar-logo">
-      <div class="logo-mark">W</div>
+      <svg width="28" height="28" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;border-radius:7px">
+        <rect width="64" height="64" rx="14" fill="#ff6b35"/>
+        <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M27 37 Q32 28 37 37" stroke="rgba(255,255,255,0.35)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      </svg>
       <div class="logo-text">WyvStudio</div>
     </div>
 

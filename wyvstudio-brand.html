@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WyvStudio — Brand Assets</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0f;color:#ececf3;font-family:"DM Sans",sans-serif;padding:40px 32px}
+h1{font-size:13px;font-weight:700;font-family:"Space Mono",monospace;text-transform:uppercase;letter-spacing:.1em;color:#5a5a68;margin-bottom:32px}
+h2{font-size:11px;font-weight:700;font-family:"Space Mono",monospace;text-transform:uppercase;letter-spacing:.1em;color:#5a5a68;margin:40px 0 16px}
+.row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}
+.card{background:#17171f;border:1px solid #2a2a36;border-radius:12px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.card-label{font-size:11px;color:#5a5a68;font-family:"Space Mono",monospace}
+.on-light{background:#f5f5f5;border-color:#e0e0e0}
+.on-light .card-label{color:#999}
+.copy-area{background:#14141c;border:1px solid #2a2a36;border-radius:8px;padding:12px 14px;font-size:11px;font-family:"Space Mono",monospace;color:#8b8b9a;width:100%;margin-top:16px;white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+
+<h1>WyvStudio — Brand Assets</h1>
+
+<!-- ══════════════════════════════════
+     LOGO MARK — SVG
+══════════════════════════════════ -->
+<h2>Logo Mark</h2>
+<div class="row">
+
+  <!-- Dark background -->
+  <div class="card">
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#ff6b35"/>
+      <!-- W formed by two interlocking threads/strands -->
+      <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <!-- Subtle weave cross-thread -->
+      <path d="M27 37 Q32 28 37 37" stroke="rgba(255,255,255,0.35)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div class="card-label">64 × 64 — Dark</div>
+  </div>
+
+  <!-- 32px -->
+  <div class="card">
+    <svg width="32" height="32" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#ff6b35"/>
+      <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M27 37 Q32 28 37 37" stroke="rgba(255,255,255,0.35)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div class="card-label">32 × 32</div>
+  </div>
+
+  <!-- 16px -->
+  <div class="card">
+    <svg width="16" height="16" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#ff6b35"/>
+      <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <div class="card-label">16 × 16 (favicon)</div>
+  </div>
+
+  <!-- On white -->
+  <div class="card on-light">
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#ff6b35"/>
+      <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M27 37 Q32 28 37 37" stroke="rgba(255,255,255,0.35)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div class="card-label">On light background</div>
+  </div>
+
+  <!-- Monochrome dark -->
+  <div class="card">
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#17171f" stroke="#2a2a36"/>
+      <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="#ff6b35" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M27 37 Q32 28 37 37" stroke="rgba(255,107,53,0.35)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div class="card-label">Outline variant</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════
+     WORDMARK
+══════════════════════════════════ -->
+<h2>Wordmark</h2>
+<div class="row">
+
+  <!-- Full wordmark dark -->
+  <div class="card" style="flex-direction:row;gap:12px;padding:20px 28px">
+    <svg width="32" height="32" viewBox="0 0 64 64" fill="none">
+      <rect width="64" height="64" rx="14" fill="#ff6b35"/>
+      <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M27 37 Q32 28 37 37" stroke="rgba(255,255,255,0.35)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    </svg>
+    <span style="font-size:20px;font-weight:700;letter-spacing:-0.5px;color:#ececf3">WyvStudio</span>
+    <div class="card-label" style="margin:0;align-self:center">Full wordmark</div>
+  </div>
+
+  <!-- Orange text variant -->
+  <div class="card" style="flex-direction:row;gap:12px;padding:20px 28px">
+    <svg width="32" height="32" viewBox="0 0 64 64" fill="none">
+      <rect width="64" height="64" rx="14" fill="#ff6b35"/>
+      <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M27 37 Q32 28 37 37" stroke="rgba(255,255,255,0.35)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    </svg>
+    <span style="font-size:20px;font-weight:700;letter-spacing:-0.5px"><span style="color:#ff6b35">Wyv</span><span style="color:#ececf3">Studio</span></span>
+    <div class="card-label" style="margin:0;align-self:center">Split colour</div>
+  </div>
+
+  <!-- On light -->
+  <div class="card on-light" style="flex-direction:row;gap:12px;padding:20px 28px">
+    <svg width="32" height="32" viewBox="0 0 64 64" fill="none">
+      <rect width="64" height="64" rx="14" fill="#ff6b35"/>
+      <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <span style="font-size:20px;font-weight:700;letter-spacing:-0.5px;color:#111">WyvStudio</span>
+    <div class="card-label" style="margin:0;align-self:center;color:#999">Light bg</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════
+     FAVICON SVG CODE
+══════════════════════════════════ -->
+<h2>Favicon SVG (paste into /public/favicon.svg)</h2>
+<div class="copy-area">&lt;svg width="32" height="32" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"&gt;
+  &lt;rect width="64" height="64" rx="14" fill="#ff6b35"/&gt;
+  &lt;path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/&gt;
+  &lt;path d="M27 37 Q32 28 37 37" stroke="rgba(255,255,255,0.35)" stroke-width="2.5" stroke-linecap="round" fill="none"/&gt;
+&lt;/svg&gt;</div>
+
+<!-- ══════════════════════════════════
+     INLINE APP SIDEBAR SVG CODE
+══════════════════════════════════ -->
+<h2>Sidebar Logo Mark (replace plain "W" div in AppSidebar.vue)</h2>
+<div class="copy-area">&lt;svg width="28" height="28" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0"&gt;
+  &lt;rect width="64" height="64" rx="14" fill="#ff6b35"/&gt;
+  &lt;path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/&gt;
+  &lt;path d="M27 37 Q32 28 37 37" stroke="rgba(255,255,255,0.35)" stroke-width="2.5" stroke-linecap="round" fill="none"/&gt;
+&lt;/svg&gt;</div>
+
+<!-- ══════════════════════════════════
+     COLOURS
+══════════════════════════════════ -->
+<h2>Brand Colours</h2>
+<div class="row">
+  <div class="card">
+    <div style="width:56px;height:56px;border-radius:10px;background:#ff6b35"></div>
+    <div class="card-label">Primary Orange<br>#ff6b35</div>
+  </div>
+  <div class="card">
+    <div style="width:56px;height:56px;border-radius:10px;background:#0a0a0f;border:1px solid #2a2a36"></div>
+    <div class="card-label">Deep Black<br>#0a0a0f</div>
+  </div>
+  <div class="card">
+    <div style="width:56px;height:56px;border-radius:10px;background:#17171f;border:1px solid #2a2a36"></div>
+    <div class="card-label">Surface<br>#17171f</div>
+  </div>
+  <div class="card">
+    <div style="width:56px;height:56px;border-radius:10px;background:#ececf3;border:1px solid #2a2a36"></div>
+    <div class="card-label">Light Text<br>#ececf3</div>
+  </div>
+  <div class="card">
+    <div style="width:56px;height:56px;border-radius:10px;background:#2a2a36;border:1px solid #3a3a46"></div>
+    <div class="card-label">Border<br>#2a2a36</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     TYPOGRAPHY
+══════════════════════════════════ -->
+<h2>Typography</h2>
+<div class="row">
+  <div class="card" style="align-items:flex-start;min-width:280px">
+    <div style="font-family:'DM Sans',sans-serif;font-size:28px;font-weight:700;letter-spacing:-0.5px">DM Sans Bold</div>
+    <div style="font-family:'DM Sans',sans-serif;font-size:16px;font-weight:500;color:#8b8b9a">DM Sans Medium — body & UI</div>
+    <div style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:#ff6b35;letter-spacing:.08em;text-transform:uppercase">SPACE MONO — labels & marks</div>
+    <div class="card-label" style="margin-top:8px">Primary: DM Sans &nbsp;·&nbsp; Accent: Space Mono</div>
+  </div>
+</div>
+
+</body>
+</html>
