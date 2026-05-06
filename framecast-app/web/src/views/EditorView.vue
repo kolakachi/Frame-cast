@@ -2063,6 +2063,48 @@ function pushToast(notification) {
   }, 5000);
 }
 
+function onPostScheduled({ mode, posts } = {}) {
+  if (mode === 'now') {
+    // Keep modal open — it shows live polling. Push a "publishing" toast so
+    // the user has feedback even if they close the modal early.
+    pushToast({ id: 'publish-now-' + Date.now(), title: 'Publishing…', message: 'Your post is being sent to the platform.' })
+    pollPublishStatus(posts ?? [])
+  } else {
+    scheduleModalOpen.value = false
+    const label = mode === 'draft' ? 'Saved as draft' : 'Post scheduled'
+    const detail = mode === 'draft' ? 'Your post was saved as a draft.' : 'Your post has been scheduled successfully.'
+    pushToast({ id: 'scheduled-' + Date.now(), title: label, message: detail })
+  }
+}
+
+function pollPublishStatus(posts) {
+  if (!posts.length) return
+  const ids = posts.map(p => p.id).filter(Boolean)
+  if (!ids.length) return
+  let attempts = 0
+  const timer = setInterval(async () => {
+    attempts++
+    if (attempts > 20) { clearInterval(timer); return }
+    try {
+      const res = await api.get('/scheduled-posts', { params: { per_page: 50 } })
+      const all = res.data?.data?.posts ?? []
+      const watched = all.filter(p => ids.includes(p.id))
+      const allDone = watched.every(p => !['pending', 'processing', 'scheduled'].includes(p.status) || p.status === 'scheduled')
+      const anyFailed = watched.some(p => p.status === 'failed')
+      const anyPublished = watched.some(p => p.status === 'published')
+      if (anyPublished || anyFailed) {
+        clearInterval(timer)
+        scheduleModalOpen.value = false
+        if (anyFailed && !anyPublished) {
+          pushToast({ id: 'publish-fail-' + Date.now(), title: 'Publish failed', message: watched.find(p => p.status === 'failed')?.failure_reason || 'The post could not be published.' })
+        } else {
+          pushToast({ id: 'publish-ok-' + Date.now(), title: 'Published!', message: 'Your post was published successfully.' })
+        }
+      }
+    } catch { /* silent */ }
+  }, 3000)
+}
+
 function subscribeWorkspaceNotifications() {
   const echo = getEcho();
   const workspaceId = mePayload.value?.workspace_id;
@@ -5141,7 +5183,7 @@ onBeforeUnmount(() => {
       v-if="scheduleModalOpen"
       :export-job-id="latestExportJob?.id ?? null"
       @close="scheduleModalOpen = false"
-      @scheduled="scheduleModalOpen = false"
+      @scheduled="onPostScheduled"
     />
   </main>
 </template>

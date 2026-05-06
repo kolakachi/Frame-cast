@@ -134,7 +134,7 @@ async function submit() {
 
     resultPosts.value = created
     resultMode.value  = true
-    emit('scheduled')
+    emit('scheduled', { mode: whenMode.value, posts: created })
 
     if (whenMode.value === 'now') {
       startPolling(created.map(p => p.id).filter(Boolean))

@@ -20,6 +20,29 @@ const loading         = ref(false)
 const activePlatforms = ref(['youtube', 'tiktok'])
 const listFilter      = ref('all') // all | scheduled | published | failed | draft
 
+// Notifications
+const notifOpen   = ref(false)
+const notifs      = ref([])
+const unreadCount = computed(() => notifs.value.filter(n => !n.is_read).length)
+
+async function loadNotifs() {
+  const res = await api.get('/notifications').catch(() => null)
+  notifs.value = res?.data?.data?.notifications ?? []
+}
+async function markAllRead() {
+  await api.post('/notifications/read-all').catch(() => null)
+  notifs.value = notifs.value.map(n => ({ ...n, is_read: true }))
+}
+function formatNotifTime(ts) {
+  if (!ts) return ''
+  const d = new Date(ts), now = new Date()
+  const diff = Math.floor((now - d) / 60000)
+  if (diff < 1) return 'just now'
+  if (diff < 60) return `${diff}m ago`
+  if (diff < 1440) return `${Math.floor(diff / 60)}h ago`
+  return d.toLocaleDateString('en', { month: 'short', day: 'numeric' })
+}
+
 // Selected post popover
 const selectedPost  = ref(null)
 const popoverStyle  = ref({})
@@ -190,6 +213,7 @@ onMounted(async () => {
   const res = await api.get('/me').catch(() => null)
   mePayload.value = res?.data?.data?.user ?? null
   loadPosts()
+  loadNotifs()
 })
 onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 
@@ -269,6 +293,13 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
           <button :class="['vtog-btn', viewMode === 'week'  ? 'active' : '']" @click="viewMode = 'week'">Week</button>
           <button :class="['vtog-btn', viewMode === 'list'  ? 'active' : '']" @click="viewMode = 'list'">Posts</button>
         </div>
+
+        <button class="cal-notif-btn" @click="notifOpen = !notifOpen">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span v-if="unreadCount > 0" class="cal-notif-badge">{{ unreadCount }}</span>
+        </button>
 
         <div v-if="viewMode !== 'list'" class="cal-platform-filter">
           <button
@@ -430,6 +461,31 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
       <div v-if="selectedPost" class="popover-overlay" @click="selectedPost = null"></div>
     </Teleport>
 
+    <!-- Notification drawer -->
+    <div v-if="notifOpen" class="cal-notif-backdrop" @click="notifOpen = false"></div>
+    <aside v-if="notifOpen" class="cal-notif-drawer">
+      <div class="cal-notif-head">
+        <div class="cal-notif-title">Notifications</div>
+        <button class="cal-notif-mark-read" @click="markAllRead">Mark all read</button>
+      </div>
+      <div v-if="!notifs.length" class="cal-notif-empty">No notifications yet</div>
+      <article
+        v-for="n in notifs" :key="n.id"
+        :class="['cal-notif-item', n.is_read ? '' : 'unread']"
+        @click="!n.is_read && markAllRead()"
+      >
+        <div :class="['cal-notif-icon', n.type === 'success' ? 'success' : n.type === 'error' ? 'error' : 'info']">
+          {{ n.type === 'success' ? '✓' : n.type === 'error' ? '✕' : '•' }}
+        </div>
+        <div class="cal-notif-body">
+          <div class="cal-notif-msg">{{ n.title }}</div>
+          <div class="cal-notif-detail">{{ n.message }}</div>
+          <div class="cal-notif-time">{{ formatNotifTime(n.created_at) }}</div>
+        </div>
+        <div v-if="!n.is_read" class="cal-notif-dot"></div>
+      </article>
+    </aside>
+
     <!-- Schedule post modal -->
     <SchedulePostModal v-if="scheduleOpen" @close="scheduleOpen = false" @scheduled="loadPosts(); scheduleOpen = false" />
   </div>
@@ -560,6 +616,30 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 .tag-red    { background: rgba(248,113,113,.1); color: #f87171; }
 .tag-gray   { background: rgba(255,255,255,.05); color: var(--color-text-muted); }
 .tag-orange { background: rgba(251,146,60,.1);  color: #fb923c; }
+
+/* Notification bell */
+.cal-notif-btn { position: relative; width: 32px; height: 32px; border-radius: 7px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: .15s; flex-shrink: 0; }
+.cal-notif-btn:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.cal-notif-badge { position: absolute; top: -4px; right: -4px; background: var(--color-accent); color: #fff; font-size: 9px; font-weight: 700; border-radius: 999px; min-width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; padding: 0 3px; }
+.cal-notif-backdrop { position: fixed; inset: 0; z-index: 150; }
+.cal-notif-drawer { position: fixed; top: 0; right: 0; width: 320px; height: 100vh; background: var(--color-bg-card); border-left: 1px solid var(--color-border); z-index: 151; display: flex; flex-direction: column; box-shadow: -8px 0 32px rgba(0,0,0,.3); }
+.cal-notif-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--color-border); flex-shrink: 0; }
+.cal-notif-title { font-size: 14px; font-weight: 600; }
+.cal-notif-mark-read { font-size: 11px; color: var(--color-text-muted); background: none; border: none; cursor: pointer; font-family: inherit; transition: .15s; }
+.cal-notif-mark-read:hover { color: var(--color-text-primary); }
+.cal-notif-empty { padding: 32px 18px; text-align: center; font-size: 13px; color: var(--color-text-muted); }
+.cal-notif-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px 18px; cursor: pointer; transition: .15s; border-bottom: 1px solid var(--color-border); position: relative; }
+.cal-notif-item:hover { background: var(--color-bg-elevated); }
+.cal-notif-item.unread { background: rgba(255,107,53,.03); }
+.cal-notif-icon { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+.cal-notif-icon.success { background: rgba(52,211,153,.15); color: #34d399; }
+.cal-notif-icon.error   { background: rgba(248,113,113,.15); color: #f87171; }
+.cal-notif-icon.info    { background: rgba(96,165,250,.15); color: #60a5fa; }
+.cal-notif-body { flex: 1; min-width: 0; }
+.cal-notif-msg    { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+.cal-notif-detail { font-size: 11px; color: var(--color-text-muted); line-height: 1.4; margin-bottom: 4px; }
+.cal-notif-time   { font-size: 10px; color: var(--color-text-muted); opacity: .7; }
+.cal-notif-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); flex-shrink: 0; margin-top: 6px; }
 
 /* Shared btns */
 .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; transition: .15s; border: 1px solid var(--color-border); color: var(--color-text-primary); background: transparent; font-family: inherit; text-decoration: none; }
