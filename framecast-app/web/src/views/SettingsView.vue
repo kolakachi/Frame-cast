@@ -1039,6 +1039,7 @@ onMounted(() => {
 .plat-tiktok { background: rgba(255,255,255,.06); color: var(--color-text-primary); border: 1px solid var(--color-border); }
 .plat-instagram { background: rgba(225,48,108,.12); color: #e1306c; }
 .plat-facebook { background: rgba(24,119,242,.12); color: #1877f2; }
+.settings-btn { cursor: pointer; }
 .settings-btn-sm { padding: 5px 10px; font-size: 11px; }
 .settings-btn-danger { color: #f87171; border-color: rgba(248,113,113,.25); }
 .settings-btn-danger:hover { background: rgba(248,113,113,.1); }
