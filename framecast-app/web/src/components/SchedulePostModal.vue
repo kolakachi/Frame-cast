@@ -1,6 +1,9 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '../services/api'
+
+const router = useRouter()
 
 const props = defineProps({
   exportJobId: { type: Number, default: null },
@@ -20,6 +23,9 @@ const captions          = ref({})   // { accountId: string }
 const titles            = ref({})   // { accountId: string } — YouTube only
 const activeCaption     = ref(null) // accountId of the caption tab open
 const generatingCaption = ref({})   // { accountId: bool }
+const resultMode        = ref(false)
+const resultPosts       = ref([])   // [{ id, platform, display_name, status }]
+const pollTimer         = ref(null)
 const category          = ref('Education')
 const visibility        = ref('public')
 const whenMode          = ref('schedule') // schedule | now | draft
@@ -105,9 +111,10 @@ async function submit() {
     : null
 
   try {
+    const created = []
     for (const accountId of selectedAccountIds.value) {
       const account = accounts.value.find(a => a.id === accountId)
-      await api.post('/scheduled-posts', {
+      const res = await api.post('/scheduled-posts', {
         export_job_id:     selectedExportId.value,
         social_account_id: accountId,
         caption:           captions.value[accountId] ?? captions.value['default'] ?? '',
@@ -117,13 +124,49 @@ async function submit() {
         scheduled_at:      scheduledAt,
         publish_now:       whenMode.value === 'now',
       })
+      created.push({
+        id:           res.data?.data?.post?.id,
+        platform:     account?.platform,
+        display_name: account?.platform_display_name || account?.platform_username,
+        status:       whenMode.value === 'now' ? 'pending' : (whenMode.value === 'draft' ? 'draft' : 'scheduled'),
+      })
     }
+
+    resultPosts.value = created
+    resultMode.value  = true
     emit('scheduled')
+
+    if (whenMode.value === 'now') {
+      startPolling(created.map(p => p.id).filter(Boolean))
+    }
   } catch (e) {
     error.value = e?.response?.data?.error?.message || 'Failed to schedule post.'
     saving.value = false
   }
 }
+
+function startPolling(ids) {
+  if (!ids.length) return
+  let attempts = 0
+  pollTimer.value = setInterval(async () => {
+    attempts++
+    if (attempts > 15) { clearInterval(pollTimer.value); return }
+    try {
+      const res = await api.get('/scheduled-posts', { params: { per_page: 50 } })
+      const posts = res.data?.data?.posts ?? []
+      let allDone = true
+      resultPosts.value = resultPosts.value.map(rp => {
+        const fresh = posts.find(p => p.id === rp.id)
+        if (!fresh) return rp
+        if (fresh.status === 'pending' || fresh.status === 'processing') allDone = false
+        return { ...rp, status: fresh.status, error_message: fresh.failure_reason }
+      })
+      if (allDone) clearInterval(pollTimer.value)
+    } catch { /* silent */ }
+  }, 2000)
+}
+
+onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 </script>
 
 <template>
@@ -136,6 +179,32 @@ async function submit() {
         </div>
 
         <div v-if="loading" class="sp-loading">Loading…</div>
+
+        <!-- ── Result state ─────────────────────────────────── -->
+        <div v-else-if="resultMode" class="sp-result">
+          <div
+            v-for="rp in resultPosts" :key="rp.id"
+            :class="['sp-result-row', rp.status === 'published' ? 'success' : rp.status === 'failed' ? 'fail' : 'pending']"
+          >
+            <span class="sp-result-icon">
+              {{ rp.status === 'published' ? '✓' : rp.status === 'failed' ? '✕' : '…' }}
+            </span>
+            <div class="sp-result-info">
+              <div class="sp-result-name">{{ { youtube:'YouTube', tiktok:'TikTok', instagram:'Instagram', facebook:'Facebook' }[rp.platform] }} · {{ rp.display_name }}</div>
+              <div class="sp-result-status">
+                <template v-if="rp.status === 'published'">Published successfully</template>
+                <template v-else-if="rp.status === 'failed'">Failed{{ rp.error_message ? ` — ${rp.error_message}` : '' }}</template>
+                <template v-else-if="rp.status === 'scheduled'">Scheduled</template>
+                <template v-else-if="rp.status === 'draft'">Saved as draft</template>
+                <template v-else>Publishing…</template>
+              </div>
+            </div>
+          </div>
+          <div class="sp-footer" style="margin-top:16px">
+            <button class="sp-btn" @click="emit('close')">Close</button>
+            <button class="sp-btn sp-btn-primary" @click="emit('close'); router.push({ name: 'calendar' })">View in Calendar →</button>
+          </div>
+        </div>
 
         <template v-else>
           <!-- No accounts connected -->
@@ -283,6 +352,18 @@ async function submit() {
 .sp-when-tab:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
 .sp-when-tab.active { background: rgba(255,107,53,.1); color: var(--color-accent); border-color: rgba(255,107,53,.3); }
 .sp-datetime-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sp-result { padding: 8px 0; }
+.sp-result-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--color-border); }
+.sp-result-row.success { border-color: rgba(52,211,153,.25); background: rgba(52,211,153,.06); }
+.sp-result-row.fail    { border-color: rgba(248,113,113,.25); background: rgba(248,113,113,.06); }
+.sp-result-row.pending { border-color: rgba(255,107,53,.2);  background: rgba(255,107,53,.05); }
+.sp-result-icon { font-size: 15px; font-weight: 700; width: 22px; text-align: center; flex-shrink: 0; margin-top: 1px; }
+.sp-result-row.success .sp-result-icon { color: #34d399; }
+.sp-result-row.fail    .sp-result-icon { color: #f87171; }
+.sp-result-row.pending .sp-result-icon { color: var(--color-accent); }
+.sp-result-info { flex: 1; min-width: 0; }
+.sp-result-name   { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+.sp-result-status { font-size: 12px; color: var(--color-text-muted); }
 .sp-error { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.2); color: #fca5a5; border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-bottom: 14px; }
 .sp-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; border-top: 1px solid var(--color-border); }
 .sp-btn { padding: 8px 16px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--color-border); color: var(--color-text-primary); background: transparent; font-family: inherit; transition: .15s; }
