@@ -11,6 +11,7 @@ class TikTokAdapter implements PlatformAdapter
 {
     private const AUTH_URL   = 'https://www.tiktok.com/v2/auth/authorize/';
     private const TOKEN_URL  = 'https://open.tiktokapis.com/v2/oauth/token/';
+    private const CREATOR_INFO_URL = 'https://open.tiktokapis.com/v2/post/publish/creator_info/query/';
     private const UPLOAD_URL = 'https://open.tiktokapis.com/v2/post/publish/video/init/';
     private const USER_URL   = 'https://open.tiktokapis.com/v2/user/info/';
 
@@ -77,13 +78,27 @@ class TikTokAdapter implements PlatformAdapter
             $this->refreshToken($account);
         }
 
+        $creatorInfo = $this->queryCreatorInfo($account);
+        $privacyOptions = $creatorInfo['privacy_level_options'] ?? [];
+
+        if (! in_array('SELF_ONLY', $privacyOptions, true)) {
+            throw new RuntimeException('TikTok does not currently allow private-only posting for this connected account.');
+        }
+
+        if (! $this->isPrivateAccount($privacyOptions)) {
+            throw new RuntimeException(
+                'TikTok blocked the publish because this app is still unaudited and the connected TikTok account is not set to Private. '
+                .'In TikTok, switch the account to Private, reconnect it here, and try again.',
+            );
+        }
+
         $caption = $post->caption ?? '';
         if (! empty($post->hashtags)) {
             $tags = implode(' ', array_map(fn ($t) => '#'.ltrim($t, '#'), $post->hashtags));
             $caption = trim("{$caption} {$tags}");
         }
 
-        $init = Http::withToken($account->access_token)
+        $initResponse = Http::withToken($account->access_token)
             ->post(self::UPLOAD_URL, [
                 'post_info' => [
                     'title'         => mb_substr($caption, 0, 2200),
@@ -99,7 +114,12 @@ class TikTokAdapter implements PlatformAdapter
                     'chunk_size'       => filesize($videoPath),
                     'total_chunk_count'=> 1,
                 ],
-            ])->throw()->json();
+            ]);
+
+        $initResponse->throw();
+
+        $init = $initResponse->json();
+        $this->throwIfTikTokError($init);
 
         $uploadUrl = $init['data']['upload_url'];
         $publishId = $init['data']['publish_id'];
@@ -119,6 +139,44 @@ class TikTokAdapter implements PlatformAdapter
         return Http::withToken($accessToken)
             ->get(self::USER_URL, ['fields' => 'open_id,display_name,avatar_url,username'])
             ->json('data.user', []);
+    }
+
+    private function queryCreatorInfo(SocialAccount $account): array
+    {
+        $response = Http::withToken($account->access_token)
+            ->post(self::CREATOR_INFO_URL, []);
+
+        $response->throw();
+
+        $payload = $response->json();
+        $this->throwIfTikTokError($payload);
+
+        return $payload['data'] ?? [];
+    }
+
+    private function throwIfTikTokError(array $payload): void
+    {
+        $errorCode = data_get($payload, 'error.code');
+
+        if (! is_string($errorCode) || $errorCode === '' || $errorCode === 'ok') {
+            return;
+        }
+
+        $message = data_get($payload, 'error.message');
+
+        throw new RuntimeException(match ($errorCode) {
+            'unaudited_client_can_only_post_to_private_accounts' => 'TikTok blocked the publish because this app is still unaudited and the connected TikTok account is not set to Private. In TikTok, switch the account to Private, reconnect it here, and try again.',
+            'privacy_level_option_mismatch' => 'TikTok rejected the privacy setting for this post. Refresh the connected TikTok account settings and choose one of the privacy options returned by TikTok.',
+            'scope_not_authorized' => 'TikTok did not grant the required video publishing scope. Reconnect the TikTok account and approve video publishing access.',
+            'spam_risk_too_many_posts' => 'TikTok reached the daily posting cap for this creator account. Try again later.',
+            'reached_active_user_cap' => 'TikTok reached the daily active-user cap for this unaudited client. Try again later or continue after your app is approved.',
+            default => sprintf('TikTok publish failed with %s%s', $errorCode, is_string($message) && $message !== '' ? ': '.$message : '.'),
+        });
+    }
+
+    private function isPrivateAccount(array $privacyOptions): bool
+    {
+        return in_array('FOLLOWER_OF_CREATOR', $privacyOptions, true);
     }
 
     private function privacyLevel(?string $visibility): string
