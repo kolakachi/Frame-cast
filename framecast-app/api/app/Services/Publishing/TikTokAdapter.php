@@ -144,7 +144,12 @@ class TikTokAdapter implements PlatformAdapter
     private function queryCreatorInfo(SocialAccount $account): array
     {
         $response = Http::withToken($account->access_token)
-            ->post(self::CREATOR_INFO_URL, []);
+            ->withHeaders([
+                'Content-Type' => 'application/json; charset=UTF-8',
+            ])
+            ->send('POST', self::CREATOR_INFO_URL, [
+                'body' => '{}',
+            ]);
 
         $response->throw();
 
