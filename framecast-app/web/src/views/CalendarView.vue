@@ -279,7 +279,6 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
           >{{ p[1] }}</button>
         </div>
 
-        <button class="btn btn-primary" style="font-size:12px;margin-left:auto" @click="scheduleOpen = true">+ Schedule Post</button>
       </div>
 
       <!-- Failed banner -->
