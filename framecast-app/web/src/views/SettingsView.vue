@@ -166,8 +166,15 @@ async function connectPlatform(platform) {
   window.addEventListener('message', handler)
 }
 
-async function disconnectAccount(accountId) {
-  if (!confirm('Disconnect this account? Scheduled posts using it will be cancelled.')) return
+const disconnectTarget = ref(null)
+
+function confirmDisconnect(accountId) {
+  disconnectTarget.value = accountId
+}
+
+async function executeDisconnect() {
+  const accountId = disconnectTarget.value
+  disconnectTarget.value = null
   disconnecting.value = accountId
   try {
     await api.delete(`/social/accounts/${accountId}`)
@@ -588,7 +595,7 @@ onMounted(() => {
                     <button
                       class="settings-btn settings-btn-sm settings-btn-danger"
                       :disabled="disconnecting === accountForPlatform(plat.key).id"
-                      @click="disconnectAccount(accountForPlatform(plat.key).id)"
+                      @click="confirmDisconnect(accountForPlatform(plat.key).id)"
                     >Disconnect</button>
                   </template>
                   <template v-else>
@@ -684,6 +691,15 @@ onMounted(() => {
       destructive
       @close="closeDeleteConfirm"
       @confirm="confirmDeleteTarget"
+    />
+    <ConfirmDialog
+      :open="Boolean(disconnectTarget)"
+      title="Disconnect account?"
+      message="This will remove the connection. Any scheduled posts using this account will be cancelled."
+      confirm-label="Disconnect"
+      destructive
+      @close="disconnectTarget = null"
+      @confirm="executeDisconnect"
     />
 
     <LimitModal

@@ -5,6 +5,7 @@ import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import AppSidebar from '../components/AppSidebar.vue'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const router    = useRouter()
 const authStore = useAuthStore()
@@ -234,10 +235,17 @@ async function retryPost(post) {
   loadPosts()
 }
 
-async function cancelPost(post) {
-  if (!confirm('Cancel this scheduled post?')) return
-  await api.delete(`/scheduled-posts/${post.id}`)
+const cancelTarget = ref(null)
+
+function promptCancelPost(post) {
+  cancelTarget.value = post
   selectedPost.value = null
+}
+
+async function executeCancel() {
+  const post = cancelTarget.value
+  cancelTarget.value = null
+  await api.delete(`/scheduled-posts/${post.id}`)
   loadPosts()
 }
 
@@ -429,7 +437,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
             <div class="list-col-actions">
               <button v-if="post.status === 'failed'" class="list-action-btn" title="Retry" @click="retryPost(post)">↺ Retry</button>
               <a v-if="post.platform_post_url" :href="post.platform_post_url" target="_blank" class="list-action-btn">↗ View</a>
-              <button v-if="['scheduled','draft','failed'].includes(post.status)" class="list-action-btn list-action-danger" title="Cancel" @click="cancelPost(post)">✕</button>
+              <button v-if="['scheduled','draft','failed'].includes(post.status)" class="list-action-btn list-action-danger" title="Cancel" @click="promptCancelPost(post)">✕</button>
             </div>
           </div>
         </div>
@@ -485,6 +493,16 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
         <div v-if="!n.is_read" class="cal-notif-dot"></div>
       </article>
     </aside>
+
+    <ConfirmDialog
+      :open="Boolean(cancelTarget)"
+      title="Cancel this post?"
+      :message="cancelTarget?.status === 'failed' ? 'This will remove the failed post from your queue.' : 'The post will be removed from the schedule and not published.'"
+      confirm-label="Cancel post"
+      destructive
+      @close="cancelTarget = null"
+      @confirm="executeCancel"
+    />
 
     <!-- Schedule post modal -->
     <SchedulePostModal v-if="scheduleOpen" @close="scheduleOpen = false" @scheduled="loadPosts(); scheduleOpen = false" />
