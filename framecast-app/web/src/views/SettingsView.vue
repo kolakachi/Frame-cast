@@ -151,12 +151,12 @@ async function loadSocialAccounts() {
   }
 }
 
-function connectPlatform(platform) {
-  const popup = window.open(
-    `${import.meta.env.VITE_API_URL ?? ''}/api/v1/social/${platform}/connect`,
-    'fc_oauth',
-    'width=600,height=700,left=200,top=100'
-  )
+async function connectPlatform(platform) {
+  const res = await api.get(`/social/${platform}/connect`)
+  const url = res.data?.data?.url
+  if (!url) return
+
+  const popup = window.open(url, 'fc_oauth', 'width=600,height=700,left=200,top=100')
   const handler = (e) => {
     if (!e.data?.framecastOAuth) return
     window.removeEventListener('message', handler)

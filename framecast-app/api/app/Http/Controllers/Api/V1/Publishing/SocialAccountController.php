@@ -31,7 +31,7 @@ class SocialAccountController extends Controller
 
     // ── Initiate OAuth ───────────────────────────────────────────────────────
 
-    public function connect(Request $request, string $platform): \Illuminate\Http\RedirectResponse
+    public function connect(Request $request, string $platform): JsonResponse
     {
         if (! in_array($platform, PlatformAdapterFactory::supported(), true)) {
             abort(400, "Unsupported platform: {$platform}");
@@ -51,7 +51,7 @@ class SocialAccountController extends Controller
 
         $adapter = PlatformAdapterFactory::make($platform);
 
-        return redirect($adapter->getAuthUrl($state));
+        return response()->json(['data' => ['url' => $adapter->getAuthUrl($state)]]);
     }
 
     // ── OAuth callback ───────────────────────────────────────────────────────
