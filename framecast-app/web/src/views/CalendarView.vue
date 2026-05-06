@@ -429,7 +429,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 
 <style scoped>
 .cal-layout { display: flex; min-height: 100vh; background: var(--color-bg-deep); }
-.cal-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.cal-main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 
 /* Topbar */
 .cal-topbar { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--color-bg-card); border-bottom: 1px solid var(--color-border); flex-shrink: 0; flex-wrap: wrap; }
