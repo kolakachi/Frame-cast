@@ -158,6 +158,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/accounts', [SocialAccountController::class, 'index']);
             Route::get('/{platform}/connect', [SocialAccountController::class, 'connect'])->where('platform', 'youtube|tiktok');
             Route::delete('/accounts/{accountId}', [SocialAccountController::class, 'destroy'])->whereNumber('accountId');
+            Route::post('/generate-caption', [SocialAccountController::class, 'generateCaption']);
         });
 
         Route::prefix('/scheduled-posts')->group(function (): void {

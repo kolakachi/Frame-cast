@@ -19,6 +19,7 @@ const selectedAccountIds= ref([])
 const captions          = ref({})   // { accountId: string }
 const titles            = ref({})   // { accountId: string } — YouTube only
 const activeCaption     = ref(null) // accountId of the caption tab open
+const generatingCaption = ref({})   // { accountId: bool }
 const category          = ref('Education')
 const visibility        = ref('public')
 const whenMode          = ref('schedule') // schedule | now | draft
@@ -75,6 +76,21 @@ function toggleAccount(accountId) {
   } else {
     selectedAccountIds.value = [...selectedAccountIds.value, accountId]
     if (!activeCaption.value) activeCaption.value = accountId
+  }
+}
+
+// ── AI caption ───────────────────────────────────────────
+async function generateCaption(accountId, platform) {
+  if (!selectedExportId.value || generatingCaption.value[accountId]) return
+  generatingCaption.value = { ...generatingCaption.value, [accountId]: true }
+  try {
+    const res = await api.post('/social/generate-caption', {
+      export_job_id: selectedExportId.value,
+      platform,
+    })
+    captions.value = { ...captions.value, [accountId]: res.data?.data?.caption ?? '' }
+  } finally {
+    generatingCaption.value = { ...generatingCaption.value, [accountId]: false }
   }
 }
 
@@ -168,7 +184,12 @@ async function submit() {
                     :placeholder="acc.platform === 'youtube' ? 'Describe your video…' : 'Write your caption…'"
                     :maxlength="acc.platform === 'youtube' ? 5000 : 2200"
                   ></textarea>
-                  <div class="sp-char-count">{{ (captions[acc.id] ?? '').length }} / {{ acc.platform === 'youtube' ? 5000 : 2200 }}</div>
+                  <div class="sp-caption-footer">
+                    <div class="sp-char-count">{{ (captions[acc.id] ?? '').length }} / {{ acc.platform === 'youtube' ? 5000 : 2200 }}</div>
+                    <button class="sp-ai-btn" :disabled="!selectedExportId || generatingCaption[acc.id]" @click="generateCaption(acc.id, acc.platform)">
+                      {{ generatingCaption[acc.id] ? 'Generating…' : '✦ Generate with AI' }}
+                    </button>
+                  </div>
                   <!-- YouTube extra fields -->
                   <template v-if="acc.platform === 'youtube'">
                     <input v-model="titles[acc.id]" class="sp-input" style="margin-top:8px" placeholder="Video title (YouTube)" maxlength="100">
@@ -249,7 +270,11 @@ async function submit() {
 .sp-caption-tab.active { color: var(--color-accent); border-bottom-color: var(--color-accent); }
 .sp-textarea { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: inherit; font-size: 13px; padding: 10px 12px; resize: vertical; outline: none; transition: border-color .15s; line-height: 1.5; }
 .sp-textarea:focus { border-color: rgba(255,107,53,.45); }
-.sp-char-count { font-size: 11px; color: var(--color-text-muted); text-align: right; margin-top: 4px; }
+.sp-caption-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+.sp-char-count { font-size: 11px; color: var(--color-text-muted); }
+.sp-ai-btn { font-size: 11px; font-weight: 500; color: var(--color-accent); background: rgba(255,107,53,.08); border: 1px solid rgba(255,107,53,.2); border-radius: 5px; padding: 3px 9px; cursor: pointer; font-family: inherit; transition: .15s; }
+.sp-ai-btn:hover:not(:disabled) { background: rgba(255,107,53,.15); }
+.sp-ai-btn:disabled { opacity: .45; cursor: not-allowed; }
 .sp-input { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: inherit; font-size: 13px; padding: 9px 12px; outline: none; transition: border-color .15s; }
 .sp-input:focus { border-color: rgba(255,107,53,.45); }
 .sp-select { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: inherit; font-size: 13px; padding: 9px 12px; outline: none; }

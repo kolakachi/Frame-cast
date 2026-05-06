@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api\V1\Publishing;
 
 use App\Http\Controllers\Controller;
+use App\Models\ExportJob;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Services\Publishing\PlatformAdapterFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 class SocialAccountController extends Controller
@@ -116,6 +118,53 @@ class SocialAccountController extends Controller
         $account->delete();
 
         return response()->json(['data' => ['deleted' => true]]);
+    }
+
+    // ── AI caption generation ────────────────────────────────────────────────
+
+    public function generateCaption(Request $request): JsonResponse
+    {
+        $request->validate([
+            'export_job_id' => 'required|integer',
+            'platform'      => 'required|string|in:youtube,tiktok,instagram,facebook',
+        ]);
+
+        /** @var User $user */
+        $user = $request->user();
+
+        $export = ExportJob::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->with('project')
+            ->findOrFail($request->integer('export_job_id'));
+
+        $project  = $export->project;
+        $title    = $project?->title ?? 'Untitled';
+        $script   = $project?->script_text ?? '';
+        $platform = $request->string('platform');
+
+        $platformHints = match ((string) $platform) {
+            'tiktok'    => 'TikTok (casual, punchy, 2–3 hashtags, under 150 chars)',
+            'youtube'   => 'YouTube (engaging, keyword-rich description, no hashtags needed, 2–4 sentences)',
+            'instagram' => 'Instagram (conversational, 3–5 hashtags, 1–2 sentences)',
+            default     => 'a social media platform (concise and engaging)',
+        };
+
+        $scriptExcerpt = mb_substr($script, 0, 800);
+
+        $prompt = "Write a social media caption for {$platformHints}.\n\nVideo title: {$title}\nScript excerpt: {$scriptExcerpt}\n\nReturn only the caption text. No quotes, no explanation.";
+
+        $response = Http::withToken((string) config('services.openai.api_key'))
+            ->timeout(20)
+            ->post('https://api.openai.com/v1/chat/completions', [
+                'model'       => 'gpt-4o-mini',
+                'max_tokens'  => 200,
+                'temperature' => 0.8,
+                'messages'    => [['role' => 'user', 'content' => $prompt]],
+            ])->throw()->json();
+
+        $caption = trim($response['choices'][0]['message']['content'] ?? '');
+
+        return response()->json(['data' => ['caption' => $caption]]);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
