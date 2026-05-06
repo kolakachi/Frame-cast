@@ -2,10 +2,15 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
+import { useAuthStore } from '../stores/auth'
 import AppSidebar from '../components/AppSidebar.vue'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
 
-const router = useRouter()
+const router    = useRouter()
+const authStore = useAuthStore()
+const mePayload = ref(null)
+
+async function logout() { await authStore.logout(); router.push({ name: 'login' }) }
 
 // ── State ─────────────────────────────────────────────────
 const viewMode        = ref('month') // month | week | list
@@ -181,7 +186,11 @@ function startPollIfNeeded() {
 
 watch(hasPending, val => { if (val) startPollIfNeeded() })
 watch(currentDate, loadPosts)
-onMounted(loadPosts)
+onMounted(async () => {
+  const res = await api.get('/me').catch(() => null)
+  mePayload.value = res?.data?.data?.user ?? null
+  loadPosts()
+})
 onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 
 // ── Post actions ──────────────────────────────────────────
@@ -241,7 +250,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 
 <template>
   <div class="cal-layout">
-    <AppSidebar active-page="calendar" />
+    <AppSidebar :user="mePayload" active-page="calendar" @logout="logout" />
 
     <div class="cal-main">
       <!-- Topbar -->
@@ -509,7 +518,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 .list-filter-count { background: var(--color-bg-deep); border-radius: 999px; padding: 1px 6px; font-size: 10px; }
 .list-empty { padding: 48px 24px; text-align: center; color: var(--color-text-muted); font-size: 13px; }
 .list-table { padding: 0 24px 24px; }
-.list-row { display: grid; grid-template-columns: 120px 130px 1fr 160px 100px; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 8px; }
+.list-row { display: grid; grid-template-columns: 110px 110px 1fr 150px auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 8px; }
 .list-header { font-size: 10px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .06em; padding: 12px 12px 6px; }
 .list-row:not(.list-header) { border: 1px solid var(--color-border); margin-bottom: 6px; background: var(--color-bg-card); transition: .15s; }
 .list-row:not(.list-header):hover { border-color: var(--color-border-active); }
@@ -525,7 +534,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 .list-plat-icon { font-size: 13px; margin-right: 5px; }
 .list-plat-name { font-size: 12px; }
 .list-title { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
-.list-fail-reason { font-size: 11px; color: #f87171; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.list-fail-reason { font-size: 11px; color: #f87171; line-height: 1.4; word-break: break-word; }
 .list-caption { font-size: 11px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-col-date { font-size: 11px; color: var(--color-text-muted); }
 .list-col-actions { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
