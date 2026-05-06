@@ -87,7 +87,7 @@ class TikTokAdapter implements PlatformAdapter
             ->post(self::UPLOAD_URL, [
                 'post_info' => [
                     'title'         => mb_substr($caption, 0, 2200),
-                    'privacy_level' => $this->privacyLevel($post->visibility),
+                    'privacy_level' => 'SELF_ONLY',
                     'disable_duet'  => false,
                     'disable_stitch'=> false,
                     'disable_comment' => false,
