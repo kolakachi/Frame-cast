@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import AppSidebar from '../components/AppSidebar.vue'
+import NotifBell from '../components/NotifBell.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -758,6 +759,7 @@ onBeforeUnmount(() => {
         <div class="topbar-actions">
           <button class="btn btn-ghost" type="button" @click="openEditor(projectId)">Back to Editor</button>
           <button class="btn btn-ghost" type="button" @click="backToDashboard">Dashboard</button>
+                  <NotifBell />
         </div>
       </header>
 

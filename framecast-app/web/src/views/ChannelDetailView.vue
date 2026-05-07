@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
+import NotifBell from '../components/NotifBell.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -263,6 +264,7 @@ onMounted(loadData)
         </div>
         <div class="topbar-right">
           <button class="btn btn-primary btn-sm" type="button" @click="openNewVideo">+ New Video</button>
+                  <NotifBell />
         </div>
       </div>
 

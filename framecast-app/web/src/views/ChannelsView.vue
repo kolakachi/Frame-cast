@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
+import NotifBell from '../components/NotifBell.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -231,6 +232,7 @@ onMounted(loadData)
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
             New Channel
           </button>
+                  <NotifBell />
         </div>
       </div>
 

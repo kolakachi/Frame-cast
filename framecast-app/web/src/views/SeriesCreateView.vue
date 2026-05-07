@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
+import NotifBell from '../components/NotifBell.vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 
@@ -253,6 +254,7 @@ onMounted(async () => {
           <button class="btn btn-primary btn-sm" :disabled="saving || !form.name.trim()" @click="submit">
             {{ saving ? 'Creating…' : 'Create Series' }}
           </button>
+                  <NotifBell />
         </div>
       </div>
 

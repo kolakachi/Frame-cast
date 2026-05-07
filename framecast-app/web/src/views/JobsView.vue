@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
+import NotifBell from '../components/NotifBell.vue'
 
 const router = useRouter()
 
@@ -288,6 +289,7 @@ onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer) })
         </div>
         <div class="topbar-right">
           <span class="topbar-hint">// real-time render queue</span>
+                  <NotifBell />
         </div>
       </div>
 

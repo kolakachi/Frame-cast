@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
+import NotifBell from '../components/NotifBell.vue'
 import NewVideoWizard from '../components/NewVideoWizard.vue'
 
 const route = useRoute()
@@ -237,6 +238,7 @@ onMounted(async () => {
             New Video
           </button>
           <span class="total-label">{{ total }} video{{ total !== 1 ? 's' : '' }}</span>
+                  <NotifBell />
         </div>
       </div>
 

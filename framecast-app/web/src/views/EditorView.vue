@@ -9,6 +9,7 @@ import AppSidebar from "../components/AppSidebar.vue";
 import EditorTimeline from "../components/EditorTimeline.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
 import SchedulePostModal from "../components/SchedulePostModal.vue";
+import NotifBell from "../components/NotifBell.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -3628,20 +3629,7 @@ onBeforeUnmount(() => {
             <button class="btn btn-ghost btn-back" type="button" @click="router.push({ name: 'dashboard' })">
               Back to Dashboard
             </button>
-            <button class="notif-bell-btn" type="button" title="Notifications" @click="notificationDrawerOpen = !notificationDrawerOpen">
-              <svg
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                viewBox="0 0 24 24"
-              >
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-              </svg>
-              <span v-if="unreadCount > 0" class="notif-badge">{{ unreadCount }}</span>
-            </button>
+            <NotifBell />
           </div>
         </header>
 

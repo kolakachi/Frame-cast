@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
+import NotifBell from '../components/NotifBell.vue'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
@@ -525,6 +526,7 @@ onMounted(() => {
         <div class="gm-topbar-right">
           <span class="topbar-meta">{{ authStore.user?.email }}</span>
           <span class="badge badge-purple">Super Admin</span>
+                  <NotifBell />
         </div>
       </div>
 

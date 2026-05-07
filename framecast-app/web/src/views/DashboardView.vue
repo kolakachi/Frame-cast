@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import { getEcho } from '../services/echo'
 import AppSidebar from '../components/AppSidebar.vue'
+import NotifBell from '../components/NotifBell.vue'
 import NewVideoWizard from '../components/NewVideoWizard.vue'
 
 const route = useRoute()
@@ -460,13 +461,7 @@ onBeforeUnmount(() => {
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
             New Video
           </button>
-          <button class="notif-bell-btn" type="button" title="Notifications" @click="notificationDrawerOpen = !notificationDrawerOpen">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-            </svg>
-            <span v-if="unreadCount > 0" class="notif-badge">{{ unreadCount }}</span>
-          </button>
+          <NotifBell />
         </div>
       </div>
 
@@ -780,31 +775,6 @@ onBeforeUnmount(() => {
 
       </div>
     </div>
-
-    <div :class="`drawer-backdrop ${notificationDrawerOpen ? 'open' : ''}`" @click="notificationDrawerOpen = false"></div>
-    <aside :class="`drawer drawer-notif ${notificationDrawerOpen ? 'open' : ''}`">
-      <div class="drawer-header">
-        <div class="drawer-title">Notifications</div>
-        <button class="mark-read-btn" type="button" @click="markAllRead">Mark all read</button>
-      </div>
-      <div v-if="notifications.length === 0" class="notif-empty">No notifications yet</div>
-      <article
-        v-for="item in notifications"
-        :key="item.id"
-        :class="`notif-item ${item.is_read ? '' : 'unread'}`"
-        @click="!item.is_read && markNotificationRead(item.id)"
-      >
-        <div :class="`notif-icon-wrap ${item.type === 'success' ? 'success' : item.type === 'error' ? 'error' : 'warning'}`">
-          {{ item.type === 'success' ? '✓' : item.type === 'error' ? '✕' : '•' }}
-        </div>
-        <div class="notif-body">
-          <div class="notif-msg">{{ item.title }}</div>
-          <div class="notif-time">{{ formatNotifTime(item.created_at) }}</div>
-          <div class="notif-detail">{{ item.message }}</div>
-        </div>
-        <div v-if="!item.is_read" class="notif-unread-dot"></div>
-      </article>
-    </aside>
 
     <div class="toast-container">
       <div v-for="toast in notificationToasts" :key="toast.id" class="toast">
