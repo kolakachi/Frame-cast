@@ -1492,6 +1492,7 @@ onMounted(() => {
           </template>
 
         </div>
+        </template>
 
         <!-- ── Plans & Credits ─────────────────────────── -->
         <template v-if="activeView === 'plans'">
