@@ -189,12 +189,8 @@ class SocialAccountController extends Controller
 
         return response(<<<HTML
 <!DOCTYPE html><html><body><script>
-  if (window.opener) {
-    window.opener.postMessage({framecastOAuth: {$json}}, '*');
-    window.close();
-  } else {
-    window.location.href = '/settings?section=accounts&oauth=' + encodeURIComponent(JSON.stringify({$json}));
-  }
+  try { localStorage.setItem('framecastOAuth', JSON.stringify({$json})); } catch(e) {}
+  window.close();
 </script></body></html>
 HTML, 200, ['Content-Type' => 'text/html']);
     }
