@@ -263,7 +263,7 @@ class VariantController extends Controller
                 'aspect_ratio' => (string) ($derivedProject->aspect_ratio ?: '9:16'),
                 'language' => (string) ($derivedProject->primary_language ?: 'en'),
                 'file_name' => "{$fileSlug}_{$variantSlug}_".date('Ymd').'.mp4',
-                'watermark_enabled' => (bool) ($validated['watermark_enabled'] ?? false),
+                'watermark_enabled' => $this->shouldWatermark((int) $derivedProject->workspace_id, (bool) ($validated['watermark_enabled'] ?? false)),
                 'status' => 'queued',
                 'progress_percent' => 0,
                 'priority' => 0,
@@ -740,5 +740,14 @@ class VariantController extends Controller
             ],
             'meta' => [],
         ]);
+    }
+
+    private function shouldWatermark(int $workspaceId, bool $requested): bool
+    {
+        $workspace = \App\Models\Workspace::find($workspaceId);
+        if (($workspace?->plan_tier ?? 'free') === 'free') {
+            return true;
+        }
+        return $requested;
     }
 }

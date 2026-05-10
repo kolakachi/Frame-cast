@@ -736,7 +736,7 @@ class ProjectController extends Controller
             'aspect_ratio' => $aspectRatio,
             'language' => $language,
             'file_name' => "{$titleSlug}-{$aspectRatio}-{$language}.mp4",
-            'watermark_enabled' => (bool) ($validated['watermark_enabled'] ?? false),
+            'watermark_enabled' => $this->shouldWatermark($project->workspace_id, (bool) ($validated['watermark_enabled'] ?? false)),
             'status' => 'queued',
             'progress_percent' => 0,
             'priority' => 0,
@@ -1155,6 +1155,17 @@ class ProjectController extends Controller
             'completed_at' => $exportJob->completed_at?->toIso8601String(),
             'output_asset' => $outputAsset ? $this->serializeAsset($outputAsset) : null,
         ];
+    }
+
+    private function shouldWatermark(int $workspaceId, bool $requested): bool
+    {
+        $workspace = \App\Models\Workspace::find($workspaceId);
+        $planTier  = $workspace?->plan_tier ?? 'free';
+        // Free plan always watermarks regardless of what the frontend sends
+        if ($planTier === 'free') {
+            return true;
+        }
+        return $requested;
     }
 
     private function reconcileStaleExports(int $projectId): void
