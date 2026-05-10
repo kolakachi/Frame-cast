@@ -83,10 +83,10 @@ class YouTubeAdapter implements PlatformAdapter
     {
         $this->ensureFreshToken($account);
 
-        $metadata = json_encode([
+        $metadataJson = json_encode([
             'snippet' => [
-                'title'       => $post->title ?: $post->caption,
-                'description' => $post->caption,
+                'title'       => $post->title ?: mb_substr($post->caption ?? '', 0, 100),
+                'description' => $post->caption ?? '',
                 'categoryId'  => $this->categoryId($post->category),
                 'tags'        => $post->hashtags ?? [],
             ],
@@ -96,13 +96,26 @@ class YouTubeAdapter implements PlatformAdapter
             ],
         ]);
 
+        // YouTube requires multipart/related — not multipart/form-data
+        $boundary = 'wyvstudio_' . bin2hex(random_bytes(8));
+        $videoBytes = file_get_contents($videoPath);
+
+        $body  = "--{$boundary}\r\n";
+        $body .= "Content-Type: application/json; charset=UTF-8\r\n\r\n";
+        $body .= $metadataJson . "\r\n";
+        $body .= "--{$boundary}\r\n";
+        $body .= "Content-Type: video/mp4\r\n\r\n";
+        $body .= $videoBytes . "\r\n";
+        $body .= "--{$boundary}--";
+
         $response = Http::withToken($account->access_token)
+            ->withHeaders(['Content-Type' => "multipart/related; boundary={$boundary}"])
             ->timeout(300)
-            ->attach('video', fopen($videoPath, 'r'), basename($videoPath))
+            ->withBody($body, "multipart/related; boundary={$boundary}")
             ->post(self::UPLOAD_URL.'?'.http_build_query([
                 'uploadType' => 'multipart',
                 'part'       => 'snippet,status',
-            ]), ['metadata' => $metadata])
+            ]))
             ->throw()
             ->json();
 
