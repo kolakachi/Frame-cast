@@ -157,7 +157,7 @@ async function connectPlatform(platform) {
   if (!url) return
 
   localStorage.removeItem('framecastOAuth')
-  const popup = window.open(url, 'fc_oauth', 'width=600,height=700,left=200,top=100')
+  const popup = window.open(url, '_blank')
   if (!popup) return
 
   // Listen via localStorage storage event (postMessage / popup inspection can
