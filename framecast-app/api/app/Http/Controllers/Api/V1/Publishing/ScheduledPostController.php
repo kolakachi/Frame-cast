@@ -190,6 +190,36 @@ class ScheduledPostController extends Controller
         return response()->json(['data' => ['post' => $this->serialize($post->fresh())]]);
     }
 
+    // ── Completed exports available for scheduling ───────────────────────────
+
+    public function completedExports(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $exports = ExportJob::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where('status', 'completed')
+            ->with('project:id,title')
+            ->orderByDesc('completed_at')
+            ->limit(50)
+            ->get();
+
+        return response()->json([
+            'data' => [
+                'exports' => $exports->map(fn (ExportJob $e) => [
+                    'id'           => $e->getKey(),
+                    'project_id'   => $e->project_id,
+                    'project_title'=> $e->project?->title ?? 'Untitled',
+                    'aspect_ratio' => $e->aspect_ratio,
+                    'language'     => $e->language,
+                    'file_name'    => $e->file_name,
+                    'completed_at' => $e->completed_at?->toIso8601String(),
+                ])->all(),
+            ],
+        ]);
+    }
+
     // ── Serializer ───────────────────────────────────────────────────────────
 
     private function serialize(ScheduledPost $post): array

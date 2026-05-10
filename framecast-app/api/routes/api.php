@@ -161,6 +161,8 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/generate-caption', [SocialAccountController::class, 'generateCaption']);
         });
 
+        Route::get('/exports/completed', [ScheduledPostController::class, 'completedExports']);
+
         Route::prefix('/scheduled-posts')->group(function (): void {
             Route::get('/', [ScheduledPostController::class, 'index']);
             Route::post('/', [ScheduledPostController::class, 'store']);

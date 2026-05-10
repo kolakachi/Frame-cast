@@ -48,24 +48,13 @@ const canSubmit = computed(() =>
 // ── Load ──────────────────────────────────────────────────
 onMounted(async () => {
   try {
-    const [accRes, expRes] = await Promise.all([
-      api.get('/social/accounts'),
-      api.get('/projects/queue', { params: { per_page: 20 } }),
-    ])
+    const requests = [api.get('/social/accounts')]
+    if (!props.exportJobId) requests.push(api.get('/exports/completed'))
+
+    const [accRes, expRes] = await Promise.all(requests)
     accounts.value = (accRes.data?.data?.accounts ?? []).filter(a => a.status === 'active')
-    // Extract completed export jobs from queue response
-    const allExports = []
-    for (const item of expRes.data?.data?.queue ?? []) {
-      if (item.job_type === 'export' && item.status === 'completed') {
-        allExports.push(item)
-      }
-    }
-    exportJobs.value = allExports
-    // Default caption tab to first selected account
-    if (accounts.value.length > 0 && selectedAccountIds.value.length === 0) {
-      // Don't auto-select — let user choose
-    }
-    // Default schedule date to tomorrow
+    exportJobs.value = expRes?.data?.data?.exports ?? []
+
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1)
     scheduledDate.value = tomorrow.toISOString().split('T')[0]
   } finally {
@@ -216,6 +205,18 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
           </div>
 
           <template v-else>
+            <!-- Export picker (only when not launched from editor) -->
+            <div v-if="!exportJobId" class="sp-field">
+              <div class="sp-label">Video export</div>
+              <div v-if="!exportJobs.length" class="sp-no-exports">No completed exports yet. Export a video first.</div>
+              <select v-else v-model="selectedExportId" class="sp-select">
+                <option :value="null" disabled>Select a video export…</option>
+                <option v-for="e in exportJobs" :key="e.id" :value="e.id">
+                  {{ e.project_title }}{{ e.aspect_ratio ? ` · ${e.aspect_ratio}` : '' }}{{ e.completed_at ? ` · ${new Date(e.completed_at).toLocaleDateString('en', { month: 'short', day: 'numeric' })}` : '' }}
+                </option>
+              </select>
+            </div>
+
             <!-- Platform selector -->
             <div class="sp-field">
               <div class="sp-label">Publish to</div>
@@ -344,6 +345,7 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 .sp-ai-btn { font-size: 11px; font-weight: 500; color: var(--color-accent); background: rgba(255,107,53,.08); border: 1px solid rgba(255,107,53,.2); border-radius: 5px; padding: 3px 9px; cursor: pointer; font-family: inherit; transition: .15s; }
 .sp-ai-btn:hover:not(:disabled) { background: rgba(255,107,53,.15); }
 .sp-ai-btn:disabled { opacity: .45; cursor: not-allowed; }
+.sp-no-exports { font-size: 12px; color: var(--color-text-muted); padding: 10px 12px; background: var(--color-bg-elevated); border-radius: 8px; border: 1px solid var(--color-border); }
 .sp-input { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: inherit; font-size: 13px; padding: 9px 12px; outline: none; transition: border-color .15s; }
 .sp-input:focus { border-color: rgba(255,107,53,.45); }
 .sp-select { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: inherit; font-size: 13px; padding: 9px 12px; outline: none; }
