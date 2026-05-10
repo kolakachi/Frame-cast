@@ -1351,12 +1351,14 @@ onMounted(() => {
                 <div class="plan-feature"><span class="pf-label">Renders / mo</span><span class="pf-val">{{ plan.render_limit >= 9999 ? '∞' : plan.render_limit }}</span></div>
               </div>
               <div class="plan-cost-row">
-                <div class="plan-cost-item"><span>Script</span><span>{{ creditCosts.SCRIPT }} cr</span></div>
-                <div class="plan-cost-item"><span>Breakdown</span><span>{{ creditCosts.BREAKDOWN }} cr</span></div>
+                <div class="plan-cost-item"><span>Script generation</span><span>{{ creditCosts.SCRIPT }} cr</span></div>
+                <div class="plan-cost-item"><span>Script rewrite</span><span>{{ creditCosts.SCRIPT }} cr</span></div>
+                <div class="plan-cost-item"><span>Scene breakdown</span><span>{{ creditCosts.BREAKDOWN }} cr</span></div>
                 <div class="plan-cost-item"><span>Stock visual</span><span>{{ creditCosts.STOCK }} cr / scene</span></div>
                 <div class="plan-cost-item"><span>AI image (med)</span><span>{{ creditCosts.AI_MEDIUM }} cr / scene</span></div>
                 <div class="plan-cost-item"><span>AI image (high)</span><span>{{ creditCosts.AI_HIGH }} cr / scene</span></div>
                 <div class="plan-cost-item"><span>TTS voice</span><span>{{ creditCosts.TTS }} cr / scene</span></div>
+                <div class="plan-cost-item"><span>TTS regen</span><span>{{ creditCosts.TTS }} cr / scene</span></div>
                 <div class="plan-cost-item"><span>Export</span><span>{{ creditCosts.EXPORT }} cr</span></div>
               </div>
             </div>
