@@ -1329,6 +1329,46 @@ onMounted(() => {
           </template>
         </template>
 
+        <!-- ── Plans & Credits ─────────────────────────── -->
+        <template v-if="activeView === 'plans'">
+          <div class="gm-section-title">Plans &amp; Credits</div>
+          <p style="font-size:12px;color:var(--gm-muted);margin-bottom:20px">All available plan tiers, their monthly credit allocations, and feature gates.</p>
+          <div class="plans-grid">
+            <div v-for="plan in plansData" :key="plan.key" :class="['plan-card', plan.key === 'free' ? 'plan-free' : '']">
+              <div class="plan-header">
+                <div class="plan-name">{{ plan.name }}</div>
+                <div class="plan-key">{{ plan.key }}</div>
+              </div>
+              <div class="plan-credits">
+                <div class="plan-credits-num">{{ plan.credits_monthly === 0 ? '200*' : plan.credits_monthly.toLocaleString() }}</div>
+                <div class="plan-credits-label">{{ plan.key === 'free' ? 'one-time grant' : 'credits / month' }}</div>
+              </div>
+              <div class="plan-features">
+                <div class="plan-feature"><span class="pf-label">Channels</span><span class="pf-val">{{ plan.channel_limit >= 999 ? '∞' : plan.channel_limit }}</span></div>
+                <div class="plan-feature"><span class="pf-label">AI image quality</span><span class="pf-val">{{ (plan.ai_image_quality || ['medium']).join(' + ') }}</span></div>
+                <div class="plan-feature"><span class="pf-label">Watermark</span><span :class="['pf-val', plan.watermark ? 'pf-yes-bad' : 'pf-no']">{{ plan.watermark ? 'Yes' : 'No' }}</span></div>
+                <div class="plan-feature"><span class="pf-label">Renders / mo</span><span class="pf-val">{{ plan.render_limit >= 9999 ? '∞' : plan.render_limit }}</span></div>
+              </div>
+              <div class="plan-cost-row">
+                <div class="plan-cost-item"><span>Script</span><span>{{ creditCosts.SCRIPT }} cr</span></div>
+                <div class="plan-cost-item"><span>Breakdown</span><span>{{ creditCosts.BREAKDOWN }} cr</span></div>
+                <div class="plan-cost-item"><span>Stock visual</span><span>{{ creditCosts.STOCK }} cr / scene</span></div>
+                <div class="plan-cost-item"><span>AI image (med)</span><span>{{ creditCosts.AI_MEDIUM }} cr / scene</span></div>
+                <div class="plan-cost-item"><span>AI image (high)</span><span>{{ creditCosts.AI_HIGH }} cr / scene</span></div>
+                <div class="plan-cost-item"><span>TTS voice</span><span>{{ creditCosts.TTS }} cr / scene</span></div>
+                <div class="plan-cost-item"><span>Export</span><span>{{ creditCosts.EXPORT }} cr</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="gm-section-title" style="margin-top:32px">Typical Project Cost</div>
+          <div class="cost-table">
+            <div class="cost-row cost-header"><div>Project type</div><div>Scenes</div><div>Credits</div><div>$ equiv</div></div>
+            <div v-for="ex in projectExamples" :key="ex.label" class="cost-row">
+              <div>{{ ex.label }}</div><div>{{ ex.scenes }}</div><div><strong>{{ ex.credits }}</strong></div><div style="color:var(--gm-muted)">${{ (ex.credits * 0.01).toFixed(2) }}</div>
+            </div>
+          </div>
+        </template>
+
       </div>
     </main>
 
@@ -1492,86 +1532,6 @@ onMounted(() => {
           </template>
 
         </div>
-        </template>
-
-        <!-- ── Plans & Credits ─────────────────────────── -->
-        <template v-if="activeView === 'plans'">
-          <div class="gm-section-title">Plans &amp; Credits</div>
-          <p style="font-size:12px;color:var(--gm-muted);margin-bottom:20px">All available plan tiers, their monthly credit allocations, and feature gates.</p>
-
-          <div class="plans-grid">
-            <div
-              v-for="plan in plansData" :key="plan.key"
-              :class="['plan-card', plan.key === 'free' ? 'plan-free' : '']"
-            >
-              <div class="plan-header">
-                <div class="plan-name">{{ plan.name }}</div>
-                <div class="plan-key">{{ plan.key }}</div>
-              </div>
-
-              <div class="plan-credits">
-                <div class="plan-credits-num">{{ plan.credits_monthly === 0 ? '200*' : plan.credits_monthly.toLocaleString() }}</div>
-                <div class="plan-credits-label">{{ plan.key === 'free' ? 'one-time grant' : 'credits / month' }}</div>
-              </div>
-
-              <div class="plan-features">
-                <div class="plan-feature">
-                  <span class="pf-label">Channels</span>
-                  <span class="pf-val">{{ plan.channel_limit >= 999 ? '∞' : plan.channel_limit }}</span>
-                </div>
-                <div class="plan-feature">
-                  <span class="pf-label">AI image quality</span>
-                  <span class="pf-val">{{ (plan.ai_image_quality || ['medium']).join(' + ') }}</span>
-                </div>
-                <div class="plan-feature">
-                  <span class="pf-label">Watermark</span>
-                  <span :class="['pf-val', plan.watermark ? 'pf-yes-bad' : 'pf-no']">{{ plan.watermark ? 'Yes' : 'No' }}</span>
-                </div>
-                <div class="plan-feature">
-                  <span class="pf-label">Renders / mo</span>
-                  <span class="pf-val">{{ plan.render_limit >= 9999 ? '∞' : plan.render_limit }}</span>
-                </div>
-              </div>
-
-              <div class="plan-cost-row">
-                <div class="plan-cost-item">
-                  <span>Script</span><span>{{ creditCosts.SCRIPT }} cr</span>
-                </div>
-                <div class="plan-cost-item">
-                  <span>Breakdown</span><span>{{ creditCosts.BREAKDOWN }} cr</span>
-                </div>
-                <div class="plan-cost-item">
-                  <span>Stock visual</span><span>{{ creditCosts.STOCK }} cr / scene</span>
-                </div>
-                <div class="plan-cost-item">
-                  <span>AI image (med)</span><span>{{ creditCosts.AI_MEDIUM }} cr / scene</span>
-                </div>
-                <div class="plan-cost-item">
-                  <span>AI image (high)</span><span>{{ creditCosts.AI_HIGH }} cr / scene</span>
-                </div>
-                <div class="plan-cost-item">
-                  <span>TTS voice</span><span>{{ creditCosts.TTS }} cr / scene</span>
-                </div>
-                <div class="plan-cost-item">
-                  <span>Export</span><span>{{ creditCosts.EXPORT }} cr</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="gm-section-title" style="margin-top:32px">Typical Project Cost</div>
-          <div class="cost-table">
-            <div class="cost-row cost-header">
-              <div>Project type</div><div>Scenes</div><div>Credits</div><div>$ equiv</div>
-            </div>
-            <div v-for="ex in projectExamples" :key="ex.label" class="cost-row">
-              <div>{{ ex.label }}</div>
-              <div>{{ ex.scenes }}</div>
-              <div><strong>{{ ex.credits }}</strong></div>
-              <div style="color:var(--gm-muted)">${{ (ex.credits * 0.01).toFixed(2) }}</div>
-            </div>
-          </div>
-        </template>
 
       </template>
     </div>
