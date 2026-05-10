@@ -158,8 +158,10 @@ async function connectPlatform(platform) {
 
   localStorage.removeItem('framecastOAuth')
   const popup = window.open(url, 'fc_oauth', 'width=600,height=700,left=200,top=100')
+  if (!popup) return
 
-  // Listen via localStorage storage event (postMessage blocked by Google COOP)
+  // Listen via localStorage storage event (postMessage / popup inspection can
+  // trigger COOP warnings while the popup is on the provider's domain).
   const storageHandler = (e) => {
     if (e.key !== 'framecastOAuth' || !e.newValue) return
     cleanup()
@@ -167,19 +169,24 @@ async function connectPlatform(platform) {
     loadSocialAccounts()
   }
 
-  // Fallback: poll for popup close in case storage event missed
+  // Fallback: poll localStorage in case the storage event is missed.
   const poll = setInterval(() => {
-    if (!popup || popup.closed) {
+    const stored = localStorage.getItem('framecastOAuth')
+    if (stored) {
       cleanup()
-      const stored = localStorage.getItem('framecastOAuth')
-      if (stored) localStorage.removeItem('framecastOAuth')
+      localStorage.removeItem('framecastOAuth')
       loadSocialAccounts()
     }
   }, 600)
 
+  const timeout = setTimeout(() => {
+    cleanup()
+  }, 5 * 60 * 1000)
+
   function cleanup() {
     window.removeEventListener('storage', storageHandler)
     clearInterval(poll)
+    clearTimeout(timeout)
   }
 
   window.addEventListener('storage', storageHandler)
