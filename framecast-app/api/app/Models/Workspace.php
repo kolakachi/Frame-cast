@@ -26,11 +26,24 @@ class Workspace extends Model
         'paddle_customer_id',
         'paddle_subscription_id',
         'status',
+        'credits_monthly',
+        'credits_topup',
+        'credits_free_granted',
+        'billing_renews_at',
     ];
 
     protected $casts = [
-        'plan_renews_at' => 'datetime',
+        'plan_renews_at'    => 'datetime',
+        'billing_renews_at' => 'datetime',
+        'credits_monthly'   => 'integer',
+        'credits_topup'     => 'integer',
+        'credits_free_granted' => 'integer',
     ];
+
+    public function creditsBalance(): int
+    {
+        return max(0, (int) $this->credits_monthly + (int) $this->credits_topup);
+    }
 
     public function owner(): BelongsTo
     {

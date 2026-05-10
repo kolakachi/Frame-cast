@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\System;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\CreditService;
 use App\Services\WorkspaceUsageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,17 +14,29 @@ use Illuminate\Support\Str;
 
 class VerificationController extends Controller
 {
-    public function __construct(private readonly WorkspaceUsageService $usageService) {}
+    public function __construct(
+        private readonly WorkspaceUsageService $usageService,
+        private readonly CreditService $credits,
+    ) {}
 
     public function me(Request $request): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
+        $workspace = $user->workspace;
+
         return response()->json([
             'data' => [
-                'user' => $this->serializeUser($user),
-                'usage' => $this->usageService->summaryForUser($user),
+                'user'    => $this->serializeUser($user),
+                'usage'   => $this->usageService->summaryForUser($user),
+                'credits' => [
+                    'balance'          => $workspace ? $workspace->creditsBalance() : 0,
+                    'credits_monthly'  => (int) ($workspace?->credits_monthly ?? 0),
+                    'credits_topup'    => (int) ($workspace?->credits_topup ?? 0),
+                    'billing_renews_at'=> $workspace?->billing_renews_at?->toIso8601String(),
+                    'plan_monthly_allocation' => CreditService::PLAN_CREDITS[$workspace?->plan_tier ?? 'free'] ?? 0,
+                ],
             ],
             'meta' => [],
         ]);
@@ -57,10 +70,20 @@ class VerificationController extends Controller
 
         $user->save();
 
+        $freshUser = $user->fresh('workspace');
+        $workspace = $freshUser?->workspace;
+
         return response()->json([
             'data' => [
-                'user' => $this->serializeUser($user->fresh()),
-                'usage' => $this->usageService->summaryForUser($user),
+                'user'    => $this->serializeUser($freshUser),
+                'usage'   => $this->usageService->summaryForUser($freshUser),
+                'credits' => [
+                    'balance'          => $workspace ? $workspace->creditsBalance() : 0,
+                    'credits_monthly'  => (int) ($workspace?->credits_monthly ?? 0),
+                    'credits_topup'    => (int) ($workspace?->credits_topup ?? 0),
+                    'billing_renews_at'=> $workspace?->billing_renews_at?->toIso8601String(),
+                    'plan_monthly_allocation' => CreditService::PLAN_CREDITS[$workspace?->plan_tier ?? 'free'] ?? 0,
+                ],
             ],
             'meta' => [],
         ]);

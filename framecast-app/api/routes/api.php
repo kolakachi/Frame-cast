@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\Channel\ChannelController;
 use App\Http\Controllers\Api\V1\Series\SeriesController;
 use App\Http\Controllers\Api\V1\Localization\LocalizationController;
 use App\Http\Controllers\Api\V1\Project\ProjectController;
+use App\Http\Controllers\Api\V1\Project\CreditEstimateController;
 use App\Http\Controllers\Api\V1\Scene\SceneController;
 use App\Http\Controllers\Api\V1\System\FontController;
 use App\Http\Controllers\Api\V1\System\HealthCheckController;
@@ -129,6 +130,8 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/{brandKitId}', [BrandKitController::class, 'update'])->whereNumber('brandKitId');
             Route::delete('/{brandKitId}', [BrandKitController::class, 'destroy'])->whereNumber('brandKitId');
         });
+
+        Route::post('/projects/estimate-credits', [CreditEstimateController::class, 'estimate']);
 
         Route::prefix('/projects')->group(function (): void {
             Route::get('/', [ProjectController::class, 'index']);

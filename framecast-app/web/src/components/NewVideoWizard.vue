@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
 
@@ -301,6 +301,48 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   loadNiches()
   loadBrandKits()
 }
+
+// ── Credit estimate ───────────────────────────────────────
+const creditBalance = ref(null)
+
+onMounted(async () => {
+  const res = await api.get('/me').catch(() => null)
+  creditBalance.value = res?.data?.data?.credits?.balance ?? null
+})
+
+const creditEstimate = computed(() => {
+  const SCRIPT = 2, BREAKDOWN = 1, TTS = 2, EXPORT = 5, STOCK = 1, AI_MED = 15
+  const mode = globalVisualMode.value
+  const visualPerScene = ['ai_images','ai_broll'].includes(mode) ? AI_MED : STOCK
+  const fixed = SCRIPT + BREAKDOWN + EXPORT
+
+  // Scene estimate based on source type and content length
+  const rawContent = wizardSourceType.value === 'prompt' ? promptText.value
+    : wizardSourceType.value === 'script' ? scriptText.value
+    : wizardSourceType.value === 'product_description' ? productDescription.value
+    : ''
+  const words = rawContent.trim().split(/\s+/).filter(Boolean).length
+  const sourceType = wizardSourceType.value
+  let scenesMin, scenesMax
+  if (sourceType === 'script') {
+    scenesMin = Math.max(8, Math.round(words / 14))
+    scenesMax = Math.max(10, Math.round(words / 10))
+  } else if (sourceType === 'blank') {
+    return null
+  } else {
+    scenesMin = words > 10 ? Math.max(6, Math.round(words / 15)) : 8
+    scenesMax = words > 10 ? Math.max(8, Math.round(words / 11)) : 12
+  }
+
+  const min = fixed + scenesMin * (visualPerScene + TTS)
+  const max = fixed + scenesMax * (visualPerScene + TTS)
+  return { min, max, visualPerScene }
+})
+
+const canAffordEstimate = computed(() => {
+  if (creditBalance.value === null || !creditEstimate.value) return true
+  return creditBalance.value >= creditEstimate.value.min
+})
 
 function close() {
   if (wizardCreateState.value === 'loading') return
@@ -746,6 +788,16 @@ defineExpose({ open })
           <input v-model="title" class="field-input" type="text" />
         </label>
 
+        <!-- Credit estimate -->
+        <div v-if="creditEstimate" :class="['credit-estimate', !canAffordEstimate ? 'credit-estimate-warn' : '']">
+          <span class="credit-est-label">Estimated cost</span>
+          <span class="credit-est-range">{{ creditEstimate.min }}–{{ creditEstimate.max }} credits</span>
+          <span v-if="creditBalance !== null" class="credit-est-balance">
+            · Balance: <strong>{{ creditBalance.toLocaleString() }}</strong>
+            <span v-if="!canAffordEstimate" style="color:#f87171"> — not enough</span>
+          </span>
+        </div>
+
         <div v-if="wizardCreateError" class="modal-error mt">{{ wizardCreateError }}</div>
 
         <div class="modal-actions">
@@ -770,6 +822,11 @@ defineExpose({ open })
 .modal-subtitle { margin-top: 4px; margin-bottom: 22px; font-size: 13px; color: var(--color-text-muted); }
 .modal-actions { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 10px; }
 .modal-error { padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(248,113,113,0.25); color: #f87171; font-size: 12px; background: rgba(248,113,113,0.1); }
+.credit-estimate { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 9px 12px; border-radius: 7px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); font-size: 12px; flex-wrap: wrap; }
+.credit-estimate-warn { border-color: rgba(248,113,113,.25); background: rgba(248,113,113,.06); }
+.credit-est-label { color: var(--color-text-muted); }
+.credit-est-range { font-weight: 600; color: var(--color-text-primary); }
+.credit-est-balance { color: var(--color-text-muted); }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s ease; font-size: 13px; font-weight: 500; border: 1px solid transparent; }
 .btn-primary { background: var(--color-accent); color: #fff; }

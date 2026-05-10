@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Auth\AuthSessionService;
 use App\Services\Auth\JwtService;
+use App\Services\CreditService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -94,6 +95,9 @@ class AuthController extends Controller
             $workspace->forceFill([
                 'owner_user_id' => $user->getKey(),
             ])->save();
+
+            // Grant 200 free credits to every new workspace
+            (new CreditService())->grant($workspace->getKey(), 200, 'registration');
 
             return $user->load('workspace');
         });

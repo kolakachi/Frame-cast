@@ -316,10 +316,13 @@ function stopDashboardPolling() {
   }
 }
 
+const creditsPayload = ref(null)
+
 async function loadMe() {
   try {
     const response = await api.get('/me')
-    mePayload.value = response.data?.data?.user ?? null
+    mePayload.value    = response.data?.data?.user ?? null
+    creditsPayload.value = response.data?.data?.credits ?? null
     await Promise.all([loadProjects(), loadQueue(), loadChannels(), loadSeriesPreview()])
     await loadNotifications()
     subscribeWorkspaceNotifications()
@@ -504,10 +507,15 @@ onBeforeUnmount(() => {
             <div class="stat-value">{{ queuedRenders }}</div>
             <div class="stat-change">{{ queuedRenders > 0 ? 'Generation in progress' : 'Queue is empty' }}</div>
           </div>
-          <div class="stat-card">
-            <div class="stat-label">Render Minutes</div>
-            <div class="stat-value">0</div>
-            <div class="stat-change">of 600 min (Studio plan)</div>
+          <div :class="['stat-card', creditsPayload && creditsPayload.balance <= 0 ? 'stat-card-danger' : creditsPayload && creditsPayload.plan_monthly_allocation > 0 && (creditsPayload.credits_monthly / creditsPayload.plan_monthly_allocation) <= 0.2 ? 'stat-card-warn' : '']">
+            <div class="stat-label">Credits Remaining</div>
+            <div class="stat-value">{{ creditsPayload ? creditsPayload.balance.toLocaleString() : '—' }}</div>
+            <div class="stat-change">
+              <template v-if="!creditsPayload">Loading…</template>
+              <template v-else-if="creditsPayload.balance <= 0">No credits — upgrade to continue</template>
+              <template v-else-if="creditsPayload.plan_monthly_allocation > 0">of {{ creditsPayload.plan_monthly_allocation.toLocaleString() }} this month</template>
+              <template v-else>Free tier — {{ creditsPayload.balance }} remaining</template>
+            </div>
           </div>
         </div>
 
@@ -856,6 +864,8 @@ onBeforeUnmount(() => {
 /* Stats */
 .stats-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .stat-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; padding: 18px 20px; }
+.stat-card-warn { border-color: rgba(251,191,36,.3); background: rgba(251,191,36,.04); }
+.stat-card-danger { border-color: rgba(248,113,113,.3); background: rgba(248,113,113,.04); }
 .stat-card.accent-stat { background: rgba(255,107,53,0.06); border-color: rgba(255,107,53,0.2); }
 .stat-card.accent-stat .stat-value { color: var(--color-accent); }
 .stat-label { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); font-family: "Space Mono", monospace; margin-bottom: 8px; }
