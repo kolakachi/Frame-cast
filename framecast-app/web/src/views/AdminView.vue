@@ -1331,6 +1331,7 @@ onMounted(() => {
 
         <!-- ── Plans & Credits ─────────────────────────── -->
         <template v-if="activeView === 'plans'">
+          <div class="plans-page">
           <div class="gm-section-title">Plans &amp; Credits</div>
           <p style="font-size:12px;color:var(--gm-muted);margin-bottom:20px">All available plan tiers, their monthly credit allocations, and feature gates.</p>
           <div class="plans-grid">
@@ -1367,6 +1368,7 @@ onMounted(() => {
               <div>{{ ex.label }}</div><div>{{ ex.scenes }}</div><div><strong>{{ ex.credits }}</strong></div><div style="color:var(--gm-muted)">${{ (ex.credits * 0.01).toFixed(2) }}</div>
             </div>
           </div>
+          </div><!-- end plans-page -->
         </template>
 
       </div>
@@ -1657,7 +1659,8 @@ onMounted(() => {
 .metrics-grid-4 { grid-template-columns: repeat(4, 1fr); }
 /* Plans page */
 .gm-section-title { font-size: 14px; font-weight: 700; color: #c9cad4; margin-bottom: 4px; }
-.plans-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; align-self: start; }
+.plans-page { display: flex; flex-direction: column; gap: 20px; }
+.plans-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; }
 .plan-card { background: #161920; border: 1px solid #2a2d38; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
 .plan-free { border-color: rgba(251,191,36,.2); }
 .plan-header { display: flex; align-items: center; justify-content: space-between; }
@@ -1675,7 +1678,7 @@ onMounted(() => {
 .plan-cost-row { border-top: 1px solid #2a2d38; padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
 .plan-cost-item { display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; }
 .plan-cost-item span:last-child { color: #c9cad4; font-weight: 500; font-family: monospace; }
-.cost-table { border: 1px solid #2a2d38; border-radius: 8px; overflow: hidden; }
+.cost-table { border: 1px solid #2a2d38; border-radius: 8px; }
 .cost-row { display: grid; grid-template-columns: 2fr 80px 100px 80px; gap: 0; padding: 9px 14px; font-size: 12px; border-bottom: 1px solid #2a2d38; }
 .cost-row:last-child { border-bottom: none; }
 .cost-header { background: #161920; font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
