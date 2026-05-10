@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Notification\NotificationService;
 use App\Services\Generation\TTS\TTSAdapter;
 use App\Services\Media\MediaTranscriptionService;
+use App\Services\CreditService;
 use App\Services\WorkspaceUsageService;
 use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -135,6 +136,7 @@ class GenerateTTSJob implements ShouldQueue
                 $this->attachCaptionTiming($asset, $transcription);
             }
 
+            rescue(fn () => app(CreditService::class)->deduct((int) $project->workspace_id, CreditService::TTS, 'tts'));
             $done++;
             GenerationProgressed::dispatch($this->projectId, 'tts', 'processing', null, [
                 'done' => $done, 'total' => $total,

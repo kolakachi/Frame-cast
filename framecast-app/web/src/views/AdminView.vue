@@ -407,6 +407,26 @@ async function suspendUserWorkspace(user) {
   }
 }
 
+// ── Plans & Credits ──────────────────────────────────────────────────────────
+const creditCosts = { SCRIPT: 2, BREAKDOWN: 1, STOCK: 1, TTS: 2, AI_MEDIUM: 15, AI_HIGH: 40, EXPORT: 5 }
+
+const plansData = [
+  { key: 'free',       name: 'Free',       credits_monthly: 0,     channel_limit: 1,   render_limit: 10,    watermark: true,  ai_image_quality: ['medium'] },
+  { key: 'starter',    name: 'Starter',    credits_monthly: 500,   channel_limit: 1,   render_limit: 50,    watermark: false, ai_image_quality: ['medium'] },
+  { key: 'creator',    name: 'Creator',    credits_monthly: 1500,  channel_limit: 3,   render_limit: 200,   watermark: false, ai_image_quality: ['medium', 'high'] },
+  { key: 'pro',        name: 'Pro',        credits_monthly: 4000,  channel_limit: 10,  render_limit: 1000,  watermark: false, ai_image_quality: ['medium', 'high'] },
+  { key: 'agency',     name: 'Agency',     credits_monthly: 10000, channel_limit: 999, render_limit: 10000, watermark: false, ai_image_quality: ['medium', 'high'] },
+  { key: 'enterprise', name: 'Enterprise', credits_monthly: 50000, channel_limit: 9999,render_limit: 99999, watermark: false, ai_image_quality: ['medium', 'high'] },
+]
+
+const projectExamples = [
+  { label: 'Stock video (10 scenes + export)',        scenes: 10, credits: 2+1+10*1+10*2+5 },
+  { label: 'Stock images (10 scenes + export)',       scenes: 10, credits: 2+1+10*1+10*2+5 },
+  { label: 'Audiogram (10 scenes + export)',          scenes: 10, credits: 2+1+10*1+10*2+5 },
+  { label: 'AI images medium (10 scenes + export)',   scenes: 10, credits: 2+1+10*15+10*2+5 },
+  { label: 'AI images high (10 scenes + export)',     scenes: 10, credits: 2+1+10*40+10*2+5 },
+]
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 function navigate(view) {
   activeView.value = view
@@ -477,6 +497,11 @@ onMounted(() => {
         <button :class="['nav-item', activeView === 'videos' ? 'active' : '']" @click="navigate('videos')">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.902L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           Videos
+        </button>
+        <div class="nav-section-label">Monetisation</div>
+        <button :class="['nav-item', activeView === 'plans' ? 'active' : '']" @click="navigate('plans')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          Plans &amp; Credits
         </button>
         <div class="nav-section-label">System</div>
         <button :class="['nav-item', activeView === 'jobs' ? 'active' : '']" @click="navigate('jobs')">
@@ -1467,6 +1492,86 @@ onMounted(() => {
           </template>
 
         </div>
+
+        <!-- ── Plans & Credits ─────────────────────────── -->
+        <template v-if="activeView === 'plans'">
+          <div class="gm-section-title">Plans &amp; Credits</div>
+          <p style="font-size:12px;color:var(--gm-muted);margin-bottom:20px">All available plan tiers, their monthly credit allocations, and feature gates.</p>
+
+          <div class="plans-grid">
+            <div
+              v-for="plan in plansData" :key="plan.key"
+              :class="['plan-card', plan.key === 'free' ? 'plan-free' : '']"
+            >
+              <div class="plan-header">
+                <div class="plan-name">{{ plan.name }}</div>
+                <div class="plan-key">{{ plan.key }}</div>
+              </div>
+
+              <div class="plan-credits">
+                <div class="plan-credits-num">{{ plan.credits_monthly === 0 ? '200*' : plan.credits_monthly.toLocaleString() }}</div>
+                <div class="plan-credits-label">{{ plan.key === 'free' ? 'one-time grant' : 'credits / month' }}</div>
+              </div>
+
+              <div class="plan-features">
+                <div class="plan-feature">
+                  <span class="pf-label">Channels</span>
+                  <span class="pf-val">{{ plan.channel_limit >= 999 ? '∞' : plan.channel_limit }}</span>
+                </div>
+                <div class="plan-feature">
+                  <span class="pf-label">AI image quality</span>
+                  <span class="pf-val">{{ (plan.ai_image_quality || ['medium']).join(' + ') }}</span>
+                </div>
+                <div class="plan-feature">
+                  <span class="pf-label">Watermark</span>
+                  <span :class="['pf-val', plan.watermark ? 'pf-yes-bad' : 'pf-no']">{{ plan.watermark ? 'Yes' : 'No' }}</span>
+                </div>
+                <div class="plan-feature">
+                  <span class="pf-label">Renders / mo</span>
+                  <span class="pf-val">{{ plan.render_limit >= 9999 ? '∞' : plan.render_limit }}</span>
+                </div>
+              </div>
+
+              <div class="plan-cost-row">
+                <div class="plan-cost-item">
+                  <span>Script</span><span>{{ creditCosts.SCRIPT }} cr</span>
+                </div>
+                <div class="plan-cost-item">
+                  <span>Breakdown</span><span>{{ creditCosts.BREAKDOWN }} cr</span>
+                </div>
+                <div class="plan-cost-item">
+                  <span>Stock visual</span><span>{{ creditCosts.STOCK }} cr / scene</span>
+                </div>
+                <div class="plan-cost-item">
+                  <span>AI image (med)</span><span>{{ creditCosts.AI_MEDIUM }} cr / scene</span>
+                </div>
+                <div class="plan-cost-item">
+                  <span>AI image (high)</span><span>{{ creditCosts.AI_HIGH }} cr / scene</span>
+                </div>
+                <div class="plan-cost-item">
+                  <span>TTS voice</span><span>{{ creditCosts.TTS }} cr / scene</span>
+                </div>
+                <div class="plan-cost-item">
+                  <span>Export</span><span>{{ creditCosts.EXPORT }} cr</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="gm-section-title" style="margin-top:32px">Typical Project Cost</div>
+          <div class="cost-table">
+            <div class="cost-row cost-header">
+              <div>Project type</div><div>Scenes</div><div>Credits</div><div>$ equiv</div>
+            </div>
+            <div v-for="ex in projectExamples" :key="ex.label" class="cost-row">
+              <div>{{ ex.label }}</div>
+              <div>{{ ex.scenes }}</div>
+              <div><strong>{{ ex.credits }}</strong></div>
+              <div style="color:var(--gm-muted)">${{ (ex.credits * 0.01).toFixed(2) }}</div>
+            </div>
+          </div>
+        </template>
+
       </template>
     </div>
 
@@ -1589,6 +1694,29 @@ onMounted(() => {
 /* Metrics */
 .metrics-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
 .metrics-grid-4 { grid-template-columns: repeat(4, 1fr); }
+/* Plans page */
+.plans-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; }
+.plan-card { background: #161920; border: 1px solid #2a2d38; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.plan-free { border-color: rgba(251,191,36,.2); }
+.plan-header { display: flex; align-items: center; justify-content: space-between; }
+.plan-name { font-size: 15px; font-weight: 700; }
+.plan-key { font-size: 10px; background: #2a2d38; padding: 2px 7px; border-radius: 4px; color: #6b7280; font-family: monospace; }
+.plan-credits { text-align: center; padding: 10px 0; border-top: 1px solid #2a2d38; border-bottom: 1px solid #2a2d38; }
+.plan-credits-num { font-size: 28px; font-weight: 700; color: #ff6b35; }
+.plan-credits-label { font-size: 11px; color: #6b7280; margin-top: 2px; }
+.plan-features { display: flex; flex-direction: column; gap: 5px; }
+.plan-feature { display: flex; justify-content: space-between; font-size: 12px; }
+.pf-label { color: #6b7280; }
+.pf-val { font-weight: 500; }
+.pf-yes-bad { color: #fbbf24; }
+.pf-no { color: #34d399; }
+.plan-cost-row { border-top: 1px solid #2a2d38; padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.plan-cost-item { display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; }
+.plan-cost-item span:last-child { color: #c9cad4; font-weight: 500; font-family: monospace; }
+.cost-table { border: 1px solid #2a2d38; border-radius: 8px; overflow: hidden; }
+.cost-row { display: grid; grid-template-columns: 2fr 80px 100px 80px; gap: 0; padding: 9px 14px; font-size: 12px; border-bottom: 1px solid #2a2d38; }
+.cost-row:last-child { border-bottom: none; }
+.cost-header { background: #161920; font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
 .metric-card {
   background: #161920; border: 1px solid #2a2d38;
   border-radius: 10px; padding: 16px;

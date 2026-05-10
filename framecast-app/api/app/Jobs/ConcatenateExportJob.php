@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\Scene;
 use App\Models\Variant;
 use App\Services\ApiUsageService;
+use App\Services\CreditService;
 use App\Services\Media\StorageService;
 use App\Traits\RendersExportScenes;
 use App\Traits\TracksJobFailure;
@@ -143,6 +144,7 @@ class ConcatenateExportJob implements ShouldQueue
                     'output_asset_id'  => $asset->getKey(),
                 ])->save();
 
+                rescue(fn () => app(CreditService::class)->deduct((int) $exportJob->workspace_id, CreditService::EXPORT, 'export'));
                 $this->purgePreviousExports($exportJob, $asset->getKey());
                 $assetCreated = true;
             });

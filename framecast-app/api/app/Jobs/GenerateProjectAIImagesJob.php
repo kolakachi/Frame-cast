@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\GenerationProgressed;
+use App\Services\CreditService;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
@@ -143,6 +144,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                 'source' => 'project_ai_broll',
             ],
         ])->save();
+        rescue(fn () => app(CreditService::class)->deduct((int) $project->workspace_id, CreditService::AI_MEDIUM, 'ai_image'));
     }
 
     private function buildPrompt(Project $project, Scene $scene, string $style): string

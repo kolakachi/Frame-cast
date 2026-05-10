@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\GenerationProgressed;
+use App\Services\CreditService;
 use App\Models\Asset;
 use App\Models\Scene;
 use App\Services\Generation\Image\ImageGenerationAdapter;
@@ -111,6 +112,7 @@ class GenerateAIImageJob implements ShouldQueue
                 ],
             ])->save();
 
+            rescue(fn () => app(CreditService::class)->deduct((int) $scene->project->workspace_id, CreditService::AI_MEDIUM, 'ai_image_manual'));
             GenerationProgressed::dispatch($this->projectId, 'ai_image', 'completed', null, [
                 'scene_id'  => $this->sceneId,
                 'asset_id'  => $asset->getKey(),

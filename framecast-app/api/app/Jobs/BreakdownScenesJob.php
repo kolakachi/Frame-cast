@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\GenerationProgressed;
+use App\Services\CreditService;
 use App\Jobs\GenerateVisualBriefJob;
 use App\Models\Project;
 use App\Models\Scene;
@@ -80,6 +81,7 @@ class BreakdownScenesJob implements ShouldQueue
         GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'completed', null, [
             'total' => count($scenes),
         ]);
+        rescue(fn () => app(CreditService::class)->deduct((int) $project->workspace_id, CreditService::BREAKDOWN, 'breakdown'));
         GenerateVisualBriefJob::dispatch($project->getKey());
     }
 

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Jobs\BreakdownScenesJob;
 use App\Events\GenerationProgressed;
+use App\Services\CreditService;
 use App\Models\Asset;
 use App\Models\Niche;
 use App\Models\Project;
@@ -71,6 +72,7 @@ class GenerateScriptJob implements ShouldQueue
         ])->save();
 
         GenerationProgressed::dispatch($this->projectId, 'script', 'completed');
+        rescue(fn () => app(CreditService::class)->deduct((int) $project->workspace_id, CreditService::SCRIPT, 'script'));
         BreakdownScenesJob::dispatch($project->getKey());
     }
 

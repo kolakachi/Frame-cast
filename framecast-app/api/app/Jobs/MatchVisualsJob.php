@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\GenerationProgressed;
+use App\Services\CreditService;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
@@ -89,6 +90,7 @@ class MatchVisualsJob implements ShouldQueue
                 ])->save();
             });
 
+            rescue(fn () => app(CreditService::class)->deduct((int) $project->workspace_id, CreditService::STOCK, 'stock_visual'));
             $done++;
             GenerationProgressed::dispatch($this->projectId, 'visual_match', 'processing', null, [
                 'done' => $done, 'total' => $total,
