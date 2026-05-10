@@ -1656,7 +1656,8 @@ onMounted(() => {
 .metrics-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
 .metrics-grid-4 { grid-template-columns: repeat(4, 1fr); }
 /* Plans page */
-.plans-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; }
+.gm-section-title { font-size: 14px; font-weight: 700; color: #c9cad4; margin-bottom: 4px; }
+.plans-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; align-self: start; }
 .plan-card { background: #161920; border: 1px solid #2a2d38; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
 .plan-free { border-color: rgba(251,191,36,.2); }
 .plan-header { display: flex; align-items: center; justify-content: space-between; }
