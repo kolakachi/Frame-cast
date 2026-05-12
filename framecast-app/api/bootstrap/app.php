@@ -41,4 +41,28 @@ return Application::configure(basePath: dirname(__DIR__))
                 ],
             ], 422);
         });
+
+        // Ensure all API errors return JSON, never HTML
+        $exceptions->render(function (\Throwable $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            $status = match (true) {
+                $e instanceof \Illuminate\Auth\AuthenticationException      => 401,
+                $e instanceof \Illuminate\Auth\Access\AuthorizationException => 403,
+                $e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException => 404,
+                $e instanceof \Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException => 405,
+                $e instanceof \Symfony\Component\HttpKernel\Exception\HttpException => $e->getStatusCode(),
+                default => 500,
+            };
+
+            $message = $status < 500
+                ? $e->getMessage() ?: 'An error occurred.'
+                : 'An unexpected error occurred. Please try again.';
+
+            return response()->json([
+                'error' => ['code' => 'server_error', 'message' => $message],
+            ], $status);
+        });
     })->create();
