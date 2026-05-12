@@ -48,7 +48,7 @@ class AuthController extends Controller
     public function magicLink(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email' => ['required', 'email'],
+            'email' => ['required', 'email:rfc,dns'],
             'name' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'min:8'],
         ]);
@@ -118,7 +118,15 @@ class AuthController extends Controller
             $plainTextToken,
         );
 
-        Mail::to($user->email)->send(new MagicLinkMail($user, $magicLink));
+        try {
+            Mail::to($user->email)->send(new MagicLinkMail($user, $magicLink));
+        } catch (\Throwable $e) {
+            return $this->error(
+                'email_delivery_failed',
+                'We could not deliver the magic link to this email address. Please check the address and try again.',
+                422
+            );
+        }
 
         return response()->json([
             'data' => [
