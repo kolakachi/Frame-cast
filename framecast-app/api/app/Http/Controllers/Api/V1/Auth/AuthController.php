@@ -53,54 +53,13 @@ class AuthController extends Controller
             'password' => ['nullable', 'string', 'min:8'],
         ]);
 
-        $user = DB::transaction(function () use ($validated) {
-            $existingUser = User::query()
-                ->where('email', $validated['email'])
-                ->first();
+        $user = $this->findOrCreateUser($validated);
 
-            if ($existingUser) {
-                $updates = [];
-
-                if (! empty($validated['name']) && ! $existingUser->name) {
-                    $updates['name'] = $validated['name'];
-                }
-
-                if (! empty($validated['password']) && ! $existingUser->password_hash) {
-                    $updates['password_hash'] = Hash::make($validated['password']);
-                }
-
-                if ($updates !== []) {
-                    $existingUser->fill($updates)->save();
-                }
-
-                return $existingUser->fresh('workspace');
-            }
-
-            $workspace = Workspace::query()->create([
-                'name' => Str::of($validated['email'])->before('@')->headline().' Workspace',
-                'plan_tier' => 'free',
-                'status' => 'active',
-            ]);
-
-            $user = User::query()->create([
-                'workspace_id' => $workspace->getKey(),
-                'name' => $validated['name'] ?? Str::of($validated['email'])->before('@')->headline()->value(),
-                'email' => $validated['email'],
-                'password_hash' => ! empty($validated['password']) ? Hash::make($validated['password']) : null,
-                'timezone' => 'UTC',
-                'role' => 'owner',
-                'status' => 'active',
-            ]);
-
-            $workspace->forceFill([
-                'owner_user_id' => $user->getKey(),
-            ])->save();
-
-            // Grant 200 free credits to every new workspace
-            (new CreditService())->grant($workspace->getKey(), 200, 'registration');
-
-            return $user->load('workspace');
-        });
+        // Expire any previous unused tokens for this user
+        MagicLinkToken::query()
+            ->where('user_id', $user->getKey())
+            ->where('expires_at', '>', now())
+            ->update(['expires_at' => now()]);
 
         $plainTextToken = Str::random(96);
 
@@ -218,6 +177,59 @@ class AuthController extends Controller
         [$session, $refreshToken] = $this->authSessionService->create($user, $request);
 
         return $this->sessionResponse($user, $session, $refreshToken);
+    }
+
+    private function findOrCreateUser(array $validated): User
+    {
+        try {
+            return DB::transaction(function () use ($validated): User {
+                // Lock the row if it exists to prevent race conditions
+                $existingUser = User::query()
+                    ->where('email', $validated['email'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existingUser) {
+                    $updates = [];
+                    if (! empty($validated['name']) && ! $existingUser->name) {
+                        $updates['name'] = $validated['name'];
+                    }
+                    if (! empty($validated['password']) && ! $existingUser->password_hash) {
+                        $updates['password_hash'] = Hash::make($validated['password']);
+                    }
+                    if ($updates !== []) {
+                        $existingUser->fill($updates)->save();
+                    }
+                    return $existingUser->fresh('workspace');
+                }
+
+                $workspace = Workspace::query()->create([
+                    'name'      => Str::of($validated['email'])->before('@')->headline().' Workspace',
+                    'plan_tier' => 'free',
+                    'status'    => 'active',
+                ]);
+
+                $user = User::query()->create([
+                    'workspace_id'  => $workspace->getKey(),
+                    'name'          => $validated['name'] ?? Str::of($validated['email'])->before('@')->headline()->value(),
+                    'email'         => $validated['email'],
+                    'password_hash' => ! empty($validated['password']) ? Hash::make($validated['password']) : null,
+                    'timezone'      => 'UTC',
+                    'role'          => 'owner',
+                    'status'        => 'active',
+                ]);
+
+                $workspace->forceFill(['owner_user_id' => $user->getKey()])->save();
+
+                (new CreditService())->grant($workspace->getKey(), 200, 'registration');
+
+                return $user->load('workspace');
+            });
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            // Two simultaneous requests for the same email — the other request won the race.
+            // Just return the now-existing user.
+            return User::query()->where('email', $validated['email'])->with('workspace')->firstOrFail();
+        }
     }
 
     private function sessionResponse(User $user, $session, string $refreshToken): JsonResponse
