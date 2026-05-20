@@ -4396,7 +4396,6 @@ onBeforeUnmount(() => {
 
                 <!-- Audiogram -->
                 <template v-else-if="selectedSwapVisualSource === 'Audiogram'">
-                  <template>
                     <!-- Design picker -->
                     <div class="micro-label" style="margin-top:10px;margin-bottom:6px;">
                       Design
@@ -4469,7 +4468,6 @@ onBeforeUnmount(() => {
                     <button class="btn btn-ghost btn-sm panel-full-btn" style="margin-top:12px;opacity:.5;" type="button" @click="selectedSwapVisualSource = 'Stock Video'; swapVisual()">
                       Switch to Video instead
                     </button>
-                  </template>
                 </template>
 
               </div>
