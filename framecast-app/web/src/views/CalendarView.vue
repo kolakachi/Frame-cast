@@ -21,6 +21,24 @@ const posts           = ref([])
 const loading         = ref(false)
 const activePlatforms = ref(['youtube', 'tiktok'])
 const listFilter      = ref('all') // all | scheduled | published | failed | draft
+const seriesFilter    = ref('all') // 'all' | series_id
+
+const allSeries = computed(() => {
+  const map = new Map()
+  for (const p of posts.value) {
+    if (p.series_id && p.series_name && !map.has(p.series_id)) {
+      map.set(p.series_id, { id: p.series_id, name: p.series_name })
+    }
+  }
+  return [...map.values()]
+})
+
+// Deterministic color per series_id (cycles through 8 hues)
+const SERIES_COLORS = ['#60a5fa','#f472b6','#a78bfa','#fbbf24','#34d399','#fb923c','#22d3ee','#facc15']
+function seriesColor(seriesId) {
+  if (!seriesId) return null
+  return SERIES_COLORS[seriesId % SERIES_COLORS.length]
+}
 
 // Selected post popover
 const selectedPost  = ref(null)
@@ -114,6 +132,7 @@ function postsForDate(date) {
   const key = dateKey(date)
   return posts.value.filter(p => {
     if (!activePlatforms.value.includes(p.platform)) return false
+    if (seriesFilter.value !== 'all' && String(p.series_id ?? '') !== String(seriesFilter.value)) return false
     return (postDate(p) || '').startsWith(key)
   })
 }
@@ -329,6 +348,11 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
           >{{ p[1] }}</button>
         </div>
 
+        <select v-if="allSeries.length && viewMode !== 'list'" v-model="seriesFilter" class="cal-series-filter">
+          <option value="all">All series</option>
+          <option v-for="s in allSeries" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </select>
+
         <NotifBell style="margin-left:auto" />
       </div>
 
@@ -362,6 +386,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
               <button
                 v-for="post in postsForDate(day.date)" :key="post.id"
                 :class="['cal-post', postClass(post)]"
+                :style="post.series_id ? { borderLeft: `3px solid ${seriesColor(post.series_id)}` } : {}"
                 @click.stop="selectPost(post, $event)"
               >
                 <span class="cal-post-icon">{{ postPlatformIcon(post.platform) }}</span>
@@ -391,6 +416,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
               <button
                 v-for="post in postsForDateHour(day, h)" :key="post.id"
                 :class="['week-post-card', postClass(post)]"
+                :style="post.series_id ? { borderLeftColor: seriesColor(post.series_id) } : {}"
                 @click.stop="selectPost(post, $event)"
               >
                 {{ postPlatformIcon(post.platform) }} {{ post.project_title || 'Post' }}
@@ -553,6 +579,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 .cal-platform-filter { display: flex; gap: 4px; }
 .plat-filter-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer; transition: .15s; background: transparent; color: var(--color-text-muted); font-family: inherit; }
 .plat-filter-btn.active { color: var(--color-text-primary); background: var(--color-bg-elevated); border-color: var(--color-border-active); }
+.cal-series-filter { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 7px; padding: 5px 10px; font-size: 11px; color: var(--color-text-primary); font-family: inherit; cursor: pointer; outline: none; }
 
 /* Failed banner */
 .cal-failed-banner { background: rgba(248,113,113,.08); border-bottom: 1px solid rgba(248,113,113,.2); padding: 8px 24px; display: flex; align-items: center; gap: 12px; font-size: 12px; color: #f87171; flex-shrink: 0; }

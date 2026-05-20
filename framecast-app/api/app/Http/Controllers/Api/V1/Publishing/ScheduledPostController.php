@@ -30,7 +30,7 @@ class ScheduledPostController extends Controller
 
         $posts = ScheduledPost::query()
             ->where('workspace_id', $user->workspace_id)
-            ->with(['project:id,title', 'socialAccount:id,platform,platform_display_name,platform_username'])
+            ->with(['project:id,title,series_id', 'project.series:id,name', 'socialAccount:id,platform,platform_display_name,platform_username'])
             ->when($validated['from'] ?? null, fn ($q, $v) => $q->where('scheduled_at', '>=', $v))
             ->when($validated['to'] ?? null, fn ($q, $v) => $q->where('scheduled_at', '<=', $v))
             ->when($validated['platform'] ?? null, fn ($q, $v) => $q->where('platform', $v))
@@ -243,6 +243,8 @@ class ScheduledPostController extends Controller
             'export_job_id'     => $post->export_job_id,
             'social_account_id' => $post->social_account_id,
             'project_title'     => $post->project?->title,
+            'series_id'         => $post->project?->series_id,
+            'series_name'       => $post->project?->series?->name,
             'account'           => $post->socialAccount ? [
                 'id'           => $post->socialAccount->getKey(),
                 'platform'     => $post->socialAccount->platform,
