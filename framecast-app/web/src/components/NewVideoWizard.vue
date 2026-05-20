@@ -802,7 +802,19 @@ defineExpose({ open })
 
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" @click="wizardBack">← Back</button>
-          <button class="btn btn-primary" type="button" :disabled="wizardCreateState === 'loading'" @click="submitWizardProject">
+          <button
+            v-if="!canAffordEstimate && wizardSourceType !== 'blank'"
+            class="btn btn-primary"
+            type="button"
+            @click="router.push({ name: 'settings', query: { section: 'billing' } }); close()"
+          >Top up credits →</button>
+          <button
+            v-else
+            class="btn btn-primary"
+            type="button"
+            :disabled="wizardCreateState === 'loading'"
+            @click="submitWizardProject"
+          >
             {{ wizardCreateState === 'loading'
               ? (wizardSourceType === 'blank' ? 'Creating…' : '✦ Generating…')
               : (wizardSourceType === 'blank' ? 'Create Project →' : '✦ Generate Video') }}

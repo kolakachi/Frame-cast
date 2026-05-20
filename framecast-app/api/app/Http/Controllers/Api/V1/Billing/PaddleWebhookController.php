@@ -37,6 +37,9 @@ class PaddleWebhookController extends Controller
 
             'subscription.cancelled' => $this->paddle->cancelWorkspaceSubscription($payload),
 
+            // One-time top-up credit purchase
+            'transaction.completed' => $this->paddle->handleTopUp($payload),
+
             default => null, // ignore other events
         };
 

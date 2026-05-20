@@ -15,6 +15,7 @@ use App\Services\Generation\Visual\VisualProviderAdapter;
 use App\Services\Media\MediaTranscriptionService;
 use App\Services\Media\StorageService;
 use App\Services\WorkspaceUsageService;
+use App\Services\CreditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +25,10 @@ use Throwable;
 
 class SceneController extends Controller
 {
-    public function __construct(private readonly WorkspaceUsageService $usageService) {}
+    public function __construct(
+        private readonly WorkspaceUsageService $usageService,
+        private readonly CreditService $credits,
+    ) {}
 
     public function store(Request $request): JsonResponse
     {
@@ -722,6 +726,20 @@ class SceneController extends Controller
                 "Your workspace has reached its \${$ctx['budget_usd']} AI budget for the {$ctx['plan']} plan this month.",
                 $ctx,
             );
+        }
+
+        // Credit guard for AI image regeneration
+        $aiQuality = $request->input('quality', 'medium');
+        $cost = $aiQuality === 'high' ? CreditService::AI_HIGH : CreditService::AI_MEDIUM;
+        $balance = $this->credits->balance((int) $user->workspace_id);
+        if ($balance < $cost) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'insufficient_credits',
+                    'message' => "You need {$cost} credits to regenerate this image. Your balance is {$balance}.",
+                    'context' => ['balance' => $balance, 'required' => $cost, 'shortage' => $cost - $balance],
+                ],
+            ], 402);
         }
 
         // Guard: reject concurrent requests — only one generation per scene at a time.

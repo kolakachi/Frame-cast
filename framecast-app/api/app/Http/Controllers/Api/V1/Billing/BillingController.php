@@ -41,6 +41,7 @@ class BillingController extends Controller
                     'paddle_client_token'    => $clientToken,
                     'paddle_sandbox'         => $isSandbox,
                     'price_ids'              => $priceIds,
+                    'topup_packs'            => config('billing.paddle.topup_packs', []),
                 ],
             ],
             'meta' => [],

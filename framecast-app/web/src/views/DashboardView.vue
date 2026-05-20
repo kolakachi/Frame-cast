@@ -470,6 +470,29 @@ onBeforeUnmount(() => {
 
       <div class="dashboard">
 
+        <!-- Credit warning banner -->
+        <div
+          v-if="creditsPayload && creditsPayload.balance <= 0"
+          class="credit-banner credit-banner-danger"
+        >
+          <span>⚠ You're out of credits. Top up or upgrade your plan to keep generating.</span>
+          <button class="credit-banner-btn" @click="router.push({ name: 'settings', query: { section: 'billing' } })">Go to billing →</button>
+        </div>
+        <div
+          v-else-if="creditsPayload && creditsPayload.plan_monthly_allocation > 0 && (creditsPayload.credits_monthly / creditsPayload.plan_monthly_allocation) <= 0.2"
+          class="credit-banner credit-banner-warn"
+        >
+          <span>You have {{ creditsPayload.balance }} credits left — about {{ Math.round((creditsPayload.credits_monthly / creditsPayload.plan_monthly_allocation) * 100) }}% of your monthly allowance.</span>
+          <button class="credit-banner-btn" @click="router.push({ name: 'settings', query: { section: 'billing' } })">Top up →</button>
+        </div>
+        <div
+          v-else-if="creditsPayload && creditsPayload.plan_monthly_allocation === 0 && creditsPayload.balance <= 40"
+          class="credit-banner credit-banner-warn"
+        >
+          <span>You have {{ creditsPayload.balance }} free credits left. Upgrade to a paid plan for monthly credits.</span>
+          <button class="credit-banner-btn" @click="router.push({ name: 'settings', query: { section: 'billing' } })">See plans →</button>
+        </div>
+
         <!-- Quick actions -->
         <div class="quick-actions">
           <button class="quick-action primary" type="button" @click="openWizard">
@@ -854,6 +877,11 @@ onBeforeUnmount(() => {
 .section-title { font-size: 17px; font-weight: 700; color: var(--color-text-primary); }
 
 /* Quick actions */
+.credit-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 4px; flex-wrap: wrap; }
+.credit-banner-warn { background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.25); color: #fbbf24; }
+.credit-banner-danger { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.25); color: #f87171; }
+.credit-banner-btn { background: transparent; border: 1px solid currentColor; color: inherit; padding: 4px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit; transition: .15s; white-space: nowrap; }
+.credit-banner-btn:hover { background: rgba(255,255,255,.05); }
 .quick-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-action { display: inline-flex; align-items: center; gap: 7px; padding: 8px 16px; border-radius: 10px; border: 1px solid var(--color-border); background: var(--color-bg-card); font-size: 13px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer; transition: 0.15s; }
 .quick-action:hover { border-color: var(--color-border-active); color: var(--color-text-primary); transform: translateY(-1px); }

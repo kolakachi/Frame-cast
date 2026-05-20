@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Workspace;
+use App\Services\CreditService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -94,13 +95,79 @@ class PaddleService
             return;
         }
 
-        $workspace->forceFill([
+        $previousTier = $workspace->plan_tier;
+        $newTier      = $planTier ?? $workspace->plan_tier;
+        $renewsAtCarbon = $renewsAt ? \Carbon\Carbon::parse($renewsAt) : null;
+
+        $update = [
             'paddle_subscription_id' => $subscriptionId,
             'paddle_customer_id'     => $customerId ?? $workspace->paddle_customer_id,
             'plan_status'            => $planStatus,
-            'plan_renews_at'         => $renewsAt ? \Carbon\Carbon::parse($renewsAt) : null,
-            'plan_tier'              => $planTier ?? $workspace->plan_tier,
-        ])->save();
+            'plan_renews_at'         => $renewsAtCarbon,
+            'plan_tier'              => $newTier,
+        ];
+
+        // Reset credits when plan changes or on first subscription event
+        if ($previousTier !== $newTier || $workspace->billing_renews_at === null) {
+            $update['credits_monthly']   = \App\Services\CreditService::PLAN_CREDITS[$newTier] ?? 0;
+            $update['billing_renews_at'] = $renewsAtCarbon ?? now()->addMonth();
+        }
+
+        $workspace->forceFill($update)->save();
+    }
+
+    /**
+     * Handle a top-up purchase (one-time credit pack).
+     *
+     * @param array<string, mixed> $payload
+     */
+    public function handleTopUp(array $payload): void
+    {
+        $data       = $payload['data'] ?? [];
+        $customerId = $data['customer_id'] ?? null;
+        $priceId    = $data['items'][0]['price']['id'] ?? null;
+        $status     = $data['status'] ?? '';
+
+        // Only credit on completed transactions
+        if ($status !== 'completed') {
+            return;
+        }
+
+        $creditsToGrant = $this->creditsForTopUpPrice($priceId);
+        if (! $creditsToGrant || ! $customerId) {
+            return;
+        }
+
+        $workspace = Workspace::query()->where('paddle_customer_id', $customerId)->first();
+        if (! $workspace) {
+            Log::warning('PaddleService: top-up — no workspace found', ['customer_id' => $customerId]);
+            return;
+        }
+
+        // Idempotency: skip if we've already processed this transaction
+        $txId = $data['id'] ?? null;
+        if ($txId && \Illuminate\Support\Facades\Cache::has("paddle_topup:{$txId}")) {
+            return;
+        }
+
+        (new CreditService())->grant((int) $workspace->getKey(), $creditsToGrant, 'topup_paddle');
+
+        if ($txId) {
+            \Illuminate\Support\Facades\Cache::put("paddle_topup:{$txId}", true, now()->addDays(30));
+        }
+
+        Log::info('PaddleService: top-up credited', [
+            'workspace_id' => $workspace->getKey(),
+            'credits'      => $creditsToGrant,
+            'tx_id'        => $txId,
+        ]);
+    }
+
+    private function creditsForTopUpPrice(?string $priceId): ?int
+    {
+        if (! $priceId) return null;
+        $map = config('billing.paddle.topup_prices', []);
+        return $map[$priceId] ?? null;
     }
 
     /**

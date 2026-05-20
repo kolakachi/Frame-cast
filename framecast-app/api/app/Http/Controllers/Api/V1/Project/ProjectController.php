@@ -21,6 +21,7 @@ use App\Models\Template;
 use App\Models\User;
 use App\Services\Media\StorageService;
 use App\Services\WorkspaceUsageService;
+use App\Services\CreditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -31,7 +32,10 @@ use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
-    public function __construct(private readonly WorkspaceUsageService $usageService) {}
+    public function __construct(
+        private readonly WorkspaceUsageService $usageService,
+        private readonly CreditService $credits,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -297,6 +301,29 @@ class ProjectController extends Controller
 
         if ($sourceError) {
             return $this->error('invalid_source_content', $sourceError, 422);
+        }
+
+        // ── Credit guard ─────────────────────────────────────────────────
+        $estimate = $this->credits->estimateProject(
+            sourceType:    $validated['source_type'],
+            sourceContent: $validated['source_content_raw'] ?? null,
+            visualMode:    $validated['visual_generation_mode'] ?? 'stock',
+            aiQuality:     $validated['ai_image_quality'] ?? 'medium',
+        );
+        $balance = $this->credits->balance((int) $user->workspace_id);
+        if ($balance < $estimate['credits_min']) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'insufficient_credits',
+                    'message' => "You need at least {$estimate['credits_min']} credits to generate this video. Your balance is {$balance}.",
+                    'context' => [
+                        'balance'      => $balance,
+                        'estimate_min' => $estimate['credits_min'],
+                        'estimate_max' => $estimate['credits_max'],
+                        'shortage'     => $estimate['credits_min'] - $balance,
+                    ],
+                ],
+            ], 402);
         }
 
         $sourceImageAssetIds = $this->resolveSourceImageAssetIds(

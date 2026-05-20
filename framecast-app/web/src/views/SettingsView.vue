@@ -692,14 +692,33 @@ onMounted(() => {
               <button v-if="isFreePlan && !billing?.price_ids?.studio" class="btn btn-primary" type="button" @click="limitModalOpen = true">Upgrade</button>
             </div>
 
+            <!-- Credit top-up packs -->
+            <div v-if="billing?.topup_packs?.length" class="topup-section">
+              <div class="section-title" style="font-size:13px;margin-bottom:6px">Buy Credit Top-Up</div>
+              <div class="settings-section-desc" style="margin-bottom:12px">One-time purchase. Top-up credits never expire while you have an active paid plan.</div>
+              <div class="topup-grid">
+                <button
+                  v-for="pack in billing.topup_packs" :key="pack.key"
+                  class="topup-pack"
+                  :disabled="!pack.price_id"
+                  @click="openPaddleCheckout(pack.price_id)"
+                >
+                  <div class="topup-credits">{{ pack.credits.toLocaleString() }}</div>
+                  <div class="topup-credits-label">credits</div>
+                  <div class="topup-price">${{ pack.price_usd }}</div>
+                  <div class="topup-per-credit">${{ (pack.price_usd / pack.credits).toFixed(3) }}/credit</div>
+                </button>
+              </div>
+            </div>
+
             <table class="table-clean">
-              <thead><tr><th>Feature</th><th>Free</th><th>Studio</th><th>Scale</th></tr></thead>
+              <thead><tr><th>Feature</th><th>Free</th><th>Creator</th><th>Pro</th></tr></thead>
               <tbody>
+                <tr><td>Credits / mo</td><td>200 (one-off)</td><td class="col-accent">1,500</td><td>4,000</td></tr>
                 <tr><td>Renders / mo</td><td>10</td><td class="col-accent">200</td><td>1,000</td></tr>
-                <tr><td>Voice min</td><td>20</td><td class="col-accent">120</td><td>600</td></tr>
-                <tr><td>Channels</td><td>1</td><td class="col-accent">5</td><td>25</td></tr>
-                <tr><td>Dub languages</td><td>1</td><td class="col-accent">3</td><td>12</td></tr>
-                <tr><td>Voice cloning</td><td>-</td><td class="col-accent">2 voices</td><td>10 voices</td></tr>
+                <tr><td>Channels</td><td>1</td><td class="col-accent">3</td><td>10</td></tr>
+                <tr><td>AI image quality</td><td>Medium</td><td class="col-accent">Med + High</td><td>Med + High</td></tr>
+                <tr><td>Watermark</td><td>Yes</td><td class="col-accent">No</td><td>No</td></tr>
               </tbody>
             </table>
           </div>
@@ -987,6 +1006,15 @@ onMounted(() => {
 .usage-fill { height: 100%; border-radius: 999px; }
 
 /* ── Plan table ── */
+.topup-section { margin: 22px 0; padding: 18px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 10px; }
+.topup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.topup-pack { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 10px; padding: 16px 12px; cursor: pointer; transition: .15s; text-align: center; color: var(--color-text-primary); font-family: inherit; }
+.topup-pack:hover:not(:disabled) { border-color: var(--color-accent); transform: translateY(-1px); }
+.topup-pack:disabled { opacity: .4; cursor: not-allowed; }
+.topup-credits { font-size: 22px; font-weight: 700; color: var(--color-accent); }
+.topup-credits-label { font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.topup-price { font-size: 16px; font-weight: 600; }
+.topup-per-credit { font-size: 10px; color: var(--color-text-muted); margin-top: 2px; }
 .table-clean { width: 100%; border-collapse: collapse; font-size: 13px; }
 .table-clean th,
 .table-clean td { padding: 8px 10px; border-bottom: 1px solid #2a2a36; text-align: left; }

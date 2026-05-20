@@ -20,9 +20,30 @@ return [
 
         // Paddle price IDs — one price per plan (monthly)
         'price_ids' => [
+            'starter'    => env('PADDLE_PRICE_STARTER', ''),
+            'creator'    => env('PADDLE_PRICE_CREATOR', ''),
+            'pro'        => env('PADDLE_PRICE_PRO', ''),
+            'agency'     => env('PADDLE_PRICE_AGENCY', ''),
+            // Legacy
             'studio'     => env('PADDLE_PRICE_STUDIO', ''),
             'scale'      => env('PADDLE_PRICE_SCALE', ''),
             'enterprise' => env('PADDLE_PRICE_ENTERPRISE', ''),
+        ],
+
+        // Paddle price IDs for credit top-up packs (price_id => credit amount)
+        'topup_prices' => [
+            env('PADDLE_PRICE_TOPUP_SMALL', '')  => 500,    // $5
+            env('PADDLE_PRICE_TOPUP_MEDIUM', '') => 1200,   // $10
+            env('PADDLE_PRICE_TOPUP_LARGE', '')  => 3000,   // $22
+            env('PADDLE_PRICE_TOPUP_XL', '')     => 8000,   // $55
+        ],
+
+        // Top-up packs metadata for the frontend (label, credits, price)
+        'topup_packs' => [
+            ['key' => 'small',  'credits' => 500,  'price_usd' => 5,  'price_id' => env('PADDLE_PRICE_TOPUP_SMALL', '')],
+            ['key' => 'medium', 'credits' => 1200, 'price_usd' => 10, 'price_id' => env('PADDLE_PRICE_TOPUP_MEDIUM', '')],
+            ['key' => 'large',  'credits' => 3000, 'price_usd' => 22, 'price_id' => env('PADDLE_PRICE_TOPUP_LARGE', '')],
+            ['key' => 'xl',     'credits' => 8000, 'price_usd' => 55, 'price_id' => env('PADDLE_PRICE_TOPUP_XL', '')],
         ],
 
         // Base URL differs between sandbox and production
