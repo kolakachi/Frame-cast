@@ -49,7 +49,8 @@ trait RendersExportScenes
         string $tempDir,
         int $index,
         float $elapsedSeconds,
-        float $totalSeconds
+        float $totalSeconds,
+        bool $watermarkEnabled = false
     ): string {
         $duration = max(1.0, (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0));
 
@@ -63,7 +64,8 @@ trait RendersExportScenes
                 $tempDir,
                 $index,
                 $elapsedSeconds,
-                $totalSeconds
+                $totalSeconds,
+                $watermarkEnabled,
             );
         }
 
@@ -130,6 +132,15 @@ trait RendersExportScenes
                 );
                 $filters[] = "subtitles={$assFile}";
                 $cleanupPaths[] = $assFile;
+            }
+
+            if ($watermarkEnabled) {
+                // Semi-transparent text watermark, bottom-right corner
+                $fontSize = (int) max(18, round($dimensions['height'] * 0.022));
+                $filters[] = sprintf(
+                    "drawtext=text='WyvStudio':fontcolor=white@0.55:fontsize=%d:x=w-tw-24:y=h-th-24:box=1:boxcolor=black@0.30:boxborderw=8",
+                    $fontSize,
+                );
             }
 
             $filter = implode(',', $filters);
@@ -203,7 +214,8 @@ trait RendersExportScenes
         string $tempDir,
         int $index,
         float $elapsedSeconds,
-        float $totalSeconds
+        float $totalSeconds,
+        bool $watermarkEnabled = false
     ): string {
         $imgSettings = is_array($scene->image_generation_settings_json) ? $scene->image_generation_settings_json : [];
         $captionSettings = is_array($scene->caption_settings_json) ? $scene->caption_settings_json : [];
@@ -297,6 +309,17 @@ trait RendersExportScenes
                 '-r', '30',
                 '-map', '0:v:0',
                 '-map', '1:a:0',
+            );
+            if ($watermarkEnabled) {
+                $fontSize = (int) max(18, round($dimensions['height'] * 0.022));
+                $wmFilter = sprintf(
+                    "drawtext=text='WyvStudio':fontcolor=white@0.55:fontsize=%d:x=w-tw-24:y=h-th-24:box=1:boxcolor=black@0.30:boxborderw=8",
+                    $fontSize,
+                );
+                array_push($command, '-vf', $wmFilter);
+            }
+            array_push(
+                $command,
                 '-c:v', 'libx264',
                 '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac',

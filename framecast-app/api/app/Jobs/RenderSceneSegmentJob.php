@@ -81,6 +81,7 @@ class RenderSceneSegmentJob implements ShouldQueue
                 $this->sceneIndex,
                 $this->elapsedSeconds,
                 $this->totalDurationSeconds,
+                (bool) $exportJob->watermark_enabled,
             );
 
             // Upload to deterministic MinIO path so ConcatenateExportJob can find it.
