@@ -174,23 +174,9 @@ async function loadAssets() {
         (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
       )
     } else {
-      // Music + Sound pickers both include user-uploaded 'audio' assets
-      // (TTS-generated voice files are filtered out via voice_settings_json metadata).
-      const primaryType = props.mode === 'music' ? 'music' : 'sound'
-      const [primaryResp, audioResp] = await Promise.all([
-        api.get('/assets', { params: { asset_type: primaryType, per_page: 60 } }),
-        api.get('/assets', { params: { asset_type: 'audio', per_page: 60 } }),
-      ])
-      const primary = primaryResp.data?.data?.assets ?? []
-      const audioAll = audioResp.data?.data?.assets ?? []
-      // Exclude TTS voice files — they're scene-tied, not reusable as music/sfx
-      const audio = audioAll.filter(a => {
-        const meta = a.metadata_json || {}
-        return !meta.tts_provider && !meta.scene_id && !meta.voice_id
-      })
-      assets.value = [...primary, ...audio].sort(
-        (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
-      )
+      const type = props.mode === 'music' ? 'music' : 'sound'
+      const resp = await api.get('/assets', { params: { asset_type: type, per_page: 60 } })
+      assets.value = resp.data?.data?.assets ?? []
     }
   } catch {
     assets.value = []
