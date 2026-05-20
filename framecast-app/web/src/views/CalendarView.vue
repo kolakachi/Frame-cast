@@ -195,6 +195,47 @@ onMounted(async () => {
 })
 onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 
+// ── Edit post modal ───────────────────────────────────────
+const editPost = ref(null)
+const editForm = ref({ caption: '', title: '', scheduled_date: '', scheduled_time: '' })
+const editSaving = ref(false)
+const editError  = ref('')
+
+function openEditModal(post) {
+  editPost.value = post
+  editError.value = ''
+  const d = post.scheduled_at ? new Date(post.scheduled_at) : null
+  editForm.value = {
+    caption: post.caption ?? '',
+    title:   post.title ?? '',
+    scheduled_date: d ? d.toISOString().split('T')[0] : '',
+    scheduled_time: d ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '09:00',
+  }
+  selectedPost.value = null
+}
+
+async function saveEditPost() {
+  if (editSaving.value || !editPost.value) return
+  editSaving.value = true
+  editError.value = ''
+  try {
+    const payload = {
+      caption: editForm.value.caption,
+      title:   editForm.value.title || null,
+    }
+    if (editPost.value.status !== 'draft' && editForm.value.scheduled_date && editForm.value.scheduled_time) {
+      payload.scheduled_at = new Date(`${editForm.value.scheduled_date}T${editForm.value.scheduled_time}`).toISOString()
+    }
+    await api.patch(`/scheduled-posts/${editPost.value.id}`, payload)
+    editPost.value = null
+    loadPosts()
+  } catch (e) {
+    editError.value = e?.response?.data?.error?.message || 'Failed to update post.'
+  } finally {
+    editSaving.value = false
+  }
+}
+
 // ── Post actions ──────────────────────────────────────────
 function selectPost(post, event) {
   if (selectedPost.value?.id === post.id) { selectedPost.value = null; return }
@@ -406,6 +447,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
             </div>
             <div class="list-col-date">{{ formatDate(postDate(post)) }}</div>
             <div class="list-col-actions">
+              <button v-if="['scheduled','draft','failed'].includes(post.status)" class="list-action-btn" title="Edit" @click="openEditModal(post)">✎ Edit</button>
               <button v-if="post.status === 'failed'" class="list-action-btn" title="Retry" @click="retryPost(post)">↺ Retry</button>
               <a v-if="post.platform_post_url" :href="post.platform_post_url" target="_blank" class="list-action-btn">↗ View</a>
               <button v-if="['scheduled','draft','failed'].includes(post.status)" class="list-action-btn list-action-danger" title="Cancel" @click="promptCancelPost(post)">✕</button>
@@ -432,8 +474,9 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
         <div v-if="selectedPost.failure_reason" class="cal-popover-error">⚠ {{ selectedPost.failure_reason }}</div>
         <div v-else-if="selectedPost.caption" class="cal-popover-caption">{{ selectedPost.caption }}</div>
         <div class="cal-popover-actions">
+          <button v-if="['scheduled','draft','failed'].includes(selectedPost.status)" class="btn btn-sm" @click="openEditModal(selectedPost)">✎ Edit</button>
           <button v-if="selectedPost.status === 'failed'" class="btn btn-sm btn-primary" @click="retryPost(selectedPost)">↺ Retry</button>
-          <button v-if="['scheduled','draft','failed'].includes(selectedPost.status)" class="btn btn-sm" @click="cancelPost(selectedPost)">✕ Cancel</button>
+          <button v-if="['scheduled','draft','failed'].includes(selectedPost.status)" class="btn btn-sm" @click="promptCancelPost(selectedPost)">✕ Cancel</button>
           <a v-if="selectedPost.platform_post_url" :href="selectedPost.platform_post_url" target="_blank" class="btn btn-sm">↗ View post</a>
         </div>
       </div>
@@ -449,6 +492,43 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
       @close="cancelTarget = null"
       @confirm="executeCancel"
     />
+
+    <!-- Edit post modal -->
+    <Teleport to="body">
+      <div v-if="editPost" class="ep-backdrop" @click.self="editPost = null">
+        <div class="ep-modal">
+          <div class="ep-header">
+            <div class="ep-title">Edit Post</div>
+            <button class="ep-close" @click="editPost = null">×</button>
+          </div>
+          <div class="ep-meta">
+            {{ postPlatformIcon(editPost.platform) }} {{ editPost.platform }}{{ editPost.project_title ? ` · ${editPost.project_title}` : '' }}
+          </div>
+          <div class="ep-field">
+            <label class="ep-label">Caption</label>
+            <textarea v-model="editForm.caption" class="ep-textarea" rows="4"></textarea>
+          </div>
+          <div v-if="editPost.platform === 'youtube'" class="ep-field">
+            <label class="ep-label">Title</label>
+            <input v-model="editForm.title" class="ep-input" maxlength="100">
+          </div>
+          <div v-if="editPost.status !== 'draft'" class="ep-field">
+            <label class="ep-label">Schedule for</label>
+            <div class="ep-datetime">
+              <input v-model="editForm.scheduled_date" class="ep-input" type="date">
+              <input v-model="editForm.scheduled_time" class="ep-input" type="time">
+            </div>
+          </div>
+          <div v-if="editError" class="ep-error">{{ editError }}</div>
+          <div class="ep-footer">
+            <button class="btn btn-sm" @click="editPost = null">Cancel</button>
+            <button class="btn btn-sm btn-primary" :disabled="editSaving" @click="saveEditPost">
+              {{ editSaving ? 'Saving…' : 'Save changes' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Schedule post modal -->
     <SchedulePostModal v-if="scheduleOpen" @close="scheduleOpen = false" @scheduled="loadPosts(); scheduleOpen = false" />
@@ -580,6 +660,21 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 .tag-red    { background: rgba(248,113,113,.1); color: #f87171; }
 .tag-gray   { background: rgba(255,255,255,.05); color: var(--color-text-muted); }
 .tag-orange { background: rgba(251,146,60,.1);  color: #fb923c; }
+
+/* Edit post modal */
+.ep-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 300; }
+.ep-modal { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; padding: 22px; width: min(480px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; }
+.ep-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.ep-title { font-size: 15px; font-weight: 600; }
+.ep-close { background: none; border: none; color: var(--color-text-muted); font-size: 20px; cursor: pointer; padding: 0; line-height: 1; }
+.ep-meta { font-size: 11px; color: var(--color-text-muted); margin-bottom: 18px; }
+.ep-field { margin-bottom: 14px; }
+.ep-label { display: block; font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; font-weight: 500; }
+.ep-textarea { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); padding: 9px 12px; font-size: 13px; font-family: inherit; outline: none; resize: vertical; line-height: 1.5; }
+.ep-input { background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); padding: 8px 12px; font-size: 13px; font-family: inherit; outline: none; width: 100%; }
+.ep-datetime { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ep-error { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.2); color: #fca5a5; border-radius: 7px; padding: 8px 12px; font-size: 12px; margin-bottom: 12px; }
+.ep-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid var(--color-border); }
 
 /* Shared btns */
 .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; transition: .15s; border: 1px solid var(--color-border); color: var(--color-text-primary); background: transparent; font-family: inherit; text-decoration: none; }

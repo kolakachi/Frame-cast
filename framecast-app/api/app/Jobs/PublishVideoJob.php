@@ -48,6 +48,31 @@ class PublishVideoJob implements ShouldQueue
             return;
         }
 
+        $adapter = PlatformAdapterFactory::make($post->platform);
+
+        // Pre-publish token health check — if the account's refresh token is
+        // revoked/expired, mark the account as expired, cancel all pending
+        // posts using it, and fire one notification (avoids N failures for N posts).
+        $account = $post->socialAccount;
+        if ($account && $account->isTokenExpired()) {
+            try {
+                $adapter->refreshToken($account);
+            } catch (\Throwable $e) {
+                $account->update(['status' => 'expired']);
+                // Fail this post + all other pending posts on the same account
+                \App\Models\ScheduledPost::query()
+                    ->where('social_account_id', $account->getKey())
+                    ->whereIn('status', ['scheduled', 'pending', 'processing'])
+                    ->update([
+                        'status'         => 'failed',
+                        'failure_reason' => 'Account connection expired. Please reconnect this account in Settings to resume publishing.',
+                    ]);
+                $this->fail($post, 'Account connection expired. Please reconnect this account in Settings.');
+                $this->notifyAccountExpired($post);
+                return;
+            }
+        }
+
         $tmpPath = tempnam(sys_get_temp_dir(), 'fc_publish_').'.'.$this->ext($asset);
 
         try {
@@ -55,7 +80,6 @@ class PublishVideoJob implements ShouldQueue
             $contents = $storage->get((string) $asset->storage_url);
             file_put_contents($tmpPath, $contents);
 
-            $adapter = PlatformAdapterFactory::make($post->platform);
             $platformPostId = $adapter->publish($post->socialAccount, $post, $tmpPath);
 
             $post->update([
@@ -113,6 +137,20 @@ class PublishVideoJob implements ShouldQueue
                 'type'         => $result === 'success' ? 'success' : 'error',
                 'user_id'      => $post->project?->created_by_user_id,
                 'metadata_json'=> ['scheduled_post_id' => $post->id, 'platform' => $post->platform],
+            ]);
+        });
+    }
+
+    private function notifyAccountExpired(ScheduledPost $post): void
+    {
+        rescue(function () use ($post): void {
+            \App\Models\WorkspaceNotification::query()->create([
+                'workspace_id' => $post->workspace_id,
+                'title'        => 'Reconnect required',
+                'message'      => "Your {$post->platform} connection has expired. Please reconnect it in Settings to resume publishing.",
+                'type'         => 'error',
+                'user_id'      => $post->project?->created_by_user_id,
+                'metadata_json'=> ['platform' => $post->platform, 'social_account_id' => $post->social_account_id],
             ]);
         });
     }
