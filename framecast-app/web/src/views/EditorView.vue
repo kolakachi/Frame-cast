@@ -4263,7 +4263,7 @@ onBeforeUnmount(() => {
                   <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Stock Image' ? 'active' : '']" @click="selectedSwapVisualSource = 'Stock Image'">Image</button>
                   <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'AI Image' ? 'active ai' : '']" @click="selectedSwapVisualSource = 'AI Image'">✦ AI</button>
                   <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'My Assets' ? 'active' : '']" @click="selectedSwapVisualSource = 'My Assets'">Assets</button>
-                  <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Audiogram' ? 'active' : '']" @click="selectedSwapVisualSource = 'Audiogram'; if (activeScene?.visual_type !== 'waveform') saveAudiogramSettings({ apply: true })">Audio</button>
+                  <button type="button" :class="['visual-type-tab', selectedSwapVisualSource === 'Audiogram' ? 'active' : '']" @click="selectedSwapVisualSource = 'Audiogram'">Audio</button>
                 </div>
 
                 <!-- Stock Video -->
@@ -4464,10 +4464,17 @@ onBeforeUnmount(() => {
                       >{{ bg.label }}</button>
                     </div>
 
-                    <!-- Reset to stock -->
-                    <button class="btn btn-ghost btn-sm panel-full-btn" style="margin-top:12px;opacity:.5;" type="button" @click="selectedSwapVisualSource = 'Stock Video'; swapVisual()">
-                      Switch to Video instead
-                    </button>
+                    <!-- Apply audiogram to this scene -->
+                    <button
+                      v-if="activeScene?.visual_type !== 'waveform'"
+                      class="btn btn-primary btn-sm panel-full-btn"
+                      style="margin-top:14px;"
+                      type="button"
+                      @click="saveAudiogramSettings({ apply: true })"
+                    >Apply Audiogram to Scene</button>
+                    <div v-else class="micro-label" style="margin-top:12px;opacity:.7;text-align:center;">
+                      Audiogram is active on this scene
+                    </div>
                 </template>
 
               </div>
