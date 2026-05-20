@@ -27,6 +27,15 @@ const uploading = ref(false)
 const uploadError = ref('')
 const uploadInput = ref(null)
 
+// SFX library state
+const sfxLibrary = ref([])
+const sfxCategories = ref([])
+const sfxCategoryFilter = ref('all')
+const sfxLoading = ref(false)
+const sfxImporting = ref(null)
+const sfxPreviewId = ref(null)
+const sfxPreviewAudio = ref(null)
+
 let listAudio = null
 const auditionId = ref(null)
 const auditionPlaying = ref(false)
@@ -182,6 +191,65 @@ async function loadAssets() {
     assets.value = []
   } finally {
     assetsLoading.value = false
+  }
+}
+
+// ── SFX library ──────────────────────────────────────────
+async function loadSfxLibrary() {
+  if (sfxLoading.value || sfxLibrary.value.length) return
+  sfxLoading.value = true
+  try {
+    const res = await api.get('/sfx')
+    sfxLibrary.value    = res.data?.data?.sounds ?? []
+    sfxCategories.value = res.data?.data?.categories ?? []
+  } catch {
+    sfxLibrary.value = []
+  } finally {
+    sfxLoading.value = false
+  }
+}
+
+const sfxFiltered = computed(() => {
+  let list = sfxLibrary.value
+  if (sfxCategoryFilter.value !== 'all') {
+    list = list.filter(s => s.category === sfxCategoryFilter.value)
+  }
+  const q = (searchQuery.value || '').toLowerCase().trim()
+  if (q) list = list.filter(s => s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q))
+  return list
+})
+
+function previewSfx(sound) {
+  if (sfxPreviewAudio.value) {
+    sfxPreviewAudio.value.pause()
+    sfxPreviewAudio.value = null
+  }
+  if (sfxPreviewId.value === sound.id) { sfxPreviewId.value = null; return }
+  const audio = new Audio(sound.url)
+  audio.volume = 0.7
+  audio.addEventListener('ended', () => { if (sfxPreviewId.value === sound.id) sfxPreviewId.value = null })
+  audio.play().catch(() => { sfxPreviewId.value = null })
+  sfxPreviewAudio.value = audio
+  sfxPreviewId.value = sound.id
+}
+
+async function importSfx(sound) {
+  if (sfxImporting.value) return
+  sfxImporting.value = sound.id
+  try {
+    const res = await api.post(`/sfx/${sound.id}/import`)
+    const asset = res.data?.data?.asset
+    if (asset) {
+      // Select and emit so parent assigns to scene
+      selectedId.value = asset.id
+      selectedItem.value = { ...asset, _type: 'asset' }
+      emit('select', { mode: props.mode, item: selectedItem.value })
+      emit('close')
+    }
+  } catch (e) {
+    uploadError.value = e?.response?.data?.error?.message || 'Could not import sound.'
+  } finally {
+    sfxImporting.value = null
   }
 }
 
@@ -415,7 +483,12 @@ function trackMoodLabel(track) {
                 <div
                   :class="['mp-tab', activeTab === 'browse' ? 'active' : '']"
                   @click="activeTab = 'browse'"
-                >Browse</div>
+                >{{ mode === 'sound' ? 'My Library' : 'Browse' }}</div>
+                <div
+                  v-if="mode === 'sound'"
+                  :class="['mp-tab', activeTab === 'sfx-library' ? 'active' : '']"
+                  @click="activeTab = 'sfx-library'; loadSfxLibrary()"
+                >Free Library</div>
                 <div
                   :class="['mp-tab', activeTab === 'uploads' ? 'active' : '']"
                   @click="activeTab = 'uploads'"
@@ -573,6 +646,46 @@ function trackMoodLabel(track) {
                   </template>
                 </template>
 
+              </template>
+
+              <!-- FREE SFX LIBRARY TAB -->
+              <template v-else-if="activeTab === 'sfx-library'">
+                <!-- Category filter -->
+                <div class="sfx-cat-row">
+                  <button
+                    :class="['sfx-cat', sfxCategoryFilter === 'all' ? 'active' : '']"
+                    @click="sfxCategoryFilter = 'all'"
+                  >All</button>
+                  <button
+                    v-for="cat in sfxCategories" :key="cat.key"
+                    :class="['sfx-cat', sfxCategoryFilter === cat.key ? 'active' : '']"
+                    @click="sfxCategoryFilter = cat.key"
+                  >{{ cat.label }}</button>
+                </div>
+
+                <div v-if="sfxLoading" class="mp-loading">Loading library…</div>
+                <div v-else-if="!sfxFiltered.length" class="mp-empty">No sounds match.</div>
+                <div v-else class="sfx-list">
+                  <div
+                    v-for="sound in sfxFiltered" :key="sound.id"
+                    class="sfx-row"
+                  >
+                    <button class="sfx-play" @click="previewSfx(sound)" :title="sfxPreviewId === sound.id ? 'Stop' : 'Preview'">
+                      <span v-if="sfxPreviewId === sound.id">■</span>
+                      <span v-else>▶</span>
+                    </button>
+                    <div class="sfx-info">
+                      <div class="sfx-name">{{ sound.name }}</div>
+                      <div class="sfx-meta">{{ sound.category }} · {{ sound.duration }}s</div>
+                    </div>
+                    <button
+                      class="sfx-use"
+                      :disabled="sfxImporting === sound.id"
+                      @click="importSfx(sound)"
+                    >{{ sfxImporting === sound.id ? 'Adding…' : 'Use' }}</button>
+                  </div>
+                </div>
+                <div class="sfx-footnote">Royalty-free sounds from Pixabay · No attribution required</div>
               </template>
 
               <!-- MY UPLOADS TAB -->
@@ -1174,6 +1287,24 @@ function trackMoodLabel(track) {
   padding: 24px 0;
   text-align: center;
 }
+
+/* SFX library */
+.sfx-cat-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.sfx-cat { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text-muted); font-size: 11px; font-family: inherit; cursor: pointer; transition: .15s; }
+.sfx-cat:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.sfx-cat.active { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.sfx-list { display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow-y: auto; padding-right: 4px; }
+.sfx-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-card); transition: .15s; }
+.sfx-row:hover { border-color: var(--color-border-active); background: var(--color-bg-elevated); }
+.sfx-play { width: 32px; height: 32px; border-radius: 50%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); color: var(--color-accent); font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; }
+.sfx-play:hover { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+.sfx-info { flex: 1; min-width: 0; }
+.sfx-name { font-size: 13px; font-weight: 500; }
+.sfx-meta { font-size: 10px; color: var(--color-text-muted); text-transform: capitalize; }
+.sfx-use { padding: 5px 12px; border-radius: 6px; background: var(--color-accent); color: #fff; border: none; font-size: 11px; font-weight: 500; cursor: pointer; font-family: inherit; transition: .15s; flex-shrink: 0; }
+.sfx-use:hover:not(:disabled) { opacity: .9; }
+.sfx-use:disabled { opacity: .5; cursor: not-allowed; }
+.sfx-footnote { font-size: 10px; color: var(--color-text-muted); text-align: center; margin-top: 12px; opacity: .7; }
 
 .mp-empty {
   text-align: center;

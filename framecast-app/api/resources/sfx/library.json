@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "license": "Pixabay Content License — royalty-free, no attribution required.",
+  "source": "Pixabay (https://pixabay.com/sound-effects/)",
+  "sounds": [
+    { "id": "whoosh-1",     "name": "Whoosh — Light",       "category": "transition", "duration": 1.5, "url": "https://cdn.pixabay.com/audio/2022/03/15/audio_1718e23a96.mp3" },
+    { "id": "whoosh-2",     "name": "Whoosh — Heavy",       "category": "transition", "duration": 1.8, "url": "https://cdn.pixabay.com/audio/2022/03/15/audio_1f00f9eb27.mp3" },
+    { "id": "swoosh-1",     "name": "Swoosh — Quick",       "category": "transition", "duration": 0.5, "url": "https://cdn.pixabay.com/audio/2024/02/06/audio_e5cb7e98e5.mp3" },
+    { "id": "click-1",      "name": "Click — Soft",         "category": "ui",         "duration": 0.2, "url": "https://cdn.pixabay.com/audio/2022/03/24/audio_5da5ac8a31.mp3" },
+    { "id": "click-2",      "name": "Click — Sharp",        "category": "ui",         "duration": 0.1, "url": "https://cdn.pixabay.com/audio/2022/03/15/audio_8cb749f0bd.mp3" },
+    { "id": "pop-1",        "name": "Pop — Bubble",         "category": "ui",         "duration": 0.3, "url": "https://cdn.pixabay.com/audio/2022/03/15/audio_3c91f5a5c2.mp3" },
+    { "id": "pop-2",        "name": "Pop — Bright",         "category": "ui",         "duration": 0.4, "url": "https://cdn.pixabay.com/audio/2022/01/18/audio_d1718ab41b.mp3" },
+    { "id": "notification-1","name": "Notification — Chime","category": "notification","duration": 1.0, "url": "https://cdn.pixabay.com/audio/2022/03/15/audio_8cb749f0bd.mp3" },
+    { "id": "notification-2","name": "Notification — Ding", "category": "notification","duration": 0.8, "url": "https://cdn.pixabay.com/audio/2021/08/04/audio_dc39bde744.mp3" },
+    { "id": "success-1",    "name": "Success — Sparkle",    "category": "notification","duration": 1.5, "url": "https://cdn.pixabay.com/audio/2022/03/10/audio_6b3a4fcb74.mp3" },
+    { "id": "applause-1",   "name": "Applause — Small Crowd","category": "ambient",   "duration": 4.0, "url": "https://cdn.pixabay.com/audio/2022/03/24/audio_4dac76b3aa.mp3" },
+    { "id": "drumroll-1",   "name": "Drumroll — Short",     "category": "impact",     "duration": 2.5, "url": "https://cdn.pixabay.com/audio/2021/08/04/audio_12b0c7443c.mp3" },
+    { "id": "impact-1",     "name": "Impact — Thud",        "category": "impact",     "duration": 1.0, "url": "https://cdn.pixabay.com/audio/2022/03/10/audio_f6e90dd2cb.mp3" },
+    { "id": "boom-1",       "name": "Boom — Cinematic",     "category": "impact",     "duration": 3.0, "url": "https://cdn.pixabay.com/audio/2022/03/10/audio_a72f88d33b.mp3" },
+    { "id": "riser-1",      "name": "Riser — Build Up",     "category": "transition", "duration": 3.5, "url": "https://cdn.pixabay.com/audio/2022/03/10/audio_ad1ae33d6c.mp3" },
+    { "id": "glitch-1",     "name": "Glitch — Digital",     "category": "fx",         "duration": 0.5, "url": "https://cdn.pixabay.com/audio/2022/10/18/audio_31d9e527c2.mp3" },
+    { "id": "type-1",       "name": "Keyboard Type",        "category": "fx",         "duration": 2.0, "url": "https://cdn.pixabay.com/audio/2022/03/15/audio_4eb6cbafe9.mp3" },
+    { "id": "camera-1",     "name": "Camera Shutter",       "category": "fx",         "duration": 0.5, "url": "https://cdn.pixabay.com/audio/2022/03/15/audio_4a4e0e0d8a.mp3" },
+    { "id": "coin-1",       "name": "Coin — Pickup",        "category": "ui",         "duration": 0.5, "url": "https://cdn.pixabay.com/audio/2022/03/22/audio_d4c8b9c1f3.mp3" },
+    { "id": "level-up-1",   "name": "Level Up",             "category": "notification","duration": 1.5, "url": "https://cdn.pixabay.com/audio/2022/03/15/audio_8cb749f0bd.mp3" },
+    { "id": "error-1",      "name": "Error — Buzz",         "category": "notification","duration": 0.7, "url": "https://cdn.pixabay.com/audio/2021/08/04/audio_c6ccf3232f.mp3" },
+    { "id": "page-flip-1",  "name": "Page Flip",            "category": "fx",         "duration": 0.8, "url": "https://cdn.pixabay.com/audio/2022/03/15/audio_dc7a6f9c41.mp3" },
+    { "id": "footstep-1",   "name": "Footstep — Wood",      "category": "ambient",    "duration": 0.4, "url": "https://cdn.pixabay.com/audio/2022/10/30/audio_478e1ce25a.mp3" },
+    { "id": "heartbeat-1",  "name": "Heartbeat",            "category": "ambient",    "duration": 2.0, "url": "https://cdn.pixabay.com/audio/2022/10/16/audio_6e10c3a3f0.mp3" },
+    { "id": "vinyl-stop-1", "name": "Vinyl Stop",           "category": "transition", "duration": 1.0, "url": "https://cdn.pixabay.com/audio/2022/03/10/audio_85f5e7c1ec.mp3" }
+  ]
+}

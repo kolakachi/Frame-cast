@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\Billing\BillingController;
 use App\Http\Controllers\Api\V1\Billing\PaddleWebhookController;
 use App\Http\Controllers\Api\V1\Niche\NicheController;
 use App\Http\Controllers\Api\V1\Asset\AssetController;
+use App\Http\Controllers\Api\V1\Sfx\SfxController;
 use App\Http\Controllers\Api\V1\Asset\CollectionController;
 use App\Http\Controllers\Api\V1\Asset\ImageStyleController;
 use App\Http\Controllers\Api\V1\BrandKit\BrandKitController;
@@ -88,6 +89,10 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/{assetId}', [AssetController::class, 'update'])->whereNumber('assetId');
             Route::delete('/{assetId}', [AssetController::class, 'destroy'])->whereNumber('assetId');
         });
+
+        // Bundled royalty-free SFX library
+        Route::get('/sfx', [SfxController::class, 'index']);
+        Route::post('/sfx/{soundId}/import', [SfxController::class, 'import']);
         Route::prefix('/collections')->group(function (): void {
             Route::get('/', [CollectionController::class, 'index']);
             Route::post('/', [CollectionController::class, 'store']);
