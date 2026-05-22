@@ -3,104 +3,157 @@
 <head>
 <meta charset="UTF-8">
 <title>WyvStudio Logo Export</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@600;700&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #f5f5f5; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 24px; font-family: -apple-system, sans-serif; padding: 40px; }
+  body { background: #f5f5f5; display: flex; flex-direction: column; align-items: center; min-height: 100vh; gap: 16px; font-family: -apple-system, sans-serif; padding: 40px; }
   h1 { font-size: 18px; font-weight: 600; color: #111; }
-  p  { font-size: 13px; color: #888; text-align: center; max-width: 400px; line-height: 1.5; }
+  h2 { font-size: 13px; font-weight: 600; color: #555; margin-top: 14px; }
+  p  { font-size: 12px; color: #888; text-align: center; max-width: 460px; line-height: 1.5; }
   canvas { display: none; }
   .btn {
-    padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 600;
+    padding: 10px 22px; border-radius: 7px; font-size: 13px; font-weight: 600;
     cursor: pointer; border: none; background: #ff6b35; color: #fff;
     transition: .15s; text-decoration: none; display: inline-block;
   }
   .btn:hover { background: #e85e2a; }
-  .btn-ghost {
-    background: #fff; color: #333; border: 1px solid #ddd; font-weight: 500;
-  }
+  .btn-ghost { background: #fff; color: #333; border: 1px solid #ddd; font-weight: 500; }
   .btn-ghost:hover { background: #f0f0f0; }
-  .preview { border-radius: 16px; box-shadow: 0 8px 40px rgba(0,0,0,.15); }
-  .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-  .sizes { display: flex; gap: 16px; align-items: flex-end; margin-top: 8px; }
-  .size-item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  .size-label { font-size: 11px; color: #999; }
+  .preview { border-radius: 16px; box-shadow: 0 8px 40px rgba(0,0,0,.12); background: #fff; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .row { display: flex; gap: 32px; align-items: flex-start; margin-top: 16px; padding: 20px; background: #fff; border-radius: 14px; border: 1px solid #eaeaea; }
+  .variant { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 280px; }
+  .variant-label { font-size: 11px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .variant-desc { font-size: 11px; color: #888; text-align: center; }
 </style>
 </head>
 <body>
 
-<h1>WyvStudio Logo</h1>
+<h1>WyvStudio Logo Export</h1>
+<p>The OAuth consent logo should include the wordmark so Google/Apple reviewers can identify your brand. Use <strong>Variant B</strong> for OAuth submissions.</p>
 
-<!-- Hidden canvas used for PNG conversion -->
 <canvas id="c" width="1024" height="1024"></canvas>
 
-<!-- Preview at 256px -->
-<svg class="preview" id="logoSvg" width="256" height="256" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1024" height="1024" rx="224" fill="#ff6b35"/>
-  <path d="M224 288 L352 736 L512 448 L672 736 L800 288"
-    stroke="white" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M432 592 Q512 448 592 592"
-    stroke="rgba(255,255,255,0.32)" stroke-width="40" stroke-linecap="round" fill="none"/>
-</svg>
+<div class="row">
 
-<div class="sizes">
-  <div class="size-item">
-    <svg width="64" height="64" viewBox="0 0 1024 1024" fill="none"><rect width="1024" height="1024" rx="224" fill="#ff6b35"/><path d="M224 288 L352 736 L512 448 L672 736 L800 288" stroke="white" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-    <span class="size-label">64px</span>
+  <!-- Variant A: Mark only -->
+  <div class="variant">
+    <div class="variant-label">A · Mark only</div>
+    <svg class="preview" width="160" height="160" viewBox="0 0 1024 1024" fill="none">
+      <rect width="1024" height="1024" rx="224" fill="#ff6b35"/>
+      <path d="M224 288 L352 736 L512 448 L672 736 L800 288" stroke="white" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M432 592 Q512 448 592 592" stroke="rgba(255,255,255,0.32)" stroke-width="40" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div class="variant-desc">App icon, favicons, sidebar.<br>Recognisable when shown small.</div>
+    <div class="actions">
+      <button class="btn" onclick="downloadPng('mark', 1024, 'wyvstudio-logo-mark-1024.png')">PNG 1024</button>
+      <button class="btn btn-ghost" onclick="downloadSvg('mark', 'wyvstudio-logo-mark.svg')">SVG</button>
+    </div>
   </div>
-  <div class="size-item">
-    <svg width="32" height="32" viewBox="0 0 1024 1024" fill="none"><rect width="1024" height="1024" rx="224" fill="#ff6b35"/><path d="M224 288 L352 736 L512 448 L672 736 L800 288" stroke="white" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-    <span class="size-label">32px</span>
+
+  <!-- Variant B: Mark + wordmark stacked, square -->
+  <div class="variant">
+    <div class="variant-label">B · Mark + wordmark · square (use for OAuth)</div>
+    <svg class="preview" width="200" height="200" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1024" height="1024" rx="180" fill="#ff6b35"/>
+      <!-- Mark — sized smaller, raised -->
+      <g transform="translate(326,200) scale(0.45)">
+        <path d="M224 288 L352 736 L512 448 L672 736 L800 288" stroke="white" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M432 592 Q512 448 592 592" stroke="rgba(255,255,255,0.32)" stroke-width="40" stroke-linecap="round" fill="none"/>
+      </g>
+      <!-- Wordmark -->
+      <text x="512" y="800" text-anchor="middle" font-family="'DM Sans', system-ui, sans-serif" font-size="146" font-weight="700" fill="white" letter-spacing="-2">WyvStudio</text>
+    </svg>
+    <div class="variant-desc">Includes the wordmark.<br>Best for Google / Apple / TikTok OAuth logos.</div>
+    <div class="actions">
+      <button class="btn" onclick="downloadPng('square', 1024, 'wyvstudio-logo-square-1024.png')">PNG 1024</button>
+      <button class="btn" onclick="downloadPng('square', 512, 'wyvstudio-logo-square-512.png')">PNG 512</button>
+      <button class="btn btn-ghost" onclick="downloadSvg('square', 'wyvstudio-logo-square.svg')">SVG</button>
+    </div>
   </div>
+
+  <!-- Variant C: Horizontal lockup -->
+  <div class="variant">
+    <div class="variant-label">C · Horizontal lockup</div>
+    <svg class="preview" width="280" height="80" viewBox="0 0 1400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="400" height="400" rx="86" fill="#ff6b35"/>
+      <path d="M88 112 L138 288 L200 176 L262 288 L312 112" stroke="white" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M171 232 Q200 176 229 232" stroke="rgba(255,255,255,0.32)" stroke-width="18" stroke-linecap="round" fill="none"/>
+      <text x="480" y="270" font-family="'DM Sans', system-ui, sans-serif" font-size="200" font-weight="700" fill="#111" letter-spacing="-4">WyvStudio</text>
+    </svg>
+    <div class="variant-desc">Email signatures, headers,<br>marketing materials.</div>
+    <div class="actions">
+      <button class="btn" onclick="downloadPng('horizontal', 1400, 'wyvstudio-logo-horizontal.png', 400)">PNG 1400×400</button>
+      <button class="btn btn-ghost" onclick="downloadSvg('horizontal', 'wyvstudio-logo-horizontal.svg')">SVG</button>
+    </div>
+  </div>
+
 </div>
 
-<div class="actions">
-  <button class="btn" onclick="downloadPng(1024, 'wyvstudio-logo-1024.png')">⬇ Download PNG 1024×1024</button>
-  <button class="btn btn-ghost" onclick="downloadPng(512, 'wyvstudio-logo-512.png')">512×512</button>
-  <button class="btn btn-ghost" onclick="downloadPng(256, 'wyvstudio-logo-256.png')">256×256</button>
-  <button class="btn btn-ghost" onclick="downloadSvg()">Download SVG</button>
-</div>
-
-<p>Use the 1024×1024 PNG for TikTok, YouTube, and app stores.<br>Use the SVG for web and high-resolution print.</p>
+<h2>Why your previous Google submission was rejected</h2>
+<p>Google's logo policy requires the OAuth icon to <em>uniquely identify your brand</em>. A standalone "W" mark — however stylised — can match too many other apps and gets rejected as "doesn't reflect your identity". Variant B (mark + wordmark in one square) makes the brand unambiguous and is the recommended file to upload.</p>
 
 <script>
-const svgString = `<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1024" height="1024" rx="224" fill="#ff6b35"/>
-  <path d="M224 288 L352 736 L512 448 L672 736 L800 288" stroke="white" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M432 592 Q512 448 592 592" stroke="rgba(255,255,255,0.32)" stroke-width="40" stroke-linecap="round" fill="none"/>
-</svg>`;
+const SVGS = {
+  mark: `<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1024" height="1024" rx="224" fill="#ff6b35"/>
+    <path d="M224 288 L352 736 L512 448 L672 736 L800 288" stroke="white" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M432 592 Q512 448 592 592" stroke="rgba(255,255,255,0.32)" stroke-width="40" stroke-linecap="round" fill="none"/>
+  </svg>`,
 
-function downloadPng(size, filename) {
+  square: `<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1024" height="1024" rx="180" fill="#ff6b35"/>
+    <g transform="translate(326,200) scale(0.45)">
+      <path d="M224 288 L352 736 L512 448 L672 736 L800 288" stroke="white" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M432 592 Q512 448 592 592" stroke="rgba(255,255,255,0.32)" stroke-width="40" stroke-linecap="round" fill="none"/>
+    </g>
+    <text x="512" y="800" text-anchor="middle" font-family="DM Sans, system-ui, sans-serif" font-size="146" font-weight="700" fill="white" letter-spacing="-2">WyvStudio</text>
+  </svg>`,
+
+  horizontal: `<svg width="1400" height="400" viewBox="0 0 1400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="400" height="400" rx="86" fill="#ff6b35"/>
+    <path d="M88 112 L138 288 L200 176 L262 288 L312 112" stroke="white" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M171 232 Q200 176 229 232" stroke="rgba(255,255,255,0.32)" stroke-width="18" stroke-linecap="round" fill="none"/>
+    <text x="480" y="270" font-family="DM Sans, system-ui, sans-serif" font-size="200" font-weight="700" fill="#111" letter-spacing="-4">WyvStudio</text>
+  </svg>`,
+};
+
+function downloadPng(variant, width, filename, height) {
+  height = height || width;
   const canvas = document.getElementById('c');
-  canvas.width  = size;
-  canvas.height = size;
+  canvas.width  = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d');
 
-  const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const img  = new Image();
+  // Pre-load font before rasterising so the wordmark renders
+  document.fonts.load('700 200px "DM Sans"').finally(() => {
+    const blob = new Blob([SVGS[variant]], { type: 'image/svg+xml;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const img  = new Image();
 
-  img.onload = function() {
-    ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(img, 0, 0, size, size);
-    URL.revokeObjectURL(url);
+    img.onload = function() {
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
 
-    canvas.toBlob(function(pngBlob) {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(pngBlob);
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }, 'image/png');
-  };
+      canvas.toBlob(function(pngBlob) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(pngBlob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }, 'image/png');
+    };
 
-  img.src = url;
+    img.src = url;
+  });
 }
 
-function downloadSvg() {
-  const blob = new Blob([svgString], { type: 'image/svg+xml' });
+function downloadSvg(variant, filename) {
+  const blob = new Blob([SVGS[variant]], { type: 'image/svg+xml' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'wyvstudio-logo.svg';
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
 }
