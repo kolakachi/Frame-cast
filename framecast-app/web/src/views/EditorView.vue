@@ -34,6 +34,7 @@ let workspaceChannelName = null;
 
 const audioRef = ref(null);
 const musicAudioRef = ref(null);
+const soundAudioRef = ref(null);
 const musicAuditionRef = ref(null);
 const isAudioPlaying = ref(false);
 const isAudioLoading = ref(false);
@@ -309,6 +310,7 @@ const activeSceneAudioUrl = computed(
   () => activeScene.value?.audio_asset?.storage_url ?? null
 );
 const activeSceneSoundAsset = computed(() => activeScene.value?.sound_asset ?? null);
+const activeSceneSoundUrl = computed(() => activeSceneSoundAsset.value?.storage_url ?? null);
 const selectedProjectChannel = computed(() =>
   channels.value.find((channel) => String(channel.id) === String(projectChannelId.value)) || null
 );
@@ -2493,6 +2495,9 @@ function handleSceneAudioPlay() {
 
 function handleSceneAudioPause() {
   isAudioPlaying.value = false;
+  if (soundAudioRef.value) {
+    try { soundAudioRef.value.pause(); soundAudioRef.value.currentTime = 0; } catch {}
+  }
   syncPreviewMusicVolume();
 }
 
@@ -3531,6 +3536,7 @@ function toggleAudioPlayback() {
   preloadSceneAudio(activeScene.value);
   if (isAudioPlaying.value) {
     audioRef.value.pause();
+    if (soundAudioRef.value) { soundAudioRef.value.pause(); }
     isAudioLoading.value = false;
   } else {
     audioRef.value.currentTime = 0;
@@ -3538,6 +3544,17 @@ function toggleAudioPlayback() {
       isAudioPlaying.value = false;
       isAudioLoading.value = false;
     });
+    if (soundAudioRef.value && activeSceneSoundUrl.value) {
+      soundAudioRef.value.volume = Math.max(0, Math.min(1, sceneSoundVolume.value / 100));
+      soundAudioRef.value.currentTime = 0;
+      soundAudioRef.value.play().catch(() => {});
+    }
+  }
+}
+
+function syncSceneSoundVolume() {
+  if (soundAudioRef.value) {
+    soundAudioRef.value.volume = Math.max(0, Math.min(1, sceneSoundVolume.value / 100));
   }
 }
 
@@ -4723,7 +4740,7 @@ onBeforeUnmount(() => {
                   <div class="control-row top-space">
                     <span class="control-name">Volume</span>
                     <div class="volume-slider-wrap">
-                      <input v-model.number="sceneSoundVolume" type="range" class="music-slider" min="0" max="200" @input="scheduleSceneSoundVolumeSave" />
+                      <input v-model.number="sceneSoundVolume" type="range" class="music-slider" min="0" max="200" @input="syncSceneSoundVolume(); scheduleSceneSoundVolumeSave()" />
                       <span class="music-slider-val">{{ sceneSoundVolume }}%</span>
                     </div>
                   </div>
@@ -5213,6 +5230,14 @@ onBeforeUnmount(() => {
       preload="metadata"
       :loop="musicLoop"
       @loadedmetadata="syncPreviewMusicVolume"
+    ></audio>
+    <audio
+      v-if="activeSceneSoundUrl"
+      ref="soundAudioRef"
+      :src="activeSceneSoundUrl"
+      :crossorigin="mediaCrossOriginMode(activeSceneSoundUrl)"
+      preload="auto"
+      @loadeddata="syncSceneSoundVolume"
     ></audio>
     <audio
       v-if="auditionMusicTrack?.storage_url"
