@@ -106,6 +106,10 @@ const voiceUploadStatus = ref('idle'); // idle | previewing | uploading | transc
 const voicePreviewBlob = ref(null);
 const voicePreviewUrl = ref(null);
 const voicePreviewName = ref('');
+const voicePreviewRef = ref(null);
+const voicePreviewPlaying = ref(false);
+const voicePreviewCurrent = ref(0);
+const voicePreviewDuration = ref(0);
 const voiceUploadAsset = ref(null);
 const voiceUploadError = ref('');
 const voiceRecording = ref(false);
@@ -1944,6 +1948,33 @@ async function applyVoiceUpload({ updateScript = true } = {}) {
   } catch (err) {
     voiceUploadError.value = err?.response?.data?.error?.message || 'Could not apply voice.';
   }
+}
+
+function togglePreviewPlay() {
+  const el = voicePreviewRef.value;
+  if (!el) return;
+  if (voicePreviewPlaying.value) { el.pause(); } else { el.play().catch(() => {}); }
+}
+
+function onPreviewTime() {
+  const el = voicePreviewRef.value;
+  if (!el) return;
+  voicePreviewCurrent.value = el.currentTime || 0;
+  if (Number.isFinite(el.duration)) voicePreviewDuration.value = el.duration;
+}
+
+function onPreviewSeek(e) {
+  const el = voicePreviewRef.value;
+  if (!el || !voicePreviewDuration.value) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  el.currentTime = pct * voicePreviewDuration.value;
+}
+
+function fmtPreviewTime(s) {
+  if (!Number.isFinite(s)) return '0:00';
+  const sec = Math.floor(s);
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 }
 
 function cancelVoiceUpload() {
@@ -4917,20 +4948,43 @@ onBeforeUnmount(() => {
                 <!-- Local preview before uploading -->
                 <div v-else-if="voiceUploadStatus === 'previewing'" class="voice-preview-panel">
                   <div class="voice-preview-head">
-                    <span>🎧 Preview</span>
+                    <span class="voice-preview-icon">🎧</span>
+                    <span class="voice-preview-title">Preview</span>
                     <span class="voice-preview-name">{{ voicePreviewName }}</span>
                   </div>
-                  <audio :src="voicePreviewUrl" controls class="voice-preview-audio"></audio>
+
+                  <!-- Custom audio player -->
+                  <audio
+                    ref="voicePreviewRef"
+                    :src="voicePreviewUrl"
+                    preload="metadata"
+                    @timeupdate="onPreviewTime"
+                    @loadedmetadata="onPreviewTime"
+                    @play="voicePreviewPlaying = true"
+                    @pause="voicePreviewPlaying = false"
+                    @ended="voicePreviewPlaying = false"
+                  ></audio>
+                  <div class="vp-player">
+                    <button type="button" class="vp-play-btn" @click="togglePreviewPlay">
+                      <span v-if="voicePreviewPlaying">⏸</span>
+                      <span v-else>▶</span>
+                    </button>
+                    <div class="vp-track" @click="onPreviewSeek">
+                      <div class="vp-fill" :style="{ width: (voicePreviewDuration ? (voicePreviewCurrent / voicePreviewDuration) * 100 : 0) + '%' }"></div>
+                    </div>
+                    <span class="vp-time">{{ fmtPreviewTime(voicePreviewCurrent) }} / {{ fmtPreviewTime(voicePreviewDuration) }}</span>
+                  </div>
+
                   <div class="voice-preview-actions">
-                    <button class="btn btn-primary btn-sm" @click="confirmUploadFromPreview">
+                    <button class="btn btn-primary btn-sm vp-action" @click="confirmUploadFromPreview">
                       ✓ Use this audio
                     </button>
-                    <button class="btn btn-ghost btn-sm" @click="cancelVoiceUpload">
-                      Re-record / Re-upload
+                    <button class="btn btn-ghost btn-sm vp-action" @click="cancelVoiceUpload">
+                      ↻ Redo
                     </button>
                   </div>
                   <div class="voice-preview-hint">
-                    Captions and a transcript will be generated automatically after you confirm.
+                    Captions and transcript are generated automatically after you confirm.
                   </div>
                 </div>
 
@@ -8521,12 +8575,23 @@ select.control-value {
 .custom-voice-intro { font-size: 11px; color: var(--color-text-muted); line-height: 1.45; margin-bottom: 10px; }
 
 /* Voice preview panel (before upload) */
-.voice-preview-panel { background: rgba(96,165,250,.06); border: 1px solid rgba(96,165,250,.25); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; }
-.voice-preview-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: #60a5fa; margin-bottom: 8px; }
-.voice-preview-name { color: var(--color-text-muted); font-weight: 400; font-size: 11px; margin-left: auto; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.voice-preview-audio { width: 100%; height: 34px; margin-bottom: 8px; }
-.voice-preview-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
-.voice-preview-hint { font-size: 10px; color: var(--color-text-muted); opacity: .8; }
+.voice-preview-panel { background: rgba(96,165,250,.04); border: 1px solid rgba(96,165,250,.2); border-radius: 10px; padding: 12px; margin-bottom: 6px; }
+.voice-preview-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
+.voice-preview-icon { font-size: 13px; }
+.voice-preview-title { color: #60a5fa; font-weight: 500; }
+.voice-preview-name { color: var(--color-text-muted); margin-left: auto; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+
+/* Custom audio player */
+.vp-player { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.04); border-radius: 8px; margin-bottom: 10px; }
+.vp-play-btn { width: 30px; height: 30px; border-radius: 50%; background: var(--color-accent); border: none; color: #fff; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; transition: .15s; font-family: inherit; }
+.vp-play-btn:hover { transform: scale(1.06); }
+.vp-track { flex: 1; height: 4px; background: rgba(255,255,255,.08); border-radius: 999px; cursor: pointer; overflow: hidden; position: relative; }
+.vp-fill { height: 100%; background: var(--color-accent); border-radius: 999px; transition: width .1s linear; }
+.vp-time { font-size: 10px; color: var(--color-text-muted); font-family: "Space Mono", monospace; flex-shrink: 0; white-space: nowrap; }
+
+.voice-preview-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+.vp-action { flex: 1; justify-content: center; white-space: nowrap; }
+.voice-preview-hint { font-size: 10px; color: var(--color-text-muted); opacity: .75; line-height: 1.4; }
 
 /* Custom voice upload/record */
 .voice-action-row { display: flex; gap: 6px; margin-bottom: 8px; }
