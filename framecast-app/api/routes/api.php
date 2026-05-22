@@ -80,6 +80,12 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/audit-log', [AdminController::class, 'auditLog']);
             Route::get('/failure-traces', [AdminController::class, 'failureTraces']);
             Route::get('/storage', [AdminController::class, 'storage']);
+
+            // SFX library
+            Route::get('/sfx', [\App\Http\Controllers\Api\V1\Admin\AdminSfxController::class, 'index']);
+            Route::post('/sfx', [\App\Http\Controllers\Api\V1\Admin\AdminSfxController::class, 'store']);
+            Route::patch('/sfx/{soundId}', [\App\Http\Controllers\Api\V1\Admin\AdminSfxController::class, 'update'])->whereNumber('soundId');
+            Route::delete('/sfx/{soundId}', [\App\Http\Controllers\Api\V1\Admin\AdminSfxController::class, 'destroy'])->whereNumber('soundId');
         });
         Route::prefix('/assets')->group(function (): void {
             Route::get('/orphaned', [AssetController::class, 'orphaned']);
@@ -92,7 +98,7 @@ Route::prefix('v1')->group(function (): void {
 
         // Bundled royalty-free SFX library
         Route::get('/sfx', [SfxController::class, 'index']);
-        Route::post('/sfx/{soundId}/import', [SfxController::class, 'import']);
+        Route::post('/sfx/{soundId}/import', [SfxController::class, 'import'])->whereNumber('soundId');
         Route::prefix('/collections')->group(function (): void {
             Route::get('/', [CollectionController::class, 'index']);
             Route::post('/', [CollectionController::class, 'store']);

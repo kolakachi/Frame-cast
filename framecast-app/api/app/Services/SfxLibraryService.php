@@ -2,40 +2,73 @@
 
 namespace App\Services;
 
+use App\Models\SfxLibrarySound;
+use Illuminate\Database\Eloquent\Collection;
+
 class SfxLibraryService
 {
     /**
-     * Return the bundled SFX library manifest.
-     * @return array<int, array{id:string, name:string, category:string, duration:float, url:string}>
+     * Get the active library — sounds an end user can browse.
+     * @return Collection<int, SfxLibrarySound>
      */
-    public function all(): array
+    public function all(): Collection
     {
-        $path = resource_path('sfx/library.json');
-        if (! is_file($path)) {
-            return [];
-        }
-        $data = json_decode((string) file_get_contents($path), true);
-        return is_array($data['sounds'] ?? null) ? $data['sounds'] : [];
+        return SfxLibrarySound::query()
+            ->where('status', 'active')
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get();
     }
 
-    public function find(string $id): ?array
+    public function find(int $id): ?SfxLibrarySound
     {
-        foreach ($this->all() as $s) {
-            if ($s['id'] === $id) return $s;
-        }
-        return null;
+        return SfxLibrarySound::query()->find($id);
+    }
+
+    public function search(?string $query = null, ?string $category = null): Collection
+    {
+        $q = $query ? mb_strtolower(trim($query)) : null;
+
+        return SfxLibrarySound::query()
+            ->where('status', 'active')
+            ->when($category, fn ($b) => $b->where('category', $category))
+            ->when($q, fn ($b) => $b->where(function ($w) use ($q) {
+                $w->whereRaw('LOWER(name) LIKE ?', ['%'.$q.'%'])
+                  ->orWhereRaw('LOWER(COALESCE(category, \'\')) LIKE ?', ['%'.$q.'%']);
+            }))
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get();
     }
 
     /**
-     * Search the library by query and/or category.
+     * @return list<array{key:string, label:string}>
      */
-    public function search(?string $query = null, ?string $category = null): array
+    public function categories(): array
     {
-        $q = $query ? mb_strtolower(trim($query)) : null;
-        return array_values(array_filter($this->all(), function (array $s) use ($q, $category): bool {
-            if ($category && $s['category'] !== $category) return false;
-            if ($q && ! str_contains(mb_strtolower($s['name']), $q) && ! str_contains(mb_strtolower($s['category']), $q)) return false;
-            return true;
-        }));
+        return [
+            ['key' => 'transition',   'label' => 'Transitions'],
+            ['key' => 'ui',           'label' => 'UI / Clicks'],
+            ['key' => 'notification', 'label' => 'Notifications'],
+            ['key' => 'impact',       'label' => 'Impacts'],
+            ['key' => 'ambient',      'label' => 'Ambient'],
+            ['key' => 'fx',           'label' => 'FX'],
+            ['key' => 'music',        'label' => 'Music / Stingers'],
+        ];
+    }
+
+    public function serialize(SfxLibrarySound $sound): array
+    {
+        return [
+            'id'               => $sound->getKey(),
+            'name'             => $sound->name,
+            'category'         => $sound->category,
+            'storage_url'      => $sound->storage_url,
+            'duration_seconds' => $sound->duration_seconds,
+            'file_size_bytes'  => $sound->file_size_bytes,
+            'source'           => $sound->source,
+            'status'           => $sound->status,
+            'created_at'       => $sound->created_at?->toIso8601String(),
+        ];
     }
 }

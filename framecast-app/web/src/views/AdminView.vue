@@ -427,9 +427,120 @@ const projectExamples = [
   { label: 'AI images high (10 scenes + export)',     scenes: 10, credits: 2+1+10*40+10*2+5 },
 ]
 
+// ── SFX Library admin ────────────────────────────────────────────────────────
+const sfxList = ref([])
+const sfxListLoading = ref(false)
+const sfxCategories = ref([
+  { key: 'transition',   label: 'Transitions' },
+  { key: 'ui',           label: 'UI / Clicks' },
+  { key: 'notification', label: 'Notifications' },
+  { key: 'impact',       label: 'Impacts' },
+  { key: 'ambient',      label: 'Ambient' },
+  { key: 'fx',           label: 'FX' },
+  { key: 'music',        label: 'Music / Stingers' },
+])
+const sfxFilters = ref({ q: '', category: '', status: 'all' })
+const sfxUploadForm = ref({ name: '', category: null, source: 'pixabay' })
+const sfxQueuedFiles = ref([])
+const sfxUploading = ref(false)
+const sfxUploadIndex = ref(0)
+const sfxUploadError = ref('')
+const sfxFileInput = ref(null)
+const sfxPlayingId = ref(null)
+let sfxPreviewAudio = null
+let sfxSearchTimer = null
+
+async function loadSfxList() {
+  sfxListLoading.value = true
+  try {
+    const params = {}
+    if (sfxFilters.value.q) params.q = sfxFilters.value.q
+    if (sfxFilters.value.category) params.category = sfxFilters.value.category
+    if (sfxFilters.value.status) params.status = sfxFilters.value.status
+    const res = await api.get('/admin/sfx', { params })
+    sfxList.value = res.data?.data?.sounds ?? []
+  } catch {
+    sfxList.value = []
+  } finally {
+    sfxListLoading.value = false
+  }
+}
+
+function debouncedSfxSearch() {
+  clearTimeout(sfxSearchTimer)
+  sfxSearchTimer = setTimeout(loadSfxList, 350)
+}
+
+function onSfxFiles(e) {
+  sfxQueuedFiles.value = Array.from(e.target.files || [])
+  sfxUploadError.value = ''
+}
+
+async function uploadSfx() {
+  if (!sfxQueuedFiles.value.length || sfxUploading.value) return
+  sfxUploading.value = true
+  sfxUploadError.value = ''
+  sfxUploadIndex.value = 0
+  try {
+    for (let i = 0; i < sfxQueuedFiles.value.length; i++) {
+      sfxUploadIndex.value = i
+      const file = sfxQueuedFiles.value[i]
+      const fd = new FormData()
+      const name = sfxQueuedFiles.value.length === 1 && sfxUploadForm.value.name
+        ? sfxUploadForm.value.name
+        : file.name.replace(/\.[^.]+$/, '').slice(0, 60)
+      fd.append('name', name)
+      if (sfxUploadForm.value.category) fd.append('category', sfxUploadForm.value.category)
+      if (sfxUploadForm.value.source) fd.append('source', sfxUploadForm.value.source)
+      fd.append('file', file)
+      await api.post('/admin/sfx', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    }
+    sfxQueuedFiles.value = []
+    if (sfxFileInput.value) sfxFileInput.value.value = ''
+    sfxUploadForm.value.name = ''
+    await loadSfxList()
+  } catch (e) {
+    sfxUploadError.value = e?.response?.data?.error?.message || 'Upload failed.'
+  } finally {
+    sfxUploading.value = false
+    sfxUploadIndex.value = 0
+  }
+}
+
+async function saveSfxEdit(sound) {
+  try {
+    await api.patch(`/admin/sfx/${sound.id}`, {
+      name: sound.name,
+      category: sound.category,
+      status: sound.status,
+    })
+  } catch { /* ignore */ }
+}
+
+async function deleteSfx(sound) {
+  if (!confirm(`Delete "${sound.name}"? This cannot be undone.`)) return
+  try {
+    await api.delete(`/admin/sfx/${sound.id}`)
+    sfxList.value = sfxList.value.filter(s => s.id !== sound.id)
+  } catch (e) { /* ignore */ }
+}
+
+function toggleSfxPreview(sound) {
+  if (sfxPreviewAudio) {
+    sfxPreviewAudio.pause()
+    sfxPreviewAudio = null
+  }
+  if (sfxPlayingId.value === sound.id) { sfxPlayingId.value = null; return }
+  sfxPreviewAudio = new Audio(sound.preview_url)
+  sfxPreviewAudio.addEventListener('ended', () => { if (sfxPlayingId.value === sound.id) sfxPlayingId.value = null })
+  sfxPreviewAudio.play().catch(() => { sfxPlayingId.value = null })
+  sfxPlayingId.value = sound.id
+}
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 function navigate(view) {
   activeView.value = view
+  if (view === 'sfx') loadSfxList()
   if (view === 'dashboard' && !dashData.value) { loadDashboard(); loadSpendChart() }
   if (view === 'users') loadUsers()
   if (view === 'workspaces') loadWorkspaces()
@@ -502,6 +613,10 @@ onMounted(() => {
         <button :class="['nav-item', activeView === 'plans' ? 'active' : '']" @click="navigate('plans')">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
           Plans &amp; Credits
+        </button>
+        <button :class="['nav-item', activeView === 'sfx' ? 'active' : '']" @click="navigate('sfx')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+          SFX Library
         </button>
         <div class="nav-section-label">System</div>
         <button :class="['nav-item', activeView === 'jobs' ? 'active' : '']" @click="navigate('jobs')">
@@ -1373,6 +1488,97 @@ onMounted(() => {
           </div><!-- end plans-page -->
         </template>
 
+        <!-- ── SFX Library ─────────────────────────────── -->
+        <template v-if="activeView === 'sfx'">
+          <div class="sfx-page">
+            <div class="gm-section-title">SFX Library</div>
+            <p style="font-size:12px;color:var(--gm-muted);margin-bottom:16px">Upload royalty-free sound effects users can browse in the editor. Category is optional.</p>
+
+            <!-- Upload form -->
+            <div class="sfx-admin-upload">
+              <div class="sfx-admin-row">
+                <label class="sfx-admin-field" style="flex:2">
+                  <span class="sfx-admin-label">Name</span>
+                  <input v-model="sfxUploadForm.name" class="sfx-admin-input" placeholder="e.g. Whoosh Light" />
+                </label>
+                <label class="sfx-admin-field" style="flex:1">
+                  <span class="sfx-admin-label">Category (optional)</span>
+                  <select v-model="sfxUploadForm.category" class="sfx-admin-input">
+                    <option :value="null">— None —</option>
+                    <option v-for="c in sfxCategories" :key="c.key" :value="c.key">{{ c.label }}</option>
+                  </select>
+                </label>
+                <label class="sfx-admin-field" style="flex:1">
+                  <span class="sfx-admin-label">Source (optional)</span>
+                  <input v-model="sfxUploadForm.source" class="sfx-admin-input" placeholder="pixabay, mixkit…" />
+                </label>
+              </div>
+              <div class="sfx-admin-row">
+                <input ref="sfxFileInput" type="file" accept="audio/*" multiple class="sfx-admin-file" @change="onSfxFiles" />
+                <button class="btn btn-primary btn-sm" :disabled="sfxUploading || !sfxQueuedFiles.length" @click="uploadSfx">
+                  {{ sfxUploading ? `Uploading ${sfxUploadIndex + 1} / ${sfxQueuedFiles.length}…` : `Upload ${sfxQueuedFiles.length || ''} file${sfxQueuedFiles.length === 1 ? '' : 's'}` }}
+                </button>
+              </div>
+              <div v-if="sfxUploadError" class="sfx-admin-error">{{ sfxUploadError }}</div>
+              <div v-if="sfxQueuedFiles.length" class="sfx-admin-hint">
+                Each file will be uploaded with the name above (multiple files: filename is used per file, truncated to 60 chars).
+              </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="sfx-admin-filters">
+              <input v-model="sfxFilters.q" class="sfx-admin-input" placeholder="Search…" style="max-width:280px" @input="debouncedSfxSearch" />
+              <select v-model="sfxFilters.category" class="sfx-admin-input" style="max-width:200px" @change="loadSfxList">
+                <option value="">All categories</option>
+                <option v-for="c in sfxCategories" :key="c.key" :value="c.key">{{ c.label }}</option>
+              </select>
+              <select v-model="sfxFilters.status" class="sfx-admin-input" style="max-width:160px" @change="loadSfxList">
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+              </select>
+              <span style="color:var(--gm-muted);font-size:12px;margin-left:auto">{{ sfxList.length }} sound{{ sfxList.length === 1 ? '' : 's' }}</span>
+            </div>
+
+            <!-- Table -->
+            <div v-if="sfxListLoading" class="gm-spinner-wrap">Loading…</div>
+            <div v-else-if="!sfxList.length" class="empty-cell" style="padding:32px">No sounds yet. Upload your first one above.</div>
+            <div v-else class="sfx-admin-table">
+              <div class="sfx-admin-thead">
+                <div></div>
+                <div>Name</div>
+                <div>Category</div>
+                <div>Duration</div>
+                <div>Source</div>
+                <div>Status</div>
+                <div></div>
+              </div>
+              <div v-for="sound in sfxList" :key="sound.id" class="sfx-admin-tr">
+                <button class="sfx-admin-play" :title="sfxPlayingId === sound.id ? 'Stop' : 'Preview'" @click="toggleSfxPreview(sound)">
+                  {{ sfxPlayingId === sound.id ? '■' : '▶' }}
+                </button>
+                <input
+                  v-model="sound.name"
+                  class="sfx-admin-input sfx-inline"
+                  @blur="saveSfxEdit(sound)"
+                  @keydown.enter="$event.target.blur()"
+                />
+                <select v-model="sound.category" class="sfx-admin-input sfx-inline" @change="saveSfxEdit(sound)">
+                  <option :value="null">—</option>
+                  <option v-for="c in sfxCategories" :key="c.key" :value="c.key">{{ c.label }}</option>
+                </select>
+                <div style="color:var(--gm-muted);font-size:12px">{{ sound.duration_seconds ? sound.duration_seconds.toFixed(1)+'s' : '—' }}</div>
+                <div style="color:var(--gm-muted);font-size:12px">{{ sound.source || '—' }}</div>
+                <select v-model="sound.status" class="sfx-admin-input sfx-inline" @change="saveSfxEdit(sound)">
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
+                </select>
+                <button class="sfx-admin-delete" title="Delete" @click="deleteSfx(sound)">✕</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
       </div>
     </main>
 
@@ -1662,6 +1868,29 @@ onMounted(() => {
 /* Plans page */
 .gm-section-title { font-size: 14px; font-weight: 700; color: #c9cad4; margin-bottom: 4px; }
 .plans-page { display: flex; flex-direction: column; gap: 20px; }
+
+/* SFX admin page */
+.sfx-page { display: flex; flex-direction: column; gap: 16px; }
+.sfx-admin-upload { background: #161920; border: 1px solid #2a2d38; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.sfx-admin-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.sfx-admin-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sfx-admin-label { font-size: 11px; color: var(--gm-muted); text-transform: uppercase; letter-spacing: .05em; }
+.sfx-admin-input { background: #0e1015; border: 1px solid #2a2d38; border-radius: 6px; padding: 7px 10px; color: var(--gm-fg, #ececf3); font-size: 13px; font-family: inherit; outline: none; min-width: 0; }
+.sfx-admin-input:focus { border-color: var(--gm-accent, #ff6b35); }
+.sfx-admin-file { color: var(--gm-muted); font-size: 12px; flex: 1; min-width: 220px; }
+.sfx-admin-error { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.25); color: #f87171; border-radius: 7px; padding: 8px 12px; font-size: 12px; }
+.sfx-admin-hint { font-size: 11px; color: var(--gm-muted); }
+.sfx-admin-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.sfx-admin-table { background: #161920; border: 1px solid #2a2d38; border-radius: 10px; overflow: hidden; }
+.sfx-admin-thead, .sfx-admin-tr { display: grid; grid-template-columns: 40px 2fr 1fr 80px 1fr 110px 40px; gap: 10px; align-items: center; padding: 10px 14px; }
+.sfx-admin-thead { font-size: 10px; text-transform: uppercase; color: var(--gm-muted); letter-spacing: .06em; border-bottom: 1px solid #2a2d38; background: #1a1d24; }
+.sfx-admin-tr + .sfx-admin-tr { border-top: 1px solid #2a2d38; }
+.sfx-admin-tr:hover { background: rgba(255,255,255,.02); }
+.sfx-admin-play { width: 32px; height: 32px; border-radius: 50%; background: #0e1015; border: 1px solid #2a2d38; color: var(--gm-accent, #ff6b35); cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; padding: 0; }
+.sfx-admin-play:hover { background: var(--gm-accent, #ff6b35); color: #fff; border-color: var(--gm-accent, #ff6b35); }
+.sfx-inline { font-size: 12px; padding: 5px 8px; }
+.sfx-admin-delete { background: transparent; border: none; color: #f87171; cursor: pointer; font-size: 14px; padding: 4px 8px; border-radius: 4px; }
+.sfx-admin-delete:hover { background: rgba(248,113,113,.1); }
 .plans-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; }
 .plan-card { background: #161920; border: 1px solid #2a2d38; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
 .plan-free { border-color: rgba(251,191,36,.2); }

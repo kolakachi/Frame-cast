@@ -9,7 +9,7 @@ use App\Services\Media\StorageService;
 use App\Services\SfxLibraryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class SfxController extends Controller
@@ -28,93 +28,93 @@ class SfxController extends Controller
 
         return response()->json([
             'data' => [
-                'sounds'     => $sounds,
-                'categories' => $this->categories(),
+                'sounds'     => $sounds->map(function ($s) {
+                    return [
+                        'id'       => $s->id,
+                        'name'     => $s->name,
+                        'category' => $s->category,
+                        'duration' => $s->duration_seconds,
+                        // Resolve to a signed playable URL for the preview
+                        'url'      => $this->resolvePlayableUrl($s->storage_url),
+                    ];
+                })->all(),
+                'categories' => $this->library->categories(),
             ],
         ]);
     }
 
     /**
-     * Download a library sound to the workspace's storage and create an Asset row.
-     * Idempotent — if the sound was already imported, returns the existing asset.
+     * Copy a library sound into the user's workspace and return the Asset.
      */
-    public function import(Request $request, string $soundId): JsonResponse
+    public function import(Request $request, int $soundId): JsonResponse
     {
         $sound = $this->library->find($soundId);
-        if (! $sound) {
-            return response()->json(['error' => ['code' => 'not_found', 'message' => 'Sound not found in library.']], 404);
+        if (! $sound || $sound->status !== 'active') {
+            return response()->json(['error' => ['code' => 'not_found', 'message' => 'Sound not found.']], 404);
         }
 
         /** @var User $user */
         $user = $request->user();
 
-        // Idempotent: check if this exact library sound was already imported
+        // Idempotent: if this library sound was already imported, return that asset
         $existing = Asset::query()
             ->where('workspace_id', $user->workspace_id)
             ->where('asset_type', 'sound')
-            ->whereJsonContains('metadata_json->sfx_library_id', $soundId)
+            ->whereJsonContains('metadata_json->sfx_library_id', $sound->id)
             ->first();
 
         if ($existing) {
-            return response()->json(['data' => ['asset' => $this->serialize($existing)]]);
+            return response()->json(['data' => ['asset' => $this->serializeAsset($existing)]]);
         }
 
-        // Download from the source URL
-        $response = Http::timeout(30)->get($sound['url']);
-        if (! $response->successful()) {
-            return response()->json(['error' => ['code' => 'download_failed', 'message' => 'Could not download sound.']], 502);
-        }
-
-        $bytes = $response->body();
+        // Read bytes from the library storage_url and copy to workspace path
+        $bytes = $this->storage->get($sound->storage_url);
         $size  = strlen($bytes);
 
-        $storagePath = sprintf('workspaces/%d/sfx/%s-%s.mp3', $user->workspace_id, $soundId, Str::random(8));
-        $storageUrl  = $this->storage->put($storagePath, $bytes, ['ContentType' => 'audio/mpeg']);
+        $workspacePath = sprintf('workspaces/%d/sfx/%d-%s.mp3', $user->workspace_id, $sound->id, Str::random(8));
+        $storageUrl    = $this->storage->put($workspacePath, $bytes, ['ContentType' => $sound->mime_type ?? 'audio/mpeg']);
 
         $asset = Asset::query()->create([
             'workspace_id'   => $user->workspace_id,
             'asset_type'     => 'sound',
-            'title'          => $sound['name'],
-            'description'    => 'From bundled SFX library',
+            'title'          => $sound->name,
+            'description'    => 'From SFX library',
             'storage_url'    => $storageUrl,
-            'duration_seconds' => $sound['duration'] ?? null,
+            'duration_seconds' => $sound->duration_seconds,
             'file_size_bytes'  => $size,
-            'mime_type'      => 'audio/mpeg',
-            'status'         => 'active',
+            'mime_type'        => $sound->mime_type ?? 'audio/mpeg',
+            'status'           => 'active',
             'created_by_user_id' => $user->getKey(),
-            'metadata_json'  => [
-                'sfx_library_id' => $soundId,
-                'sfx_library_url'=> $sound['url'],
-                'sfx_category'   => $sound['category'] ?? null,
+            'metadata_json'    => [
+                'sfx_library_id' => $sound->id,
+                'sfx_category'   => $sound->category,
             ],
         ]);
 
-        return response()->json(['data' => ['asset' => $this->serialize($asset)]], 201);
+        return response()->json(['data' => ['asset' => $this->serializeAsset($asset)]], 201);
     }
 
-    private function categories(): array
+    private function resolvePlayableUrl(string $storageUrl): string
     {
-        return [
-            ['key' => 'transition',   'label' => 'Transitions'],
-            ['key' => 'ui',           'label' => 'UI / Clicks'],
-            ['key' => 'notification', 'label' => 'Notifications'],
-            ['key' => 'impact',       'label' => 'Impacts'],
-            ['key' => 'ambient',      'label' => 'Ambient'],
-            ['key' => 'fx',           'label' => 'FX'],
-        ];
+        // For minio://path or b2://path, generate a signed temporary URL the browser can play.
+        $path = preg_replace('#^(minio|b2)://#', '', $storageUrl);
+        try {
+            return Storage::disk('minio')->temporaryUrl($path, now()->addHour());
+        } catch (\Throwable) {
+            return $storageUrl;
+        }
     }
 
-    private function serialize(Asset $asset): array
+    private function serializeAsset(Asset $asset): array
     {
         return [
-            'id'             => $asset->getKey(),
-            'asset_type'     => $asset->asset_type,
-            'title'          => $asset->title,
-            'storage_url'    => $asset->storage_url,
+            'id'               => $asset->getKey(),
+            'asset_type'       => $asset->asset_type,
+            'title'            => $asset->title,
+            'storage_url'      => $asset->storage_url,
             'duration_seconds' => $asset->duration_seconds,
-            'mime_type'      => $asset->mime_type,
-            'created_at'     => $asset->created_at?->toIso8601String(),
-            'updated_at'     => $asset->updated_at?->toIso8601String(),
+            'mime_type'        => $asset->mime_type,
+            'created_at'       => $asset->created_at?->toIso8601String(),
         ];
     }
 }
