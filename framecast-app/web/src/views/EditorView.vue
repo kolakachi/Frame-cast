@@ -100,6 +100,16 @@ const myImageLoading = ref(false);
 const customAudioAssets = ref([]);
 const customAudioSearch = ref('');
 const customAudioLoading = ref(false);
+// Voice upload / recording state
+const voiceUploadStatus = ref('idle'); // idle | uploading | transcribing | ready | error
+const voiceUploadAsset = ref(null);
+const voiceUploadError = ref('');
+const voiceRecording = ref(false);
+const voiceRecorder = ref(null);
+const voiceRecordedChunks = ref([]);
+const voiceRecordSeconds = ref(0);
+let voiceRecordTimer = null;
+let voiceTranscribePoller = null;
 const mediaPickerVisible = ref(false);
 const mediaPickerMode = ref("visual"); // 'visual' | 'music' | 'sound'
 const musicPanelTab = ref("library"); // 'library' | 'uploads'
@@ -1824,6 +1834,129 @@ async function loadMyImageAssets() {
     myImageAssets.value = [];
   } finally {
     myImageLoading.value = false;
+  }
+}
+
+// ── Custom voice: upload + record ───────────────────────────
+async function handleVoiceFileUpload(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  event.target.value = '';
+  await uploadVoiceBlob(file, file.name.replace(/\.[^.]+$/, ''));
+}
+
+async function uploadVoiceBlob(blob, title) {
+  voiceUploadStatus.value = 'uploading';
+  voiceUploadError.value = '';
+  voiceUploadAsset.value = null;
+  try {
+    const fd = new FormData();
+    fd.append('asset_type', 'audio');
+    fd.append('title', title || 'Custom voice');
+    fd.append('asset_file', blob, (title || 'voice') + (blob.type.includes('webm') ? '.webm' : (blob.type.includes('wav') ? '.wav' : '.mp3')));
+    const res = await api.post('/assets', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    const asset = res.data?.data?.asset;
+    if (!asset) throw new Error('Upload returned no asset');
+    voiceUploadAsset.value = asset;
+    voiceUploadStatus.value = asset.transcription_status === 'completed' ? 'ready' : 'transcribing';
+    if (voiceUploadStatus.value === 'transcribing') startVoiceTranscribePoll(asset.id);
+  } catch (e) {
+    voiceUploadError.value = e?.response?.data?.error?.message || e?.message || 'Upload failed.';
+    voiceUploadStatus.value = 'error';
+  }
+}
+
+function startVoiceTranscribePoll(assetId) {
+  clearInterval(voiceTranscribePoller);
+  let attempts = 0;
+  voiceTranscribePoller = setInterval(async () => {
+    attempts++;
+    if (attempts > 60) { clearInterval(voiceTranscribePoller); voiceUploadStatus.value = 'error'; voiceUploadError.value = 'Transcription timed out.'; return; }
+    try {
+      const res = await api.get(`/assets/${assetId}`);
+      const asset = res.data?.data?.asset ?? res.data?.data;
+      if (!asset) return;
+      voiceUploadAsset.value = asset;
+      if (asset.transcription_status === 'completed') {
+        clearInterval(voiceTranscribePoller);
+        voiceUploadStatus.value = 'ready';
+      } else if (asset.transcription_status === 'failed') {
+        clearInterval(voiceTranscribePoller);
+        voiceUploadStatus.value = 'error';
+        voiceUploadError.value = 'Transcription failed. You can still use the audio without word-level captions.';
+      }
+    } catch { /* keep polling */ }
+  }, 2000);
+}
+
+async function applyVoiceUpload({ updateScript = true } = {}) {
+  if (!voiceUploadAsset.value || !activeScene.value) return;
+  const asset = voiceUploadAsset.value;
+  const currentVoiceSettings = activeScene.value.voice_settings || activeScene.value.voice_settings_json || {};
+  const payload = {
+    voice_settings_json: {
+      ...currentVoiceSettings,
+      audio_asset_id: asset.id,
+      is_outdated: false,
+      custom_audio: true,
+    },
+  };
+  if (updateScript && asset.transcript_text) {
+    payload.script_text = asset.transcript_text;
+  }
+  try {
+    const response = await api.patch(`/scenes/${activeScene.value.id}`, payload);
+    const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+    if (updatedScene) replaceSceneInCollection(updatedScene);
+    // Reset upload UI
+    voiceUploadStatus.value = 'idle';
+    voiceUploadAsset.value = null;
+    voiceUploadError.value = '';
+  } catch (err) {
+    voiceUploadError.value = err?.response?.data?.error?.message || 'Could not apply voice.';
+  }
+}
+
+function cancelVoiceUpload() {
+  clearInterval(voiceTranscribePoller);
+  voiceUploadStatus.value = 'idle';
+  voiceUploadAsset.value = null;
+  voiceUploadError.value = '';
+}
+
+async function startVoiceRecording() {
+  voiceUploadError.value = '';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    const rec = new MediaRecorder(stream, { mimeType });
+    voiceRecordedChunks.value = [];
+    rec.ondataavailable = (e) => { if (e.data?.size) voiceRecordedChunks.value.push(e.data); };
+    rec.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      voiceRecording.value = false;
+      clearInterval(voiceRecordTimer);
+      const blob = new Blob(voiceRecordedChunks.value, { type: mimeType });
+      voiceRecordedChunks.value = [];
+      if (blob.size > 0) {
+        await uploadVoiceBlob(blob, `Voice recording ${new Date().toLocaleTimeString()}`);
+      }
+    };
+    voiceRecorder.value = rec;
+    voiceRecording.value = true;
+    voiceRecordSeconds.value = 0;
+    voiceRecordTimer = setInterval(() => { voiceRecordSeconds.value += 1; }, 1000);
+    rec.start();
+  } catch (err) {
+    voiceUploadError.value = err?.name === 'NotAllowedError'
+      ? 'Microphone permission denied. Allow microphone access and try again.'
+      : 'Could not start recording.';
+  }
+}
+
+function stopVoiceRecording() {
+  if (voiceRecorder.value && voiceRecording.value) {
+    voiceRecorder.value.stop();
   }
 }
 
@@ -4710,15 +4843,64 @@ onBeforeUnmount(() => {
 
                 <!-- Custom audio from assets -->
                 <div class="micro-label" style="margin-top:12px;margin-bottom:6px;">
-                  Custom audio
-                  <span style="font-weight:400;opacity:.5;"> (replaces generated voice)</span>
+                  Custom voice
+                  <span style="font-weight:400;opacity:.5;"> (replaces TTS — captions auto-generated)</span>
                 </div>
+
+                <!-- Upload + record buttons -->
+                <div v-if="voiceUploadStatus === 'idle'" class="voice-action-row">
+                  <label class="voice-upload-btn">
+                    <input type="file" accept="audio/*" hidden @change="handleVoiceFileUpload">
+                    ⬆ Upload
+                  </label>
+                  <button
+                    type="button"
+                    :class="['voice-record-btn', voiceRecording ? 'recording' : '']"
+                    @click="voiceRecording ? stopVoiceRecording() : startVoiceRecording()"
+                  >
+                    <template v-if="voiceRecording">■ {{ Math.floor(voiceRecordSeconds/60) }}:{{ String(voiceRecordSeconds%60).padStart(2,'0') }}</template>
+                    <template v-else>● Record</template>
+                  </button>
+                </div>
+
+                <!-- Status banners during upload/transcription -->
+                <div v-else-if="voiceUploadStatus === 'uploading'" class="voice-status">
+                  ⏳ Uploading…
+                </div>
+                <div v-else-if="voiceUploadStatus === 'transcribing'" class="voice-status">
+                  <span class="voice-status-spin">◐</span> Transcribing for captions…
+                  <button class="voice-status-cancel" @click="cancelVoiceUpload">Cancel</button>
+                </div>
+                <div v-else-if="voiceUploadStatus === 'ready'" class="voice-ready-panel">
+                  <div class="voice-ready-head">
+                    <span>✓ Ready</span>
+                    <button class="voice-status-cancel" @click="cancelVoiceUpload">Discard</button>
+                  </div>
+                  <div v-if="voiceUploadAsset?.transcript_text" class="voice-transcript-preview">
+                    <div class="voice-transcript-label">Transcript</div>
+                    <div class="voice-transcript-text">{{ voiceUploadAsset.transcript_text.slice(0, 220) }}{{ voiceUploadAsset.transcript_text.length > 220 ? '…' : '' }}</div>
+                  </div>
+                  <div class="voice-ready-actions">
+                    <button class="btn btn-primary btn-sm" @click="applyVoiceUpload({ updateScript: true })">
+                      Use voice + update script
+                    </button>
+                    <button class="btn btn-ghost btn-sm" @click="applyVoiceUpload({ updateScript: false })">
+                      Use voice only
+                    </button>
+                  </div>
+                </div>
+                <div v-else-if="voiceUploadStatus === 'error'" class="voice-error">
+                  <div>⚠ {{ voiceUploadError }}</div>
+                  <button class="voice-status-cancel" @click="cancelVoiceUpload">Dismiss</button>
+                </div>
+
                 <button
                   v-if="customAudioAssets.length === 0 && !customAudioLoading"
                   class="btn btn-ghost btn-sm panel-full-btn"
                   type="button"
+                  style="margin-top:10px"
                   @click="loadCustomAudioAssets"
-                >Browse audio assets</button>
+                >Browse previously uploaded</button>
                 <template v-else>
                   <input v-model="customAudioSearch" class="asset-search-input" placeholder="Search audio…" style="margin-bottom:6px;" />
                   <div v-if="customAudioLoading" class="asset-loading">Loading...</div>
@@ -8254,6 +8436,25 @@ select.control-value {
 }
 
 /* Custom audio list */
+/* Custom voice upload/record */
+.voice-action-row { display: flex; gap: 6px; margin-bottom: 8px; }
+.voice-upload-btn, .voice-record-btn { flex: 1; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-primary); font-size: 12px; font-weight: 500; cursor: pointer; text-align: center; transition: .15s; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.voice-upload-btn:hover, .voice-record-btn:hover { background: var(--color-bg-card); border-color: var(--color-border-active); }
+.voice-record-btn.recording { background: #b91c1c; border-color: #b91c1c; color: #fff; animation: pulse-record 1.4s ease-in-out infinite; }
+@keyframes pulse-record { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+.voice-status { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 7px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); font-size: 12px; color: var(--color-text-muted); margin-bottom: 6px; }
+.voice-status-spin { display: inline-block; animation: spin 1s linear infinite; color: var(--color-accent); }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.voice-status-cancel { margin-left: auto; background: transparent; border: none; color: var(--color-text-muted); font-size: 11px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.voice-status-cancel:hover { color: var(--color-text-primary); background: rgba(255,255,255,.04); }
+.voice-ready-panel { background: rgba(52,211,153,.06); border: 1px solid rgba(52,211,153,.25); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; }
+.voice-ready-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 500; color: #34d399; margin-bottom: 8px; }
+.voice-transcript-preview { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+.voice-transcript-label { font-size: 10px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+.voice-transcript-text { font-size: 12px; line-height: 1.5; color: var(--color-text-primary); max-height: 90px; overflow-y: auto; }
+.voice-ready-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.voice-error { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.25); color: #fca5a5; border-radius: 7px; padding: 8px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+
 .custom-audio-list { max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
 .custom-audio-row {
   display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px;
