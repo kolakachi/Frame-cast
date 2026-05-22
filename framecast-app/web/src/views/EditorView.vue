@@ -30,6 +30,48 @@ const notifications = ref([]);
 const notificationToasts = ref([]);
 const exportJobs      = ref([]);
 const scheduleModalOpen = ref(false);
+
+// Approval link state
+const approvalModalOpen = ref(false);
+const approvalForm = ref({ email: '', name: '', message: '', expires_in_days: 7 });
+const approvalSubmitting = ref(false);
+const approvalError = ref('');
+const approvalCreated = ref(null); // { public_url, expires_at, reviewer_email }
+async function submitApproval() {
+  if (approvalSubmitting.value) return;
+  if (!approvalForm.value.email) { approvalError.value = 'Reviewer email is required.'; return; }
+  approvalSubmitting.value = true;
+  approvalError.value = '';
+  try {
+    const res = await api.post('/approvals', {
+      project_id:      Number(route.params.projectId),
+      export_job_id:   latestExportJob.value?.id ?? null,
+      reviewer_email:  approvalForm.value.email.trim(),
+      reviewer_name:   approvalForm.value.name.trim() || null,
+      comment:         approvalForm.value.message.trim() || null,
+      expires_in_days: approvalForm.value.expires_in_days,
+    });
+    approvalCreated.value = {
+      public_url:     res.data?.data?.public_url,
+      approval:       res.data?.data?.approval,
+      warning:        res.data?.warning ?? null,
+    };
+  } catch (err) {
+    approvalError.value = err?.response?.data?.error?.message || 'Could not send approval link.';
+  } finally {
+    approvalSubmitting.value = false;
+  }
+}
+function closeApprovalModal() {
+  approvalModalOpen.value = false;
+  approvalForm.value = { email: '', name: '', message: '', expires_in_days: 7 };
+  approvalError.value = '';
+  approvalCreated.value = null;
+}
+function copyApprovalUrl() {
+  if (!approvalCreated.value?.public_url) return;
+  navigator.clipboard?.writeText(approvalCreated.value.public_url);
+}
 let workspaceChannelName = null;
 
 const audioRef = ref(null);
@@ -3921,6 +3963,8 @@ onBeforeUnmount(() => {
                 >Download ↓</a>
                 <span class="export-pill-sep">·</span>
                 <button class="export-pill-link export-pill-schedule" @click="scheduleModalOpen = true">📅 Schedule</button>
+                <span class="export-pill-sep">·</span>
+                <button class="export-pill-link" @click="approvalModalOpen = true">📝 Send for approval</button>
               </template>
             </div>
             <button :class="['btn btn-ghost btn-timeline-toggle', timelineOpen ? 'active' : '']" type="button" @click="timelineOpen = !timelineOpen">
@@ -5627,6 +5671,70 @@ onBeforeUnmount(() => {
       @close="scheduleModalOpen = false"
       @scheduled="onPostScheduled"
     />
+
+    <!-- Approval link modal -->
+    <Teleport to="body">
+      <div v-if="approvalModalOpen" class="ap-backdrop" @click.self="closeApprovalModal">
+        <div class="ap-modal">
+          <div class="ap-head">
+            <div class="ap-title">Send for approval</div>
+            <button class="ap-close" @click="closeApprovalModal">×</button>
+          </div>
+
+          <template v-if="!approvalCreated">
+            <div class="ap-meta">A unique review link will be emailed to your reviewer. They don't need a WyvStudio account.</div>
+            <div class="ap-field">
+              <label class="ap-label">Reviewer email *</label>
+              <input v-model="approvalForm.email" type="email" class="ap-input" placeholder="client@example.com" />
+            </div>
+            <div class="ap-field">
+              <label class="ap-label">Reviewer name (optional)</label>
+              <input v-model="approvalForm.name" type="text" class="ap-input" placeholder="Their name" />
+            </div>
+            <div class="ap-field">
+              <label class="ap-label">Note for them (optional)</label>
+              <textarea v-model="approvalForm.message" rows="3" class="ap-input" placeholder="Anything specific you want them to look at"></textarea>
+            </div>
+            <div class="ap-field">
+              <label class="ap-label">Expires in</label>
+              <select v-model.number="approvalForm.expires_in_days" class="ap-input">
+                <option :value="3">3 days</option>
+                <option :value="7">7 days</option>
+                <option :value="14">14 days</option>
+                <option :value="30">30 days</option>
+              </select>
+            </div>
+            <div v-if="approvalError" class="ap-error">{{ approvalError }}</div>
+            <div class="ap-footer">
+              <button class="btn btn-ghost btn-sm" @click="closeApprovalModal">Cancel</button>
+              <button class="btn btn-primary btn-sm" :disabled="approvalSubmitting" @click="submitApproval">
+                {{ approvalSubmitting ? 'Sending…' : 'Send link' }}
+              </button>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="ap-success">
+              <div class="ap-success-icon">✓</div>
+              <div class="ap-success-title">Approval link sent</div>
+              <div class="ap-success-sub" v-if="approvalCreated.warning">
+                ⚠ {{ approvalCreated.warning }}
+              </div>
+              <div class="ap-success-sub" v-else>
+                We sent the link to <strong>{{ approvalCreated.approval?.reviewer_email }}</strong>. You can also share it directly:
+              </div>
+              <div class="ap-link-box">
+                <input :value="approvalCreated.public_url" class="ap-input" readonly />
+                <button class="btn btn-ghost btn-sm" @click="copyApprovalUrl">Copy</button>
+              </div>
+              <div class="ap-footer">
+                <button class="btn btn-primary btn-sm" @click="closeApprovalModal">Done</button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Teleport>
   </main>
 </template>
 
@@ -8567,6 +8675,25 @@ select.control-value {
 }
 
 /* Custom audio list */
+/* Approval link modal */
+.ap-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 300; }
+.ap-modal { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; padding: 22px; width: min(460px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; }
+.ap-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.ap-title { font-size: 15px; font-weight: 600; }
+.ap-close { background: none; border: none; color: var(--color-text-muted); font-size: 22px; cursor: pointer; line-height: 1; padding: 0; }
+.ap-meta { font-size: 12px; color: var(--color-text-muted); line-height: 1.5; margin-bottom: 14px; }
+.ap-field { margin-bottom: 12px; }
+.ap-label { display: block; font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 5px; font-weight: 500; }
+.ap-input { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); padding: 9px 11px; font-size: 13px; font-family: inherit; outline: none; }
+.ap-input:focus { border-color: rgba(255,107,53,.5); }
+.ap-error { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.2); color: #fca5a5; border-radius: 7px; padding: 8px 11px; font-size: 12px; margin-bottom: 12px; }
+.ap-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid var(--color-border); margin-top: 10px; }
+.ap-success { text-align: center; padding: 8px 0; }
+.ap-success-icon { width: 48px; height: 48px; border-radius: 50%; background: rgba(52,211,153,.15); color: #34d399; font-size: 22px; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+.ap-success-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+.ap-success-sub { font-size: 12px; color: var(--color-text-muted); line-height: 1.55; margin-bottom: 14px; }
+.ap-link-box { display: flex; gap: 8px; margin-bottom: 14px; }
+
 /* Voice tabs */
 .voice-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--color-border); margin-bottom: 12px; }
 .voice-tab { flex: 1; padding: 6px 12px; font-size: 12px; font-weight: 500; color: var(--color-text-muted); cursor: pointer; border: none; border-bottom: 2px solid transparent; background: transparent; font-family: inherit; transition: .15s; }

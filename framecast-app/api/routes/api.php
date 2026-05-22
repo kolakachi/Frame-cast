@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\Billing\PaddleWebhookController;
 use App\Http\Controllers\Api\V1\Niche\NicheController;
 use App\Http\Controllers\Api\V1\Asset\AssetController;
 use App\Http\Controllers\Api\V1\Sfx\SfxController;
+use App\Http\Controllers\Api\V1\Approval\ApprovalController;
 use App\Http\Controllers\Api\V1\Asset\CollectionController;
 use App\Http\Controllers\Api\V1\Asset\ImageStyleController;
 use App\Http\Controllers\Api\V1\BrandKit\BrandKitController;
@@ -48,6 +49,10 @@ Route::prefix('v1')->group(function (): void {
 
     // OAuth callbacks — unauthenticated (platform redirects here after approval)
     Route::get('/social/{platform}/callback', [SocialAccountController::class, 'callback'])->where('platform', 'youtube|tiktok');
+
+    // Public approval review (token-gated, no auth)
+    Route::get('/approve/{token}', [ApprovalController::class, 'publicShow']);
+    Route::post('/approve/{token}/decide', [ApprovalController::class, 'publicDecide']);
 
     Route::middleware('auth.jwt')->group(function (): void {
         Route::get('/billing/status', [BillingController::class, 'status']);
@@ -185,6 +190,13 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{postId}/retry', [ScheduledPostController::class, 'retry'])->whereNumber('postId');
         });
         Route::post('/localization-links/{localizationLinkId}/retry', [LocalizationController::class, 'retry'])->whereNumber('localizationLinkId');
+
+        // Client approval links
+        Route::prefix('/approvals')->group(function (): void {
+            Route::get('/', [ApprovalController::class, 'index']);
+            Route::post('/', [ApprovalController::class, 'store']);
+            Route::delete('/{approvalId}', [ApprovalController::class, 'revoke'])->whereNumber('approvalId');
+        });
 
         Route::prefix('/scenes')->group(function (): void {
             Route::post('/', [SceneController::class, 'store']);

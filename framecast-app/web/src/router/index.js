@@ -19,6 +19,7 @@ import SeriesCreateView from '../views/SeriesCreateView.vue'
 import VideosView from '../views/VideosView.vue'
 import JobsView from '../views/JobsView.vue'
 import CalendarView from '../views/CalendarView.vue'
+import ApprovalReviewView from '../views/ApprovalReviewView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -27,6 +28,7 @@ const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
   { path: '/register', name: 'register', component: RegisterView, meta: { guestOnly: true } },
   { path: '/auth/magic', name: 'magic-link', component: MagicLinkView },
+  { path: '/approve/:token', name: 'approval-review', component: ApprovalReviewView, meta: { public: true } },
   { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/assets', name: 'asset-library', component: AssetLibraryView, meta: { requiresAuth: true } },
   { path: '/workspace', name: 'workspace', component: WorkspaceView, meta: { requiresAuth: true } },
