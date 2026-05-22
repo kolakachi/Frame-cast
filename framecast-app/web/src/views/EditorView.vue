@@ -5194,6 +5194,7 @@ onBeforeUnmount(() => {
           @scene-select="selectScene"
           @seek="timelineSeek"
           @reorder="timelineReorder"
+          @pick-sound="openMediaPicker('sound')"
           @close="timelineOpen = false"
         />
         </div><!-- end editor-body -->

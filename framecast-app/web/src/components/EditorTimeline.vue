@@ -11,7 +11,7 @@ const props = defineProps({
   previewMode:   { type: String,  default: 'scene' }, // 'scene' | 'full'
 })
 
-const emit = defineEmits(['scene-select', 'seek', 'reorder', 'close'])
+const emit = defineEmits(['scene-select', 'seek', 'reorder', 'close', 'pick-sound'])
 
 // ── Zoom ─────────────────────────────────────────────────────────────────────
 const zoom = ref(1) // 1 = fit, 2 = 2×
@@ -42,6 +42,7 @@ const sceneBlocks = computed(() => {
       durLabel: dur >= 1 ? `${dur.toFixed(1)}s` : `${Math.round(dur * 1000)}ms`,
       scriptSnippet: (sc.script_text || sc.label || '').slice(0, 40),
       active: sc.id === props.activeSceneId,
+      soundAsset: sc.sound_asset || null,
     }
     cum += dur
     return block
@@ -260,14 +261,20 @@ const trackStyle = computed(() => ({
 
             <!-- Sounds track -->
             <div class="tl-track sounds-track">
-              <div
+              <button
                 v-for="block in sceneBlocks" :key="block.id"
-                class="tl-sound-slot"
+                :class="['tl-sound-slot', block.soundAsset ? 'has-sound' : '']"
+                type="button"
                 :style="{ left: block.startPct + '%', width: 'calc(' + block.widthPct + '% - 2px)' }"
-                title="Add sound effect"
+                :title="block.soundAsset ? `Sound: ${block.soundAsset.title}` : 'Add sound effect'"
+                @click="emit('scene-select', block.id); emit('pick-sound', block.id)"
               >
-                <span class="sound-add">+</span>
-              </div>
+                <template v-if="block.soundAsset">
+                  <span class="sound-icon">♪</span>
+                  <span class="sound-name">{{ block.soundAsset.title }}</span>
+                </template>
+                <span v-else class="sound-add">+</span>
+              </button>
             </div>
 
             <!-- Music track -->
@@ -540,13 +547,23 @@ const trackStyle = computed(() => ({
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   cursor: pointer;
   transition: .12s;
   box-sizing: border-box;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  padding: 0 6px;
+  overflow: hidden;
 }
 .tl-sound-slot:hover { border-color: rgba(255,107,53,.4); background: rgba(255,107,53,.04); }
+.tl-sound-slot.has-sound { border: 1px solid rgba(255,107,53,.45); background: rgba(255,107,53,.08); }
+.tl-sound-slot.has-sound:hover { background: rgba(255,107,53,.14); }
 .sound-add { font-size: 11px; color: #2a2a38; }
 .tl-sound-slot:hover .sound-add { color: #FF6B35; }
+.sound-icon { font-size: 11px; color: #FF6B35; flex-shrink: 0; }
+.sound-name { font-size: 10px; color: #c9cad4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 /* Music track */
 .music-track { height: 26px; background: #0d0d11; padding: 5px 6px; }
