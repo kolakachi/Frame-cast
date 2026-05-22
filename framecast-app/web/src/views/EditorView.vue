@@ -100,8 +100,12 @@ const myImageLoading = ref(false);
 const customAudioAssets = ref([]);
 const customAudioSearch = ref('');
 const customAudioLoading = ref(false);
-// Voice upload / recording state
-const voiceUploadStatus = ref('idle'); // idle | uploading | transcribing | ready | error
+// Voice tab + upload / recording state
+const voiceTab = ref('default'); // 'default' | 'custom'
+const voiceUploadStatus = ref('idle'); // idle | previewing | uploading | transcribing | ready | error
+const voicePreviewBlob = ref(null);
+const voicePreviewUrl = ref(null);
+const voicePreviewName = ref('');
 const voiceUploadAsset = ref(null);
 const voiceUploadError = ref('');
 const voiceRecording = ref(false);
@@ -1838,11 +1842,36 @@ async function loadMyImageAssets() {
 }
 
 // ── Custom voice: upload + record ───────────────────────────
-async function handleVoiceFileUpload(event) {
+function handleVoiceFileUpload(event) {
   const file = event?.target?.files?.[0];
   if (!file) return;
   event.target.value = '';
-  await uploadVoiceBlob(file, file.name.replace(/\.[^.]+$/, ''));
+  enterPreview(file, file.name.replace(/\.[^.]+$/, ''));
+}
+
+function enterPreview(blob, name) {
+  // Release any prior preview URL
+  if (voicePreviewUrl.value) {
+    try { URL.revokeObjectURL(voicePreviewUrl.value); } catch {}
+  }
+  voicePreviewBlob.value = blob;
+  voicePreviewUrl.value = URL.createObjectURL(blob);
+  voicePreviewName.value = name || 'Custom voice';
+  voiceUploadStatus.value = 'previewing';
+  voiceUploadError.value = '';
+}
+
+async function confirmUploadFromPreview() {
+  if (!voicePreviewBlob.value) return;
+  const blob = voicePreviewBlob.value;
+  const name = voicePreviewName.value;
+  // Release the preview URL before kicking off the upload
+  if (voicePreviewUrl.value) {
+    try { URL.revokeObjectURL(voicePreviewUrl.value); } catch {}
+    voicePreviewUrl.value = null;
+  }
+  voicePreviewBlob.value = null;
+  await uploadVoiceBlob(blob, name);
 }
 
 async function uploadVoiceBlob(blob, title) {
@@ -1919,6 +1948,12 @@ async function applyVoiceUpload({ updateScript = true } = {}) {
 
 function cancelVoiceUpload() {
   clearInterval(voiceTranscribePoller);
+  if (voicePreviewUrl.value) {
+    try { URL.revokeObjectURL(voicePreviewUrl.value); } catch {}
+  }
+  voicePreviewBlob.value = null;
+  voicePreviewUrl.value = null;
+  voicePreviewName.value = '';
   voiceUploadStatus.value = 'idle';
   voiceUploadAsset.value = null;
   voiceUploadError.value = '';
@@ -1932,14 +1967,14 @@ async function startVoiceRecording() {
     const rec = new MediaRecorder(stream, { mimeType });
     voiceRecordedChunks.value = [];
     rec.ondataavailable = (e) => { if (e.data?.size) voiceRecordedChunks.value.push(e.data); };
-    rec.onstop = async () => {
+    rec.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
       voiceRecording.value = false;
       clearInterval(voiceRecordTimer);
       const blob = new Blob(voiceRecordedChunks.value, { type: mimeType });
       voiceRecordedChunks.value = [];
       if (blob.size > 0) {
-        await uploadVoiceBlob(blob, `Voice recording ${new Date().toLocaleTimeString()}`);
+        enterPreview(blob, `Voice recording ${new Date().toLocaleTimeString()}`);
       }
     };
     voiceRecorder.value = rec;
@@ -4778,6 +4813,21 @@ onBeforeUnmount(() => {
                 <div class="panel-chevron">▾</div>
               </div>
               <div class="panel-section-body">
+                <!-- Voice tabs -->
+                <div class="voice-tabs">
+                  <button
+                    type="button"
+                    :class="['voice-tab', voiceTab === 'default' ? 'active' : '']"
+                    @click="voiceTab = 'default'"
+                  >Default</button>
+                  <button
+                    type="button"
+                    :class="['voice-tab', voiceTab === 'custom' ? 'active' : '']"
+                    @click="voiceTab = 'custom'"
+                  >Custom</button>
+                </div>
+
+                <template v-if="voiceTab === 'default'">
                 <div class="voice-preview">
                   <div class="voice-avatar">🎙</div>
                   <div class="voice-info">
@@ -4840,11 +4890,12 @@ onBeforeUnmount(() => {
                 <div v-if="isAudioLoading" class="voice-loading-copy">
                   Loading audio...
                 </div>
+                </template>
 
-                <!-- Custom audio from assets -->
-                <div class="micro-label" style="margin-top:12px;margin-bottom:6px;">
-                  Custom voice
-                  <span style="font-weight:400;opacity:.5;"> (replaces TTS — captions auto-generated)</span>
+                <!-- ── Custom voice tab ── -->
+                <template v-else-if="voiceTab === 'custom'">
+                <div class="custom-voice-intro">
+                  Upload an audio file or record your own voice. Captions are generated from the audio.
                 </div>
 
                 <!-- Upload + record buttons -->
@@ -4861,6 +4912,26 @@ onBeforeUnmount(() => {
                     <template v-if="voiceRecording">■ {{ Math.floor(voiceRecordSeconds/60) }}:{{ String(voiceRecordSeconds%60).padStart(2,'0') }}</template>
                     <template v-else>● Record</template>
                   </button>
+                </div>
+
+                <!-- Local preview before uploading -->
+                <div v-else-if="voiceUploadStatus === 'previewing'" class="voice-preview-panel">
+                  <div class="voice-preview-head">
+                    <span>🎧 Preview</span>
+                    <span class="voice-preview-name">{{ voicePreviewName }}</span>
+                  </div>
+                  <audio :src="voicePreviewUrl" controls class="voice-preview-audio"></audio>
+                  <div class="voice-preview-actions">
+                    <button class="btn btn-primary btn-sm" @click="confirmUploadFromPreview">
+                      ✓ Use this audio
+                    </button>
+                    <button class="btn btn-ghost btn-sm" @click="cancelVoiceUpload">
+                      Re-record / Re-upload
+                    </button>
+                  </div>
+                  <div class="voice-preview-hint">
+                    Captions and a transcript will be generated automatically after you confirm.
+                  </div>
                 </div>
 
                 <!-- Status banners during upload/transcription -->
@@ -4894,13 +4965,16 @@ onBeforeUnmount(() => {
                   <button class="voice-status-cancel" @click="cancelVoiceUpload">Dismiss</button>
                 </div>
 
+                <!-- Browse previously uploaded audio -->
+                <div class="micro-label" style="margin-top:14px;margin-bottom:6px;">
+                  Previously uploaded
+                </div>
                 <button
                   v-if="customAudioAssets.length === 0 && !customAudioLoading"
                   class="btn btn-ghost btn-sm panel-full-btn"
                   type="button"
-                  style="margin-top:10px"
                   @click="loadCustomAudioAssets"
-                >Browse previously uploaded</button>
+                >Browse audio assets</button>
                 <template v-else>
                   <input v-model="customAudioSearch" class="asset-search-input" placeholder="Search audio…" style="margin-bottom:6px;" />
                   <div v-if="customAudioLoading" class="asset-loading">Loading...</div>
@@ -4918,8 +4992,10 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </template>
+                </template>
 
-                <!-- Save as voice profile -->
+                <!-- Save as voice profile (default tab only) -->
+                <template v-if="voiceTab === 'default'">
                 <div class="preset-save-row" style="margin-top:12px;">
                   <template v-if="!voiceProfileSaveOpen">
                     <button class="btn btn-ghost btn-sm" type="button" @click="voiceProfileSaveOpen = true">
@@ -4944,6 +5020,7 @@ onBeforeUnmount(() => {
                     <button class="btn btn-ghost btn-sm" type="button" @click="voiceProfileSaveOpen = false; voiceProfileSaveName = ''">Cancel</button>
                   </template>
                 </div>
+                </template>
               </div>
             </div>
 
@@ -8436,6 +8513,21 @@ select.control-value {
 }
 
 /* Custom audio list */
+/* Voice tabs */
+.voice-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--color-border); margin-bottom: 12px; }
+.voice-tab { flex: 1; padding: 6px 12px; font-size: 12px; font-weight: 500; color: var(--color-text-muted); cursor: pointer; border: none; border-bottom: 2px solid transparent; background: transparent; font-family: inherit; transition: .15s; }
+.voice-tab:hover { color: var(--color-text-primary); }
+.voice-tab.active { color: var(--color-accent); border-bottom-color: var(--color-accent); }
+.custom-voice-intro { font-size: 11px; color: var(--color-text-muted); line-height: 1.45; margin-bottom: 10px; }
+
+/* Voice preview panel (before upload) */
+.voice-preview-panel { background: rgba(96,165,250,.06); border: 1px solid rgba(96,165,250,.25); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; }
+.voice-preview-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: #60a5fa; margin-bottom: 8px; }
+.voice-preview-name { color: var(--color-text-muted); font-weight: 400; font-size: 11px; margin-left: auto; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voice-preview-audio { width: 100%; height: 34px; margin-bottom: 8px; }
+.voice-preview-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.voice-preview-hint { font-size: 10px; color: var(--color-text-muted); opacity: .8; }
+
 /* Custom voice upload/record */
 .voice-action-row { display: flex; gap: 6px; margin-bottom: 8px; }
 .voice-upload-btn, .voice-record-btn { flex: 1; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-primary); font-size: 12px; font-weight: 500; cursor: pointer; text-align: center; transition: .15s; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 4px; }
