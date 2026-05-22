@@ -21,6 +21,7 @@ const selectedExportId  = ref(props.exportJobId)
 const selectedAccountIds= ref([])
 const captions          = ref({})   // { accountId: string }
 const titles            = ref({})   // { accountId: string } — YouTube only
+const descriptions      = ref({})   // { accountId: string } — YouTube only
 const activeCaption     = ref(null) // accountId of the caption tab open
 const generatingCaption = ref({})   // { accountId: bool }
 const resultMode        = ref(false)
@@ -83,7 +84,12 @@ async function generateCaption(accountId, platform) {
       export_job_id: selectedExportId.value,
       platform,
     })
-    captions.value = { ...captions.value, [accountId]: res.data?.data?.caption ?? '' }
+    const generated = res.data?.data?.caption ?? ''
+    if (platform === 'youtube') {
+      descriptions.value = { ...descriptions.value, [accountId]: generated }
+    } else {
+      captions.value = { ...captions.value, [accountId]: generated }
+    }
   } finally {
     generatingCaption.value = { ...generatingCaption.value, [accountId]: false }
   }
@@ -108,6 +114,9 @@ async function submit() {
         social_account_id: accountId,
         caption:           captions.value[accountId] ?? captions.value['default'] ?? '',
         title:             account?.platform === 'youtube' ? (titles.value[accountId] ?? '') : undefined,
+        description:       account?.platform === 'youtube'
+          ? (descriptions.value[accountId] ?? captions.value[accountId] ?? '')
+          : undefined,
         category:          account?.platform === 'youtube' ? category.value : undefined,
         visibility:        visibility.value,
         scheduled_at:      scheduledAt,
@@ -235,9 +244,9 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
               </div>
             </div>
 
-            <!-- Caption (per platform tab) -->
+            <!-- Caption / description (per platform tab) -->
             <div v-if="selectedAccounts.length > 0" class="sp-field">
-              <div class="sp-label">Caption</div>
+              <div class="sp-label">{{ selectedAccounts.some(a => a.platform === 'youtube') ? 'Caption / description' : 'Caption' }}</div>
               <div class="sp-caption-tabs">
                 <button
                   v-for="acc in selectedAccounts" :key="acc.id"
@@ -245,27 +254,41 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
                   @click="activeCaption = acc.id"
                 >{{ { youtube:'▶', tiktok:'♪' }[acc.platform] }} {{ acc.platform_display_name?.split(' ')[0] || acc.platform }}</button>
               </div>
-              <template v-for="acc in selectedAccounts" :key="acc.id">
-                <div v-if="activeCaption === acc.id">
+              <div v-for="acc in selectedAccounts" v-show="activeCaption === acc.id" :key="acc.id">
                   <textarea
+                    v-if="acc.platform !== 'youtube'"
                     v-model="captions[acc.id]"
                     class="sp-textarea"
                     rows="3"
-                    :placeholder="acc.platform === 'youtube' ? 'Describe your video…' : 'Write your caption…'"
-                    :maxlength="acc.platform === 'youtube' ? 5000 : 2200"
+                    placeholder="Write your caption…"
+                    :maxlength="2200"
+                  ></textarea>
+                  <textarea
+                    v-else
+                    v-model="descriptions[acc.id]"
+                    class="sp-textarea"
+                    rows="5"
+                    placeholder="Video description (YouTube)"
+                    :maxlength="5000"
                   ></textarea>
                   <div class="sp-caption-footer">
-                    <div class="sp-char-count">{{ (captions[acc.id] ?? '').length }} / {{ acc.platform === 'youtube' ? 5000 : 2200 }}</div>
+                    <div class="sp-char-count">
+                      {{ acc.platform === 'youtube' ? (descriptions[acc.id] ?? '').length : (captions[acc.id] ?? '').length }}
+                      / {{ acc.platform === 'youtube' ? 5000 : 2200 }}
+                    </div>
                     <button class="sp-ai-btn" :disabled="!selectedExportId || generatingCaption[acc.id]" @click="generateCaption(acc.id, acc.platform)">
-                      {{ generatingCaption[acc.id] ? 'Generating…' : '✦ Generate with AI' }}
+                      {{ generatingCaption[acc.id] ? 'Generating…' : `✦ Generate ${acc.platform === 'youtube' ? 'description' : 'caption'} with AI` }}
                     </button>
                   </div>
-                  <!-- YouTube extra fields -->
-                  <template v-if="acc.platform === 'youtube'">
-                    <input v-model="titles[acc.id]" class="sp-input" style="margin-top:8px" placeholder="Video title (YouTube)" maxlength="100">
-                  </template>
-                </div>
-              </template>
+                  <input
+                    v-if="acc.platform === 'youtube'"
+                    v-model="titles[acc.id]"
+                    class="sp-input"
+                    style="margin-top:8px"
+                    placeholder="Video title (YouTube)"
+                    maxlength="100"
+                  >
+              </div>
             </div>
 
             <!-- YouTube category + visibility -->

@@ -83,10 +83,15 @@ class YouTubeAdapter implements PlatformAdapter
     {
         $this->ensureFreshToken($account);
 
+        $description = $post->description ?? $post->caption ?? '';
+        $title = $post->title
+            ?: $post->project?->title
+            ?: mb_substr($description, 0, 100);
+
         $metadataJson = json_encode([
             'snippet' => [
-                'title'       => $post->title ?: mb_substr($post->caption ?? '', 0, 100),
-                'description' => $post->caption ?? '',
+                'title'       => $title,
+                'description' => $description,
                 'categoryId'  => $this->categoryId($post->category),
                 'tags'        => $post->hashtags ?? [],
             ],

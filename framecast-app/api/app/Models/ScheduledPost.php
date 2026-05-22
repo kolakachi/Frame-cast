@@ -20,6 +20,7 @@ class ScheduledPost extends Model
         'platform_post_url',
         'caption',
         'title',
+        'description',
         'category',
         'visibility',
         'hashtags',
