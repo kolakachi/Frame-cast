@@ -1950,20 +1950,20 @@ async function applyVoiceUpload({ updateScript = true } = {}) {
   }
 }
 
-function togglePreviewPlay() {
+function toggleVoicePreviewPlay() {
   const el = voicePreviewRef.value;
   if (!el) return;
   if (voicePreviewPlaying.value) { el.pause(); } else { el.play().catch(() => {}); }
 }
 
-function onPreviewTime() {
+function onVoicePreviewTime() {
   const el = voicePreviewRef.value;
   if (!el) return;
   voicePreviewCurrent.value = el.currentTime || 0;
   if (Number.isFinite(el.duration)) voicePreviewDuration.value = el.duration;
 }
 
-function onPreviewSeek(e) {
+function onVoicePreviewSeek(e) {
   const el = voicePreviewRef.value;
   if (!el || !voicePreviewDuration.value) return;
   const rect = e.currentTarget.getBoundingClientRect();
@@ -1971,7 +1971,7 @@ function onPreviewSeek(e) {
   el.currentTime = pct * voicePreviewDuration.value;
 }
 
-function fmtPreviewTime(s) {
+function fmtVoicePreviewTime(s) {
   if (!Number.isFinite(s)) return '0:00';
   const sec = Math.floor(s);
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -4958,21 +4958,21 @@ onBeforeUnmount(() => {
                     ref="voicePreviewRef"
                     :src="voicePreviewUrl"
                     preload="metadata"
-                    @timeupdate="onPreviewTime"
-                    @loadedmetadata="onPreviewTime"
+                    @timeupdate="onVoicePreviewTime"
+                    @loadedmetadata="onVoicePreviewTime"
                     @play="voicePreviewPlaying = true"
                     @pause="voicePreviewPlaying = false"
                     @ended="voicePreviewPlaying = false"
                   ></audio>
                   <div class="vp-player">
-                    <button type="button" class="vp-play-btn" @click="togglePreviewPlay">
+                    <button type="button" class="vp-play-btn" @click="toggleVoicePreviewPlay">
                       <span v-if="voicePreviewPlaying">⏸</span>
                       <span v-else>▶</span>
                     </button>
-                    <div class="vp-track" @click="onPreviewSeek">
+                    <div class="vp-track" @click="onVoicePreviewSeek">
                       <div class="vp-fill" :style="{ width: (voicePreviewDuration ? (voicePreviewCurrent / voicePreviewDuration) * 100 : 0) + '%' }"></div>
                     </div>
-                    <span class="vp-time">{{ fmtPreviewTime(voicePreviewCurrent) }} / {{ fmtPreviewTime(voicePreviewDuration) }}</span>
+                    <span class="vp-time">{{ fmtVoicePreviewTime(voicePreviewCurrent) }} / {{ fmtVoicePreviewTime(voicePreviewDuration) }}</span>
                   </div>
 
                   <div class="voice-preview-actions">
