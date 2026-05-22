@@ -69,6 +69,7 @@ class RenderSceneSegmentJob implements ShouldQueue
             $audioAsset   = $audioAssetId > 0 ? Asset::query()->find($audioAssetId) : null;
             $visualAsset  = $scene->visual_asset_id ? Asset::query()->find((int) $scene->visual_asset_id) : null;
             $musicAsset   = $project->music_asset_id ? Asset::query()->find((int) $project->music_asset_id) : null;
+            $soundAsset   = $scene->sound_asset_id ? Asset::query()->find((int) $scene->sound_asset_id) : null;
 
             $segmentPath = $this->renderSceneSegment(
                 $project,
@@ -82,6 +83,7 @@ class RenderSceneSegmentJob implements ShouldQueue
                 $this->elapsedSeconds,
                 $this->totalDurationSeconds,
                 (bool) $exportJob->watermark_enabled,
+                $soundAsset,
             );
 
             // Upload to deterministic MinIO path so ConcatenateExportJob can find it.

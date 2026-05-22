@@ -50,7 +50,8 @@ trait RendersExportScenes
         int $index,
         float $elapsedSeconds,
         float $totalSeconds,
-        bool $watermarkEnabled = false
+        bool $watermarkEnabled = false,
+        ?Asset $sceneSoundAsset = null
     ): string {
         $duration = max(1.0, (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0));
 
@@ -162,23 +163,55 @@ trait RendersExportScenes
                 );
             }
 
+            // Voice and sound volume (0-100 → 0.0-1.0)
+            $voiceVolume = max(0, min(200, (int) data_get($scene->voice_settings_json, 'volume', 100))) / 100.0;
+            $soundVolume = max(0, min(200, (int) data_get($scene->sound_settings_json, 'volume', 100))) / 100.0;
+
             if ($audioPath !== null) {
                 array_push($command, '-i', $audioPath);
             } else {
                 array_push($command, '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo');
             }
 
+            // Optional scene sound effect — gets its own input index
+            $soundPath = null;
+            $soundInputIndex = null;
+            if ($sceneSoundAsset) {
+                $soundPath = $this->materializeAsset($sceneSoundAsset, $tempDir, 'sfx-'.$index);
+                $cleanupPaths[] = $soundPath;
+                $soundInputIndex = 2;
+                array_push($command, '-i', $soundPath);
+            }
+
             if (! $audioAsset) {
                 array_push($command, '-t', (string) $duration);
+            }
+
+            // Build combined filter_complex: video filter + audio chain (FFmpeg doesn't allow -vf alongside -filter_complex)
+            $complexFilters = [
+                sprintf('[0:v]%s[v_out]', $filter),
+                sprintf(
+                    '[1:a]atrim=duration=%s,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,volume=%.4f[a_voice]',
+                    $durationForFilter, $voiceVolume,
+                ),
+            ];
+            $audioMapLabel = '[a_voice]';
+
+            if ($soundInputIndex !== null) {
+                $complexFilters[] = sprintf(
+                    '[%d:a]atrim=duration=%s,asetpts=PTS-STARTPTS,volume=%.4f[a_sfx]',
+                    $soundInputIndex, $durationForFilter, $soundVolume,
+                );
+                $complexFilters[] = '[a_voice][a_sfx]amix=inputs=2:normalize=0[a_out]';
+                $audioMapLabel = '[a_out]';
             }
 
             array_push(
                 $command,
                 '-r', '30',
-                '-map', '0:v:0',
-                '-map', '1:a:0',
-                '-vf', $filter,
-                '-af', 'atrim=duration='.$durationForFilter.',aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS',
+                '-filter_complex', implode(';', $complexFilters),
+                '-map', '[v_out]',
+                '-map', $audioMapLabel,
                 '-c:v', 'libx264',
                 '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac',

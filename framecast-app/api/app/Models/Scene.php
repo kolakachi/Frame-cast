@@ -23,6 +23,7 @@ class Scene extends Model
         'visual_type',
         'visual_asset_id',
         'sound_asset_id',
+        'sound_settings_json',
         'visual_prompt',
         'visual_style',
         'image_generation_settings_json',
@@ -37,6 +38,7 @@ class Scene extends Model
         return [
             'duration_seconds' => 'float',
             'voice_settings_json' => 'array',
+            'sound_settings_json' => 'array',
             'caption_settings_json' => 'array',
             'image_generation_settings_json' => 'array',
             'motion_settings_json' => 'array',

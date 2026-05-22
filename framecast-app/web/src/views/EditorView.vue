@@ -110,6 +110,11 @@ const musicDuckDuringVoice = ref(true);
 let musicSaveTimer = null;
 const musicSaveState = ref("idle");
 const musicSaveError = ref("");
+// Per-scene voice + sound volumes (0-100, default 100)
+const sceneVoiceVolume = ref(100);
+const sceneSoundVolume = ref(100);
+let sceneVoiceVolumeSaveTimer = null;
+let sceneSoundVolumeSaveTimer = null;
 // Audiogram settings
 const audiogramStyle = ref("bars");
 const audiogramColor = ref("#ff6b35");
@@ -768,6 +773,11 @@ watch(
       audiogramStyle.value = imgSettings.audiogram_style ?? "bars";
       audiogramColor.value = imgSettings.audiogram_color ?? "#ff6b35";
       audiogramBg.value = imgSettings.audiogram_bg ?? "dark";
+      // Restore per-scene voice + sound volume
+      const voiceSettingsForVol = scene?.voice_settings ?? scene?.voice_settings_json ?? {};
+      sceneVoiceVolume.value = Math.max(0, Math.min(200, parseInt(voiceSettingsForVol.volume ?? 100, 10) || 100));
+      const soundSettings = scene?.sound_settings_json ?? scene?.sound_settings ?? {};
+      sceneSoundVolume.value = Math.max(0, Math.min(200, parseInt(soundSettings.volume ?? 100, 10) || 100));
       const captionSettings = normalizeCaptionSettings(
         scene?.caption_settings || scene?.caption_settings_json
       );
@@ -1857,6 +1867,43 @@ async function assignCustomAudio(asset) {
 function openMediaPicker(mode) {
   mediaPickerMode.value = mode;
   mediaPickerVisible.value = true;
+}
+
+function syncSceneVoiceVolume() {
+  if (audioRef.value) {
+    audioRef.value.volume = Math.max(0, Math.min(1, sceneVoiceVolume.value / 100));
+  }
+}
+
+function scheduleSceneVoiceVolumeSave() {
+  syncSceneVoiceVolume();
+  clearTimeout(sceneVoiceVolumeSaveTimer);
+  sceneVoiceVolumeSaveTimer = setTimeout(async () => {
+    if (!activeScene.value) return;
+    const currentVoiceSettings = activeScene.value.voice_settings || activeScene.value.voice_settings_json || {};
+    try {
+      const response = await api.patch(`/scenes/${activeScene.value.id}`, {
+        voice_settings_json: { ...currentVoiceSettings, volume: sceneVoiceVolume.value },
+      });
+      const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+      if (updatedScene) replaceSceneInCollection(updatedScene);
+    } catch (err) { console.error("Failed to save voice volume", err); }
+  }, 500);
+}
+
+function scheduleSceneSoundVolumeSave() {
+  clearTimeout(sceneSoundVolumeSaveTimer);
+  sceneSoundVolumeSaveTimer = setTimeout(async () => {
+    if (!activeScene.value) return;
+    const current = activeScene.value.sound_settings_json || {};
+    try {
+      const response = await api.patch(`/scenes/${activeScene.value.id}`, {
+        sound_settings_json: { ...current, volume: sceneSoundVolume.value },
+      });
+      const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
+      if (updatedScene) replaceSceneInCollection(updatedScene);
+    } catch (err) { console.error("Failed to save sound volume", err); }
+  }, 500);
 }
 
 async function saveAudiogramSettings({ apply = false } = {}) {
@@ -4551,6 +4598,13 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <div class="control-row top-space">
+                  <span class="control-name">Volume</span>
+                  <div class="volume-slider-wrap">
+                    <input v-model.number="sceneVoiceVolume" type="range" class="music-slider" min="0" max="200" @input="scheduleSceneVoiceVolumeSave" />
+                    <span class="music-slider-val">{{ sceneVoiceVolume }}%</span>
+                  </div>
+                </div>
+                <div class="control-row">
                   <span class="control-name">Speed</span>
                   <select v-model="voiceSpeedDraft" class="control-value">
                     <option value="0.8">0.8x</option>
@@ -4665,6 +4719,13 @@ onBeforeUnmount(() => {
                       <div class="sound-current-meta">Sound effect · This scene</div>
                     </div>
                     <button class="sound-remove-btn" type="button" title="Remove sound" @click="assignSceneSound(null)">✕</button>
+                  </div>
+                  <div class="control-row top-space">
+                    <span class="control-name">Volume</span>
+                    <div class="volume-slider-wrap">
+                      <input v-model.number="sceneSoundVolume" type="range" class="music-slider" min="0" max="200" @input="scheduleSceneSoundVolumeSave" />
+                      <span class="music-slider-val">{{ sceneSoundVolume }}%</span>
+                    </div>
                   </div>
                   <button class="btn btn-ghost btn-sm panel-full-btn" type="button" @click="openMediaPicker('sound')">
                     Change Sound
@@ -5138,7 +5199,7 @@ onBeforeUnmount(() => {
       preload="metadata"
       @loadstart="isAudioLoading = true"
       @canplay="isAudioLoading = false"
-      @loadeddata="isAudioLoading = false"
+      @loadeddata="isAudioLoading = false; syncSceneVoiceVolume()"
       @ended="handleSceneAudioPause"
       @play="handleSceneAudioPlay"
       @pause="handleSceneAudioPause"
@@ -7858,6 +7919,8 @@ select.control-value {
   flex-shrink: 0;
 }
 
+.volume-slider-wrap { display: flex; align-items: center; gap: 8px; flex: 1; }
+.volume-slider-wrap .music-slider { flex: 1; }
 .music-slider {
   flex: 1;
   appearance: none;
