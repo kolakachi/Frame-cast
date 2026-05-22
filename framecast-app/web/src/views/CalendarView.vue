@@ -467,9 +467,9 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
               <span class="list-plat-name">{{ { youtube:'YouTube', tiktok:'TikTok', instagram:'Instagram', facebook:'Facebook' }[post.platform] || post.platform }}</span>
             </div>
             <div class="list-col-title">
-              <div class="list-title">{{ post.project_title || 'Untitled' }}</div>
-              <div v-if="post.failure_reason" class="list-fail-reason">{{ post.failure_reason }}</div>
-              <div v-else-if="post.caption" class="list-caption">{{ post.caption }}</div>
+              <div class="list-title" :title="post.project_title || 'Untitled'">{{ post.project_title || 'Untitled' }}</div>
+              <div v-if="post.failure_reason" class="list-fail-reason" :title="post.failure_reason">{{ post.failure_reason }}</div>
+              <div v-else-if="post.caption" class="list-caption" :title="post.caption">{{ post.caption }}</div>
             </div>
             <div class="list-col-date">{{ formatDate(postDate(post)) }}</div>
             <div class="list-col-actions">
@@ -659,9 +659,10 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 .badge-pulse { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse-badge 1.5s ease-in-out infinite; flex-shrink: 0; }
 .list-plat-icon { font-size: 13px; margin-right: 5px; }
 .list-plat-name { font-size: 12px; }
-.list-title { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
-.list-fail-reason { font-size: 11px; color: #f87171; line-height: 1.4; word-break: break-word; }
-.list-caption { font-size: 11px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-col-title { min-width: 0; }
+.list-title { font-size: 13px; font-weight: 500; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+.list-fail-reason { font-size: 11px; color: #f87171; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+.list-caption { font-size: 11px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
 .list-col-date { font-size: 11px; color: var(--color-text-muted); }
 .list-col-actions { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
 .list-action-btn { font-size: 11px; font-weight: 500; padding: 4px 8px; border-radius: 5px; cursor: pointer; border: 1px solid var(--color-border); background: transparent; color: var(--color-text-muted); font-family: inherit; transition: .15s; text-decoration: none; display: inline-flex; align-items: center; }
