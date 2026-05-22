@@ -821,6 +821,10 @@ watch(
         audioRef.value.load();
         isAudioPlaying.value = false;
       }
+      if (soundAudioRef.value) {
+        soundAudioRef.value.pause();
+        soundAudioRef.value.load();
+      }
       isAudioLoading.value = false;
       visualLoadFailed.value = false;
       syncActiveSceneMedia(scene);
@@ -840,6 +844,9 @@ watch(
     const prevAudioUrl = prevScene?.audio_asset?.storage_url ?? null;
     const nextAudioUrl = scene?.audio_asset?.storage_url ?? null;
     const audioChanged = nextAudioUrl !== prevAudioUrl;
+    const prevSoundUrl = prevScene?.sound_asset?.storage_url ?? null;
+    const nextSoundUrl = scene?.sound_asset?.storage_url ?? null;
+    const soundChanged = nextSoundUrl !== prevSoundUrl;
 
     if (visualChanged) {
       visualLoadFailed.value = false;
@@ -862,6 +869,16 @@ watch(
       }
       if (isPreviewPlaying.value) {
         nextTick(() => playActiveSceneAudio(pendingPreviewAudioOffset));
+      }
+    }
+
+    if (soundChanged) {
+      if (soundAudioRef.value) {
+        soundAudioRef.value.pause();
+        soundAudioRef.value.load();
+      }
+      if (isPreviewPlaying.value) {
+        nextTick(() => playActiveSceneSound(pendingPreviewAudioOffset));
       }
     }
   },
@@ -2306,6 +2323,9 @@ function stopPreviewPlay() {
   if (audioRef.value) {
     audioRef.value.pause();
   }
+  if (soundAudioRef.value) {
+    soundAudioRef.value.pause();
+  }
   stopPreviewMusic();
 }
 
@@ -2421,7 +2441,16 @@ function scrollSceneIntoView(sceneId) {
 }
 
 function playActiveSceneAudio(offsetSeconds = 0) {
-  if (!audioRef.value || !activeSceneAudioUrl.value || !isPreviewPlaying.value) return;
+  if (!isPreviewPlaying.value) return;
+
+  playActiveSceneSound(offsetSeconds);
+
+  if (!audioRef.value || !activeSceneAudioUrl.value) {
+    isAudioPlaying.value = false;
+    isAudioLoading.value = false;
+    syncPreviewMusicVolume();
+    return;
+  }
 
   isAudioLoading.value = true;
   preloadSceneAudio(activeScene.value);
@@ -2442,6 +2471,26 @@ function playActiveSceneAudio(offsetSeconds = 0) {
     isAudioLoading.value = false;
     syncPreviewMusicVolume();
   });
+}
+
+function playActiveSceneSound(offsetSeconds = 0) {
+  if (!soundAudioRef.value || !activeSceneSoundUrl.value || !isPreviewPlaying.value) return;
+
+  const duration = Number.isFinite(soundAudioRef.value.duration) ? soundAudioRef.value.duration : null;
+  const boundedOffset = duration
+    ? Math.max(0, Math.min(offsetSeconds, Math.max(0, duration - 0.05)))
+    : Math.max(0, offsetSeconds);
+
+  soundAudioRef.value.volume = Math.max(0, Math.min(1, sceneSoundVolume.value / 100));
+
+  try {
+    soundAudioRef.value.pause();
+    soundAudioRef.value.currentTime = boundedOffset;
+  } catch {
+    // Some browsers reject currentTime before metadata loads; playback can still begin.
+  }
+
+  soundAudioRef.value.play().catch(() => {});
 }
 
 function previewMusicOffset() {
