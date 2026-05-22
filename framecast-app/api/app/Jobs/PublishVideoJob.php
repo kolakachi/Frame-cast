@@ -86,6 +86,7 @@ class PublishVideoJob implements ShouldQueue
                 'status'           => 'published',
                 'published_at'     => now(),
                 'platform_post_id' => $platformPostId,
+                'platform_post_url'=> $this->buildPostUrl($post->platform, $platformPostId, $post->socialAccount),
                 'failure_reason'   => null,
             ]);
 
@@ -153,6 +154,20 @@ class PublishVideoJob implements ShouldQueue
                 'metadata_json'=> ['platform' => $post->platform, 'social_account_id' => $post->social_account_id],
             ]);
         });
+    }
+
+    private function buildPostUrl(?string $platform, ?string $postId, ?\App\Models\SocialAccount $account): ?string
+    {
+        if (! $postId) return null;
+        return match ($platform) {
+            'youtube'   => "https://www.youtube.com/watch?v={$postId}",
+            'tiktok'    => $account?->platform_username
+                ? "https://www.tiktok.com/@{$account->platform_username}/video/{$postId}"
+                : "https://www.tiktok.com/video/{$postId}",
+            'instagram' => "https://www.instagram.com/p/{$postId}/",
+            'facebook'  => "https://www.facebook.com/{$postId}",
+            default     => null,
+        };
     }
 
     private function ext(Asset $asset): string

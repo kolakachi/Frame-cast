@@ -157,7 +157,13 @@ function startPolling(ids) {
         const fresh = posts.find(p => p.id === rp.id)
         if (!fresh) return rp
         if (fresh.status === 'pending' || fresh.status === 'processing') allDone = false
-        return { ...rp, status: fresh.status, error_message: fresh.failure_reason }
+        return {
+          ...rp,
+          status: fresh.status,
+          error_message: fresh.failure_reason,
+          platform_post_url: fresh.platform_post_url || rp.platform_post_url,
+          platform_post_id:  fresh.platform_post_id  || rp.platform_post_id,
+        }
       })
       if (allDone) clearInterval(pollTimer.value)
     } catch { /* silent */ }
@@ -196,6 +202,13 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
                 <template v-else-if="rp.status === 'draft'">Saved as draft</template>
                 <template v-else>Publishing…</template>
               </div>
+              <a
+                v-if="rp.status === 'published' && rp.platform_post_url"
+                :href="rp.platform_post_url"
+                target="_blank"
+                rel="noopener"
+                class="sp-result-link"
+              >View post on {{ { youtube:'YouTube', tiktok:'TikTok', instagram:'Instagram', facebook:'Facebook' }[rp.platform] }} →</a>
             </div>
           </div>
           <div class="sp-footer" style="margin-top:16px">
@@ -389,6 +402,8 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 .sp-result-info { flex: 1; min-width: 0; }
 .sp-result-name   { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
 .sp-result-status { font-size: 12px; color: var(--color-text-muted); }
+.sp-result-link { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 500; color: var(--color-accent); text-decoration: none; }
+.sp-result-link:hover { text-decoration: underline; }
 .sp-error { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.2); color: #fca5a5; border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-bottom: 14px; }
 .sp-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; border-top: 1px solid var(--color-border); }
 .sp-btn { padding: 8px 16px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--color-border); color: var(--color-text-primary); background: transparent; font-family: inherit; transition: .15s; }
