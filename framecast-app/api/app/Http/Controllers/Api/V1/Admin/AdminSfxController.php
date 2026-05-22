@@ -9,7 +9,7 @@ use App\Services\Media\StorageService;
 use App\Services\SfxLibraryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 class AdminSfxController extends Controller
@@ -136,19 +136,10 @@ class AdminSfxController extends Controller
             'mime_type'        => $sound->mime_type,
             'source'           => $sound->source,
             'status'           => $sound->status,
-            'preview_url'      => $this->signedUrl($sound->storage_url),
+            'preview_url'      => URL::temporarySignedRoute('media.sfx.stream', now()->addHour(), ['soundId' => $sound->id]),
             'created_at'       => $sound->created_at?->toIso8601String(),
             'updated_at'       => $sound->updated_at?->toIso8601String(),
         ];
     }
 
-    private function signedUrl(string $storageUrl): string
-    {
-        $path = preg_replace('#^(minio|b2)://#', '', $storageUrl);
-        try {
-            return Storage::disk('minio')->temporaryUrl($path, now()->addHour());
-        } catch (\Throwable) {
-            return $storageUrl;
-        }
-    }
 }

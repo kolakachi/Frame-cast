@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Api\V1\Sfx;
 
 use App\Http\Controllers\Controller;
 use App\Models\Asset;
+use App\Models\SfxLibrarySound;
 use App\Models\User;
 use App\Services\Media\StorageService;
 use App\Services\SfxLibraryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SfxController extends Controller
 {
@@ -34,8 +36,7 @@ class SfxController extends Controller
                         'name'     => $s->name,
                         'category' => $s->category,
                         'duration' => $s->duration_seconds,
-                        // Resolve to a signed playable URL for the preview
-                        'url'      => $this->resolvePlayableUrl($s->storage_url),
+                        'url'      => $this->signedStreamUrl($s),
                     ];
                 })->all(),
                 'categories' => $this->library->categories(),
@@ -94,15 +95,40 @@ class SfxController extends Controller
         return response()->json(['data' => ['asset' => $this->serializeAsset($asset)]], 201);
     }
 
-    private function resolvePlayableUrl(string $storageUrl): string
+    public function stream(Request $request, int $soundId): StreamedResponse|JsonResponse
     {
-        // For minio://path or b2://path, generate a signed temporary URL the browser can play.
-        $path = preg_replace('#^(minio|b2)://#', '', $storageUrl);
-        try {
-            return Storage::disk('minio')->temporaryUrl($path, now()->addHour());
-        } catch (\Throwable) {
-            return $storageUrl;
+        $sound = SfxLibrarySound::query()->find($soundId);
+        if (! $sound) {
+            return response()->json(['error' => ['code' => 'not_found', 'message' => 'Sound not found.']], 404);
         }
+
+        try {
+            $stream = $this->storage->readStream($sound->storage_url);
+        } catch (\Throwable) {
+            return response()->json(['error' => ['code' => 'stream_failed', 'message' => 'Unable to open sound stream.']], 502);
+        }
+
+        if (! is_resource($stream)) {
+            return response()->json(['error' => ['code' => 'stream_failed', 'message' => 'Unable to open sound stream.']], 502);
+        }
+
+        return response()->stream(function () use ($stream): void {
+            fpassthru($stream);
+            fclose($stream);
+        }, 200, [
+            'Content-Type'  => $sound->mime_type ?: 'audio/mpeg',
+            'Cache-Control' => 'private, max-age=3600',
+            'Accept-Ranges' => 'bytes',
+        ]);
+    }
+
+    private function signedStreamUrl(SfxLibrarySound $sound): string
+    {
+        return URL::temporarySignedRoute(
+            'media.sfx.stream',
+            now()->addHour(),
+            ['soundId' => $sound->id],
+        );
     }
 
     private function serializeAsset(Asset $asset): array
