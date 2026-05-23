@@ -232,11 +232,14 @@ class PaddleService
             return null;
         }
 
-        $map = config('billing.paddle.price_ids', []);
+        $monthly = config('billing.paddle.price_ids', []);
+        $yearly  = config('billing.paddle.price_ids_yearly', []);
 
-        foreach ($map as $tier => $id) {
-            if ($id === $priceId) {
-                return $tier;
+        foreach ([$monthly, $yearly] as $map) {
+            foreach ($map as $tier => $id) {
+                if ($id === $priceId) {
+                    return $tier;
+                }
             }
         }
 

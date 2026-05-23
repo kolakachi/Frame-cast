@@ -18,7 +18,7 @@ return [
         'webhook_secret'  => env('PADDLE_WEBHOOK_SECRET', ''),
         'client_token'    => env('PADDLE_CLIENT_TOKEN', ''), // used by Paddle.js in frontend
 
-        // Paddle price IDs — one price per plan (monthly)
+        // Paddle price IDs — monthly variants (used by checkout default)
         'price_ids' => [
             'starter'    => env('PADDLE_PRICE_STARTER', ''),
             'creator'    => env('PADDLE_PRICE_CREATOR', ''),
@@ -28,6 +28,14 @@ return [
             'studio'     => env('PADDLE_PRICE_STUDIO', ''),
             'scale'      => env('PADDLE_PRICE_SCALE', ''),
             'enterprise' => env('PADDLE_PRICE_ENTERPRISE', ''),
+        ],
+
+        // Annual variants — same plan tier, billed yearly
+        'price_ids_yearly' => [
+            'starter' => env('PADDLE_PRICE_STARTER_YEARLY', ''),
+            'creator' => env('PADDLE_PRICE_CREATOR_YEARLY', ''),
+            'pro'     => env('PADDLE_PRICE_PRO_YEARLY', ''),
+            'agency'  => env('PADDLE_PRICE_AGENCY_YEARLY', ''),
         ],
 
         // Paddle price IDs for credit top-up packs (price_id => credit amount)
