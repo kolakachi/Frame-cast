@@ -123,6 +123,9 @@ services:
       VITE_REVERB_HOST: localhost
       VITE_REVERB_PORT: 8080
       VITE_REVERB_SCHEME: http
+      VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+      VITE_SENTRY_ENVIRONMENT: local
+      VITE_SENTRY_TRACES_SAMPLE_RATE: "0.1"
       CHOKIDAR_USEPOLLING: "true"
     volumes:
       - ./web:/app

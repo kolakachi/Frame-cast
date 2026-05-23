@@ -28,6 +28,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        \Sentry\Laravel\Integration::handles($exceptions);
+
         $exceptions->render(function (\Illuminate\Validation\ValidationException $exception, Request $request) {
             if (! $request->is('api/*')) {
                 return null;
