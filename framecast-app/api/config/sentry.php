@@ -51,7 +51,12 @@ return [
     'send_default_pii' => env('SENTRY_SEND_DEFAULT_PII', false),
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#ignore_exceptions
-    // 'ignore_exceptions' => [],
+    'ignore_exceptions' => [
+        // PsySH tinker REPL parse errors — only fire during `artisan tinker`, not real runtime issues
+        \Psy\Exception\ParseErrorException::class,
+        \Psy\Exception\FatalErrorException::class,
+        \Psy\Exception\ErrorException::class,
+    ],
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#ignore_transactions
     'ignore_transactions' => [
