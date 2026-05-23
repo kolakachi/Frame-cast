@@ -130,7 +130,9 @@ section{padding:100px 24px}
 
 /* ── PRICING ── */
 .pricing{background:linear-gradient(180deg,var(--bg) 0%,rgba(255,107,53,.04) 50%,var(--bg) 100%)}
-.pricing-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:56px;align-items:start}
+.pricing-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:56px;align-items:start}
+@media (max-width:1100px){.pricing-grid{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:760px){.pricing-grid{grid-template-columns:1fr}}
 .plan-card{padding:24px;border-radius:14px;border:1px solid var(--border);background:var(--surface)}
 .plan-card.featured{border-color:rgba(255,107,53,.4);background:rgba(255,107,53,.06);position:relative}
 .plan-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:11px;font-weight:600;padding:3px 12px;border-radius:999px;white-space:nowrap;font-family:"Space Mono",monospace}
@@ -514,6 +516,21 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
       </div>
 
       <div class="plan-card">
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">$79<span>/mo</span></div>
+        <div class="plan-desc">Small operators and creators batching across 10 channels.</div>
+        <div class="plan-divider"></div>
+        <div class="plan-features">
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>4,000 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>10 channels</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Batch generation</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>AI high-quality images</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Priority queue</div>
+        </div>
+        <a href="https://app.wyvstudio.com/register" class="plan-btn">Start Pro</a>
+      </div>
+
+      <div class="plan-card">
         <div class="plan-name">Agency</div>
         <div class="plan-price">$149<span>/mo</span></div>
         <div class="plan-desc">Content agencies and operators producing at volume.</div>
@@ -521,15 +538,16 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
         <div class="plan-features">
           <div class="plan-feature"><span class="plan-feature-check">✓</span>10,000 credits / month</div>
           <div class="plan-feature"><span class="plan-feature-check">✓</span>Unlimited channels</div>
-          <div class="plan-feature"><span class="plan-feature-check">✓</span>Batch generation</div>
           <div class="plan-feature"><span class="plan-feature-check">✓</span>Credit rollover</div>
           <div class="plan-feature"><span class="plan-feature-check">✓</span>Top priority queue</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>All features unlocked</div>
         </div>
         <a href="https://app.wyvstudio.com/register" class="plan-btn">Start Agency</a>
       </div>
 
     </div>
-    <p style="font-size:12px;color:var(--text-faint);margin-top:24px">1 credit = $0.01 · Stock video ~35 credits/project · AI images ~185 credits/project · Top-up credits available on all paid plans</p>
+    <p style="font-size:12px;color:var(--text-faint);margin-top:24px">1 credit = $0.01 · Stock project ~35 credits · AI medium ~185 credits · AI high ~430 credits</p>
+    <p style="font-size:12px;color:var(--text-faint);margin-top:6px">Need more credits? Top-up packs from $5 (500 credits) to $55 (8,000 credits) — available on any paid plan, never expire while subscribed.</p>
   </div>
 </section>
 
