@@ -10,12 +10,17 @@ import { useAuthStore } from './stores/auth'
 import './style.css'
 
 const app = createApp(App)
+const sentryEnvironment = import.meta.env.VITE_SENTRY_ENVIRONMENT || import.meta.env.MODE
+const sentryAllowLocal = import.meta.env.VITE_SENTRY_ENABLE_LOCAL === 'true'
+const sentryEnabled =
+  Boolean(import.meta.env.VITE_SENTRY_DSN) &&
+  (sentryAllowLocal || !['local', 'development', 'test'].includes(sentryEnvironment))
 
-if (import.meta.env.VITE_SENTRY_DSN) {
+if (sentryEnabled) {
   Sentry.init({
     app,
     dsn: import.meta.env.VITE_SENTRY_DSN,
-    environment: import.meta.env.VITE_SENTRY_ENVIRONMENT || import.meta.env.MODE,
+    environment: sentryEnvironment,
     sendDefaultPii: true,
     tracesSampleRate: Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
   })
@@ -62,7 +67,7 @@ watch(
 
     initEcho(token)
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 watch(
@@ -75,7 +80,7 @@ watch(
     if (router.currentRoute.value.meta.requiresAuth) {
       router.push({ name: 'login' })
     }
-  },
+  }
 )
 
 app.use(router)

@@ -8,7 +8,9 @@
 return [
 
     // @see https://docs.sentry.io/concepts/key-terms/dsn-explainer/
-    'dsn' => env('SENTRY_LARAVEL_DSN', env('SENTRY_DSN')),
+    'dsn' => in_array(env('APP_ENV'), ['local', 'testing'], true) && ! filter_var(env('SENTRY_ENABLE_LOCAL', false), FILTER_VALIDATE_BOOL)
+        ? null
+        : env('SENTRY_LARAVEL_DSN', env('SENTRY_DSN')),
 
     // @see https://spotlightjs.com/
     // 'spotlight' => env('SENTRY_SPOTLIGHT', false),
@@ -49,6 +51,9 @@ return [
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#send_default_pii
     'send_default_pii' => env('SENTRY_SEND_DEFAULT_PII', false),
+
+    // Ignore local REPL / console noise before an event is sent to Sentry.
+    'before_send' => [\App\Support\SentryEventFilter::class, 'beforeSend'],
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#ignore_exceptions
     'ignore_exceptions' => [
