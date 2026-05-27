@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Deletion Instructions — WyvStudio</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a0f;--surface:#14141c;--border:#25252f;--text:#ececf3;--text-dim:#8b8b9a;--accent:#ff6b35}
+body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;line-height:1.7}
+nav{padding:0 32px;height:60px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(10,10,15,.9);backdrop-filter:blur(12px);z-index:10}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.nav-logo span{font-size:15px;font-weight:700;color:var(--text)}
+.nav-logo span em{color:var(--accent);font-style:normal}
+.container{max-width:720px;margin:0 auto;padding:64px 24px 120px}
+h1{font-size:32px;font-weight:700;letter-spacing:-.5px;margin-bottom:8px}
+.meta{font-size:13px;color:var(--text-dim);margin-bottom:48px;padding-bottom:24px;border-bottom:1px solid var(--border)}
+h2{font-size:18px;font-weight:600;margin:40px 0 12px;color:var(--text)}
+h3{font-size:15px;font-weight:600;margin:24px 0 8px;color:var(--text)}
+p{font-size:14px;color:var(--text-dim);margin-bottom:14px}
+ul,ol{font-size:14px;color:var(--text-dim);padding-left:20px;margin-bottom:14px}
+ul li,ol li{margin-bottom:6px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.highlight{background:rgba(255,107,53,.08);border:1px solid rgba(255,107,53,.2);border-radius:8px;padding:14px 18px;margin:20px 0}
+.highlight p{margin:0;font-size:13px}
+footer{border-top:1px solid var(--border);padding:24px;text-align:center;font-size:12px;color:var(--text-dim)}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">
+    <svg width="26" height="26" viewBox="0 0 64 64" fill="none"><rect width="64" height="64" rx="14" fill="#ff6b35"/><path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    <span><em>Wyv</em>Studio</span>
+  </a>
+</nav>
+
+<div class="container">
+  <h1>Data Deletion Instructions</h1>
+  <div class="meta">Last updated: 27 May 2026 &nbsp;·&nbsp; Effective: 27 May 2026</div>
+
+  <div class="highlight">
+    <p>You have the right to delete your account and all associated personal data at any time. This page explains how to do it — either by yourself from within the app, or by emailing us.</p>
+  </div>
+
+  <h2>1. What data we hold</h2>
+  <p>WyvStudio stores the following data associated with your account:</p>
+  <ul>
+    <li>Your email address and (optional) display name</li>
+    <li>Workspaces, projects, and videos you have created</li>
+    <li>Generated scripts, voiceovers, images, and exported video files</li>
+    <li>OAuth tokens and platform identifiers for any social accounts you have connected (YouTube, TikTok, Instagram, Facebook)</li>
+    <li>Billing records (handled by our payment processor, Paddle)</li>
+    <li>System logs containing IP address and user-agent for security auditing</li>
+  </ul>
+
+  <h2>2. Self-service: delete your account from inside WyvStudio</h2>
+  <ol>
+    <li>Sign in at <a href="https://app.wyvstudio.com">app.wyvstudio.com</a></li>
+    <li>Go to <strong>Settings → Account</strong></li>
+    <li>Click <strong>Delete Account</strong> and confirm</li>
+  </ol>
+  <p>When you delete your account, the following happens within 30 days:</p>
+  <ul>
+    <li>Your account record, workspaces, projects, and generated assets are permanently removed</li>
+    <li>OAuth tokens for any connected social accounts are revoked and deleted</li>
+    <li>Backups containing your data are purged on the next scheduled cycle (no longer than 30 days)</li>
+    <li>Billing records may be retained where required by tax law (typically 6 years in the UK), but contain no operational personal data beyond what is legally required</li>
+  </ul>
+
+  <h2>3. Disconnect a single social account (without deleting your WyvStudio account)</h2>
+  <p>If you only want to revoke WyvStudio's access to one of your social platforms (YouTube, TikTok, Instagram, or Facebook) — but keep your WyvStudio account active — do this:</p>
+  <ol>
+    <li>Sign in at <a href="https://app.wyvstudio.com">app.wyvstudio.com</a></li>
+    <li>Go to <strong>Settings → Connected Accounts</strong></li>
+    <li>Click <strong>Disconnect</strong> next to the platform you want to remove</li>
+  </ol>
+  <p>This immediately revokes the OAuth token and deletes the connected-account record from our database. Alternatively, you can revoke access directly from the platform itself:</p>
+  <ul>
+    <li><strong>Facebook / Instagram:</strong> Settings → Business Integrations → WyvStudio → Remove</li>
+    <li><strong>YouTube:</strong> Google Account → Security → Third-party apps with account access → WyvStudio → Remove access</li>
+    <li><strong>TikTok:</strong> Settings → Privacy → Apps that can access your account → WyvStudio → Remove</li>
+  </ul>
+
+  <h2>4. Email-based deletion request</h2>
+  <p>If you cannot sign in to your account, or prefer to have us handle the deletion manually, email <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a> from the email address registered with your account with the subject line:</p>
+  <p><strong>"Data Deletion Request"</strong></p>
+  <p>We will:</p>
+  <ul>
+    <li>Confirm receipt within 5 business days</li>
+    <li>Verify your identity (we may ask you to reply from the registered email or provide other reasonable confirmation)</li>
+    <li>Delete all personal data associated with your account within 30 days of verification</li>
+    <li>Send you a final confirmation when deletion is complete</li>
+  </ul>
+
+  <h2>5. Data we cannot delete</h2>
+  <p>The following data may be retained where legally required:</p>
+  <ul>
+    <li>Invoices and tax records (retained for the period required by UK tax law)</li>
+    <li>Anonymised analytics that cannot be tied back to you</li>
+    <li>Any data subject to an active legal hold or regulatory request</li>
+  </ul>
+
+  <h2>6. Contact</h2>
+  <p>If you have any questions about this process or believe your data has not been deleted, please contact us at <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a>.</p>
+
+  <p style="margin-top:32px;font-size:13px">WyvStudio is a service operated by <strong>Kollignton Kay LTD</strong>, a company registered in the United Kingdom.</p>
+</div>
+
+<footer>© 2026 Kollignton Kay LTD · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/refund">Refund Policy</a> · <a href="/data-deletion">Data Deletion</a> · <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a></footer>
+</body>
+</html>
