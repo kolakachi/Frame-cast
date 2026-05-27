@@ -11,6 +11,8 @@ class PlatformAdapterFactory
         return match ($platform) {
             'youtube'   => new YouTubeAdapter(),
             'tiktok'    => new TikTokAdapter(),
+            'instagram' => new InstagramAdapter(),
+            'facebook'  => new FacebookAdapter(),
             default     => throw new InvalidArgumentException("Unsupported platform: {$platform}"),
         };
     }
@@ -18,6 +20,6 @@ class PlatformAdapterFactory
     /** @return list<string> */
     public static function supported(): array
     {
-        return ['youtube', 'tiktok'];
+        return ['youtube', 'tiktok', 'instagram', 'facebook'];
     }
 }

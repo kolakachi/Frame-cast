@@ -47,6 +47,14 @@ return [
         'redirect_uri'  => env('TIKTOK_REDIRECT_URI', env('APP_URL').'/api/v1/social/tiktok/callback'),
     ],
 
+    'meta' => [
+        'app_id'                  => env('META_APP_ID'),
+        'app_secret'              => env('META_APP_SECRET'),
+        'graph_version'           => env('META_GRAPH_VERSION', 'v21.0'),
+        'instagram_redirect_uri'  => env('META_INSTAGRAM_REDIRECT_URI', env('APP_URL').'/api/v1/social/instagram/callback'),
+        'facebook_redirect_uri'   => env('META_FACEBOOK_REDIRECT_URI', env('APP_URL').'/api/v1/social/facebook/callback'),
+    ],
+
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
         'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),

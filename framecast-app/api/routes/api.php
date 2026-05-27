@@ -48,7 +48,7 @@ Route::prefix('v1')->group(function (): void {
     Route::post('/broadcasting/auth', [BroadcastController::class, 'authenticate'])->middleware('auth.jwt');
 
     // OAuth callbacks — unauthenticated (platform redirects here after approval)
-    Route::get('/social/{platform}/callback', [SocialAccountController::class, 'callback'])->where('platform', 'youtube|tiktok');
+    Route::get('/social/{platform}/callback', [SocialAccountController::class, 'callback'])->where('platform', 'youtube|tiktok|instagram|facebook');
 
     // Public approval review (token-gated, no auth)
     Route::get('/approve/{token}', [ApprovalController::class, 'publicShow']);
@@ -175,7 +175,7 @@ Route::prefix('v1')->group(function (): void {
         // ── Social accounts & publishing ─────────────────────────────────────
         Route::prefix('/social')->group(function (): void {
             Route::get('/accounts', [SocialAccountController::class, 'index']);
-            Route::get('/{platform}/connect', [SocialAccountController::class, 'connect'])->where('platform', 'youtube|tiktok');
+            Route::get('/{platform}/connect', [SocialAccountController::class, 'connect'])->where('platform', 'youtube|tiktok|instagram|facebook');
             Route::delete('/accounts/{accountId}', [SocialAccountController::class, 'destroy'])->whereNumber('accountId');
             Route::post('/generate-caption', [SocialAccountController::class, 'generateCaption']);
         });
