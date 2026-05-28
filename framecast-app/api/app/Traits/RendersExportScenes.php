@@ -102,25 +102,31 @@ trait RendersExportScenes
             $isVideo = $visualAsset !== null
                 && ($visualAsset->asset_type === 'video' || str_starts_with((string) $visualAsset->mime_type, 'video/'));
 
+            // Fit mode: 'crop' = cover + center-crop (full-bleed, may trim edges),
+            // 'fit' (default) = contain the whole visual, fill the bars with a blurred copy
+            // so nothing is lost when the visual's aspect ratio differs from the frame.
+            $fitMode = (string) (data_get($scene->motion_settings_json, 'fit', 'fit'));
+            $useFit  = $fitMode !== 'crop';
+
+            // Ken Burns motion only applies to still images in crop mode — a contained
+            // (letterboxed) image shouldn't pan/zoom its blurred backdrop.
             $motionFilter = null;
-            if ($visualAsset && ! $isVideo) {
+            if ($visualAsset && ! $isVideo && ! $useFit) {
                 $motionFilter = $this->buildMotionFilter($scene, $dimensions, $duration);
             }
 
-            $scaleW = $motionFilter ? (int) (ceil($dimensions['width'] * 1.5 / 2) * 2) : $dimensions['width'];
-            $scaleH = $motionFilter ? (int) (ceil($dimensions['height'] * 1.5 / 2) * 2) : $dimensions['height'];
+            $dw = $dimensions['width'];
+            $dh = $dimensions['height'];
+            $scaleW = $motionFilter ? (int) (ceil($dw * 1.5 / 2) * 2) : $dw;
+            $scaleH = $motionFilter ? (int) (ceil($dh * 1.5 / 2) * 2) : $dh;
 
-            $baseFilter = sprintf(
-                'setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,setsar=1',
-                $scaleW, $scaleH, $scaleW, $scaleH
-            );
-
+            // Tail filters run after the fit/crop base, in this order.
+            $tail = [];
             if ($motionFilter !== null) {
-                $baseFilter .= ','.$motionFilter.',setpts=PTS-STARTPTS';
+                $tail[] = $motionFilter;
+                $tail[] = 'setpts=PTS-STARTPTS';
             }
-
-            $baseFilter .= ',trim=duration='.$durationForFilter;
-            $filters = [$baseFilter];
+            $tail[] = 'trim=duration='.$durationForFilter;
 
             $assFile = null;
             if ($captionEnabled && trim($captionText) !== '') {
@@ -131,20 +137,36 @@ trait RendersExportScenes
                     $this->captionTimingWordsFromAsset($audioAsset),
                     $captionColor, $captionSize, $captionHighlightColor,
                 );
-                $filters[] = "subtitles={$assFile}";
+                $tail[] = "subtitles={$assFile}";
                 $cleanupPaths[] = $assFile;
             }
 
             if ($watermarkEnabled) {
                 // Semi-transparent text watermark, bottom-right corner
-                $fontSize = (int) max(18, round($dimensions['height'] * 0.022));
-                $filters[] = sprintf(
+                $fontSize = (int) max(18, round($dh * 0.022));
+                $tail[] = sprintf(
                     "drawtext=text='WyvStudio':fontcolor=white@0.55:fontsize=%d:x=w-tw-24:y=h-th-24:box=1:boxcolor=black@0.30:boxborderw=8",
                     $fontSize,
                 );
             }
 
-            $filter = implode(',', $filters);
+            $tailStr = $tail ? ','.implode(',', $tail) : '';
+
+            if ($useFit) {
+                // Blurred-fill: contain the visual, fill bars with a blurred, cover-scaled
+                // copy of itself. Blur a downscaled copy for speed, then upscale.
+                $videoGraph =
+                    "[0:v]setpts=PTS-STARTPTS,split=2[fitbg][fitfg];"
+                    ."[fitbg]scale={$dw}:{$dh}:force_original_aspect_ratio=increase,crop={$dw}:{$dh},scale=320:-2,gblur=sigma=6,scale={$dw}:{$dh},setsar=1[fitbgb];"
+                    ."[fitfg]scale={$dw}:{$dh}:force_original_aspect_ratio=decrease,setsar=1[fitfgc];"
+                    ."[fitbgb][fitfgc]overlay=(W-w)/2:(H-h)/2{$tailStr}[v_out]";
+            } else {
+                $base = sprintf(
+                    'setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,setsar=1',
+                    $scaleW, $scaleH, $scaleW, $scaleH
+                );
+                $videoGraph = sprintf('[0:v]%s%s[v_out]', $base, $tailStr);
+            }
 
             if ($visualAsset) {
                 $visualPath = $this->materializeAsset($visualAsset, $tempDir, 'visual-'.$index);
@@ -189,7 +211,7 @@ trait RendersExportScenes
 
             // Build combined filter_complex: video filter + audio chain (FFmpeg doesn't allow -vf alongside -filter_complex)
             $complexFilters = [
-                sprintf('[0:v]%s[v_out]', $filter),
+                $videoGraph,
                 sprintf(
                     '[1:a]atrim=duration=%s,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,volume=%.4f[a_voice]',
                     $durationForFilter, $voiceVolume,

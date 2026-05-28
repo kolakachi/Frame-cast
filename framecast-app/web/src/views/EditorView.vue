@@ -286,6 +286,7 @@ const CAPTION_FONT_GROUPS = [
 ];
 const motionEffectDraft = ref("zoom_in");
 const motionIntensityDraft = ref("moderate");
+const visualFitDraft = ref("fit"); // 'fit' = blurred-fill (nothing cut), 'crop' = cover + center-crop
 const motionSaveState = ref("idle");
 const motionSaveError = ref("");
 const visualStyleDraft = ref(null);
@@ -294,6 +295,7 @@ const visualStyleSaveState = ref("idle");
 const panelState = ref({
   script: false,
   visual: false,
+  frame: false,
   motion: false,
   voice: false,
   sounds: false,
@@ -864,6 +866,7 @@ watch(
       const motionSettings = scene?.motion_settings || scene?.motion_settings_json || {};
       motionEffectDraft.value = String(motionSettings.effect || "zoom_in");
       motionIntensityDraft.value = String(motionSettings.intensity || "moderate");
+      visualFitDraft.value = motionSettings.fit === "crop" ? "crop" : "fit";
       visualStyleDraft.value = scene?.visual_style ?? scene?.image_generation_settings?.style ?? project.value?.ai_broll_style ?? null;
       visualStyleSaveState.value = "idle";
       aiImagePending.value = false;
@@ -1088,7 +1091,7 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
   }, 500);
 });
 
-watch([motionEffectDraft, motionIntensityDraft], () => {
+watch([motionEffectDraft, motionIntensityDraft, visualFitDraft], () => {
   const scene = activeScene.value;
   if (!scene) return;
 
@@ -1096,11 +1099,13 @@ watch([motionEffectDraft, motionIntensityDraft], () => {
   const nextSettings = {
     effect: motionEffectDraft.value,
     intensity: motionIntensityDraft.value,
+    fit: visualFitDraft.value,
   };
 
   if (
     String(savedMotion.effect || "zoom_in") === nextSettings.effect &&
-    String(savedMotion.intensity || "moderate") === nextSettings.intensity
+    String(savedMotion.intensity || "moderate") === nextSettings.intensity &&
+    (savedMotion.fit === "crop" ? "crop" : "fit") === nextSettings.fit
   ) {
     if (motionSaveTimer) {
       window.clearTimeout(motionSaveTimer);
@@ -4314,10 +4319,20 @@ onBeforeUnmount(() => {
           <div class="editor-canvas">
             <div class="preview-container" :style="previewContainerStyle">
               <div class="preview-video-bg">
+                <!-- Blurred backdrop for 'fit' mode so the whole visual is visible inside the frame -->
+                <template v-if="currentVisualUrl && visualFitDraft === 'fit'">
+                  <video
+                    v-if="activeSceneVisualIsVideo"
+                    :src="currentVisualUrl"
+                    class="preview-fit-bg"
+                    autoplay loop muted playsinline
+                  ></video>
+                  <img v-else :src="currentVisualUrl" class="preview-fit-bg" alt="" />
+                </template>
                 <video
                   v-if="currentVisualUrl && activeSceneVisualIsVideo"
                   :src="currentVisualUrl"
-                  class="preview-image"
+                  :class="['preview-image', visualFitDraft === 'fit' ? 'preview-fg-contain' : '']"
                   autoplay
                   loop
                   muted
@@ -4326,7 +4341,7 @@ onBeforeUnmount(() => {
                 <img
                   v-else-if="currentVisualUrl"
                   :src="currentVisualUrl"
-                  :class="['preview-image', activeMotionClass]"
+                  :class="['preview-image', visualFitDraft === 'fit' ? 'preview-fg-contain' : activeMotionClass]"
                   alt=""
                 />
                 <div v-else-if="showTextCardPreview" class="preview-fallback preview-fallback-text">
@@ -4845,9 +4860,35 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- Motion panel — visible only when scene visual is a still image -->
+            <!-- Frame fit panel — applies to any scene with a visual (image OR video) -->
             <div
-              v-if="activeSceneIsStillImage"
+              v-if="activeSceneIsStillImage || activeSceneVisualIsVideo"
+              :class="`panel-section ${panelState.frame ? 'collapsed' : ''}`"
+            >
+              <div class="panel-section-header" @click="togglePanel('frame')">
+                <div class="panel-label-row">
+                  <div class="panel-label panel-label-tight">Frame</div>
+                  <span class="panel-badge new">{{ visualFitDraft === 'fit' ? 'FIT' : 'CROP' }}</span>
+                </div>
+                <div class="panel-chevron">▾</div>
+              </div>
+              <div class="panel-section-body">
+                <div class="control-row" style="margin-top:4px;">
+                  <span class="control-name">When the visual doesn't match the frame</span>
+                  <select v-model="visualFitDraft" class="control-value">
+                    <option value="fit">Fit — show all (blurred bars)</option>
+                    <option value="crop">Crop — fill (may cut edges)</option>
+                  </select>
+                </div>
+                <div class="micro-label" style="margin-top:6px;opacity:.6;">
+                  Fit keeps the whole visual visible and fills the gaps with a blurred copy. Crop fills the frame edge-to-edge.
+                </div>
+              </div>
+            </div>
+
+            <!-- Motion panel — visible only when scene visual is a still image and fit is crop -->
+            <div
+              v-if="activeSceneIsStillImage && visualFitDraft === 'crop'"
               :class="`panel-section ${panelState.motion ? 'collapsed' : ''}`"
             >
               <div class="panel-section-header" @click="togglePanel('motion')">
@@ -6998,7 +7039,21 @@ button {
 .preview-image {
   object-fit: cover;
   transform-origin: center center;
+  position: relative;
+  z-index: 1;
 }
+/* Blurred backdrop behind a contained foreground — mirrors FFmpeg blurred-fill. */
+.preview-fit-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(18px) saturate(1.05);
+  transform: scale(1.1); /* hide blur edge bleed */
+  z-index: 0;
+}
+.preview-fg-contain { object-fit: contain !important; }
 
 /* Ken Burns canvas preview — approximate visual (real motion rendered by FFmpeg) */
 @keyframes kb-zoom-in {
