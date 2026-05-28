@@ -1,0 +1,543 @@
+<script setup>
+import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import { useAuthStore } from "../stores/auth";
+import api from "../services/api";
+import AppSidebar from "../components/AppSidebar.vue";
+import NotifBell from "../components/NotifBell.vue";
+
+const router = useRouter();
+const authStore = useAuthStore();
+
+const mePayload = ref(null);
+const characters = ref([]);
+const loading = ref(true);
+const error = ref("");
+
+// Modal state — same modal handles both Create and Edit.
+const createOpen = ref(false);
+const editingId = ref(null);              // when set, we're editing an existing character
+const createName = ref("");
+const createDescription = ref("");
+const createFile = ref(null);             // newly-picked file (replaces existing)
+const createPreviewUrl = ref("");         // object URL for the newly-picked file
+const existingThumbUrl = ref(null);       // existing reference image URL when editing
+const removeExistingImage = ref(false);   // user clicked Remove on the existing image
+const createSaving = ref(false);
+const createError = ref("");
+
+// Delete confirmation
+const deleteTarget = ref(null);
+const deletePending = ref(false);
+
+onMounted(async () => {
+  try {
+    const me = await api.get("/me");
+    mePayload.value = me.data?.data?.user ?? null;
+  } catch {}
+  await loadCharacters();
+  loading.value = false;
+});
+
+async function loadCharacters() {
+  try {
+    const response = await api.get("/characters");
+    characters.value = response.data?.data?.characters ?? [];
+  } catch (e) {
+    error.value = "Could not load characters.";
+  }
+}
+
+const withImage = computed(() => characters.value.filter((c) => c.reference_asset).length);
+
+function logout() {
+  authStore.clearSession();
+  router.push({ name: "login" });
+}
+
+function thumbUrl(c) {
+  return c?.reference_asset?.thumbnail_url || c?.reference_asset?.storage_url || null;
+}
+
+function initial(name) {
+  return (name || "?").charAt(0).toUpperCase();
+}
+
+function openCreate() {
+  editingId.value = null;
+  createName.value = "";
+  createDescription.value = "";
+  clearFile();
+  existingThumbUrl.value = null;
+  removeExistingImage.value = false;
+  createError.value = "";
+  createOpen.value = true;
+}
+
+function openEdit(c) {
+  editingId.value = c.id;
+  createName.value = c.name;
+  createDescription.value = c.description || "";
+  clearFile();
+  existingThumbUrl.value = thumbUrl(c);
+  removeExistingImage.value = false;
+  createError.value = "";
+  createOpen.value = true;
+}
+
+function pickFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    createError.value = "Please pick an image file (PNG or JPG).";
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    createError.value = "Image must be 10MB or less.";
+    return;
+  }
+  createError.value = "";
+  createFile.value = file;
+  if (createPreviewUrl.value) URL.revokeObjectURL(createPreviewUrl.value);
+  createPreviewUrl.value = URL.createObjectURL(file);
+}
+
+function clearFile() {
+  if (createPreviewUrl.value) URL.revokeObjectURL(createPreviewUrl.value);
+  createFile.value = null;
+  createPreviewUrl.value = "";
+}
+
+// "Remove" on the existing image in edit mode — distinct from clearing a new pick.
+function removeExisting() {
+  removeExistingImage.value = true;
+  existingThumbUrl.value = null;
+  clearFile();
+}
+
+function closeCreate() {
+  createOpen.value = false;
+  editingId.value = null;
+  createName.value = "";
+  createDescription.value = "";
+  clearFile();
+  existingThumbUrl.value = null;
+  removeExistingImage.value = false;
+  createError.value = "";
+}
+
+async function saveCharacter() {
+  const name = createName.value.trim();
+  if (!name) {
+    createError.value = "Name is required.";
+    return;
+  }
+  createSaving.value = true;
+  createError.value = "";
+  try {
+    // Decide what to do about the reference image:
+    //   • new file picked  → upload, then send the new asset id
+    //   • Remove clicked   → send null (clear it)
+    //   • else (create)    → null
+    //   • else (edit)      → don't touch the field
+    const payload = {
+      name,
+      description: createDescription.value.trim() || null,
+    };
+
+    if (createFile.value) {
+      const fd = new FormData();
+      fd.append("title", name);
+      fd.append("asset_type", "image");
+      fd.append("asset_file", createFile.value);
+      const upload = await api.post("/assets", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      payload.reference_asset_id = upload.data?.data?.asset?.id ?? null;
+    } else if (removeExistingImage.value) {
+      payload.reference_asset_id = null;
+    } else if (!editingId.value) {
+      // Creating with no image at all.
+      payload.reference_asset_id = null;
+    }
+
+    let saved;
+    if (editingId.value) {
+      const response = await api.patch(`/characters/${editingId.value}`, payload);
+      saved = response.data?.data?.character;
+      if (saved) {
+        characters.value = characters.value.map((c) => (c.id === saved.id ? saved : c));
+      }
+    } else {
+      const response = await api.post("/characters", payload);
+      saved = response.data?.data?.character;
+      if (saved) characters.value = [saved, ...characters.value];
+    }
+    closeCreate();
+  } catch (e) {
+    createError.value = e.response?.data?.error?.message ?? "Could not save character.";
+  } finally {
+    createSaving.value = false;
+  }
+}
+
+async function confirmDelete() {
+  if (!deleteTarget.value) return;
+  deletePending.value = true;
+  try {
+    await api.delete(`/characters/${deleteTarget.value.id}`);
+    characters.value = characters.value.filter((c) => c.id !== deleteTarget.value.id);
+  } catch {} finally {
+    deletePending.value = false;
+    deleteTarget.value = null;
+  }
+}
+</script>
+
+<template>
+  <div class="characters-shell">
+    <AppSidebar :user="mePayload" active-page="characters" @logout="logout" />
+
+    <main class="main">
+      <div class="topbar">
+        <div class="topbar-left">
+          <span class="bc-ws">My Workspace</span>
+          <span class="bc-sep">/</span>
+          <span class="bc-page">Characters</span>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-primary btn-sm" type="button" @click="openCreate">
+            <span style="font-weight:700">＋</span> New Character
+          </button>
+          <NotifBell />
+        </div>
+      </div>
+
+      <div class="content">
+        <div v-if="error" class="banner error">{{ error }}</div>
+        <div v-if="loading" class="page-state">Loading characters…</div>
+
+        <template v-else>
+          <div class="stats-row">
+            <article class="stat-card accent-stat">
+              <div class="stat-label">Characters</div>
+              <div class="stat-value">{{ characters.length }}</div>
+              <div class="stat-change">{{ characters.length > 0 ? 'Reusable across scenes' : 'Create your first character' }}</div>
+            </article>
+            <article class="stat-card">
+              <div class="stat-label">With reference image</div>
+              <div class="stat-value">{{ withImage }}</div>
+              <div class="stat-change">{{ withImage > 0 ? 'Visual reference ready for AI gen' : 'Upload images to anchor identity' }}</div>
+            </article>
+            <article class="stat-card">
+              <div class="stat-label">Consistency method</div>
+              <div class="stat-value">Quick</div>
+              <div class="stat-change">Description-injected today · LoRA training coming</div>
+            </article>
+          </div>
+
+          <section class="dash-section">
+            <div class="section-hd">
+              <div>
+                <div class="eyebrow">Workspace library</div>
+                <div class="section-title">All Characters</div>
+              </div>
+              <button class="btn btn-ghost btn-sm" type="button" @click="openCreate">＋ New character</button>
+            </div>
+
+            <div v-if="characters.length === 0" class="empty-hero">
+              <div class="empty-icon">◐</div>
+              <div class="empty-title">No characters yet</div>
+              <div class="empty-body">
+                Characters live across every project and series in this workspace.<br>
+                Upload a reference photo and a short description — pick one when generating any AI image.
+              </div>
+              <button class="btn btn-primary" type="button" @click="openCreate">＋ Create your first character</button>
+            </div>
+
+            <div v-else class="char-grid">
+              <article v-for="c in characters" :key="c.id" class="char-card" @click="openEdit(c)">
+                <div class="char-card-thumb">
+                  <img v-if="thumbUrl(c)" :src="thumbUrl(c)" alt="" />
+                  <span v-else>{{ initial(c.name) }}</span>
+                  <div class="char-card-actions">
+                    <button class="char-card-act" type="button" title="Edit" @click.stop="openEdit(c)">✎</button>
+                    <button class="char-card-act danger" type="button" title="Delete" @click.stop="deleteTarget = c">✕</button>
+                  </div>
+                </div>
+                <div class="char-card-body">
+                  <div class="char-card-name">{{ c.name }}</div>
+                  <div class="char-card-desc">{{ c.description || 'No description' }}</div>
+                  <div class="char-card-meta">
+                    {{ c.scenes_count > 0 ? `Used in ${c.scenes_count} ${c.scenes_count === 1 ? 'scene' : 'scenes'}` : 'Not used yet' }}
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+        </template>
+      </div>
+    </main>
+
+    <!-- Create modal -->
+    <Teleport to="body">
+      <div v-if="createOpen" class="cv-backdrop" @click.self="closeCreate">
+        <div class="cv-modal">
+          <div class="cv-head">
+            <div class="cv-title">{{ editingId ? '✎ Edit character' : '＋ New character' }}</div>
+            <button class="cv-close" @click="closeCreate">×</button>
+          </div>
+
+          <div class="cv-field">
+            <label class="cv-label">Reference image <span class="cv-opt">(optional)</span></label>
+
+            <!-- Priority: newly-picked file preview → existing image → drop zone -->
+            <div v-if="createPreviewUrl" class="cv-preview">
+              <img :src="createPreviewUrl" alt="" />
+              <button type="button" class="cv-preview-clear" @click="clearFile">✕ Remove</button>
+            </div>
+            <div v-else-if="existingThumbUrl && !removeExistingImage" class="cv-preview">
+              <img :src="existingThumbUrl" alt="" />
+              <label class="cv-preview-replace">
+                <input type="file" accept="image/*" hidden @change="pickFile" />
+                ↻ Replace
+              </label>
+              <button type="button" class="cv-preview-clear" @click="removeExisting">✕ Remove</button>
+            </div>
+            <label v-else class="cv-drop">
+              <input type="file" accept="image/*" hidden @change="pickFile" />
+              <div class="cv-drop-ico">⬆</div>
+              <div class="cv-drop-copy">Drop or click to upload</div>
+              <div class="cv-drop-sub">PNG or JPG · up to 10MB</div>
+            </label>
+          </div>
+
+          <div class="cv-field">
+            <label class="cv-label">Name</label>
+            <input v-model="createName" class="cv-input" placeholder="e.g. Marcus the Detective" maxlength="120" />
+          </div>
+
+          <div class="cv-field">
+            <label class="cv-label">Description <span class="cv-opt">(optional)</span></label>
+            <textarea v-model="createDescription" class="cv-input" rows="4" placeholder="A weathered 50-year-old detective in a worn trench coat, sharp eyes…" maxlength="2000"></textarea>
+            <div class="cv-hint">Used in scene prompts to keep this character consistent across episodes.</div>
+          </div>
+
+          <div v-if="createError" class="cv-error">{{ createError }}</div>
+
+          <div class="cv-foot">
+            <button class="btn btn-ghost btn-sm" type="button" @click="closeCreate">Cancel</button>
+            <button class="btn btn-primary btn-sm" type="button" :disabled="createSaving" @click="saveCharacter">
+              {{ createSaving ? (createFile ? 'Uploading…' : 'Saving…') : (editingId ? 'Save changes' : 'Create character') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Delete confirmation -->
+    <Teleport to="body">
+      <div v-if="deleteTarget" class="cv-backdrop" @click.self="deleteTarget = null">
+        <div class="cv-modal" style="max-width:420px">
+          <div class="cv-head">
+            <div class="cv-title">Delete character</div>
+            <button class="cv-close" @click="deleteTarget = null">×</button>
+          </div>
+          <div style="padding:6px 0 14px;font-size:13px;opacity:.8;">
+            Delete <strong>{{ deleteTarget.name }}</strong>?
+            Scenes already using this character will keep their generated images, but new scenes won't be able to pick it.
+          </div>
+          <div class="cv-foot">
+            <button class="btn btn-ghost btn-sm" type="button" @click="deleteTarget = null">Cancel</button>
+            <button class="btn btn-primary btn-sm" type="button" :disabled="deletePending" @click="confirmDelete">
+              {{ deletePending ? 'Deleting…' : 'Delete' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+  </div>
+</template>
+
+<style scoped>
+.characters-shell {
+  display: flex;
+  min-height: 100vh;
+  background: #0a0a0f;
+  color: #ececf3;
+  font-family: 'DM Sans', sans-serif;
+}
+.main {
+  margin-left: var(--sidebar-width, 220px);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-width: 0;
+}
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: rgba(10,10,15,0.6); backdrop-filter: blur(8px);
+}
+.topbar-left { display: flex; gap: 8px; font-size: 13px; }
+.bc-ws { color: rgba(255,255,255,0.5); }
+.bc-sep { color: rgba(255,255,255,0.25); }
+.bc-page { color: #ececf3; font-weight: 600; }
+.topbar-right { display: flex; gap: 12px; align-items: center; }
+.content { padding: 28px; overflow-y: auto; }
+.banner.error { background: rgba(255,80,80,0.12); border: 1px solid rgba(255,80,80,0.3); color: #ffaaaa; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; }
+.page-state { padding: 40px; text-align: center; opacity: 0.55; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 8px;
+  font-family: inherit; font-size: 13px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04); color: #ececf3;
+  transition: 0.15s;
+}
+.btn:hover { background: rgba(255,255,255,0.08); }
+.btn-sm { padding: 6px 12px; font-size: 12.5px; }
+.btn-primary { background: #ff6b35; border-color: #ff6b35; color: #0a0a0f; font-weight: 600; }
+.btn-primary:hover { background: #ff8055; border-color: #ff8055; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-ghost:hover { background: rgba(255,255,255,0.06); }
+
+.stats-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px; margin-bottom: 28px;
+}
+.stat-card {
+  padding: 16px 18px;
+  background: #14141c;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+}
+.stat-card.accent-stat {
+  background: linear-gradient(135deg, rgba(255,107,53,0.12), rgba(255,107,53,0.04));
+  border-color: rgba(255,107,53,0.35);
+}
+.stat-label { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.55; }
+.stat-value { font-size: 26px; font-weight: 700; margin: 6px 0 4px; }
+.stat-change { font-size: 11.5px; opacity: 0.6; }
+
+.dash-section { background: #14141c; border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 22px; }
+.section-hd { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 18px; }
+.eyebrow { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.5; font-weight: 600; }
+.section-title { font-size: 18px; font-weight: 700; margin-top: 4px; }
+
+.empty-hero { text-align: center; padding: 60px 20px; }
+.empty-icon { font-size: 40px; opacity: 0.5; }
+.empty-title { font-size: 18px; font-weight: 700; margin: 14px 0 8px; }
+.empty-body { font-size: 13px; opacity: 0.65; line-height: 1.6; margin-bottom: 20px; }
+
+.char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.char-card {
+  background: #16161c; border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px; overflow: hidden; transition: 0.15s;
+}
+.char-card:hover { border-color: rgba(255,255,255,0.18); transform: translateY(-1px); }
+.char-card-thumb {
+  aspect-ratio: 1 / 1; position: relative;
+  background: linear-gradient(135deg, #ff6b35 0%, #cf4f1d 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 36px; font-weight: 700; color: #0a0a0f; overflow: hidden;
+}
+.char-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.char-card { cursor: pointer; }
+.char-card-actions {
+  position: absolute; top: 8px; right: 8px;
+  display: flex; gap: 6px; opacity: 0; transition: 0.15s;
+}
+.char-card:hover .char-card-actions { opacity: 1; }
+.char-card-act {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(0,0,0,0.55); color: #fff;
+  border: none; cursor: pointer; font-size: 12px;
+  font-family: inherit; transition: 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.char-card-act:hover { background: rgba(0,0,0,0.8); }
+.char-card-act.danger:hover { background: rgba(220,40,40,0.85); }
+
+.cv-preview-replace {
+  position: absolute; top: 8px; right: 90px;
+  background: rgba(0,0,0,0.6); color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 5px 10px; border-radius: 6px;
+  font-size: 11.5px; cursor: pointer; font-family: inherit;
+}
+.cv-preview-replace:hover { background: rgba(0,0,0,0.8); }
+.char-card-body { padding: 12px 14px; }
+.char-card-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.char-card-desc { font-size: 11.5px; opacity: 0.55; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.char-card-meta {
+  font-size: 10.5px; letter-spacing: 0.04em; opacity: 0.45;
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+/* ── Create modal ── */
+.cv-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.cv-modal {
+  width: 100%; max-width: 480px;
+  background: #14141c;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.cv-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.cv-title { font-size: 16px; font-weight: 700; }
+.cv-close { background: none; border: none; color: rgba(255,255,255,0.45); font-size: 22px; cursor: pointer; line-height: 1; }
+.cv-close:hover { color: #fff; }
+.cv-field { margin-bottom: 16px; }
+.cv-label { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; opacity: 0.7; margin-bottom: 8px; }
+.cv-opt { opacity: 0.5; font-weight: 400; }
+.cv-input {
+  width: 100%; background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+  padding: 10px 12px; color: #ececf3; font-family: inherit; font-size: 13px;
+  outline: none; resize: vertical;
+}
+.cv-input:focus { border-color: #ff6b35; }
+.cv-hint { font-size: 11px; opacity: 0.55; margin-top: 6px; }
+.cv-error { font-size: 12.5px; color: #ff6b6b; margin: 8px 0 12px; }
+.cv-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+
+.cv-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 1.5px dashed rgba(255,255,255,0.16); border-radius: 10px;
+  padding: 28px 12px; text-align: center; cursor: pointer;
+  background: rgba(255,255,255,0.02); transition: 0.15s;
+}
+.cv-drop:hover { border-color: rgba(255,107,53,0.45); background: rgba(255,107,53,0.05); }
+.cv-drop-ico { font-size: 24px; opacity: 0.55; }
+.cv-drop-copy { font-size: 13.5px; font-weight: 500; margin-top: 6px; }
+.cv-drop-sub { font-size: 11px; opacity: 0.5; margin-top: 2px; }
+.cv-preview { position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; background: #0a0a0f; }
+.cv-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cv-preview-clear {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(0,0,0,0.6); color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 5px 10px; border-radius: 6px;
+  font-size: 11.5px; cursor: pointer; font-family: inherit;
+}
+.cv-preview-clear:hover { background: rgba(0,0,0,0.8); }
+
+@media (max-width: 768px) {
+  .main { margin-left: 0; }
+}
+</style>

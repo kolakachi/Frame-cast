@@ -363,6 +363,26 @@ onBeforeUnmount(() => {
 
       <div class="nav-section-label">Library</div>
       <button
+        :class="['nav-item', activePage === 'characters' ? 'active' : '']"
+        data-tooltip="Characters"
+        type="button"
+        @click="nav('characters')"
+      >
+        <svg
+          class="nav-icon"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          viewBox="0 0 24 24"
+        >
+          <circle cx="12" cy="8" r="4"></circle>
+          <path d="M4 21c0-4 4-7 8-7s8 3 8 7"></path>
+        </svg>
+        Characters
+      </button>
+      <button
         :class="['nav-item', activePage === 'asset-library' ? 'active' : '']"
         data-tooltip="Assets"
         type="button"

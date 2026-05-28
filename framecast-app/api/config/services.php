@@ -66,6 +66,14 @@ return [
         'api_key' => env('PEXELS_API_KEY'),
     ],
 
+    'replicate' => [
+        'api_token' => env('REPLICATE_API_TOKEN'),
+        // Pinned version of zsxkib/flux-pulid for character / face-consistency image generation.
+        // Override REPLICATE_PULID_VERSION in env to swap to a newer revision.
+        'pulid_model'   => env('REPLICATE_PULID_MODEL',   'zsxkib/flux-pulid'),
+        'pulid_version' => env('REPLICATE_PULID_VERSION', '8baa7ef2255075b46f4d91cd238c21d31181b3e6a864463f967960bb0112525b'),
+    ],
+
     'pixabay' => [
         'api_key' => env('PIXABAY_API_KEY'),
     ],

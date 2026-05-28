@@ -97,8 +97,17 @@ class GenerateProjectAIImagesJob implements ShouldQueue
     private function generateSceneImage(ImageGenerationAdapter $adapter, Project $project, Scene $scene): void
     {
         $style = $project->ai_broll_style ?: 'cinematic';
-        $prompt = $this->buildPrompt($project, $scene, $style);
-        $result = $adapter->generate($prompt, $style, $project->aspect_ratio ?? '9:16', [
+
+        // Character path: route to ReplicatePulidAdapter when the scene has a character
+        // with a reference image; otherwise the injected default adapter.
+        $scene->loadMissing('character.referenceAsset');
+        $useCharacterRef = $scene->character_id
+            && $scene->character?->reference_asset_id
+            && $scene->character?->referenceAsset;
+
+        $prompt = $this->buildPrompt($project, $scene, $style, ! $useCharacterRef);
+
+        $options = [
             'usage_context' => [
                 'workspace_id' => $project->workspace_id,
                 'project_id' => $project->getKey(),
@@ -106,7 +115,18 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                 'scene_id' => $scene->getKey(),
                 'style' => $style,
             ],
-        ]);
+        ];
+
+        if ($useCharacterRef) {
+            $referenceUrl = $this->signedReferenceUrl($scene->character->referenceAsset);
+            if ($referenceUrl) {
+                $options['reference_image_url'] = $referenceUrl;
+                $adapter = app(\App\Services\Generation\Image\ReplicatePulidAdapter::class);
+            }
+            // else: fall back to default adapter (text-only)
+        }
+
+        $result = $adapter->generate($prompt, $style, $project->aspect_ratio ?? '9:16', $options);
         $storagePath = $this->storeImage($result['image_url'] ?? null, $project, $result['image_b64'] ?? null);
 
         $asset = Asset::query()->create([
@@ -147,7 +167,27 @@ class GenerateProjectAIImagesJob implements ShouldQueue
         rescue(fn () => app(CreditService::class)->deduct((int) $project->workspace_id, CreditService::AI_MEDIUM, 'ai_image'));
     }
 
-    private function buildPrompt(Project $project, Scene $scene, string $style): string
+    /**
+     * Build a public, signed URL to a character's reference asset so Replicate can fetch it.
+     */
+    private function signedReferenceUrl(?\App\Models\Asset $asset): ?string
+    {
+        if (! $asset || ! $asset->storage_url) {
+            return null;
+        }
+        $storage = app(\App\Services\Media\StorageService::class);
+        $isStoredPath = $storage->extractPath((string) $asset->storage_url) !== null;
+        if (! $isStoredPath) {
+            return (string) $asset->storage_url;
+        }
+        return \Illuminate\Support\Facades\URL::temporarySignedRoute(
+            'media.assets.content',
+            now()->addMinutes(30),
+            ['assetId' => $asset->getKey()],
+        );
+    }
+
+    private function buildPrompt(Project $project, Scene $scene, string $style, bool $includeCharacterDescription = true): string
     {
         $sceneText = mb_substr(trim((string) $scene->script_text), 0, 260);
         $label = $scene->label ?: 'Scene '.$scene->scene_order;
@@ -161,7 +201,19 @@ class GenerateProjectAIImagesJob implements ShouldQueue
         $referenceStyle  = trim((string) ($brief['reference_style'] ?? ''));
         $prefix = $referenceStyle !== '' ? "{$referenceStyle} " : ($consistencyCard !== '' ? "{$consistencyCard} " : '');
 
-        return trim("{$prefix}{$label} for a faceless {$tone} video. B-roll style: {$style}. Scene narration: {$sceneText}. Context: {$context}. Make it vertical-video friendly, visually specific, no text overlays.");
+        // Inject character into the prompt only on the description-only (DALL-E) path.
+        // When PuLID is the adapter, the reference image carries identity and over-describing
+        // the face in the prompt actually fights the reference.
+        $characterChunk = '';
+        if ($includeCharacterDescription && $scene->character_id) {
+            $character = $scene->relationLoaded('character') ? $scene->character : $scene->character()->first();
+            if ($character) {
+                $desc = trim((string) $character->description);
+                $characterChunk = "Character: {$character->name}".($desc !== '' ? " — {$desc}" : '').'. ';
+            }
+        }
+
+        return trim("{$prefix}{$characterChunk}{$label} for a faceless {$tone} video. B-roll style: {$style}. Scene narration: {$sceneText}. Context: {$context}. Make it vertical-video friendly, visually specific, no text overlays.");
     }
 
     private function storeImage(string|null $url, Project $project, string|null $b64 = null): string

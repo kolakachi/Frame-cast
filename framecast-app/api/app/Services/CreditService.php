@@ -11,8 +11,9 @@ class CreditService
     public const BREAKDOWN  = 1;
     public const STOCK      = 1;   // per scene (stock video/image/audiogram)
     public const TTS        = 2;   // per scene
-    public const AI_MEDIUM  = 15;  // per scene, gpt-image-1 medium
-    public const AI_HIGH    = 40;  // per scene, gpt-image-1 high
+    public const AI_MEDIUM    = 15;  // per scene, gpt-image-1 medium
+    public const AI_HIGH      = 40;  // per scene, gpt-image-1 high
+    public const AI_CHARACTER = 25;  // per scene, Replicate flux-pulid (character + reference image)
     public const EXPORT     = 5;
 
     // Monthly credit allocations per plan

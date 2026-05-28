@@ -210,6 +210,19 @@ const visualSwapError = ref("");
 const aiImagePromptOverride = ref("");
 const aiImagePending = ref(false);
 const aiImageError = ref("");
+
+// Workspace-level characters: name + description + optional reference image.
+// Selecting one binds it to the active scene; the AI image prompt picks up the description.
+// Reference image: shown as the chip/grid thumbnail today; used by IP-Adapter when wired later.
+const characters = ref([]);
+const characterPopoverOpen = ref(false);
+const createCharacterOpen = ref(false);
+const createCharacterName = ref("");
+const createCharacterDescription = ref("");
+const createCharacterFile = ref(null);
+const createCharacterPreviewUrl = ref("");
+const createCharacterSaving = ref(false);
+const createCharacterError = ref("");
 const AI_IMAGE_STYLES = [
   { key: "cinematic",     label: "Cinematic",     icon: "🎬" },
   { key: "dark",          label: "Dark",           icon: "🌑" },
@@ -291,16 +304,18 @@ const motionSaveError = ref("");
 const visualStyleDraft = ref(null);
 let visualStyleSaveTimer = null;
 const visualStyleSaveState = ref("idle");
+// All panels collapsed by default — users open only what they need.
+// Cuts visual clog; the badges/tags on each header already surface state at a glance.
 const panelState = ref({
-  script: false,
-  visual: false,
-  motion: false,
-  voice: false,
-  sounds: false,
-  captions: false,
-  music: false,
-  brand: false,
-  project: false,
+  script: true,
+  visual: true,
+  motion: true,
+  voice: true,
+  sounds: true,
+  captions: true,
+  music: true,
+  brand: true,
+  project: true,
 });
 const sceneScriptDraft = ref("");
 let scriptSaveTimer = null;
@@ -3267,6 +3282,109 @@ async function persistMotionSettings(sceneId, nextSettings) {
   }
 }
 
+// ── Characters ──────────────────────────────────────────────────────────────
+async function loadCharacters() {
+  try {
+    const response = await api.get("/characters");
+    characters.value = response.data?.data?.characters ?? [];
+  } catch {
+    characters.value = [];
+  }
+}
+
+const activeCharacter = computed(() => {
+  const id = activeScene.value?.character_id;
+  if (!id) return null;
+  return characters.value.find((c) => c.id === id) ?? null;
+});
+
+async function selectCharacter(characterId) {
+  const scene = activeScene.value;
+  if (!scene) return;
+  characterPopoverOpen.value = false;
+  try {
+    const response = await api.patch(`/scenes/${scene.id}`, { character_id: characterId });
+    const updated = response.data?.data?.scene;
+    if (updated) {
+      scenes.value = scenes.value.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
+    }
+  } catch (e) {
+    // Silent revert — scene unchanged.
+  }
+}
+
+function pickCharacterFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    createCharacterError.value = "Please pick an image file (PNG or JPG).";
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    createCharacterError.value = "Image must be 10MB or less.";
+    return;
+  }
+  createCharacterError.value = "";
+  createCharacterFile.value = file;
+  if (createCharacterPreviewUrl.value) URL.revokeObjectURL(createCharacterPreviewUrl.value);
+  createCharacterPreviewUrl.value = URL.createObjectURL(file);
+}
+
+function clearCharacterFile() {
+  if (createCharacterPreviewUrl.value) URL.revokeObjectURL(createCharacterPreviewUrl.value);
+  createCharacterFile.value = null;
+  createCharacterPreviewUrl.value = "";
+}
+
+function closeCharacterModal() {
+  createCharacterOpen.value = false;
+  createCharacterName.value = "";
+  createCharacterDescription.value = "";
+  clearCharacterFile();
+  createCharacterError.value = "";
+}
+
+async function createCharacter() {
+  const name = createCharacterName.value.trim();
+  if (!name) {
+    createCharacterError.value = "Name is required.";
+    return;
+  }
+  createCharacterSaving.value = true;
+  createCharacterError.value = "";
+  try {
+    // If user attached an image, upload it as a workspace asset first.
+    let referenceAssetId = null;
+    if (createCharacterFile.value) {
+      const fd = new FormData();
+      fd.append("title", name);
+      fd.append("asset_type", "image");
+      fd.append("asset_file", createCharacterFile.value);
+      const upload = await api.post("/assets", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      referenceAssetId = upload.data?.data?.asset?.id ?? null;
+    }
+
+    const response = await api.post("/characters", {
+      name,
+      description: createCharacterDescription.value.trim() || null,
+      reference_asset_id: referenceAssetId,
+    });
+    const created = response.data?.data?.character;
+    if (created) {
+      characters.value = [created, ...characters.value];
+      await selectCharacter(created.id);
+    }
+    closeCharacterModal();
+  } catch (e) {
+    createCharacterError.value =
+      e.response?.data?.error?.message ?? "Could not create character.";
+  } finally {
+    createCharacterSaving.value = false;
+  }
+}
+
 function hookScoreClass(score) {
   if (score == null) return "score-none";
   if (score >= 80) return "score-green";
@@ -3863,6 +3981,7 @@ onMounted(() => {
   window.addEventListener("beforeunload", beforeUnloadHandler);
   loadMe();
   loadProject();
+  loadCharacters();
 });
 
 watch(showWaveformPreview, (active) => {
@@ -4647,6 +4766,49 @@ onBeforeUnmount(() => {
 
                 <!-- AI Image generation -->
                 <template v-else-if="selectedSwapVisualSource === 'AI Image'">
+                  <!-- Character chip — pick a workspace character to bind to this scene -->
+                  <div class="char-chip-wrap" @click.stop>
+                    <div class="char-chip" @click="characterPopoverOpen = !characterPopoverOpen">
+                      <div class="char-chip-thumb">
+                        <img v-if="activeCharacter?.reference_asset?.thumbnail_url || activeCharacter?.reference_asset?.storage_url"
+                             :src="activeCharacter.reference_asset.thumbnail_url || activeCharacter.reference_asset.storage_url" alt="" />
+                        <span v-else-if="activeCharacter">{{ activeCharacter.name.charAt(0).toUpperCase() }}</span>
+                        <span v-else style="opacity:.5;">◐</span>
+                      </div>
+                      <div class="char-chip-text">
+                        <div class="char-chip-name">{{ activeCharacter?.name || 'No character' }}</div>
+                        <div class="char-chip-trail">{{ activeCharacter ? 'Bound to this scene' : 'Tap to bind a character' }}</div>
+                      </div>
+                      <span class="char-chip-chev">▾</span>
+                    </div>
+                    <div v-if="characterPopoverOpen" class="char-popover">
+                      <div v-if="characters.length === 0" class="char-popover-empty">
+                        No characters yet. Create your first one.
+                      </div>
+                      <div v-else class="char-popover-grid">
+                        <div
+                          v-for="c in characters"
+                          :key="c.id"
+                          :class="['char-popover-item', activeScene?.character_id === c.id ? 'selected' : '']"
+                          @click="selectCharacter(c.id)"
+                        >
+                          <div class="char-popover-thumb">
+                            <img v-if="c.reference_asset?.thumbnail_url || c.reference_asset?.storage_url"
+                                 :src="c.reference_asset.thumbnail_url || c.reference_asset.storage_url" alt="" />
+                            <span v-else>{{ c.name.charAt(0).toUpperCase() }}</span>
+                          </div>
+                          <div class="char-popover-name">{{ c.name }}</div>
+                          <div class="char-popover-trail">{{ c.scenes_count > 0 ? `${c.scenes_count}${c.scenes_count === 1 ? ' scene' : ' scenes'}` : 'new' }}</div>
+                        </div>
+                      </div>
+                      <div class="char-popover-foot">
+                        <button v-if="activeScene?.character_id" class="char-popover-none" type="button" @click="selectCharacter(null)">Remove</button>
+                        <span v-else></span>
+                        <button class="char-popover-new" type="button" @click="characterPopoverOpen = false; createCharacterOpen = true;">＋ New character</button>
+                      </div>
+                    </div>
+                  </div>
+
                   <!-- Current result preview -->
                   <div v-if="activeScene?.visual_type === 'ai_image'" class="ai-image-result">
                     <div class="ai-image-preview">
@@ -5728,6 +5890,50 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </template>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Create-character modal — opened from the character chip popover -->
+    <Teleport to="body">
+      <div v-if="createCharacterOpen" class="ap-backdrop" @click.self="closeCharacterModal">
+        <div class="ap-modal" style="max-width:480px;">
+          <div class="ap-head">
+            <div class="ap-title">＋ New character</div>
+            <button class="ap-close" @click="closeCharacterModal">×</button>
+          </div>
+
+          <div class="ap-field">
+            <label class="ap-label">Reference image <span style="opacity:.5;font-weight:400">(optional)</span></label>
+            <label v-if="!createCharacterPreviewUrl" class="char-upload-drop">
+              <input type="file" accept="image/*" hidden @change="pickCharacterFile" />
+              <div class="char-upload-ico">⬆</div>
+              <div class="char-upload-copy">Drop or click to upload</div>
+              <div class="char-upload-sub">PNG or JPG · up to 10MB</div>
+            </label>
+            <div v-else class="char-upload-preview">
+              <img :src="createCharacterPreviewUrl" alt="" />
+              <button type="button" class="char-upload-clear" @click="clearCharacterFile">✕ Remove</button>
+            </div>
+            <div class="ap-hint">Shown as the character's thumbnail. Will guide visual consistency when IP-Adapter is wired.</div>
+          </div>
+
+          <div class="ap-field">
+            <label class="ap-label">Name</label>
+            <input v-model="createCharacterName" class="ap-input" placeholder="e.g. Marcus the Detective" maxlength="120" />
+          </div>
+          <div class="ap-field">
+            <label class="ap-label">Description <span style="opacity:.5;font-weight:400">(optional)</span></label>
+            <textarea v-model="createCharacterDescription" class="ap-input" rows="3" placeholder="A weathered 50-year-old detective in a worn trench coat, sharp eyes…" maxlength="2000"></textarea>
+            <div class="ap-hint">Used in scene prompts to keep the character consistent across episodes.</div>
+          </div>
+          <div v-if="createCharacterError" class="ap-error">{{ createCharacterError }}</div>
+          <div class="ap-foot">
+            <button class="btn btn-ghost btn-sm" type="button" @click="closeCharacterModal">Cancel</button>
+            <button class="btn btn-primary btn-sm" type="button" :disabled="createCharacterSaving" @click="createCharacter">
+              {{ createCharacterSaving ? (createCharacterFile ? 'Uploading…' : 'Saving…') : 'Create' }}
+            </button>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -6986,6 +7192,106 @@ button {
   object-fit: cover;
   transform-origin: center center;
 }
+
+/* ── Character chip + popover (inside Visual panel AI Image section) ─── */
+.char-chip-wrap { position: relative; margin-bottom: 10px; }
+.char-chip {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.char-chip:hover { border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); }
+.char-chip-thumb {
+  width: 30px; height: 30px; border-radius: 6px;
+  background: linear-gradient(135deg, #ff6b35 0%, #cf4f1d 100%);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px; color: #0a0a0f;
+  overflow: hidden;
+}
+.char-chip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.char-chip-text { flex: 1; min-width: 0; }
+.char-chip-name { font-size: 12.5px; font-weight: 600; line-height: 1.2; }
+.char-chip-trail { font-size: 10.5px; opacity: 0.55; margin-top: 1px; }
+.char-chip-chev { font-size: 11px; opacity: 0.55; }
+.char-popover {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+  background: #14141c;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.55);
+  z-index: 30;
+  padding: 10px;
+}
+.char-popover-empty { font-size: 12px; opacity: 0.55; text-align: center; padding: 18px 6px; }
+.char-popover-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-height: 200px; overflow-y: auto; }
+.char-popover-item {
+  border-radius: 7px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 7px 5px;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  cursor: pointer; text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.char-popover-item:hover { border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); }
+.char-popover-item.selected { border-color: rgba(255,107,53,0.55); background: rgba(255,107,53,0.12); }
+.char-popover-thumb {
+  width: 36px; height: 36px; border-radius: 6px;
+  background: linear-gradient(135deg, #ff6b35 0%, #cf4f1d 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px; color: #0a0a0f;
+  overflow: hidden;
+}
+.char-popover-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Upload zone in the create-character modal */
+.char-upload-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 1.5px dashed rgba(255,255,255,0.16); border-radius: 10px;
+  padding: 22px 12px; text-align: center; cursor: pointer;
+  background: rgba(255,255,255,0.02); transition: 0.15s;
+}
+.char-upload-drop:hover { border-color: rgba(255,107,53,0.45); background: rgba(255,107,53,0.05); }
+.char-upload-ico { font-size: 22px; opacity: 0.55; }
+.char-upload-copy { font-size: 13px; font-weight: 500; margin-top: 4px; }
+.char-upload-sub { font-size: 11px; opacity: 0.5; margin-top: 2px; }
+.char-upload-preview { position: relative; width: 100%; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: #0a0a0f; }
+.char-upload-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.char-upload-clear {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(0,0,0,0.55); color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+  font-size: 11px; padding: 4px 8px; border-radius: 6px;
+  cursor: pointer; font-family: inherit;
+}
+.char-upload-clear:hover { background: rgba(0,0,0,0.75); }
+.char-popover-name { font-size: 10.5px; font-weight: 600; line-height: 1.15; word-break: break-word; }
+.char-popover-trail { font-size: 9.5px; opacity: 0.45; margin-top: 2px; }
+.char-popover-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 8px; margin-top: 8px;
+}
+.char-popover-none {
+  background: transparent; border: none; color: rgba(255,255,255,0.5);
+  font-size: 11px; cursor: pointer; font-family: inherit;
+}
+.char-popover-none:hover { color: #fff; }
+.char-popover-new {
+  background: transparent; border: none; color: #ff6b35;
+  font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.char-popover-new:hover { color: #ff8055; }
+
+/* Hooks for the create-character modal — reuses .ap-* styles */
+.ap-hint { font-size: 11px; opacity: 0.55; margin-top: 4px; }
+.ap-error { font-size: 12px; color: #ff6b6b; margin: 10px 0; }
+
 
 .preview-fit-bg {
   position: absolute;

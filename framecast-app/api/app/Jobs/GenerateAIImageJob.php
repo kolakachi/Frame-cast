@@ -37,7 +37,7 @@ class GenerateAIImageJob implements ShouldQueue
 
     public function handle(ImageGenerationAdapter $adapter): void
     {
-        $scene = Scene::query()->with('project')->find($this->sceneId);
+        $scene = Scene::query()->with(['project', 'character.referenceAsset'])->find($this->sceneId);
 
         if (! $scene) {
             return;
@@ -46,13 +46,20 @@ class GenerateAIImageJob implements ShouldQueue
         GenerationProgressed::dispatch($this->projectId, 'ai_image', 'processing');
 
         try {
-            $prompt = $this->buildPrompt($scene);
+            // Character path: when the scene is bound to a character with a reference image,
+            // route to ReplicatePulidAdapter so the generated face matches the reference.
+            // Otherwise use the injected default adapter (DALL-E today).
+            $useCharacterRef = $scene->character_id
+                && $scene->character?->reference_asset_id
+                && $scene->character?->referenceAsset;
+
+            $prompt = $this->buildPrompt($scene, ! $useCharacterRef);
             $aspectRatio = $scene->project->aspect_ratio ?? '9:16';
 
             $scene->loadMissing('project');
             $project = $scene->project;
 
-            $result = $adapter->generate($prompt, $this->style, $aspectRatio, [
+            $options = [
                 'usage_context' => [
                     'workspace_id' => $project?->workspace_id,
                     'project_id' => $this->projectId,
@@ -60,7 +67,18 @@ class GenerateAIImageJob implements ShouldQueue
                     'scene_id' => $this->sceneId,
                     'style' => $this->style,
                 ],
-            ]);
+            ];
+
+            if ($useCharacterRef) {
+                $referenceUrl = $this->signedReferenceUrl($scene->character->referenceAsset);
+                if ($referenceUrl) {
+                    $options['reference_image_url'] = $referenceUrl;
+                    $adapter = app(\App\Services\Generation\Image\ReplicatePulidAdapter::class);
+                }
+                // else: silently fall back to default adapter (text-only) — no reference asset to send
+            }
+
+            $result = $adapter->generate($prompt, $this->style, $aspectRatio, $options);
 
             if (! $this->sceneStillMatchesGeneration($scene)) {
                 return;
@@ -295,7 +313,29 @@ class GenerateAIImageJob implements ShouldQueue
         return $rewritten;
     }
 
-    private function buildPrompt(Scene $scene): string
+    /**
+     * Build a public, signed URL to a character's reference asset so Replicate can fetch it.
+     * Returns null when the asset is missing or the storage path can't be resolved.
+     */
+    private function signedReferenceUrl(?\App\Models\Asset $asset): ?string
+    {
+        if (! $asset || ! $asset->storage_url) {
+            return null;
+        }
+        $storage = app(\App\Services\Media\StorageService::class);
+        $isStoredPath = $storage->extractPath((string) $asset->storage_url) !== null;
+        if (! $isStoredPath) {
+            // External URL already — pass through.
+            return (string) $asset->storage_url;
+        }
+        return \Illuminate\Support\Facades\URL::temporarySignedRoute(
+            'media.assets.content',
+            now()->addMinutes(30),
+            ['assetId' => $asset->getKey()],
+        );
+    }
+
+    private function buildPrompt(Scene $scene, bool $includeCharacterDescription = true): string
     {
         if ($this->promptOverride) {
             return trim($this->promptOverride);
@@ -320,7 +360,20 @@ class GenerateAIImageJob implements ShouldQueue
 
         $prefix = $referenceStyle !== '' ? "{$referenceStyle} " : ($consistencyCard !== '' ? "{$consistencyCard} " : '');
 
-        return trim("{$prefix}{$label} for a {$tone} video{$stylePart}: {$script}");
+        // Inject the scene's character into the prompt when we're going through DALL-E
+        // (no visual reference, identity is description-only). When PuLID is the adapter,
+        // identity comes from the reference image — over-describing the face in the prompt
+        // actually fights the reference, so we keep the prompt action-focused.
+        $characterChunk = '';
+        if ($includeCharacterDescription && $scene->character_id) {
+            $character = $scene->relationLoaded('character') ? $scene->character : $scene->character()->first();
+            if ($character) {
+                $desc = trim((string) $character->description);
+                $characterChunk = "Character: {$character->name}".($desc !== '' ? " — {$desc}" : '').'. ';
+            }
+        }
+
+        return trim("{$prefix}{$characterChunk}{$label} for a {$tone} video{$stylePart}: {$script}");
     }
 
     private function storeImage(string|null $url, Scene $scene, string|null $b64 = null): string

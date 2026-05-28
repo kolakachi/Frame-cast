@@ -22,6 +22,7 @@ class Scene extends Model
         'caption_settings_json',
         'visual_type',
         'visual_asset_id',
+        'character_id',
         'sound_asset_id',
         'sound_settings_json',
         'visual_prompt',
@@ -51,5 +52,10 @@ class Scene extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function character(): BelongsTo
+    {
+        return $this->belongsTo(Character::class);
     }
 }

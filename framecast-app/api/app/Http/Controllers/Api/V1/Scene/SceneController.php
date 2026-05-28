@@ -147,6 +147,7 @@ class SceneController extends Controller
             'scene_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'visual_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'visual_asset_id' => ['sometimes', 'nullable', 'integer'],
+            'character_id' => ['sometimes', 'nullable', 'integer'],
             'sound_asset_id' => ['sometimes', 'nullable', 'integer'],
             'sound_settings_json' => ['sometimes', 'nullable', 'array'],
             'visual_prompt' => ['sometimes', 'nullable', 'string'],
@@ -192,6 +193,18 @@ class SceneController extends Controller
 
             if (! $assetExists) {
                 return $this->error('invalid_asset', 'Sound asset not found in this workspace.', 422);
+            }
+        }
+
+        if (array_key_exists('character_id', $validated) && $validated['character_id'] !== null) {
+            $characterExists = \App\Models\Character::query()
+                ->whereKey($validated['character_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->where('status', 'active')
+                ->exists();
+
+            if (! $characterExists) {
+                return $this->error('invalid_character', 'Character not found in this workspace.', 422);
             }
         }
 
@@ -730,9 +743,18 @@ class SceneController extends Controller
             );
         }
 
-        // Credit guard for AI image regeneration
+        // Credit guard for AI image regeneration. Character-bound scenes route to flux-pulid
+        // which costs ~2.5× the DALL-E baseline, so we charge AI_CHARACTER instead.
         $aiQuality = $request->input('quality', 'medium');
-        $cost = $aiQuality === 'high' ? CreditService::AI_HIGH : CreditService::AI_MEDIUM;
+        $usesCharacter = $scene->character_id
+            && \App\Models\Character::query()
+                ->whereKey($scene->character_id)
+                ->where('workspace_id', $user->workspace_id)
+                ->whereNotNull('reference_asset_id')
+                ->exists();
+        $cost = $usesCharacter
+            ? CreditService::AI_CHARACTER
+            : ($aiQuality === 'high' ? CreditService::AI_HIGH : CreditService::AI_MEDIUM);
         $balance = $this->credits->balance((int) $user->workspace_id);
         if ($balance < $cost) {
             return response()->json([
