@@ -77,8 +77,9 @@ return [
         'pulid_id_weight'      => env('REPLICATE_PULID_ID_WEIGHT', 1.2),
         // Prompt-vs-reference weight: lower → reference photo dominates the result.
         'pulid_guidance_scale' => env('REPLICATE_PULID_GUIDANCE_SCALE', 3),
-        // More steps = better fidelity, slower render. 20–30 is the practical range.
-        'pulid_num_steps'      => env('REPLICATE_PULID_NUM_STEPS', 25),
+        // More steps = better fidelity, slower render. This flux-pulid version caps
+        // num_steps at 20 in its model schema; raising it will hard-fail with HTTP 422.
+        'pulid_num_steps'      => env('REPLICATE_PULID_NUM_STEPS', 20),
     ],
 
     'pixabay' => [
