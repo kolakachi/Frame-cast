@@ -619,6 +619,15 @@ const activeMotionClass = computed(() => {
 const activeSceneIndex = computed(() =>
   scenes.value.findIndex((scene) => scene.id === activeSceneId.value)
 );
+// Preview box matches the project's real aspect ratio (was locked to 9:16).
+// Fit within a 480×480 bounding box so the layout stays stable across ratios.
+const previewContainerStyle = computed(() => {
+  const ratio = project.value?.aspect_ratio || "9:16";
+  const [w, h] = { "9:16": [9, 16], "16:9": [16, 9], "1:1": [1, 1] }[ratio] || [9, 16];
+  const box = 480;
+  const scale = box / Math.max(w, h);
+  return { width: `${Math.round(w * scale)}px`, height: `${Math.round(h * scale)}px` };
+});
 const projectTitle = computed(
   () => project.value?.title || `Project #${projectId.value}`
 );
@@ -4303,7 +4312,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="editor-canvas">
-            <div class="preview-container">
+            <div class="preview-container" :style="previewContainerStyle">
               <div class="preview-video-bg">
                 <video
                   v-if="currentVisualUrl && activeSceneVisualIsVideo"
@@ -6962,6 +6971,7 @@ button {
 }
 
 .preview-container {
+  /* width/height come from :style binding (previewContainerStyle) to match the project aspect ratio */
   width: 270px;
   height: 480px;
   background: #000;
