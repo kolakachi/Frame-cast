@@ -896,6 +896,7 @@ class SceneController extends Controller
             'caption_settings_json' => $scene->caption_settings_json,
             'visual_type' => $scene->visual_type,
             'visual_asset_id' => $scene->visual_asset_id,
+            'character_id' => $scene->character_id,
             'visual_prompt' => $scene->visual_prompt,
             'visual_style' => $scene->visual_style,
             'image_generation_settings' => $this->normalizeImageGenerationSettings($scene),

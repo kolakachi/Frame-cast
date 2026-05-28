@@ -26,27 +26,8 @@ class ReplicatePulidAdapter implements ImageGenerationAdapter
         '1:1'  => ['width' => 1024, 'height' => 1024],
     ];
 
-    /**
-     * Minimal style descriptors so we stay consistent with the rest of the pipeline.
-     * The reference image carries identity; the prompt drives composition and tone.
-     */
-    private const STYLE_DESCRIPTORS = [
-        'cinematic'    => 'cinematic photography, dramatic lighting, film grain',
-        'dark'         => 'dark moody, deep shadows, noir, high contrast',
-        'documentary'  => 'documentary photo, natural light, realistic, candid',
-        'anime'        => 'anime style, cel-shaded, vibrant',
-        '90s_anime'    => '90s anime style, cel animation, vintage anime aesthetic',
-        '80s_anime'    => '80s anime style, retro mecha, vintage cel art',
-        'minimalist'   => 'minimalist, clean, simple, muted colors',
-        'realistic'    => 'photorealistic, highly detailed, 8k, sharp focus',
-        'vintage'      => 'vintage film, grain, faded, retro, analog',
-        'neon'         => 'neon lights, cyberpunk, glowing, night city',
-        'film_noir'    => 'film noir, monochrome, dramatic shadows, 1940s cinema',
-        'dark_fantasy' => 'dark fantasy, gothic, ominous, atmospheric',
-        'comic'        => 'comic book art, ink lines, bold colors',
-        'watercolor'   => 'watercolor painting, soft washes, paper texture',
-        'photoreal'    => 'photorealistic, highly detailed, 8k, sharp focus',
-    ];
+    // Style modifiers come from ImageStyleDescriptors — same source the editor's
+    // picker and every other adapter share, so styles never silently drop.
 
     public function providerKey(): string
     {
@@ -77,7 +58,7 @@ class ReplicatePulidAdapter implements ImageGenerationAdapter
         }
 
         $dims        = self::ASPECT_RATIO_DIMENSIONS[$aspectRatio] ?? self::ASPECT_RATIO_DIMENSIONS['9:16'];
-        $styleDesc   = self::STYLE_DESCRIPTORS[$style] ?? '';
+        $styleDesc   = ImageStyleDescriptors::for($style);
         $identitySc  = (float) ($options['identity_scale'] ?? 0.8);
         $version     = config('services.replicate.pulid_version');
 

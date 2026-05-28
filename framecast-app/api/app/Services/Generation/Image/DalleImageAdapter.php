@@ -60,7 +60,13 @@ class DalleImageAdapter implements ImageGenerationAdapter
         $apiKey = config('services.openai.api_key');
 
         $size = self::ASPECT_RATIO_MAP[$aspectRatio] ?? '1024x1792';
-        $stylePrefix = self::STYLE_PROMPT_MAP[$style] ?? '';
+        // STYLE_PROMPT_MAP is kept for the trailing-comma DALL-E phrasing; if a key isn't
+        // in the local map, fall back to the shared ImageStyleDescriptors so new picker
+        // styles don't silently drop.
+        $stylePrefix = self::STYLE_PROMPT_MAP[$style] ?? ImageStyleDescriptors::for($style);
+        if ($stylePrefix !== '' && substr($stylePrefix, -1) !== ',') {
+            $stylePrefix .= ',';
+        }
         $composition = self::ASPECT_RATIO_COMPOSITION[$aspectRatio] ?? self::ASPECT_RATIO_COMPOSITION['9:16'];
         $fullPrompt = trim("{$stylePrefix} {$prompt}. {$composition} No text, no writing, no letters, no words, no watermarks, no captions, no signs with readable text.");
         $model = config('services.openai.image_model', 'gpt-image-1');
