@@ -72,6 +72,13 @@ return [
         // Override REPLICATE_PULID_VERSION in env to swap to a newer revision.
         'pulid_model'   => env('REPLICATE_PULID_MODEL',   'zsxkib/flux-pulid'),
         'pulid_version' => env('REPLICATE_PULID_VERSION', '8baa7ef2255075b46f4d91cd238c21d31181b3e6a864463f967960bb0112525b'),
+        // Identity strength: higher → output sticks closer to the reference photo.
+        // Sweet spot 1.0–1.5; 0.8 is creative-friendly; 2.0+ tends to look overfit/plasticky.
+        'pulid_id_weight'      => env('REPLICATE_PULID_ID_WEIGHT', 1.2),
+        // Prompt-vs-reference weight: lower → reference photo dominates the result.
+        'pulid_guidance_scale' => env('REPLICATE_PULID_GUIDANCE_SCALE', 3),
+        // More steps = better fidelity, slower render. 20–30 is the practical range.
+        'pulid_num_steps'      => env('REPLICATE_PULID_NUM_STEPS', 25),
     ],
 
     'pixabay' => [

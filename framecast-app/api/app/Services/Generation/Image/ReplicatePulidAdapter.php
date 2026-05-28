@@ -59,8 +59,13 @@ class ReplicatePulidAdapter implements ImageGenerationAdapter
 
         $dims        = self::ASPECT_RATIO_DIMENSIONS[$aspectRatio] ?? self::ASPECT_RATIO_DIMENSIONS['9:16'];
         $styleDesc   = ImageStyleDescriptors::for($style);
-        $identitySc  = (float) ($options['identity_scale'] ?? 0.8);
         $version     = config('services.replicate.pulid_version');
+
+        // Three identity tuning knobs — defaults from services.replicate config,
+        // each overridable per-call via options for future per-character/per-scene control.
+        $idWeight      = (float) ($options['identity_scale'] ?? config('services.replicate.pulid_id_weight', 1.2));
+        $guidanceScale = (float) ($options['guidance_scale'] ?? config('services.replicate.pulid_guidance_scale', 3));
+        $numSteps      = (int)   ($options['num_steps']      ?? config('services.replicate.pulid_num_steps', 25));
 
         $fullPrompt = trim($styleDesc !== '' ? "{$prompt}. {$styleDesc}" : $prompt);
 
@@ -74,10 +79,10 @@ class ReplicatePulidAdapter implements ImageGenerationAdapter
                     'main_face_image'  => $referenceUrl,
                     'width'            => $dims['width'],
                     'height'           => $dims['height'],
-                    'id_weight'        => $identitySc,
+                    'id_weight'        => $idWeight,
                     'num_outputs'      => 1,
-                    'guidance_scale'   => 4,
-                    'num_steps'        => 20,
+                    'guidance_scale'   => $guidanceScale,
+                    'num_steps'        => $numSteps,
                 ],
             ]);
 
