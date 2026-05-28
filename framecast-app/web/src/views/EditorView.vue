@@ -4855,16 +4855,18 @@ onBeforeUnmount(() => {
                   ></textarea>
 
                   <div class="ai-gen-footer">
-                    <button class="btn btn-primary btn-sm" type="button" :disabled="aiImagePending" @click="generateAIImage">
-                      {{ aiImagePending ? '✦ Generating…' : '✦ Generate' }}
+                    <button class="btn btn-primary btn-sm" type="button" :disabled="aiImagePending || activeSceneAIImagePending" @click="generateAIImage">
+                      {{ (aiImagePending || activeSceneAIImagePending) ? '✦ Generating…' : '✦ Generate' }}
                     </button>
                   </div>
                   <div v-if="activeScene?.visual_type === 'ai_image'" class="ai-image-actions">
-                    <button class="btn btn-ghost btn-sm" style="flex:1;" type="button" :disabled="aiImagePending" @click="generateAIImage">Regenerate</button>
+                    <button class="btn btn-ghost btn-sm" style="flex:1;" type="button" :disabled="aiImagePending || activeSceneAIImagePending" @click="generateAIImage">
+                      {{ (aiImagePending || activeSceneAIImagePending) ? 'Generating…' : 'Regenerate' }}
+                    </button>
                   </div>
                   <div v-if="aiImageError" class="panel-error-copy">{{ aiImageError }}</div>
-                  <div v-if="aiImagePending" class="panel-hint-copy">This takes ~15s</div>
-                  <div v-if="visualStyleDraft && activeScene?.visual_type === 'ai_image' && !aiImagePending && visualStyleDraft !== (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style ?? visualStyleDraft)" class="style-regen-hint">
+                  <div v-if="aiImagePending || activeSceneAIImagePending" class="panel-hint-copy">This takes ~15s (PuLID can take up to 3 min on character scenes)</div>
+                  <div v-if="visualStyleDraft && activeScene?.visual_type === 'ai_image' && !(aiImagePending || activeSceneAIImagePending) && visualStyleDraft !== (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style ?? visualStyleDraft)" class="style-regen-hint">
                     Style changed — regenerate to apply.
                   </div>
                 </template>
