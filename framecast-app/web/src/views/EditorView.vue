@@ -286,7 +286,6 @@ const CAPTION_FONT_GROUPS = [
 ];
 const motionEffectDraft = ref("zoom_in");
 const motionIntensityDraft = ref("moderate");
-const visualFitDraft = ref("fit"); // 'fit' = blurred-fill (nothing cut), 'crop' = cover + center-crop
 const motionSaveState = ref("idle");
 const motionSaveError = ref("");
 const visualStyleDraft = ref(null);
@@ -295,7 +294,6 @@ const visualStyleSaveState = ref("idle");
 const panelState = ref({
   script: false,
   visual: false,
-  frame: false,
   motion: false,
   voice: false,
   sounds: false,
@@ -657,17 +655,6 @@ async function commitTitle() {
   }
 }
 
-const aspectRatioSaving = ref(false);
-async function changeAspectRatio(ratio) {
-  if (!project.value || ratio === project.value.aspect_ratio) return;
-  aspectRatioSaving.value = true;
-  try {
-    await api.patch(`/projects/${projectId.value}`, { aspect_ratio: ratio });
-    if (project.value) project.value.aspect_ratio = ratio;
-  } catch { /* revert silently */ } finally {
-    aspectRatioSaving.value = false;
-  }
-}
 const unreadCount = computed(() =>
   notifications.value.filter((item) => !item.is_read).length
 );
@@ -866,7 +853,6 @@ watch(
       const motionSettings = scene?.motion_settings || scene?.motion_settings_json || {};
       motionEffectDraft.value = String(motionSettings.effect || "zoom_in");
       motionIntensityDraft.value = String(motionSettings.intensity || "moderate");
-      visualFitDraft.value = motionSettings.fit === "crop" ? "crop" : "fit";
       visualStyleDraft.value = scene?.visual_style ?? scene?.image_generation_settings?.style ?? project.value?.ai_broll_style ?? null;
       visualStyleSaveState.value = "idle";
       aiImagePending.value = false;
@@ -1091,7 +1077,7 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
   }, 500);
 });
 
-watch([motionEffectDraft, motionIntensityDraft, visualFitDraft], () => {
+watch([motionEffectDraft, motionIntensityDraft], () => {
   const scene = activeScene.value;
   if (!scene) return;
 
@@ -1099,13 +1085,11 @@ watch([motionEffectDraft, motionIntensityDraft, visualFitDraft], () => {
   const nextSettings = {
     effect: motionEffectDraft.value,
     intensity: motionIntensityDraft.value,
-    fit: visualFitDraft.value,
   };
 
   if (
     String(savedMotion.effect || "zoom_in") === nextSettings.effect &&
-    String(savedMotion.intensity || "moderate") === nextSettings.intensity &&
-    (savedMotion.fit === "crop" ? "crop" : "fit") === nextSettings.fit
+    String(savedMotion.intensity || "moderate") === nextSettings.intensity
   ) {
     if (motionSaveTimer) {
       window.clearTimeout(motionSaveTimer);
@@ -3941,11 +3925,6 @@ onBeforeUnmount(() => {
         <header class="topbar">
           <div class="topbar-left">
             <div class="topbar-title">Editor</div>
-            <div class="topbar-breadcrumb">
-              <span class="topbar-project-name">{{ projectTitle }}</span>
-              <span class="topbar-sep">·</span>
-              <span class="topbar-ratio-badge">{{ project?.aspect_ratio || '9:16' }}</span>
-            </div>
           </div>
 
           <div class="topbar-right">
@@ -3984,6 +3963,9 @@ onBeforeUnmount(() => {
             <button :class="['btn btn-ghost btn-timeline-toggle', timelineOpen ? 'active' : '']" type="button" @click="timelineOpen = !timelineOpen">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="11" height="4" rx="1"/><rect x="3" y="17" width="15" height="4" rx="1"/></svg>
               Timeline
+            </button>
+            <button class="btn btn-ghost btn-back" type="button" @click="router.push({ name: 'project-variants', params: { projectId: projectId } })">
+              Variants
             </button>
 
             <div class="export-btn-wrap">
@@ -4319,29 +4301,28 @@ onBeforeUnmount(() => {
           <div class="editor-canvas">
             <div class="preview-container" :style="previewContainerStyle">
               <div class="preview-video-bg">
-                <!-- Blurred backdrop for 'fit' mode so the whole visual is visible inside the frame -->
-                <template v-if="currentVisualUrl && visualFitDraft === 'fit'">
+                <template v-if="currentVisualUrl && activeSceneVisualIsVideo">
                   <video
-                    v-if="activeSceneVisualIsVideo"
                     :src="currentVisualUrl"
                     class="preview-fit-bg"
-                    autoplay loop muted playsinline
+                    autoplay
+                    loop
+                    muted
+                    playsinline
                   ></video>
-                  <img v-else :src="currentVisualUrl" class="preview-fit-bg" alt="" />
+                  <video
+                    :src="currentVisualUrl"
+                    class="preview-image preview-video-contain"
+                    autoplay
+                    loop
+                    muted
+                    playsinline
+                  ></video>
                 </template>
-                <video
-                  v-if="currentVisualUrl && activeSceneVisualIsVideo"
-                  :src="currentVisualUrl"
-                  :class="['preview-image', visualFitDraft === 'fit' ? 'preview-fg-contain' : '']"
-                  autoplay
-                  loop
-                  muted
-                  playsinline
-                ></video>
                 <img
                   v-else-if="currentVisualUrl"
                   :src="currentVisualUrl"
-                  :class="['preview-image', visualFitDraft === 'fit' ? 'preview-fg-contain' : activeMotionClass]"
+                  :class="['preview-image', activeMotionClass]"
                   alt=""
                 />
                 <div v-else-if="showTextCardPreview" class="preview-fallback preview-fallback-text">
@@ -4502,16 +4483,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="control-row">
                   <span class="control-name">Aspect Ratio</span>
-                  <select
-                    class="control-value"
-                    :value="project?.aspect_ratio || '9:16'"
-                    :disabled="aspectRatioSaving"
-                    @change="changeAspectRatio($event.target.value)"
-                  >
-                    <option value="9:16">9:16 — Shorts / TikTok</option>
-                    <option value="1:1">1:1 — Square</option>
-                    <option value="16:9">16:9 — YouTube</option>
-                  </select>
+                  <span class="control-value">{{ project?.aspect_ratio || '9:16' }}</span>
                 </div>
               </div>
             </div>
@@ -4860,35 +4832,9 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- Frame fit panel — applies to any scene with a visual (image OR video) -->
+            <!-- Motion panel — visible only when scene visual is a still image -->
             <div
-              v-if="activeSceneIsStillImage || activeSceneVisualIsVideo"
-              :class="`panel-section ${panelState.frame ? 'collapsed' : ''}`"
-            >
-              <div class="panel-section-header" @click="togglePanel('frame')">
-                <div class="panel-label-row">
-                  <div class="panel-label panel-label-tight">Frame</div>
-                  <span class="panel-badge new">{{ visualFitDraft === 'fit' ? 'FIT' : 'CROP' }}</span>
-                </div>
-                <div class="panel-chevron">▾</div>
-              </div>
-              <div class="panel-section-body">
-                <div class="control-row" style="margin-top:4px;">
-                  <span class="control-name">When the visual doesn't match the frame</span>
-                  <select v-model="visualFitDraft" class="control-value">
-                    <option value="fit">Fit — show all (blurred bars)</option>
-                    <option value="crop">Crop — fill (may cut edges)</option>
-                  </select>
-                </div>
-                <div class="micro-label" style="margin-top:6px;opacity:.6;">
-                  Fit keeps the whole visual visible and fills the gaps with a blurred copy. Crop fills the frame edge-to-edge.
-                </div>
-              </div>
-            </div>
-
-            <!-- Motion panel — visible only when scene visual is a still image and fit is crop -->
-            <div
-              v-if="activeSceneIsStillImage && visualFitDraft === 'crop'"
+              v-if="activeSceneIsStillImage"
               :class="`panel-section ${panelState.motion ? 'collapsed' : ''}`"
             >
               <div class="panel-section-header" @click="togglePanel('motion')">
@@ -7039,10 +6985,8 @@ button {
 .preview-image {
   object-fit: cover;
   transform-origin: center center;
-  position: relative;
-  z-index: 1;
 }
-/* Blurred backdrop behind a contained foreground — mirrors FFmpeg blurred-fill. */
+
 .preview-fit-bg {
   position: absolute;
   inset: 0;
@@ -7050,10 +6994,14 @@ button {
   height: 100%;
   object-fit: cover;
   filter: blur(18px) saturate(1.05);
-  transform: scale(1.1); /* hide blur edge bleed */
-  z-index: 0;
+  transform: scale(1.1);
 }
-.preview-fg-contain { object-fit: contain !important; }
+
+.preview-video-contain {
+  object-fit: contain;
+  position: relative;
+  z-index: 1;
+}
 
 /* Ken Burns canvas preview — approximate visual (real motion rendered by FFmpeg) */
 @keyframes kb-zoom-in {

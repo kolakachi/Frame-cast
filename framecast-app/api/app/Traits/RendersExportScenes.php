@@ -102,11 +102,10 @@ trait RendersExportScenes
             $isVideo = $visualAsset !== null
                 && ($visualAsset->asset_type === 'video' || str_starts_with((string) $visualAsset->mime_type, 'video/'));
 
-            // Fit mode: 'crop' = cover + center-crop (full-bleed, may trim edges),
-            // 'fit' (default) = contain the whole visual, fill the bars with a blurred copy
-            // so nothing is lost when the visual's aspect ratio differs from the frame.
+            // Videos should preserve the whole frame on aspect-ratio changes. For stills we
+            // still respect any stored fit/crop preference, defaulting to blurred-fill.
             $fitMode = (string) (data_get($scene->motion_settings_json, 'fit', 'fit'));
-            $useFit  = $fitMode !== 'crop';
+            $useFit  = $isVideo ? true : $fitMode !== 'crop';
 
             // Ken Burns motion only applies to still images in crop mode — a contained
             // (letterboxed) image shouldn't pan/zoom its blurred backdrop.

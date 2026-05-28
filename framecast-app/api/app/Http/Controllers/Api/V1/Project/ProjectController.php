@@ -837,6 +837,19 @@ class ProjectController extends Controller
             'music_settings_json.duck_during_voice' => ['sometimes', 'boolean'],
         ]);
 
+        if (array_key_exists('aspect_ratio', $validated)) {
+            $existingAspectRatio = $project->aspect_ratio ? (string) $project->aspect_ratio : null;
+            $requestedAspectRatio = $validated['aspect_ratio'] ? (string) $validated['aspect_ratio'] : null;
+
+            if ($existingAspectRatio !== null && $requestedAspectRatio !== $existingAspectRatio) {
+                return $this->error(
+                    'aspect_ratio_locked',
+                    'Aspect ratio is locked after project creation. Create a new project if you need a different format.',
+                    422
+                );
+            }
+        }
+
         if (array_key_exists('channel_id', $validated) && $validated['channel_id']) {
             $channelExists = Channel::query()
                 ->whereKey($validated['channel_id'])
