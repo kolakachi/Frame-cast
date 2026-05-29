@@ -4901,8 +4901,14 @@ onBeforeUnmount(() => {
                   <!-- Current result preview -->
                   <div v-if="activeScene?.visual_type === 'ai_image'" class="ai-image-result">
                     <div class="ai-image-preview">
-                      <div class="ai-image-overlay-badge">✦ AI Generated</div>
-                      <img v-if="currentVisualUrl" :src="currentVisualUrl" style="width:100%;height:100%;object-fit:cover;" alt="" />
+                      <div class="ai-image-overlay-badge">{{ activeSceneVisualIsVideo ? '⚡ AI Animated' : '✦ AI Generated' }}</div>
+                      <video
+                        v-if="currentVisualUrl && activeSceneVisualIsVideo"
+                        :src="currentVisualUrl"
+                        style="width:100%;height:100%;object-fit:cover;"
+                        autoplay loop muted playsinline
+                      ></video>
+                      <img v-else-if="currentVisualUrl" :src="currentVisualUrl" style="width:100%;height:100%;object-fit:cover;" alt="" />
                       <div v-else class="ai-image-placeholder">
                         <div class="ai-image-ico">{{ activeSceneAIImagePending ? '⏳' : '🖼️' }}</div>
                         <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:6px;">

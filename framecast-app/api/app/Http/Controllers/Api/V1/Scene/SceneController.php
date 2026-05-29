@@ -831,11 +831,14 @@ class SceneController extends Controller
 
         $validated = $request->validate([
             'tier'             => ['required', 'string', \Illuminate\Validation\Rule::in(['quick', 'balanced', 'premium'])],
-            // Replicate i2v models in this set accept only 5 or 10 seconds.
-            'duration_seconds' => ['sometimes', 'integer', \Illuminate\Validation\Rule::in([5, 10])],
+            // Accept any 3–10s from clients; the adapter clamps to 5 or 10 internally
+            // (the Wan/Hailuo/Kling models only render those two buckets).
+            'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:500'],
         ]);
-        $durationSeconds = (int) ($validated['duration_seconds'] ?? 5);
+        // Normalize: anything ≤ 7 maps to a 5s render, ≥ 8 to a 10s render. Cost follows.
+        $requested = (int) ($validated['duration_seconds'] ?? 5);
+        $durationSeconds = $requested >= 8 ? 10 : 5;
 
         // Must have a source visual asset (image) to animate.
         $sourceAsset = $scene->visual_asset_id
