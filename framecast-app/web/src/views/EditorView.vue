@@ -211,6 +211,20 @@ const aiImagePromptOverride = ref("");
 const aiImagePending = ref(false);
 const aiImageError = ref("");
 
+// Animate (i2v rung 4) state.
+const animateModalOpen = ref(false);
+const animateTier = ref("quick");          // quick | balanced | premium
+const animateDuration = ref(6);            // 3 | 6 | 8 | 10
+const animateMotionPrompt = ref("");
+const animateSubmitting = ref(false);
+const animateError = ref("");
+const ANIMATE_TIER_COSTS = { quick: 60, balanced: 120, premium: 240 };
+const ANIMATE_TIER_META = {
+  quick:    { name: "Quick",    sub: "Fast · cheap",     quality: "Good",   render: "~30s" },
+  balanced: { name: "Balanced", sub: "Best for most",    quality: "Strong", render: "~90s" },
+  premium:  { name: "Premium",  sub: "Cinematic",        quality: "Top",    render: "~3 min" },
+};
+
 // Workspace-level characters: name + description + optional reference image.
 // Selecting one binds it to the active scene; the AI image prompt picks up the description.
 // Reference image: shown as the chip/grid thumbnail today; used by IP-Adapter when wired later.
@@ -348,6 +362,23 @@ const activeSceneAIImagePending = computed(() => {
   if (String(scene.visual_type || "") !== "ai_image") return false;
   if (scene.visual_asset) return false;
   return !settings.needs_visual;
+});
+
+// True while an i2v animation job is running for the active scene.
+const activeSceneAnimationPending = computed(() => {
+  const settings = activeScene.value?.image_generation_settings ?? {};
+  return Boolean(settings.animation_in_progress);
+});
+const activeSceneAnimationError = computed(() => {
+  return activeScene.value?.image_generation_settings?.animation_last_error || "";
+});
+const canAnimateActiveScene = computed(() => {
+  const scene = activeScene.value;
+  if (!scene) return false;
+  // Need a still image to animate from. If visual_asset is already a video, hide the button.
+  if (scene.visual_asset?.asset_type === "video") return false;
+  if (String(scene.visual_asset?.mime_type || "").startsWith("video/")) return false;
+  return Boolean(scene.visual_asset_id);
 });
 
 // When switching to a scene that has in_progress=true, auto-start the poll
@@ -3482,6 +3513,46 @@ async function generateAIImage() {
   // aiImagePending stays true until Reverb fires completed/failed
 }
 
+// ── i2v Animation (rung 4) ──────────────────────────────────────────────────
+function openAnimateModal() {
+  if (!canAnimateActiveScene.value || activeSceneAnimationPending.value) return;
+  animateTier.value = "quick";
+  animateDuration.value = 6;
+  animateMotionPrompt.value = "";
+  animateError.value = "";
+  animateModalOpen.value = true;
+}
+
+function closeAnimateModal() {
+  if (animateSubmitting.value) return;
+  animateModalOpen.value = false;
+}
+
+async function submitAnimate() {
+  const scene = activeScene.value;
+  if (!scene) return;
+  animateSubmitting.value = true;
+  animateError.value = "";
+  try {
+    const response = await api.post(`/scenes/${scene.id}/animate`, {
+      tier: animateTier.value,
+      duration_seconds: animateDuration.value,
+      motion_prompt: animateMotionPrompt.value.trim() || null,
+    });
+    const updated = response.data?.data?.scene;
+    if (updated) {
+      scenes.value = scenes.value.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
+    }
+    animateModalOpen.value = false;
+    pollSceneUntilVisual(scene.id);
+  } catch (err) {
+    animateError.value =
+      err.response?.data?.error?.message ?? "Animation could not start.";
+  } finally {
+    animateSubmitting.value = false;
+  }
+}
+
 async function pollSceneUntilVisual(sceneId, attempt = 0) {
   if (attempt >= 24) {
     aiImagePending.value = false;
@@ -3497,13 +3568,27 @@ async function pollSceneUntilVisual(sceneId, attempt = 0) {
         replaceSceneInCollection(refreshed);
         const settings = refreshed.image_generation_settings ?? {};
 
-        // Job still running — keep polling
-        if (settings.in_progress) {
+        // Image generation OR animation job still running — keep polling.
+        if (settings.in_progress || settings.animation_in_progress) {
           pollSceneUntilVisual(sceneId, attempt + 1);
           return;
         }
 
-        // Job failed
+        // Animation failure surfaces via animation_last_error — bail with a toast.
+        if (settings.animation_last_error) {
+          aiImagePending.value = false;
+          pushToast({ id: `anim-fail-${refreshed.id}-${Date.now()}`, title: 'Animation failed', message: settings.animation_last_error.slice(0, 240) });
+          return;
+        }
+
+        // Animation success: new visual_asset will be a video.
+        if (settings.animation_video_asset_id && refreshed.visual_asset?.asset_type === 'video') {
+          aiImagePending.value = false;
+          pushToast({ id: `anim-done-${refreshed.id}-${Date.now()}`, title: 'Animation ready', message: `Scene ${refreshed.scene_order ?? ''} is now a video clip.` });
+          return;
+        }
+
+        // Image gen failed
         if (settings.needs_visual) {
           aiImagePending.value = false;
           aiImageError.value =
@@ -3512,7 +3597,7 @@ async function pollSceneUntilVisual(sceneId, attempt = 0) {
           return;
         }
 
-        // Job succeeded — visual_asset is now the newly generated image
+        // Image gen succeeded — visual_asset is now the newly generated image
         if (refreshed.visual_asset) {
           aiImagePending.value = false;
           aiImageError.value = "";
@@ -4860,10 +4945,14 @@ onBeforeUnmount(() => {
                     </button>
                   </div>
                   <div v-if="activeScene?.visual_type === 'ai_image'" class="ai-image-actions">
-                    <button class="btn btn-ghost btn-sm" style="flex:1;" type="button" :disabled="aiImagePending || activeSceneAIImagePending" @click="generateAIImage">
+                    <button class="btn btn-ghost btn-sm" style="flex:1;" type="button" :disabled="aiImagePending || activeSceneAIImagePending || activeSceneAnimationPending" @click="generateAIImage">
                       {{ (aiImagePending || activeSceneAIImagePending) ? 'Generating…' : 'Regenerate' }}
                     </button>
+                    <button v-if="canAnimateActiveScene" class="btn btn-sm animate-btn" type="button" :disabled="activeSceneAnimationPending || aiImagePending" @click="openAnimateModal">
+                      {{ activeSceneAnimationPending ? 'Animating…' : '⚡ Animate' }}
+                    </button>
                   </div>
+                  <div v-if="activeSceneAnimationError" class="panel-error-copy">{{ activeSceneAnimationError }}</div>
                   <div v-if="aiImageError || activeSceneVisualGenerationError" class="panel-error-copy">{{ aiImageError || activeSceneVisualGenerationError }}</div>
                   <div v-if="aiImagePending || activeSceneAIImagePending" class="panel-hint-copy">This takes ~15s (PuLID can take up to 3 min on character scenes)</div>
                   <div v-if="visualStyleDraft && activeScene?.visual_type === 'ai_image' && !(aiImagePending || activeSceneAIImagePending) && visualStyleDraft !== (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style ?? visualStyleDraft)" class="style-regen-hint">
@@ -5935,6 +6024,74 @@ onBeforeUnmount(() => {
             <button class="btn btn-primary btn-sm" type="button" :disabled="createCharacterSaving" @click="createCharacter">
               {{ createCharacterSaving ? (createCharacterFile ? 'Uploading…' : 'Saving…') : 'Create' }}
             </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Animate scene modal — opened from the "⚡ Animate" button on AI image scenes -->
+    <Teleport to="body">
+      <div v-if="animateModalOpen" class="ap-backdrop" @click.self="closeAnimateModal">
+        <div class="ap-modal" style="max-width:560px;">
+          <div class="ap-head">
+            <div class="ap-title">⚡ Animate scene</div>
+            <button class="ap-close" @click="closeAnimateModal">×</button>
+          </div>
+
+          <div class="ap-field">
+            <label class="ap-label">Quality tier</label>
+            <div class="anim-tier-grid">
+              <button
+                v-for="key in ['quick','balanced','premium']"
+                :key="key"
+                type="button"
+                :class="['anim-tier', animateTier === key ? 'selected' : '']"
+                @click="animateTier = key"
+              >
+                <div class="anim-tier-head">
+                  <span class="anim-tier-name">{{ ANIMATE_TIER_META[key].name }}</span>
+                  <span v-if="key === 'balanced'" class="anim-tier-pill">RECOMMENDED</span>
+                </div>
+                <div class="anim-tier-sub">{{ ANIMATE_TIER_META[key].sub }}</div>
+                <div class="anim-tier-row"><span>Quality</span><span>{{ ANIMATE_TIER_META[key].quality }}</span></div>
+                <div class="anim-tier-row"><span>Render</span><span>{{ ANIMATE_TIER_META[key].render }}</span></div>
+                <div class="anim-tier-row"><span>Cost</span><span class="anim-tier-cost">{{ ANIMATE_TIER_COSTS[key] }} credits</span></div>
+              </button>
+            </div>
+          </div>
+
+          <div class="ap-field">
+            <label class="ap-label">Duration</label>
+            <div class="anim-duration-row">
+              <button
+                v-for="d in [3,6,8,10]"
+                :key="d"
+                type="button"
+                :class="['anim-dpill', animateDuration === d ? 'active' : '']"
+                @click="animateDuration = d"
+              >{{ d }} s</button>
+            </div>
+          </div>
+
+          <div class="ap-field">
+            <label class="ap-label">Motion prompt <span style="opacity:.5;font-weight:400">(optional)</span></label>
+            <textarea v-model="animateMotionPrompt" class="ap-input" rows="2" maxlength="500" placeholder="e.g. slow camera push-in, subtle hair movement, drifting fog"></textarea>
+            <div class="ap-hint">Describe the motion you want. Leave blank for a sensible default.</div>
+          </div>
+
+          <div v-if="animateError" class="ap-error">{{ animateError }}</div>
+
+          <div class="anim-foot">
+            <div class="anim-total">
+              <span class="anim-total-credits">{{ ANIMATE_TIER_COSTS[animateTier] }} credits</span>
+              <span class="anim-total-sub">{{ animateDuration }} s clip · regenerate if uncanny</span>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-ghost btn-sm" type="button" :disabled="animateSubmitting" @click="closeAnimateModal">Cancel</button>
+              <button class="btn btn-primary btn-sm" type="button" :disabled="animateSubmitting" @click="submitAnimate">
+                {{ animateSubmitting ? 'Starting…' : '⚡ Animate' }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -9150,6 +9307,95 @@ select.control-value {
   gap: 6px;
   margin-top: 6px;
 }
+
+/* ── Animate (i2v rung 4) — button + modal ─────────────────────────────── */
+.animate-btn {
+  flex: 1;
+  background: rgba(255, 107, 53, 0.12);
+  border: 1px solid rgba(255, 107, 53, 0.4);
+  color: #ff8055;
+  font-weight: 600;
+}
+.animate-btn:hover:not(:disabled) {
+  background: rgba(255, 107, 53, 0.22);
+  border-color: rgba(255, 107, 53, 0.7);
+}
+
+.anim-tier-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.anim-tier {
+  background: rgba(255,255,255,0.03);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 12px 10px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  position: relative;
+  transition: 0.15s;
+}
+.anim-tier:hover { border-color: rgba(255,255,255,0.2); }
+.anim-tier.selected {
+  border-color: #ff6b35;
+  background: rgba(255,107,53,0.1);
+  box-shadow: inset 0 0 0 1px rgba(255,107,53,0.4);
+}
+.anim-tier-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+}
+.anim-tier-name { font-size: 13px; font-weight: 700; }
+.anim-tier-pill {
+  background: #ff6b35; color: #0a0a0f;
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.06em;
+  padding: 2px 6px; border-radius: 4px;
+}
+.anim-tier-sub {
+  font-size: 10px; opacity: 0.55;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  margin-top: 2px; margin-bottom: 10px;
+}
+.anim-tier-row {
+  display: flex; justify-content: space-between;
+  font-size: 11px; margin-top: 3px; color: rgba(255,255,255,0.7);
+}
+.anim-tier-row span:first-child { opacity: 0.55; }
+.anim-tier-cost { color: #ff6b35; font-weight: 700; }
+
+.anim-duration-row { display: flex; gap: 6px; }
+.anim-dpill {
+  flex: 1;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px;
+  padding: 8px 0;
+  font-family: inherit; font-size: 12.5px; color: rgba(255,255,255,0.75);
+  cursor: pointer;
+  transition: 0.15s;
+}
+.anim-dpill:hover { border-color: rgba(255,255,255,0.2); }
+.anim-dpill.active {
+  background: rgba(255,107,53,0.15);
+  border-color: rgba(255,107,53,0.55);
+  color: #ff8055;
+  font-weight: 600;
+}
+
+.anim-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 14px;
+  margin-top: 10px;
+}
+.anim-total-credits {
+  color: #ff6b35; font-weight: 700; font-size: 15px; margin-right: 6px;
+}
+.anim-total-sub { font-size: 11px; opacity: 0.55; }
 
 /* AI prompt area */
 .ai-prompt-area {

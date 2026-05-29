@@ -819,6 +819,91 @@ class SceneController extends Controller
         ]);
     }
 
+    public function animate(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $validated = $request->validate([
+            'tier'             => ['required', 'string', \Illuminate\Validation\Rule::in(['quick', 'balanced', 'premium'])],
+            'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
+            'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:500'],
+        ]);
+
+        // Must have a source visual asset (image) to animate.
+        $sourceAsset = $scene->visual_asset_id
+            ? \App\Models\Asset::query()->find($scene->visual_asset_id)
+            : null;
+        if (! $sourceAsset || str_starts_with((string) $sourceAsset->mime_type, 'video/') || $sourceAsset->asset_type === 'video') {
+            return $this->error('no_source_image', 'Generate a still image for this scene before animating.', 422);
+        }
+
+        $cost = match ($validated['tier']) {
+            'premium'  => CreditService::VIDEO_PREMIUM,
+            'balanced' => CreditService::VIDEO_BALANCED,
+            default    => CreditService::VIDEO_QUICK,
+        };
+
+        $balance = $this->credits->balance((int) $user->workspace_id);
+        if ($balance < $cost) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'insufficient_credits',
+                    'message' => "You need {$cost} credits to animate this scene. Your balance is {$balance}.",
+                    'context' => ['balance' => $balance, 'required' => $cost, 'shortage' => $cost - $balance],
+                ],
+            ], 402);
+        }
+
+        // Concurrency guard — reject if an animation job is already running on this scene.
+        $existing = $scene->image_generation_settings_json ?? [];
+        if (! empty($existing['animation_in_progress'])) {
+            $startedAt = isset($existing['animation_started_at'])
+                ? \Carbon\Carbon::parse($existing['animation_started_at'])
+                : null;
+            $isStale = $startedAt === null || $startedAt->diffInMinutes(now()) >= 10;
+            if (! $isStale) {
+                return $this->error('animation_in_progress', 'Animation already running for this scene.', 409);
+            }
+        }
+
+        if (! $this->credits->deduct((int) $user->workspace_id, $cost, "animate:{$validated['tier']}")) {
+            return $this->error('insufficient_credits', 'Could not deduct credits for this animation.', 402);
+        }
+
+        // Lock the scene so the editor knows an animation is running.
+        $scene->forceFill([
+            'image_generation_settings_json' => array_merge($existing, [
+                'animation_in_progress'  => true,
+                'animation_last_error'   => null,
+                'animation_tier'         => $validated['tier'],
+                'animation_started_at'   => now()->toIso8601String(),
+            ]),
+        ])->save();
+
+        \App\Jobs\AnimateSceneJob::dispatch(
+            $scene->getKey(),
+            $scene->project_id,
+            $validated['tier'],
+            $validated['duration_seconds'] ?? 6,
+            $validated['motion_prompt'] ?? null,
+        );
+
+        return response()->json([
+            'data' => [
+                'scene'    => $this->serializeScene($scene->fresh()),
+                'cost'     => $cost,
+                'tier'     => $validated['tier'],
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function destroy(Request $request, int $sceneId): JsonResponse
     {
         /** @var User $user */

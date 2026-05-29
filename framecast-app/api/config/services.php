@@ -80,6 +80,16 @@ return [
         // More steps = better fidelity, slower render. This flux-pulid version caps
         // num_steps at 20 in its model schema; raising it will hard-fail with HTTP 422.
         'pulid_num_steps'      => env('REPLICATE_PULID_NUM_STEPS', 20),
+
+        // ── Image-to-video (rung 4) — three tiers, each a different upstream model.
+        // All slugs + version hashes overridable in env. Versions left empty until pinned
+        // by hand from the model page on replicate.com (REPLICATE_I2V_*_VERSION).
+        'i2v_quick_model'      => env('REPLICATE_I2V_QUICK_MODEL',    'zsxkib/wan-2.1-i2v-480p'),
+        'i2v_quick_version'    => env('REPLICATE_I2V_QUICK_VERSION',  ''),
+        'i2v_balanced_model'   => env('REPLICATE_I2V_BALANCED_MODEL', 'minimax/hailuo-02'),
+        'i2v_balanced_version' => env('REPLICATE_I2V_BALANCED_VERSION', ''),
+        'i2v_premium_model'    => env('REPLICATE_I2V_PREMIUM_MODEL',  'kwaivgi/kling-v2.1-master-i2v'),
+        'i2v_premium_version'  => env('REPLICATE_I2V_PREMIUM_VERSION', ''),
     ],
 
     'pixabay' => [

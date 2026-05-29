@@ -213,6 +213,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{sceneId}/regenerate-voice', [SceneController::class, 'regenerateVoice'])->whereNumber('sceneId');
             Route::post('/{sceneId}/swap-visual', [SceneController::class, 'swapVisual'])->whereNumber('sceneId');
             Route::post('/{sceneId}/generate-image', [SceneController::class, 'generateImage'])->whereNumber('sceneId');
+            Route::post('/{sceneId}/animate', [SceneController::class, 'animate'])->whereNumber('sceneId');
             Route::post('/{sceneId}/rewrite', [SceneController::class, 'rewrite'])->whereNumber('sceneId');
             Route::post('/{sceneId}/duplicate', [SceneController::class, 'duplicate'])->whereNumber('sceneId');
             Route::delete('/{sceneId}', [SceneController::class, 'destroy'])->whereNumber('sceneId');

@@ -14,6 +14,12 @@ class CreditService
     public const AI_MEDIUM    = 15;  // per scene, gpt-image-1 medium
     public const AI_HIGH      = 40;  // per scene, gpt-image-1 high
     public const AI_CHARACTER = 25;  // per scene, Replicate flux-pulid (character + reference image)
+
+    // Image-to-video animation tiers — per 6-second clip; longer clips scale roughly proportionally.
+    // Wan 2.1 480p / Hailuo / Kling 2.1 mapping.
+    public const VIDEO_QUICK    = 60;   // ~$0.30 per 6s clip — Wan 2.1 i2v 480p
+    public const VIDEO_BALANCED = 120;  // ~$0.60 per 6s clip — Hailuo MiniMax
+    public const VIDEO_PREMIUM  = 240;  // ~$1.20 per 6s clip — Kling 2.1
     public const EXPORT     = 5;
 
     // Monthly credit allocations per plan

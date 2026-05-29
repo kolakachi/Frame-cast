@@ -28,6 +28,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(TranslationAdapter::class, OpenAITranslationAdapter::class);
         // Default image generation provider — swap to ReplicateImageAdapter for cost tier
         $this->app->bind(ImageGenerationAdapter::class, DalleImageAdapter::class);
+
+        // Image-to-video (animation): single adapter routes between tier models internally.
+        $this->app->bind(
+            \App\Services\Generation\Video\I2VAdapter::class,
+            \App\Services\Generation\Video\ReplicateI2VAdapter::class,
+        );
     }
 
     /**
