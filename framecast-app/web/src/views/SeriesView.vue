@@ -77,7 +77,6 @@ onMounted(loadSeries)
               <span class="series-pill">{{ s.episodes_count || 0 }} ep{{ s.episodes_count !== 1 ? 's' : '' }}</span>
               <span v-if="s.tone" class="series-pill">{{ s.tone }}</span>
               <span v-if="s.memory_window > 0" class="series-pill">{{ s.memory_window }}-ep memory</span>
-              <span v-if="s.characters?.length" class="series-pill">{{ s.characters.length }} char{{ s.characters.length !== 1 ? 's' : '' }}</span>
             </div>
             <p v-if="s.description" class="series-desc">{{ s.description }}</p>
           </div>

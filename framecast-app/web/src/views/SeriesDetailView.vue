@@ -19,9 +19,6 @@ const showEditBible = ref(false)
 const bibleForm = ref({})
 const savingBible = ref(false)
 
-const showAddChar = ref(false)
-const charForm = ref({ name: '', visual_description: '', personality_notes: '' })
-const addingChar = ref(false)
 
 const showNewEpisode = ref(false)
 const episodeForm = ref({ title: '', prompt: '' })
@@ -38,9 +35,6 @@ const STEP_LABELS = {
   failed: 'Failed',
 }
 
-const activeCharacters = computed(() =>
-  (series.value?.characters || []).filter(c => c.status === 'active')
-)
 
 async function load() {
   loading.value = true
@@ -99,40 +93,6 @@ async function saveBible() {
   }
 }
 
-async function addCharacter() {
-  if (!charForm.value.name.trim()) return
-  addingChar.value = true
-  try {
-    const res = await api.post(`/series/${seriesId}/characters`, {
-      name: charForm.value.name.trim(),
-      visual_description: charForm.value.visual_description.trim() || null,
-      personality_notes: charForm.value.personality_notes.trim() || null,
-    })
-    const newChar = res.data.data.character
-    series.value = {
-      ...series.value,
-      characters: [...(series.value.characters || []), newChar],
-    }
-    charForm.value = { name: '', visual_description: '', personality_notes: '' }
-    showAddChar.value = false
-  } catch (e) {
-    console.error(e)
-  } finally {
-    addingChar.value = false
-  }
-}
-
-async function removeCharacter(characterId) {
-  try {
-    await api.delete(`/series/${seriesId}/characters/${characterId}`)
-    series.value = {
-      ...series.value,
-      characters: (series.value.characters || []).filter(c => c.id !== characterId),
-    }
-  } catch (e) {
-    console.error(e)
-  }
-}
 
 function statusClass(status) {
   if (status === 'ready_for_review') return 'status-ready'
@@ -205,17 +165,12 @@ onMounted(load)
               <div class="stat-val">{{ episodes.length }}</div>
               <div class="stat-label">Episodes</div>
             </div>
-            <div class="stat">
-              <div class="stat-val">{{ activeCharacters.length }}</div>
-              <div class="stat-label">Characters</div>
-            </div>
           </div>
         </div>
 
         <div class="tabs">
           <button :class="['tab', activeTab === 'episodes' ? 'active' : '']" type="button" @click="activeTab = 'episodes'">Episodes</button>
           <button :class="['tab', activeTab === 'bible' ? 'active' : '']" type="button" @click="activeTab = 'bible'">Series Bible</button>
-          <button :class="['tab', activeTab === 'characters' ? 'active' : '']" type="button" @click="activeTab = 'characters'">Characters</button>
         </div>
 
         <div v-if="activeTab === 'episodes'" class="tab-content">
@@ -288,48 +243,6 @@ onMounted(load)
           </div>
         </div>
 
-        <div v-if="activeTab === 'characters'" class="tab-content">
-          <div class="chars-header">
-            <h3 class="section-title">Characters</h3>
-            <button class="btn-ghost-sm" type="button" @click="showAddChar = true">+ Add Character</button>
-          </div>
-          <div class="char-explainer">
-            <div class="char-explainer-col">
-              <div class="char-explainer-icon">✦</div>
-              <div>
-                <div class="char-explainer-title">Script consistency</div>
-                <div class="char-explainer-text">Personality notes are injected into the script prompt so the AI writes each character's lines true to their voice and role — every episode.</div>
-              </div>
-            </div>
-            <div class="char-explainer-col">
-              <div class="char-explainer-icon">◼</div>
-              <div>
-                <div class="char-explainer-title">Visual consistency</div>
-                <div class="char-explainer-text">Visual descriptions are prepended to every AI image prompt involving this character, anchoring their appearance, style, and presence across all episodes.</div>
-              </div>
-            </div>
-          </div>
-          <div v-if="activeCharacters.length === 0" class="empty-state-inline">
-            <p>No characters defined yet. Add recurring personas, narrators, or visual archetypes.</p>
-          </div>
-          <div v-else class="char-list">
-            <div v-for="c in activeCharacters" :key="c.id" class="char-card">
-              <div class="char-header">
-                <div class="char-avatar">{{ c.name[0]?.toUpperCase() }}</div>
-                <div class="char-name">{{ c.name }}</div>
-                <button class="char-remove" type="button" @click="removeCharacter(c.id)">✕</button>
-              </div>
-              <div v-if="c.personality_notes" class="char-field">
-                <div class="char-field-label">Personality</div>
-                <div class="char-field-value">{{ c.personality_notes }}</div>
-              </div>
-              <div v-if="c.visual_description" class="char-field">
-                <div class="char-field-label">Visual</div>
-                <div class="char-field-value">{{ c.visual_description }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
       </template>
 
       <div v-if="showEditBible" class="modal-overlay" @click.self="showEditBible = false">
@@ -417,32 +330,6 @@ onMounted(load)
         </div>
       </div>
 
-      <div v-if="showAddChar" class="modal-overlay" @click.self="showAddChar = false">
-        <div class="modal">
-          <div class="modal-header">
-            <h2 class="modal-title">Add Character</h2>
-            <button class="modal-close" type="button" @click="showAddChar = false">✕</button>
-          </div>
-          <div class="modal-body">
-            <div class="field">
-              <label class="field-label">Name *</label>
-              <input v-model="charForm.name" class="field-input" type="text" placeholder="Character name" />
-            </div>
-            <div class="field">
-              <label class="field-label">Personality Notes</label>
-              <textarea v-model="charForm.personality_notes" class="field-textarea" rows="2" placeholder="How they speak, their traits, their role in the series…"></textarea>
-            </div>
-            <div class="field">
-              <label class="field-label">Visual Description</label>
-              <textarea v-model="charForm.visual_description" class="field-textarea" rows="2" placeholder="Used in AI image prompts — appearance, style, clothing…"></textarea>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-ghost" type="button" @click="showAddChar = false">Cancel</button>
-            <button class="btn-primary" type="button" :disabled="addingChar || !charForm.name.trim()" @click="addCharacter">{{ addingChar ? 'Adding…' : 'Add Character' }}</button>
-          </div>
-        </div>
-      </div>
     </main>
   </div>
 </template>

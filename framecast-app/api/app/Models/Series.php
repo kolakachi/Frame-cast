@@ -66,10 +66,9 @@ class Series extends Model
         return $this->belongsTo(Channel::class);
     }
 
-    public function characters(): HasMany
-    {
-        return $this->hasMany(SeriesCharacter::class);
-    }
+    // Series characters (CRUD-only legacy) was removed in May 2026. Workspace-level
+    // Characters (App\Models\Character) is the supported home — flux-pulid integrated,
+    // multi-reference photos, identity strength, scene binding.
 
     public function episodes(): HasMany
     {

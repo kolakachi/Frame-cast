@@ -131,10 +131,6 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/{seriesId}', [SeriesController::class, 'update'])->whereNumber('seriesId');
             Route::delete('/{seriesId}', [SeriesController::class, 'destroy'])->whereNumber('seriesId');
             Route::get('/{seriesId}/episodes', [SeriesController::class, 'episodes'])->whereNumber('seriesId');
-            Route::get('/{seriesId}/characters', [SeriesController::class, 'characters'])->whereNumber('seriesId');
-            Route::post('/{seriesId}/characters', [SeriesController::class, 'storeCharacter'])->whereNumber('seriesId');
-            Route::patch('/{seriesId}/characters/{characterId}', [SeriesController::class, 'updateCharacter'])->whereNumber('seriesId')->whereNumber('characterId');
-            Route::delete('/{seriesId}/characters/{characterId}', [SeriesController::class, 'destroyCharacter'])->whereNumber('seriesId')->whereNumber('characterId');
         });
 
         Route::prefix('/channels')->group(function (): void {

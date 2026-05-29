@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\V1\Series;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\Series;
-use App\Models\SeriesCharacter;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -65,7 +64,7 @@ class SeriesController extends Controller
 
         return response()->json([
             'data' => [
-                'series' => $this->serializeSeries($series->loadCount('episodes')->load('characters')),
+                'series' => $this->serializeSeries($series->loadCount('episodes')),
             ],
             'meta' => [],
         ]);
@@ -141,112 +140,9 @@ class SeriesController extends Controller
         ]);
     }
 
-    public function characters(Request $request, int $seriesId): JsonResponse
-    {
-        /** @var User $user */
-        $user = $request->user();
-        $series = $this->findForUser($user, $seriesId);
-
-        if (! $series) {
-            return $this->notFound();
-        }
-
-        return response()->json([
-            'data' => [
-                'characters' => $series->characters->map(fn (SeriesCharacter $c): array => $this->serializeCharacter($c))->all(),
-            ],
-            'meta' => [],
-        ]);
-    }
-
-    public function storeCharacter(Request $request, int $seriesId): JsonResponse
-    {
-        /** @var User $user */
-        $user = $request->user();
-        $series = $this->findForUser($user, $seriesId);
-
-        if (! $series) {
-            return $this->notFound();
-        }
-
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'visual_description' => ['nullable', 'string'],
-            'personality_notes' => ['nullable', 'string'],
-            'appearance_json' => ['nullable', 'array'],
-        ]);
-
-        $character = SeriesCharacter::query()->create([
-            ...$validated,
-            'series_id' => $series->getKey(),
-            'status' => 'active',
-        ]);
-
-        return response()->json([
-            'data' => ['character' => $this->serializeCharacter($character)],
-            'meta' => [],
-        ], 201);
-    }
-
-    public function updateCharacter(Request $request, int $seriesId, int $characterId): JsonResponse
-    {
-        /** @var User $user */
-        $user = $request->user();
-        $series = $this->findForUser($user, $seriesId);
-
-        if (! $series) {
-            return $this->notFound();
-        }
-
-        $character = SeriesCharacter::query()
-            ->where('series_id', $series->getKey())
-            ->find($characterId);
-
-        if (! $character) {
-            return $this->notFound();
-        }
-
-        $validated = $request->validate([
-            'name' => ['sometimes', 'string', 'max:255'],
-            'visual_description' => ['sometimes', 'nullable', 'string'],
-            'personality_notes' => ['sometimes', 'nullable', 'string'],
-            'appearance_json' => ['sometimes', 'nullable', 'array'],
-            'status' => ['sometimes', 'in:active,archived'],
-        ]);
-
-        $character->fill($validated)->save();
-
-        return response()->json([
-            'data' => ['character' => $this->serializeCharacter($character->fresh())],
-            'meta' => [],
-        ]);
-    }
-
-    public function destroyCharacter(Request $request, int $seriesId, int $characterId): JsonResponse
-    {
-        /** @var User $user */
-        $user = $request->user();
-        $series = $this->findForUser($user, $seriesId);
-
-        if (! $series) {
-            return $this->notFound();
-        }
-
-        $character = SeriesCharacter::query()
-            ->where('series_id', $series->getKey())
-            ->find($characterId);
-
-        if (! $character) {
-            return $this->notFound();
-        }
-
-        $character->delete();
-
-        return response()->json([
-            'data' => ['deleted' => true],
-            'meta' => [],
-        ]);
-    }
+    // Legacy series-character CRUD endpoints removed May 2026. Workspace-level
+    // Characters (App\Http\Controllers\Api\V1\Character\CharacterController) is the
+    // supported home — flux-pulid integration, scene binding, identity strength.
 
     private function findForUser(User $user, int $seriesId): ?Series
     {
@@ -301,10 +197,6 @@ class SeriesController extends Controller
      */
     private function serializeSeries(Series $series): array
     {
-        $characters = $series->relationLoaded('characters')
-            ? $series->characters->map(fn (SeriesCharacter $c): array => $this->serializeCharacter($c))->all()
-            : null;
-
         return [
             'id' => $series->getKey(),
             'workspace_id' => $series->workspace_id,
@@ -334,29 +226,11 @@ class SeriesController extends Controller
             'default_language' => $series->default_language,
             'status' => $series->status,
             'episodes_count' => (int) ($series->episodes_count ?? 0),
-            'characters' => $characters,
             'created_at' => $series->created_at?->toIso8601String(),
             'updated_at' => $series->updated_at?->toIso8601String(),
         ];
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function serializeCharacter(SeriesCharacter $character): array
-    {
-        return [
-            'id' => $character->getKey(),
-            'series_id' => $character->series_id,
-            'name' => $character->name,
-            'visual_description' => $character->visual_description,
-            'personality_notes' => $character->personality_notes,
-            'appearance_json' => $character->appearance_json,
-            'status' => $character->status,
-            'created_at' => $character->created_at?->toIso8601String(),
-            'updated_at' => $character->updated_at?->toIso8601String(),
-        ];
-    }
 
     private function notFound(): JsonResponse
     {
