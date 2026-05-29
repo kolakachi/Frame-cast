@@ -60,6 +60,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/billing/portal', [BillingController::class, 'portal']);
         Route::get('/me', [VerificationController::class, 'me']);
         Route::patch('/me', [VerificationController::class, 'updateMe']);
+        Route::get('/me/export', [VerificationController::class, 'exportMe']);
+        Route::delete('/me', [VerificationController::class, 'deleteMe']);
         Route::post('/verification/storage-smoke', [VerificationController::class, 'storageSmoke']);
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');

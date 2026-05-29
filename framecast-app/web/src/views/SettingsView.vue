@@ -86,6 +86,63 @@ const watermarkEnabled     = ref(false)
 
 const accountForm = ref({ name: '', timezone: 'UTC' })
 
+// ── Danger zone: data export + account deletion (GDPR) ────
+const exportPending = ref(false)
+const deleteModalOpen = ref(false)
+const deleteConfirmEmail = ref('')
+const deleteAccountPending = ref(false)
+const deleteError = ref('')
+
+async function downloadDataExport() {
+  if (exportPending.value) return
+  exportPending.value = true
+  try {
+    const response = await api.get('/me/export', { responseType: 'blob' })
+    const blob = new Blob([response.data], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    // Pull filename from Content-Disposition if present, else fall back to a sane default.
+    const disposition = response.headers['content-disposition'] || ''
+    const match = disposition.match(/filename="?([^";]+)"?/)
+    a.download = match ? match[1] : `wyvstudio-export-${Date.now()}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch {
+    /* silent — user will retry */
+  } finally {
+    exportPending.value = false
+  }
+}
+
+function openDeleteModal() {
+  deleteConfirmEmail.value = ''
+  deleteError.value = ''
+  deleteModalOpen.value = true
+}
+
+async function deleteAccount() {
+  if (!deleteConfirmEmail.value.trim()) {
+    deleteError.value = 'Please type your email to confirm.'
+    return
+  }
+  deleteAccountPending.value = true
+  deleteError.value = ''
+  try {
+    await api.delete('/me', { data: { confirm_email: deleteConfirmEmail.value.trim() } })
+    // Wipe local session + bounce to login.
+    authStore.clearSession()
+    router.push({ name: 'login', query: { deleted: '1' } })
+  } catch (err) {
+    deleteError.value = err.response?.data?.error?.message
+      || (err.response?.status === 422 ? 'Email does not match.' : 'Could not delete your account. Please try again.')
+  } finally {
+    deleteAccountPending.value = false
+  }
+}
+
 function hydratePreferences(preferences = {}) {
   notificationsEnabled.value = preferences.auto_generate_captions ?? true
   previewBeforeRender.value = preferences.preview_before_render ?? true
@@ -588,6 +645,30 @@ onMounted(() => {
                 {{ saveState === 'saving' ? 'Saving…' : 'Save Account' }}
               </button>
             </div>
+
+            <!-- Data & privacy: GDPR export + account deletion -->
+            <div class="section-title" style="margin-top:48px;">Your data</div>
+            <div class="settings-section-desc">Download a copy of everything we hold about you, or delete your account permanently.</div>
+
+            <div class="settings-row" style="margin-top:14px;">
+              <div>
+                <div class="label-main">Download my data</div>
+                <div class="label-hint">JSON export of your profile, workspace, projects, characters, scheduled posts, and connected accounts.</div>
+              </div>
+              <button class="btn btn-ghost btn-sm" type="button" :disabled="exportPending" @click="downloadDataExport">
+                {{ exportPending ? 'Preparing…' : '⬇ Download JSON' }}
+              </button>
+            </div>
+
+            <div class="settings-row danger-row" style="margin-top:14px;">
+              <div>
+                <div class="label-main" style="color:#ff8888;">Delete account</div>
+                <div class="label-hint">Permanently removes your account, workspace, projects, characters, and all generated content. Billing records may be retained where required by UK tax law. Cannot be undone.</div>
+              </div>
+              <button class="btn btn-sm" type="button" style="background:rgba(220,80,80,0.14);border:1px solid rgba(220,80,80,0.45);color:#ff8888;" @click="openDeleteModal">
+                Delete account
+              </button>
+            </div>
           </div>
 
           <!-- Connected Accounts -->
@@ -755,6 +836,38 @@ onMounted(() => {
       @close="limitModalOpen = false"
       @upgrade="limitModalOpen = false; activeSection = 'usage'"
     />
+
+    <!-- GDPR account deletion modal -->
+    <Teleport to="body">
+      <div v-if="deleteModalOpen" class="del-backdrop" @click.self="deleteAccountPending || (deleteModalOpen = false)">
+        <div class="del-modal">
+          <div class="del-title">Delete your account?</div>
+          <div class="del-body">
+            This will permanently delete:
+            <ul style="margin:10px 0 12px 18px; line-height:1.6;">
+              <li>Your account + workspace</li>
+              <li>All projects, scenes, and generated assets</li>
+              <li>Characters and animation history</li>
+              <li>Connected social accounts and pending scheduled posts</li>
+            </ul>
+            This cannot be undone. To confirm, type your email below.
+          </div>
+          <input
+            v-model="deleteConfirmEmail"
+            class="del-input"
+            :placeholder="$attrs['data-confirm-placeholder'] || 'your email'"
+            autocomplete="off"
+          />
+          <div v-if="deleteError" class="del-error">{{ deleteError }}</div>
+          <div class="del-foot">
+            <button class="btn btn-ghost btn-sm" type="button" :disabled="deleteAccountPending" @click="deleteModalOpen = false">Cancel</button>
+            <button class="btn btn-sm del-confirm" type="button" :disabled="deleteAccountPending" @click="deleteAccount">
+              {{ deleteAccountPending ? 'Deleting…' : 'Delete account permanently' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
   </div>
 </template>
@@ -1120,4 +1233,45 @@ onMounted(() => {
   .brand-color-grid,
   .brand-font-grid { grid-template-columns: 1fr; }
 }
+
+/* GDPR delete modal + danger row */
+.danger-row {
+  border: 1px solid rgba(220, 80, 80, 0.25);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(220, 80, 80, 0.05);
+}
+.del-backdrop {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.del-modal {
+  width: 100%; max-width: 480px;
+  background: #14141c;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+  color: #ececf3;
+  font-family: 'DM Sans', sans-serif;
+}
+.del-title { font-size: 17px; font-weight: 700; margin-bottom: 12px; }
+.del-body { font-size: 13.5px; line-height: 1.55; color: #cdcdd4; }
+.del-input {
+  width: 100%; margin-top: 6px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px; padding: 10px 12px;
+  color: #ececf3; font-family: inherit; font-size: 13px; outline: none;
+}
+.del-input:focus { border-color: #ff6b35; }
+.del-error { color: #ff8888; font-size: 12.5px; margin-top: 8px; }
+.del-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.del-confirm {
+  background: rgba(220, 80, 80, 0.15);
+  border: 1px solid rgba(220, 80, 80, 0.6);
+  color: #ff8888;
+}
+.del-confirm:not(:disabled):hover { background: rgba(220,80,80,0.25); }
 </style>

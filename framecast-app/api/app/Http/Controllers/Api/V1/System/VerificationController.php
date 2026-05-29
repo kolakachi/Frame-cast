@@ -42,6 +42,149 @@ class VerificationController extends Controller
         ]);
     }
 
+    /**
+     * GDPR data export — returns a JSON dump of the user's personal data.
+     * Streamed inline as application/json so the browser downloads it via
+     * the Content-Disposition header.
+     */
+    public function exportMe(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $workspace = $user->workspace;
+
+        $payload = [
+            'export_meta' => [
+                'generated_at'    => now()->toIso8601String(),
+                'wyvstudio_user_id' => $user->getKey(),
+                'format_version'  => 1,
+            ],
+            'profile' => [
+                'email'       => $user->email,
+                'name'        => $user->name,
+                'role'        => $user->role,
+                'timezone'    => $user->timezone,
+                'preferences' => $user->preferences_json ?? [],
+                'created_at'  => $user->created_at?->toIso8601String(),
+            ],
+            'workspace' => $workspace ? [
+                'id'                => $workspace->getKey(),
+                'plan_tier'         => $workspace->plan_tier,
+                'credits_monthly'   => (int) ($workspace->credits_monthly ?? 0),
+                'credits_topup'     => (int) ($workspace->credits_topup ?? 0),
+                'billing_renews_at' => $workspace->billing_renews_at?->toIso8601String(),
+                'created_at'        => $workspace->created_at?->toIso8601String(),
+            ] : null,
+            'connected_social_accounts' => $workspace
+                ? \App\Models\SocialAccount::query()
+                    ->where('workspace_id', $workspace->getKey())
+                    ->get(['id', 'platform', 'platform_username', 'platform_display_name', 'status', 'created_at'])
+                    ->map(fn ($a) => [
+                        'platform'              => $a->platform,
+                        'username'              => $a->platform_username,
+                        'display_name'          => $a->platform_display_name,
+                        'status'                => $a->status,
+                        'connected_at'          => $a->created_at?->toIso8601String(),
+                    ])->all()
+                : [],
+            'projects' => $workspace
+                ? \App\Models\Project::query()
+                    ->where('workspace_id', $workspace->getKey())
+                    ->orderBy('id')
+                    ->get(['id', 'title', 'status', 'source_type', 'aspect_ratio', 'tone', 'created_at'])
+                    ->map(fn ($p) => [
+                        'id'           => $p->getKey(),
+                        'title'        => $p->title,
+                        'status'       => $p->status,
+                        'source_type'  => $p->source_type,
+                        'aspect_ratio' => $p->aspect_ratio,
+                        'tone'         => $p->tone,
+                        'created_at'   => $p->created_at?->toIso8601String(),
+                    ])->all()
+                : [],
+            'characters' => $workspace
+                ? \App\Models\Character::query()
+                    ->where('workspace_id', $workspace->getKey())
+                    ->get(['id', 'name', 'description', 'identity_strength', 'status', 'created_at'])
+                    ->map(fn ($c) => [
+                        'name'              => $c->name,
+                        'description'       => $c->description,
+                        'identity_strength' => $c->identity_strength,
+                        'status'            => $c->status,
+                        'created_at'        => $c->created_at?->toIso8601String(),
+                    ])->all()
+                : [],
+            'scheduled_posts' => $workspace
+                ? \App\Models\ScheduledPost::query()
+                    ->where('workspace_id', $workspace->getKey())
+                    ->orderBy('id')
+                    ->get(['id', 'platform', 'status', 'scheduled_for', 'published_at', 'platform_post_id', 'created_at'])
+                    ->map(fn ($p) => [
+                        'platform'         => $p->platform,
+                        'status'           => $p->status,
+                        'scheduled_for'    => $p->scheduled_for?->toIso8601String(),
+                        'published_at'     => $p->published_at?->toIso8601String(),
+                        'platform_post_id' => $p->platform_post_id,
+                        'created_at'       => $p->created_at?->toIso8601String(),
+                    ])->all()
+                : [],
+        ];
+
+        $filename = sprintf('wyvstudio-export-%s-%s.json',
+            $user->getKey(),
+            now()->format('Y-m-d'),
+        );
+
+        return response()->json(['data' => $payload, 'meta' => []])
+            ->header('Content-Disposition', "attachment; filename=\"{$filename}\"");
+    }
+
+    /**
+     * Hard delete of the user and all associated data. GDPR-compliant.
+     * Workspace cascadeOnDelete fans out to projects, characters, scenes, assets,
+     * social_accounts, scheduled_posts, exports, jobs, etc. Auth tokens are
+     * removed up front so any pending request from another tab fails fast.
+     */
+    public function deleteMe(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $request->validate([
+            // Belt-and-suspenders: require the user to retype their email to confirm.
+            'confirm_email' => ['required', 'string', 'in:'.$user->email],
+        ]);
+
+        $workspace = $user->workspace;
+
+        // Best-effort: revoke API tokens immediately so other sessions can't act.
+        \Illuminate\Support\Facades\DB::table('auth_tokens')
+            ->where('user_id', $user->getKey())
+            ->delete();
+
+        // Cascade-delete domain data via workspace removal. If the workspace has
+        // multiple users (future), only nuke it when this user is the last one.
+        if ($workspace) {
+            $otherUsers = User::query()
+                ->where('workspace_id', $workspace->getKey())
+                ->where('id', '!=', $user->getKey())
+                ->count();
+            if ($otherUsers === 0) {
+                $workspace->delete();
+            }
+        }
+
+        // Null the user's workspace pointer first to avoid FK confusion, then delete.
+        $user->workspace_id = null;
+        $user->save();
+        $user->delete();
+
+        return response()->json([
+            'data' => ['deleted' => true],
+            'meta' => [],
+        ]);
+    }
+
     public function updateMe(Request $request): JsonResponse
     {
         /** @var User $user */
