@@ -53,7 +53,68 @@ class AuthController extends Controller
             'password' => ['nullable', 'string', 'min:8'],
         ]);
 
+        $email = strtolower($validated['email']);
+        $ip    = (string) $request->ip();
+
+        // ── Abuse defenses ──────────────────────────────────────────────
+        // 1. Block disposable / throwaway email domains. These are the bulk of
+        //    real-world signup abuse and cost us free-tier credits + email send.
+        if (\App\Services\DisposableEmailBlocker::isDisposable($email)) {
+            return $this->error(
+                'disposable_email',
+                'Please use a permanent email address. Disposable inboxes are not supported.',
+                422,
+            );
+        }
+
+        // 2. Per-IP rate limit — caps mass-signup attempts from one source.
+        $ipKey = 'magic:ip:'.sha1($ip);
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($ipKey, 5)) {
+            $retry = \Illuminate\Support\Facades\RateLimiter::availableIn($ipKey);
+            return $this->error(
+                'rate_limited',
+                "Too many magic link requests from this device. Try again in {$retry} seconds.",
+                429,
+            );
+        }
+        \Illuminate\Support\Facades\RateLimiter::hit($ipKey, 600); // 5 attempts / 10 min per IP
+
+        // 3. Per-email rate limit — stops the same address from being targeted.
+        $emailKey = 'magic:email:'.sha1($email);
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($emailKey, 3)) {
+            $retry = \Illuminate\Support\Facades\RateLimiter::availableIn($emailKey);
+            return $this->error(
+                'rate_limited',
+                "We've already sent a few magic links to this address. Try again in {$retry} seconds, or check your inbox.",
+                429,
+            );
+        }
+        \Illuminate\Support\Facades\RateLimiter::hit($emailKey, 3600); // 3 attempts / hour per email
+
+        // 4. Per-IP signup cap — blocks one source from creating many accounts.
+        //    Counts users (not magic-link requests) created from this IP in 24h.
+        $signupKey = 'signup:ip:'.sha1($ip);
+        $existingByEmail = \App\Models\User::query()->where('email', $email)->exists();
+        if (! $existingByEmail) {
+            if ((int) (\Illuminate\Support\Facades\Cache::get($signupKey, 0)) >= 5) {
+                return $this->error(
+                    'signup_quota_exceeded',
+                    'This network has reached the daily new-account limit. Please try again tomorrow.',
+                    429,
+                );
+            }
+        }
+
         $user = $this->findOrCreateUser($validated);
+
+        // Bump the signup-IP counter ONLY when the user is brand new.
+        if (! $existingByEmail) {
+            \Illuminate\Support\Facades\Cache::put(
+                $signupKey,
+                (int) \Illuminate\Support\Facades\Cache::get($signupKey, 0) + 1,
+                now()->addDay(),
+            );
+        }
 
         // Expire any previous unused tokens for this user
         MagicLinkToken::query()
