@@ -3,6 +3,7 @@ import { useRouter } from 'vue-router'
 import { useLimitStore } from './stores/limit'
 import { useSidebarStore } from './stores/sidebar'
 import LimitModal from './components/LimitModal.vue'
+import CookieNotice from './components/CookieNotice.vue'
 
 const router = useRouter()
 const limitStore = useLimitStore()
@@ -26,6 +27,8 @@ function handleUpgrade() {
       @close="limitStore.close()"
       @upgrade="handleUpgrade"
     />
+
+    <CookieNotice />
   </div>
 </template>
 

@@ -21,7 +21,10 @@ if (sentryEnabled) {
     app,
     dsn: import.meta.env.VITE_SENTRY_DSN,
     environment: sentryEnvironment,
-    sendDefaultPii: true,
+    // GDPR: don't ship IP / user agent / cookies to Sentry by default.
+    // Stack traces + breadcrumbs (no PII) are enough to debug, and this lets
+    // the consent banner honestly say "anonymized error tracking only".
+    sendDefaultPii: false,
     tracesSampleRate: Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
   })
 }
