@@ -4,6 +4,7 @@ import { useLimitStore } from './stores/limit'
 import { useSidebarStore } from './stores/sidebar'
 import LimitModal from './components/LimitModal.vue'
 import CookieNotice from './components/CookieNotice.vue'
+import CrispChat from './components/CrispChat.vue'
 
 const router = useRouter()
 const limitStore = useLimitStore()
@@ -29,6 +30,7 @@ function handleUpgrade() {
     />
 
     <CookieNotice />
+    <CrispChat />
   </div>
 </template>
 
