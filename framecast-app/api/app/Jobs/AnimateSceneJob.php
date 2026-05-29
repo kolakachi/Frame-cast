@@ -47,14 +47,21 @@ class AnimateSceneJob implements ShouldQueue
             return;
         }
 
-        GenerationProgressed::dispatch($this->projectId, 'animation', 'processing');
+        GenerationProgressed::dispatch($this->projectId, 'animation', 'processing', null, ['scene_id' => $this->sceneId]);
 
         // Mark animation as in-progress so the editor can show distinct loading state.
+        // animation_cost is what we'd refund if the user cancels.
+        $cost = match ($this->tier) {
+            'premium'  => \App\Services\CreditService::VIDEO_PREMIUM,
+            'balanced' => \App\Services\CreditService::VIDEO_BALANCED,
+            default    => \App\Services\CreditService::VIDEO_QUICK,
+        } * ($this->durationSeconds >= 10 ? 2 : 1);
         $this->stampAnimationState($scene, [
             'animation_in_progress'   => true,
             'animation_last_error'    => null,
             'animation_started_at'    => now()->toIso8601String(),
             'animation_tier'          => $this->tier,
+            'animation_cost'          => $cost,
         ]);
 
         try {
@@ -74,6 +81,14 @@ class AnimateSceneJob implements ShouldQueue
                 $this->durationSeconds,
                 ['aspect_ratio' => $scene->project->aspect_ratio ?? '9:16'],
             );
+
+            // The user may have cancelled while Replicate was running. Bail before
+            // downloading or swapping the asset — credits were already refunded by
+            // the cancel endpoint.
+            $freshSettings = $scene->fresh()->image_generation_settings_json ?? [];
+            if (! empty($freshSettings['animation_cancel_requested'])) {
+                return;
+            }
 
             // Download the produced video from Replicate's CDN into our storage.
             $videoBytes = Http::timeout(120)->get($result['video_url'])->body();
@@ -105,25 +120,47 @@ class AnimateSceneJob implements ShouldQueue
                 'created_by_user_id' => $scene->project->created_by_user_id,
             ]);
 
+            // Track the previous still so the user can revert. Only set if the current
+            // asset is an image — re-animation should preserve the *first* original still,
+            // not whatever video the last animation produced.
+            $previousImageId = ($sourceAsset->asset_type === 'image') ? $sourceAsset->getKey() : null;
+            $existingOriginal = data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id');
+            $originalToStore = $existingOriginal ?: $previousImageId;
+
             // Swap the scene's visual to the new video. visual_type stays 'ai_image' so the
             // user can regenerate the still later via the existing flow — the asset_type
             // ('video') is what drives renderer + preview behaviour.
             $scene->forceFill(['visual_asset_id' => $asset->getKey()])->save();
 
-            $this->stampAnimationState($scene->fresh(), [
-                'animation_in_progress'   => false,
-                'animation_last_error'    => null,
-                'animation_completed_at'  => now()->toIso8601String(),
-                'animation_video_asset_id' => $asset->getKey(),
+            // Append to a capped history so users can compare past animations.
+            $fresh = $scene->fresh();
+            $history = data_get($fresh->image_generation_settings_json, 'animation_history', []);
+            if (! is_array($history)) $history = [];
+            array_unshift($history, [
+                'asset_id'      => $asset->getKey(),
+                'tier'          => $this->tier,
+                'duration'      => $this->durationSeconds,
+                'motion_prompt' => $this->motionPrompt,
+                'completed_at'  => now()->toIso8601String(),
+            ]);
+            $history = array_slice($history, 0, 3); // keep last 3
+
+            $this->stampAnimationState($fresh, [
+                'animation_in_progress'             => false,
+                'animation_last_error'              => null,
+                'animation_completed_at'            => now()->toIso8601String(),
+                'animation_video_asset_id'          => $asset->getKey(),
+                'animation_original_image_asset_id' => $originalToStore,
+                'animation_history'                 => $history,
             ]);
 
-            GenerationProgressed::dispatch($this->projectId, 'animation', 'completed');
+            GenerationProgressed::dispatch($this->projectId, 'animation', 'completed', null, ['scene_id' => $this->sceneId]);
         } catch (\Throwable $e) {
             $this->stampAnimationState($scene->fresh() ?: $scene, [
                 'animation_in_progress' => false,
                 'animation_last_error'  => mb_substr($e->getMessage(), 0, 1000),
             ]);
-            GenerationProgressed::dispatch($this->projectId, 'animation', 'failed');
+            GenerationProgressed::dispatch($this->projectId, 'animation', 'failed', $e->getMessage(), ['scene_id' => $this->sceneId]);
             throw $e;
         }
     }

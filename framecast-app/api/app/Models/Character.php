@@ -13,10 +13,19 @@ class Character extends Model
         'name',
         'description',
         'reference_asset_id',
+        'reference_asset_ids',
         'consistency_method',
+        'identity_strength',
         'status',
         'created_by_user_id',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'reference_asset_ids' => 'array',
+        ];
+    }
 
     public function workspace(): BelongsTo
     {

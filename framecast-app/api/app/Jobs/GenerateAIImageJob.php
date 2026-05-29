@@ -73,12 +73,35 @@ class GenerateAIImageJob implements ShouldQueue
                 $referenceUrl = $this->signedReferenceUrl($scene->character->referenceAsset);
                 if ($referenceUrl) {
                     $options['reference_image_url'] = $referenceUrl;
-                    $adapter = app(\App\Services\Generation\Image\ReplicatePulidAdapter::class);
+                    // Identity strength on the character controls how strongly the reference
+                    // photo locks the generated face (Subtle → creative drift; Locked → exact).
+                    $strength = $scene->character->identity_strength ?? 'balanced';
+                    $options['identity_scale'] = match ($strength) {
+                        'subtle'  => 0.7,
+                        'strong'  => 1.5,
+                        'locked'  => 1.9,
+                        default   => 1.2, // balanced
+                    };
+                    try {
+                        $result = app(\App\Services\Generation\Image\ReplicatePulidAdapter::class)
+                            ->generate($prompt, $this->style, $aspectRatio, $options);
+                    } catch (\Throwable $e) {
+                        // PuLID failed — log and fall through to DALL-E with the character description
+                        // baked into the prompt so the user still gets *an* image.
+                        \Illuminate\Support\Facades\Log::warning('GenerateAIImageJob: PuLID failed, falling back to DALL-E', [
+                            'scene_id' => $this->sceneId,
+                            'error'    => $e->getMessage(),
+                        ]);
+                        $prompt = $this->buildPrompt($scene, true); // include character description for the fallback
+                        unset($options['reference_image_url']);
+                    }
                 }
-                // else: silently fall back to default adapter (text-only) — no reference asset to send
+                // else: no reference asset — DALL-E with description-only path is fine.
             }
 
-            $result = $adapter->generate($prompt, $this->style, $aspectRatio, $options);
+            if (! isset($result)) {
+                $result = $adapter->generate($prompt, $this->style, $aspectRatio, $options);
+            }
 
             if (! $this->sceneStillMatchesGeneration($scene)) {
                 return;

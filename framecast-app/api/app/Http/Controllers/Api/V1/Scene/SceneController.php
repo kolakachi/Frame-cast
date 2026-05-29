@@ -885,12 +885,15 @@ class SceneController extends Controller
         }
 
         // Lock the scene so the editor knows an animation is running.
+        // Persist last-used settings too so the modal pre-fills on re-animate.
         $scene->forceFill([
             'image_generation_settings_json' => array_merge($existing, [
-                'animation_in_progress'  => true,
-                'animation_last_error'   => null,
-                'animation_tier'         => $validated['tier'],
-                'animation_started_at'   => now()->toIso8601String(),
+                'animation_in_progress'      => true,
+                'animation_last_error'       => null,
+                'animation_tier'             => $validated['tier'],
+                'animation_duration'         => $durationSeconds,
+                'animation_motion_prompt'    => $validated['motion_prompt'] ?? null,
+                'animation_started_at'       => now()->toIso8601String(),
             ]),
         ])->save();
 
@@ -908,6 +911,129 @@ class SceneController extends Controller
                 'cost'     => $cost,
                 'tier'     => $validated['tier'],
             ],
+            'meta' => [],
+        ]);
+    }
+
+    public function useAnimationFromHistory(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $validated = $request->validate([
+            'asset_id' => ['required', 'integer'],
+        ]);
+
+        // Asset must exist in this workspace AND appear in this scene's history.
+        $settings = $scene->image_generation_settings_json ?? [];
+        $history = is_array($settings['animation_history'] ?? null) ? $settings['animation_history'] : [];
+        $inHistory = collect($history)->contains(fn ($h) => (int) ($h['asset_id'] ?? 0) === (int) $validated['asset_id']);
+        if (! $inHistory) {
+            return $this->error('not_in_history', 'That animation is no longer in this scene\'s history.', 422);
+        }
+
+        $asset = \App\Models\Asset::query()
+            ->whereKey($validated['asset_id'])
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+        if (! $asset) {
+            return $this->error('asset_missing', 'The animation video is no longer available.', 410);
+        }
+
+        $scene->forceFill([
+            'visual_asset_id' => $asset->getKey(),
+            'image_generation_settings_json' => array_merge($settings, [
+                'animation_video_asset_id' => $asset->getKey(),
+            ]),
+        ])->save();
+
+        return response()->json([
+            'data' => ['scene' => $this->serializeScene($scene->fresh())],
+            'meta' => [],
+        ]);
+    }
+
+    public function cancelAnimation(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $settings = $scene->image_generation_settings_json ?? [];
+        if (empty($settings['animation_in_progress'])) {
+            return $this->error('no_active_animation', 'No animation is currently running for this scene.', 422);
+        }
+
+        $refund = (int) ($settings['animation_cost'] ?? 0);
+        if ($refund > 0) {
+            $this->credits->grant((int) $user->workspace_id, $refund, "animation_cancelled:scene_{$sceneId}");
+        }
+
+        // Flip the cancel flag; AnimateSceneJob honours it when Replicate eventually
+        // returns (we don't kill Replicate's prediction, just discard the result).
+        $scene->forceFill([
+            'image_generation_settings_json' => array_merge($settings, [
+                'animation_in_progress'    => false,
+                'animation_cancel_requested' => true,
+                'animation_cancelled_at'   => now()->toIso8601String(),
+                'animation_last_error'     => 'Cancelled by user. Credits refunded.',
+            ]),
+        ])->save();
+
+        return response()->json([
+            'data' => [
+                'scene'           => $this->serializeScene($scene->fresh()),
+                'refunded_credits' => $refund,
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    public function revertAnimation(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $settings = $scene->image_generation_settings_json ?? [];
+        $originalId = $settings['animation_original_image_asset_id'] ?? null;
+        if (! $originalId) {
+            return $this->error('nothing_to_revert', 'This scene has no preserved original image to revert to.', 422);
+        }
+
+        // Confirm the asset still exists and belongs to this workspace.
+        $original = \App\Models\Asset::query()
+            ->whereKey($originalId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+        if (! $original) {
+            return $this->error('original_missing', 'The original image is no longer available.', 410);
+        }
+
+        $scene->forceFill([
+            'visual_asset_id' => $original->getKey(),
+            'image_generation_settings_json' => array_merge($settings, [
+                'animation_video_asset_id'          => null,
+                'animation_original_image_asset_id' => null,
+                'animation_reverted_at'             => now()->toIso8601String(),
+            ]),
+        ])->save();
+
+        return response()->json([
+            'data' => ['scene' => $this->serializeScene($scene->fresh())],
             'meta' => [],
         ]);
     }
@@ -1050,7 +1176,32 @@ class SceneController extends Controller
             $settings['last_error'] = null;
         }
 
+        // Enrich animation_history entries with signed video + thumbnail URLs so the
+        // editor can render previews without an extra round-trip per item.
+        if (! empty($settings['animation_history']) && is_array($settings['animation_history'])) {
+            $assetIds = collect($settings['animation_history'])->pluck('asset_id')->filter()->all();
+            $assets = Asset::query()->whereIn('id', $assetIds)->get()->keyBy('id');
+            $settings['animation_history'] = array_map(function (array $h) use ($assets) {
+                $asset = $assets->get((int) ($h['asset_id'] ?? 0));
+                if ($asset) {
+                    $h['video_url']     = $this->assetUrl($asset);
+                    $h['thumbnail_url'] = $asset->thumbnail_url ? $this->assetUrlFromPath($asset, (string) $asset->thumbnail_url) : null;
+                }
+                return $h;
+            }, $settings['animation_history']);
+        }
+
         return $settings;
+    }
+
+    private function assetUrlFromPath(Asset $asset, string $path): ?string
+    {
+        $storage = app(\App\Services\Media\StorageService::class);
+        $isStored = $storage->extractPath($path) !== null;
+        if (! $isStored) return $path;
+        return \Illuminate\Support\Facades\URL::temporarySignedRoute(
+            'media.assets.content', now()->addMinutes(30), ['assetId' => $asset->getKey()]
+        );
     }
 
     private function assetUrl(Asset $asset): ?string

@@ -228,6 +228,16 @@ const ANIMATE_TIER_META = {
   balanced: { name: "Balanced", sub: "Best for most",    quality: "Strong", render: "~90s" },
   premium:  { name: "Premium",  sub: "Cinematic",        quality: "Top",    render: "~3 min" },
 };
+// Quick-pick prompts for the animate modal — covers the motion patterns most
+// faceless creators reach for. Click sets the prompt; user can still edit.
+const ANIMATE_PROMPT_SUGGESTIONS = [
+  { label: "Subtle motion",   text: "subtle natural motion, gentle breathing, hair drifting" },
+  { label: "Slow push-in",    text: "slow camera push-in, cinematic depth, dramatic lighting" },
+  { label: "Dolly back",      text: "slow dolly back revealing the scene, smooth camera move" },
+  { label: "Pan left",        text: "smooth camera pan from right to left, parallax background" },
+  { label: "Wind & weather",  text: "wind blowing through hair and fabric, drifting fog or dust" },
+  { label: "Dramatic zoom",   text: "fast dramatic zoom-in on the subject, intense lighting" },
+];
 
 // Workspace-level characters: name + description + optional reference image.
 // Selecting one binds it to the active scene; the AI image prompt picks up the description.
@@ -377,12 +387,15 @@ const activeSceneAnimationError = computed(() => {
   return activeScene.value?.image_generation_settings?.animation_last_error || "";
 });
 const canAnimateActiveScene = computed(() => {
-  const scene = activeScene.value;
-  if (!scene) return false;
-  // Need a still image to animate from. If visual_asset is already a video, hide the button.
-  if (scene.visual_asset?.asset_type === "video") return false;
-  if (String(scene.visual_asset?.mime_type || "").startsWith("video/")) return false;
-  return Boolean(scene.visual_asset_id);
+  // Allow animate when scene has any visual asset. When it's already a video
+  // (a previous animation), the button labels itself "Re-animate" and re-runs
+  // i2v against the latest still — or against the same source if we tracked it.
+  return Boolean(activeScene.value?.visual_asset_id);
+});
+const activeSceneAlreadyAnimated = computed(() => {
+  const asset = activeScene.value?.visual_asset;
+  if (!asset) return false;
+  return asset.asset_type === "video" || String(asset.mime_type || "").startsWith("video/");
 });
 
 // When switching to a scene that has in_progress=true, auto-start the poll
@@ -3520,9 +3533,14 @@ async function generateAIImage() {
 // ── i2v Animation (rung 4) ──────────────────────────────────────────────────
 function openAnimateModal() {
   if (!canAnimateActiveScene.value || activeSceneAnimationPending.value) return;
-  animateTier.value = "quick";
-  animateDuration.value = 6;
-  animateMotionPrompt.value = "";
+  // Pre-fill with the scene's last animation settings if any — saves the
+  // re-animate flow a tier/duration click.
+  const lastSettings = activeScene.value?.image_generation_settings ?? {};
+  animateTier.value = ['quick','balanced','premium'].includes(lastSettings.animation_tier)
+    ? lastSettings.animation_tier
+    : 'quick';
+  animateDuration.value = lastSettings.animation_duration === 10 ? 10 : 5;
+  animateMotionPrompt.value = lastSettings.animation_motion_prompt || "";
   animateError.value = "";
   animateModalOpen.value = true;
 }
@@ -3530,6 +3548,77 @@ function openAnimateModal() {
 function closeAnimateModal() {
   if (animateSubmitting.value) return;
   animateModalOpen.value = false;
+}
+
+const canRevertAnimation = computed(() => {
+  const settings = activeScene.value?.image_generation_settings ?? {};
+  return activeSceneAlreadyAnimated.value && Boolean(settings.animation_original_image_asset_id);
+});
+
+const activeSceneAnimationHistory = computed(() => {
+  const items = activeScene.value?.image_generation_settings?.animation_history;
+  return Array.isArray(items) ? items : [];
+});
+
+async function useHistoryAnimation(assetId) {
+  const scene = activeScene.value;
+  if (!scene) return;
+  try {
+    const response = await api.post(`/scenes/${scene.id}/animate/use-history`, { asset_id: assetId });
+    const updated = response.data?.data?.scene;
+    if (updated) {
+      scenes.value = scenes.value.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
+    }
+  } catch (err) {
+    pushToast({
+      id: `history-fail-${scene.id}-${Date.now()}`,
+      title: 'Could not swap',
+      message: err.response?.data?.error?.message ?? 'That animation is no longer available.',
+    });
+  }
+}
+
+async function cancelAnimation() {
+  const scene = activeScene.value;
+  if (!scene || !activeSceneAnimationPending.value) return;
+  try {
+    const response = await api.post(`/scenes/${scene.id}/animate/cancel`);
+    const refunded = response.data?.data?.refunded_credits ?? 0;
+    const updated = response.data?.data?.scene;
+    if (updated) {
+      scenes.value = scenes.value.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
+    }
+    pushToast({
+      id: `anim-cancel-${scene.id}-${Date.now()}`,
+      title: 'Animation cancelled',
+      message: refunded > 0 ? `${refunded} credits refunded.` : 'Refund not applicable.',
+    });
+  } catch (err) {
+    pushToast({
+      id: `anim-cancel-fail-${scene.id}-${Date.now()}`,
+      title: 'Could not cancel',
+      message: err.response?.data?.error?.message ?? 'Cancel request failed.',
+    });
+  }
+}
+
+async function revertAnimation() {
+  const scene = activeScene.value;
+  if (!scene || !canRevertAnimation.value) return;
+  try {
+    const response = await api.post(`/scenes/${scene.id}/animate/revert`);
+    const updated = response.data?.data?.scene;
+    if (updated) {
+      scenes.value = scenes.value.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
+    }
+    pushToast({ id: `revert-${scene.id}-${Date.now()}`, title: 'Reverted', message: 'Original image restored.' });
+  } catch (err) {
+    pushToast({
+      id: `revert-fail-${scene.id}-${Date.now()}`,
+      title: 'Could not revert',
+      message: err.response?.data?.error?.message ?? 'The original image is no longer available.',
+    });
+  }
 }
 
 async function submitAnimate() {
@@ -3681,6 +3770,25 @@ function subscribeProjectChannel() {
   echo.private(projectChannelName).listen(".generation.progress", (payload) => {
     if (payload.stage === "tts" && ["completed", "failed"].includes(String(payload.status || ""))) {
       refreshProjectPayload().catch(() => {});
+      return;
+    }
+
+    // Animation events run on the same project channel — refresh the scene so the
+    // editor swaps in the new video asset (or shows the persisted error).
+    if (payload.stage === "animation") {
+      if (payload.scene_id && (payload.status === "completed" || payload.status === "failed")) {
+        api.get(`/scenes/${payload.scene_id}/preview`).then((res) => {
+          const refreshed = res.data?.data?.scene ?? null;
+          if (refreshed) replaceSceneInCollection(normalizeScenePayload(refreshed));
+        }).catch(() => {});
+        if (payload.status === "completed") {
+          pushToast({
+            id: `anim-done-${payload.scene_id}-${Date.now()}`,
+            title: 'Animation ready',
+            message: `Scene clip is ready to play.`,
+          });
+        }
+      }
       return;
     }
 
@@ -4958,11 +5066,32 @@ onBeforeUnmount(() => {
                     <button class="btn btn-ghost btn-sm" style="flex:1;" type="button" :disabled="aiImagePending || activeSceneAIImagePending || activeSceneAnimationPending" @click="generateAIImage">
                       {{ (aiImagePending || activeSceneAIImagePending) ? 'Generating…' : 'Regenerate' }}
                     </button>
-                    <button v-if="canAnimateActiveScene" class="btn btn-sm animate-btn" type="button" :disabled="activeSceneAnimationPending || aiImagePending" @click="openAnimateModal">
-                      {{ activeSceneAnimationPending ? 'Animating…' : '⚡ Animate' }}
+                    <button v-if="canAnimateActiveScene && !activeSceneAnimationPending" class="btn btn-sm animate-btn" type="button" :disabled="aiImagePending" @click="openAnimateModal">
+                      {{ activeSceneAlreadyAnimated ? '⚡ Re-animate' : '⚡ Animate' }}
                     </button>
+                    <button v-else-if="activeSceneAnimationPending" class="btn btn-ghost btn-sm anim-cancel-btn" type="button" @click="cancelAnimation">
+                      ✕ Cancel animation
+                    </button>
+                    <button v-if="canRevertAnimation && !activeSceneAnimationPending" class="btn btn-ghost btn-sm" type="button" :disabled="aiImagePending" @click="revertAnimation" title="Restore original still">↺</button>
                   </div>
                   <div v-if="activeSceneAnimationError" class="panel-error-copy">{{ activeSceneAnimationError }}</div>
+
+                  <!-- Animation history — last 3 clips, click to swap back -->
+                  <div v-if="activeSceneAnimationHistory.length > 1" class="anim-history-row">
+                    <div class="anim-history-label">Past animations</div>
+                    <div class="anim-history-strip">
+                      <div
+                        v-for="h in activeSceneAnimationHistory"
+                        :key="h.asset_id"
+                        :class="['anim-history-item', activeScene?.visual_asset_id === h.asset_id ? 'current' : '']"
+                        @click="useHistoryAnimation(h.asset_id)"
+                        :title="`${h.tier} · ${h.duration}s${h.motion_prompt ? ' · ' + h.motion_prompt : ''}`"
+                      >
+                        <video v-if="h.video_url" :src="h.video_url" muted playsinline></video>
+                        <span class="anim-history-tier">{{ h.tier?.[0]?.toUpperCase() }}</span>
+                      </div>
+                    </div>
+                  </div>
                   <div v-if="aiImageError || activeSceneVisualGenerationError" class="panel-error-copy">{{ aiImageError || activeSceneVisualGenerationError }}</div>
                   <div v-if="aiImagePending || activeSceneAIImagePending" class="panel-hint-copy">This takes ~15s (PuLID can take up to 3 min on character scenes)</div>
                   <div v-if="visualStyleDraft && activeScene?.visual_type === 'ai_image' && !(aiImagePending || activeSceneAIImagePending) && visualStyleDraft !== (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style ?? visualStyleDraft)" class="style-regen-hint">
@@ -6086,8 +6215,17 @@ onBeforeUnmount(() => {
 
           <div class="ap-field">
             <label class="ap-label">Motion prompt <span style="opacity:.5;font-weight:400">(optional)</span></label>
+            <div class="anim-prompt-chips">
+              <button
+                v-for="s in ANIMATE_PROMPT_SUGGESTIONS"
+                :key="s.label"
+                type="button"
+                class="anim-prompt-chip"
+                @click="animateMotionPrompt = s.text"
+              >{{ s.label }}</button>
+            </div>
             <textarea v-model="animateMotionPrompt" class="ap-input" rows="2" maxlength="500" placeholder="e.g. slow camera push-in, subtle hair movement, drifting fog"></textarea>
-            <div class="ap-hint">Describe the motion you want. Leave blank for a sensible default.</div>
+            <div class="ap-hint">Pick a quick start above or type your own. Leave blank for a sensible default.</div>
           </div>
 
           <div v-if="animateError" class="ap-error">{{ animateError }}</div>
@@ -9331,6 +9469,39 @@ select.control-value {
   background: rgba(255, 107, 53, 0.22);
   border-color: rgba(255, 107, 53, 0.7);
 }
+.anim-cancel-btn {
+  flex: 1;
+  border: 1px solid rgba(220, 80, 80, 0.45);
+  color: #ff8888;
+}
+.anim-cancel-btn:hover { background: rgba(220, 80, 80, 0.12); border-color: rgba(220, 80, 80, 0.7); }
+
+.anim-history-row { margin-top: 8px; }
+.anim-history-label {
+  font-size: 10.5px; opacity: 0.5; letter-spacing: 0.04em;
+  text-transform: uppercase; margin-bottom: 5px;
+}
+.anim-history-strip { display: flex; gap: 6px; }
+.anim-history-item {
+  position: relative;
+  width: 54px; aspect-ratio: 9/16;
+  border-radius: 6px; overflow: hidden;
+  border: 1.5px solid rgba(255,255,255,0.1);
+  cursor: pointer; transition: 0.15s;
+  background: #000;
+}
+.anim-history-item:hover { border-color: rgba(255,255,255,0.3); }
+.anim-history-item.current { border-color: #ff6b35; box-shadow: 0 0 0 1px rgba(255,107,53,0.4); }
+.anim-history-item video {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.anim-history-tier {
+  position: absolute; top: 3px; left: 4px;
+  background: rgba(0,0,0,0.65); color: #ff8055;
+  font-size: 9px; font-weight: 700;
+  padding: 1px 4px; border-radius: 3px;
+  pointer-events: none;
+}
 
 .anim-tier-grid {
   display: grid;
@@ -9407,6 +9578,24 @@ select.control-value {
   color: #ff6b35; font-weight: 700; font-size: 15px; margin-right: 6px;
 }
 .anim-total-sub { font-size: 11px; opacity: 0.55; }
+
+.anim-prompt-chips {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px;
+}
+.anim-prompt-chip {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-family: inherit; font-size: 11px;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer; transition: 0.15s;
+}
+.anim-prompt-chip:hover {
+  background: rgba(255,107,53,0.1);
+  border-color: rgba(255,107,53,0.4);
+  color: #ff8055;
+}
 
 /* AI prompt area */
 .ai-prompt-area {

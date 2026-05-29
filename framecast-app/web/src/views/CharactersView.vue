@@ -19,10 +19,22 @@ const createOpen = ref(false);
 const editingId = ref(null);              // when set, we're editing an existing character
 const createName = ref("");
 const createDescription = ref("");
-const createFile = ref(null);             // newly-picked file (replaces existing)
+const createIdentityStrength = ref("balanced"); // subtle | balanced | strong | locked
+const createFile = ref(null);             // newly-picked file (replaces existing — legacy single mode)
 const createPreviewUrl = ref("");         // object URL for the newly-picked file
-const existingThumbUrl = ref(null);       // existing reference image URL when editing
-const removeExistingImage = ref(false);   // user clicked Remove on the existing image
+const existingThumbUrl = ref(null);       // existing primary reference image URL when editing
+const removeExistingImage = ref(false);   // user clicked Remove on the primary existing image
+
+// Multi-reference state. New files queued for upload + existing references kept on the character.
+const createNewFiles = ref([]);           // array of File objects to upload
+const createNewFilePreviews = ref([]);    // matching object URLs
+const existingReferences = ref([]);       // [{id, storage_url, thumbnail_url}] preserved on save
+const IDENTITY_STRENGTH_OPTIONS = [
+  { key: "subtle",   label: "Subtle",   sub: "Looser drift" },
+  { key: "balanced", label: "Balanced", sub: "Recommended" },
+  { key: "strong",   label: "Strong",   sub: "Sticks closer" },
+  { key: "locked",   label: "Locked",   sub: "Near-exact" },
+];
 const createSaving = ref(false);
 const createError = ref("");
 
@@ -67,9 +79,12 @@ function openCreate() {
   editingId.value = null;
   createName.value = "";
   createDescription.value = "";
+  createIdentityStrength.value = "balanced";
   clearFile();
   existingThumbUrl.value = null;
   removeExistingImage.value = false;
+  existingReferences.value = [];
+  clearNewFiles();
   createError.value = "";
   createOpen.value = true;
 }
@@ -78,11 +93,44 @@ function openEdit(c) {
   editingId.value = c.id;
   createName.value = c.name;
   createDescription.value = c.description || "";
+  createIdentityStrength.value = c.identity_strength || "balanced";
   clearFile();
   existingThumbUrl.value = thumbUrl(c);
   removeExistingImage.value = false;
+  // Multi-reference: prefer the array, fall back to the single primary.
+  existingReferences.value = Array.isArray(c.reference_assets) && c.reference_assets.length
+    ? [...c.reference_assets]
+    : (c.reference_asset ? [c.reference_asset] : []);
+  clearNewFiles();
   createError.value = "";
   createOpen.value = true;
+}
+
+function pickMoreFiles(event) {
+  const files = Array.from(event.target.files || []);
+  for (const f of files) {
+    if (!f.type.startsWith("image/")) continue;
+    if (f.size > 10 * 1024 * 1024) continue;
+    createNewFiles.value.push(f);
+    createNewFilePreviews.value.push(URL.createObjectURL(f));
+  }
+  event.target.value = ""; // allow re-picking same file
+}
+
+function removeExistingRef(id) {
+  existingReferences.value = existingReferences.value.filter((r) => r.id !== id);
+}
+
+function removeNewFile(index) {
+  if (createNewFilePreviews.value[index]) URL.revokeObjectURL(createNewFilePreviews.value[index]);
+  createNewFiles.value.splice(index, 1);
+  createNewFilePreviews.value.splice(index, 1);
+}
+
+function clearNewFiles() {
+  createNewFilePreviews.value.forEach((u) => URL.revokeObjectURL(u));
+  createNewFiles.value = [];
+  createNewFilePreviews.value = [];
 }
 
 function pickFile(event) {
@@ -123,6 +171,8 @@ function closeCreate() {
   clearFile();
   existingThumbUrl.value = null;
   removeExistingImage.value = false;
+  existingReferences.value = [];
+  clearNewFiles();
   createError.value = "";
 }
 
@@ -143,8 +193,30 @@ async function saveCharacter() {
     const payload = {
       name,
       description: createDescription.value.trim() || null,
+      identity_strength: createIdentityStrength.value,
     };
 
+    // Upload any newly-picked images, in order.
+    const newlyUploadedIds = [];
+    for (const file of createNewFiles.value) {
+      const fd = new FormData();
+      fd.append("title", name);
+      fd.append("asset_type", "image");
+      fd.append("asset_file", file);
+      const up = await api.post("/assets", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const id = up.data?.data?.asset?.id;
+      if (id) newlyUploadedIds.push(id);
+    }
+
+    // Combine kept existing refs + new uploads, preserving order.
+    const combined = [
+      ...existingReferences.value.map((r) => r.id),
+      ...newlyUploadedIds,
+    ];
+
+    // Legacy single-file fallback (drop zone) — appended if used.
     if (createFile.value) {
       const fd = new FormData();
       fd.append("title", name);
@@ -153,12 +225,16 @@ async function saveCharacter() {
       const upload = await api.post("/assets", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      payload.reference_asset_id = upload.data?.data?.asset?.id ?? null;
-    } else if (removeExistingImage.value) {
-      payload.reference_asset_id = null;
-    } else if (!editingId.value) {
-      // Creating with no image at all.
-      payload.reference_asset_id = null;
+      const id = upload.data?.data?.asset?.id;
+      if (id) combined.push(id);
+    }
+
+    if (combined.length) {
+      payload.reference_asset_ids = combined;
+      payload.reference_asset_id  = combined[0]; // first = primary
+    } else if (removeExistingImage.value || !editingId.value) {
+      payload.reference_asset_ids = [];
+      payload.reference_asset_id  = null;
     }
 
     let saved;
@@ -321,6 +397,44 @@ async function confirmDelete() {
             <label class="cv-label">Description <span class="cv-opt">(optional)</span></label>
             <textarea v-model="createDescription" class="cv-input" rows="4" placeholder="A weathered 50-year-old detective in a worn trench coat, sharp eyes…" maxlength="2000"></textarea>
             <div class="cv-hint">Used in scene prompts to keep this character consistent across episodes.</div>
+          </div>
+
+          <div class="cv-field">
+            <label class="cv-label">More reference photos <span class="cv-opt">(better consistency)</span></label>
+            <div class="cv-refs-grid">
+              <div v-for="ref in existingReferences" :key="`ex-${ref.id}`" class="cv-ref-tile">
+                <img :src="ref.thumbnail_url || ref.storage_url" alt="" />
+                <button type="button" class="cv-ref-x" @click="removeExistingRef(ref.id)">✕</button>
+                <span v-if="existingReferences[0]?.id === ref.id" class="cv-ref-primary">PRIMARY</span>
+              </div>
+              <div v-for="(url, i) in createNewFilePreviews" :key="`new-${i}`" class="cv-ref-tile">
+                <img :src="url" alt="" />
+                <button type="button" class="cv-ref-x" @click="removeNewFile(i)">✕</button>
+                <span class="cv-ref-new">NEW</span>
+              </div>
+              <label class="cv-ref-add">
+                <input type="file" accept="image/*" multiple hidden @change="pickMoreFiles" />
+                <span class="cv-ref-plus">＋</span>
+              </label>
+            </div>
+            <div class="cv-hint">First image is the primary reference used today. Extra photos improve future LoRA training. Max 8.</div>
+          </div>
+
+          <div class="cv-field">
+            <label class="cv-label">Identity strength</label>
+            <div class="cv-strength-row">
+              <button
+                v-for="opt in IDENTITY_STRENGTH_OPTIONS"
+                :key="opt.key"
+                type="button"
+                :class="['cv-strength', createIdentityStrength === opt.key ? 'active' : '']"
+                @click="createIdentityStrength = opt.key"
+              >
+                <span class="cv-strength-label">{{ opt.label }}</span>
+                <span class="cv-strength-sub">{{ opt.sub }}</span>
+              </button>
+            </div>
+            <div class="cv-hint">Higher = generated faces stay closer to the reference photo. Locked can look plasticky on small references.</div>
           </div>
 
           <div v-if="createError" class="cv-error">{{ createError }}</div>
@@ -536,6 +650,58 @@ async function confirmDelete() {
   font-size: 11.5px; cursor: pointer; font-family: inherit;
 }
 .cv-preview-clear:hover { background: rgba(0,0,0,0.8); }
+
+/* Identity strength picker */
+.cv-strength-row { display: flex; gap: 6px; }
+.cv-strength {
+  flex: 1;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 9px 6px 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  cursor: pointer; font-family: inherit; transition: 0.15s;
+}
+.cv-strength:hover { border-color: rgba(255,255,255,0.2); }
+.cv-strength.active {
+  background: rgba(255,107,53,0.14);
+  border-color: rgba(255,107,53,0.55);
+}
+.cv-strength-label { font-size: 12px; font-weight: 600; color: #ececf3; }
+.cv-strength.active .cv-strength-label { color: #ff8055; }
+.cv-strength-sub { font-size: 10px; opacity: 0.5; }
+
+/* Multi-reference grid */
+.cv-refs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.cv-ref-tile { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #0a0a0f; border: 1px solid rgba(255,255,255,0.1); }
+.cv-ref-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cv-ref-x {
+  position: absolute; top: 4px; right: 4px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(0,0,0,0.65); color: #fff;
+  border: none; cursor: pointer; font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: inherit;
+}
+.cv-ref-x:hover { background: rgba(220,40,40,0.85); }
+.cv-ref-primary, .cv-ref-new {
+  position: absolute; bottom: 4px; left: 4px;
+  background: #ff6b35; color: #0a0a0f;
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 2px 5px; border-radius: 3px;
+}
+.cv-ref-new { background: rgba(255,255,255,0.15); color: #fff; }
+.cv-ref-add {
+  aspect-ratio: 1;
+  border: 1.5px dashed rgba(255,255,255,0.18);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,0.4); cursor: pointer;
+  background: rgba(255,255,255,0.02);
+  transition: 0.15s;
+}
+.cv-ref-add:hover { border-color: #ff6b35; color: #ff8055; background: rgba(255,107,53,0.05); }
+.cv-ref-plus { font-size: 22px; }
 
 @media (max-width: 768px) {
   .main { margin-left: 0; }

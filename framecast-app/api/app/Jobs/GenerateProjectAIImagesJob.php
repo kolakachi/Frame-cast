@@ -117,16 +117,29 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             ],
         ];
 
+        $result = null;
         if ($useCharacterRef) {
             $referenceUrl = $this->signedReferenceUrl($scene->character->referenceAsset);
             if ($referenceUrl) {
                 $options['reference_image_url'] = $referenceUrl;
-                $adapter = app(\App\Services\Generation\Image\ReplicatePulidAdapter::class);
+                try {
+                    $result = app(\App\Services\Generation\Image\ReplicatePulidAdapter::class)
+                        ->generate($prompt, $style, $project->aspect_ratio ?? '9:16', $options);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('GenerateProjectAIImagesJob: PuLID failed, falling back to DALL-E', [
+                        'scene_id' => $scene->getKey(),
+                        'error'    => $e->getMessage(),
+                    ]);
+                    // Re-build the prompt with the character description embedded for the fallback.
+                    $prompt = $this->buildPrompt($project, $scene, $style, true);
+                    unset($options['reference_image_url']);
+                }
             }
-            // else: fall back to default adapter (text-only)
         }
 
-        $result = $adapter->generate($prompt, $style, $project->aspect_ratio ?? '9:16', $options);
+        if (! $result) {
+            $result = $adapter->generate($prompt, $style, $project->aspect_ratio ?? '9:16', $options);
+        }
         $storagePath = $this->storeImage($result['image_url'] ?? null, $project, $result['image_b64'] ?? null);
 
         $asset = Asset::query()->create([
