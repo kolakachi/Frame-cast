@@ -831,9 +831,11 @@ class SceneController extends Controller
 
         $validated = $request->validate([
             'tier'             => ['required', 'string', \Illuminate\Validation\Rule::in(['quick', 'balanced', 'premium'])],
-            'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
+            // Replicate i2v models in this set accept only 5 or 10 seconds.
+            'duration_seconds' => ['sometimes', 'integer', \Illuminate\Validation\Rule::in([5, 10])],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:500'],
         ]);
+        $durationSeconds = (int) ($validated['duration_seconds'] ?? 5);
 
         // Must have a source visual asset (image) to animate.
         $sourceAsset = $scene->visual_asset_id
@@ -843,11 +845,14 @@ class SceneController extends Controller
             return $this->error('no_source_image', 'Generate a still image for this scene before animating.', 422);
         }
 
-        $cost = match ($validated['tier']) {
+        $base = match ($validated['tier']) {
             'premium'  => CreditService::VIDEO_PREMIUM,
             'balanced' => CreditService::VIDEO_BALANCED,
             default    => CreditService::VIDEO_QUICK,
         };
+        // Constants are the 5-second baseline; 10s clips cost 2× (the upstream
+        // models render in 5s or 10s chunks at roughly proportional cost).
+        $cost = $durationSeconds === 10 ? $base * 2 : $base;
 
         $balance = $this->credits->balance((int) $user->workspace_id);
         if ($balance < $cost) {
@@ -890,7 +895,7 @@ class SceneController extends Controller
             $scene->getKey(),
             $scene->project_id,
             $validated['tier'],
-            $validated['duration_seconds'] ?? 6,
+            $durationSeconds,
             $validated['motion_prompt'] ?? null,
         );
 

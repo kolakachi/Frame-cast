@@ -82,13 +82,15 @@ return [
         'pulid_num_steps'      => env('REPLICATE_PULID_NUM_STEPS', 20),
 
         // ── Image-to-video (rung 4) — three tiers, each a different upstream model.
-        // All slugs + version hashes overridable in env. Versions left empty until pinned
-        // by hand from the model page on replicate.com (REPLICATE_I2V_*_VERSION).
-        'i2v_quick_model'      => env('REPLICATE_I2V_QUICK_MODEL',    'zsxkib/wan-2.1-i2v-480p'),
+        // Slugs use Replicate's official model-versioned endpoint (no hash needed —
+        // the adapter calls /v1/models/{slug}/predictions and gets the current
+        // official version automatically). Set REPLICATE_I2V_*_VERSION to pin a
+        // specific community-model hash instead.
+        'i2v_quick_model'      => env('REPLICATE_I2V_QUICK_MODEL',    'wan-video/wan-2.5-i2v'),
         'i2v_quick_version'    => env('REPLICATE_I2V_QUICK_VERSION',  ''),
-        'i2v_balanced_model'   => env('REPLICATE_I2V_BALANCED_MODEL', 'minimax/hailuo-02'),
+        'i2v_balanced_model'   => env('REPLICATE_I2V_BALANCED_MODEL', 'minimax/hailuo-2.3-fast'),
         'i2v_balanced_version' => env('REPLICATE_I2V_BALANCED_VERSION', ''),
-        'i2v_premium_model'    => env('REPLICATE_I2V_PREMIUM_MODEL',  'kwaivgi/kling-v2.1-master-i2v'),
+        'i2v_premium_model'    => env('REPLICATE_I2V_PREMIUM_MODEL',  'kwaivgi/kling-v2.1'),
         'i2v_premium_version'  => env('REPLICATE_I2V_PREMIUM_VERSION', ''),
     ],
 

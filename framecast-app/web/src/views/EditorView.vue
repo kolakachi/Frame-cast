@@ -214,11 +214,15 @@ const aiImageError = ref("");
 // Animate (i2v rung 4) state.
 const animateModalOpen = ref(false);
 const animateTier = ref("quick");          // quick | balanced | premium
-const animateDuration = ref(6);            // 3 | 6 | 8 | 10
+const animateDuration = ref(5);            // 5 | 10 (Wan/Hailuo/Kling all accept these)
 const animateMotionPrompt = ref("");
 const animateSubmitting = ref(false);
 const animateError = ref("");
-const ANIMATE_TIER_COSTS = { quick: 60, balanced: 120, premium: 240 };
+// Credits per 5s clip; 10s doubles. Mirror the backend cost calc exactly.
+const ANIMATE_TIER_COSTS_5S = { quick: 60, balanced: 120, premium: 240 };
+const animateCost = computed(() =>
+  ANIMATE_TIER_COSTS_5S[animateTier.value] * (animateDuration.value === 10 ? 2 : 1)
+);
 const ANIMATE_TIER_META = {
   quick:    { name: "Quick",    sub: "Fast · cheap",     quality: "Good",   render: "~30s" },
   balanced: { name: "Balanced", sub: "Best for most",    quality: "Strong", render: "~90s" },
@@ -6055,7 +6059,7 @@ onBeforeUnmount(() => {
                 <div class="anim-tier-sub">{{ ANIMATE_TIER_META[key].sub }}</div>
                 <div class="anim-tier-row"><span>Quality</span><span>{{ ANIMATE_TIER_META[key].quality }}</span></div>
                 <div class="anim-tier-row"><span>Render</span><span>{{ ANIMATE_TIER_META[key].render }}</span></div>
-                <div class="anim-tier-row"><span>Cost</span><span class="anim-tier-cost">{{ ANIMATE_TIER_COSTS[key] }} credits</span></div>
+                <div class="anim-tier-row"><span>Cost (5 s)</span><span class="anim-tier-cost">{{ ANIMATE_TIER_COSTS_5S[key] }} credits</span></div>
               </button>
             </div>
           </div>
@@ -6064,13 +6068,14 @@ onBeforeUnmount(() => {
             <label class="ap-label">Duration</label>
             <div class="anim-duration-row">
               <button
-                v-for="d in [3,6,8,10]"
+                v-for="d in [5, 10]"
                 :key="d"
                 type="button"
                 :class="['anim-dpill', animateDuration === d ? 'active' : '']"
                 @click="animateDuration = d"
               >{{ d }} s</button>
             </div>
+            <div class="ap-hint">10 s costs 2× — these models render in 5 s or 10 s chunks.</div>
           </div>
 
           <div class="ap-field">
@@ -6083,7 +6088,7 @@ onBeforeUnmount(() => {
 
           <div class="anim-foot">
             <div class="anim-total">
-              <span class="anim-total-credits">{{ ANIMATE_TIER_COSTS[animateTier] }} credits</span>
+              <span class="anim-total-credits">{{ animateCost }} credits</span>
               <span class="anim-total-sub">{{ animateDuration }} s clip · regenerate if uncanny</span>
             </div>
             <div style="display:flex;gap:8px;">

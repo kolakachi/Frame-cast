@@ -38,17 +38,24 @@ class ReplicateI2VAdapter implements I2VAdapter
         [$modelSlug, $version, $input] = $this->buildRequestForTier(
             $tier, $imageUrl, $prompt, $durationSeconds, $options
         );
-        if (! $version) {
-            throw new RuntimeException("No Replicate version configured for i2v tier '{$tier}'.");
-        }
+
+        // Two Replicate API patterns:
+        //   • Versioned (community models):  POST /v1/predictions  body { version, input }
+        //   • Model-versioned (official):    POST /v1/models/{slug}/predictions  body { input }
+        // We prefer the model-versioned pattern when no version is configured — it tracks
+        // the model's current official version automatically. Falls back to versioned
+        // when a hash is pinned in env.
+        $url = $version
+            ? 'https://api.replicate.com/v1/predictions'
+            : "https://api.replicate.com/v1/models/{$modelSlug}/predictions";
+        $body = $version
+            ? ['version' => $version, 'input' => $input]
+            : ['input' => $input];
 
         // 1. Kick off the prediction.
         $start = Http::withToken($apiToken)
             ->acceptJson()
-            ->post('https://api.replicate.com/v1/predictions', [
-                'version' => $version,
-                'input'   => $input,
-            ]);
+            ->post($url, $body);
 
         if (! $start->successful()) {
             $body = $start->body();
@@ -107,6 +114,13 @@ class ReplicateI2VAdapter implements I2VAdapter
     }
 
     /**
+     * Input shapes per the model's default_example on Replicate (verified live):
+     *   wan-video/wan-2.5-i2v   → image, prompt, duration, resolution, negative_prompt
+     *   minimax/hailuo-2.3-fast → first_frame_image, prompt, duration, resolution, prompt_optimizer
+     *   kwaivgi/kling-v2.1      → start_image, prompt, duration, negative_prompt, mode
+     *
+     * All three accept `duration` in seconds, commonly 5 or 10. We clamp accordingly.
+     *
      * @return array{0:string,1:?string,2:array<string,mixed>} [modelSlug, version, input]
      */
     private function buildRequestForTier(
@@ -116,7 +130,8 @@ class ReplicateI2VAdapter implements I2VAdapter
         int $durationSeconds,
         array $options
     ): array {
-        $clamped = max(3, min(10, $durationSeconds));
+        // All three models in this set accept duration: 5 or 10.
+        $duration = $durationSeconds <= 7 ? 5 : 10;
 
         return match ($tier) {
             'premium' => [
@@ -125,9 +140,8 @@ class ReplicateI2VAdapter implements I2VAdapter
                 [
                     'start_image' => $imageUrl,
                     'prompt'      => $prompt !== '' ? $prompt : 'subtle natural motion, gentle camera drift',
-                    // Kling accepts duration 5 or 10
-                    'duration'    => $clamped <= 7 ? 5 : 10,
-                    'aspect_ratio' => $options['aspect_ratio'] ?? '9:16',
+                    'duration'    => $duration,
+                    'mode'        => $options['kling_mode'] ?? 'standard',
                 ],
             ],
             'balanced' => [
@@ -136,8 +150,7 @@ class ReplicateI2VAdapter implements I2VAdapter
                 [
                     'first_frame_image' => $imageUrl,
                     'prompt'            => $prompt !== '' ? $prompt : 'cinematic gentle motion',
-                    // Hailuo accepts duration 6 or 10
-                    'duration'          => $clamped <= 7 ? 6 : 10,
+                    'duration'          => $duration,
                     'prompt_optimizer'  => true,
                 ],
             ],
@@ -145,12 +158,9 @@ class ReplicateI2VAdapter implements I2VAdapter
                 config('services.replicate.i2v_quick_model'),
                 config('services.replicate.i2v_quick_version'),
                 [
-                    'image'         => $imageUrl,
-                    'prompt'        => $prompt !== '' ? $prompt : 'subtle natural motion',
-                    // Wan 2.1 expects num_frames; 81 frames at 16fps ≈ 5s
-                    'num_frames'    => min(81, max(33, $clamped * 16)),
-                    'fps'           => 16,
-                    'guide_scale'   => 5.0,
+                    'image'    => $imageUrl,
+                    'prompt'   => $prompt !== '' ? $prompt : 'subtle natural motion',
+                    'duration' => $duration,
                 ],
             ],
         };
