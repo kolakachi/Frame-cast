@@ -789,6 +789,11 @@ async function confirmDelete() {
   border-radius: 14px;
   padding: 22px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  max-height: 90vh;
+  overflow-y: auto;
+  /* Keep cv-foot inside this scroll container so position: sticky pins
+     the action row to the bottom — submit never slides off the viewport
+     after a reference photo + extras stack up. */
 }
 .cv-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .cv-title { font-size: 16px; font-weight: 700; }
@@ -806,7 +811,14 @@ async function confirmDelete() {
 .cv-input:focus { border-color: #ff6b35; }
 .cv-hint { font-size: 11px; opacity: 0.55; margin-top: 6px; }
 .cv-error { font-size: 12.5px; color: #ff6b6b; margin: 8px 0 12px; }
-.cv-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.cv-foot {
+  display: flex; justify-content: flex-end; gap: 8px; align-items: center;
+  margin-top: 16px;
+  position: sticky; bottom: -22px; /* offset by modal's padding so it sits flush */
+  background: #14141c; padding: 12px 0 0;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  z-index: 2;
+}
 
 .cv-drop {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -818,7 +830,9 @@ async function confirmDelete() {
 .cv-drop-ico { font-size: 24px; opacity: 0.55; }
 .cv-drop-copy { font-size: 13.5px; font-weight: 500; margin-top: 6px; }
 .cv-drop-sub { font-size: 11px; opacity: 0.5; margin-top: 2px; }
-.cv-preview { position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; background: #0a0a0f; }
+/* Cap preview height so a tall reference image can't push the rest of the
+   form (name, description, identity strength, footer) off-screen. */
+.cv-preview { position: relative; width: 100%; max-width: 280px; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; background: #0a0a0f; margin: 0 auto; }
 .cv-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cv-preview-clear {
   position: absolute; top: 8px; right: 8px;
