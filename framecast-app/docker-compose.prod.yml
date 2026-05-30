@@ -22,6 +22,7 @@ services:
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
         VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-production}
         VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0.1}
+        VITE_CRISP_WEBSITE_ID: ${VITE_CRISP_WEBSITE_ID:-}
     ports:
       - "80:80"
     restart: unless-stopped
