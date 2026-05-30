@@ -6,11 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Asset;
 use App\Models\Character;
 use App\Models\User;
+use App\Services\CreditService;
+use App\Services\Generation\Image\CharacterImageAdapter;
+use App\Services\Generation\Image\DalleImageAdapter;
 use App\Services\Media\StorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class CharacterController extends Controller
 {
@@ -185,6 +190,193 @@ class CharacterController extends Controller
         return response()->json([
             'data' => ['character' => $this->serialize($character)],
             'meta' => [],
+        ]);
+    }
+
+    /**
+     * Generate a test/preview image of a character. Two paths:
+     *  - Character has a reference asset → route through CharacterImageAdapter
+     *    (gpt-image-2 /edits with the reference photo). The new image preserves
+     *    identity from the reference while following the prompt's scene.
+     *  - Character has NO reference asset → route through DalleImageAdapter
+     *    (gpt-image-1 text-only generation). The user can then optionally
+     *    promote the result to the character's reference photo.
+     *
+     * Charges credits per CreditService::AI_CHARACTER (with ref) or
+     * CreditService::AI_MEDIUM (without ref). Stored as an Asset tagged
+     * 'character_preview' for later use.
+     */
+    public function generateImage(Request $request, int $characterId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $character = $this->resolve($request, $characterId);
+        if (! $character) {
+            return $this->error('not_found', 'Character not found.', 404);
+        }
+
+        $validated = $request->validate([
+            'prompt'        => ['required', 'string', 'max:2000'],
+            'style'         => ['nullable', 'string', 'max:64'],
+            'aspect_ratio'  => ['nullable', Rule::in(['9:16', '1:1', '16:9'])],
+            'quality'       => ['nullable', Rule::in(['low', 'medium', 'high'])],
+            'set_as_reference' => ['sometimes', 'boolean'],
+        ]);
+
+        $hasReference = (bool) $character->reference_asset_id;
+        $cost = $hasReference ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+        $credits = app(CreditService::class);
+
+        $balance = $credits->balance((int) $user->workspace_id);
+        if ($balance < $cost) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'insufficient_credits',
+                    'message' => "You need {$cost} credits to generate a character preview. Your balance is {$balance}.",
+                    'context' => ['balance' => $balance, 'required' => $cost, 'shortage' => $cost - $balance],
+                ],
+            ], 402);
+        }
+
+        $style        = (string) ($validated['style'] ?? 'photorealistic');
+        $aspectRatio  = (string) ($validated['aspect_ratio'] ?? '9:16');
+        $quality      = (string) ($validated['quality'] ?? ($hasReference ? 'high' : 'medium'));
+
+        $options = [
+            'usage_context' => [
+                'workspace_id' => $user->workspace_id,
+                'user_id'      => $user->getKey(),
+                'character_id' => $character->getKey(),
+                'style'        => $style,
+            ],
+            'quality' => $quality,
+        ];
+
+        try {
+            if ($hasReference) {
+                // Adapter needs a fetchable URL — generate a signed one for the reference asset.
+                $character->loadMissing('referenceAsset');
+                $referenceUrl = $this->assetUrl($character->referenceAsset);
+                if (! $referenceUrl) {
+                    return $this->error('invalid_reference', 'Character reference image is missing or unreadable.', 422);
+                }
+                $options['reference_image_url'] = $referenceUrl;
+                $result = app(CharacterImageAdapter::class)->generate(
+                    $validated['prompt'],
+                    $style,
+                    $aspectRatio,
+                    $options
+                );
+            } else {
+                // Build a more directed prompt for the no-reference path so DALL-E
+                // produces a clean portrait that can serve as a future reference.
+                $promptWithCharacter = trim($character->description
+                    ? "Portrait of {$character->name}: {$character->description}. {$validated['prompt']}"
+                    : "Portrait of {$character->name}. {$validated['prompt']}");
+                $result = app(DalleImageAdapter::class)->generate(
+                    $promptWithCharacter,
+                    $style,
+                    $aspectRatio,
+                    $options
+                );
+            }
+        } catch (Throwable $e) {
+            return $this->error('generation_failed', $e->getMessage(), 502);
+        }
+
+        // Persist the generated image to storage and create an Asset row.
+        $asset = $this->storeGeneratedImageAsAsset($user, $character, $result, $style);
+        if (! $asset) {
+            return $this->error('storage_failed', 'Generated image could not be stored.', 500);
+        }
+
+        // Charge credits only on success — same pattern as scene regeneration.
+        $credits->deduct((int) $user->workspace_id, $cost, 'character_preview');
+
+        // Optional: immediately promote to reference.
+        if (! empty($validated['set_as_reference']) && $validated['set_as_reference']) {
+            $character->update([
+                'reference_asset_id' => $asset->getKey(),
+                'reference_asset_ids' => array_values(array_unique(array_merge(
+                    [$asset->getKey()],
+                    is_array($character->reference_asset_ids) ? $character->reference_asset_ids : []
+                ))),
+            ]);
+        }
+
+        $character->load('referenceAsset')->loadCount('scenes');
+
+        return response()->json([
+            'data' => [
+                'character' => $this->serialize($character),
+                'image' => [
+                    'asset_id'      => $asset->getKey(),
+                    'storage_url'   => $this->assetUrl($asset),
+                    'mime_type'     => $asset->mime_type,
+                    'width'         => $result['width']  ?? null,
+                    'height'        => $result['height'] ?? null,
+                    'provider_key'  => $result['provider_key'] ?? null,
+                    'with_reference'=> $hasReference,
+                    'set_as_reference' => ! empty($validated['set_as_reference']),
+                ],
+                'credits_charged' => $cost,
+                'balance_after'   => $credits->balance((int) $user->workspace_id),
+            ],
+            'meta' => [],
+        ], 201);
+    }
+
+    /**
+     * Download (or decode) the adapter's returned image and store it as an Asset
+     * in the workspace, tagged so we can find character previews later.
+     */
+    private function storeGeneratedImageAsAsset(User $user, Character $character, array $result, string $style): ?Asset
+    {
+        // The adapter returns either a public image URL or a base64 payload.
+        $imageBytes = null;
+        if (! empty($result['image_b64'])) {
+            $imageBytes = base64_decode($result['image_b64'], true);
+        } elseif (! empty($result['image_url'])) {
+            try {
+                $fetched = Http::timeout(60)->get($result['image_url']);
+                if ($fetched->successful()) {
+                    $imageBytes = $fetched->body();
+                }
+            } catch (Throwable) {
+                $imageBytes = null;
+            }
+        }
+        if ($imageBytes === null || $imageBytes === false) {
+            return null;
+        }
+
+        $storage  = app(StorageService::class);
+        $filename = 'characters/'.$character->getKey().'/preview-'.now()->format('Ymd-His').'-'.bin2hex(random_bytes(4)).'.png';
+        try {
+            $stored = $storage->put($filename, $imageBytes, ['ContentType' => 'image/png']);
+        } catch (Throwable) {
+            return null;
+        }
+
+        return Asset::query()->create([
+            'workspace_id'       => $user->workspace_id,
+            'channel_id'         => null,
+            'asset_type'         => 'image',
+            'title'              => "Character preview — {$character->name}",
+            'description'        => 'Generated character preview',
+            'storage_url'        => $stored,
+            'thumbnail_url'      => $stored,
+            'mime_type'          => 'image/png',
+            'dimensions_json'    => [
+                'width'  => (int) ($result['width']  ?? 1024),
+                'height' => (int) ($result['height'] ?? 1536),
+            ],
+            'tags'               => ['character_preview', $character->name, $style],
+            'source'             => 'ai_generated',
+            'usage_count'        => 0,
+            'status'             => 'active',
+            'created_by_user_id' => $user->getKey(),
         ]);
     }
 

@@ -17,6 +17,7 @@ class Project extends Model
         'brand_kit_id',
         'template_id',
         'niche_id',
+        'default_character_id',
         'source_type',
         'source_content_raw',
         'source_content_normalized',
@@ -51,6 +52,7 @@ class Project extends Model
         return [
             'duration_target_seconds' => 'integer',
             'niche_id' => 'integer',
+            'default_character_id' => 'integer',
             'source_image_asset_ids' => 'array',
             'music_asset_id' => 'integer',
             'music_settings_json' => 'array',
@@ -68,6 +70,11 @@ class Project extends Model
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);
+    }
+
+    public function defaultCharacter(): BelongsTo
+    {
+        return $this->belongsTo(Character::class, 'default_character_id');
     }
 
     public function series(): BelongsTo

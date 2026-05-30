@@ -42,6 +42,68 @@ const createError = ref("");
 const deleteTarget = ref(null);
 const deletePending = ref(false);
 
+// ── Generate-image modal ──────────────────────────────────────────────
+// Lets the user generate a preview image of the character either via the
+// existing reference (gpt-image-2 /edits) or text-only (gpt-image-1).
+const genTarget = ref(null);                     // character being previewed
+const genPrompt = ref("");
+const genStyle = ref("photorealistic");
+const genAspectRatio = ref("9:16");
+const genQuality = ref("high");
+const genState = ref("idle");                    // 'idle' | 'loading' | 'done' | 'error'
+const genError = ref("");
+const genResult = ref(null);                     // last result {asset_id, storage_url, ...}
+const genSetAsReference = ref(false);
+
+function openGenerate(character) {
+  genTarget.value = character;
+  genPrompt.value = "";
+  genStyle.value = "photorealistic";
+  genAspectRatio.value = "9:16";
+  genQuality.value = character.reference_asset ? "high" : "medium";
+  genState.value = "idle";
+  genError.value = "";
+  genResult.value = null;
+  genSetAsReference.value = !character.reference_asset; // first image without ref → suggest promoting
+}
+
+function closeGenerate() {
+  if (genState.value === "loading") return;
+  genTarget.value = null;
+}
+
+async function submitGenerate() {
+  if (!genTarget.value) return;
+  if (!genPrompt.value.trim()) {
+    genError.value = "Describe the scene you want the character in.";
+    return;
+  }
+  genState.value = "loading";
+  genError.value = "";
+  try {
+    const res = await api.post(`/characters/${genTarget.value.id}/generate-image`, {
+      prompt: genPrompt.value.trim(),
+      style: genStyle.value,
+      aspect_ratio: genAspectRatio.value,
+      quality: genQuality.value,
+      set_as_reference: genSetAsReference.value,
+    });
+    genResult.value = res.data?.data?.image ?? null;
+    genState.value = "done";
+    // Refresh the character list so the reference photo updates if user promoted it.
+    await loadCharacters();
+  } catch (e) {
+    genState.value = "error";
+    genError.value = e?.response?.data?.error?.message ?? "Image generation failed.";
+  }
+}
+
+const genCostEstimate = computed(() => {
+  // Frontend-only estimate — backend is authoritative.
+  if (!genTarget.value) return 0;
+  return genTarget.value.reference_asset ? 50 : 15; // AI_CHARACTER vs AI_MEDIUM
+});
+
 onMounted(async () => {
   try {
     const me = await api.get("/me");
@@ -337,6 +399,7 @@ async function confirmDelete() {
                   <img v-if="thumbUrl(c)" :src="thumbUrl(c)" alt="" />
                   <span v-else>{{ initial(c.name) }}</span>
                   <div class="char-card-actions">
+                    <button class="char-card-act accent" type="button" title="Generate test image" @click.stop="openGenerate(c)">✦</button>
                     <button class="char-card-act" type="button" title="Edit" @click.stop="openEdit(c)">✎</button>
                     <button class="char-card-act danger" type="button" title="Delete" @click.stop="deleteTarget = c">✕</button>
                   </div>
@@ -470,6 +533,101 @@ async function confirmDelete() {
         </div>
       </div>
     </Teleport>
+
+    <!-- Generate test image -->
+    <Teleport to="body">
+      <div v-if="genTarget" class="cv-backdrop" @click.self="closeGenerate">
+        <div class="cv-modal" style="max-width:640px">
+          <div class="cv-head">
+            <div class="cv-title">✦ Generate image — {{ genTarget.name }}</div>
+            <button class="cv-close" @click="closeGenerate">×</button>
+          </div>
+
+          <div class="gen-mode-banner">
+            <span v-if="genTarget.reference_asset">
+              <strong>Reference photo on file.</strong> The result will be generated to match this character's face and identity using gpt-image-2.
+            </span>
+            <span v-else>
+              <strong>No reference photo yet.</strong> The first image will be generated from scratch (text-only). Tick "Set as reference" and future generations of this character will preserve the same identity.
+            </span>
+          </div>
+
+          <div class="cv-field">
+            <label class="cv-label">What scene do you want them in?</label>
+            <textarea
+              v-model="genPrompt"
+              class="cv-input"
+              rows="3"
+              placeholder="e.g. confident founder holding a supplement bottle in a bright modern kitchen, mid-morning natural light"
+              :disabled="genState === 'loading'"
+            ></textarea>
+          </div>
+
+          <div class="gen-controls-grid">
+            <div class="cv-field">
+              <label class="cv-label">Style</label>
+              <select v-model="genStyle" class="cv-input" :disabled="genState === 'loading'">
+                <option value="photorealistic">Photorealistic</option>
+                <option value="cinematic">Cinematic</option>
+                <option value="documentary">Documentary</option>
+                <option value="anime">Anime</option>
+                <option value="3d_animated">3D animated</option>
+                <option value="comic">Comic</option>
+                <option value="watercolor">Watercolor</option>
+                <option value="dark_fantasy">Dark fantasy</option>
+                <option value="cyberpunk_80s">Cyberpunk 80s</option>
+              </select>
+            </div>
+            <div class="cv-field">
+              <label class="cv-label">Aspect</label>
+              <select v-model="genAspectRatio" class="cv-input" :disabled="genState === 'loading'">
+                <option value="9:16">9:16 portrait</option>
+                <option value="1:1">1:1 square</option>
+                <option value="16:9">16:9 landscape</option>
+              </select>
+            </div>
+            <div class="cv-field">
+              <label class="cv-label">Quality</label>
+              <select v-model="genQuality" class="cv-input" :disabled="genState === 'loading'">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+
+          <label class="gen-promote-row">
+            <input type="checkbox" v-model="genSetAsReference" :disabled="genState === 'loading'" />
+            <span>Set this image as the character's reference photo {{ genTarget.reference_asset ? '(replaces current)' : '(unlocks identity preservation on next generation)' }}</span>
+          </label>
+
+          <div v-if="genResult" class="gen-result">
+            <img :src="genResult.storage_url" :alt="`${genTarget.name} preview`" />
+            <div class="gen-result-meta">
+              <span>{{ genResult.with_reference ? 'gpt-image-2 (reference)' : 'gpt-image-1 (text-only)' }}</span>
+              <span v-if="genResult.set_as_reference">· Set as new reference ✓</span>
+            </div>
+          </div>
+
+          <div v-if="genError" class="banner error" style="margin-top:12px">{{ genError }}</div>
+
+          <div class="cv-foot">
+            <span class="gen-cost">~{{ genCostEstimate }} credits</span>
+            <button class="btn btn-ghost btn-sm" type="button" @click="closeGenerate" :disabled="genState === 'loading'">
+              {{ genState === 'done' ? 'Close' : 'Cancel' }}
+            </button>
+            <button
+              class="btn btn-primary btn-sm"
+              type="button"
+              :disabled="genState === 'loading' || !genPrompt.trim()"
+              @click="submitGenerate"
+            >
+              {{ genState === 'loading' ? 'Generating…' : (genState === 'done' ? 'Generate another' : 'Generate ✦') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -576,6 +734,26 @@ async function confirmDelete() {
 }
 .char-card-act:hover { background: rgba(0,0,0,0.8); }
 .char-card-act.danger:hover { background: rgba(220,40,40,0.85); }
+.char-card-act.accent { background: rgba(255,107,53,0.85); }
+.char-card-act.accent:hover { background: rgba(255,107,53,1); }
+
+/* ── Generate-image modal ───────────────────────────────────────────── */
+.gen-mode-banner {
+  padding: 10px 14px; border-radius: 8px; margin: 6px 0 14px;
+  background: rgba(255,107,53,0.06); border: 1px solid rgba(255,107,53,0.18);
+  font-size: 12px; color: var(--color-text-secondary); line-height: 1.55;
+}
+.gen-mode-banner strong { color: var(--color-accent); }
+.gen-controls-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; }
+.gen-promote-row { display: flex; gap: 8px; align-items: flex-start; padding: 10px 0; font-size: 12px; color: var(--color-text-secondary); cursor: pointer; }
+.gen-promote-row input { margin-top: 3px; }
+.gen-result { margin-top: 14px; border-radius: 10px; overflow: hidden; border: 1px solid var(--color-border); background: var(--color-bg-elevated); }
+.gen-result img { display: block; width: 100%; max-height: 420px; object-fit: contain; background: #000; }
+.gen-result-meta { padding: 8px 12px; font-size: 11px; color: var(--color-text-muted); font-family: "Space Mono", monospace; letter-spacing: 0.05em; display: flex; gap: 10px; }
+.gen-cost { font-size: 11px; color: var(--color-text-muted); margin-right: auto; font-family: "Space Mono", monospace; letter-spacing: 0.05em; }
+@media (max-width: 600px) {
+  .gen-controls-grid { grid-template-columns: 1fr; }
+}
 
 .cv-preview-replace {
   position: absolute; top: 8px; right: 90px;

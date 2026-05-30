@@ -104,6 +104,9 @@ class SceneController extends Controller
                 'visual_asset_id' => null,
                 'visual_prompt' => $validated['visual_prompt'] ?? null,
                 'visual_style' => $validated['visual_style'] ?? null,
+                // Blank-canvas scenes added in the editor inherit the project's
+                // recurring character so the user doesn't reassign per-scene.
+                'character_id' => $project->default_character_id,
                 'transition_rule' => null,
                 'status' => 'draft',
                 'locked_fields_json' => [],

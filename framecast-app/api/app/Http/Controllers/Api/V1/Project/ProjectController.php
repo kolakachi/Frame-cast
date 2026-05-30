@@ -285,6 +285,7 @@ class ProjectController extends Controller
             'template_id' => ['nullable', 'integer'],
             'brand_kit_id' => ['nullable', 'integer'],
             'niche_id' => ['nullable', 'integer'],
+            'character_id' => ['nullable', 'integer'],
             'content_goal' => ['nullable', 'string', 'max:255'],
             'duration_target_seconds' => ['nullable', 'integer', 'min:5', 'max:600'],
             'tone' => ['nullable', 'string', 'max:64'],
@@ -404,6 +405,20 @@ class ProjectController extends Controller
         $nicheMusicAssetId = null;
         $nicheTone = null;
         $nicheVisualStyle = null;
+
+        // Resolve character — validates workspace ownership; nullable.
+        $defaultCharacterId = null;
+        if (! empty($validated['character_id'])) {
+            $character = \App\Models\Character::query()
+                ->whereKey($validated['character_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->where('status', 'active')
+                ->first();
+            if (! $character) {
+                return $this->error('invalid_character', 'Character not found in this workspace.', 422);
+            }
+            $defaultCharacterId = $character->getKey();
+        }
 
         if (! empty($validated['niche_id'])) {
             $niche = Niche::query()->find($validated['niche_id']);
@@ -527,6 +542,7 @@ class ProjectController extends Controller
             'brand_kit_id' => $brandKitId,
             'template_id' => $template?->getKey(),
             'niche_id' => $niche?->getKey(),
+            'default_character_id' => $defaultCharacterId,
             'music_asset_id' => $nicheMusicAssetId,
             'music_settings_json' => $nicheMusicAssetId ? ['volume' => 30, 'duck_volume' => 8, 'fade_in_ms' => 500, 'loop' => true, 'duck_during_voice' => true] : null,
             'source_type' => $validated['source_type'],
