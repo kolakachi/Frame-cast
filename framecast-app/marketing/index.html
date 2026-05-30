@@ -3,8 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WyvStudio — AI Video, Woven</title>
-<meta name="description" content="Turn ideas into publish-ready short-form videos in minutes. AI script, voice, visuals, captions — then schedule straight to YouTube and TikTok.">
+<title>WyvStudio — One character. Every video. Zero shoots.</title>
+<meta name="description" content="Upload one photo. WyvStudio puts your spokesperson, narrator, or story hero in every short video you make — ads, stories, episodes, podcast clips, explainers. Branded short-form video without a shoot.">
+<meta property="og:title" content="One character. Every video. Zero shoots." />
+<meta property="og:description" content="A recurring AI character across every short video you ship. For creators, brands, and small teams making short-form video without filming." />
+<meta property="og:type" content="website" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
@@ -55,6 +58,37 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 32px;height:60px;d
 .hero-avatars{display:flex}
 .hero-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#ff6b35,#f59e0b);border:2px solid var(--bg);margin-left:-8px;font-size:11px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center}
 .hero-avatar:first-child{margin-left:0}
+.hero-trust{font-size:12px;color:var(--text-faint);max-width:480px;line-height:1.55;text-align:center;padding:14px 20px;border:1px solid var(--border);border-radius:999px;background:rgba(255,107,53,.02)}
+
+/* ── CHARACTER MOAT ── */
+.moat-section{padding:80px 24px;background:linear-gradient(180deg,var(--bg) 0%,rgba(255,107,53,.03) 50%,var(--bg) 100%)}
+.moat-section .container{text-align:center}
+.moat-grid{display:grid;grid-template-columns:240px auto 1fr;gap:32px;align-items:center;margin-top:48px;text-align:left}
+.moat-ref{aspect-ratio:1;border-radius:14px;background:linear-gradient(135deg,#2d1b4e,#1a0a2e);border:2px solid rgba(255,107,53,.35);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:48px;color:rgba(255,255,255,.5)}
+.moat-ref-tag{position:absolute;top:10px;left:10px;font-size:10px;font-weight:600;padding:4px 9px;border-radius:6px;background:rgba(0,0,0,.45);color:#fff;backdrop-filter:blur(6px);font-family:"Space Mono",monospace;letter-spacing:.05em}
+.moat-ref-label{font-size:11px;color:rgba(255,255,255,.75);font-family:"Space Mono",monospace;letter-spacing:.05em;margin-top:8px}
+.moat-arrow{font-size:32px;color:var(--accent);font-weight:200;text-align:center}
+.moat-scenes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.moat-scene{aspect-ratio:9/16;border-radius:10px;background:linear-gradient(135deg,#1a1a24,#0d0d1a);border:1px solid var(--border);position:relative;display:flex;align-items:center;justify-content:center;font-size:24px;color:rgba(255,255,255,.35);overflow:hidden}
+.moat-scene-label{position:absolute;bottom:8px;left:8px;right:8px;font-size:9px;color:rgba(255,255,255,.85);background:rgba(0,0,0,.55);backdrop-filter:blur(6px);padding:4px 6px;border-radius:4px;text-align:center;line-height:1.25;font-family:"Space Mono",monospace}
+
+/* ── USE CASES ── */
+.uc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:48px}
+.uc-card{border-radius:14px;border:1px solid var(--border);background:var(--surface);overflow:hidden;transition:.2s;display:flex;flex-direction:column}
+.uc-card:hover{border-color:#34343f;transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,.45)}
+.uc-card.wedge{border-color:rgba(255,107,53,.35);background:rgba(255,107,53,.03)}
+.uc-media{aspect-ratio:9/16;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.uc-media-play{width:54px;height:54px;border-radius:50%;background:rgba(255,107,53,.92);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 8px 24px rgba(255,107,53,.35);transition:.2s;z-index:2}
+.uc-card:hover .uc-media-play{transform:scale(1.08);background:#ff6b35}
+.uc-media-badge{position:absolute;top:12px;left:12px;font-size:10px;font-weight:600;padding:4px 9px;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;backdrop-filter:blur(8px);font-family:"Space Mono",monospace;letter-spacing:.05em;z-index:2}
+.uc-media-caption{position:absolute;bottom:12px;left:12px;right:12px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.6);backdrop-filter:blur(8px);padding:6px 10px;border-radius:6px;line-height:1.35;z-index:2}
+.uc-body{padding:18px 20px 20px}
+.uc-wedge-tag{display:inline-block;font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 8px;border-radius:999px;margin-bottom:10px;font-family:"Space Mono",monospace;letter-spacing:.05em;text-transform:uppercase}
+.uc-title{font-size:15px;font-weight:600;margin-bottom:6px;line-height:1.3}
+.uc-hook{font-size:12.5px;color:var(--text-dim);line-height:1.55;margin-bottom:12px}
+.uc-ships{display:flex;flex-direction:column;gap:5px}
+.uc-ship{font-size:11.5px;color:var(--text-faint);line-height:1.45;display:flex;gap:7px;align-items:flex-start}
+.uc-ship::before{content:"";width:3px;height:3px;border-radius:50%;background:var(--accent);margin-top:7px;flex-shrink:0}
 
 /* ── APP PREVIEW ── */
 .preview-wrap{max-width:900px;margin:0 auto;position:relative;padding:0 24px}
@@ -177,11 +211,22 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
 .footer-links a:hover{color:var(--text-dim)}
 .footer-copy{font-size:12px;color:var(--text-faint)}
 
+@media(max-width:900px){
+  .uc-grid{grid-template-columns:repeat(2,1fr)}
+  .moat-grid{grid-template-columns:1fr;gap:24px;text-align:center}
+  .moat-ref{max-width:200px;margin:0 auto}
+  .moat-arrow{transform:rotate(90deg);margin:8px auto}
+}
 @media(max-width:768px){
   .pain-grid,.steps,.feature-grid,.visual-types,.pricing-grid,.proof-grid{grid-template-columns:1fr}
   .preview-body{grid-template-columns:1fr}
   .preview-sidebar,.preview-panel{display:none}
   nav .nav-links{display:none}
+  .uc-grid,.moat-scenes{grid-template-columns:repeat(2,1fr)}
+  .moat-scenes .moat-scene:nth-child(n+3){display:none}
+}
+@media(max-width:480px){
+  .uc-grid{grid-template-columns:1fr}
 }
 </style>
 
@@ -203,6 +248,7 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
     <span class="nav-logo-text"><span>Wyv</span>Studio</span>
   </a>
   <div class="nav-links">
+    <a href="#use-cases">Use cases</a>
     <a href="#how-it-works">How it works</a>
     <a href="#features">Features</a>
     <a href="#pricing">Pricing</a>
@@ -216,20 +262,15 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
 <!-- ── HERO ── -->
 <section class="hero">
   <div class="hero-glow"></div>
-  <div class="hero-badge"><span class="hero-badge-dot"></span> AI Video Platform</div>
-  <h1>Your ideas,<br><em>woven into video.</em></h1>
-  <p class="hero-sub">Turn a prompt, article, or script into a publish-ready short-form video — with AI voice, visuals, captions, and scheduling built in.</p>
+  <div class="hero-badge"><span class="hero-badge-dot"></span> Recurring Character AI</div>
+  <h1>One character.<br><em>Every video.</em> Zero shoots.</h1>
+  <p class="hero-sub">Upload one photo of your spokesperson, narrator, or story hero. WyvStudio puts them in every short video you ship — ads, stories, episodes, podcast clips, explainers — across every aspect ratio, every variant, every platform.</p>
   <div class="hero-actions">
-    <a href="https://app.wyvstudio.com/register" class="btn btn-primary btn-lg">Start for free →</a>
-    <a href="#how-it-works" class="btn btn-lg">See how it works</a>
+    <a href="#use-cases" class="btn btn-primary btn-lg">Watch the 45s demo →</a>
+    <a href="https://app.wyvstudio.com/register" class="btn btn-lg">Try it free</a>
   </div>
-  <div class="hero-social-proof">
-    <div class="hero-avatars">
-      <div class="hero-avatar">K</div>
-      <div class="hero-avatar" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">D</div>
-      <div class="hero-avatar" style="background:linear-gradient(135deg,#0ea5e9,#06b6d4)">A</div>
-    </div>
-    <span>Trusted by early creators & agencies</span>
+  <div class="hero-trust">
+    No credit games. No surprise renewals. Cancel any month — we'll refund unused video credits.
   </div>
 </section>
 
@@ -289,28 +330,70 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
   <div class="preview-glow"></div>
 </div>
 
+<!-- ── CHARACTER MOAT ── -->
+<section class="moat-section">
+  <div class="container">
+    <div class="section-label">The moat</div>
+    <h2 class="section-title">One photo. Every video.</h2>
+    <p class="section-sub" style="margin:0 auto">A single reference photo becomes a recurring on-screen presence. Same face, same identity — across ads, episodes, podcast clips, and explainers.</p>
+
+    <div class="moat-grid">
+      <!-- Single reference photo placeholder -->
+      <div class="moat-ref">
+        <div class="moat-ref-tag">Reference</div>
+        <span>👤</span>
+        <div class="moat-ref-label">One photo</div>
+      </div>
+      <div class="moat-arrow">→</div>
+      <!-- 4 generated scene placeholders -->
+      <div class="moat-scenes">
+        <div class="moat-scene" style="background:linear-gradient(135deg,#1e3a2e,#0f1f1a)">
+          <span>🧴</span>
+          <div class="moat-scene-label">Supplement ad</div>
+        </div>
+        <div class="moat-scene" style="background:linear-gradient(135deg,#1a1a2e,#0d0d1a)">
+          <span>🎙</span>
+          <div class="moat-scene-label">Podcast host</div>
+        </div>
+        <div class="moat-scene" style="background:linear-gradient(135deg,#2d1b4e,#1a0a2e)">
+          <span>📖</span>
+          <div class="moat-scene-label">Story narrator</div>
+        </div>
+        <div class="moat-scene" style="background:linear-gradient(135deg,#3a1e1a,#1f0f0a)">
+          <span>📊</span>
+          <div class="moat-scene-label">Explainer host</div>
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size:12px;color:var(--text-faint);margin-top:48px;font-family:'Space Mono',monospace;letter-spacing:.05em">
+      Powered by OpenAI gpt-image-2 · Replaces stock avatars and 2-day digital-twin pipelines
+    </p>
+  </div>
+</section>
+
 <!-- ── PROBLEM ── -->
 <section style="padding:100px 24px 80px">
   <div class="container problem">
     <div class="section-label">The problem</div>
-    <h2 class="section-title">Faceless content is a full-time job.<br>It shouldn't be.</h2>
-    <p class="section-sub">Writing scripts, sourcing visuals, recording voiceovers, editing captions, uploading to three platforms — most creators burn out before they find their audience.</p>
+    <h2 class="section-title">Short-form video is a full-time job.<br>It shouldn't be.</h2>
+    <p class="section-sub">Writing scripts, sourcing visuals, recording voiceovers, editing captions, keeping a consistent brand face, uploading to three platforms — most teams burn out before they find their rhythm.</p>
 
     <div class="pain-grid" style="margin-top:48px">
       <div class="pain-card">
         <div class="pain-icon">⏱</div>
         <div class="pain-title">Hours per video</div>
-        <div class="pain-copy">A single 60-second video takes 3–5 hours from idea to upload. At that pace, consistency is impossible.</div>
+        <div class="pain-copy">A single 60-second video takes 3–5 hours from idea to upload. At that pace, weekly cadence is impossible.</div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">🎭</div>
+        <div class="pain-title">No on-screen face</div>
+        <div class="pain-copy">Stock avatars look stiff. Real shoots are slow and expensive. Your videos either lack a presenter or all look the same.</div>
       </div>
       <div class="pain-card">
         <div class="pain-icon">🔧</div>
         <div class="pain-title">Tool sprawl</div>
-        <div class="pain-copy">Script in Docs, voice in ElevenLabs, edit in CapCut, captions in another app, schedule with a third. It's exhausting.</div>
-      </div>
-      <div class="pain-card">
-        <div class="pain-icon">📉</div>
-        <div class="pain-title">Inconsistent output</div>
-        <div class="pain-copy">Quality varies, posting cadence drops, and the algorithm punishes you for it. Volume is the game — you can't win manually.</div>
+        <div class="pain-copy">Script in Docs, voice in ElevenLabs, edit in CapCut, captions elsewhere, schedule with a third. One platform should do it.</div>
       </div>
     </div>
   </div>
@@ -407,12 +490,13 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
       </div>
 
       <div class="feature-card">
-        <div class="feature-icon">🔁</div>
-        <div class="feature-title">Visual Consistency AI</div>
-        <div class="feature-copy">A visual consistency card is generated for every AI image project — locking the character's face, lighting, and colour palette across every scene so your video looks cohesive.</div>
+        <div class="feature-icon">👤</div>
+        <div class="feature-title">Recurring Character from One Photo</div>
+        <div class="feature-copy">Upload one reference image. WyvStudio generates a consistent on-screen character — same face, hair, identity — across every scene, every variant, every episode. Stock avatars need not apply.</div>
         <div class="feature-tags">
-          <span class="feature-tag">Character lock</span>
-          <span class="feature-tag">Style card</span>
+          <span class="feature-tag">Single-photo input</span>
+          <span class="feature-tag">Cross-scene continuity</span>
+          <span class="feature-tag">Cross-episode continuity</span>
         </div>
       </div>
     </div>
@@ -463,12 +547,136 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
   </div>
 </section>
 
+<!-- ── USE CASES ── -->
+<section id="use-cases" style="padding:100px 24px">
+  <div class="container" style="text-align:center">
+    <div class="section-label">Use cases</div>
+    <h2 class="section-title">Every short video. One platform.</h2>
+    <p class="section-sub" style="margin:0 auto 16px">Ads, stories, episodes, podcast clips, explainers, listings — same pipeline, same character, every aspect ratio.</p>
+
+    <div class="uc-grid">
+      <!-- Card 1 — DTC ad creatives (wedge) -->
+      <div class="uc-card wedge">
+        <div class="uc-media" style="background:linear-gradient(135deg,#1e3a2e,#0f1f1a)">
+          <div class="uc-media-badge">30s · DTC ad</div>
+          <svg class="uc-media-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <div class="uc-media-caption">Supplement spokesperson in kitchen + outdoors + testimonial scenes</div>
+        </div>
+        <div class="uc-body">
+          <span class="uc-wedge-tag">Lead use case</span>
+          <div class="uc-title">30-second ads. One spokesperson. Ten variants by Friday.</div>
+          <div class="uc-hook">For supplement and wellness brands that need fresh creative every week without putting the founder back in front of a camera.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Hook variants in one click — same character, ten openings</div>
+            <div class="uc-ship">Claim swap is a script change, not a reshoot</div>
+            <div class="uc-ship">9:16, 1:1, 4:5 — all aspects in one export</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 2 — Podcast promo shorts -->
+      <div class="uc-card">
+        <div class="uc-media" style="background:linear-gradient(135deg,#091a3a,#0d0d1a)">
+          <div class="uc-media-badge">30s · Podcast</div>
+          <svg class="uc-media-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <div class="uc-media-caption">Show host character + audiogram + episode title overlay</div>
+        </div>
+        <div class="uc-body">
+          <div class="uc-title">Turn one episode into a week's worth of shorts.</div>
+          <div class="uc-hook">For podcasters who keep meaning to clip their best moments but never have a designer on call.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Drop the audio — we transcribe, scene-break, and visualize</div>
+            <div class="uc-ship">Recurring "show host" character across every promo clip</div>
+            <div class="uc-ship">Audiograms, captions, platform-ready aspect ratios</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 3 — Short stories & narrative episodes -->
+      <div class="uc-card">
+        <div class="uc-media" style="background:linear-gradient(135deg,#2d1b4e,#1a0a2e)">
+          <div class="uc-media-badge">30s · Story</div>
+          <svg class="uc-media-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <div class="uc-media-caption">Protagonist character across three intercut scene environments</div>
+        </div>
+        <div class="uc-body">
+          <div class="uc-title">A different story every week. The same hero in every episode.</div>
+          <div class="uc-hook">For storytellers, short-fiction creators, and episodic channels who want a recurring on-screen protagonist without ever booking an actor.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Script → scenes → AI visuals with your hero in every shot</div>
+            <div class="uc-ship">Voice narration in 75+ languages, plus per-character dialogue</div>
+            <div class="uc-ship">Episode-to-episode visual continuity</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 4 — Educational & explainer videos -->
+      <div class="uc-card">
+        <div class="uc-media" style="background:linear-gradient(135deg,#3a1e1a,#1f0f0a)">
+          <div class="uc-media-badge">30s · Explainer</div>
+          <svg class="uc-media-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <div class="uc-media-caption">Instructor character with animated concept b-roll alongside</div>
+        </div>
+        <div class="uc-body">
+          <div class="uc-title">Explain anything in 60 seconds. With the same host every time.</div>
+          <div class="uc-hook">For educators, course creators, and microlearning channels building a series, not one-off uploads.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Script-to-video with your recurring instructor on every lesson</div>
+            <div class="uc-ship">Visual b-roll generated to match each concept</div>
+            <div class="uc-ship">Captions, chapter markers, multi-aspect exports</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 5 — Personal-brand shorts -->
+      <div class="uc-card">
+        <div class="uc-media" style="background:linear-gradient(135deg,#1a1f3a,#0d101f)">
+          <div class="uc-media-badge">30s · LinkedIn</div>
+          <svg class="uc-media-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <div class="uc-media-caption">Founder character delivering a captioned hot take</div>
+        </div>
+        <div class="uc-body">
+          <div class="uc-title">Show up online every day — without filming every day.</div>
+          <div class="uc-hook">For coaches, consultants, and founder-led personal brands who know they should post daily but can't face the camera.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">One photo of you becomes your on-screen character forever</div>
+            <div class="uc-ship">Script-to-video for hot takes, frameworks, case studies</div>
+            <div class="uc-ship">1:1, 9:16, 16:9 sized for LinkedIn, IG, TikTok, YT</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 6 — Local, listing & community videos -->
+      <div class="uc-card">
+        <div class="uc-media" style="background:linear-gradient(135deg,#1e261a,#0f130d)">
+          <div class="uc-media-badge">45s · Listing</div>
+          <svg class="uc-media-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <div class="uc-media-caption">Agent character intro + property photo sequence + branded overlay</div>
+        </div>
+        <div class="uc-body">
+          <div class="uc-title">Same-day videos for agents, owners, and small teams.</div>
+          <div class="uc-hook">For real estate agents, gyms, salons, restaurants, and local operators posting listings, offers, and updates every week.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Upload photos — we sequence them with branded AI b-roll</div>
+            <div class="uc-ship">Recurring agent/owner intros every video</div>
+            <div class="uc-ship">Branded overlays + one-click multi-platform exports</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size:12px;color:var(--text-faint);margin-top:40px;font-family:'Space Mono',monospace;letter-spacing:.05em">
+      Sample videos arriving soon · <a href="https://app.wyvstudio.com/register" style="color:var(--accent);text-decoration:none">Start free →</a>
+    </p>
+  </div>
+</section>
+
 <!-- ── PRICING ── -->
 <section id="pricing" class="pricing">
   <div class="container" style="text-align:center">
     <div class="section-label">Pricing</div>
     <h2 class="section-title">Simple, credit-based pricing.</h2>
-    <p class="section-sub" style="margin:0 auto">Pay for what you generate. Credits work across all visual modes — stock projects cost almost nothing, AI image projects use more.</p>
+    <p class="section-sub" style="margin:0 auto">Pay for what you generate. Credits work across all use cases — stock projects cost almost nothing; recurring-character projects use more. No surprise renewals, unused credits refundable on cancel.</p>
 
     <div class="pricing-grid">
 
@@ -490,7 +698,7 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
       <div class="plan-card">
         <div class="plan-name">Starter</div>
         <div class="plan-price">$19<span>/mo</span></div>
-        <div class="plan-desc">Solo creator publishing consistently on one channel.</div>
+        <div class="plan-desc">Solo creator publishing on one channel · ~30 polished 30s videos/mo.</div>
         <div class="plan-divider"></div>
         <div class="plan-features">
           <div class="plan-feature"><span class="plan-feature-check">✓</span>500 credits / month</div>
@@ -506,7 +714,7 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
         <div class="plan-badge">Most popular</div>
         <div class="plan-name">Creator</div>
         <div class="plan-price">$39<span>/mo</span></div>
-        <div class="plan-desc">Growing creator with multiple channels and daily publishing.</div>
+        <div class="plan-desc">Brands + serial creators shipping weekly · ~70 polished 30s videos/mo.</div>
         <div class="plan-divider"></div>
         <div class="plan-features">
           <div class="plan-feature"><span class="plan-feature-check">✓</span>1,500 credits / month</div>
@@ -521,7 +729,7 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
       <div class="plan-card">
         <div class="plan-name">Pro</div>
         <div class="plan-price">$79<span>/mo</span></div>
-        <div class="plan-desc">Small operators and creators batching across 10 channels.</div>
+        <div class="plan-desc">Brands, studios, channels publishing heavily · ~180 polished 30s videos/mo.</div>
         <div class="plan-divider"></div>
         <div class="plan-features">
           <div class="plan-feature"><span class="plan-feature-check">✓</span>4,000 credits / month</div>
@@ -536,7 +744,7 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
       <div class="plan-card">
         <div class="plan-name">Agency</div>
         <div class="plan-price">$149<span>/mo</span></div>
-        <div class="plan-desc">Content agencies and operators producing at volume.</div>
+        <div class="plan-desc">Agencies + creator studios serving 5+ brands or channels · ~450 polished 30s videos/mo.</div>
         <div class="plan-divider"></div>
         <div class="plan-features">
           <div class="plan-feature"><span class="plan-feature-check">✓</span>10,000 credits / month</div>
@@ -601,10 +809,10 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
 <!-- ── CTA ── -->
 <section class="cta-section">
   <div class="cta-glow">
-    <h2>Start weaving your<br><em style="color:var(--accent);font-style:normal">first video today.</em></h2>
-    <p>200 free credits. No credit card. Takes 2 minutes.</p>
+    <h2>One photo. Every video.<br><em style="color:var(--accent);font-style:normal">Start free in 2 minutes.</em></h2>
+    <p>200 free credits. No credit card. No surprise renewals — ever.</p>
     <a href="https://app.wyvstudio.com/register" class="btn btn-primary btn-lg">Create your free account →</a>
-    <div class="cta-fine">Free plan includes all visual modes · No watermark on paid plans · Cancel anytime</div>
+    <div class="cta-fine">Free plan includes all use cases · No watermark on paid plans · Refund unused credits on cancel</div>
   </div>
 </section>
 
