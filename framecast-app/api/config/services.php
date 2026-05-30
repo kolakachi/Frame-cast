@@ -68,18 +68,13 @@ return [
 
     'replicate' => [
         'api_token' => env('REPLICATE_API_TOKEN'),
-        // Pinned version of zsxkib/flux-pulid for character / face-consistency image generation.
-        // Override REPLICATE_PULID_VERSION in env to swap to a newer revision.
-        'pulid_model'   => env('REPLICATE_PULID_MODEL',   'zsxkib/flux-pulid'),
-        'pulid_version' => env('REPLICATE_PULID_VERSION', '8baa7ef2255075b46f4d91cd238c21d31181b3e6a864463f967960bb0112525b'),
-        // Identity strength: higher → output sticks closer to the reference photo.
-        // Sweet spot 1.0–1.5; 0.8 is creative-friendly; 2.0+ tends to look overfit/plasticky.
-        'pulid_id_weight'      => env('REPLICATE_PULID_ID_WEIGHT', 1.2),
-        // Prompt-vs-reference weight: lower → reference photo dominates the result.
-        'pulid_guidance_scale' => env('REPLICATE_PULID_GUIDANCE_SCALE', 3),
-        // More steps = better fidelity, slower render. This flux-pulid version caps
-        // num_steps at 20 in its model schema; raising it will hard-fail with HTTP 422.
-        'pulid_num_steps'      => env('REPLICATE_PULID_NUM_STEPS', 20),
+        // Character / face-consistency image generation. ideogram-character is
+        // purpose-built ("Generate consistent characters from a single reference
+        // image. Outputs can be in many styles.") and produces noticeably more
+        // natural identity preservation than the older flux-pulid we used before.
+        // Uses the official-model endpoint so no version pinning is needed.
+        'character_model'   => env('REPLICATE_CHARACTER_MODEL',   'ideogram-ai/ideogram-character'),
+        'character_version' => env('REPLICATE_CHARACTER_VERSION', ''),
 
         // ── Image-to-video (rung 4) — three tiers, each a different upstream model.
         // Slugs use Replicate's official model-versioned endpoint (no hash needed —
