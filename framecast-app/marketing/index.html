@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WyvStudio — One character. Every video. Zero shoots.</title>
-<meta name="description" content="Upload one photo. WyvStudio puts your spokesperson, narrator, or story hero in every short video you make — ads, stories, episodes, podcast clips, explainers. Branded short-form video without a shoot.">
-<meta property="og:title" content="One character. Every video. Zero shoots." />
-<meta property="og:description" content="A recurring AI character across every short video you ship. For creators, brands, and small teams making short-form video without filming." />
+<title>WyvStudio — Create short videos from whatever you have.</title>
+<meta name="description" content="Start with a script, podcast clip, product URL, or just an idea. WyvStudio turns it into a finished short with voice, visuals, captions, and a recurring on-screen character — built for creators, brands, and operators making short-form video without a shoot.">
+<meta property="og:title" content="Create short videos from whatever you have." />
+<meta property="og:description" content="Script, audio, URL, or idea — turned into a finished short, with a recurring AI character that shows up across every video you make." />
 <meta property="og:type" content="website" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -71,6 +71,23 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 32px;height:60px;d
 .moat-scenes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .moat-scene{aspect-ratio:9/16;border-radius:10px;background:linear-gradient(135deg,#1a1a24,#0d0d1a);border:1px solid var(--border);position:relative;display:flex;align-items:center;justify-content:center;font-size:24px;color:rgba(255,255,255,.35);overflow:hidden}
 .moat-scene-label{position:absolute;bottom:8px;left:8px;right:8px;font-size:9px;color:rgba(255,255,255,.85);background:rgba(0,0,0,.55);backdrop-filter:blur(6px);padding:4px 6px;border-radius:4px;text-align:center;line-height:1.25;font-family:"Space Mono",monospace}
+
+/* ── CONTENT ROADS ── */
+.roads-section{padding:80px 24px}
+.roads-section .container{text-align:center}
+.roads-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:48px}
+.road-card{padding:24px 20px;border-radius:14px;border:1px solid var(--border);background:var(--surface);text-align:left;transition:.2s;position:relative}
+.road-card:hover{border-color:rgba(255,107,53,.35);transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,.45)}
+.road-icon{width:40px;height:40px;border-radius:10px;background:var(--accent-soft);border:1px solid rgba(255,107,53,.2);display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:16px;color:var(--accent)}
+.road-tag{font-family:"Space Mono",monospace;font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.road-title{font-size:15px;font-weight:600;margin-bottom:6px;line-height:1.3}
+.road-copy{font-size:12.5px;color:var(--text-dim);line-height:1.55}
+.roads-converge{margin-top:32px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.roads-converge-arrows{font-size:14px;color:var(--accent);letter-spacing:1.8em;opacity:.55;padding-left:1.8em;font-family:"Space Mono",monospace}
+.roads-converge-card{max-width:580px;padding:22px 28px;border-radius:14px;border:1px solid rgba(255,107,53,.3);background:rgba(255,107,53,.04);text-align:center}
+.roads-converge-label{font-family:"Space Mono",monospace;font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.roads-converge-title{font-size:17px;font-weight:600;line-height:1.4;margin-bottom:6px}
+.roads-converge-copy{font-size:12.5px;color:var(--text-dim);line-height:1.55}
 
 /* ── USE CASES ── */
 .uc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:48px}
@@ -224,9 +241,11 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
   nav .nav-links{display:none}
   .uc-grid,.moat-scenes{grid-template-columns:repeat(2,1fr)}
   .moat-scenes .moat-scene:nth-child(n+3){display:none}
+  .roads-grid{grid-template-columns:repeat(2,1fr)}
 }
 @media(max-width:480px){
   .uc-grid{grid-template-columns:1fr}
+  .roads-grid{grid-template-columns:1fr}
 }
 </style>
 
@@ -262,11 +281,11 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
 <!-- ── HERO ── -->
 <section class="hero">
   <div class="hero-glow"></div>
-  <div class="hero-badge"><span class="hero-badge-dot"></span> Recurring Character AI</div>
-  <h1>One character.<br><em>Every video.</em> Zero shoots.</h1>
-  <p class="hero-sub">Upload one photo of your spokesperson, narrator, or story hero. WyvStudio puts them in every short video you ship — ads, stories, episodes, podcast clips, explainers — across every aspect ratio, every variant, every platform.</p>
+  <div class="hero-badge"><span class="hero-badge-dot"></span> Scripts, audio, URLs, or ideas</div>
+  <h1>Create short videos from<br><em>whatever you have.</em></h1>
+  <p class="hero-sub">Start with a script, product page, podcast clip, or simple prompt. WyvStudio turns it into a finished short with voice, visuals, captions, and exports for every platform. And when you want a recurring on-screen character, upload one photo.</p>
   <div class="hero-actions">
-    <a href="#use-cases" class="btn btn-primary btn-lg">Watch the 45s demo →</a>
+    <a href="#start-your-way" class="btn btn-primary btn-lg">See how it works →</a>
     <a href="https://app.wyvstudio.com/register" class="btn btn-lg">Try it free</a>
   </div>
   <div class="hero-trust">
@@ -298,7 +317,7 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
       <div class="preview-canvas">
         <div class="preview-phone">
           <div class="preview-phone-screen">
-            <div class="preview-phone-title">The history of Cleopatra — how she built the most powerful empire in the ancient world…</div>
+            <div class="preview-phone-title">30-second supplement ad from one product brief — script, voice, scenes, captions, export…</div>
             <div class="preview-phone-bars">
               <div class="preview-phone-bar" style="height:40%"></div>
               <div class="preview-phone-bar" style="height:70%"></div>
@@ -330,22 +349,65 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
   <div class="preview-glow"></div>
 </div>
 
+<!-- ── CONTENT ROADS ── -->
+<section id="start-your-way" class="roads-section">
+  <div class="container">
+    <div class="section-label">Start your way</div>
+    <h2 class="section-title">However your content starts,<br>we can build from it.</h2>
+    <p class="section-sub" style="margin:0 auto">Some videos start with a polished script. Some start with a product URL, a podcast episode, or just a rough idea. WyvStudio supports all of those paths — so you don't need to reshape your workflow to use it.</p>
+
+    <div class="roads-grid">
+      <div class="road-card">
+        <div class="road-icon">✎</div>
+        <div class="road-tag">Script</div>
+        <div class="road-title">Paste a script</div>
+        <div class="road-copy">Drop in your written script. We break it into scenes, time the voice, and generate visuals to match.</div>
+      </div>
+      <div class="road-card">
+        <div class="road-icon">🔗</div>
+        <div class="road-tag">URL</div>
+        <div class="road-title">Drop a URL</div>
+        <div class="road-copy">Article, blog post, or product page. We extract the story and turn it into a short.</div>
+      </div>
+      <div class="road-card">
+        <div class="road-icon">🎙</div>
+        <div class="road-tag">Audio</div>
+        <div class="road-title">Upload audio</div>
+        <div class="road-copy">Podcast episode or voice memo. We transcribe, find the moments, and clip them into shorts.</div>
+      </div>
+      <div class="road-card">
+        <div class="road-icon">💡</div>
+        <div class="road-tag">Idea</div>
+        <div class="road-title">Just a prompt</div>
+        <div class="road-copy">A topic, a hook, a product name. We write the script, build the scenes, render the video.</div>
+      </div>
+    </div>
+
+    <div class="roads-converge">
+      <div class="roads-converge-arrows">↓ ↓ ↓ ↓</div>
+      <div class="roads-converge-card">
+        <div class="roads-converge-label">Every road outputs</div>
+        <div class="roads-converge-title">A finished short: editable, captioned, voiced, and ready to export.</div>
+        <div class="roads-converge-copy">Pick the starting point that fits your workflow. WyvStudio handles the script, scenes, voice, visuals, and finishing steps from there.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ── CHARACTER MOAT ── -->
 <section class="moat-section">
   <div class="container">
-    <div class="section-label">The moat</div>
-    <h2 class="section-title">One photo. Every video.</h2>
-    <p class="section-sub" style="margin:0 auto">A single reference photo becomes a recurring on-screen presence. Same face, same identity — across ads, episodes, podcast clips, and explainers.</p>
+    <div class="section-label">What makes it different</div>
+    <h2 class="section-title">When you need the same face across every video,<br>use one photo.</h2>
+    <p class="section-sub" style="margin:0 auto">Most AI video tools can generate clips. WyvStudio can also keep a recurring on-screen character consistent across scenes, episodes, promos, and ad variants. Use it when you want a spokesperson, narrator, host, or story hero people recognize.</p>
 
     <div class="moat-grid">
-      <!-- Single reference photo placeholder -->
       <div class="moat-ref">
         <div class="moat-ref-tag">Reference</div>
         <span>👤</span>
         <div class="moat-ref-label">One photo</div>
       </div>
       <div class="moat-arrow">→</div>
-      <!-- 4 generated scene placeholders -->
       <div class="moat-scenes">
         <div class="moat-scene" style="background:linear-gradient(135deg,#1e3a2e,#0f1f1a)">
           <span>🧴</span>
@@ -366,7 +428,11 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
       </div>
     </div>
 
-    <p style="font-size:12px;color:var(--text-faint);margin-top:48px;font-family:'Space Mono',monospace;letter-spacing:.05em">
+    <p style="font-size:13px;color:var(--text-dim);margin-top:32px;line-height:1.65;max-width:700px;margin-left:auto;margin-right:auto">
+      Not every video needs a character. But when it does, you shouldn't have to start from scratch every time.
+    </p>
+
+    <p style="font-size:12px;color:var(--text-faint);margin-top:20px;font-family:'Space Mono',monospace;letter-spacing:.05em">
       Powered by OpenAI gpt-image-2 · Replaces stock avatars and 2-day digital-twin pipelines
     </p>
   </div>
