@@ -47,8 +47,8 @@ class GenerateAIImageJob implements ShouldQueue
 
         try {
             // Character path: when the scene is bound to a character with a reference image,
-            // route to ReplicatePulidAdapter so the generated face matches the reference.
-            // Otherwise use the injected default adapter (DALL-E today).
+            // route to CharacterImageAdapter (gpt-image-2 /edits) so the generated face
+            // matches the reference. Otherwise use the injected default adapter (DALL-E today).
             $useCharacterRef = $scene->character_id
                 && $scene->character?->reference_asset_id
                 && $scene->character?->referenceAsset;
@@ -73,22 +73,24 @@ class GenerateAIImageJob implements ShouldQueue
                 $referenceUrl = $this->signedReferenceUrl($scene->character->referenceAsset);
                 if ($referenceUrl) {
                     $options['reference_image_url'] = $referenceUrl;
-                    // Identity strength on the character controls how strongly the reference
-                    // photo locks the generated face (Subtle → creative drift; Locked → exact).
+                    // Identity strength → gpt-image-2 quality knob. Stronger identity
+                    // preservation correlates with higher render quality (more compute
+                    // spent on the reference). Subtle keeps it cheap and lets the model
+                    // drift toward the prompt; Locked spends more to nail the face.
                     $strength = $scene->character->identity_strength ?? 'balanced';
-                    $options['identity_scale'] = match ($strength) {
-                        'subtle'  => 0.7,
-                        'strong'  => 1.5,
-                        'locked'  => 1.9,
-                        default   => 1.2, // balanced
+                    $options['quality'] = match ($strength) {
+                        'subtle' => 'medium',
+                        'locked' => 'high',
+                        default  => 'high', // balanced + strong → high
                     };
                     try {
-                        $result = app(\App\Services\Generation\Image\ReplicatePulidAdapter::class)
+                        $result = app(\App\Services\Generation\Image\CharacterImageAdapter::class)
                             ->generate($prompt, $this->style, $aspectRatio, $options);
                     } catch (\Throwable $e) {
-                        // PuLID failed — log and fall through to DALL-E with the character description
-                        // baked into the prompt so the user still gets *an* image.
-                        \Illuminate\Support\Facades\Log::warning('GenerateAIImageJob: PuLID failed, falling back to DALL-E', [
+                        // Character adapter failed — log and fall through to DALL-E with the
+                        // character description baked into the prompt so the user still gets
+                        // *an* image. Common cause: reference URL expired, content-policy reject.
+                        \Illuminate\Support\Facades\Log::warning('GenerateAIImageJob: character adapter failed, falling back to DALL-E', [
                             'scene_id' => $this->sceneId,
                             'error'    => $e->getMessage(),
                         ]);

@@ -98,8 +98,8 @@ class GenerateProjectAIImagesJob implements ShouldQueue
     {
         $style = $project->ai_broll_style ?: 'cinematic';
 
-        // Character path: route to ReplicatePulidAdapter when the scene has a character
-        // with a reference image; otherwise the injected default adapter.
+        // Character path: route to CharacterImageAdapter (gpt-image-2 /edits) when the
+        // scene has a character with a reference image; otherwise the injected default adapter.
         $scene->loadMissing('character.referenceAsset');
         $useCharacterRef = $scene->character_id
             && $scene->character?->reference_asset_id
@@ -122,11 +122,18 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             $referenceUrl = $this->signedReferenceUrl($scene->character->referenceAsset);
             if ($referenceUrl) {
                 $options['reference_image_url'] = $referenceUrl;
+                // Mirror GenerateAIImageJob: identity_strength → gpt-image-2 quality knob.
+                $strength = $scene->character->identity_strength ?? 'balanced';
+                $options['quality'] = match ($strength) {
+                    'subtle' => 'medium',
+                    'locked' => 'high',
+                    default  => 'high',
+                };
                 try {
-                    $result = app(\App\Services\Generation\Image\ReplicatePulidAdapter::class)
+                    $result = app(\App\Services\Generation\Image\CharacterImageAdapter::class)
                         ->generate($prompt, $style, $project->aspect_ratio ?? '9:16', $options);
                 } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::warning('GenerateProjectAIImagesJob: PuLID failed, falling back to DALL-E', [
+                    \Illuminate\Support\Facades\Log::warning('GenerateProjectAIImagesJob: character adapter failed, falling back to DALL-E', [
                         'scene_id' => $scene->getKey(),
                         'error'    => $e->getMessage(),
                     ]);

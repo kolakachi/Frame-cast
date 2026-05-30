@@ -743,8 +743,9 @@ class SceneController extends Controller
             );
         }
 
-        // Credit guard for AI image regeneration. Character-bound scenes route to flux-pulid
-        // which costs ~2.5× the DALL-E baseline, so we charge AI_CHARACTER instead.
+        // Credit guard for AI image regeneration. Character-bound scenes route to
+        // gpt-image-2 /edits (CharacterImageAdapter) which runs at high quality and
+        // costs more than the DALL-E baseline, so we charge AI_CHARACTER instead.
         $aiQuality = $request->input('quality', 'medium');
         $usesCharacter = $scene->character_id
             && \App\Models\Character::query()

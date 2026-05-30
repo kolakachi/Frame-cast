@@ -13,7 +13,7 @@ class CreditService
     public const TTS        = 2;   // per scene
     public const AI_MEDIUM    = 15;  // per scene, gpt-image-1 medium
     public const AI_HIGH      = 40;  // per scene, gpt-image-1 high
-    public const AI_CHARACTER = 35;  // per scene, Replicate ideogram-character (character + reference image)
+    public const AI_CHARACTER = 50;  // per scene, OpenAI gpt-image-2 /edits (character + reference image, high quality)
 
     // Image-to-video animation tiers — per 6-second clip; longer clips scale roughly proportionally.
     // Wan 2.1 480p / Hailuo / Kling 2.1 mapping.

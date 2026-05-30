@@ -40,6 +40,20 @@ class ApiUsageService
         'gpt-image-1:high:1024x1024'  => 0.167,
         'gpt-image-1:high:1024x1536'  => 0.250,
         'gpt-image-1:high:1536x1024'  => 0.250,
+
+        // gpt-image-2 — used for character reference (/v1/images/edits). Edits with a
+        // single reference image roughly match generation pricing at the same quality
+        // tier (small per-image-token premium folded in). Update when OpenAI publishes
+        // the final v2 price page.
+        'gpt-image-2:low:1024x1024'   => 0.020,
+        'gpt-image-2:low:1024x1536'   => 0.030,
+        'gpt-image-2:low:1536x1024'   => 0.030,
+        'gpt-image-2:medium:1024x1024'=> 0.070,
+        'gpt-image-2:medium:1024x1536'=> 0.100,
+        'gpt-image-2:medium:1536x1024'=> 0.100,
+        'gpt-image-2:high:1024x1024'  => 0.220,
+        'gpt-image-2:high:1024x1536'  => 0.300,
+        'gpt-image-2:high:1536x1024'  => 0.300,
     ];
 
     /**

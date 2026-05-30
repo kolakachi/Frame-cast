@@ -60,6 +60,12 @@ return [
         'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
         'transcription_model' => env('OPENAI_TRANSCRIPTION_MODEL', 'whisper-1'),
         'timestamp_transcription_model' => env('OPENAI_TIMESTAMP_TRANSCRIPTION_MODEL', 'whisper-1'),
+        // Character / reference-image generation via /v1/images/edits. gpt-image-2's
+        // image[] input takes one or more reference photos and produces a new image
+        // that respects the reference identity. Replaced the earlier Replicate
+        // ideogram-character path (better scene/style adherence, same vendor as our
+        // text-only image path).
+        'character_model' => env('OPENAI_CHARACTER_MODEL', 'gpt-image-2'),
     ],
 
     'pexels' => [
@@ -68,13 +74,6 @@ return [
 
     'replicate' => [
         'api_token' => env('REPLICATE_API_TOKEN'),
-        // Character / face-consistency image generation. ideogram-character is
-        // purpose-built ("Generate consistent characters from a single reference
-        // image. Outputs can be in many styles.") and produces noticeably more
-        // natural identity preservation than the older flux-pulid we used before.
-        // Uses the official-model endpoint so no version pinning is needed.
-        'character_model'   => env('REPLICATE_CHARACTER_MODEL',   'ideogram-ai/ideogram-character'),
-        'character_version' => env('REPLICATE_CHARACTER_VERSION', ''),
 
         // ── Image-to-video (rung 4) — three tiers, each a different upstream model.
         // Slugs use Replicate's official model-versioned endpoint (no hash needed —
