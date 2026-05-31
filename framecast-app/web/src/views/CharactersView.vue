@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../services/api";
@@ -62,17 +62,49 @@ const genElapsedTimer = ref(null);
 
 function openGenerate(character) {
   genTarget.value = character;
-  genPrompt.value = "";
   genStyle.value = "photorealistic";
   genAspectRatio.value = "9:16";
   genQuality.value = character.reference_asset ? "high" : "medium";
-  genState.value = "idle";
   genError.value = "";
   genResult.value = null;
-  genGenerationId.value = null;
   genElapsedSec.value = 0;
-  genSetAsReference.value = !character.reference_asset; // first image without ref → suggest promoting
   stopGenPolling();
+
+  // If there's already a queued/processing generation for this character,
+  // jump straight into the loading state and resume polling it instead of
+  // showing the empty prompt form — the user is here to check on it.
+  if (character.pending_generation) {
+    const p = character.pending_generation;
+    genGenerationId.value = p.id;
+    genPrompt.value = p.prompt || "";
+    genState.value = "loading";
+    genSetAsReference.value = false; // we don't know what they originally picked; keep neutral
+    // Estimate elapsed from server timestamps so the counter doesn't reset to 0.
+    const startedIso = p.started_at || p.created_at;
+    if (startedIso) {
+      genElapsedSec.value = Math.max(0, Math.floor((Date.now() - new Date(startedIso).getTime()) / 1000));
+    }
+    if (genElapsedTimer.value) clearInterval(genElapsedTimer.value);
+    genElapsedTimer.value = setInterval(() => { genElapsedSec.value += 1; }, 1000);
+    genPollTimer.value = setTimeout(pollGenStatus, 1000);
+  } else {
+    // Fresh prompt entry.
+    genPrompt.value = "";
+    genState.value = "idle";
+    genGenerationId.value = null;
+    genSetAsReference.value = !character.reference_asset;
+  }
+}
+
+// Card-level click: if a generation is in flight on this character, treat the
+// click as "show me what's happening" → open the generate modal in loading
+// state. Otherwise fall through to the existing edit modal (the prior behaviour).
+function onCardClick(character) {
+  if (character.pending_generation) {
+    openGenerate(character);
+    return;
+  }
+  openEdit(character);
 }
 
 function stopGenPolling() {
@@ -104,10 +136,13 @@ async function pollGenStatus() {
       genState.value = "done";
       stopGenPolling();
       await loadCharacters(); // refresh in case reference was promoted
+      refreshPendingPoll();   // clears any lingering background poll for this character
     } else if (g.status === "failed") {
       genState.value = "error";
       genError.value = g.error_message || "Generation failed.";
       stopGenPolling();
+      await loadCharacters();
+      refreshPendingPoll();
     } else {
       // queued | processing — keep polling
       genPollTimer.value = setTimeout(pollGenStatus, 2000);
@@ -145,6 +180,11 @@ async function submitGenerate() {
     }
     // Kick off the polling loop. First poll after 3s — gpt-image-2 minimum.
     genPollTimer.value = setTimeout(pollGenStatus, 3000);
+    // Refresh characters once so the new pending_generation is attached to
+    // the card, then ensure the page-level background poll is running. This
+    // way the user can close the modal or navigate to another page and the
+    // pending badge will still appear / update on return.
+    loadCharacters().then(refreshPendingPoll);
   } catch (e) {
     genState.value = "error";
     genError.value = e?.response?.data?.error?.message ?? "Could not start generation.";
@@ -165,6 +205,33 @@ onMounted(async () => {
   } catch {}
   await loadCharacters();
   loading.value = false;
+  refreshPendingPoll();
+});
+
+// ── Page-level pending-generations poll ──────────────────────────────
+// As long as ANY character has a queued/processing image, refresh the
+// character list every 4s in the background so the "Generating…" badge
+// disappears (and the new reference photo appears) without the user
+// having to refresh the page manually. Stops itself the moment no
+// pending generations remain.
+const pendingPollTimer = ref(null);
+
+function refreshPendingPoll() {
+  const anyPending = characters.value.some((c) => !!c.pending_generation);
+  if (pendingPollTimer.value) {
+    clearTimeout(pendingPollTimer.value);
+    pendingPollTimer.value = null;
+  }
+  if (!anyPending) return;
+  pendingPollTimer.value = setTimeout(async () => {
+    await loadCharacters();
+    refreshPendingPoll();
+  }, 4000);
+}
+
+onBeforeUnmount(() => {
+  if (pendingPollTimer.value) clearTimeout(pendingPollTimer.value);
+  stopGenPolling();
 });
 
 async function loadCharacters() {
@@ -448,10 +515,18 @@ async function confirmDelete() {
             </div>
 
             <div v-else class="char-grid">
-              <article v-for="c in characters" :key="c.id" class="char-card" @click="openEdit(c)">
+              <article v-for="c in characters" :key="c.id" class="char-card" @click="onCardClick(c)">
                 <div class="char-card-thumb">
                   <img v-if="thumbUrl(c)" :src="thumbUrl(c)" alt="" />
                   <span v-else>{{ initial(c.name) }}</span>
+                  <!-- Pending-generation overlay: visible if the worker is still
+                       running an image for this character, including when the user
+                       closed the modal or navigated away. Clicking the card while
+                       pending reopens the modal in its Working state. -->
+                  <div v-if="c.pending_generation" class="char-card-pending" title="Image generation in progress — click to view">
+                    <span class="char-card-pending-spinner"></span>
+                    <span>Generating…</span>
+                  </div>
                   <div class="char-card-actions">
                     <button class="char-card-act accent" type="button" title="Generate test image" @click.stop="openGenerate(c)">✦</button>
                     <button class="char-card-act" type="button" title="Edit" @click.stop="openEdit(c)">✎</button>
@@ -798,6 +873,29 @@ async function confirmDelete() {
 .char-card-act.danger:hover { background: rgba(220,40,40,0.85); }
 .char-card-act.accent { background: rgba(255,107,53,0.85); }
 .char-card-act.accent:hover { background: rgba(255,107,53,1); }
+
+/* ── "Generating…" pending overlay on the card thumb ─────────────── */
+.char-card-pending {
+  position: absolute; left: 8px; bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 11px 5px 7px; border-radius: 999px;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,107,53,0.45);
+  font-size: 11px; font-weight: 600; color: #fff;
+  font-family: "Space Mono", monospace; letter-spacing: 0.05em;
+  pointer-events: none;
+  animation: char-pending-pulse 2.4s ease-in-out infinite;
+}
+.char-card-pending-spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid rgba(255,107,53,0.25);
+  border-top-color: var(--color-accent);
+  animation: gen-spin 0.8s linear infinite;
+}
+@keyframes char-pending-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,53,0); }
+  50% { box-shadow: 0 0 0 6px rgba(255,107,53,0.06); }
+}
 
 /* ── Generate-image modal ───────────────────────────────────────────── */
 .gen-mode-banner {

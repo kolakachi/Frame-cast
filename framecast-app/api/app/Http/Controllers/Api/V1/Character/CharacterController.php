@@ -337,6 +337,16 @@ class CharacterController extends Controller
 
     private function serialize(Character $c): array
     {
+        // Latest in-progress generation for this character — surfaces on the
+        // card so users who close the modal / leave the page can see that a
+        // queued or processing image is still on the way, and resume the
+        // modal from there. Cheap query: indexed on (character_id, created_at).
+        $pendingGen = CharacterImageGeneration::query()
+            ->where('character_id', $c->getKey())
+            ->whereIn('status', ['queued', 'processing'])
+            ->orderByDesc('id')
+            ->first();
+
         // Build the multi-reference list. reference_asset_ids is the ordered set
         // (first = primary). Fall back to the legacy single reference_asset_id when
         // the array hasn't been populated yet.
@@ -373,6 +383,13 @@ class CharacterController extends Controller
             'reference_asset'    => $refs[0] ?? null,
             // Full ordered list of references — first is primary.
             'reference_assets'   => $refs,
+            'pending_generation' => $pendingGen ? [
+                'id'           => $pendingGen->getKey(),
+                'status'       => $pendingGen->status,
+                'prompt'       => $pendingGen->prompt,
+                'started_at'   => $pendingGen->started_at?->toIso8601String(),
+                'created_at'   => $pendingGen->created_at?->toIso8601String(),
+            ] : null,
             'created_at'         => $c->created_at?->toIso8601String(),
             'updated_at'         => $c->updated_at?->toIso8601String(),
         ];
