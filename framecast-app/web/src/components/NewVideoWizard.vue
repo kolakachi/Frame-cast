@@ -696,7 +696,7 @@ defineExpose({ open })
           <template v-else>
             <div class="image-ai-hint">
               <span>✦</span>
-              <span><strong>DALL-E B-roll</strong> generates a new image for each scene. Pick the visual style, then describe what the faceless video should be about.</span>
+              <span><strong>AI B-roll</strong> generates a new image for every scene in the video. Pick a visual style, then describe what the short video should be about — AI writes the script and renders the scenes from there. If you've picked a Recurring Character above, they'll appear in every generated scene.</span>
             </div>
             <div class="input-label" style="margin-bottom:8px;">Select the B-roll style</div>
             <div class="ai-broll-grid">
