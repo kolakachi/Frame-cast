@@ -52,19 +52,63 @@ class ReplicateI2VAdapter implements I2VAdapter
             ? ['version' => $version, 'input' => $input]
             : ['input' => $input];
 
-        // 1. Kick off the prediction.
-        $start = Http::withToken($apiToken)
-            ->acceptJson()
-            ->post($url, $body);
+        // 1. Kick off the prediction. Replicate throttles aggressively when an
+        //    account's credit drops below their $5 threshold — 429 means
+        //    "wait retry_after seconds, then try again." Retry up to 3 times
+        //    with that exact backoff before giving up; if all three fail,
+        //    propagate a clean message so the user sees something actionable.
+        $maxRetries = 3;
+        $attempt    = 0;
+        $start      = null;
+        while (true) {
+            $start = Http::withToken($apiToken)
+                ->acceptJson()
+                ->post($url, $body);
+
+            if ($start->successful()) {
+                break;
+            }
+
+            if ($start->status() !== 429 || $attempt >= $maxRetries) {
+                break;
+            }
+
+            // Respect Replicate's retry_after if present; cap at 30s so we
+            // don't hold the worker indefinitely.
+            $retryAfter = (int) ($start->json('retry_after') ?? $start->header('Retry-After') ?? 10);
+            $retryAfter = min(max($retryAfter, 1), 30);
+
+            Log::warning('Replicate i2v: 429 throttled, retrying', [
+                'tier'         => $tier,
+                'attempt'      => $attempt + 1,
+                'max_retries'  => $maxRetries,
+                'retry_after'  => $retryAfter,
+                'body_excerpt' => mb_substr($start->body(), 0, 200),
+            ]);
+
+            sleep($retryAfter);
+            $attempt++;
+        }
 
         if (! $start->successful()) {
             $body = $start->body();
             Log::error('Replicate i2v: prediction start failed', [
-                'tier'   => $tier,
-                'model'  => $modelSlug,
-                'status' => $start->status(),
-                'body'   => $body,
+                'tier'        => $tier,
+                'model'       => $modelSlug,
+                'status'      => $start->status(),
+                'body'        => $body,
+                'attempts'    => $attempt + 1,
             ]);
+            // Format 429 specifically so the user gets a useful message.
+            if ($start->status() === 429) {
+                throw new RuntimeException(
+                    "Replicate is rate-limiting your account (it reports 'less than \$5 in credit'). " .
+                    "Visit replicate.com/account/billing to check your trial/promo credit balance — " .
+                    "the loaded balance and the throttle's tracked credit are separate. " .
+                    "We retried {$attempt} times with their suggested backoff. " .
+                    "Original response: {$body}"
+                );
+            }
             throw new RuntimeException("Replicate i2v ({$tier}) failed to start ({$start->status()}): {$body}");
         }
 
