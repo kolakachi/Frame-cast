@@ -76,6 +76,7 @@ Route::prefix('v1')->group(function (): void {
         Route::patch('/characters/{characterId}', [CharacterController::class, 'update'])->whereNumber('characterId');
         Route::delete('/characters/{characterId}', [CharacterController::class, 'destroy'])->whereNumber('characterId');
         Route::post('/characters/{characterId}/generate-image', [CharacterController::class, 'generateImage'])->whereNumber('characterId');
+        Route::get('/character-image-generations/{generationId}', [CharacterController::class, 'generationStatus'])->whereNumber('generationId');
         Route::get('/niches', [NicheController::class, 'index']);
         Route::get('/fonts', [FontController::class, 'index']);
         Route::get('/visual-styles', [ImageStyleController::class, 'index']);

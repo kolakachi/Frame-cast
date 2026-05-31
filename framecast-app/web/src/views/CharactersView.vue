@@ -43,8 +43,9 @@ const deleteTarget = ref(null);
 const deletePending = ref(false);
 
 // ── Generate-image modal ──────────────────────────────────────────────
-// Lets the user generate a preview image of the character either via the
-// existing reference (gpt-image-2 /edits) or text-only (gpt-image-1).
+// POST kicks off a queue job (returns 202) so the long OpenAI call doesn't
+// hold the HTTP connection open past Cloudflare's request timeout. We then
+// poll the status endpoint every 2s until succeeded|failed.
 const genTarget = ref(null);                     // character being previewed
 const genPrompt = ref("");
 const genStyle = ref("photorealistic");
@@ -54,6 +55,10 @@ const genState = ref("idle");                    // 'idle' | 'loading' | 'done' 
 const genError = ref("");
 const genResult = ref(null);                     // last result {asset_id, storage_url, ...}
 const genSetAsReference = ref(false);
+const genGenerationId = ref(null);
+const genPollTimer = ref(null);
+const genElapsedSec = ref(0);
+const genElapsedTimer = ref(null);
 
 function openGenerate(character) {
   genTarget.value = character;
@@ -64,12 +69,53 @@ function openGenerate(character) {
   genState.value = "idle";
   genError.value = "";
   genResult.value = null;
+  genGenerationId.value = null;
+  genElapsedSec.value = 0;
   genSetAsReference.value = !character.reference_asset; // first image without ref → suggest promoting
+  stopGenPolling();
+}
+
+function stopGenPolling() {
+  if (genPollTimer.value) {
+    clearTimeout(genPollTimer.value);
+    genPollTimer.value = null;
+  }
+  if (genElapsedTimer.value) {
+    clearInterval(genElapsedTimer.value);
+    genElapsedTimer.value = null;
+  }
 }
 
 function closeGenerate() {
-  if (genState.value === "loading") return;
+  if (genState.value === "loading") return; // can't close while generating
+  stopGenPolling();
   genTarget.value = null;
+}
+
+async function pollGenStatus() {
+  if (!genGenerationId.value) return;
+  try {
+    const res = await api.get(`/character-image-generations/${genGenerationId.value}`);
+    const g = res.data?.data?.generation;
+    if (!g) return;
+    if (g.status === "succeeded") {
+      // Backend adds `image` onto the generation payload only on success.
+      genResult.value = g.image ?? null;
+      genState.value = "done";
+      stopGenPolling();
+      await loadCharacters(); // refresh in case reference was promoted
+    } else if (g.status === "failed") {
+      genState.value = "error";
+      genError.value = g.error_message || "Generation failed.";
+      stopGenPolling();
+    } else {
+      // queued | processing — keep polling
+      genPollTimer.value = setTimeout(pollGenStatus, 2000);
+    }
+  } catch (e) {
+    // Transient network error — keep trying for a bit, but don't spam.
+    genPollTimer.value = setTimeout(pollGenStatus, 4000);
+  }
 }
 
 async function submitGenerate() {
@@ -80,6 +126,11 @@ async function submitGenerate() {
   }
   genState.value = "loading";
   genError.value = "";
+  genResult.value = null;
+  genElapsedSec.value = 0;
+  if (genElapsedTimer.value) clearInterval(genElapsedTimer.value);
+  genElapsedTimer.value = setInterval(() => { genElapsedSec.value += 1; }, 1000);
+
   try {
     const res = await api.post(`/characters/${genTarget.value.id}/generate-image`, {
       prompt: genPrompt.value.trim(),
@@ -88,13 +139,16 @@ async function submitGenerate() {
       quality: genQuality.value,
       set_as_reference: genSetAsReference.value,
     });
-    genResult.value = res.data?.data?.image ?? null;
-    genState.value = "done";
-    // Refresh the character list so the reference photo updates if user promoted it.
-    await loadCharacters();
+    genGenerationId.value = res.data?.data?.generation?.id ?? null;
+    if (!genGenerationId.value) {
+      throw new Error("No generation id returned.");
+    }
+    // Kick off the polling loop. First poll after 3s — gpt-image-2 minimum.
+    genPollTimer.value = setTimeout(pollGenStatus, 3000);
   } catch (e) {
     genState.value = "error";
-    genError.value = e?.response?.data?.error?.message ?? "Image generation failed.";
+    genError.value = e?.response?.data?.error?.message ?? "Could not start generation.";
+    stopGenPolling();
   }
 }
 
@@ -601,6 +655,14 @@ async function confirmDelete() {
             <span>Set this image as the character's reference photo {{ genTarget.reference_asset ? '(replaces current)' : '(unlocks identity preservation on next generation)' }}</span>
           </label>
 
+          <div v-if="genState === 'loading'" class="gen-progress">
+            <div class="gen-progress-spinner"></div>
+            <div class="gen-progress-text">
+              <div><strong>Generating…</strong> Hold on — the model takes ~30–60s.</div>
+              <div class="gen-progress-elapsed">{{ genElapsedSec }}s elapsed</div>
+            </div>
+          </div>
+
           <div v-if="genResult" class="gen-result">
             <img :src="genResult.storage_url" :alt="`${genTarget.name} preview`" />
             <div class="gen-result-meta">
@@ -751,6 +813,17 @@ async function confirmDelete() {
 .gen-result img { display: block; width: 100%; max-height: 420px; object-fit: contain; background: #000; }
 .gen-result-meta { padding: 8px 12px; font-size: 11px; color: var(--color-text-muted); font-family: "Space Mono", monospace; letter-spacing: 0.05em; display: flex; gap: 10px; }
 .gen-cost { font-size: 11px; color: var(--color-text-muted); margin-right: auto; font-family: "Space Mono", monospace; letter-spacing: 0.05em; }
+.gen-progress { display: flex; align-items: center; gap: 14px; padding: 14px; margin-top: 12px; border-radius: 10px; background: rgba(255,107,53,0.05); border: 1px solid rgba(255,107,53,0.2); }
+.gen-progress-spinner {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 2.5px solid rgba(255,107,53,0.25);
+  border-top-color: var(--color-accent);
+  animation: gen-spin 0.8s linear infinite; flex-shrink: 0;
+}
+@keyframes gen-spin { to { transform: rotate(360deg); } }
+.gen-progress-text { font-size: 12.5px; color: var(--color-text-secondary); line-height: 1.5; }
+.gen-progress-text strong { color: var(--color-text-primary); }
+.gen-progress-elapsed { font-family: "Space Mono", monospace; font-size: 10px; color: var(--color-text-muted); letter-spacing: 0.05em; margin-top: 2px; }
 @media (max-width: 600px) {
   .gen-controls-grid { grid-template-columns: 1fr; }
 }

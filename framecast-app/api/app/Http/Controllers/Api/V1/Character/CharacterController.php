@@ -3,20 +3,17 @@
 namespace App\Http\Controllers\Api\V1\Character;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateCharacterImageJob;
 use App\Models\Asset;
 use App\Models\Character;
+use App\Models\CharacterImageGeneration;
 use App\Models\User;
 use App\Services\CreditService;
-use App\Services\Generation\Image\CharacterImageAdapter;
-use App\Services\Generation\Image\DalleImageAdapter;
 use App\Services\Media\StorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
-use Throwable;
 
 class CharacterController extends Controller
 {
@@ -195,17 +192,13 @@ class CharacterController extends Controller
     }
 
     /**
-     * Generate a test/preview image of a character. Two paths:
-     *  - Character has a reference asset → route through CharacterImageAdapter
-     *    (gpt-image-2 /edits with the reference photo). The new image preserves
-     *    identity from the reference while following the prompt's scene.
-     *  - Character has NO reference asset → route through DalleImageAdapter
-     *    (gpt-image-1 text-only generation). The user can then optionally
-     *    promote the result to the character's reference photo.
+     * Kick off a character image generation. The actual OpenAI call (30-90s
+     * for gpt-image-2 /edits at high quality) runs on the generation queue
+     * worker — the previous synchronous version exceeded Cloudflare's request
+     * timeout. The HTTP request returns immediately with a generation id; the
+     * frontend polls `generationStatus()` until it reports succeeded|failed.
      *
-     * Charges credits per CreditService::AI_CHARACTER (with ref) or
-     * CreditService::AI_MEDIUM (without ref). Stored as an Asset tagged
-     * 'character_preview' for later use.
+     * Adapter routing + credit pricing live in GenerateCharacterImageJob.
      */
     public function generateImage(Request $request, int $characterId): JsonResponse
     {
@@ -229,6 +222,8 @@ class CharacterController extends Controller
         $cost = $hasReference ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
         $credits = app(CreditService::class);
 
+        // Upfront check so the user sees insufficient_credits immediately rather
+        // than after the worker picks up the job.
         $balance = $credits->balance((int) $user->workspace_id);
         if ($balance < $cost) {
             return response()->json([
@@ -240,171 +235,91 @@ class CharacterController extends Controller
             ], 402);
         }
 
-        $style        = (string) ($validated['style'] ?? 'photorealistic');
-        $aspectRatio  = (string) ($validated['aspect_ratio'] ?? '9:16');
-        $quality      = (string) ($validated['quality'] ?? ($hasReference ? 'high' : 'medium'));
+        $generation = CharacterImageGeneration::query()->create([
+            'workspace_id'     => $user->workspace_id,
+            'character_id'     => $character->getKey(),
+            'user_id'          => $user->getKey(),
+            'prompt'           => $validated['prompt'],
+            'style'            => $validated['style'] ?? 'photorealistic',
+            'aspect_ratio'     => $validated['aspect_ratio'] ?? '9:16',
+            'quality'          => $validated['quality'] ?? ($hasReference ? 'high' : 'medium'),
+            'set_as_reference' => (bool) ($validated['set_as_reference'] ?? false),
+            'status'           => 'queued',
+        ]);
 
-        $options = [
-            'usage_context' => [
-                'workspace_id' => $user->workspace_id,
-                'user_id'      => $user->getKey(),
-                'character_id' => $character->getKey(),
-                'style'        => $style,
-            ],
-            'quality' => $quality,
-        ];
-
-        try {
-            if ($hasReference) {
-                // Adapter needs a fetchable URL — generate a signed one for the reference asset.
-                $character->loadMissing('referenceAsset');
-                $referenceUrl = $this->assetUrl($character->referenceAsset);
-                if (! $referenceUrl) {
-                    return $this->error('invalid_reference', 'Character reference image is missing or unreadable.', 422);
-                }
-                $options['reference_image_url'] = $referenceUrl;
-                $result = app(CharacterImageAdapter::class)->generate(
-                    $validated['prompt'],
-                    $style,
-                    $aspectRatio,
-                    $options
-                );
-            } else {
-                // Build a more directed prompt for the no-reference path so DALL-E
-                // produces a clean portrait that can serve as a future reference.
-                $promptWithCharacter = trim($character->description
-                    ? "Portrait of {$character->name}: {$character->description}. {$validated['prompt']}"
-                    : "Portrait of {$character->name}. {$validated['prompt']}");
-                $result = app(DalleImageAdapter::class)->generate(
-                    $promptWithCharacter,
-                    $style,
-                    $aspectRatio,
-                    $options
-                );
-            }
-        } catch (Throwable $e) {
-            return $this->error('generation_failed', $e->getMessage(), 502);
-        }
-
-        // Persist the generated image to storage and create an Asset row.
-        // Anything that throws inside here (storage write, DB insert) used to
-        // bubble up as an unhandled 500 — caller saw "Server Error" with no
-        // explanation. Catch + log + return a useful message instead.
-        try {
-            $asset = $this->storeGeneratedImageAsAsset($user, $character, $result, $style);
-        } catch (Throwable $e) {
-            Log::error('CharacterController::generateImage storage failed', [
-                'character_id' => $character->getKey(),
-                'error'        => $e->getMessage(),
-                'trace'        => $e->getTraceAsString(),
-            ]);
-            return $this->error('storage_failed', 'Storage failed: '.$e->getMessage(), 500);
-        }
-        if (! $asset) {
-            Log::error('CharacterController::generateImage storage returned null', [
-                'character_id' => $character->getKey(),
-                'result_keys'  => array_keys($result),
-            ]);
-            return $this->error('storage_failed', 'Generated image could not be stored. Check api logs for details.', 500);
-        }
-
-        // Charge credits only on success — same pattern as scene regeneration.
-        $credits->deduct((int) $user->workspace_id, $cost, 'character_preview');
-
-        // Optional: immediately promote to reference.
-        try {
-            if (! empty($validated['set_as_reference']) && $validated['set_as_reference']) {
-                $character->update([
-                    'reference_asset_id' => $asset->getKey(),
-                    'reference_asset_ids' => array_values(array_unique(array_merge(
-                        [$asset->getKey()],
-                        is_array($character->reference_asset_ids) ? $character->reference_asset_ids : []
-                    ))),
-                ]);
-            }
-        } catch (Throwable $e) {
-            Log::warning('CharacterController::generateImage set_as_reference failed', [
-                'character_id' => $character->getKey(),
-                'asset_id'     => $asset->getKey(),
-                'error'        => $e->getMessage(),
-            ]);
-            // Image is still stored; just the reference promotion failed. Don't
-            // 500 the whole request — return the image so the user can promote
-            // manually via the edit modal.
-        }
-
-        $character->load('referenceAsset')->loadCount('scenes');
+        GenerateCharacterImageJob::dispatch($generation->getKey())->onQueue('generation');
 
         return response()->json([
             'data' => [
-                'character' => $this->serialize($character),
-                'image' => [
-                    'asset_id'      => $asset->getKey(),
-                    'storage_url'   => $this->assetUrl($asset),
-                    'mime_type'     => $asset->mime_type,
-                    'width'         => $result['width']  ?? null,
-                    'height'        => $result['height'] ?? null,
-                    'provider_key'  => $result['provider_key'] ?? null,
-                    'with_reference'=> $hasReference,
-                    'set_as_reference' => ! empty($validated['set_as_reference']),
-                ],
-                'credits_charged' => $cost,
-                'balance_after'   => $credits->balance((int) $user->workspace_id),
+                'generation' => $this->serializeGeneration($generation),
             ],
             'meta' => [],
-        ], 201);
+        ], 202);
     }
 
     /**
-     * Download (or decode) the adapter's returned image and store it as an Asset
-     * in the workspace, tagged so we can find character previews later. Throws
-     * a descriptive RuntimeException on any failure so the caller can surface
-     * the actual reason; returning null is reserved for "bytes weren't usable."
+     * Poll for the status of a queued character image generation. Frontend
+     * hits this every ~2s after POST returns 202.
      */
-    private function storeGeneratedImageAsAsset(User $user, Character $character, array $result, string $style): ?Asset
+    public function generationStatus(Request $request, int $generationId): JsonResponse
     {
-        // The adapter returns either a public image URL or a base64 payload.
-        $imageBytes = null;
-        if (! empty($result['image_b64'])) {
-            $imageBytes = base64_decode($result['image_b64'], true);
-        } elseif (! empty($result['image_url'])) {
-            $fetched = Http::timeout(60)->get($result['image_url']);
-            if (! $fetched->successful()) {
-                throw new \RuntimeException("Could not download generated image (HTTP {$fetched->status()}).");
+        /** @var User $user */
+        $user = $request->user();
+
+        $gen = CharacterImageGeneration::query()
+            ->whereKey($generationId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $gen) {
+            return $this->error('not_found', 'Generation not found.', 404);
+        }
+
+        $payload = $this->serializeGeneration($gen);
+
+        // When succeeded, include the result asset details so the frontend can
+        // render the image and offer "set as reference" follow-ups without
+        // another round-trip.
+        if ($gen->status === 'succeeded' && $gen->result_asset_id) {
+            $asset = Asset::query()->find($gen->result_asset_id);
+            if ($asset) {
+                $payload['image'] = [
+                    'asset_id'      => $asset->getKey(),
+                    'storage_url'   => $this->assetUrl($asset),
+                    'mime_type'     => $asset->mime_type,
+                    'width'         => $asset->dimensions_json['width']  ?? null,
+                    'height'        => $asset->dimensions_json['height'] ?? null,
+                    'with_reference'=> (bool) $gen->used_reference,
+                    'set_as_reference' => (bool) $gen->set_as_reference,
+                ];
             }
-            $imageBytes = $fetched->body();
-        }
-        if ($imageBytes === null || $imageBytes === false || $imageBytes === '') {
-            return null; // caller turns this into a clean 500 message
         }
 
-        $storage  = app(StorageService::class);
-        $filename = 'characters/'.$character->getKey().'/preview-'.now()->format('Ymd-His').'-'.bin2hex(random_bytes(4)).'.png';
-        // Let exceptions bubble — caller catches Throwable and includes the
-        // message in the 500 response so storage misconfig is visible, not
-        // swallowed as "Image generation failed."
-        $stored = $storage->put($filename, $imageBytes, ['ContentType' => 'image/png']);
-
-        return Asset::query()->create([
-            'workspace_id'         => $user->workspace_id,
-            'channel_id'           => null,
-            'asset_type'           => 'image',
-            'title'                => "Character preview — {$character->name}",
-            'description'          => 'Generated character preview',
-            'storage_url'          => $stored,
-            'thumbnail_url'        => $stored,
-            'mime_type'            => 'image/png',
-            'dimensions_json'      => [
-                'width'  => (int) ($result['width']  ?? 1024),
-                'height' => (int) ($result['height'] ?? 1536),
-            ],
-            'tags'                 => ['character_preview', $character->name, $style],
-            'transcription_status' => 'not_requested',
-            'restriction_scope'    => 'workspace',
-            'usage_count'          => 0,
-            'status'               => 'active',
-            'created_by_user_id'   => $user->getKey(),
+        return response()->json([
+            'data' => ['generation' => $payload],
+            'meta' => [],
         ]);
+    }
+
+    private function serializeGeneration(CharacterImageGeneration $gen): array
+    {
+        return [
+            'id'                => $gen->getKey(),
+            'character_id'      => $gen->character_id,
+            'status'            => $gen->status,
+            'prompt'            => $gen->prompt,
+            'style'             => $gen->style,
+            'aspect_ratio'      => $gen->aspect_ratio,
+            'quality'           => $gen->quality,
+            'set_as_reference'  => (bool) $gen->set_as_reference,
+            'used_reference'    => $gen->used_reference,
+            'result_asset_id'   => $gen->result_asset_id,
+            'error_message'     => $gen->error_message,
+            'credits_charged'   => (int) $gen->credits_charged,
+            'started_at'        => $gen->started_at?->toIso8601String(),
+            'completed_at'      => $gen->completed_at?->toIso8601String(),
+            'created_at'        => $gen->created_at?->toIso8601String(),
+        ];
     }
 
     private function resolve(Request $request, int $characterId): ?Character
