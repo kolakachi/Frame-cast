@@ -13,6 +13,7 @@ use App\Services\Media\StorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 use Throwable;
@@ -286,23 +287,50 @@ class CharacterController extends Controller
         }
 
         // Persist the generated image to storage and create an Asset row.
-        $asset = $this->storeGeneratedImageAsAsset($user, $character, $result, $style);
+        // Anything that throws inside here (storage write, DB insert) used to
+        // bubble up as an unhandled 500 — caller saw "Server Error" with no
+        // explanation. Catch + log + return a useful message instead.
+        try {
+            $asset = $this->storeGeneratedImageAsAsset($user, $character, $result, $style);
+        } catch (Throwable $e) {
+            Log::error('CharacterController::generateImage storage failed', [
+                'character_id' => $character->getKey(),
+                'error'        => $e->getMessage(),
+                'trace'        => $e->getTraceAsString(),
+            ]);
+            return $this->error('storage_failed', 'Storage failed: '.$e->getMessage(), 500);
+        }
         if (! $asset) {
-            return $this->error('storage_failed', 'Generated image could not be stored.', 500);
+            Log::error('CharacterController::generateImage storage returned null', [
+                'character_id' => $character->getKey(),
+                'result_keys'  => array_keys($result),
+            ]);
+            return $this->error('storage_failed', 'Generated image could not be stored. Check api logs for details.', 500);
         }
 
         // Charge credits only on success — same pattern as scene regeneration.
         $credits->deduct((int) $user->workspace_id, $cost, 'character_preview');
 
         // Optional: immediately promote to reference.
-        if (! empty($validated['set_as_reference']) && $validated['set_as_reference']) {
-            $character->update([
-                'reference_asset_id' => $asset->getKey(),
-                'reference_asset_ids' => array_values(array_unique(array_merge(
-                    [$asset->getKey()],
-                    is_array($character->reference_asset_ids) ? $character->reference_asset_ids : []
-                ))),
+        try {
+            if (! empty($validated['set_as_reference']) && $validated['set_as_reference']) {
+                $character->update([
+                    'reference_asset_id' => $asset->getKey(),
+                    'reference_asset_ids' => array_values(array_unique(array_merge(
+                        [$asset->getKey()],
+                        is_array($character->reference_asset_ids) ? $character->reference_asset_ids : []
+                    ))),
+                ]);
+            }
+        } catch (Throwable $e) {
+            Log::warning('CharacterController::generateImage set_as_reference failed', [
+                'character_id' => $character->getKey(),
+                'asset_id'     => $asset->getKey(),
+                'error'        => $e->getMessage(),
             ]);
+            // Image is still stored; just the reference promotion failed. Don't
+            // 500 the whole request — return the image so the user can promote
+            // manually via the edit modal.
         }
 
         $character->load('referenceAsset')->loadCount('scenes');
@@ -329,7 +357,9 @@ class CharacterController extends Controller
 
     /**
      * Download (or decode) the adapter's returned image and store it as an Asset
-     * in the workspace, tagged so we can find character previews later.
+     * in the workspace, tagged so we can find character previews later. Throws
+     * a descriptive RuntimeException on any failure so the caller can surface
+     * the actual reason; returning null is reserved for "bytes weren't usable."
      */
     private function storeGeneratedImageAsAsset(User $user, Character $character, array $result, string $style): ?Asset
     {
@@ -338,45 +368,42 @@ class CharacterController extends Controller
         if (! empty($result['image_b64'])) {
             $imageBytes = base64_decode($result['image_b64'], true);
         } elseif (! empty($result['image_url'])) {
-            try {
-                $fetched = Http::timeout(60)->get($result['image_url']);
-                if ($fetched->successful()) {
-                    $imageBytes = $fetched->body();
-                }
-            } catch (Throwable) {
-                $imageBytes = null;
+            $fetched = Http::timeout(60)->get($result['image_url']);
+            if (! $fetched->successful()) {
+                throw new \RuntimeException("Could not download generated image (HTTP {$fetched->status()}).");
             }
+            $imageBytes = $fetched->body();
         }
-        if ($imageBytes === null || $imageBytes === false) {
-            return null;
+        if ($imageBytes === null || $imageBytes === false || $imageBytes === '') {
+            return null; // caller turns this into a clean 500 message
         }
 
         $storage  = app(StorageService::class);
         $filename = 'characters/'.$character->getKey().'/preview-'.now()->format('Ymd-His').'-'.bin2hex(random_bytes(4)).'.png';
-        try {
-            $stored = $storage->put($filename, $imageBytes, ['ContentType' => 'image/png']);
-        } catch (Throwable) {
-            return null;
-        }
+        // Let exceptions bubble — caller catches Throwable and includes the
+        // message in the 500 response so storage misconfig is visible, not
+        // swallowed as "Image generation failed."
+        $stored = $storage->put($filename, $imageBytes, ['ContentType' => 'image/png']);
 
         return Asset::query()->create([
-            'workspace_id'       => $user->workspace_id,
-            'channel_id'         => null,
-            'asset_type'         => 'image',
-            'title'              => "Character preview — {$character->name}",
-            'description'        => 'Generated character preview',
-            'storage_url'        => $stored,
-            'thumbnail_url'      => $stored,
-            'mime_type'          => 'image/png',
-            'dimensions_json'    => [
+            'workspace_id'         => $user->workspace_id,
+            'channel_id'           => null,
+            'asset_type'           => 'image',
+            'title'                => "Character preview — {$character->name}",
+            'description'          => 'Generated character preview',
+            'storage_url'          => $stored,
+            'thumbnail_url'        => $stored,
+            'mime_type'            => 'image/png',
+            'dimensions_json'      => [
                 'width'  => (int) ($result['width']  ?? 1024),
                 'height' => (int) ($result['height'] ?? 1536),
             ],
-            'tags'               => ['character_preview', $character->name, $style],
-            'source'             => 'ai_generated',
-            'usage_count'        => 0,
-            'status'             => 'active',
-            'created_by_user_id' => $user->getKey(),
+            'tags'                 => ['character_preview', $character->name, $style],
+            'transcription_status' => 'not_requested',
+            'restriction_scope'    => 'workspace',
+            'usage_count'          => 0,
+            'status'               => 'active',
+            'created_by_user_id'   => $user->getKey(),
         ]);
     }
 
