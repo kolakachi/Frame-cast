@@ -146,23 +146,34 @@ class GenerateCharacterImageJob implements ShouldQueue
         // Charge on success.
         $credits->deduct((int) $gen->workspace_id, $cost, 'character_preview');
 
-        // Promote to reference if requested. Failure here is non-fatal — image
-        // is stored; user can promote manually from the edit modal.
-        if ($gen->set_as_reference) {
-            try {
+        // Every generated image is appended to this character's reference list,
+        // whether or not it was promoted to primary. That way, when the user
+        // leaves the page and comes back, the image isn't orphaned — it's
+        // visible in the edit modal's reference grid and can be promoted later.
+        // The `set_as_reference` flag only controls whether it ALSO becomes the
+        // primary (reference_asset_id) that the adapter routes through.
+        try {
+            $existingIds = is_array($character->reference_asset_ids) ? $character->reference_asset_ids : [];
+            // Defensive: strip the new id if somehow already present, then choose
+            // prepend (primary) vs append (just join the list).
+            $existingIds = array_values(array_filter($existingIds, fn ($id) => (int) $id !== $asset->getKey()));
+
+            if ($gen->set_as_reference) {
                 $character->update([
                     'reference_asset_id'  => $asset->getKey(),
-                    'reference_asset_ids' => array_values(array_unique(array_merge(
-                        [$asset->getKey()],
-                        is_array($character->reference_asset_ids) ? $character->reference_asset_ids : []
-                    ))),
+                    'reference_asset_ids' => array_values(array_merge([$asset->getKey()], $existingIds)),
                 ]);
-            } catch (Throwable $e) {
-                Log::warning('GenerateCharacterImageJob set_as_reference failed', [
-                    'generation_id' => $gen->getKey(),
-                    'error'         => $e->getMessage(),
+            } else {
+                $character->update([
+                    'reference_asset_ids' => array_values(array_merge($existingIds, [$asset->getKey()])),
                 ]);
             }
+        } catch (Throwable $e) {
+            Log::warning('GenerateCharacterImageJob reference-list append failed', [
+                'generation_id' => $gen->getKey(),
+                'error'         => $e->getMessage(),
+            ]);
+            // Image is still stored; the link just didn't attach. Non-fatal.
         }
 
         $gen->update([

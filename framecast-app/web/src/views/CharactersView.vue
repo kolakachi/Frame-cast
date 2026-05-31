@@ -119,7 +119,10 @@ function stopGenPolling() {
 }
 
 function closeGenerate() {
-  if (genState.value === "loading") return; // can't close while generating
+  // Closing during 'loading' is fine — the worker keeps running, the page-level
+  // poll will surface the pending badge on the card, and the user can re-open
+  // the modal from there. We just have to stop the in-modal poll/elapsed
+  // timers so they don't leak.
   stopGenPolling();
   genTarget.value = null;
 }
@@ -727,7 +730,11 @@ async function confirmDelete() {
 
           <label class="gen-promote-row">
             <input type="checkbox" v-model="genSetAsReference" :disabled="genState === 'loading'" />
-            <span>Set this image as the character's reference photo {{ genTarget.reference_asset ? '(replaces current)' : '(unlocks identity preservation on next generation)' }}</span>
+            <span>
+              Make this the primary reference photo
+              {{ genTarget.reference_asset ? '(replaces current primary)' : '(unlocks identity preservation on next generation)' }}
+              <span class="gen-promote-hint">Generated images always join this character's reference list — the checkbox just controls which one is primary.</span>
+            </span>
           </label>
 
           <div v-if="genState === 'loading'" class="gen-progress">
@@ -750,8 +757,10 @@ async function confirmDelete() {
 
           <div class="cv-foot">
             <span class="gen-cost">~{{ genCostEstimate }} credits</span>
-            <button class="btn btn-ghost btn-sm" type="button" @click="closeGenerate" :disabled="genState === 'loading'">
-              {{ genState === 'done' ? 'Close' : 'Cancel' }}
+            <button class="btn btn-ghost btn-sm" type="button" @click="closeGenerate">
+              <template v-if="genState === 'loading'">Close — keep running in background</template>
+              <template v-else-if="genState === 'done'">Close</template>
+              <template v-else>Cancel</template>
             </button>
             <button
               class="btn btn-primary btn-sm"
@@ -905,8 +914,9 @@ async function confirmDelete() {
 }
 .gen-mode-banner strong { color: var(--color-accent); }
 .gen-controls-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; }
-.gen-promote-row { display: flex; gap: 8px; align-items: flex-start; padding: 10px 0; font-size: 12px; color: var(--color-text-secondary); cursor: pointer; }
-.gen-promote-row input { margin-top: 3px; }
+.gen-promote-row { display: flex; gap: 8px; align-items: flex-start; padding: 10px 0; font-size: 12px; color: var(--color-text-secondary); cursor: pointer; line-height: 1.55; }
+.gen-promote-row input { margin-top: 3px; flex-shrink: 0; }
+.gen-promote-hint { display: block; font-size: 11px; color: var(--color-text-muted); margin-top: 3px; }
 .gen-result { margin-top: 14px; border-radius: 10px; overflow: hidden; border: 1px solid var(--color-border); background: var(--color-bg-elevated); }
 .gen-result img { display: block; width: 100%; max-height: 420px; object-fit: contain; background: #000; }
 .gen-result-meta { padding: 8px 12px; font-size: 11px; color: var(--color-text-muted); font-family: "Space Mono", monospace; letter-spacing: 0.05em; display: flex; gap: 10px; }
