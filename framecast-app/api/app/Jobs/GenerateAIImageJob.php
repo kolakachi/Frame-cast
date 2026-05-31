@@ -22,7 +22,13 @@ class GenerateAIImageJob implements ShouldQueue
     use TracksJobFailure;
 
     public int $tries = 2;
-    public int $timeout = 120;
+    // Per-scene gpt-image-2 /edits (character path) takes 30-90s for the
+    // OpenAI call alone, plus storage + DB ops. The previous 120s ceiling was
+    // hitting jobs at 117-130s range and the worker process was being killed
+    // mid-run with exitCode=1, orphaning the scene's in_progress flag and
+    // restarting the whole worker container. 300s gives gpt-image-2 a healthy
+    // ceiling without letting truly hung jobs sit forever.
+    public int $timeout = 300;
 
     public function __construct(
         public readonly int $sceneId,
