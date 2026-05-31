@@ -184,7 +184,27 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                 'source' => 'project_ai_broll',
             ],
         ])->save();
-        rescue(fn () => app(CreditService::class)->deduct((int) $project->workspace_id, CreditService::AI_MEDIUM, 'ai_image'));
+        // Same charge-by-actual-path rule as GenerateAIImageJob (see comment
+        // there). Pre-fix this hardcoded AI_MEDIUM for every scene, including
+        // ones that ran through gpt-image-2 /edits at ~\$0.30 upstream.
+        $providerKey = (string) ($result['provider_key'] ?? 'dalle');
+        $ranCharacterPath = $providerKey === 'openai:gpt-image-2';
+        $imageCost = $ranCharacterPath ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+
+        rescue(fn () => app(CreditService::class)->deduct(
+            (int) $project->workspace_id,
+            $imageCost,
+            $ranCharacterPath ? 'ai_image:character' : 'ai_image:initial',
+            [
+                'project_id' => $project->getKey(),
+                'scene_id'   => $scene->getKey(),
+                'user_id'    => $project->created_by_user_id,
+                'metadata'   => [
+                    'provider_key' => $providerKey,
+                    'style'        => $style,
+                ],
+            ],
+        ));
     }
 
     /**

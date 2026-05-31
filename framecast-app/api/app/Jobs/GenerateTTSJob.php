@@ -136,7 +136,17 @@ class GenerateTTSJob implements ShouldQueue
                 $this->attachCaptionTiming($asset, $transcription);
             }
 
-            rescue(fn () => app(CreditService::class)->deduct((int) $project->workspace_id, CreditService::TTS, 'tts'));
+            rescue(fn () => app(CreditService::class)->deduct(
+                (int) $project->workspace_id,
+                CreditService::TTS,
+                'tts',
+                [
+                    'project_id' => $project->getKey(),
+                    'scene_id'   => $scene->getKey(),
+                    'user_id'    => $project->created_by_user_id,
+                    'metadata'   => ['voice_id' => $voiceId, 'language' => $language],
+                ],
+            ));
             $done++;
             GenerationProgressed::dispatch($this->projectId, 'tts', 'processing', null, [
                 'done' => $done, 'total' => $total,

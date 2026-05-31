@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\CreditLedgerEntry;
 use App\Models\Workspace;
+use Throwable;
 
 class CreditService
 {
@@ -49,8 +51,19 @@ class CreditService
     /**
      * Deduct credits. Spends credits_monthly first, then credits_topup.
      * Returns false if insufficient balance (does not deduct partial amounts).
+     *
+     * Writes a credit_ledger row on success so we can answer "where did this
+     * workspace's credits go today?" without reconstructing from logs. Ledger
+     * writes are best-effort (rescued): a logging failure must never cost the
+     * user their generation.
+     *
+     * @param  array<string, mixed>  $context  optional caller context — keys recognised:
+     *                                          - project_id (int)
+     *                                          - scene_id (int)
+     *                                          - user_id (int)
+     *                                          - metadata (array) — model, tier, quality, etc.
      */
-    public function deduct(int $workspaceId, int $amount, string $operation = ''): bool
+    public function deduct(int $workspaceId, int $amount, string $operation = '', array $context = []): bool
     {
         $workspace = Workspace::find($workspaceId);
         if (! $workspace || $workspace->creditsBalance() < $amount) {
@@ -71,12 +84,32 @@ class CreditService
             $workspace->decrement('credits_topup', $fromTopup);
         }
 
+        // Best-effort ledger write — never let a logging failure mask a
+        // successful deduction.
+        rescue(function () use ($workspaceId, $amount, $operation, $context) {
+            CreditLedgerEntry::query()->create([
+                'workspace_id'  => $workspaceId,
+                'user_id'       => isset($context['user_id'])    ? (int) $context['user_id']    : null,
+                'project_id'    => isset($context['project_id']) ? (int) $context['project_id'] : null,
+                'scene_id'      => isset($context['scene_id'])   ? (int) $context['scene_id']   : null,
+                'operation'     => mb_substr($operation !== '' ? $operation : 'unknown', 0, 64),
+                'credits'       => $amount,
+                'balance_after' => $this->balance($workspaceId),
+                'metadata'      => is_array($context['metadata'] ?? null) ? $context['metadata'] : null,
+            ]);
+        }, null, false);
+
         return true;
     }
 
     /**
      * Grant credits (registration, top-up purchase, admin refund).
      * Grants always go to credits_topup so they don't interfere with monthly resets.
+     *
+     * Also writes a ledger row with a negative `credits` value so grant /
+     * refund history is queryable from the same place as deductions. The
+     * `operation` is prefixed with 'grant:' (e.g. 'grant:registration',
+     * 'grant:admin_top_up') so filtering is trivial.
      */
     public function grant(int $workspaceId, int $amount, string $reason = ''): void
     {
@@ -85,6 +118,16 @@ class CreditService
         if ($reason === 'registration') {
             Workspace::where('id', $workspaceId)->increment('credits_free_granted', $amount);
         }
+
+        rescue(function () use ($workspaceId, $amount, $reason) {
+            CreditLedgerEntry::query()->create([
+                'workspace_id'  => $workspaceId,
+                'operation'     => mb_substr('grant:'.($reason !== '' ? $reason : 'unspecified'), 0, 64),
+                'credits'       => -$amount, // negative = credit going INTO the workspace
+                'balance_after' => $this->balance($workspaceId),
+                'metadata'      => ['reason' => $reason],
+            ]);
+        }, null, false);
     }
 
     /**

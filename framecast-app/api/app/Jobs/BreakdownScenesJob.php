@@ -85,7 +85,12 @@ class BreakdownScenesJob implements ShouldQueue
         GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'completed', null, [
             'total' => count($scenes),
         ]);
-        rescue(fn () => app(CreditService::class)->deduct((int) $project->workspace_id, CreditService::BREAKDOWN, 'breakdown'));
+        rescue(fn () => app(CreditService::class)->deduct(
+            (int) $project->workspace_id,
+            CreditService::BREAKDOWN,
+            'breakdown',
+            ['project_id' => $project->getKey(), 'user_id' => $project->created_by_user_id, 'metadata' => ['scene_count' => count($scenes)]],
+        ));
         GenerateVisualBriefJob::dispatch($project->getKey());
     }
 

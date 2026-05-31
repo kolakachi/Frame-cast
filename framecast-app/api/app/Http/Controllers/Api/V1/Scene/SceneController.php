@@ -884,7 +884,20 @@ class SceneController extends Controller
             }
         }
 
-        if (! $this->credits->deduct((int) $user->workspace_id, $cost, "animate:{$validated['tier']}")) {
+        if (! $this->credits->deduct(
+            (int) $user->workspace_id,
+            $cost,
+            "animate:{$validated['tier']}",
+            [
+                'project_id' => $scene->project_id,
+                'scene_id'   => $scene->getKey(),
+                'user_id'    => $user->getKey(),
+                'metadata'   => [
+                    'tier'             => $validated['tier'],
+                    'duration_seconds' => $durationSeconds,
+                ],
+            ],
+        )) {
             return $this->error('insufficient_credits', 'Could not deduct credits for this animation.', 402);
         }
 

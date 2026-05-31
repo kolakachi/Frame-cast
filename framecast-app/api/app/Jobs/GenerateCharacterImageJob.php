@@ -144,7 +144,20 @@ class GenerateCharacterImageJob implements ShouldQueue
         }
 
         // Charge on success.
-        $credits->deduct((int) $gen->workspace_id, $cost, 'character_preview');
+        $credits->deduct(
+            (int) $gen->workspace_id,
+            $cost,
+            $hasReference ? 'character_preview:ref' : 'character_preview:noref',
+            [
+                'user_id'  => $gen->user_id,
+                'metadata' => [
+                    'character_id'   => $character->getKey(),
+                    'character_name' => $character->name,
+                    'quality'        => $gen->quality,
+                    'set_as_reference' => (bool) $gen->set_as_reference,
+                ],
+            ],
+        );
 
         // Every generated image is appended to this character's reference list,
         // whether or not it was promoted to primary. That way, when the user

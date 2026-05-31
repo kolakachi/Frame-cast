@@ -72,7 +72,12 @@ class GenerateScriptJob implements ShouldQueue
         ])->save();
 
         GenerationProgressed::dispatch($this->projectId, 'script', 'completed');
-        rescue(fn () => app(CreditService::class)->deduct((int) $project->workspace_id, CreditService::SCRIPT, 'script'));
+        rescue(fn () => app(CreditService::class)->deduct(
+            (int) $project->workspace_id,
+            CreditService::SCRIPT,
+            'script',
+            ['project_id' => $project->getKey(), 'user_id' => $project->created_by_user_id],
+        ));
         BreakdownScenesJob::dispatch($project->getKey());
     }
 

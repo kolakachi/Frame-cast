@@ -161,7 +161,33 @@ class GenerateAIImageJob implements ShouldQueue
                 ],
             ])->save();
 
-            rescue(fn () => app(CreditService::class)->deduct((int) $scene->project->workspace_id, CreditService::AI_MEDIUM, 'ai_image_manual'));
+            // BUGFIX 2026-05-31: charge based on which adapter actually ran.
+            // Pre-ledger, this hardcoded AI_MEDIUM (15) regardless of path, so
+            // character-bound regens through gpt-image-2 /edits — which cost
+            // ~\$0.30 upstream — were only charging users 15 credits (\$0.15).
+            // Negative-margin every time a character regen ran. Now: charge
+            // AI_CHARACTER when the gpt-image-2 path produced the image, fall
+            // back to AI_MEDIUM otherwise. The SceneController guard already
+            // requires AI_CHARACTER credits up-front so this aligns guard
+            // and deduction.
+            $providerKey = (string) ($result['provider_key'] ?? 'dalle');
+            $ranCharacterPath = $providerKey === 'openai:gpt-image-2';
+            $imageCost = $ranCharacterPath ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+
+            rescue(fn () => app(CreditService::class)->deduct(
+                (int) $scene->project->workspace_id,
+                $imageCost,
+                $ranCharacterPath ? 'ai_image:character' : 'ai_image:manual',
+                [
+                    'project_id' => $this->projectId,
+                    'scene_id'   => $this->sceneId,
+                    'user_id'    => $scene->project->created_by_user_id,
+                    'metadata'   => [
+                        'provider_key' => $providerKey,
+                        'style'        => $this->style,
+                    ],
+                ],
+            ));
             GenerationProgressed::dispatch($this->projectId, 'ai_image', 'completed', null, [
                 'scene_id'  => $this->sceneId,
                 'asset_id'  => $asset->getKey(),
