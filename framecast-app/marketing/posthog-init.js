@@ -16,8 +16,9 @@
  * so the key isn't baked into the JS bundle but supplied at build time.
  */
 (function () {
-  // ⤵ PASTE PROJECT KEY HERE (starts with "phc_" in PostHog Cloud) ⤵
-  var POSTHOG_KEY = '';
+  // Project key for the WyvStudio PostHog project. Safe to commit — PostHog's
+  // public project keys are write-only and designed to ship in client-side code.
+  var POSTHOG_KEY = 'phc_D3EpCpp2JnrpCffczm6b5hfYeRqVF5J3CqNnALFx4Gm8';
 
   if (!POSTHOG_KEY) return; // not yet configured — no-op
 
