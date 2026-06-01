@@ -99,6 +99,12 @@ const addSceneStockSubType = ref("stock_clip");
 const addSceneVisualStyle = ref(null);
 const addSceneCustomVisualStyle = ref("");
 const addSceneVisualQuery = ref("");
+// Asset picked via the MediaPickerModal while the Assets tab is active.
+// Cleared on cancel/reset; consumed when createScene() builds the POST.
+const addScenePickedAsset = ref(null);
+// Optional per-scene character (used in AI mode for an ad-hoc reference image).
+// Null = inherit the project default character.
+const addSceneCharacterId = ref(null);
 const selectedSwapVisualSource = ref("Stock Clip");
 const newSceneScript = ref("");
 const rewriteToolsVisible = ref(true);
@@ -163,6 +169,9 @@ let voiceRecordTimer = null;
 let voiceTranscribePoller = null;
 const mediaPickerVisible = ref(false);
 const mediaPickerMode = ref("visual"); // 'visual' | 'music' | 'sound'
+// When the add-scene panel opened the picker, route selections into the
+// add-scene buffer instead of assigning to the currently-active scene.
+const addSceneAssetPickerActive = ref(false);
 const musicPanelTab = ref("library"); // 'library' | 'uploads'
 const musicVolume = ref(30);
 const musicDuckVolume = ref(8);
@@ -1437,7 +1446,18 @@ function resetAddSceneDrafts() {
   addSceneVisualStyle.value = null;
   addSceneCustomVisualStyle.value = "";
   addSceneVisualQuery.value = "";
+  addScenePickedAsset.value = null;
+  addSceneCharacterId.value = null;
   newSceneScript.value = "";
+}
+
+// Called when the Assets tab is selected; opens the existing MediaPickerModal
+// in 'visual' mode but redirects the selection into the add-scene buffer
+// instead of assigning to activeScene.
+function pickAssetForNewScene() {
+  addSceneAssetPickerActive.value = true;
+  mediaPickerMode.value = "visual";
+  mediaPickerVisible.value = true;
 }
 
 async function generateNewSceneDraft() {
@@ -2311,6 +2331,14 @@ function selectAudiogramBg(key) {
 function handleMediaPickerSelect({ mode, item }) {
   if (mode === "visual") {
     if (item._type === "asset") {
+      // If the picker was opened from the add-scene panel, route the
+      // selection into the add-scene buffer instead of assigning to the
+      // currently-active scene.
+      if (addSceneAssetPickerActive.value) {
+        addScenePickedAsset.value = item;
+        addSceneAssetPickerActive.value = false;
+        return;
+      }
       const isVid = item.asset_type === "video" || String(item.mime_type ?? "").startsWith("video/");
       assignAssetVisual(item, isVid ? "background_loop" : "image_montage");
     }
@@ -2977,6 +3005,11 @@ function closeAddScene() {
 
 function selectAddSceneVisualMode(mode) {
   addSceneVisualMode.value = mode;
+  // Auto-open the library picker the moment the user lands on the Assets tab
+  // (only if nothing's been picked yet). Keeps the flow one click shorter.
+  if (mode === 'assets' && !addScenePickedAsset.value) {
+    pickAssetForNewScene();
+  }
 }
 
 function applyCaptionPreset(preset) {
@@ -3898,7 +3931,10 @@ async function createScene(insertAfterSceneId = null) {
     stock_video: addSceneStockSubType.value || "stock_clip",
     stock_image: "image_montage",
     ai_image: "ai_image",
-    assets: "stock_clip",
+    audiogram: "waveform",
+    assets: addScenePickedAsset.value
+      ? (addScenePickedAsset.value.asset_type === "video" ? "background_loop" : "image_montage")
+      : "stock_clip",
   };
   const visualType = addSceneModeTypeMap[addSceneVisualMode.value] ?? "stock_clip";
   const visualQuery = addSceneVisualQuery.value.trim() || scriptText || buildSceneLabel(sceneType);
@@ -3924,6 +3960,14 @@ async function createScene(insertAfterSceneId = null) {
       // its inherit-from-project default.
       ...(addSceneVisualStyle.value === 'custom' && addSceneCustomVisualStyle.value.trim()
         ? { custom_visual_style: addSceneCustomVisualStyle.value.trim() }
+        : {}),
+      // Pre-attach the asset picked via MediaPickerModal when Assets tab is used.
+      ...(addSceneVisualMode.value === 'assets' && addScenePickedAsset.value
+        ? { visual_asset_id: addScenePickedAsset.value.id }
+        : {}),
+      // Per-scene character override; null = backend inherits project default.
+      ...(addSceneCharacterId.value
+        ? { character_id: Number(addSceneCharacterId.value) }
         : {}),
     });
 
@@ -4390,6 +4434,7 @@ onBeforeUnmount(() => {
                     <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_video' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_video')">Video</button>
                     <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_image' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_image')">Image</button>
                     <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'ai_image' ? 'active ai' : '']" @click="selectAddSceneVisualMode('ai_image')">✦ AI</button>
+                    <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'audiogram' ? 'active' : '']" @click="selectAddSceneVisualMode('audiogram')">Audiogram</button>
                     <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'assets' ? 'active' : '']" @click="selectAddSceneVisualMode('assets')">Assets</button>
                   </div>
 
@@ -4400,7 +4445,6 @@ onBeforeUnmount(() => {
                         <option value="stock_clip">Clip</option>
                         <option value="background_loop">BG Loop</option>
                         <option value="text_card">Text Only</option>
-                        <option value="waveform">Audiogram</option>
                       </select>
                     </div>
                     <div class="scene-query-label">Search query</div>
@@ -4435,15 +4479,52 @@ onBeforeUnmount(() => {
                         Leave blank to inherit from the project default.
                       </div>
                     </div>
-                    <div class="scene-query-label">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
+
+                    <!-- Reference character chip — picks an existing Character
+                         (with reference photo) so AI image gen on this scene
+                         routes through gpt-image-2 /edits with that face. -->
+                    <div v-if="characters.length" style="margin-top:10px;">
+                      <div class="micro-label" style="margin-bottom:6px;">Reference character <span style="opacity:.5;font-weight:400;">(optional)</span></div>
+                      <div class="add-scene-char-row">
+                        <button
+                          type="button"
+                          :class="['add-scene-char-chip', !addSceneCharacterId ? 'selected' : '']"
+                          @click="addSceneCharacterId = null"
+                        ><span class="add-scene-char-none">∅</span>None</button>
+                        <button
+                          v-for="c in characters"
+                          :key="`top-add-char-${c.id}`"
+                          type="button"
+                          :class="['add-scene-char-chip', String(addSceneCharacterId) === String(c.id) ? 'selected' : '']"
+                          @click="addSceneCharacterId = c.id"
+                        >
+                          <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" :alt="c.name" class="add-scene-char-thumb" />
+                          <span v-else class="add-scene-char-none">👤</span>
+                          <span style="font-size:11px;">{{ c.name }}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="scene-query-label" style="margin-top:10px;">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
                     <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="Leave blank to use scene script as the generation prompt"></textarea>
                   </template>
 
-                  <template v-else-if="addSceneVisualMode === 'assets'">
-                    <div class="panel-hint-copy" style="text-align:center;padding:16px 0;">
-                      <div style="font-size:18px;margin-bottom:6px;">📁</div>
-                      Asset picker coming soon.
+                  <template v-else-if="addSceneVisualMode === 'audiogram'">
+                    <div class="panel-hint-copy" style="text-align:left;padding:12px 0;font-size:12px;color:var(--text-muted);">
+                      <strong style="color:var(--text);">Audiogram</strong> visualises this scene's voice-over as an animated waveform. The voice you record or generate for the scene drives the bars. No image needed.
                     </div>
+                  </template>
+
+                  <template v-else-if="addSceneVisualMode === 'assets'">
+                    <div v-if="addScenePickedAsset" class="add-scene-asset-preview">
+                      <img v-if="addScenePickedAsset.thumbnail_url || (addScenePickedAsset.asset_type === 'image' && addScenePickedAsset.storage_url)" :src="addScenePickedAsset.thumbnail_url || addScenePickedAsset.storage_url" :alt="addScenePickedAsset.title" />
+                      <div class="add-scene-asset-meta">
+                        <div class="add-scene-asset-title">{{ addScenePickedAsset.title || 'Selected asset' }}</div>
+                        <div class="add-scene-asset-type">{{ addScenePickedAsset.asset_type || 'asset' }}</div>
+                      </div>
+                      <button class="btn btn-ghost btn-sm" type="button" @click="pickAssetForNewScene">Replace</button>
+                    </div>
+                    <button v-else class="btn btn-ghost btn-sm panel-full-btn" type="button" @click="pickAssetForNewScene">📁 Pick from your library</button>
                   </template>
                 </div>
                 <div class="add-scene-actions">
@@ -4467,6 +4548,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
+              <!-- eslint-disable-next-line vue/no-v-for-template-key -->
               <template v-for="(scene, index) in scenes" :key="scene.id">
                 <div
                   :id="`scene-item-${scene.id}`"
@@ -4594,6 +4676,7 @@ onBeforeUnmount(() => {
                       <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_video' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_video')">Video</button>
                       <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_image' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_image')">Image</button>
                       <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'ai_image' ? 'active ai' : '']" @click="selectAddSceneVisualMode('ai_image')">✦ AI</button>
+                      <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'audiogram' ? 'active' : '']" @click="selectAddSceneVisualMode('audiogram')">Audiogram</button>
                       <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'assets' ? 'active' : '']" @click="selectAddSceneVisualMode('assets')">Assets</button>
                     </div>
 
@@ -4604,7 +4687,6 @@ onBeforeUnmount(() => {
                           <option value="stock_clip">Clip</option>
                           <option value="background_loop">BG Loop</option>
                           <option value="text_card">Text Only</option>
-                          <option value="waveform">Audiogram</option>
                         </select>
                       </div>
                       <div class="scene-query-label">Search query</div>
@@ -4619,7 +4701,7 @@ onBeforeUnmount(() => {
                     <template v-else-if="addSceneVisualMode === 'ai_image'">
                       <div class="micro-label" style="margin:8px 0 6px;">Style</div>
                       <div class="style-picker-grid">
-                        <div v-for="s in AI_IMAGE_STYLES" :key="`add-style-${s.key}`"
+                        <div v-for="s in AI_IMAGE_STYLES" :key="`add-style-${scene.id}-${s.key}`"
                           :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
                           @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key">
                           <span class="style-opt-ico">{{ s.icon }}</span>
@@ -4639,15 +4721,50 @@ onBeforeUnmount(() => {
                           Leave blank to inherit from the project default.
                         </div>
                       </div>
-                      <div class="scene-query-label">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
+
+                      <!-- Reference character chip for this scene (overrides project default). -->
+                      <div v-if="characters.length" style="margin-top:10px;">
+                        <div class="micro-label" style="margin-bottom:6px;">Reference character <span style="opacity:.5;font-weight:400;">(optional)</span></div>
+                        <div class="add-scene-char-row">
+                          <button
+                            type="button"
+                            :class="['add-scene-char-chip', !addSceneCharacterId ? 'selected' : '']"
+                            @click="addSceneCharacterId = null"
+                          ><span class="add-scene-char-none">∅</span>None</button>
+                          <button
+                            v-for="c in characters"
+                            :key="`add-char-${scene.id}-${c.id}`"
+                            type="button"
+                            :class="['add-scene-char-chip', String(addSceneCharacterId) === String(c.id) ? 'selected' : '']"
+                            @click="addSceneCharacterId = c.id"
+                          >
+                            <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" :alt="c.name" class="add-scene-char-thumb" />
+                            <span v-else class="add-scene-char-none">👤</span>
+                            <span style="font-size:11px;">{{ c.name }}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="scene-query-label" style="margin-top:10px;">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
                       <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="Leave blank to use scene script as the generation prompt"></textarea>
                     </template>
 
-                    <template v-else-if="addSceneVisualMode === 'assets'">
-                      <div class="panel-hint-copy" style="text-align:center;padding:16px 0;">
-                        <div style="font-size:18px;margin-bottom:6px;">📁</div>
-                        Asset picker coming soon.
+                    <template v-else-if="addSceneVisualMode === 'audiogram'">
+                      <div class="panel-hint-copy" style="text-align:left;padding:12px 0;font-size:12px;color:var(--text-muted);">
+                        <strong style="color:var(--text);">Audiogram</strong> visualises this scene's voice-over as an animated waveform. The voice you record or generate for the scene drives the bars. No image needed.
                       </div>
+                    </template>
+
+                    <template v-else-if="addSceneVisualMode === 'assets'">
+                      <div v-if="addScenePickedAsset" class="add-scene-asset-preview">
+                        <img v-if="addScenePickedAsset.thumbnail_url || (addScenePickedAsset.asset_type === 'image' && addScenePickedAsset.storage_url)" :src="addScenePickedAsset.thumbnail_url || addScenePickedAsset.storage_url" :alt="addScenePickedAsset.title" />
+                        <div class="add-scene-asset-meta">
+                          <div class="add-scene-asset-title">{{ addScenePickedAsset.title || 'Selected asset' }}</div>
+                          <div class="add-scene-asset-type">{{ addScenePickedAsset.asset_type || 'asset' }}</div>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" type="button" @click="pickAssetForNewScene">Replace</button>
+                      </div>
+                      <button v-else class="btn btn-ghost btn-sm panel-full-btn" type="button" @click="pickAssetForNewScene">📁 Pick from your library</button>
                     </template>
                   </div>
                   <div v-if="addSceneGenerateError" class="rewrite-error">
@@ -9385,6 +9502,49 @@ select.control-value {
   border: 1px solid rgba(255,107,53,.2);
   background: rgba(255,107,53,.04);
   margin: 8px 0 12px;
+}
+
+/* Reference character chip row inside the add-scene AI panel. */
+.add-scene-char-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.add-scene-char-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px 4px 4px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-card);
+  cursor: pointer; font-family: inherit; transition: 0.15s;
+}
+.add-scene-char-chip:hover { border-color: rgba(255,107,53,.4); }
+.add-scene-char-chip.selected { border-color: var(--color-accent); background: rgba(255,107,53,.08); }
+.add-scene-char-thumb {
+  width: 22px; height: 22px; border-radius: 50%;
+  object-fit: cover; flex-shrink: 0;
+}
+.add-scene-char-none {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--bg-elevated, #2a2d38);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--text-muted, #8b8b9a); flex-shrink: 0;
+}
+
+/* Picked-asset preview card inside the add-scene Assets tab. */
+.add-scene-asset-preview {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px; border-radius: 8px;
+  border: 1px solid rgba(255,107,53,.25);
+  background: rgba(255,107,53,.04);
+  margin-top: 8px;
+}
+.add-scene-asset-preview img {
+  width: 56px; height: 56px; object-fit: cover; border-radius: 6px; flex-shrink: 0;
+}
+.add-scene-asset-meta { flex: 1; min-width: 0; }
+.add-scene-asset-title {
+  font-size: 12px; font-weight: 500; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.add-scene-asset-type {
+  font-size: 10px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .05em;
+  font-family: "Space Mono", monospace; margin-top: 2px;
 }
 
 /* Asset image browser */

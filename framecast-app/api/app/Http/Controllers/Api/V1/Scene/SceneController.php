@@ -6,6 +6,7 @@ use App\Constants\CaptionFonts;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateAIImageJob;
 use App\Models\Asset;
+use App\Models\Character;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Models\User;
@@ -46,7 +47,32 @@ class SceneController extends Controller
             'visual_prompt' => ['sometimes', 'nullable', 'string'],
             'visual_style' => ['sometimes', 'nullable', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon,photorealistic,cyberpunk_80s,anime_80s,anime_90s,dark_fantasy,fantasy_retro,comic,film_noir,line_drawing,watercolor,paper_cutout,cartoon,3d_animated,custom'],
             'custom_visual_style' => ['sometimes', 'nullable', 'string', 'max:500'],
+            // Pre-attached visual + character (used by the add-scene panel's
+            // Assets tab to skip the "create then assign" two-step).
+            'visual_asset_id' => ['sometimes', 'nullable', 'integer'],
+            'character_id' => ['sometimes', 'nullable', 'integer'],
         ]);
+
+        // Sanity-check ownership of any asset id passed.
+        if (! empty($validated['visual_asset_id'])) {
+            $assetOk = Asset::query()
+                ->whereKey($validated['visual_asset_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->exists();
+            if (! $assetOk) {
+                return $this->error('invalid_asset', 'Selected asset is not in this workspace.', 422);
+            }
+        }
+        if (! empty($validated['character_id'])) {
+            $characterOk = Character::query()
+                ->whereKey($validated['character_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->where('status', 'active')
+                ->exists();
+            if (! $characterOk) {
+                return $this->error('invalid_character', 'Selected character is not in this workspace.', 422);
+            }
+        }
 
         $project = Project::query()
             ->whereKey($validated['project_id'])
@@ -102,7 +128,9 @@ class SceneController extends Controller
                     'preset_id' => null,
                 ],
                 'visual_type' => $validated['visual_type'] ?? 'stock_clip',
-                'visual_asset_id' => null,
+                // Pre-attached asset from the add-scene Assets tab (selected
+                // via MediaPickerModal). Falls to null when no asset picked.
+                'visual_asset_id' => $validated['visual_asset_id'] ?? null,
                 'visual_prompt' => $validated['visual_prompt'] ?? null,
                 // Scenes added in the editor inherit project defaults so AI
                 // image gen on them matches the rest of the project. Order of
@@ -116,10 +144,10 @@ class SceneController extends Controller
                 // passed; otherwise null and the adapter falls back to
                 // project.custom_visual_style at prompt-build time.
                 'custom_visual_style' => $validated['custom_visual_style'] ?? null,
-                // Blank-canvas scenes added in the editor also inherit the
-                // project's recurring character so the user doesn't reassign
-                // per-scene.
-                'character_id' => $project->default_character_id,
+                // Explicit per-scene character override beats project default.
+                // Empty request value → inherit project.default_character_id.
+                'character_id' => $validated['character_id']
+                    ?? $project->default_character_id,
                 'transition_rule' => null,
                 'status' => 'draft',
                 'locked_fields_json' => [],
