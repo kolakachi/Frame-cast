@@ -654,10 +654,16 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
 
       <!-- Card 2 — Podcast promo shorts -->
       <div class="uc-card">
-        <div class="uc-media" style="background:linear-gradient(135deg,#091a3a,#0d0d1a)">
-          <div class="uc-media-badge">30s · Podcast</div>
-          <svg class="uc-media-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          <div class="uc-media-caption">Show host character + audiogram + episode title overlay</div>
+        <div class="uc-media has-video">
+          <video
+            class="uc-media-video"
+            src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/v3-podcast-promo-720.mp4"
+            poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/v3-podcast-promo-poster.jpg"
+            autoplay muted loop playsinline preload="metadata"
+            aria-label="30-second podcast promo sample with recurring host + audiogram beats, made in WyvStudio">
+          </video>
+          <div class="uc-media-badge">30s · Podcast · Made in WyvStudio</div>
+          <div class="uc-media-caption">Recurring show host intercut with audiogram beats and episode-title captions</div>
         </div>
         <div class="uc-body">
           <div class="uc-title">Turn one episode into a week's worth of shorts.</div>
