@@ -103,8 +103,11 @@ const addSceneVisualQuery = ref("");
 // Cleared on cancel/reset; consumed when createScene() builds the POST.
 const addScenePickedAsset = ref(null);
 // Optional per-scene character (used in AI mode for an ad-hoc reference image).
-// Null = inherit the project default character.
+// Null = no character bound; visual brief generates without a reference.
 const addSceneCharacterId = ref(null);
+// Drives the rich character picker (thumbnail grid) inside the add-scene panel —
+// mirrors `characterPopoverOpen` on the right-hand scene panel.
+const addSceneCharPopoverOpen = ref(false);
 const selectedSwapVisualSource = ref("Stock Clip");
 const newSceneScript = ref("");
 const rewriteToolsVisible = ref(true);
@@ -1448,6 +1451,7 @@ function resetAddSceneDrafts() {
   addSceneVisualQuery.value = "";
   addScenePickedAsset.value = null;
   addSceneCharacterId.value = null;
+  addSceneCharPopoverOpen.value = false;
   newSceneScript.value = "";
 }
 
@@ -3412,6 +3416,20 @@ const activeCharacter = computed(() => {
   return characters.value.find((c) => c.id === id) ?? null;
 });
 
+// The character currently bound to the in-progress add-scene draft.
+// Backs the rich chip + popover above the Style grid in both add-scene
+// popovers. Null until the user picks one.
+const addSceneCharacter = computed(() => {
+  const id = addSceneCharacterId.value;
+  if (!id) return null;
+  return characters.value.find((c) => c.id === Number(id)) ?? null;
+});
+
+function selectAddSceneCharacter(id) {
+  addSceneCharacterId.value = id;
+  addSceneCharPopoverOpen.value = false;
+}
+
 async function selectCharacter(characterId) {
   const scene = activeScene.value;
   if (!scene) return;
@@ -4453,7 +4471,54 @@ onBeforeUnmount(() => {
                   </template>
 
                   <template v-else-if="addSceneVisualMode === 'ai_image'">
-                    <div class="micro-label" style="margin:8px 0 6px;">Style</div>
+                    <!-- Reference character — mirrors the chip+thumbnail-grid
+                         picker on the right-hand scene panel so the UX is
+                         consistent across "edit a scene" and "add a scene".
+                         Sits above Style because picking a character is the
+                         first decision when a project has saved cast. -->
+                    <div class="char-chip-wrap" @click.stop>
+                      <div class="char-chip" @click="addSceneCharPopoverOpen = !addSceneCharPopoverOpen">
+                        <div class="char-chip-thumb">
+                          <img v-if="addSceneCharacter?.reference_asset?.thumbnail_url || addSceneCharacter?.reference_asset?.storage_url"
+                               :src="addSceneCharacter.reference_asset.thumbnail_url || addSceneCharacter.reference_asset.storage_url" alt="" />
+                          <span v-else-if="addSceneCharacter">{{ addSceneCharacter.name.charAt(0).toUpperCase() }}</span>
+                          <span v-else style="opacity:.5;">◐</span>
+                        </div>
+                        <div class="char-chip-text">
+                          <div class="char-chip-name">{{ addSceneCharacter?.name || 'No character' }}</div>
+                          <div class="char-chip-trail">{{ addSceneCharacter ? 'Bound to this scene' : 'Tap to bind a character' }}</div>
+                        </div>
+                        <span class="char-chip-chev">▾</span>
+                      </div>
+                      <div v-if="addSceneCharPopoverOpen" class="char-popover">
+                        <div v-if="characters.length === 0" class="char-popover-empty">
+                          No characters yet. Create your first one.
+                        </div>
+                        <div v-else class="char-popover-grid">
+                          <div
+                            v-for="c in characters"
+                            :key="`top-add-char-${c.id}`"
+                            :class="['char-popover-item', addSceneCharacterId === c.id ? 'selected' : '']"
+                            @click="selectAddSceneCharacter(c.id)"
+                          >
+                            <div class="char-popover-thumb">
+                              <img v-if="c.reference_asset?.thumbnail_url || c.reference_asset?.storage_url"
+                                   :src="c.reference_asset.thumbnail_url || c.reference_asset.storage_url" alt="" />
+                              <span v-else>{{ c.name.charAt(0).toUpperCase() }}</span>
+                            </div>
+                            <div class="char-popover-name">{{ c.name }}</div>
+                            <div class="char-popover-trail">{{ c.scenes_count > 0 ? `${c.scenes_count}${c.scenes_count === 1 ? ' scene' : ' scenes'}` : 'new' }}</div>
+                          </div>
+                        </div>
+                        <div class="char-popover-foot">
+                          <button v-if="addSceneCharacterId" class="char-popover-none" type="button" @click="selectAddSceneCharacter(null)">Remove</button>
+                          <span v-else></span>
+                          <button class="char-popover-new" type="button" @click="addSceneCharPopoverOpen = false; createCharacterOpen = true;">＋ New character</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="micro-label" style="margin:10px 0 6px;">Style</div>
                     <div class="style-picker-grid">
                       <div v-for="s in AI_IMAGE_STYLES" :key="`top-add-style-${s.key}`"
                         :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
@@ -4474,16 +4539,6 @@ onBeforeUnmount(() => {
                       <div style="font-size:11px;opacity:.55;margin-top:4px;line-height:1.5;">
                         Leave blank to inherit from the project default.
                       </div>
-                    </div>
-
-                    <!-- Reference character — dropdown matches the visual-style
-                         control pattern on the right-hand scene panel. -->
-                    <div v-if="characters.length" class="control-row add-scene-control-row" style="margin-top:10px;">
-                      <span class="control-name">Reference character</span>
-                      <select v-model="addSceneCharacterId" class="control-value">
-                        <option :value="null">None — inherit project default</option>
-                        <option v-for="c in characters" :key="`top-add-char-${c.id}`" :value="c.id">{{ c.name }}</option>
-                      </select>
                     </div>
 
                     <div class="scene-query-label" style="margin-top:10px;">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
@@ -4673,7 +4728,52 @@ onBeforeUnmount(() => {
                     </template>
 
                     <template v-else-if="addSceneVisualMode === 'ai_image'">
-                      <div class="micro-label" style="margin:8px 0 6px;">Style</div>
+                      <!-- Reference character — chip + thumbnail grid, identical
+                           to the right-hand scene panel and the top add-scene
+                           popover. Sits above Style on purpose. -->
+                      <div class="char-chip-wrap" @click.stop>
+                        <div class="char-chip" @click="addSceneCharPopoverOpen = !addSceneCharPopoverOpen">
+                          <div class="char-chip-thumb">
+                            <img v-if="addSceneCharacter?.reference_asset?.thumbnail_url || addSceneCharacter?.reference_asset?.storage_url"
+                                 :src="addSceneCharacter.reference_asset.thumbnail_url || addSceneCharacter.reference_asset.storage_url" alt="" />
+                            <span v-else-if="addSceneCharacter">{{ addSceneCharacter.name.charAt(0).toUpperCase() }}</span>
+                            <span v-else style="opacity:.5;">◐</span>
+                          </div>
+                          <div class="char-chip-text">
+                            <div class="char-chip-name">{{ addSceneCharacter?.name || 'No character' }}</div>
+                            <div class="char-chip-trail">{{ addSceneCharacter ? 'Bound to this scene' : 'Tap to bind a character' }}</div>
+                          </div>
+                          <span class="char-chip-chev">▾</span>
+                        </div>
+                        <div v-if="addSceneCharPopoverOpen" class="char-popover">
+                          <div v-if="characters.length === 0" class="char-popover-empty">
+                            No characters yet. Create your first one.
+                          </div>
+                          <div v-else class="char-popover-grid">
+                            <div
+                              v-for="c in characters"
+                              :key="`add-char-${scene.id}-${c.id}`"
+                              :class="['char-popover-item', addSceneCharacterId === c.id ? 'selected' : '']"
+                              @click="selectAddSceneCharacter(c.id)"
+                            >
+                              <div class="char-popover-thumb">
+                                <img v-if="c.reference_asset?.thumbnail_url || c.reference_asset?.storage_url"
+                                     :src="c.reference_asset.thumbnail_url || c.reference_asset.storage_url" alt="" />
+                                <span v-else>{{ c.name.charAt(0).toUpperCase() }}</span>
+                              </div>
+                              <div class="char-popover-name">{{ c.name }}</div>
+                              <div class="char-popover-trail">{{ c.scenes_count > 0 ? `${c.scenes_count}${c.scenes_count === 1 ? ' scene' : ' scenes'}` : 'new' }}</div>
+                            </div>
+                          </div>
+                          <div class="char-popover-foot">
+                            <button v-if="addSceneCharacterId" class="char-popover-none" type="button" @click="selectAddSceneCharacter(null)">Remove</button>
+                            <span v-else></span>
+                            <button class="char-popover-new" type="button" @click="addSceneCharPopoverOpen = false; createCharacterOpen = true;">＋ New character</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="micro-label" style="margin:10px 0 6px;">Style</div>
                       <div class="style-picker-grid">
                         <div v-for="s in AI_IMAGE_STYLES" :key="`add-style-${scene.id}-${s.key}`"
                           :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
@@ -4696,23 +4796,8 @@ onBeforeUnmount(() => {
                         </div>
                       </div>
 
-                      <!-- Reference character dropdown — overrides project default for this scene. -->
-                      <div v-if="characters.length" class="control-row add-scene-control-row" style="margin-top:10px;">
-                        <span class="control-name">Reference character</span>
-                        <select v-model="addSceneCharacterId" class="control-value">
-                          <option :value="null">None — inherit project default</option>
-                          <option v-for="c in characters" :key="`add-char-${scene.id}-${c.id}`" :value="c.id">{{ c.name }}</option>
-                        </select>
-                      </div>
-
                       <div class="scene-query-label" style="margin-top:10px;">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
                       <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="Leave blank to use scene script as the generation prompt"></textarea>
-                    </template>
-
-                    <template v-else-if="addSceneVisualMode === 'audiogram'">
-                      <div class="panel-hint-copy" style="text-align:left;padding:12px 0;font-size:12px;color:var(--text-muted);">
-                        <strong style="color:var(--text);">Audiogram</strong> visualises this scene's voice-over as an animated waveform. The voice you record or generate for the scene drives the bars. No image needed.
-                      </div>
                     </template>
 
                     <template v-else-if="addSceneVisualMode === 'assets'">
