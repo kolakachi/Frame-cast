@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AdminAuditLog;
 use App\Models\ApiUsageEvent;
+use App\Models\CreditLedgerEntry;
 use App\Models\JobFailureTrace;
 use App\Models\Asset;
 use App\Models\ExportJob;
@@ -12,6 +13,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Auth\JwtService;
+use App\Services\CreditService;
 use App\Services\WorkspaceUsageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -201,6 +203,32 @@ class AdminController extends Controller
             ->map(fn ($r) => ['day' => $r->day, 'spend' => $this->money($r->spend)])
             ->all();
 
+        // ── Credit ledger snapshot for the user-detail panel ──────────────
+        // Last 15 entries + last-30-days operation roll-up + live balance so
+        // an admin can see at a glance "this user has 6000 credits, burned
+        // ~1800 this week on character images, ~600 on animation."
+        $credits = app(CreditService::class);
+        $recentLedger = CreditLedgerEntry::query()
+            ->where('workspace_id', $wsId)
+            ->orderByDesc('id')
+            ->limit(15)
+            ->get()
+            ->map(fn (CreditLedgerEntry $e) => $this->serializeLedgerRow($e))
+            ->all();
+        $ledgerSummary = CreditLedgerEntry::query()
+            ->where('workspace_id', $wsId)
+            ->where('created_at', '>=', now()->subDays(30))
+            ->selectRaw('operation, COUNT(*) as ops, SUM(credits) as credits')
+            ->groupBy('operation')
+            ->orderByRaw('SUM(credits) DESC')
+            ->get()
+            ->map(fn ($r) => [
+                'operation' => (string) $r->operation,
+                'ops'       => (int) $r->ops,
+                'credits'   => (int) $r->credits,
+            ])
+            ->all();
+
         return response()->json([
             'data' => [
                 'user' => [
@@ -225,9 +253,74 @@ class AdminController extends Controller
                 'provider_breakdown' => $providerBreakdown,
                 'recent_projects' => $recentProjects,
                 'recent_exports' => $recentExports,
+                'credits' => [
+                    'balance'         => $credits->balance($wsId),
+                    'monthly_balance' => (int) ($user->workspace->credits_monthly ?? 0),
+                    'topup_balance'   => (int) ($user->workspace->credits_topup ?? 0),
+                    'plan_tier'       => $credits->planTier($wsId),
+                ],
+                'ledger_recent'  => $recentLedger,
+                'ledger_summary' => $ledgerSummary,
             ],
             'meta' => [],
         ]);
+    }
+
+    /**
+     * Paginated credit ledger for a workspace. Used by the admin user-detail
+     * view's "View all" link when the 15-entry snapshot isn't enough.
+     *
+     * GET /admin/workspaces/{workspaceId}/credit-ledger?cursor=:id&per_page=100
+     */
+    public function workspaceCreditLedger(Request $request, int $workspaceId): JsonResponse
+    {
+        $workspace = Workspace::query()->find($workspaceId);
+        if (! $workspace) {
+            return $this->error('not_found', 'Workspace not found.', 404);
+        }
+
+        $perPage = min(max((int) $request->query('per_page', 100), 1), 500);
+        $cursor  = (int) $request->query('cursor', 0);
+
+        $query = CreditLedgerEntry::query()
+            ->where('workspace_id', $workspaceId)
+            ->orderByDesc('id')
+            ->limit($perPage + 1); // grab one extra to know if there's a next page
+
+        if ($cursor > 0) {
+            $query->where('id', '<', $cursor);
+        }
+
+        $rows = $query->get();
+        $hasMore = $rows->count() > $perPage;
+        if ($hasMore) {
+            $rows = $rows->take($perPage);
+        }
+
+        return response()->json([
+            'data' => [
+                'entries' => $rows->map(fn (CreditLedgerEntry $e) => $this->serializeLedgerRow($e))->all(),
+                'next_cursor' => $hasMore ? $rows->last()?->id : null,
+                'workspace_id' => $workspaceId,
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    private function serializeLedgerRow(CreditLedgerEntry $e): array
+    {
+        return [
+            'id'                => $e->getKey(),
+            'operation'         => $e->operation,
+            'credits'           => (int) $e->credits,
+            'balance_after'     => (int) $e->balance_after,
+            'project_id'        => $e->project_id,
+            'scene_id'          => $e->scene_id,
+            'user_id'           => $e->user_id,
+            'metadata'          => is_array($e->metadata) ? $e->metadata : [],
+            'upstream_cost_usd' => $e->upstream_cost_usd !== null ? (float) $e->upstream_cost_usd : null,
+            'created_at'        => $e->created_at?->toIso8601String(),
+        ];
     }
 
     public function impersonate(Request $request, int $userId, JwtService $jwt): JsonResponse

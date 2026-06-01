@@ -1617,7 +1617,7 @@ onMounted(() => {
         </div>
 
         <div class="panel-tabs">
-          <button v-for="tab in ['overview', 'spend', 'projects', 'providers']" :key="tab" :class="['panel-tab', panelTab === tab ? 'active' : '']" @click="panelTab = tab">
+          <button v-for="tab in ['overview', 'spend', 'credits', 'projects', 'providers']" :key="tab" :class="['panel-tab', panelTab === tab ? 'active' : '']" @click="panelTab = tab">
             {{ tab.charAt(0).toUpperCase() + tab.slice(1) }}
           </button>
         </div>
@@ -1650,6 +1650,13 @@ onMounted(() => {
               <div class="mini-stat">
                 <div class="mini-stat-label">Role</div>
                 <div class="mini-stat-value" style="font-size:14px;margin-top:6px;">{{ panelData.user?.role }}</div>
+              </div>
+              <div class="mini-stat" style="grid-column: span 2; background: rgba(255,107,53,.06); border-color: rgba(255,107,53,.25);">
+                <div class="mini-stat-label">Credit balance</div>
+                <div class="mini-stat-value" style="color:#ff6b35;">{{ (panelData.credits?.balance ?? 0).toLocaleString() }}</div>
+                <div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;font-family:'Space Mono',monospace;">
+                  monthly {{ (panelData.credits?.monthly_balance ?? 0).toLocaleString() }} · topup {{ (panelData.credits?.topup_balance ?? 0).toLocaleString() }}
+                </div>
               </div>
             </div>
             <div v-if="panelData.workspace" class="ws-card">
@@ -1706,6 +1713,69 @@ onMounted(() => {
               </div>
             </div>
             <div v-else style="color:#6b7280;font-size:13px;padding:20px 0;">No provider data yet.</div>
+          </template>
+
+          <!-- Credits tab — balance + per-operation roll-up + recent ledger entries -->
+          <template v-if="panelTab === 'credits'">
+            <div class="mini-stats mini-stats-3">
+              <div class="mini-stat" style="background: rgba(255,107,53,.06); border-color: rgba(255,107,53,.25);">
+                <div class="mini-stat-label">Balance</div>
+                <div class="mini-stat-value" style="color:#ff6b35;">{{ (panelData.credits?.balance ?? 0).toLocaleString() }}</div>
+              </div>
+              <div class="mini-stat">
+                <div class="mini-stat-label">Monthly</div>
+                <div class="mini-stat-value">{{ (panelData.credits?.monthly_balance ?? 0).toLocaleString() }}</div>
+              </div>
+              <div class="mini-stat">
+                <div class="mini-stat-label">Top-up</div>
+                <div class="mini-stat-value">{{ (panelData.credits?.topup_balance ?? 0).toLocaleString() }}</div>
+              </div>
+            </div>
+
+            <div v-if="panelData.ledger_summary?.length" style="margin-top:18px;">
+              <div class="panel-section-title">Last 30 days · by operation</div>
+              <div class="admin-ledger-summary">
+                <div v-for="row in panelData.ledger_summary" :key="row.operation" class="admin-ledger-summary-row">
+                  <span class="admin-op-tag">{{ row.operation }}</span>
+                  <span class="admin-op-credits">{{ Math.abs(row.credits).toLocaleString() }} cr</span>
+                  <span class="admin-op-count">{{ row.ops }} {{ row.ops === 1 ? 'op' : 'ops' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="panelData.ledger_recent?.length" style="margin-top:18px;">
+              <div class="panel-section-title">Last {{ panelData.ledger_recent.length }} entries</div>
+              <table class="admin-ledger-table">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Operation</th>
+                    <th>Scope</th>
+                    <th style="text-align:right">Credits</th>
+                    <th style="text-align:right">Balance after</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="e in panelData.ledger_recent" :key="e.id">
+                    <td>{{ new Date(e.created_at).toLocaleString() }}</td>
+                    <td><span :class="['admin-op-tag', e.operation.startsWith('grant:') ? 'grant' : '']">{{ e.operation }}</span></td>
+                    <td>
+                      <template v-if="e.project_id">project #{{ e.project_id }}<template v-if="e.scene_id"> · scene #{{ e.scene_id }}</template></template>
+                      <template v-else-if="e.scene_id">scene #{{ e.scene_id }}</template>
+                      <template v-else>—</template>
+                    </td>
+                    <td style="text-align:right" :class="e.operation.startsWith('grant:') ? 'credit-grant' : 'credit-debit'">
+                      {{ e.operation.startsWith('grant:') ? '+' : '−' }}{{ Math.abs(e.credits).toLocaleString() }}
+                    </td>
+                    <td style="text-align:right;font-family:'Space Mono',monospace;font-size:11px;opacity:.65">
+                      {{ e.balance_after.toLocaleString() }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div v-else class="banner" style="margin-top:18px;">No credit activity yet.</div>
           </template>
 
           <!-- Projects tab -->
@@ -2139,6 +2209,20 @@ tr:hover td { background: #1e2129; }
 .mini-stat { background: #1e2129; border: 1px solid #2a2d38; border-radius: 8px; padding: 14px; }
 .mini-stat-label { font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
 .mini-stat-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+
+/* Admin credit-ledger panel */
+.panel-section-title { font-size: 12px; font-weight: 600; color: #a1a5b1; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+.admin-ledger-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.admin-ledger-summary-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #2a2d38; border-radius: 6px; background: #1a1d24; font-size: 12px; }
+.admin-op-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; background: #2a2d38; color: #ececf3; font-size: 11px; font-family: "Space Mono", monospace; }
+.admin-op-tag.grant { color: #34d399; background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3); }
+.admin-op-credits { font-family: "Space Mono", monospace; color: #ff6b35; font-weight: 600; margin-left: auto; }
+.admin-op-count { font-size: 11px; color: #6b7280; min-width: 56px; text-align: right; }
+.admin-ledger-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.admin-ledger-table th { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2d38; color: #6b7280; font-weight: 500; background: #1a1d24; }
+.admin-ledger-table td { padding: 9px 10px; border-bottom: 1px solid #2a2d38; color: #c8cad1; }
+.credit-debit { color: #ececf3; font-family: "Space Mono", monospace; }
+.credit-grant { color: #34d399; font-family: "Space Mono", monospace; }
 
 /* Workspace card */
 .ws-card { background: #1e2129; border: 1px solid #2a2d38; border-radius: 8px; padding: 16px; }

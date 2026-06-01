@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\System;
 
 use App\Http\Controllers\Controller;
+use App\Models\CreditLedgerEntry;
 use App\Models\User;
 use App\Services\CreditService;
 use App\Services\WorkspaceUsageService;
@@ -230,6 +231,83 @@ class VerificationController extends Controller
             ],
             'meta' => [],
         ]);
+    }
+
+    /**
+     * GET /me/credit-history — paginated credit_ledger entries for the
+     * caller's workspace. Returns last N rows ordered most-recent first,
+     * plus a per-operation summary for the same window (defaults: last 30
+     * days). The user-facing settings page consumes both.
+     *
+     * Query params:
+     *   ?per_page=50  (max 100)
+     *   ?since=30     (days back, max 365, default 30)
+     */
+    public function creditHistory(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        if (! $user->workspace_id) {
+            return $this->error('workspace_required', 'User is not assigned to a workspace.', 422);
+        }
+
+        $perPage = min(max((int) $request->query('per_page', 50), 1), 100);
+        $sinceDays = min(max((int) $request->query('since', 30), 1), 365);
+        $sinceCutoff = now()->subDays($sinceDays);
+
+        $entries = CreditLedgerEntry::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where('created_at', '>=', $sinceCutoff)
+            ->orderByDesc('id')
+            ->limit($perPage)
+            ->get()
+            ->map(fn (CreditLedgerEntry $e) => $this->serializeLedgerEntry($e))
+            ->all();
+
+        // Per-operation roll-up for the same window so the UI can show
+        // "this week: 600 on character images, 240 on animation, …" without
+        // a second round-trip.
+        $summary = CreditLedgerEntry::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where('created_at', '>=', $sinceCutoff)
+            ->selectRaw('operation, COUNT(*) as ops, SUM(credits) as credits')
+            ->groupBy('operation')
+            ->orderByRaw('SUM(credits) DESC')
+            ->get()
+            ->map(fn ($row) => [
+                'operation' => (string) $row->operation,
+                'ops'       => (int) $row->ops,
+                'credits'   => (int) $row->credits,
+            ])
+            ->all();
+
+        return response()->json([
+            'data' => [
+                'entries'   => $entries,
+                'summary'   => $summary,
+                'balance'   => $this->credits->balance((int) $user->workspace_id),
+                'window'    => ['since_days' => $sinceDays, 'since_at' => $sinceCutoff->toIso8601String()],
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    /**
+     * Shared row serializer — reused by the admin variant below.
+     */
+    private function serializeLedgerEntry(CreditLedgerEntry $e): array
+    {
+        return [
+            'id'                => $e->getKey(),
+            'operation'         => $e->operation,
+            'credits'           => (int) $e->credits,
+            'balance_after'     => (int) $e->balance_after,
+            'project_id'        => $e->project_id,
+            'scene_id'          => $e->scene_id,
+            'metadata'          => is_array($e->metadata) ? $e->metadata : [],
+            'upstream_cost_usd' => $e->upstream_cost_usd !== null ? (float) $e->upstream_cost_usd : null,
+            'created_at'        => $e->created_at?->toIso8601String(),
+        ];
     }
 
     public function storageSmoke(Request $request): JsonResponse

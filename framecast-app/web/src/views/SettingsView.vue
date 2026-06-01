@@ -28,6 +28,56 @@ const billing = ref(null)
 const billingPortalPending = ref(false)
 const billingError = ref('')
 
+// ── Credit history (E15-followup) ──────────────────────────
+// Fetched lazily when the Usage tab is open; sums the user's ledger
+// activity for the last 30 days plus the raw recent entries.
+const creditHistory = ref(null)
+const creditHistoryLoading = ref(false)
+const creditHistoryError = ref('')
+const creditHistorySpent = computed(() => {
+  if (!creditHistory.value) return 0
+  return creditHistory.value.summary
+    .filter(r => !r.operation.startsWith('grant:'))
+    .reduce((s, r) => s + r.credits, 0)
+})
+
+// Pretty operation names for the table + summary.
+const OPERATION_LABELS = {
+  script: 'Script',
+  breakdown: 'Scene breakdown',
+  stock_visual: 'Stock visual',
+  'ai_image:character': 'AI image (character)',
+  'ai_image:manual': 'AI image (regen)',
+  'ai_image:initial': 'AI image (initial)',
+  'character_preview:ref': 'Character preview (with ref)',
+  'character_preview:noref': 'Character preview (text-only)',
+  tts: 'Voice (TTS)',
+  'animate:quick': 'Animate (Quick)',
+  'animate:balanced': 'Animate (Balanced)',
+  'animate:premium': 'Animate (Premium)',
+  export: 'Export',
+  'grant:registration': 'Welcome credits',
+  'grant:admin_top_up': 'Top-up (admin)',
+  'grant:unspecified': 'Top-up',
+}
+function formatOperation(op) {
+  return OPERATION_LABELS[op] || op
+}
+
+async function loadCreditHistory() {
+  if (creditHistory.value || creditHistoryLoading.value) return
+  creditHistoryLoading.value = true
+  creditHistoryError.value = ''
+  try {
+    const { data } = await api.get('/me/credit-history', { params: { per_page: 50, since: 30 } })
+    creditHistory.value = data?.data ?? null
+  } catch (e) {
+    creditHistoryError.value = e?.response?.data?.error?.message ?? 'Could not load credit history.'
+  } finally {
+    creditHistoryLoading.value = false
+  }
+}
+
 const planLabel = computed(() => {
   const tier = billing.value?.plan_tier || 'free'
   return { free: 'Free', studio: 'Studio', scale: 'Scale', enterprise: 'Enterprise' }[tier] || tier
@@ -442,7 +492,10 @@ async function logout() {
 }
 
 onMounted(() => {
-  if (route.query.section) activeSection.value = route.query.section
+  if (route.query.section) {
+    activeSection.value = route.query.section
+    if (activeSection.value === 'usage') loadCreditHistory()
+  }
   loadSettings()
   loadBillingStatus()
   loadSocialAccounts()
@@ -467,7 +520,7 @@ onMounted(() => {
             <div :class="['settings-tab', activeSection === 'brand'    ? 'active' : '']" @click="activeSection = 'brand'">Brand Kits</div>
             <div :class="['settings-tab', activeSection === 'account'  ? 'active' : '']" @click="activeSection = 'account'">Account</div>
             <div :class="['settings-tab', activeSection === 'accounts' ? 'active' : '']" @click="activeSection = 'accounts'">Connected Accounts</div>
-            <div :class="['settings-tab', activeSection === 'usage'    ? 'active' : '']" @click="activeSection = 'usage'">Usage and Billing</div>
+            <div :class="['settings-tab', activeSection === 'usage'    ? 'active' : '']" @click="activeSection = 'usage'; loadCreditHistory()">Usage and Billing</div>
           </div>
         </div>
 
@@ -802,6 +855,69 @@ onMounted(() => {
                 <tr><td>Watermark</td><td>Yes</td><td class="col-accent">No</td><td>No</td></tr>
               </tbody>
             </table>
+
+            <!-- ── Credit history ──────────────────────────────────────── -->
+            <div class="section-title" style="margin-top:48px;">Credit history</div>
+            <div class="settings-section-desc">Every credit deducted or granted on this workspace.</div>
+
+            <div v-if="creditHistoryLoading" class="banner" style="margin:8px 0 14px;">Loading credit history…</div>
+
+            <div v-else-if="creditHistory">
+              <!-- Per-operation roll-up (last 30 days) -->
+              <div class="credit-summary-row">
+                <div class="credit-summary-pill">
+                  Balance now: <strong>{{ creditHistory.balance.toLocaleString() }}</strong>
+                </div>
+                <div class="credit-summary-pill muted">
+                  Last 30 days: <strong>{{ creditHistorySpent.toLocaleString() }}</strong> credits used across <strong>{{ creditHistory.summary.length }}</strong> operation types
+                </div>
+              </div>
+
+              <div v-if="creditHistory.summary.length" class="credit-summary-grid">
+                <div v-for="row in creditHistory.summary" :key="row.operation" class="credit-summary-card">
+                  <div class="credit-op-name">{{ formatOperation(row.operation) }}</div>
+                  <div class="credit-op-row">
+                    <span class="credit-op-credits">{{ Math.abs(row.credits).toLocaleString() }} cr</span>
+                    <span class="credit-op-count">{{ row.ops }} {{ row.ops === 1 ? 'op' : 'ops' }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Per-entry detail table -->
+              <div v-if="creditHistory.entries.length" class="credit-entries-wrap">
+                <div class="credit-entries-head">
+                  <span>Last {{ creditHistory.entries.length }} entries</span>
+                  <span class="credit-entries-since">since {{ new Date(creditHistory.window.since_at).toLocaleDateString() }}</span>
+                </div>
+                <table class="credit-entries">
+                  <thead>
+                    <tr>
+                      <th>When</th>
+                      <th>Operation</th>
+                      <th style="text-align:right">Credits</th>
+                      <th style="text-align:right">Balance after</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="e in creditHistory.entries" :key="e.id">
+                      <td>{{ new Date(e.created_at).toLocaleString() }}</td>
+                      <td>
+                        <span :class="['op-tag', e.operation.startsWith('grant:') ? 'grant' : '']">{{ formatOperation(e.operation) }}</span>
+                      </td>
+                      <td style="text-align:right" :class="e.operation.startsWith('grant:') ? 'credit-grant' : 'credit-debit'">
+                        {{ e.operation.startsWith('grant:') ? '+' : '−' }}{{ Math.abs(e.credits).toLocaleString() }}
+                      </td>
+                      <td style="text-align:right;font-family:'Space Mono',monospace;font-size:11px;opacity:.7">
+                        {{ e.balance_after.toLocaleString() }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-else class="credit-empty">No credit activity in the last 30 days.</div>
+            </div>
+
+            <div v-else-if="creditHistoryError" class="banner error" style="margin-top:12px;">{{ creditHistoryError }}</div>
           </div>
 
         </div>
@@ -1117,6 +1233,29 @@ onMounted(() => {
 .usage-count { font-family: "Space Mono", monospace; font-size: 11px; }
 .usage-bar { height: 6px; border-radius: 999px; background: #1d1d28; overflow: hidden; }
 .usage-fill { height: 100%; border-radius: 999px; }
+
+/* ── Credit history ── */
+.credit-summary-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 18px; }
+.credit-summary-pill { padding: 8px 14px; border-radius: 999px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); font-size: 12px; color: var(--color-text-primary); }
+.credit-summary-pill.muted { color: var(--color-text-muted); }
+.credit-summary-pill strong { color: var(--color-accent); margin-left: 4px; }
+.credit-summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 22px; }
+.credit-summary-card { padding: 12px 14px; border-radius: 8px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); }
+.credit-op-name { font-size: 12px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 6px; }
+.credit-op-row { display: flex; align-items: baseline; justify-content: space-between; }
+.credit-op-credits { font-size: 14px; font-weight: 600; color: var(--color-accent); font-family: "Space Mono", monospace; }
+.credit-op-count { font-size: 11px; color: var(--color-text-muted); }
+.credit-entries-wrap { margin-top: 14px; }
+.credit-entries-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-muted); font-family: "Space Mono", monospace; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 6px; }
+.credit-entries { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.credit-entries th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); font-weight: 500; background: var(--color-bg-elevated); }
+.credit-entries td { padding: 10px; border-bottom: 1px solid var(--color-border); color: var(--color-text-secondary); }
+.credit-entries tr:hover td { background: rgba(255,107,53,0.03); }
+.op-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); font-size: 11px; color: var(--color-text-primary); font-family: "Space Mono", monospace; }
+.op-tag.grant { color: #34d399; border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.06); }
+.credit-debit { color: var(--color-text-primary); font-family: "Space Mono", monospace; }
+.credit-grant { color: #34d399; font-family: "Space Mono", monospace; }
+.credit-empty { font-size: 13px; color: var(--color-text-muted); padding: 16px; text-align: center; border: 1px dashed var(--color-border); border-radius: 8px; }
 
 /* ── Plan table ── */
 .topup-section { margin: 22px 0; padding: 18px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 10px; }

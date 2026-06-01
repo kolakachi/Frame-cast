@@ -62,6 +62,7 @@ Route::prefix('v1')->group(function (): void {
         Route::patch('/me', [VerificationController::class, 'updateMe']);
         Route::get('/me/export', [VerificationController::class, 'exportMe']);
         Route::delete('/me', [VerificationController::class, 'deleteMe']);
+        Route::get('/me/credit-history', [VerificationController::class, 'creditHistory']);
         Route::post('/verification/storage-smoke', [VerificationController::class, 'storageSmoke']);
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
@@ -89,6 +90,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/workspaces', [AdminController::class, 'workspaces']);
             Route::patch('/workspaces/{workspaceId}/plan', [AdminController::class, 'updateWorkspacePlan'])->whereNumber('workspaceId');
             Route::patch('/workspaces/{workspaceId}/status', [AdminController::class, 'updateWorkspaceStatus'])->whereNumber('workspaceId');
+            Route::get('/workspaces/{workspaceId}/credit-ledger', [AdminController::class, 'workspaceCreditLedger'])->whereNumber('workspaceId');
             Route::get('/videos', [AdminController::class, 'videos']);
             Route::get('/jobs', [AdminController::class, 'jobs']);
             Route::get('/spend-chart', [AdminController::class, 'spendChart']);
