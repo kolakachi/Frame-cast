@@ -97,6 +97,7 @@ const selectedAddSceneVisualSource = ref("Stock Clip");
 const addSceneVisualMode = ref("stock_video");
 const addSceneStockSubType = ref("stock_clip");
 const addSceneVisualStyle = ref(null);
+const addSceneCustomVisualStyle = ref("");
 const addSceneVisualQuery = ref("");
 const selectedSwapVisualSource = ref("Stock Clip");
 const newSceneScript = ref("");
@@ -1434,6 +1435,7 @@ function resetAddSceneDrafts() {
   addSceneVisualMode.value = "stock_video";
   addSceneStockSubType.value = "stock_clip";
   addSceneVisualStyle.value = null;
+  addSceneCustomVisualStyle.value = "";
   addSceneVisualQuery.value = "";
   newSceneScript.value = "";
 }
@@ -3917,6 +3919,12 @@ async function createScene(insertAfterSceneId = null) {
       visual_type: visualType,
       visual_prompt: visualQuery || null,
       visual_style: addSceneVisualStyle.value,
+      // Pass the typed custom descriptor only when 'custom' was actually
+      // picked; otherwise leave undefined so the backend falls through to
+      // its inherit-from-project default.
+      ...(addSceneVisualStyle.value === 'custom' && addSceneCustomVisualStyle.value.trim()
+        ? { custom_visual_style: addSceneCustomVisualStyle.value.trim() }
+        : {}),
     });
 
     const createdScene = normalizeScenePayload(response.data?.data?.scene ?? null);
@@ -4408,10 +4416,23 @@ onBeforeUnmount(() => {
                     <div class="micro-label" style="margin:8px 0 6px;">Style</div>
                     <div class="style-picker-grid">
                       <div v-for="s in AI_IMAGE_STYLES" :key="`top-add-style-${s.key}`"
-                        :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '']"
+                        :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
                         @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key">
                         <span class="style-opt-ico">{{ s.icon }}</span>
                         <div class="style-opt-name">{{ s.label }}</div>
+                      </div>
+                    </div>
+                    <div v-if="addSceneVisualStyle === 'custom'" class="custom-style-panel">
+                      <div class="micro-label" style="margin-bottom:4px;">Custom style descriptor</div>
+                      <textarea
+                        v-model="addSceneCustomVisualStyle"
+                        class="scene-query-input"
+                        rows="2"
+                        maxlength="500"
+                        placeholder="e.g. moody Wong Kar-wai film stills, neon-drenched alleys, slow shutter, 35mm grain"
+                      ></textarea>
+                      <div style="font-size:11px;opacity:.55;margin-top:4px;line-height:1.5;">
+                        Leave blank to inherit from the project default.
                       </div>
                     </div>
                     <div class="scene-query-label">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
@@ -4599,10 +4620,23 @@ onBeforeUnmount(() => {
                       <div class="micro-label" style="margin:8px 0 6px;">Style</div>
                       <div class="style-picker-grid">
                         <div v-for="s in AI_IMAGE_STYLES" :key="`add-style-${s.key}`"
-                          :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '']"
+                          :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
                           @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key">
                           <span class="style-opt-ico">{{ s.icon }}</span>
                           <div class="style-opt-name">{{ s.label }}</div>
+                        </div>
+                      </div>
+                      <div v-if="addSceneVisualStyle === 'custom'" class="custom-style-panel">
+                        <div class="micro-label" style="margin-bottom:4px;">Custom style descriptor</div>
+                        <textarea
+                          v-model="addSceneCustomVisualStyle"
+                          class="scene-query-input"
+                          rows="2"
+                          maxlength="500"
+                          placeholder="e.g. moody Wong Kar-wai film stills, neon-drenched alleys, slow shutter, 35mm grain"
+                        ></textarea>
+                        <div style="font-size:11px;opacity:.55;margin-top:4px;line-height:1.5;">
+                          Leave blank to inherit from the project default.
                         </div>
                       </div>
                       <div class="scene-query-label">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
