@@ -27,6 +27,7 @@ class Scene extends Model
         'sound_settings_json',
         'visual_prompt',
         'visual_style',
+        'custom_visual_style',
         'image_generation_settings_json',
         'motion_settings_json',
         'transition_rule',

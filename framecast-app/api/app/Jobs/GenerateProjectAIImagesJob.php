@@ -115,6 +115,11 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                 'scene_id' => $scene->getKey(),
                 'style' => $style,
             ],
+            // Custom style descriptor — scene per-scene override beats the
+            // project default. Reaches the adapter via $options['custom_style'].
+            'custom_style' => $scene->custom_visual_style
+                ?: $project->custom_visual_style
+                ?: null,
         ];
 
         $result = null;

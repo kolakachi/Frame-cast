@@ -63,7 +63,11 @@ class DalleImageAdapter implements ImageGenerationAdapter
         // STYLE_PROMPT_MAP is kept for the trailing-comma DALL-E phrasing; if a key isn't
         // in the local map, fall back to the shared ImageStyleDescriptors so new picker
         // styles don't silently drop.
-        $stylePrefix = self::STYLE_PROMPT_MAP[$style] ?? ImageStyleDescriptors::for($style);
+        // 'custom' bypasses the local STYLE_PROMPT_MAP and pulls the user's
+        // free-text descriptor straight from options.
+        $stylePrefix = ($style === ImageStyleDescriptors::CUSTOM)
+            ? ImageStyleDescriptors::for(ImageStyleDescriptors::CUSTOM, $options['custom_style'] ?? null)
+            : (self::STYLE_PROMPT_MAP[$style] ?? ImageStyleDescriptors::for($style));
         if ($stylePrefix !== '' && substr($stylePrefix, -1) !== ',') {
             $stylePrefix .= ',';
         }

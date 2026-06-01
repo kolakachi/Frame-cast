@@ -40,8 +40,25 @@ final class ImageStyleDescriptors
         '3d_animated'    => '3D animated film style, Pixar-quality rendering, volumetric lighting, subsurface scattering, soft rim light, cinematic depth of field, detailed facial features',
     ];
 
-    public static function for(string $key): string
+    /**
+     * Sentinel key for the user-defined style. When the editor / wizard
+     * picks "Custom", the actual descriptor text lives on the scene/project
+     * as `custom_visual_style` and is passed in here as the second arg.
+     */
+    public const CUSTOM = 'custom';
+
+    /**
+     * @param  string|null  $custom  free-text descriptor used when $key === 'custom'
+     */
+    public static function for(string $key, ?string $custom = null): string
     {
+        if ($key === self::CUSTOM) {
+            $custom = trim((string) $custom);
+            // Empty custom string → return empty; the adapter / prompt builder
+            // will fall back to whatever default it has (often nothing extra).
+            return $custom;
+        }
+
         return self::MAP[$key] ?? '';
     }
 }

@@ -77,9 +77,11 @@ class CharacterImageAdapter implements ImageGenerationAdapter
         };
 
         // Style descriptor comes from the shared map so editor styles never silently drop.
+        // When the user picked "Custom" in the editor, the actual descriptor text is passed
+        // in via $options['custom_style'] and the helper substitutes it for the preset.
         // Explicit identity-match clause helps gpt-image-2 weight the reference correctly
         // even when the prompt is heavy on scene/action.
-        $styleDesc = ImageStyleDescriptors::for($style);
+        $styleDesc = ImageStyleDescriptors::for($style, $options['custom_style'] ?? null);
         $idClause  = 'Match the identity (face, hair, distinguishing features) of the provided reference image.';
         $fullPrompt = trim($styleDesc !== ''
             ? "{$prompt}. {$styleDesc}. {$idClause}"

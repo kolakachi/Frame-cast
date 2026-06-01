@@ -49,6 +49,10 @@ const imageContext = ref('')
 const sourceImageAssetIds = ref([])
 const imageVisualMode = ref('upload')
 const aiBrollStyle = ref('photorealistic')
+// Free-text descriptor used when the user picks the 'custom' chip. Sent to
+// the backend as project.custom_visual_style and is substituted into every
+// scene's image prompt in place of a preset style descriptor.
+const customVisualStyle = ref('')
 const globalVisualMode = ref('stock_video') // 'stock_video' | 'stock_images' | 'ai_images' | 'waveform'
 const brandKits = ref([])
 // Recurring character (optional) — picked at wizard time, stamped onto every
@@ -122,6 +126,10 @@ const aiBrollStyleOptions = [
   { key: 'minimalist',     label: 'Minimalist',     hint: 'Clean muted composition',      tone: 'rgba(148,163,184,0.18)' },
   { key: 'vintage',        label: 'Vintage',        hint: 'Retro film grain aesthetic',   tone: 'rgba(217,119,6,0.22)' },
   { key: 'neon',           label: 'Neon',           hint: 'Glowing cyberpunk night',      tone: 'rgba(139,92,246,0.26)' },
+  // "custom" — last chip so it doesn't shift the grid the user has memorised.
+  // When picked, a textarea unfolds below the grid for the user to write the
+  // style descriptor that gets appended to every scene's image prompt.
+  { key: 'custom',         label: '✦ Custom',       hint: 'Write your own style',         tone: 'rgba(255,107,53,0.22)' },
 ]
 
 watch(channelId, (next, prev) => {
@@ -300,6 +308,7 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   sourceImageAssetIds.value = []
   imageVisualMode.value = 'upload'
   aiBrollStyle.value = 'photorealistic'
+  customVisualStyle.value = ''
   globalVisualMode.value = 'stock_video'
   channelId.value = presetChannelId ? String(presetChannelId) : ''
   title.value = ''
@@ -404,6 +413,9 @@ async function submitWizardProject() {
       ...(customNicheVoiceTone.value ? { tone: customNicheVoiceTone.value } : {}),
       ...(title.value ? { title: title.value } : {}),
       ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
+      ...(aiBrollStyle.value === 'custom' && customVisualStyle.value.trim()
+        ? { custom_visual_style: customVisualStyle.value.trim() }
+        : {}),
       ...(sourceType === 'images' && imageVisualMode.value === 'upload' ? { source_image_asset_ids: sourceImageAssetIds.value } : {}),
       ...(sourceType === 'images' && imageVisualMode.value === 'ai'
         ? { visual_type: projectVisualTypeForMode('ai_images'), ai_broll_style: aiBrollStyle.value }
@@ -713,6 +725,19 @@ defineExpose({ open })
                 <span class="ai-broll-hint">{{ style.hint }}</span>
               </button>
             </div>
+            <div v-if="aiBrollStyle === 'custom'" class="custom-style-panel">
+              <label class="input-label-wrap">
+                <span class="input-label">Custom visual style</span>
+                <textarea
+                  v-model="customVisualStyle"
+                  class="field-input textarea"
+                  rows="2"
+                  maxlength="500"
+                  placeholder="e.g. moody Wong Kar-wai film stills, neon-drenched alleys, slow shutter, 35mm grain"
+                ></textarea>
+                <div class="hint-box">This text is appended to every scene's image prompt in place of a preset descriptor. Be concrete — name the director, film stock, mood, color grade.</div>
+              </label>
+            </div>
           </template>
 
           <label class="input-label-wrap">
@@ -782,6 +807,19 @@ defineExpose({ open })
                 <span class="ai-broll-label">{{ style.label }}</span>
                 <span class="ai-broll-hint">{{ style.hint }}</span>
               </button>
+            </div>
+            <div v-if="aiBrollStyle === 'custom'" class="custom-style-panel">
+              <label class="input-label-wrap">
+                <span class="input-label">Custom visual style</span>
+                <textarea
+                  v-model="customVisualStyle"
+                  class="field-input textarea"
+                  rows="2"
+                  maxlength="500"
+                  placeholder="e.g. moody Wong Kar-wai film stills, neon-drenched alleys, slow shutter, 35mm grain"
+                ></textarea>
+                <div class="hint-box">This text is appended to every scene's image prompt in place of a preset descriptor. Be concrete — name the director, film stock, mood, color grade.</div>
+              </label>
             </div>
           </div>
           <div v-else-if="globalVisualMode === 'waveform'" class="image-ai-hint" style="margin-top:10px;">
@@ -1000,6 +1038,7 @@ defineExpose({ open })
 .image-ai-hint strong { color: var(--color-text-primary); }
 
 .ai-broll-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+.custom-style-panel { padding: 12px; border-radius: 8px; background: rgba(255,107,53,0.04); border: 1px solid rgba(255,107,53,0.2); margin: -6px 0 14px; }
 .ai-broll-card { min-height: 112px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; padding: 0; overflow: hidden; transition: 0.15s; }
 .ai-broll-card:hover { border-color: rgba(255,107,53,0.35); transform: translateY(-1px); }
 .ai-broll-card.selected { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px rgba(255,107,53,0.2); }

@@ -73,6 +73,12 @@ class GenerateAIImageJob implements ShouldQueue
                     'scene_id' => $this->sceneId,
                     'style' => $this->style,
                 ],
+                // When the user picked Custom in the editor, the descriptor
+                // lives on the scene (per-scene override) or the project
+                // (project default). Scene wins if both are present.
+                'custom_style' => $scene->custom_visual_style
+                    ?: $project?->custom_visual_style
+                    ?: null,
             ];
 
             if ($useCharacterRef) {

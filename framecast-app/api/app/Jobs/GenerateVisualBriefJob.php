@@ -112,8 +112,13 @@ class GenerateVisualBriefJob implements ShouldQueue
             return null;
         }
 
-        $style = (string) ($project->ai_broll_style ?? $project->default_visual_style ?? 'cinematic');
-        $desc  = trim((string) $character->description);
+        // "custom" style — substitute the user's free-text descriptor so the
+        // consistency card matches what each scene will actually receive.
+        $styleKey = (string) ($project->ai_broll_style ?? $project->default_visual_style ?? 'cinematic');
+        $style    = $styleKey === \App\Services\Generation\Image\ImageStyleDescriptors::CUSTOM
+            ? (trim((string) $project->custom_visual_style) ?: 'cinematic')
+            : $styleKey;
+        $desc     = trim((string) $character->description);
 
         // Examples:
         //   "Photorealistic cinematic still. Lead character: Marcus — confident 45yo wellness founder.

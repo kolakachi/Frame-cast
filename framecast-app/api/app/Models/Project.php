@@ -26,6 +26,7 @@ class Project extends Model
         'ai_broll_style',
         'waveform_settings_json',
         'default_visual_style',
+        'custom_visual_style',
         'content_goal',
         'platform_target',
         'duration_target_seconds',

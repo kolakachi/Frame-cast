@@ -273,6 +273,10 @@ const AI_IMAGE_STYLES = [
   { key: "paper_cutout",  label: "Paper Cutout",   icon: "✂️" },
   { key: "cartoon",       label: "Cartoon",        icon: "🎭" },
   { key: "3d_animated",  label: "3D Animated",    icon: "🎬" },
+  // Custom — last so users see the preset library first. Picking this
+  // reveals a textarea where they type the descriptor that replaces the
+  // preset string in every scene's image prompt for this scene.
+  { key: "custom",       label: "Custom",         icon: "✦" },
 ];
 const exportPending = ref(false);
 const exportState = ref("idle");
@@ -332,6 +336,11 @@ const motionSaveError = ref("");
 const visualStyleDraft = ref(null);
 let visualStyleSaveTimer = null;
 const visualStyleSaveState = ref("idle");
+// Free-text descriptor for the "custom" style. Lives on scene.custom_visual_style.
+// Saved with a similar debounce pattern as captions / visual_style.
+const customVisualStyleDraft = ref("");
+let customVisualStyleSaveTimer = null;
+const customVisualStyleSaveState = ref("idle");
 // All panels collapsed by default — users open only what they need.
 // Cuts visual clog; the badges/tags on each header already surface state at a glance.
 const panelState = ref({
@@ -918,6 +927,8 @@ watch(
       motionIntensityDraft.value = String(motionSettings.intensity || "moderate");
       visualStyleDraft.value = scene?.visual_style ?? scene?.image_generation_settings?.style ?? project.value?.ai_broll_style ?? null;
       visualStyleSaveState.value = "idle";
+      customVisualStyleDraft.value = scene?.custom_visual_style ?? project.value?.custom_visual_style ?? "";
+      customVisualStyleSaveState.value = "idle";
       aiImagePending.value = false;
       aiImageError.value = "";
       visualSwapPending.value = false;
@@ -1195,6 +1206,29 @@ watch(visualStyleDraft, (nextStyle) => {
       visualStyleSaveState.value = "idle";
     }
   }, 500);
+});
+
+watch(customVisualStyleDraft, (nextCustom) => {
+  const scene = activeScene.value;
+  if (!scene) return;
+  const next = (nextCustom ?? "").trim();
+  const prev = (scene.custom_visual_style ?? "").trim();
+  if (next === prev) return;
+
+  customVisualStyleSaveState.value = "pending";
+  clearTimeout(customVisualStyleSaveTimer);
+  customVisualStyleSaveTimer = setTimeout(async () => {
+    try {
+      const response = await api.patch(`/scenes/${scene.id}`, { custom_visual_style: next || null });
+      const updated = response.data?.data?.scene;
+      if (updated) {
+        scenes.value = scenes.value.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
+      }
+      customVisualStyleSaveState.value = "saved";
+    } catch {
+      customVisualStyleSaveState.value = "idle";
+    }
+  }, 600);
 });
 
 watch(
@@ -5038,11 +5072,31 @@ onBeforeUnmount(() => {
                     <div
                       v-for="s in AI_IMAGE_STYLES"
                       :key="s.key"
-                      :class="['style-opt', (visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style) === s.key ? 'selected' : '']"
+                      :class="['style-opt', (visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style) === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
                       @click="visualStyleDraft = (visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style) === s.key ? null : s.key"
                     >
                       <span class="style-opt-ico">{{ s.icon }}</span>
                       <div class="style-opt-name">{{ s.label }}</div>
+                    </div>
+                  </div>
+
+                  <!-- Custom style descriptor — appears when 'custom' is picked. -->
+                  <div v-if="visualStyleDraft === 'custom'" class="custom-style-panel">
+                    <div class="micro-label" style="margin-bottom:4px;">
+                      Custom style descriptor
+                      <span style="font-weight:400;opacity:.5;">
+                        — {{ customVisualStyleSaveState === 'pending' ? 'saving…' : customVisualStyleSaveState === 'saved' ? 'saved ✓' : 'auto-saved' }}
+                      </span>
+                    </div>
+                    <textarea
+                      v-model="customVisualStyleDraft"
+                      class="ai-prompt-area"
+                      rows="2"
+                      maxlength="500"
+                      placeholder="e.g. moody Wong Kar-wai film stills, neon-drenched alleys, slow shutter, 35mm grain"
+                    ></textarea>
+                    <div style="font-size:11px;opacity:.55;margin-top:4px;line-height:1.5;">
+                      Appended to this scene's image prompt instead of a preset. Be concrete — name the director, film stock, mood, color grade. {{ customVisualStyleDraft.length }}/500.
                     </div>
                   </div>
 
@@ -9274,6 +9328,29 @@ select.control-value {
 
 .style-opt.selected .style-opt-name {
   color: #a78bfa;
+}
+
+.style-opt.accent {
+  border-color: rgba(255,107,53,.35);
+  background: rgba(255,107,53,.04);
+}
+.style-opt.accent:hover {
+  border-color: rgba(255,107,53,.5);
+}
+.style-opt.accent.selected {
+  border-color: #ff6b35;
+  background: rgba(255,107,53,.12);
+}
+.style-opt.accent.selected .style-opt-name {
+  color: #ff6b35;
+}
+
+.custom-style-panel {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid rgba(255,107,53,.2);
+  background: rgba(255,107,53,.04);
+  margin: 8px 0 12px;
 }
 
 /* Asset image browser */

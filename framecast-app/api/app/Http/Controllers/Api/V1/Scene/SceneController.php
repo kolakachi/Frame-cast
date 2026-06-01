@@ -44,7 +44,8 @@ class SceneController extends Controller
             'duration_seconds' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:600'],
             'visual_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'visual_prompt' => ['sometimes', 'nullable', 'string'],
-            'visual_style' => ['sometimes', 'nullable', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon,photorealistic,cyberpunk_80s,anime_80s,anime_90s,dark_fantasy,fantasy_retro,comic,film_noir,line_drawing,watercolor,paper_cutout,cartoon,3d_animated'],
+            'visual_style' => ['sometimes', 'nullable', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon,photorealistic,cyberpunk_80s,anime_80s,anime_90s,dark_fantasy,fantasy_retro,comic,film_noir,line_drawing,watercolor,paper_cutout,cartoon,3d_animated,custom'],
+            'custom_visual_style' => ['sometimes', 'nullable', 'string', 'max:500'],
         ]);
 
         $project = Project::query()
@@ -168,6 +169,7 @@ class SceneController extends Controller
             'caption_settings_json.size' => ['sometimes', 'nullable', 'string', 'in:small,medium,large,xlarge'],
             'caption_settings_json.preset_id' => ['sometimes', 'nullable'],
             'visual_style' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'custom_visual_style' => ['sometimes', 'nullable', 'string', 'max:500'],
             'motion_settings_json' => ['sometimes', 'nullable', 'array'],
             'motion_settings_json.effect' => ['sometimes', 'string', 'in:zoom_in,zoom_out,pan_left,pan_right,pan_up,pan_down,pan_zoom,static'],
             'motion_settings_json.intensity' => ['sometimes', 'string', 'in:subtle,moderate,dramatic'],
@@ -1135,6 +1137,7 @@ class SceneController extends Controller
             'character_id' => $scene->character_id,
             'visual_prompt' => $scene->visual_prompt,
             'visual_style' => $scene->visual_style,
+            'custom_visual_style' => $scene->custom_visual_style,
             'image_generation_settings' => $this->normalizeImageGenerationSettings($scene),
             'motion_settings' => $scene->motion_settings_json,
             'transition_rule' => $scene->transition_rule,
