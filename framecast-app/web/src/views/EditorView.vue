@@ -3005,11 +3005,8 @@ function closeAddScene() {
 
 function selectAddSceneVisualMode(mode) {
   addSceneVisualMode.value = mode;
-  // Auto-open the library picker the moment the user lands on the Assets tab
-  // (only if nothing's been picked yet). Keeps the flow one click shorter.
-  if (mode === 'assets' && !addScenePickedAsset.value) {
-    pickAssetForNewScene();
-  }
+  // No auto-open of the library picker — the user explicitly clicks
+  // "Pick from your library" inside the tab when they're ready.
 }
 
 function applyCaptionPreset(preset) {
@@ -4434,7 +4431,6 @@ onBeforeUnmount(() => {
                     <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_video' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_video')">Video</button>
                     <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_image' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_image')">Image</button>
                     <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'ai_image' ? 'active ai' : '']" @click="selectAddSceneVisualMode('ai_image')">✦ AI</button>
-                    <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'audiogram' ? 'active' : '']" @click="selectAddSceneVisualMode('audiogram')">Audiogram</button>
                     <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'assets' ? 'active' : '']" @click="selectAddSceneVisualMode('assets')">Assets</button>
                   </div>
 
@@ -4480,39 +4476,18 @@ onBeforeUnmount(() => {
                       </div>
                     </div>
 
-                    <!-- Reference character chip — picks an existing Character
-                         (with reference photo) so AI image gen on this scene
-                         routes through gpt-image-2 /edits with that face. -->
-                    <div v-if="characters.length" style="margin-top:10px;">
-                      <div class="micro-label" style="margin-bottom:6px;">Reference character <span style="opacity:.5;font-weight:400;">(optional)</span></div>
-                      <div class="add-scene-char-row">
-                        <button
-                          type="button"
-                          :class="['add-scene-char-chip', !addSceneCharacterId ? 'selected' : '']"
-                          @click="addSceneCharacterId = null"
-                        ><span class="add-scene-char-none">∅</span>None</button>
-                        <button
-                          v-for="c in characters"
-                          :key="`top-add-char-${c.id}`"
-                          type="button"
-                          :class="['add-scene-char-chip', String(addSceneCharacterId) === String(c.id) ? 'selected' : '']"
-                          @click="addSceneCharacterId = c.id"
-                        >
-                          <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" :alt="c.name" class="add-scene-char-thumb" />
-                          <span v-else class="add-scene-char-none">👤</span>
-                          <span style="font-size:11px;">{{ c.name }}</span>
-                        </button>
-                      </div>
+                    <!-- Reference character — dropdown matches the visual-style
+                         control pattern on the right-hand scene panel. -->
+                    <div v-if="characters.length" class="control-row add-scene-control-row" style="margin-top:10px;">
+                      <span class="control-name">Reference character</span>
+                      <select v-model="addSceneCharacterId" class="control-value">
+                        <option :value="null">None — inherit project default</option>
+                        <option v-for="c in characters" :key="`top-add-char-${c.id}`" :value="c.id">{{ c.name }}</option>
+                      </select>
                     </div>
 
                     <div class="scene-query-label" style="margin-top:10px;">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
                     <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="Leave blank to use scene script as the generation prompt"></textarea>
-                  </template>
-
-                  <template v-else-if="addSceneVisualMode === 'audiogram'">
-                    <div class="panel-hint-copy" style="text-align:left;padding:12px 0;font-size:12px;color:var(--text-muted);">
-                      <strong style="color:var(--text);">Audiogram</strong> visualises this scene's voice-over as an animated waveform. The voice you record or generate for the scene drives the bars. No image needed.
-                    </div>
                   </template>
 
                   <template v-else-if="addSceneVisualMode === 'assets'">
@@ -4676,7 +4651,6 @@ onBeforeUnmount(() => {
                       <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_video' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_video')">Video</button>
                       <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'stock_image' ? 'active' : '']" @click="selectAddSceneVisualMode('stock_image')">Image</button>
                       <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'ai_image' ? 'active ai' : '']" @click="selectAddSceneVisualMode('ai_image')">✦ AI</button>
-                      <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'audiogram' ? 'active' : '']" @click="selectAddSceneVisualMode('audiogram')">Audiogram</button>
                       <button type="button" :class="['visual-type-tab', addSceneVisualMode === 'assets' ? 'active' : '']" @click="selectAddSceneVisualMode('assets')">Assets</button>
                     </div>
 
@@ -4722,27 +4696,13 @@ onBeforeUnmount(() => {
                         </div>
                       </div>
 
-                      <!-- Reference character chip for this scene (overrides project default). -->
-                      <div v-if="characters.length" style="margin-top:10px;">
-                        <div class="micro-label" style="margin-bottom:6px;">Reference character <span style="opacity:.5;font-weight:400;">(optional)</span></div>
-                        <div class="add-scene-char-row">
-                          <button
-                            type="button"
-                            :class="['add-scene-char-chip', !addSceneCharacterId ? 'selected' : '']"
-                            @click="addSceneCharacterId = null"
-                          ><span class="add-scene-char-none">∅</span>None</button>
-                          <button
-                            v-for="c in characters"
-                            :key="`add-char-${scene.id}-${c.id}`"
-                            type="button"
-                            :class="['add-scene-char-chip', String(addSceneCharacterId) === String(c.id) ? 'selected' : '']"
-                            @click="addSceneCharacterId = c.id"
-                          >
-                            <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" :alt="c.name" class="add-scene-char-thumb" />
-                            <span v-else class="add-scene-char-none">👤</span>
-                            <span style="font-size:11px;">{{ c.name }}</span>
-                          </button>
-                        </div>
+                      <!-- Reference character dropdown — overrides project default for this scene. -->
+                      <div v-if="characters.length" class="control-row add-scene-control-row" style="margin-top:10px;">
+                        <span class="control-name">Reference character</span>
+                        <select v-model="addSceneCharacterId" class="control-value">
+                          <option :value="null">None — inherit project default</option>
+                          <option v-for="c in characters" :key="`add-char-${scene.id}-${c.id}`" :value="c.id">{{ c.name }}</option>
+                        </select>
                       </div>
 
                       <div class="scene-query-label" style="margin-top:10px;">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
@@ -9502,27 +9462,6 @@ select.control-value {
   border: 1px solid rgba(255,107,53,.2);
   background: rgba(255,107,53,.04);
   margin: 8px 0 12px;
-}
-
-/* Reference character chip row inside the add-scene AI panel. */
-.add-scene-char-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.add-scene-char-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 10px 4px 4px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--bg-card);
-  cursor: pointer; font-family: inherit; transition: 0.15s;
-}
-.add-scene-char-chip:hover { border-color: rgba(255,107,53,.4); }
-.add-scene-char-chip.selected { border-color: var(--color-accent); background: rgba(255,107,53,.08); }
-.add-scene-char-thumb {
-  width: 22px; height: 22px; border-radius: 50%;
-  object-fit: cover; flex-shrink: 0;
-}
-.add-scene-char-none {
-  width: 22px; height: 22px; border-radius: 50%;
-  background: var(--bg-elevated, #2a2d38);
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 11px; color: var(--text-muted, #8b8b9a); flex-shrink: 0;
 }
 
 /* Picked-asset preview card inside the add-scene Assets tab. */
