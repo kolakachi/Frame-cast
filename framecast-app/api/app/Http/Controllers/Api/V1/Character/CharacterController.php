@@ -43,6 +43,26 @@ class CharacterController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        // ── Plan cap guard ────────────────────────────────────────────────
+        // Free tier = 1 character, Starter = 3, etc. (see CreditService::PLAN_LIMITS).
+        $maxCharacters = app(CreditService::class)->limitFor((int) $user->workspace_id, 'max_characters');
+        if ($maxCharacters !== null) {
+            $currentCount = Character::query()
+                ->where('workspace_id', $user->workspace_id)
+                ->where('status', 'active')
+                ->count();
+            if ($currentCount >= (int) $maxCharacters) {
+                $planTier = app(CreditService::class)->planTier((int) $user->workspace_id);
+                return response()->json([
+                    'error' => [
+                        'code'    => 'plan_resource_cap',
+                        'message' => "Your {$planTier} plan supports {$maxCharacters} active character" . ($maxCharacters === 1 ? '' : 's') . ". Delete an existing character or upgrade for more.",
+                        'context' => ['plan' => $planTier, 'resource' => 'characters', 'limit' => (int) $maxCharacters, 'current' => $currentCount],
+                    ],
+                ], 422);
+            }
+        }
+
         $validated = $request->validate([
             'name'                  => ['required', 'string', 'max:120'],
             'description'           => ['sometimes', 'nullable', 'string', 'max:2000'],

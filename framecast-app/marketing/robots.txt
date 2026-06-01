@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# Static utility pages — don't index the logo export helper.
+Disallow: /logo
+Disallow: /logo-export
+
+# App routes live on app.wyvstudio.com — keep crawlers off any accidental
+# proxy paths that might reach them via this domain.
+Disallow: /api/
+
+Sitemap: https://wyvstudio.com/sitemap.xml

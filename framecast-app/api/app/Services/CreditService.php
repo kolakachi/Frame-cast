@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\CreditLedgerEntry;
 use App\Models\Workspace;
-use Throwable;
 
 class CreditService
 {
@@ -36,6 +35,54 @@ class CreditService
         'studio'     => 1500,
         'scale'      => 4000,
     ];
+
+    // Per-plan resource caps + capability flags. Free-tier gates exist to
+    // make the free trial feel real ("publish one video, see the moat") but
+    // stop short of supporting a real workflow ("more characters, more
+    // channels, publish to social"). Upgrade-path levers, not punishment.
+    //
+    // null = unlimited.
+    public const PLAN_LIMITS = [
+        'free'       => ['max_duration_seconds' => 60,  'max_characters' => 1,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => false],
+        'starter'    => ['max_duration_seconds' => 180, 'max_characters' => 3,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => true],
+        'creator'    => ['max_duration_seconds' => 300, 'max_characters' => 10, 'max_brand_kits' => 3,  'max_channels' => 3, 'social_publishing' => true],
+        'pro'        => ['max_duration_seconds' => 600, 'max_characters' => 50, 'max_brand_kits' => 10, 'max_channels' => 10,'social_publishing' => true],
+        'agency'     => ['max_duration_seconds' => 600, 'max_characters' => null,'max_brand_kits' => null,'max_channels' => null,'social_publishing' => true],
+        'enterprise' => ['max_duration_seconds' => 600, 'max_characters' => null,'max_brand_kits' => null,'max_channels' => null,'social_publishing' => true],
+        'studio'     => ['max_duration_seconds' => 300, 'max_characters' => 10, 'max_brand_kits' => 3,  'max_channels' => 3, 'social_publishing' => true],
+        'scale'      => ['max_duration_seconds' => 600, 'max_characters' => 50, 'max_brand_kits' => 10, 'max_channels' => 10,'social_publishing' => true],
+    ];
+
+    /**
+     * Resolve a plan-level limit/flag for a workspace by id. Falls back to
+     * the 'free' row if the workspace's tier isn't recognised.
+     *
+     * Use the typed helpers below where possible — this is the raw form.
+     */
+    public function limitFor(int $workspaceId, string $key): mixed
+    {
+        $workspace = Workspace::find($workspaceId);
+        $tier = $workspace?->plan_tier ?? 'free';
+        $limits = self::PLAN_LIMITS[$tier] ?? self::PLAN_LIMITS['free'];
+        return $limits[$key] ?? null;
+    }
+
+    public function maxDurationSeconds(int $workspaceId): ?int
+    {
+        $v = $this->limitFor($workspaceId, 'max_duration_seconds');
+        return $v === null ? null : (int) $v;
+    }
+
+    public function canPublishToSocial(int $workspaceId): bool
+    {
+        return (bool) $this->limitFor($workspaceId, 'social_publishing');
+    }
+
+    public function planTier(int $workspaceId): string
+    {
+        $workspace = Workspace::find($workspaceId);
+        return (string) ($workspace?->plan_tier ?? 'free');
+    }
 
     public function balance(int $workspaceId): int
     {

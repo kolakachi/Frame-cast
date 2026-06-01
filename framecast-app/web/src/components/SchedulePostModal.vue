@@ -28,6 +28,24 @@ const resultMode        = ref(false)
 const resultPosts       = ref([])   // [{ id, platform, display_name, status }]
 const pollTimer         = ref(null)
 const category          = ref('Education')
+
+// ── Synthetic-content disclosure (E13) ─────────────────────────────────
+// One-time legitimacy modal that fires before the FIRST publish from this
+// browser. AI-generated visuals + voice can lead to platform policy issues
+// (TikTok requires AI-disclosure tag on synthetic-content posts, YT now
+// surfaces AI-content labels in shorts). Better to remind the user than
+// have their post taken down.
+const SYNTHETIC_ACK_KEY = 'wyv_synthetic_disclosure_ack_v1'
+const showSyntheticModal = ref(false)
+function isSyntheticAck() {
+  try { return localStorage.getItem(SYNTHETIC_ACK_KEY) === '1' } catch { return false }
+}
+function acknowledgeSynthetic() {
+  try { localStorage.setItem(SYNTHETIC_ACK_KEY, '1') } catch {}
+  showSyntheticModal.value = false
+  // Proceed with the publish the user was about to make.
+  void submit({ skipDisclosure: true })
+}
 const visibility        = ref('public')
 const whenMode          = ref('schedule') // schedule | now | draft
 const scheduledDate     = ref('')
@@ -96,8 +114,16 @@ async function generateCaption(accountId, platform) {
 }
 
 // ── Submit ────────────────────────────────────────────────
-async function submit() {
+async function submit(opts = {}) {
   if (!canSubmit.value || saving.value) return
+
+  // First-time synthetic-content disclosure gate. Anything except 'draft'
+  // counts as a publish/scheduled-publish — both need the disclosure.
+  if (whenMode.value !== 'draft' && !opts.skipDisclosure && !isSyntheticAck()) {
+    showSyntheticModal.value = true
+    return
+  }
+
   saving.value = true
   error.value  = ''
 
@@ -175,6 +201,31 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 
 <template>
   <Teleport to="body">
+    <!-- Synthetic-content disclosure (E13) — sits ABOVE the publish modal so
+         it intercepts the first publish attempt and gates progress until
+         acknowledged. Closes via Cancel (keep modal open, no action) or
+         Acknowledge & Continue (write localStorage, proceed with submit). -->
+    <div v-if="showSyntheticModal" class="sp-backdrop synthetic" @click.self="showSyntheticModal = false" style="z-index:10001">
+      <div class="sp-modal synthetic-modal">
+        <div class="synthetic-icon">⚠</div>
+        <div class="synthetic-title">A quick note about AI-generated content</div>
+        <div class="synthetic-body">
+          <p>This video uses AI-generated visuals, voice, or both. Before you publish, make sure to follow each platform's disclosure rules:</p>
+          <ul>
+            <li><strong>TikTok</strong> — toggle "AI-generated content" in the post settings when uploading. (Required since 2024.)</li>
+            <li><strong>YouTube</strong> — tick "Altered or synthetic content" in YouTube Studio's content details. (Required for shorts since 2024.)</li>
+            <li><strong>Meta (Instagram &amp; Facebook)</strong> — disclose AI use in the caption or use Meta's labelling option. Meta also auto-detects in many cases.</li>
+          </ul>
+          <p>WyvStudio will pass through your scheduled metadata as-is — you're responsible for the platform-side disclosure. Failing to disclose can get the post removed and the account warned.</p>
+        </div>
+        <div class="synthetic-foot">
+          <button class="sp-btn sp-btn-ghost" type="button" @click="showSyntheticModal = false">Cancel</button>
+          <button class="sp-btn sp-btn-primary" type="button" @click="acknowledgeSynthetic">Acknowledge &amp; continue</button>
+        </div>
+        <div class="synthetic-fine">You won't see this again on this device.</div>
+      </div>
+    </div>
+
     <div class="sp-backdrop" @click.self="emit('close')">
       <div class="sp-modal">
         <div class="sp-header">
@@ -353,6 +404,19 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 
 <style scoped>
 .sp-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 300; }
+/* Synthetic-content disclosure modal — sits above the schedule modal. */
+.sp-backdrop.synthetic { background: rgba(0,0,0,.78); }
+.synthetic-modal { padding: 28px 28px 20px; }
+.synthetic-icon { font-size: 28px; color: var(--color-accent); text-align: center; margin-bottom: 8px; }
+.synthetic-title { font-size: 16px; font-weight: 700; text-align: center; margin-bottom: 14px; color: var(--color-text-primary); }
+.synthetic-body { font-size: 13px; line-height: 1.65; color: var(--color-text-secondary); }
+.synthetic-body p { margin-bottom: 10px; }
+.synthetic-body ul { padding-left: 18px; margin: 10px 0 12px; }
+.synthetic-body li { margin-bottom: 6px; }
+.synthetic-body strong { color: var(--color-text-primary); }
+.synthetic-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+.synthetic-fine { font-size: 11px; color: var(--color-text-muted); text-align: center; margin-top: 10px; font-family: "Space Mono", monospace; letter-spacing: 0.05em; }
+.sp-btn.sp-btn-ghost { background: transparent; }
 .sp-modal { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 14px; padding: 24px; width: min(520px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
 .sp-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .sp-title { font-size: 15px; font-weight: 600; }

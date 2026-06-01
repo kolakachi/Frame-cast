@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\BrandKit;
 use App\Http\Controllers\Controller;
 use App\Models\BrandKit;
 use App\Models\User;
+use App\Services\CreditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -35,6 +36,23 @@ class BrandKitController extends Controller
 
         if (! $user->workspace_id) {
             return $this->error('workspace_required', 'User is not assigned to a workspace.', 422);
+        }
+
+        // Plan cap guard — free tier = 1 brand kit, see CreditService::PLAN_LIMITS.
+        $credits = app(CreditService::class);
+        $maxBrandKits = $credits->limitFor((int) $user->workspace_id, 'max_brand_kits');
+        if ($maxBrandKits !== null) {
+            $currentCount = BrandKit::query()->where('workspace_id', $user->workspace_id)->count();
+            if ($currentCount >= (int) $maxBrandKits) {
+                $planTier = $credits->planTier((int) $user->workspace_id);
+                return response()->json([
+                    'error' => [
+                        'code'    => 'plan_resource_cap',
+                        'message' => "Your {$planTier} plan supports {$maxBrandKits} brand kit" . ($maxBrandKits === 1 ? '' : 's') . ". Delete an existing brand kit or upgrade for more.",
+                        'context' => ['plan' => $planTier, 'resource' => 'brand_kits', 'limit' => (int) $maxBrandKits, 'current' => $currentCount],
+                    ],
+                ], 422);
+            }
         }
 
         $validated = $request->validate($this->rules());

@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Help &amp; FAQ — WyvStudio</title>
+<meta name="description" content="WyvStudio help center — pricing, credits, refunds, social account connection, generation troubleshooting, and the answers to the questions new users actually ask.">
+<meta property="og:title" content="Help &amp; FAQ — WyvStudio" />
+<meta property="og:description" content="Quick answers to the questions new WyvStudio users actually ask." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://wyvstudio.com/help" />
+<meta property="og:image" content="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/og/og-default-v1.jpg" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/og/og-default-v1.jpg" />
+<link rel="canonical" href="https://wyvstudio.com/help" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a0f;--surface:#14141c;--surface-2:#1a1a24;--border:#25252f;--text:#ececf3;--text-dim:#8b8b9a;--text-faint:#5a5a68;--accent:#ff6b35}
+body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;line-height:1.7}
+nav{padding:0 32px;height:60px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(10,10,15,.9);backdrop-filter:blur(12px);z-index:10}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;flex:1}
+.nav-logo span{font-size:15px;font-weight:700;color:var(--text)}
+.nav-logo span em{color:var(--accent);font-style:normal}
+.nav-cta a{font-size:13px;color:var(--text-dim);text-decoration:none;padding:8px 14px;border-radius:8px;border:1px solid var(--border)}
+.nav-cta a:hover{background:var(--surface-2);color:var(--text)}
+.container{max-width:780px;margin:0 auto;padding:48px 24px 120px}
+h1{font-size:34px;font-weight:700;letter-spacing:-.5px;margin-bottom:8px}
+.intro{font-size:15px;color:var(--text-dim);margin-bottom:32px}
+.toc{display:flex;flex-wrap:wrap;gap:6px;padding:16px 18px;border:1px solid var(--border);border-radius:10px;background:var(--surface);margin-bottom:40px}
+.toc a{font-size:12px;font-weight:500;color:var(--accent);text-decoration:none;padding:4px 10px;border:1px solid rgba(255,107,53,.25);border-radius:999px;background:rgba(255,107,53,.04);transition:.15s}
+.toc a:hover{background:rgba(255,107,53,.1)}
+section{margin-bottom:40px}
+h2{font-size:18px;font-weight:600;margin:32px 0 14px;color:var(--text);scroll-margin-top:80px}
+details{border:1px solid var(--border);background:var(--surface);border-radius:10px;margin-bottom:8px;padding:0;transition:.15s}
+details[open]{border-color:rgba(255,107,53,.3);background:var(--surface-2)}
+summary{padding:14px 18px;cursor:pointer;font-size:14px;font-weight:500;list-style:none;display:flex;align-items:center;gap:10px;color:var(--text)}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"+";font-family:monospace;color:var(--accent);font-size:18px;width:14px;display:inline-block;transition:.15s}
+details[open] summary::before{content:"−"}
+.answer{padding:0 18px 18px 42px;font-size:13.5px;color:var(--text-dim)}
+.answer p{margin-bottom:10px}
+.answer ul,.answer ol{padding-left:20px;margin-bottom:10px}
+.answer li{margin-bottom:4px}
+.answer code{background:var(--surface);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-size:12px;font-family:'Space Mono',monospace}
+.answer strong{color:var(--text)}
+.answer a{color:var(--accent);text-decoration:none}
+.answer a:hover{text-decoration:underline}
+.callout{padding:12px 14px;border-radius:8px;background:rgba(255,107,53,.06);border:1px solid rgba(255,107,53,.18);font-size:12.5px;margin:10px 0;color:var(--text-dim)}
+.contact-card{margin-top:48px;padding:24px;border-radius:12px;background:linear-gradient(135deg,rgba(255,107,53,.04),rgba(255,107,53,.02));border:1px solid rgba(255,107,53,.25);text-align:center}
+.contact-card h3{font-size:18px;font-weight:600;color:var(--text);margin-bottom:6px}
+.contact-card p{font-size:13px;color:var(--text-dim);margin-bottom:14px}
+.contact-card a{display:inline-block;padding:10px 20px;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:500;transition:.15s}
+.contact-card a:hover{background:#ff7a47}
+footer{border-top:1px solid var(--border);padding:24px;text-align:center;font-size:12px;color:var(--text-faint)}
+footer a{color:var(--text-dim);text-decoration:none;margin:0 8px}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">
+    <svg width="26" height="26" viewBox="0 0 64 64" fill="none"><rect width="64" height="64" rx="14" fill="#ff6b35"/><path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    <span><em>Wyv</em>Studio</span>
+  </a>
+  <div class="nav-cta">
+    <a href="https://app.wyvstudio.com/login">Sign in</a>
+  </div>
+</nav>
+
+<div class="container">
+  <h1>Help &amp; FAQ</h1>
+  <p class="intro">Quick answers to the questions new users actually ask. Can't find what you need? Use the chat widget in the bottom-right or email <a href="mailto:hello@wyvstudio.com" style="color:var(--accent);text-decoration:none">hello@wyvstudio.com</a>.</p>
+
+  <div class="toc">
+    <a href="#getting-started">Getting started</a>
+    <a href="#credits">Credits &amp; pricing</a>
+    <a href="#billing">Billing &amp; refunds</a>
+    <a href="#characters">Characters &amp; AI images</a>
+    <a href="#publishing">Publishing &amp; social accounts</a>
+    <a href="#errors">Common errors</a>
+    <a href="#account">Account &amp; data</a>
+  </div>
+
+  <section id="getting-started">
+    <h2>Getting started</h2>
+
+    <details>
+      <summary>What can I make with WyvStudio?</summary>
+      <div class="answer">
+        <p>Short videos (15-180s) for any use case where the words matter and the visuals can be AI-generated or stock-sourced: DTC ad creatives, podcast promo clips, narrative episodes, educational explainers, personal-brand shorts, real estate listings, local-business promos.</p>
+        <p>You give it a script, a product URL, a podcast audio file, or just an idea. WyvStudio writes (or accepts) the script, breaks it into scenes, generates or sources each scene's visual, voices it, captions it, and exports a finished MP4 ready for TikTok / Reels / YouTube Shorts.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>How do I create my first video?</summary>
+      <div class="answer">
+        <ol>
+          <li>Go to <strong>Videos → ＋ New video</strong> in the app.</li>
+          <li><strong>Step 1 — Niche:</strong> pick a preset or create a custom niche with your voice tone and style.</li>
+          <li><strong>Step 2 — Source:</strong> Paste a script (most control), drop a URL (auto-extracts), upload audio (auto-transcribes), or just give a prompt.</li>
+          <li><strong>Step 3 — Configure:</strong> Pick the visual mode (AI Images / Stock Video / Audiogram), aspect ratio, duration, and optionally a recurring character.</li>
+          <li>Hit <strong>Create</strong> — generation runs in ~3-6 minutes.</li>
+        </ol>
+        <p>When generation finishes, you'll land in the editor where you can swap scenes, regenerate voices, tweak captions, and export.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Does WyvStudio give me a watermark on the videos?</summary>
+      <div class="answer">
+        <p><strong>Free plan:</strong> Yes — a small WyvStudio mark in the bottom corner.</p>
+        <p><strong>All paid plans (Starter, Creator, Pro, Agency):</strong> No watermark. Your videos are unbranded by default.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="credits">
+    <h2>Credits &amp; pricing</h2>
+
+    <details>
+      <summary>How do credits work?</summary>
+      <div class="answer">
+        <p>Each AI operation costs credits. Different operations cost different amounts:</p>
+        <ul>
+          <li>Script generation: 2 credits</li>
+          <li>Scene breakdown: 1 credit</li>
+          <li>Stock visual per scene: 1 credit</li>
+          <li>AI image (medium quality) per scene: 15 credits</li>
+          <li>AI image (high quality) per scene: 40 credits</li>
+          <li>AI image with recurring character (gpt-image-2) per scene: 50 credits</li>
+          <li>Voice (TTS) per scene: 2 credits</li>
+          <li>Image-to-video animation (Quick / Balanced / Premium): 60 / 120 / 240 credits per 6s clip</li>
+          <li>Export: 5 credits</li>
+        </ul>
+        <p>A typical 30-second AI-image ad with 6 scenes and a recurring character runs about 320 credits end-to-end.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>What's the difference between monthly credits and top-up credits?</summary>
+      <div class="answer">
+        <p><strong>Monthly credits</strong> come with your subscription and reset each billing cycle. Anything unused at the end of the month is lost.</p>
+        <p><strong>Top-up credits</strong> are extra packs you buy on demand and they <strong>never expire</strong> while you stay subscribed. They're spent only after your monthly credits are used up.</p>
+        <p>This means heavy-month surge buying via top-up is the right play; never paying for unused monthly headroom you don't need.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>What credits does each plan include?</summary>
+      <div class="answer">
+        <ul>
+          <li><strong>Free</strong> — 200 one-time credits to test the platform. Includes a small watermark on exports.</li>
+          <li><strong>Starter $19/mo</strong> — 500 credits / month, no watermark, 1 channel</li>
+          <li><strong>Creator $39/mo</strong> — 1,500 credits / month, 3 channels, full series mode</li>
+          <li><strong>Pro $79/mo</strong> — 4,000 credits / month, 10 channels, batch generation, priority queue</li>
+          <li><strong>Agency $149/mo</strong> — 10,000 credits / month, unlimited channels, credit rollover, top priority queue</li>
+        </ul>
+        <p>Top-up packs run from $5 (500 credits) to $55 (8,000 credits) and are available on any paid plan.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="billing">
+    <h2>Billing &amp; refunds</h2>
+
+    <details>
+      <summary>How do I cancel?</summary>
+      <div class="answer">
+        <p>Go to <strong>Settings → Billing</strong> in the app and click <strong>Manage subscription</strong> — this opens the Paddle customer portal where you can cancel or pause. Cancellation is immediate; your access continues until the end of the current billing period.</p>
+        <p>We don't charge cancellation fees and we don't bury the option behind support tickets.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>What's your refund policy?</summary>
+      <div class="answer">
+        <p><strong>14-day full refund window</strong> on any subscription purchase. If you decide WyvStudio isn't for you within 14 days, reply to your purchase receipt or email <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a> with your account email and we'll refund the full amount.</p>
+        <p>After 14 days, we can refund <strong>unused video credits</strong> on cancellation — pro-rated based on what's actually been spent.</p>
+        <p>Full terms in our <a href="/refund">Refund Policy</a>.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Why was I charged after I cancelled?</summary>
+      <div class="answer">
+        <p>If you see a charge after cancellation, one of two things happened — both reversible:</p>
+        <ol>
+          <li>You cancelled <em>after</em> the renewal date. The renewal already processed; we'll refund it.</li>
+          <li>You cancelled the Paddle subscription but our system didn't receive the webhook (rare). We'll reconcile and refund.</li>
+        </ol>
+        <p>Email <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a> with your account email and the charge date and we'll resolve within 24 hours.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="characters">
+    <h2>Characters &amp; AI images</h2>
+
+    <details>
+      <summary>What's a "recurring character" and why would I use one?</summary>
+      <div class="answer">
+        <p>A character is a saved on-screen persona — a face you want appearing across every video you make. Upload one reference photo of your brand spokesperson, founder, or fictional host, and that face shows up in every scene of every project you bind to that character.</p>
+        <p>This is what makes WyvStudio different from stock-AI-video tools. AdCreative.ai gives you stock actors, HeyGen gives you talking-head avatars; WyvStudio gives you <strong>your own character, acting in scenes you direct</strong>.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>How do I create a character?</summary>
+      <div class="answer">
+        <ol>
+          <li>Go to <strong>Characters</strong> in the sidebar.</li>
+          <li>Click <strong>＋ New character</strong> and either upload a reference photo or skip the upload and generate one with the ✦ button after creation.</li>
+          <li>Give them a name and an optional description (which the AI uses for consistency across scenes).</li>
+          <li>Save. The character now appears in the wizard's "Recurring character" picker and the editor's per-scene character chip.</li>
+        </ol>
+      </div>
+    </details>
+
+    <details>
+      <summary>The AI generated a character of the wrong gender / appearance. What do I fix?</summary>
+      <div class="answer">
+        <p>This usually means the character's description on the Characters page is too vague. Be explicit:</p>
+        <ul>
+          <li>Gender, age range, ethnicity, build</li>
+          <li>Hair colour, length, style</li>
+          <li>Wardrobe (e.g. "smart casual grey t-shirt, no jewelry")</li>
+          <li>Setting bias if relevant ("clean studio lighting, plain background")</li>
+        </ul>
+        <p>Then click ✦ <strong>Generate test image</strong> on the character card to verify the look before using them in a project. If the still looks right, scene-level generations will match.</p>
+        <p>For an existing project that already generated with the wrong character, just regenerate each scene's image after fixing the character description — the new generations will respect the updated identity.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>What's "Custom" visual style?</summary>
+      <div class="answer">
+        <p>The 21 preset styles cover obvious aesthetics (cinematic, anime, watercolor, etc.). When you want something more specific — a director look, a film stock, a brand mood-board — pick <strong>✦ Custom</strong> and type the descriptor yourself. Example: <code>Moody Wong Kar-wai film stills, neon-drenched alleys, slow shutter, 35mm grain</code>.</p>
+        <p>The custom descriptor gets appended to every scene's image prompt instead of a preset.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="publishing">
+    <h2>Publishing &amp; social accounts</h2>
+
+    <details>
+      <summary>How do I connect TikTok / YouTube / Instagram / Facebook?</summary>
+      <div class="answer">
+        <p>Go to <strong>Settings → Connected accounts</strong> and click the platform you want to add. Each connection opens an OAuth flow on the platform's side — sign in with the brand account and approve WyvStudio's permissions.</p>
+        <p>We only ask for the minimum scopes needed to publish a post on your behalf. We never read DMs, followers, analytics, or anything you haven't created in WyvStudio.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>How do I disconnect a social account?</summary>
+      <div class="answer">
+        <p><strong>From WyvStudio:</strong> Settings → Connected accounts → click the platform → <strong>Disconnect</strong>. We immediately delete your OAuth tokens.</p>
+        <p><strong>From the platform side:</strong></p>
+        <ul>
+          <li><strong>YouTube:</strong> myaccount.google.com → Security → Third-party access → revoke WyvStudio</li>
+          <li><strong>TikTok:</strong> Settings → Security → Apps → WyvStudio → revoke</li>
+          <li><strong>Meta (Instagram &amp; Facebook):</strong> facebook.com/settings → Apps and Websites → WyvStudio → remove</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>Do I need to disclose AI-generated content when I publish?</summary>
+      <div class="answer">
+        <p><strong>Yes.</strong> Each platform requires it for synthetic content:</p>
+        <ul>
+          <li><strong>TikTok:</strong> toggle "AI-generated content" in the post settings.</li>
+          <li><strong>YouTube:</strong> tick "Altered or synthetic content" in the content details step.</li>
+          <li><strong>Meta:</strong> disclose in caption or use Meta's AI labelling option.</li>
+        </ul>
+        <p>WyvStudio shows a one-time disclosure modal on your first publish. Failing to disclose can lead to the post being removed and your account warned.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="errors">
+    <h2>Common errors</h2>
+
+    <details>
+      <summary>My image generation says "Image generation failed"</summary>
+      <div class="answer">
+        <p>This usually means one of:</p>
+        <ul>
+          <li>Your prompt hit OpenAI's content policy (try removing potentially sensitive words)</li>
+          <li>The character's reference photo URL expired (rare — try regenerating)</li>
+          <li>You ran out of credits mid-generation</li>
+        </ul>
+        <p>The modal now shows the actual error message — if it still says "Image generation failed" without context, check your credit balance first, then email <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a> with the project ID and scene number.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>I'm hitting Replicate rate limits on animations</summary>
+      <div class="answer">
+        <p>Replicate throttles when their tracked "trial / promo credit" is below $5 — even if your dashboard shows a healthy balance. Two paths:</p>
+        <ol>
+          <li>Wait 10-15 seconds and try again — our system automatically retries up to 3 times with backoff.</li>
+          <li>Top up your Replicate balance at <a href="https://replicate.com/account/billing" target="_blank" rel="noopener">replicate.com/account/billing</a> — adding $5+ flips the account out of the throttled tier.</li>
+        </ol>
+      </div>
+    </details>
+
+    <details>
+      <summary>A scene shows "Generating..." but it's been stuck for ages</summary>
+      <div class="answer">
+        <p>If a generation has been "in progress" for more than 10 minutes, the worker probably restarted mid-job. Open the scene panel, hit <strong>Cancel</strong> (or close and reopen the project), then click <strong>Regenerate</strong>.</p>
+        <p>If it happens repeatedly, email us with the project ID and we'll clear the stuck flag manually.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>The character drifted into a different person on scenes 2+</summary>
+      <div class="answer">
+        <p>The "consistency card" (a project-wide description that gets prepended to every scene prompt) sometimes invents a fake description that contradicts your character. Fix:</p>
+        <ol>
+          <li>Make sure your character has a strong description on the Characters page (gender, age, build, hair, wardrobe).</li>
+          <li>Regenerate the misbehaving scenes — the system now builds the consistency card from your actual character record, not LLM hallucination.</li>
+        </ol>
+      </div>
+    </details>
+  </section>
+
+  <section id="account">
+    <h2>Account &amp; data</h2>
+
+    <details>
+      <summary>How do I delete my account?</summary>
+      <div class="answer">
+        <p>Go to <strong>Settings → Account → Delete account</strong>. You'll be asked to confirm with your email address. Once confirmed:</p>
+        <ul>
+          <li>All your projects, scenes, characters, brand kits, and generated assets are deleted.</li>
+          <li>Your social account tokens are revoked immediately.</li>
+          <li>Your user record is purged within 30 days.</li>
+        </ul>
+        <p>Full process documented at <a href="/data-deletion">/data-deletion</a>.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Can I export my data before deleting?</summary>
+      <div class="answer">
+        <p>Yes — <strong>Settings → Account → Export my data</strong>. You'll get a JSON file containing all your projects, scenes, characters, brand kits, and asset URLs. GDPR-compliant; no quota.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Do you train AI on my content?</summary>
+      <div class="answer">
+        <p>No. We do not train any models on your scripts, prompts, generated content, or social accounts. Your content is processed only to produce the videos you request.</p>
+        <p>Upstream providers (OpenAI for text + image + voice, Replicate for video animation, ElevenLabs for voice clones if you've opted in) have their own data policies — by default OpenAI does NOT train on API requests. See our <a href="/privacy">Privacy Policy</a> for the full third-party list.</p>
+      </div>
+    </details>
+  </section>
+
+  <div class="contact-card">
+    <h3>Still stuck?</h3>
+    <p>Use the chat widget in the bottom-right corner, or email us directly.</p>
+    <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com →</a>
+  </div>
+</div>
+
+<footer>
+  © 2026 Kollignton Kay LTD &nbsp;·&nbsp;
+  <a href="/">Home</a>
+  <a href="/terms">Terms</a>
+  <a href="/privacy">Privacy</a>
+  <a href="/refund">Refund</a>
+  <a href="/data-deletion">Data deletion</a>
+</footer>
+
+<script src="/posthog-init.js" defer></script>
+<script src="/cookie-notice.js" defer></script>
+<script>window.5f6d22e6-97de-4660-8a8f-baf6d9b0deea="5f6d22e6-97de-4660-8a8f-baf6d9b0deea";</script>
+<script src="/crisp-chat.js" defer></script>
+</body>
+</html>

@@ -28,6 +28,31 @@ if (sentryEnabled) {
     tracesSampleRate: Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
   })
 }
+
+// ── PostHog product analytics ──────────────────────────────────────────────
+// Same env-driven init pattern as Sentry — if VITE_POSTHOG_KEY isn't set
+// (typical in local dev), the loader silently bails. In production the key
+// is injected at build time via the docker-compose.prod build args.
+// We keep person_profiles=identified_only so anonymous visitors don't churn
+// out person rows; identify() in main.js below fires after the auth store
+// hydrates with a user.
+const posthogKey = import.meta.env.VITE_POSTHOG_KEY
+if (posthogKey) {
+  // Dynamic import keeps PostHog out of the first paint chunk for users
+  // who hit the app without an existing session.
+  import('posthog-js').then(({ default: posthog }) => {
+    posthog.init(posthogKey, {
+      api_host: import.meta.env.VITE_POSTHOG_HOST || 'https://us.i.posthog.com',
+      person_profiles: 'identified_only',
+      capture_pageview: true,
+      capture_pageleave: true,
+      // Don't capture form fields, password inputs, or any text content from
+      // <textarea> / <input> — we want event names, not user content.
+      autocapture: { dom_event_allowlist: ['click', 'submit'] },
+    })
+    window.__posthog = posthog
+  })
+}
 const pinia = createPinia()
 
 app.use(pinia)
@@ -84,6 +109,26 @@ watch(
       router.push({ name: 'login' })
     }
   }
+)
+
+// Tell PostHog who the user is once auth hydrates so events get joined to
+// a real person profile. On logout we reset() so anonymous events stop
+// being attached to the old user.
+watch(
+  () => authStore.user?.id,
+  (userId) => {
+    if (!window.__posthog) return
+    if (userId) {
+      window.__posthog.identify(String(userId), {
+        email: authStore.user?.email,
+        workspace_id: authStore.user?.workspace_id,
+        plan_tier: authStore.user?.workspace?.plan_tier,
+      })
+    } else {
+      window.__posthog.reset?.()
+    }
+  },
+  { immediate: true }
 )
 
 app.use(router)

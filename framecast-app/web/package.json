@@ -15,6 +15,7 @@
     "axios": "^1.14.0",
     "laravel-echo": "^2.3.3",
     "pinia": "^3.0.4",
+    "posthog-js": "^1.377.0",
     "pusher-js": "^8.5.0",
     "tailwindcss": "^4.2.2",
     "vue": "^3.5.30",

@@ -305,6 +305,22 @@ class ProjectController extends Controller
             return $this->error('invalid_source_content', $sourceError, 422);
         }
 
+        // ── Plan duration guard ──────────────────────────────────────────
+        // Free tier caps at 60s; paid tiers go higher. Reject up front rather
+        // than letting the user wait through generation.
+        $maxDuration = $this->credits->maxDurationSeconds((int) $user->workspace_id);
+        $requestedDuration = (int) ($validated['duration_target_seconds'] ?? 0);
+        if ($maxDuration !== null && $requestedDuration > 0 && $requestedDuration > $maxDuration) {
+            $planTier = $this->credits->planTier((int) $user->workspace_id);
+            return response()->json([
+                'error' => [
+                    'code'    => 'plan_duration_exceeded',
+                    'message' => "Your {$planTier} plan caps video length at {$maxDuration}s. This project asks for {$requestedDuration}s — shorten it or upgrade for longer videos.",
+                    'context' => ['plan' => $planTier, 'max_duration_seconds' => $maxDuration, 'requested' => $requestedDuration],
+                ],
+            ], 422);
+        }
+
         // ── Credit guard ─────────────────────────────────────────────────
         $estimate = $this->credits->estimateProject(
             sourceType:    $validated['source_type'],

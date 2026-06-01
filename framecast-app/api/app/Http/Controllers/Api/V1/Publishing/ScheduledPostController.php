@@ -48,6 +48,22 @@ class ScheduledPostController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        // ── Free-tier social publish block ──────────────────────────────────
+        // Free tier can render + download MP4s but cannot publish to social
+        // platforms. Upgrade lever — the moment a free user wants to ship to
+        // TikTok / IG / YT, they're nudged to upgrade.
+        $credits = app(\App\Services\CreditService::class);
+        if (! $credits->canPublishToSocial((int) $user->workspace_id)) {
+            $planTier = $credits->planTier((int) $user->workspace_id);
+            return response()->json([
+                'error' => [
+                    'code'    => 'plan_social_publishing_disabled',
+                    'message' => "Your {$planTier} plan can download MP4s but not publish directly to social platforms. Upgrade to Starter or above to schedule + post to TikTok, Instagram, YouTube, and Facebook.",
+                    'context' => ['plan' => $planTier, 'feature' => 'social_publishing'],
+                ],
+            ], 402);
+        }
+
         $validated = $request->validate([
             'export_job_id'     => ['required', 'integer'],
             'social_account_id' => ['required', 'integer'],
