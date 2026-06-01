@@ -29,16 +29,28 @@ const billingPortalPending = ref(false)
 const billingError = ref('')
 
 // ── Credit history (E15-followup) ──────────────────────────
-// Fetched lazily when the Usage tab is open; sums the user's ledger
-// activity for the last 30 days plus the raw recent entries.
+// Fetched lazily when the Usage tab is open; cursor-paginated so the
+// user can drill deep without us shipping all of history up-front.
 const creditHistory = ref(null)
+const creditHistoryEntries = ref([]) // accumulated across pages
 const creditHistoryLoading = ref(false)
 const creditHistoryError = ref('')
+const creditHistoryFilter = ref('all')         // all | debits | grants
+const creditHistorySort   = ref('newest')      // newest | oldest | largest
+const creditHistorySince  = ref(30)            // 7 | 30 | 90 | 0 (all-time)
+const creditHistoryHasMore = ref(false)
+const creditHistoryCursor = ref(null)
 const creditHistorySpent = computed(() => {
   if (!creditHistory.value) return 0
   return creditHistory.value.summary
     .filter(r => !r.operation.startsWith('grant:'))
-    .reduce((s, r) => s + r.credits, 0)
+    .reduce((s, r) => s + Math.abs(r.credits), 0)
+})
+const creditHistoryGranted = computed(() => {
+  if (!creditHistory.value) return 0
+  return creditHistory.value.summary
+    .filter(r => r.operation.startsWith('grant:'))
+    .reduce((s, r) => s + Math.abs(r.credits), 0)
 })
 
 // Pretty operation names for the table + summary.
@@ -64,18 +76,42 @@ function formatOperation(op) {
   return OPERATION_LABELS[op] || op
 }
 
-async function loadCreditHistory() {
-  if (creditHistory.value || creditHistoryLoading.value) return
+async function loadCreditHistory({ append = false, reset = false } = {}) {
+  if (creditHistoryLoading.value) return
+  if (!append && !reset && creditHistory.value) return // already loaded; no params changed
   creditHistoryLoading.value = true
   creditHistoryError.value = ''
+  if (reset) {
+    creditHistoryEntries.value = []
+    creditHistoryCursor.value = null
+  }
   try {
-    const { data } = await api.get('/me/credit-history', { params: { per_page: 50, since: 30 } })
+    const { data } = await api.get('/me/credit-history', {
+      params: {
+        per_page: 25,
+        since:    creditHistorySince.value,
+        filter:   creditHistoryFilter.value,
+        sort:     creditHistorySort.value,
+        ...(append && creditHistoryCursor.value ? { cursor: creditHistoryCursor.value } : {}),
+      },
+    })
     creditHistory.value = data?.data ?? null
+    const pageEntries = data?.data?.entries ?? []
+    creditHistoryEntries.value = append
+      ? [...creditHistoryEntries.value, ...pageEntries]
+      : pageEntries
+    creditHistoryHasMore.value = Boolean(data?.data?.next_cursor)
+    creditHistoryCursor.value  = data?.data?.next_cursor ?? null
   } catch (e) {
     creditHistoryError.value = e?.response?.data?.error?.message ?? 'Could not load credit history.'
   } finally {
     creditHistoryLoading.value = false
   }
+}
+
+// Re-fetch from page 1 whenever a filter/sort/since changes.
+function reloadCreditHistory() {
+  loadCreditHistory({ reset: true })
 }
 
 const planLabel = computed(() => {
@@ -863,13 +899,13 @@ onMounted(() => {
             <div v-if="creditHistoryLoading" class="banner" style="margin:8px 0 14px;">Loading credit history…</div>
 
             <div v-else-if="creditHistory">
-              <!-- Per-operation roll-up (last 30 days) -->
+              <!-- Per-operation roll-up + balance pills -->
               <div class="credit-summary-row">
                 <div class="credit-summary-pill">
                   Balance now: <strong>{{ creditHistory.balance.toLocaleString() }}</strong>
                 </div>
                 <div class="credit-summary-pill muted">
-                  Last 30 days: <strong>{{ creditHistorySpent.toLocaleString() }}</strong> credits used across <strong>{{ creditHistory.summary.length }}</strong> operation types
+                  Spent <strong>{{ creditHistorySpent.toLocaleString() }}</strong> · added <strong>+{{ creditHistoryGranted.toLocaleString() }}</strong> in this window
                 </div>
               </div>
 
@@ -877,18 +913,48 @@ onMounted(() => {
                 <div v-for="row in creditHistory.summary" :key="row.operation" class="credit-summary-card">
                   <div class="credit-op-name">{{ formatOperation(row.operation) }}</div>
                   <div class="credit-op-row">
-                    <span class="credit-op-credits">{{ Math.abs(row.credits).toLocaleString() }} cr</span>
+                    <span :class="['credit-op-credits', row.operation.startsWith('grant:') ? 'grant' : '']">
+                      {{ row.operation.startsWith('grant:') ? '+' : '' }}{{ Math.abs(row.credits).toLocaleString() }} cr
+                    </span>
                     <span class="credit-op-count">{{ row.ops }} {{ row.ops === 1 ? 'op' : 'ops' }}</span>
                   </div>
                 </div>
               </div>
 
-              <!-- Per-entry detail table -->
-              <div v-if="creditHistory.entries.length" class="credit-entries-wrap">
-                <div class="credit-entries-head">
-                  <span>Last {{ creditHistory.entries.length }} entries</span>
-                  <span class="credit-entries-since">since {{ new Date(creditHistory.window.since_at).toLocaleDateString() }}</span>
+              <!-- Filter / sort / window controls -->
+              <div class="credit-controls">
+                <div class="credit-control-group">
+                  <button
+                    v-for="opt in [{key:'all',label:'All'},{key:'debits',label:'Spent'},{key:'grants',label:'Added'}]"
+                    :key="opt.key"
+                    :class="['credit-chip', creditHistoryFilter === opt.key ? 'active' : '']"
+                    type="button"
+                    @click="creditHistoryFilter = opt.key; reloadCreditHistory()"
+                  >{{ opt.label }}</button>
                 </div>
+
+                <div class="credit-control-group">
+                  <label class="credit-select-label">Window</label>
+                  <select v-model="creditHistorySince" class="credit-select" @change="reloadCreditHistory">
+                    <option :value="7">Last 7 days</option>
+                    <option :value="30">Last 30 days</option>
+                    <option :value="90">Last 90 days</option>
+                    <option :value="0">All time</option>
+                  </select>
+                </div>
+
+                <div class="credit-control-group">
+                  <label class="credit-select-label">Sort</label>
+                  <select v-model="creditHistorySort" class="credit-select" @change="reloadCreditHistory">
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="largest">Largest first</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Per-entry detail table -->
+              <div v-if="creditHistoryEntries.length" class="credit-entries-wrap">
                 <table class="credit-entries">
                   <thead>
                     <tr>
@@ -899,7 +965,7 @@ onMounted(() => {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="e in creditHistory.entries" :key="e.id">
+                    <tr v-for="e in creditHistoryEntries" :key="e.id">
                       <td>{{ new Date(e.created_at).toLocaleString() }}</td>
                       <td>
                         <span :class="['op-tag', e.operation.startsWith('grant:') ? 'grant' : '']">{{ formatOperation(e.operation) }}</span>
@@ -913,8 +979,25 @@ onMounted(() => {
                     </tr>
                   </tbody>
                 </table>
+
+                <div class="credit-pagination">
+                  <span class="credit-page-info">{{ creditHistoryEntries.length }} {{ creditHistoryEntries.length === 1 ? 'entry' : 'entries' }} shown</span>
+                  <button
+                    v-if="creditHistoryHasMore && creditHistorySort !== 'largest'"
+                    class="btn btn-ghost btn-sm"
+                    type="button"
+                    :disabled="creditHistoryLoading"
+                    @click="loadCreditHistory({ append: true })"
+                  >
+                    {{ creditHistoryLoading ? 'Loading…' : 'Load more →' }}
+                  </button>
+                  <span v-else-if="creditHistorySort === 'largest'" class="credit-page-info muted">
+                    Switch sort to Newest / Oldest to paginate further.
+                  </span>
+                  <span v-else class="credit-page-info muted">All caught up.</span>
+                </div>
               </div>
-              <div v-else class="credit-empty">No credit activity in the last 30 days.</div>
+              <div v-else class="credit-empty">No credit activity matches these filters.</div>
             </div>
 
             <div v-else-if="creditHistoryError" class="banner error" style="margin-top:12px;">{{ creditHistoryError }}</div>
@@ -1256,6 +1339,17 @@ onMounted(() => {
 .credit-debit { color: var(--color-text-primary); font-family: "Space Mono", monospace; }
 .credit-grant { color: #34d399; font-family: "Space Mono", monospace; }
 .credit-empty { font-size: 13px; color: var(--color-text-muted); padding: 16px; text-align: center; border: 1px dashed var(--color-border); border-radius: 8px; }
+.credit-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin: 14px 0 12px; padding: 12px 14px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 8px; }
+.credit-control-group { display: flex; align-items: center; gap: 6px; }
+.credit-chip { font-size: 12px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text-secondary); cursor: pointer; font-family: inherit; transition: 0.15s; }
+.credit-chip:hover { border-color: rgba(255,107,53,0.4); color: var(--color-text-primary); }
+.credit-chip.active { background: rgba(255,107,53,0.1); border-color: var(--color-accent); color: var(--color-accent); }
+.credit-select-label { font-size: 11px; color: var(--color-text-muted); font-family: "Space Mono", monospace; letter-spacing: 0.05em; text-transform: uppercase; }
+.credit-select { font-size: 12px; padding: 5px 24px 5px 10px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-primary); font-family: inherit; cursor: pointer; }
+.credit-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 4px 0; margin-top: 6px; }
+.credit-page-info { font-size: 11px; color: var(--color-text-muted); font-family: "Space Mono", monospace; letter-spacing: 0.05em; }
+.credit-page-info.muted { opacity: 0.5; }
+.credit-op-credits.grant { color: #34d399; }
 
 /* ── Plan table ── */
 .topup-section { margin: 22px 0; padding: 18px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 10px; }

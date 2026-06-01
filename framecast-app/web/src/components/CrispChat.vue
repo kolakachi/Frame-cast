@@ -23,6 +23,13 @@ onMounted(() => {
 
   s.onload = () => {
     try {
+      // Move the bubble to bottom-LEFT inside the app. The default
+      // bottom-right slot collides with our action bars (Publish / Schedule /
+      // Export / Save). Marketing site keeps bottom-right — those pages
+      // have no critical UI there. The 'position:reverse' config maps to
+      // bottom-left in Crisp's coordinate system.
+      window.$crisp.push(['config', 'position:reverse', [true]])
+
       const u = auth.user
       if (u?.email) window.$crisp.push(['set', 'user:email', [u.email]])
       if (u?.name)  window.$crisp.push(['set', 'user:nickname', [u.name]])

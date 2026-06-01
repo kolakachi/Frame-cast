@@ -235,13 +235,25 @@ class VerificationController extends Controller
 
     /**
      * GET /me/credit-history — paginated credit_ledger entries for the
-     * caller's workspace. Returns last N rows ordered most-recent first,
-     * plus a per-operation summary for the same window (defaults: last 30
-     * days). The user-facing settings page consumes both.
+     * caller's workspace.
      *
      * Query params:
-     *   ?per_page=50  (max 100)
-     *   ?since=30     (days back, max 365, default 30)
+     *   ?per_page=25      max 100, default 25
+     *   ?since=30         days back, max 365, default 30. Use 0 for "all-time"
+     *                     (no time filter — useful when the user wants to find
+     *                     a specific grant from months ago).
+     *   ?filter=all       all | debits | grants
+     *   ?sort=newest      newest | oldest | largest (largest = biggest debit/grant first)
+     *   ?cursor=:id       id of last seen row; returns rows OLDER than that
+     *                     when sort=newest (or NEWER when sort=oldest)
+     *
+     * Returns:
+     *   entries      — page slice
+     *   summary      — per-operation roll-up for the FILTERED window
+     *                  (not affected by cursor, only by since + filter)
+     *   balance      — live balance
+     *   next_cursor  — id to pass on the next page, or null if no more
+     *   window       — { since_days, since_at } so the UI can show the range
      */
     public function creditHistory(Request $request): JsonResponse
     {
@@ -251,28 +263,68 @@ class VerificationController extends Controller
             return $this->error('workspace_required', 'User is not assigned to a workspace.', 422);
         }
 
-        $perPage = min(max((int) $request->query('per_page', 50), 1), 100);
-        $sinceDays = min(max((int) $request->query('since', 30), 1), 365);
-        $sinceCutoff = now()->subDays($sinceDays);
+        $perPage   = min(max((int) $request->query('per_page', 25), 1), 100);
+        $sinceDays = min(max((int) $request->query('since', 30), 0), 365);
+        $filter    = in_array($request->query('filter'), ['all', 'debits', 'grants'], true)
+            ? $request->query('filter')
+            : 'all';
+        $sort      = in_array($request->query('sort'), ['newest', 'oldest', 'largest'], true)
+            ? $request->query('sort')
+            : 'newest';
+        $cursor    = (int) $request->query('cursor', 0);
 
-        $entries = CreditLedgerEntry::query()
-            ->where('workspace_id', $user->workspace_id)
-            ->where('created_at', '>=', $sinceCutoff)
-            ->orderByDesc('id')
-            ->limit($perPage)
-            ->get()
-            ->map(fn (CreditLedgerEntry $e) => $this->serializeLedgerEntry($e))
-            ->all();
+        $applyWindowAndFilter = function ($query) use ($user, $sinceDays, $filter) {
+            $query->where('workspace_id', $user->workspace_id);
+            if ($sinceDays > 0) {
+                $query->where('created_at', '>=', now()->subDays($sinceDays));
+            }
+            if ($filter === 'debits') {
+                // Deductions are stored with operation NOT starting 'grant:'.
+                $query->where('operation', 'not like', 'grant:%');
+            } elseif ($filter === 'grants') {
+                $query->where('operation', 'like', 'grant:%');
+            }
+        };
 
-        // Per-operation roll-up for the same window so the UI can show
-        // "this week: 600 on character images, 240 on animation, …" without
-        // a second round-trip.
-        $summary = CreditLedgerEntry::query()
-            ->where('workspace_id', $user->workspace_id)
-            ->where('created_at', '>=', $sinceCutoff)
+        // Page query — applies window, filter, sort, and cursor.
+        $pageQuery = CreditLedgerEntry::query();
+        $applyWindowAndFilter($pageQuery);
+
+        match ($sort) {
+            'oldest'  => $pageQuery->orderBy('id', 'asc'),
+            'largest' => $pageQuery->orderByRaw('ABS(credits) DESC')->orderByDesc('id'),
+            default   => $pageQuery->orderByDesc('id'),
+        };
+
+        if ($cursor > 0) {
+            // Cursor semantics depend on sort direction.
+            if ($sort === 'oldest') {
+                $pageQuery->where('id', '>', $cursor);
+            } elseif ($sort === 'largest') {
+                // For 'largest' we need a secondary tie-breaker (id) — keyset
+                // pagination on ABS(credits) is awkward, so use offset-style
+                // here by ignoring the cursor and returning the first page.
+                // (Most users only need ~3 'largest' pages at most.)
+                // Intentionally leave cursor as a no-op for 'largest'.
+            } else {
+                $pageQuery->where('id', '<', $cursor);
+            }
+        }
+
+        $rows    = $pageQuery->limit($perPage + 1)->get();
+        $hasMore = $rows->count() > $perPage;
+        if ($hasMore) {
+            $rows = $rows->take($perPage);
+        }
+        $entries = $rows->map(fn (CreditLedgerEntry $e) => $this->serializeLedgerEntry($e))->all();
+
+        // Summary is computed independently of cursor (it's the window total).
+        $summaryQuery = CreditLedgerEntry::query();
+        $applyWindowAndFilter($summaryQuery);
+        $summary = $summaryQuery
             ->selectRaw('operation, COUNT(*) as ops, SUM(credits) as credits')
             ->groupBy('operation')
-            ->orderByRaw('SUM(credits) DESC')
+            ->orderByRaw('ABS(SUM(credits)) DESC')
             ->get()
             ->map(fn ($row) => [
                 'operation' => (string) $row->operation,
@@ -283,10 +335,16 @@ class VerificationController extends Controller
 
         return response()->json([
             'data' => [
-                'entries'   => $entries,
-                'summary'   => $summary,
-                'balance'   => $this->credits->balance((int) $user->workspace_id),
-                'window'    => ['since_days' => $sinceDays, 'since_at' => $sinceCutoff->toIso8601String()],
+                'entries'     => $entries,
+                'summary'     => $summary,
+                'balance'     => $this->credits->balance((int) $user->workspace_id),
+                'next_cursor' => $hasMore ? ($rows->last()?->id ?? null) : null,
+                'window'      => [
+                    'since_days' => $sinceDays,
+                    'since_at'   => $sinceDays > 0 ? now()->subDays($sinceDays)->toIso8601String() : null,
+                ],
+                'filter'      => $filter,
+                'sort'        => $sort,
             ],
             'meta' => [],
         ]);
