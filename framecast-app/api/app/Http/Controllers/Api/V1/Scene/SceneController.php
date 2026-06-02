@@ -827,7 +827,7 @@ class SceneController extends Controller
 
         $validated = $request->validate([
             'style'           => ['sometimes', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon,photorealistic,cyberpunk_80s,anime_80s,anime_90s,dark_fantasy,fantasy_retro,comic,film_noir,line_drawing,watercolor,paper_cutout,cartoon,3d_animated'],
-            'prompt_override' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'prompt_override' => ['sometimes', 'nullable', 'string', 'max:700'],
         ]);
 
         // Prefer request style, then scene-level visual_style, then default.
@@ -880,7 +880,7 @@ class SceneController extends Controller
             // Accept any 3–10s from clients; the adapter clamps to 5 or 10 internally
             // (the Wan/Hailuo/Kling models only render those two buckets).
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
-            'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:500'],
+            'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:700'],
         ]);
         // Normalize: anything ≤ 7 maps to a 5s render, ≥ 8 to a 10s render. Cost follows.
         $requested = (int) ($validated['duration_seconds'] ?? 5);

@@ -4548,7 +4548,7 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div class="scene-query-label" style="margin-top:10px;">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
-                    <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="Leave blank to use scene script as the generation prompt"></textarea>
+                    <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" maxlength="700" placeholder="Leave blank to use scene script as the generation prompt"></textarea>
                   </template>
 
                   <template v-else-if="addSceneVisualMode === 'assets'">
@@ -4803,7 +4803,7 @@ onBeforeUnmount(() => {
                       </div>
 
                       <div class="scene-query-label" style="margin-top:10px;">Prompt override <span style="opacity:.5;font-weight:400;">(optional)</span></div>
-                      <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="Leave blank to use scene script as the generation prompt"></textarea>
+                      <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" maxlength="700" placeholder="Leave blank to use scene script as the generation prompt"></textarea>
                     </template>
 
                     <template v-else-if="addSceneVisualMode === 'assets'">
@@ -5310,6 +5310,7 @@ onBeforeUnmount(() => {
                     v-model="aiImagePromptOverride"
                     class="ai-prompt-area"
                     rows="2"
+                    maxlength="700"
                     placeholder="Leave blank to use scene script as the generation prompt…"
                   ></textarea>
 
@@ -6480,7 +6481,7 @@ onBeforeUnmount(() => {
                 @click="animateMotionPrompt = s.text"
               >{{ s.label }}</button>
             </div>
-            <textarea v-model="animateMotionPrompt" class="ap-input" rows="2" maxlength="500" placeholder="e.g. slow camera push-in, subtle hair movement, drifting fog"></textarea>
+            <textarea v-model="animateMotionPrompt" class="ap-input" rows="2" maxlength="700" placeholder="e.g. slow camera push-in, subtle hair movement, drifting fog"></textarea>
             <div class="ap-hint">Pick a quick start above or type your own. Leave blank for a sensible default.</div>
           </div>
 
