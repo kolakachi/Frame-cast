@@ -499,6 +499,12 @@ onBeforeUnmount(() => {
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
             New Video
           </button>
+          <!-- Blank-project shortcut. Lives here permanently — the equivalent
+               button in the empty-state hero only shows up at zero projects. -->
+          <button class="quick-action" type="button" @click="openWizard('blank')">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Start from Scratch
+          </button>
           <button class="quick-action" type="button" @click="router.push({ name: 'series-create' })">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
             New Series
