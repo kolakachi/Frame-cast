@@ -29,6 +29,7 @@ class User extends Authenticatable
         'preferences_json',
         'onboarding_step',
         'onboarding_last_sent_at',
+        'last_seen_at',
     ];
 
     /**
@@ -53,6 +54,7 @@ class User extends Authenticatable
             'preferences_json' => 'array',
             'onboarding_step' => 'integer',
             'onboarding_last_sent_at' => 'datetime',
+            'last_seen_at' => 'datetime',
         ];
     }
 

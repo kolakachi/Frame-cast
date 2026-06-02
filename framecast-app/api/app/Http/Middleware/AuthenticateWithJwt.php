@@ -8,6 +8,7 @@ use App\Services\WorkspaceUsageService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthenticateWithJwt
@@ -55,6 +56,16 @@ class AuthenticateWithJwt
         }
 
         $request->setUserResolver(fn (): User => $user);
+
+        // Bump last_seen_at, throttled to once per 5 minutes per user.
+        // Powers the admin "Last active" column. Wrapped in rescue() so a
+        // cache or DB hiccup never breaks an authenticated request.
+        \rescue(function () use ($user): void {
+            $key = "user:{$user->getKey()}:last_seen_bumped";
+            if (Cache::add($key, 1, now()->addMinutes(5))) {
+                $user->forceFill(['last_seen_at' => now()])->saveQuietly();
+            }
+        }, null, false);
 
         return $next($request);
     }

@@ -116,7 +116,7 @@ class AdminController extends Controller
                         'exports' => (int) ($exportsByWorkspace[$wsId] ?? 0),
                         'spend_month_usd' => $this->money($spendByWorkspace[$wsId] ?? 0),
                         'created_at' => $user->created_at?->toIso8601String(),
-                        'last_login_at' => $user->updated_at?->toIso8601String(),
+                        'last_login_at' => $user->last_seen_at?->toIso8601String(),
                     ];
                 })->all(),
             ],
@@ -238,7 +238,7 @@ class AdminController extends Controller
                     'role' => $user->role,
                     'status' => $user->status,
                     'created_at' => $user->created_at?->toIso8601String(),
-                    'last_login_at' => $user->updated_at?->toIso8601String(),
+                    'last_login_at' => $user->last_seen_at?->toIso8601String(),
                 ],
                 'workspace' => $user->workspace ? $this->serializeWorkspace($user->workspace) : null,
                 'usage' => $user->workspace ? $this->usageService->summaryForWorkspace($user->workspace) : null,
