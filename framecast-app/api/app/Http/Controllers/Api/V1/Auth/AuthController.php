@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Mail\MagicLinkMail;
+use App\Mail\Onboarding\OnboardingDay0Welcome;
 use App\Models\MagicLinkToken;
 use App\Models\User;
 use App\Models\Workspace;
@@ -278,11 +279,24 @@ class AuthController extends Controller
                     'timezone'      => 'UTC',
                     'role'          => 'owner',
                     'status'        => 'active',
+                    // Step 1 = day-0 welcome dispatched below; the hourly
+                    // scanner picks up the remaining steps from here.
+                    'onboarding_step' => 1,
+                    'onboarding_last_sent_at' => now(),
                 ]);
 
                 $workspace->forceFill(['owner_user_id' => $user->getKey()])->save();
 
                 (new CreditService())->grant($workspace->getKey(), 200, 'registration');
+
+                // Day-0 welcome — queued so a slow SMTP doesn't block signup.
+                // Wrapped in try so a misconfigured mail driver can't fail
+                // the whole transaction.
+                try {
+                    Mail::to($user->email)->queue(new OnboardingDay0Welcome($user));
+                } catch (\Throwable $e) {
+                    report($e);
+                }
 
                 return $user->load('workspace');
             });

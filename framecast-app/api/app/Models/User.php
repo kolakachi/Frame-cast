@@ -27,6 +27,8 @@ class User extends Authenticatable
         'role',
         'status',
         'preferences_json',
+        'onboarding_step',
+        'onboarding_last_sent_at',
     ];
 
     /**
@@ -49,6 +51,8 @@ class User extends Authenticatable
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
             'preferences_json' => 'array',
+            'onboarding_step' => 'integer',
+            'onboarding_last_sent_at' => 'datetime',
         ];
     }
 
