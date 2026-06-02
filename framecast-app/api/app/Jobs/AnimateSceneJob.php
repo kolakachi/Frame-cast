@@ -172,14 +172,39 @@ class AnimateSceneJob implements ShouldQueue
 
     /**
      * Build a public, signed URL Replicate can fetch from.
+     *
+     * Replicate's i2v input validator sniffs the image format from the URL
+     * path (extension), NOT from the response Content-Type header. So
+     * `/media/assets/651` returns `Invalid image format ''` even though the
+     * file is a valid PNG with the right MIME. We prefer the direct B2
+     * public URL (which keeps the `.png` in the path) and only fall back to
+     * the signed Laravel route when the asset is stored somewhere we can't
+     * expose publicly.
      */
     private function publicUrlFor(Asset $asset): string
     {
         $storage = app(StorageService::class);
-        $isStoredPath = $storage->extractPath((string) $asset->storage_url) !== null;
-        if (! $isStoredPath) {
-            return (string) $asset->storage_url;
+        $rawStorageUrl = (string) $asset->storage_url;
+
+        // Already a plain HTTP URL → pass through.
+        if ($storage->extractPath($rawStorageUrl) === null) {
+            return $rawStorageUrl;
         }
+
+        // Resolve to a public B2/MinIO URL with the original extension intact.
+        try {
+            $publicUrl = $storage->url($rawStorageUrl);
+            if (filter_var($publicUrl, FILTER_VALIDATE_URL)
+                && preg_match('/\.(png|jpe?g|webp)(\?|$)/i', $publicUrl)) {
+                return $publicUrl;
+            }
+        } catch (\Throwable) {
+            // Fall through to the signed-route fallback.
+        }
+
+        // Last resort: signed Laravel route. Replicate may reject if it
+        // can't sniff the extension; that's the bug this function avoids
+        // when the public URL path is available.
         return URL::temporarySignedRoute(
             'media.assets.content',
             now()->addHours(2),
