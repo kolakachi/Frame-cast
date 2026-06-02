@@ -3736,8 +3736,26 @@ async function submitAnimate() {
   }
 }
 
+// Max attempts × ~5s/attempt sets the polling ceiling. Replicate i2v on
+// premium tier (Kling 2.1) routinely takes 3–5 min; image gen with character
+// (gpt-image-2) takes 30–90s. 80 attempts (~6–7 min) covers the slowest path
+// without leaving the spinner up forever if Reverb dropped the completion
+// event mid-run.
+const POLL_MAX_ATTEMPTS = 80;
+
 async function pollSceneUntilVisual(sceneId, attempt = 0) {
-  if (attempt >= 24) {
+  if (attempt >= POLL_MAX_ATTEMPTS) {
+    // Last-ditch: one final refresh so the cached scene state reflects
+    // reality even if we just gave up. Without this, animation_in_progress
+    // stays true locally and the UI shows "Animating…" indefinitely while
+    // the backend has actually completed.
+    try {
+      const response = await api.get(`/scenes/${sceneId}/preview`);
+      const refreshed = normalizeScenePayload(response.data?.data?.scene ?? null);
+      if (refreshed) replaceSceneInCollection(refreshed);
+    } catch {
+      // Silent — if even this fails, the user can hard-refresh.
+    }
     aiImagePending.value = false;
     return;
   }
