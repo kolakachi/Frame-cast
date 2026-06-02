@@ -146,10 +146,15 @@ class GenerateAIImageJob implements ShouldQueue
             ]);
 
             if (! $this->sceneStillMatchesGeneration($scene)) {
+                Log::warning('GenerateAIImageJob: post-asset guard aborted; asset created but scene not linked', [
+                    'scene_id' => $this->sceneId,
+                    'asset_id' => $asset->getKey(),
+                    'job_token' => $this->generationToken,
+                ]);
                 return;
             }
 
-            $scene->forceFill([
+            $saved = $scene->forceFill([
                 'visual_type'                    => 'ai_image',
                 'visual_asset_id'                => $asset->getKey(),
                 'visual_prompt'                  => $prompt,
@@ -166,6 +171,29 @@ class GenerateAIImageJob implements ShouldQueue
                     'generation_token' => $this->generationToken,
                 ],
             ])->save();
+
+            // Defensive: if Eloquent silently no-ops the save (observed once
+            // on prod 2026-06-02, scene 187), fall back to a raw UPDATE so the
+            // asset doesn't end up orphaned. Loud-log either way for forensics.
+            if (! $saved) {
+                Log::error('GenerateAIImageJob: forceFill+save returned falsy; falling back to raw UPDATE', [
+                    'scene_id' => $this->sceneId,
+                    'asset_id' => $asset->getKey(),
+                ]);
+            }
+            $rowsAffected = \DB::table('scenes')->where('id', $this->sceneId)->whereNull('visual_asset_id')->update([
+                'visual_asset_id' => $asset->getKey(),
+                'visual_type'     => 'ai_image',
+                'updated_at'      => now(),
+            ]);
+            // $rowsAffected = 0 is the expected case (Eloquent save already won).
+            // $rowsAffected = 1 means the save() lied and the raw UPDATE rescued it.
+            if ($rowsAffected > 0) {
+                Log::error('GenerateAIImageJob: raw UPDATE rescued an orphan', [
+                    'scene_id' => $this->sceneId,
+                    'asset_id' => $asset->getKey(),
+                ]);
+            }
 
             // BUGFIX 2026-05-31: charge based on which adapter actually ran.
             // Pre-ledger, this hardcoded AI_MEDIUM (15) regardless of path, so

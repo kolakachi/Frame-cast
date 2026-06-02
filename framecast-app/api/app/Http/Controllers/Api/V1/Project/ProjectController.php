@@ -695,10 +695,35 @@ class ProjectController extends Controller
         }
 
         foreach ($scenesNeedingVisuals as $scene) {
+            // Mirror SceneController::regenerateAIImage — set the in-progress
+            // lock + generation_token BEFORE dispatching so the editor's
+            // computed `activeSceneAIImagePending` reliably reflects state,
+            // and so the job's `sceneStillMatchesGeneration()` guard has a
+            // consistent token to compare against. Without this, jobs ran
+            // with a null token and scenes occasionally ended up with an
+            // orphaned asset + null settings_json + stuck "AI Generating…"
+            // spinner (observed prod 2026-06-02 project 20 scene 187).
+            $token = (string) Str::uuid();
+            $scene->forceFill([
+                'image_generation_settings_json' => array_merge(
+                    $scene->image_generation_settings_json ?? [],
+                    [
+                        'in_progress'           => true,
+                        'last_error'            => null,
+                        'needs_visual'          => false,
+                        'generation_token'      => $token,
+                        'generation_started_at' => now()->toIso8601String(),
+                    ],
+                ),
+            ])->save();
+
             GenerateAIImageJob::dispatch(
                 $scene->getKey(),
                 $scene->project_id,
                 (string) ($scene->visual_style ?: 'cinematic'),
+                null,
+                $scene->visual_style ?: null,
+                $token,
             );
         }
 

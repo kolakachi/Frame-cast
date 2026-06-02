@@ -392,12 +392,18 @@ function sceneHasResolvedAIImage(scene) {
 const activeSceneAIImagePending = computed(() => {
   const scene = activeScene.value;
   if (!scene) return false;
-  const settings = scene.image_generation_settings ?? {};
-  // in_progress is set by both the pipeline job and the manual endpoint
-  if (settings.in_progress) return true;
-  if (String(scene.visual_type || "") !== "ai_image") return false;
-  if (scene.visual_asset) return false;
-  return !settings.needs_visual;
+  // Treat the scene as pending ONLY when the backend has explicitly flagged
+  // it as in-progress (image_generation_settings_json.in_progress = true).
+  //
+  // Previous logic returned `!settings.needs_visual` as a fallback, which
+  // evaluated to `true` for any scene with visual_type=ai_image and no
+  // settings object — meaning a scene whose generation job silently failed
+  // to write back would show "AI Generating..." forever, with no recovery.
+  // Seen on prod 2026-06-02 (project 20, scene 187): orphaned asset, NULL
+  // settings, infinite spinner.
+  const settings = scene.image_generation_settings;
+  if (!settings) return false;
+  return Boolean(settings.in_progress);
 });
 
 // True while an i2v animation job is running for the active scene.
