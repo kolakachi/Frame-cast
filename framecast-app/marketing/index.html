@@ -686,9 +686,14 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;flex-di
 
       <!-- Card 3 — Short stories & narrative episodes -->
       <div class="uc-card">
-        <div class="uc-media" style="background:linear-gradient(135deg,#2d1b4e,#1a0a2e)">
-          <div class="uc-media-badge">30s · Story</div>
-          <svg class="uc-media-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <div class="uc-media has-video">
+          <video
+            class="uc-media-video"
+            src="https://s3.us-east-005.backblazeb2.com/frame-cast/exports/export-16.mp4"
+            autoplay muted loop playsinline preload="metadata"
+            aria-label="Short story sample with recurring protagonist character, made in WyvStudio">
+          </video>
+          <div class="uc-media-badge">Story · Made in WyvStudio</div>
           <div class="uc-media-caption">Protagonist character across three intercut scene environments</div>
         </div>
         <div class="uc-body">
