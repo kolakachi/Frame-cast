@@ -705,10 +705,15 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;flex-di
 
       <!-- Card 4 — Educational & explainer videos -->
       <div class="uc-card">
-        <div class="uc-media" style="background:linear-gradient(135deg,#3a1e1a,#1f0f0a)">
-          <div class="uc-media-badge">30s · Explainer</div>
-          <svg class="uc-media-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          <div class="uc-media-caption">Instructor character with animated concept b-roll alongside</div>
+        <div class="uc-media has-video">
+          <video
+            class="uc-media-video"
+            src="https://s3.us-east-005.backblazeb2.com/frame-cast/exports/export-13.mp4"
+            autoplay muted loop playsinline preload="metadata"
+            aria-label="ML concept explainer sample with recurring instructor character, made in WyvStudio">
+          </video>
+          <div class="uc-media-badge">Explainer · Made in WyvStudio</div>
+          <div class="uc-media-caption">Tech instructor character explaining a single concept — drops straight into a course module or a TikTok lesson series</div>
         </div>
         <div class="uc-body">
           <div class="uc-title">Explain anything in 60 seconds. With the same host every time.</div>
