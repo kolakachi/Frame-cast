@@ -256,7 +256,16 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;flex-di
   .pain-grid,.steps,.feature-grid,.visual-types,.pricing-grid,.proof-grid{grid-template-columns:1fr}
   .preview-body{grid-template-columns:1fr}
   .preview-sidebar,.preview-panel{display:none}
-  nav .nav-links{display:none}
+  /* Mobile nav: hide the CTAs (sign-in / start-free), keep section
+     anchors so a visitor can jump to How it works + Use cases. The
+     hero CTAs cover sign-up; navbar CTAs are redundant + crowd the
+     small screen. Features + Pricing get hidden too to keep the row
+     uncluttered at narrow widths. */
+  nav{padding:0 16px;gap:10px}
+  nav .nav-cta{display:none}
+  nav .nav-links{display:flex;gap:18px}
+  nav .nav-links a[href="#features"],
+  nav .nav-links a[href="#pricing"]{display:none}
   .uc-grid,.moat-scenes{grid-template-columns:repeat(2,1fr)}
   .moat-scenes .moat-scene:nth-child(n+3){display:none}
   .roads-grid{grid-template-columns:repeat(2,1fr)}
