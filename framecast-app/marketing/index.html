@@ -755,9 +755,14 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;flex-di
 
       <!-- Card 6 — Local, listing & community videos -->
       <div class="uc-card">
-        <div class="uc-media" style="background:linear-gradient(135deg,#1e261a,#0f130d)">
-          <div class="uc-media-badge">45s · Listing</div>
-          <svg class="uc-media-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <div class="uc-media has-video">
+          <video
+            class="uc-media-video"
+            src="https://s3.us-east-005.backblazeb2.com/frame-cast/exports/export-19.mp4"
+            autoplay muted loop playsinline preload="metadata"
+            aria-label="Listing sample with recurring agent character, made in WyvStudio">
+          </video>
+          <div class="uc-media-badge">Listing · Made in WyvStudio</div>
           <div class="uc-media-caption">Agent character intro + property photo sequence + branded overlay</div>
         </div>
         <div class="uc-body">
