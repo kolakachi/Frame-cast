@@ -37,6 +37,10 @@ Route::prefix('v1')->group(function (): void {
     // Paddle webhooks — unauthenticated, HMAC-verified inside the controller
     Route::post('/webhooks/paddle', PaddleWebhookController::class);
 
+    // Public content-report endpoint (anyone can submit, no auth required).
+    // Rate-limited per-IP inside the controller. Backs the form at /report.
+    Route::post('/report-content', [\App\Http\Controllers\Api\V1\Public\ReportContentController::class, 'store']);
+
     Route::prefix('/auth')->group(function (): void {
         Route::post('/login', [AuthController::class, 'login']);
         Route::post('/magic-link', [AuthController::class, 'magicLink']);
@@ -97,6 +101,11 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/audit-log', [AdminController::class, 'auditLog']);
             Route::get('/failure-traces', [AdminController::class, 'failureTraces']);
             Route::get('/storage', [AdminController::class, 'storage']);
+
+            // Trust & Safety — moderation events triage
+            Route::get('/moderation/events', [\App\Http\Controllers\Api\V1\Admin\AdminModerationController::class, 'index']);
+            Route::get('/moderation/events/{eventId}', [\App\Http\Controllers\Api\V1\Admin\AdminModerationController::class, 'show'])->whereNumber('eventId');
+            Route::patch('/moderation/events/{eventId}', [\App\Http\Controllers\Api\V1\Admin\AdminModerationController::class, 'review'])->whereNumber('eventId');
 
             // SFX library
             Route::get('/sfx', [\App\Http\Controllers\Api\V1\Admin\AdminSfxController::class, 'index']);

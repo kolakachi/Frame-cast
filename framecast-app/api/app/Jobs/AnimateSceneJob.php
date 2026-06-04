@@ -156,6 +156,26 @@ class AnimateSceneJob implements ShouldQueue
 
             GenerationProgressed::dispatch($this->projectId, 'animation', 'completed', null, ['scene_id' => $this->sceneId]);
         } catch (\Throwable $e) {
+            // Animation safety rejections from Replicate (Kling/Hailuo/Wan
+            // each have their own content filters) get logged to
+            // moderation_events the same way image gen rejections do.
+            $msg = strtolower($e->getMessage());
+            if (str_contains($msg, 'policy') || str_contains($msg, 'safety') || str_contains($msg, 'content') || str_contains($msg, 'nsfw')) {
+                rescue(fn () => app(\App\Services\Moderation\ModerationService::class)->recordRejection(
+                    $e->getMessage(),
+                    [
+                        'workspace_id' => $scene->project->workspace_id ?? null,
+                        'user_id'      => $scene->project->created_by_user_id ?? null,
+                        'project_id'   => $this->projectId,
+                        'scene_id'     => $this->sceneId,
+                        'operation'    => 'animate:' . ($this->tier ?? 'unknown'),
+                        'prompt'       => $this->motionPrompt ?? null,
+                        'reference_asset_id' => $scene->visual_asset_id,
+                        'metadata'     => ['tier' => $this->tier ?? null],
+                    ],
+                ));
+            }
+
             $this->stampAnimationState($scene->fresh() ?: $scene, [
                 'animation_in_progress' => false,
                 'animation_last_error'  => mb_substr($e->getMessage(), 0, 1000),

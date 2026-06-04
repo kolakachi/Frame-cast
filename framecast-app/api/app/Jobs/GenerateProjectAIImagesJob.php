@@ -71,6 +71,27 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                     'error' => $exception->getMessage(),
                 ]);
 
+                // Log moderation rejection for bulk-pipeline failures too. Same
+                // shape as GenerateAIImageJob: only when the message looks like
+                // a content-policy refusal, not a transport / timeout error.
+                if (str_contains(strtolower($exception->getMessage()), 'policy') || str_contains(strtolower($exception->getMessage()), 'safety')) {
+                    $scene->loadMissing('character');
+                    $usedCharacter = $scene->character_id && $scene->character?->reference_asset_id;
+                    rescue(fn () => app(\App\Services\Moderation\ModerationService::class)->recordRejection(
+                        $exception->getMessage(),
+                        [
+                            'workspace_id' => $project->workspace_id,
+                            'user_id'      => $project->created_by_user_id,
+                            'project_id'   => $project->getKey(),
+                            'scene_id'     => $scene->getKey(),
+                            'operation'    => $usedCharacter ? 'ai_image:character' : 'ai_image:project',
+                            'prompt'       => $scene->visual_prompt,
+                            'reference_asset_id' => $usedCharacter ? $scene->character->reference_asset_id : null,
+                            'metadata'     => ['style' => $project->ai_broll_style ?? 'cinematic', 'phase' => 'project_bulk'],
+                        ],
+                    ));
+                }
+
                 $scene->forceFill([
                     'image_generation_settings_json' => array_merge(
                         $scene->image_generation_settings_json ?? [],

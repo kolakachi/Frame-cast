@@ -33,6 +33,91 @@ const topbarTitles = {
   workspaces: 'Workspaces', videos: 'All Videos',
   jobs: 'Queue & Jobs', billing: 'Billing & Spend', audit: 'Audit Log',
   failures: 'Job Failures', storage: 'Storage',
+  moderation: 'Trust & Safety',
+}
+
+// ── Trust & Safety (moderation events) ────────────────────────────────────────
+const modLoading = ref(false)
+const modEvents = ref([])
+const modCounters = ref({ total_24h: 0, unreviewed: 0, high_severity: 0 })
+const modUnreviewedCount = ref(0)
+const modPage = ref(1)
+const modPerPage = ref(50)
+const modTotal = ref(0)
+const modLastPage = ref(1)
+const modFilterSource = ref('')
+const modFilterSeverity = ref('')
+const modFilterUnreviewed = ref(true)
+const modSelectedEvent = ref(null)
+const modActionDraft = ref({ action_taken: 'no_action', action_notes: '' })
+
+async function loadModeration() {
+  modLoading.value = true
+  try {
+    const params = {
+      page: modPage.value,
+      per_page: modPerPage.value,
+    }
+    if (modFilterSource.value) params.source = modFilterSource.value
+    if (modFilterSeverity.value) params.severity = modFilterSeverity.value
+    if (modFilterUnreviewed.value) params.unreviewed = '1'
+    const res = await api.get('/admin/moderation/events', { params })
+    modEvents.value = res.data?.data?.events ?? []
+    modCounters.value = res.data?.data?.counters ?? { total_24h: 0, unreviewed: 0, high_severity: 0 }
+    modUnreviewedCount.value = modCounters.value.unreviewed
+    const p = res.data?.meta?.pagination ?? {}
+    modTotal.value = p.total ?? 0
+    modLastPage.value = p.last_page ?? 1
+  } catch (e) {
+    modEvents.value = []
+  } finally {
+    modLoading.value = false
+  }
+}
+
+async function openModEvent(id) {
+  try {
+    const res = await api.get(`/admin/moderation/events/${id}`)
+    modSelectedEvent.value = res.data?.data ?? null
+    modActionDraft.value = {
+      action_taken: modSelectedEvent.value?.event?.action_taken || 'no_action',
+      action_notes: modSelectedEvent.value?.event?.action_notes || '',
+    }
+  } catch {}
+}
+
+async function submitModReview() {
+  if (!modSelectedEvent.value?.event?.id) return
+  try {
+    const res = await api.patch(`/admin/moderation/events/${modSelectedEvent.value.event.id}`, modActionDraft.value)
+    modSelectedEvent.value = { ...modSelectedEvent.value, event: res.data?.data?.event }
+    await loadModeration()
+  } catch {}
+}
+
+function modFilter() { modPage.value = 1; loadModeration() }
+function modSeverityClass(sev) {
+  return {
+    info: 'sev-info', low: 'sev-low', medium: 'sev-med', high: 'sev-high', critical: 'sev-crit'
+  }[sev] || 'sev-low'
+}
+function modSourceLabel(src) {
+  return ({
+    generation_rejection: 'Provider rejection',
+    user_report:          'User report',
+    pattern_alert:        'Pattern alert',
+    admin_action:         'Admin action',
+  })[src] || src
+}
+
+// Refresh unreviewed counter every 60s so the sidebar badge stays current
+// without forcing the admin to navigate into the tab.
+let modBadgePoll = null
+async function refreshModBadge() {
+  try {
+    const res = await api.get('/admin/moderation/events', { params: { unreviewed: '1', per_page: 1 } })
+    modUnreviewedCount.value = res.data?.data?.counters?.unreviewed ?? 0
+  } catch {}
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -550,6 +635,7 @@ function navigate(view) {
   if (view === 'failures') loadFailures()
   if (view === 'billing') { loadBillingChart(); loadAudit() }
   if (view === 'storage') loadStorage()
+  if (view === 'moderation') loadModeration()
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -577,6 +663,10 @@ async function logout() {
 onMounted(() => {
   loadDashboard()
   loadSpendChart()
+  // Poll the Trust & Safety badge so the sidebar count stays current
+  // without making the admin navigate into the tab to refresh.
+  refreshModBadge()
+  modBadgePoll = setInterval(refreshModBadge, 60_000)
 })
 </script>
 
@@ -639,6 +729,11 @@ onMounted(() => {
         <button :class="['nav-item', activeView === 'storage' ? 'active' : '']" @click="navigate('storage')">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
           Storage
+        </button>
+        <button :class="['nav-item', activeView === 'moderation' ? 'active' : '']" @click="navigate('moderation')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          Trust &amp; Safety
+          <span v-if="modUnreviewedCount > 0" class="nav-badge">{{ modUnreviewedCount }}</span>
         </button>
       </nav>
       <div class="gm-sidebar-foot">
@@ -1444,6 +1539,137 @@ onMounted(() => {
           </template>
         </template>
 
+        <!-- ── Trust & Safety (Moderation Events) ─────────────────────────── -->
+        <template v-if="activeView === 'moderation'">
+          <div class="moderation-page">
+            <div class="gm-section-title">Trust &amp; Safety</div>
+            <p style="font-size:12px;color:var(--gm-muted);margin-bottom:20px">Provider rejections, user reports, and pattern alerts. Click any row to triage.</p>
+
+            <div class="mod-counters">
+              <div class="mod-counter">
+                <div class="mod-counter-label">Events (24h)</div>
+                <div class="mod-counter-value">{{ modCounters.total_24h }}</div>
+              </div>
+              <div class="mod-counter">
+                <div class="mod-counter-label">Unreviewed</div>
+                <div class="mod-counter-value">{{ modCounters.unreviewed }}</div>
+              </div>
+              <div class="mod-counter mod-counter-warn">
+                <div class="mod-counter-label">Unreviewed high / critical</div>
+                <div class="mod-counter-value">{{ modCounters.high_severity }}</div>
+              </div>
+            </div>
+
+            <div class="mod-filters">
+              <select v-model="modFilterSource" @change="modFilter" class="mod-select">
+                <option value="">All sources</option>
+                <option value="generation_rejection">Provider rejection</option>
+                <option value="user_report">User report</option>
+                <option value="pattern_alert">Pattern alert</option>
+                <option value="admin_action">Admin action</option>
+              </select>
+              <select v-model="modFilterSeverity" @change="modFilter" class="mod-select">
+                <option value="">All severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="info">Info</option>
+              </select>
+              <label class="mod-toggle">
+                <input type="checkbox" v-model="modFilterUnreviewed" @change="modFilter" />
+                Unreviewed only
+              </label>
+              <button class="btn btn-ghost btn-sm" type="button" @click="loadModeration">↻ Refresh</button>
+            </div>
+
+            <div v-if="modLoading" style="padding:24px;color:var(--gm-muted);font-size:13px;">Loading…</div>
+            <table v-else class="gm-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Source</th>
+                  <th>Severity</th>
+                  <th>Workspace / User</th>
+                  <th>Operation</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="modEvents.length === 0">
+                  <td colspan="7" style="text-align:center;padding:32px;color:var(--gm-muted);font-size:13px;">No events match the current filter. Quiet days are good news.</td>
+                </tr>
+                <tr v-for="e in modEvents" :key="e.id" class="gm-row-click" @click="openModEvent(e.id)">
+                  <td class="cell-muted">{{ fmtDate(e.created_at) }}</td>
+                  <td>{{ modSourceLabel(e.source) }}</td>
+                  <td><span :class="['mod-sev', modSeverityClass(e.severity)]">{{ e.severity }}</span></td>
+                  <td>
+                    <div style="font-weight:500">{{ e.workspace?.name || '—' }} #{{ e.workspace?.id }}</div>
+                    <div class="cell-sub">{{ e.user?.email || '—' }}</div>
+                  </td>
+                  <td class="cell-muted">{{ e.operation || '—' }}</td>
+                  <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ e.reason }}</td>
+                  <td>
+                    <span v-if="e.reviewed_at" class="mod-pill mod-pill-done">Reviewed</span>
+                    <span v-else class="mod-pill mod-pill-open">Open</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Event detail modal -->
+          <div v-if="modSelectedEvent" class="gm-modal-overlay" @click.self="modSelectedEvent = null">
+            <div class="gm-modal mod-detail">
+              <div class="gm-modal-head">
+                <div>
+                  <div class="gm-modal-title">Event #{{ modSelectedEvent.event.id }}</div>
+                  <div style="font-size:12px;color:var(--gm-muted);margin-top:2px;">{{ modSourceLabel(modSelectedEvent.event.source) }} · {{ fmtDate(modSelectedEvent.event.created_at) }}</div>
+                </div>
+                <button class="gm-modal-close" @click="modSelectedEvent = null">✕</button>
+              </div>
+              <div class="gm-modal-body">
+                <div class="mod-detail-row"><span>Severity</span><span :class="['mod-sev', modSeverityClass(modSelectedEvent.event.severity)]">{{ modSelectedEvent.event.severity }}</span></div>
+                <div class="mod-detail-row"><span>Workspace</span><span>{{ modSelectedEvent.event.workspace?.name || '—' }} #{{ modSelectedEvent.event.workspace?.id }}</span></div>
+                <div class="mod-detail-row"><span>User</span><span>{{ modSelectedEvent.event.user?.email || '—' }}</span></div>
+                <div class="mod-detail-row"><span>Operation</span><span>{{ modSelectedEvent.event.operation || '—' }}</span></div>
+                <div v-if="modSelectedEvent.event.project_id" class="mod-detail-row"><span>Project</span><span>#{{ modSelectedEvent.event.project_id }} · scene #{{ modSelectedEvent.event.scene_id || '—' }}</span></div>
+                <div class="mod-detail-row"><span>Reason</span><span style="white-space:pre-wrap;">{{ modSelectedEvent.event.reason }}</span></div>
+                <div v-if="modSelectedEvent.event.prompt" class="mod-detail-row"><span>Prompt</span><span style="white-space:pre-wrap;font-family:monospace;font-size:12px;">{{ modSelectedEvent.event.prompt }}</span></div>
+                <div v-if="modSelectedEvent.event.report_url" class="mod-detail-row"><span>Reported URL</span><span><a :href="modSelectedEvent.event.report_url" target="_blank" rel="noopener">{{ modSelectedEvent.event.report_url }}</a></span></div>
+                <div v-if="modSelectedEvent.event.report_message" class="mod-detail-row"><span>Reporter message</span><span style="white-space:pre-wrap;">{{ modSelectedEvent.event.report_message }}</span></div>
+                <div v-if="modSelectedEvent.event.report_email" class="mod-detail-row"><span>Reporter email</span><span>{{ modSelectedEvent.event.report_email }}</span></div>
+
+                <h4 style="margin:24px 0 10px;font-size:13px;font-weight:600;">Review &amp; Action</h4>
+                <div v-if="modSelectedEvent.event.reviewed_at" style="font-size:12px;color:var(--gm-muted);margin-bottom:10px;">
+                  Reviewed {{ fmtDate(modSelectedEvent.event.reviewed_at) }} by {{ modSelectedEvent.event.reviewer?.email || '—' }} — action: <strong>{{ modSelectedEvent.event.action_taken }}</strong>
+                </div>
+                <select v-model="modActionDraft.action_taken" class="mod-select" style="width:100%;margin-bottom:10px;">
+                  <option value="no_action">No action — record only</option>
+                  <option value="warning_sent">Warning sent</option>
+                  <option value="content_removed">Content removed</option>
+                  <option value="feature_suspended">Feature suspended</option>
+                  <option value="account_suspended">Account suspended</option>
+                  <option value="workspace_terminated">Workspace terminated</option>
+                  <option value="reported_to_authorities">Reported to authorities</option>
+                </select>
+                <textarea v-model="modActionDraft.action_notes" placeholder="Notes (optional) — what you did and why" rows="3" style="width:100%;background:var(--gm-bg-card);border:1px solid var(--gm-border);border-radius:6px;padding:9px 11px;font-family:inherit;font-size:13px;color:var(--gm-text);resize:vertical;"></textarea>
+                <button class="btn btn-primary btn-sm" type="button" @click="submitModReview" style="margin-top:12px;">Save review</button>
+
+                <h4 v-if="modSelectedEvent.related_events?.length" style="margin:24px 0 10px;font-size:13px;font-weight:600;">Other events for this workspace</h4>
+                <div v-if="modSelectedEvent.related_events?.length" style="display:flex;flex-direction:column;gap:6px;">
+                  <div v-for="r in modSelectedEvent.related_events" :key="r.id" class="mod-related-row" @click="openModEvent(r.id)">
+                    <span :class="['mod-sev', modSeverityClass(r.severity)]" style="margin-right:8px;">{{ r.severity }}</span>
+                    <span style="flex:1;color:var(--gm-text);">{{ modSourceLabel(r.source) }} — {{ r.operation || '—' }}</span>
+                    <span class="cell-muted" style="font-size:11px;">{{ fmtDate(r.created_at) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <!-- ── Plans & Credits ─────────────────────────── -->
         <template v-if="activeView === 'plans'">
           <div class="plans-page">
@@ -1837,6 +2063,42 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* Trust & Safety / moderation tab */
+.gm-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.gm-modal { background: #14141c; border: 1px solid #2a2a36; border-radius: 12px; max-width: 640px; width: 90vw; max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.gm-modal-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid #2a2a36; }
+.gm-modal-title { font-size: 15px; font-weight: 600; color: #ececf3; }
+.gm-modal-close { background: transparent; border: none; color: #6b7280; cursor: pointer; font-size: 18px; padding: 4px 8px; border-radius: 6px; }
+.gm-modal-close:hover { color: #ececf3; background: #1d1d28; }
+.gm-modal-body { padding: 18px 22px; overflow-y: auto; }
+.moderation-page { padding: 4px 2px 24px; }
+.mod-counters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.mod-counter { background: #1a1d24; border: 1px solid #2a2d38; border-radius: 8px; padding: 14px 16px; }
+.mod-counter-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
+.mod-counter-value { font-size: 22px; font-weight: 700; color: #ececf3; margin-top: 4px; }
+.mod-counter-warn { border-color: rgba(255,80,80,0.35); }
+.mod-counter-warn .mod-counter-value { color: #fca5a5; }
+.mod-filters { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.mod-select { background: #1a1d24; border: 1px solid #2a2d38; border-radius: 6px; padding: 7px 10px; color: #ececf3; font-size: 12.5px; font-family: inherit; outline: none; }
+.mod-select:focus { border-color: #ff6b35; }
+.mod-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #c9cad4; cursor: pointer; }
+.mod-sev { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.sev-info { background: rgba(120,120,140,0.18); color: #b0b3bf; }
+.sev-low { background: rgba(96,165,250,0.16); color: #93c5fd; }
+.sev-med { background: rgba(251,191,36,0.16); color: #fcd34d; }
+.sev-high { background: rgba(251,113,53,0.20); color: #fdba74; }
+.sev-crit { background: rgba(239,68,68,0.22); color: #fca5a5; }
+.mod-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 600; }
+.mod-pill-open { background: rgba(255,107,53,0.16); color: #fdba74; }
+.mod-pill-done { background: rgba(52,211,153,0.16); color: #86efac; }
+.mod-detail { max-width: 720px; width: 92vw; max-height: 86vh; overflow: auto; }
+.mod-detail-row { display: grid; grid-template-columns: 140px 1fr; gap: 16px; padding: 8px 0; font-size: 13px; border-bottom: 1px solid #1f2128; }
+.mod-detail-row > span:first-child { color: #6b7280; font-size: 12px; }
+.mod-related-row { display: flex; align-items: center; gap: 8px; padding: 7px 9px; background: #1a1d24; border: 1px solid #2a2d38; border-radius: 6px; font-size: 12.5px; cursor: pointer; }
+.mod-related-row:hover { border-color: #494960; background: #1d1d28; }
+.gm-row-click { cursor: pointer; }
+.gm-row-click:hover { background: #1a1d24; }
+
 .gm-shell {
   display: flex;
   height: 100vh;

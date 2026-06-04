@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WyvStudio Report Content</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/favicon.svg" />
+<meta name="theme-color" content="#ff6b35" />
+<meta name="description" content="Report content created with WyvStudio that may violate our AI Safety, Acceptable Use, Synthetic Media, or Copyright policies." />
+<meta property="og:title" content="WyvStudio Report Content" />
+<meta property="og:description" content="Report content created with WyvStudio." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://wyvstudio.com/report" />
+<link rel="canonical" href="https://wyvstudio.com/report" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a0f;--surface:#14141c;--border:#25252f;--text:#ececf3;--text-dim:#8b8b9a;--text-faint:#5b5b6e;--accent:#ff6b35;--green:#34d399}
+body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;line-height:1.7}
+nav{padding:0 32px;height:60px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(10,10,15,.9);backdrop-filter:blur(12px);z-index:10}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.nav-logo span{font-size:15px;font-weight:700;color:var(--text)}
+.nav-logo span em{color:var(--accent);font-style:normal}
+.container{max-width:640px;margin:0 auto;padding:48px 24px 96px}
+h1{font-size:28px;font-weight:700;letter-spacing:-.5px;margin-bottom:8px}
+.lead{font-size:14px;color:var(--text-dim);margin-bottom:32px;padding-bottom:24px;border-bottom:1px solid var(--border)}
+.lead a{color:var(--accent);text-decoration:none}
+.lead a:hover{text-decoration:underline}
+form{display:flex;flex-direction:column;gap:18px}
+label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:var(--text)}
+.sub{font-weight:400;color:var(--text-dim);font-size:12px;line-height:1.5}
+input[type=text],input[type=url],input[type=email],select,textarea{font-family:inherit;font-size:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:11px 13px;color:var(--text);outline:none;transition:.15s;width:100%}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:120px;line-height:1.55}
+.help{font-size:12px;color:var(--text-faint);margin-top:-12px}
+button{font-family:inherit;font-size:14px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:13px 22px;cursor:pointer;transition:.15s;align-self:flex-start}
+button:hover{background:#ff875a}
+button:disabled{opacity:.5;cursor:not-allowed}
+.success,.error{padding:14px 18px;border-radius:8px;font-size:14px;line-height:1.5;display:none}
+.success{background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3);color:#a7f3d0}
+.success.shown{display:block}
+.error{background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.3);color:#fca5a5}
+.error.shown{display:block}
+.callout{background:rgba(255,107,53,.06);border:1px solid rgba(255,107,53,.18);border-radius:8px;padding:14px 18px;margin:0 0 24px;font-size:13px;color:var(--text-dim);line-height:1.6}
+.callout strong{color:var(--text)}
+footer{border-top:1px solid var(--border);padding:24px;text-align:center;font-size:12px;color:var(--text-faint)}
+footer a{color:var(--text-dim);text-decoration:none;margin:0 4px}
+footer a:hover{color:var(--text)}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">
+    <svg width="32" height="32" viewBox="0 0 64 64" fill="none" aria-label="WyvStudio logo"><rect width="64" height="64" rx="14" fill="#ff6b35"/><path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    <span><em>Wyv</em>Studio</span>
+  </a>
+</nav>
+
+<div class="container">
+  <h1>Report content</h1>
+  <p class="lead">If you have seen content created with WyvStudio that violates our <a href="/ai-safety">AI Safety Policy</a>, <a href="/acceptable-use">Acceptable Use Policy</a>, <a href="/synthetic-media">Synthetic Media Policy</a>, or <a href="/copyright">Copyright Policy</a>, please tell us. A human reviews every report.</p>
+
+  <div class="callout">
+    <strong>For copyright takedowns</strong>, please follow the DMCA-formatted notice process described on the <a href="/copyright" style="color:var(--accent);text-decoration:none">Copyright / DMCA</a> page — the legal-safe-harbour requirements are stricter than this form.
+  </div>
+
+  <div id="success" class="success" role="status"></div>
+  <div id="error" class="error" role="alert"></div>
+
+  <form id="report-form" novalidate>
+    <label>
+      URL of the content
+      <span class="sub">A WyvStudio share link, asset URL, or social-platform URL where the content appears.</span>
+      <input type="url" name="url" required maxlength="1000" placeholder="https://" autocomplete="url" />
+    </label>
+
+    <label>
+      What's wrong with it?
+      <select name="violation_type" required>
+        <option value="">— Choose one —</option>
+        <option value="csam">Child sexual abuse material (CSAM)</option>
+        <option value="nonconsensual_sexual">Non-consensual sexual content</option>
+        <option value="deepfake_impersonation">Deepfake / impersonation of a real person</option>
+        <option value="public_figure">Public-figure depiction</option>
+        <option value="hate_violence">Hate, harassment, or incitement of violence</option>
+        <option value="misinformation">Misinformation (health / election / financial)</option>
+        <option value="fraud_scam">Fraud, scam, or phishing</option>
+        <option value="copyright">Copyright infringement</option>
+        <option value="trademark">Trademark misuse</option>
+        <option value="other">Other</option>
+      </select>
+    </label>
+
+    <label>
+      Tell us what to look at
+      <span class="sub">Describe what's in the content and why it violates the policy. Be specific — the more context you give the faster we can act.</span>
+      <textarea name="message" required minlength="10" maxlength="4000" placeholder="The video at the URL above depicts..."></textarea>
+    </label>
+
+    <label>
+      Your email <span class="sub">Optional. We use it only if we need to ask you for more information.</span>
+      <input type="email" name="email" maxlength="255" placeholder="you@example.com" autocomplete="email" />
+    </label>
+
+    <button type="submit" id="submit-btn">Submit report</button>
+
+    <p style="font-size:12px;color:var(--text-faint);line-height:1.6;">
+      Filing a knowingly false report can subject you to liability for damages.
+      For CSAM, you may also report directly to the
+      <a href="https://report.cybertip.org/" target="_blank" rel="noopener" style="color:var(--text-dim)">NCMEC CyberTipline</a>.
+    </p>
+  </form>
+</div>
+
+<footer>
+  © 2026 Kollignton Kay LTD ·
+  <a href="/terms">Terms</a> ·
+  <a href="/privacy">Privacy</a> ·
+  <a href="/ai-safety">AI Safety</a> ·
+  <a href="/acceptable-use">AUP</a> ·
+  <a href="/synthetic-media">Synthetic Media</a> ·
+  <a href="/copyright">Copyright</a> ·
+  <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a>
+</footer>
+
+<script>
+(function(){
+  const form = document.getElementById('report-form');
+  const btn  = document.getElementById('submit-btn');
+  const ok   = document.getElementById('success');
+  const err  = document.getElementById('error');
+
+  form.addEventListener('submit', async function(e){
+    e.preventDefault();
+    ok.classList.remove('shown');
+    err.classList.remove('shown');
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+
+    const data = {
+      url:            form.url.value.trim(),
+      violation_type: form.violation_type.value,
+      message:        form.message.value.trim(),
+      email:          form.email.value.trim() || null,
+    };
+
+    try {
+      const res = await fetch('https://app.wyvstudio.com/api/v1/report-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const body = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        ok.textContent = body.data && body.data.message
+          ? body.data.message
+          : 'Thanks. A human reviews every report within five business days.';
+        ok.classList.add('shown');
+        form.reset();
+        btn.textContent = 'Submit another report';
+      } else if (res.status === 429) {
+        err.textContent = (body.error && body.error.message) || 'Too many reports from this address — please email hello@wyvstudio.com.';
+        err.classList.add('shown');
+        btn.textContent = 'Submit report';
+      } else {
+        const detail = body.error && body.error.details
+          ? Object.values(body.error.details).flat().join(' ')
+          : (body.error && body.error.message) || 'Could not submit. Please email hello@wyvstudio.com instead.';
+        err.textContent = detail;
+        err.classList.add('shown');
+        btn.textContent = 'Submit report';
+      }
+    } catch (e) {
+      err.textContent = 'Network error. Please email hello@wyvstudio.com directly.';
+      err.classList.add('shown');
+      btn.textContent = 'Submit report';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

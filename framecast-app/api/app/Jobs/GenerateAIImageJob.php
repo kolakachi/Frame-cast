@@ -230,7 +230,24 @@ class GenerateAIImageJob implements ShouldQueue
         } catch (\Throwable $e) {
             $isPolicyViolation = $this->isPolicyError($e->getMessage());
 
+            // Record every provider rejection in moderation_events so the
+            // admin Trust & Safety tab can surface repeat offenders + the
+            // daily pattern job has data to scan.
             if ($isPolicyViolation) {
+                rescue(fn () => app(\App\Services\Moderation\ModerationService::class)->recordRejection(
+                    $e->getMessage(),
+                    [
+                        'workspace_id' => $scene->project->workspace_id ?? null,
+                        'user_id'      => $scene->project->created_by_user_id ?? null,
+                        'project_id'   => $this->projectId,
+                        'scene_id'     => $this->sceneId,
+                        'operation'    => $useCharacterRef ? 'ai_image:character' : 'ai_image:manual',
+                        'prompt'       => $prompt ?? null,
+                        'reference_asset_id' => $useCharacterRef ? ($scene->character->reference_asset_id ?? null) : null,
+                        'metadata'     => ['style' => $this->style, 'phase' => 'initial'],
+                    ],
+                ));
+
                 Log::warning('GenerateAIImageJob: policy violation — attempting prompt rewrite', [
                     'scene_id' => $this->sceneId,
                 ]);
