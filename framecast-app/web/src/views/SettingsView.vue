@@ -172,6 +172,42 @@ const watermarkEnabled     = ref(false)
 
 const accountForm = ref({ name: '', timezone: 'UTC' })
 
+// ── Password set / change ─────────────────────────────────
+const passwordForm = ref({ current: '', next: '', confirm: '' })
+const passwordSaveState = ref('idle') // 'idle' | 'saving' | 'saved'
+const passwordError = ref('')
+
+const canSavePassword = computed(() => {
+  if (passwordForm.value.next.length < 8) return false
+  if (passwordForm.value.next !== passwordForm.value.confirm) return false
+  if (mePayload.value?.has_password && !passwordForm.value.current) return false
+  return true
+})
+
+async function savePassword() {
+  if (!canSavePassword.value || passwordSaveState.value === 'saving') return
+  passwordSaveState.value = 'saving'
+  passwordError.value = ''
+  try {
+    const body = { new_password: passwordForm.value.next }
+    if (mePayload.value?.has_password) body.current_password = passwordForm.value.current
+    await api.post('/auth/password/change', body)
+    passwordSaveState.value = 'saved'
+    passwordForm.value = { current: '', next: '', confirm: '' }
+    // After a successful set, refresh /me so the panel header flips from
+    // "Set a password" to "Change password" (has_password is now true).
+    try {
+      const me = await api.get('/me')
+      mePayload.value = me.data.data.user
+    } catch {}
+    // Auto-clear the success state after a few seconds.
+    setTimeout(() => { if (passwordSaveState.value === 'saved') passwordSaveState.value = 'idle' }, 4000)
+  } catch (e) {
+    passwordSaveState.value = 'idle'
+    passwordError.value = e.response?.data?.error?.message ?? 'Could not update password.'
+  }
+}
+
 // ── Danger zone: data export + account deletion (GDPR) ────
 const exportPending = ref(false)
 const deleteModalOpen = ref(false)
@@ -732,6 +768,48 @@ onMounted(() => {
             <div class="modal-actions">
               <button class="btn btn-primary" type="button" @click="saveAccount">
                 {{ saveState === 'saving' ? 'Saving…' : 'Save Account' }}
+              </button>
+            </div>
+
+            <!-- Password: set (if none yet) or change. We treat both flows
+                 in one panel — the current-password field only shows when
+                 the user already has a password. -->
+            <div class="section-title" style="margin-top:48px;">{{ mePayload?.has_password ? 'Change password' : 'Set a password' }}</div>
+            <div class="settings-section-desc">
+              {{ mePayload?.has_password
+                ? 'Update the password you use to sign in. Magic-link sign-in continues to work either way.'
+                : 'Add a password so you can sign in without a magic link. Magic-link sign-in continues to work either way.' }}
+            </div>
+
+            <div v-if="passwordSaveState === 'saved'" class="settings-row" style="background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.25);border-radius:8px;padding:10px 14px;margin-top:14px;color:#a7f3d0;font-size:13px;">
+              ✓ {{ mePayload?.has_password ? 'Password updated.' : 'Password set.' }}
+            </div>
+            <div v-if="passwordError" class="settings-row" style="background:rgba(255,80,80,0.07);border:1px solid rgba(255,80,80,0.25);border-radius:8px;padding:10px 14px;margin-top:14px;color:#fca5a5;font-size:13px;">
+              {{ passwordError }}
+            </div>
+
+            <div v-if="mePayload?.has_password" class="settings-row settings-row--first" style="margin-top:14px;">
+              <div class="settings-row-label"><div class="label-main">Current password</div></div>
+              <div class="settings-row-control">
+                <input v-model="passwordForm.current" class="settings-input" type="password" autocomplete="current-password" placeholder="········">
+              </div>
+            </div>
+            <div :class="['settings-row', !mePayload?.has_password ? 'settings-row--first' : '']" :style="!mePayload?.has_password ? 'margin-top:14px;' : ''">
+              <div class="settings-row-label"><div class="label-main">New password</div></div>
+              <div class="settings-row-control">
+                <input v-model="passwordForm.next" class="settings-input" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters">
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-label"><div class="label-main">Confirm new password</div></div>
+              <div class="settings-row-control">
+                <input v-model="passwordForm.confirm" class="settings-input" type="password" autocomplete="new-password" minlength="8" placeholder="Re-enter the same password">
+                <div v-if="passwordForm.confirm && passwordForm.confirm !== passwordForm.next" style="font-size:12px;color:#fca5a5;margin-top:6px;">Passwords don't match.</div>
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button class="btn btn-primary" type="button" :disabled="!canSavePassword || passwordSaveState === 'saving'" @click="savePassword">
+                {{ passwordSaveState === 'saving' ? 'Saving…' : (mePayload?.has_password ? 'Update password' : 'Set password') }}
               </button>
             </div>
 

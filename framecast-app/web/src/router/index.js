@@ -7,6 +7,8 @@ import AssetLibraryView from '../views/AssetLibraryView.vue'
 import LoginView from '../views/LoginView.vue'
 import MagicLinkView from '../views/MagicLinkView.vue'
 import RegisterView from '../views/RegisterView.vue'
+import ForgotPasswordView from '../views/ForgotPasswordView.vue'
+import ResetPasswordView from '../views/ResetPasswordView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import VariantsView from '../views/VariantsView.vue'
 import AdminView from '../views/AdminView.vue'
@@ -29,6 +31,8 @@ const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
   { path: '/register', name: 'register', component: RegisterView, meta: { guestOnly: true } },
   { path: '/auth/magic', name: 'magic-link', component: MagicLinkView },
+  { path: '/auth/forgot', name: 'forgot-password', component: ForgotPasswordView, meta: { guestOnly: true } },
+  { path: '/auth/reset', name: 'reset-password', component: ResetPasswordView, meta: { guestOnly: true } },
   { path: '/approve/:token', name: 'approval-review', component: ApprovalReviewView, meta: { public: true } },
   { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/assets', name: 'asset-library', component: AssetLibraryView, meta: { requiresAuth: true } },

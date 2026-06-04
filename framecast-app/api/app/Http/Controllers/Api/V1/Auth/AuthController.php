@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api\V1\Auth;
 use App\Http\Controllers\Controller;
 use App\Mail\MagicLinkMail;
 use App\Mail\Onboarding\OnboardingDay0Welcome;
+use App\Mail\PasswordResetMail;
 use App\Models\MagicLinkToken;
+use App\Models\PasswordResetToken;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Auth\AuthSessionService;
@@ -182,6 +184,179 @@ class AuthController extends Controller
         ])->save();
 
         return $this->issueSessionResponse($magicLinkToken->user, $request);
+    }
+
+    /**
+     * Issue a password-reset token + email it. Always returns the same
+     * envelope ("we sent a reset link") regardless of whether the email
+     * matches a real account — prevents enumeration.
+     */
+    public function requestPasswordReset(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email:rfc'],
+        ]);
+
+        $email = strtolower($validated['email']);
+
+        // Per-IP throttle so an attacker can't enumerate or spam reset emails.
+        $ipKey = 'pwreset:ip:'.sha1((string) $request->ip());
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($ipKey, 10)) {
+            return $this->error('rate_limited', 'Too many requests from this address. Please try again later.', 429);
+        }
+        \Illuminate\Support\Facades\RateLimiter::hit($ipKey, 3600);
+
+        // Per-email throttle (3 per hour) so an attacker can't burn out
+        // a specific account's inbox.
+        $emailKey = 'pwreset:email:'.sha1($email);
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($emailKey, 3)) {
+            return response()->json([
+                'data' => ['sent' => true, 'message' => 'If that email is registered, a reset link is on its way.'],
+            ]);
+        }
+        \Illuminate\Support\Facades\RateLimiter::hit($emailKey, 3600);
+
+        $user = User::query()->where('email', $email)->first();
+
+        // Only issue + send if the user actually exists. But we return the
+        // same response either way so the API doesn't leak which emails
+        // are registered.
+        if ($user) {
+            // Invalidate any pending tokens for this email so a stale reset
+            // link can't outlive a freshly-requested one.
+            PasswordResetToken::query()
+                ->where('email', $email)
+                ->whereNull('used_at')
+                ->update(['used_at' => now()]);
+
+            $token = \Illuminate\Support\Str::random(48);
+            $tokenHash = hash('sha256', $token);
+
+            PasswordResetToken::query()->create([
+                'email'      => $email,
+                'token_hash' => $tokenHash,
+                'expires_at' => now()->addMinutes(60),
+                'ip_address' => $request->ip(),
+            ]);
+
+            $base = rtrim((string) config('app.web_app_url', env('WEB_APP_URL', 'https://app.wyvstudio.com')), '/');
+            $resetLink = $base.'/auth/reset?token='.$token;
+
+            try {
+                Mail::to($user->email)->queue(new PasswordResetMail($user, $resetLink));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return response()->json([
+            'data' => ['sent' => true, 'message' => 'If that email is registered, a reset link is on its way.'],
+        ]);
+    }
+
+    /**
+     * Verify a reset token is still valid (used by the frontend Reset
+     * Password page to decide whether to show the form or a "link expired"
+     * message before the user types a password).
+     */
+    public function verifyPasswordResetToken(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'token' => ['required', 'string'],
+        ]);
+
+        $row = PasswordResetToken::query()
+            ->where('token_hash', hash('sha256', $validated['token']))
+            ->first();
+
+        if (! $row || ! $row->isValid()) {
+            return $this->error('invalid_token', 'This reset link has expired or already been used. Request a new one.', 422);
+        }
+
+        return response()->json(['data' => ['valid' => true, 'email' => $row->email]]);
+    }
+
+    /**
+     * Consume a reset token and set the new password. Single-use: the
+     * token row is marked used_at as part of the same transaction so a
+     * compromised log/email can't be replayed.
+     */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'token'    => ['required', 'string'],
+            'password' => ['required', 'string', 'min:8', 'max:200'],
+        ]);
+
+        $row = PasswordResetToken::query()
+            ->where('token_hash', hash('sha256', $validated['token']))
+            ->lockForUpdate()
+            ->first();
+
+        if (! $row || ! $row->isValid()) {
+            return $this->error('invalid_token', 'This reset link has expired or already been used. Request a new one.', 422);
+        }
+
+        $user = User::query()->where('email', $row->email)->first();
+        if (! $user) {
+            // Token was valid but the user is gone (deleted / archived).
+            // Burn the token so it can't be reused on a recreated account.
+            $row->forceFill(['used_at' => now()])->save();
+            return $this->error('account_unavailable', 'The account associated with this link is no longer active.', 422);
+        }
+
+        \DB::transaction(function () use ($user, $validated, $row): void {
+            $user->forceFill(['password_hash' => Hash::make($validated['password'])])->save();
+            $row->forceFill(['used_at' => now()])->save();
+
+            // Invalidate other pending reset links for this email + any
+            // currently-issued refresh tokens (other devices / browsers
+            // should re-authenticate). We do NOT touch the magic-link
+            // tokens table — magic-link is a separate auth path.
+            PasswordResetToken::query()
+                ->where('email', $user->email)
+                ->where('id', '!=', $row->id)
+                ->whereNull('used_at')
+                ->update(['used_at' => now()]);
+        });
+
+        return response()->json([
+            'data' => ['reset' => true, 'message' => 'Password updated. You can now sign in with your new password.'],
+        ]);
+    }
+
+    /**
+     * Authenticated endpoint for the Settings page: change password.
+     * Requires the current password (or, if the user has no password
+     * yet — magic-link-only account — sets one without a current
+     * password check).
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $hasExistingPassword = ! empty($user->password_hash);
+
+        $rules = [
+            'new_password' => ['required', 'string', 'min:8', 'max:200'],
+        ];
+        if ($hasExistingPassword) {
+            $rules['current_password'] = ['required', 'string'];
+        }
+        $validated = $request->validate($rules);
+
+        if ($hasExistingPassword) {
+            if (! Hash::check($validated['current_password'], $user->password_hash)) {
+                return $this->error('invalid_current_password', 'The current password is incorrect.', 422);
+            }
+        }
+
+        $user->forceFill(['password_hash' => Hash::make($validated['new_password'])])->save();
+
+        return response()->json([
+            'data' => ['changed' => true, 'message' => $hasExistingPassword ? 'Password updated.' : 'Password set.'],
+        ]);
     }
 
     public function refresh(Request $request): JsonResponse

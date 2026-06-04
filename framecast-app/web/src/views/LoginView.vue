@@ -162,12 +162,19 @@ function resend() {
             </button>
 
             <div class="auth-password-note">
+              <router-link
+                class="auth-link auth-link-small"
+                :to="{ name: 'forgot-password', query: form.email ? { email: form.email } : {} }"
+              >
+                Forgot password?
+              </router-link>
+              <span style="opacity:.5;margin:0 8px;">·</span>
               <button
                 class="auth-link auth-link-button auth-link-small"
                 type="button"
                 @click="toggleMode"
               >
-                Forgot password? Use magic link
+                Use magic link
               </button>
             </div>
           </div>

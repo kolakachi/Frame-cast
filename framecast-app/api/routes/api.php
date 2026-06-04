@@ -48,6 +48,14 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/refresh', [AuthController::class, 'refresh']);
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/logout-all', [AuthController::class, 'logoutAll'])->middleware('auth.jwt');
+
+        // Password reset (unauthenticated forgot-password flow)
+        Route::post('/password/forgot', [AuthController::class, 'requestPasswordReset']);
+        Route::get('/password/verify',  [AuthController::class, 'verifyPasswordResetToken']);
+        Route::post('/password/reset',  [AuthController::class, 'resetPassword']);
+
+        // Set / change password from inside Settings (authenticated)
+        Route::post('/password/change', [AuthController::class, 'changePassword'])->middleware('auth.jwt');
     });
 
     Route::post('/broadcasting/auth', [BroadcastController::class, 'authenticate'])->middleware('auth.jwt');

@@ -416,6 +416,10 @@ class VerificationController extends Controller
             'timezone' => $user->timezone,
             'role' => $user->role,
             'status' => $user->status,
+            // Drives the Settings password panel: "Set a password" when
+            // false, "Change password" when true. Boolean (not the hash)
+            // so the actual credential never leaves the API.
+            'has_password' => ! empty($user->password_hash),
             'preferences' => array_merge($this->defaultPreferences(), $user->preferences_json ?? []),
         ];
     }
