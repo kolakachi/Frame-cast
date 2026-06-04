@@ -13,7 +13,13 @@ const router = useRouter()
 
 const show = ref(false)
 
-const wizardStep = ref(1)
+// 0 = path picker (Start from Scratch vs Generate from brief — new step
+//     that fronts the wizard so blank-project users don't slog through niche
+//     selection)
+// 1 = niche pick (only in Generate path)
+// 2 = source type
+// 3 = content (or, in the blank path, the minimal title/aspect/channel form)
+const wizardStep = ref(0)
 const niches = ref([])
 const selectedNicheId = ref(null)
 const customNicheSelected = ref(false)
@@ -80,7 +86,9 @@ const sourceOptions = [
   { key: 'audio_upload',        icon: '🎙️', label: 'Upload Audio',        hint: 'Transcribe and structure' },
   { key: 'video_upload',        icon: '🎬', label: 'Upload Video',        hint: 'Extract and repurpose' },
   { key: 'csv_topic',           icon: '📋', label: 'CSV Batch',           hint: 'Multiple topics at once' },
-  { key: 'blank',               icon: '✏️', label: 'Start from Scratch',  hint: 'Build every scene yourself' },
+  // 'blank' / 'Start from Scratch' used to live here; promoted to the new
+  // step-0 path picker so blank users don't have to scroll past 8 other
+  // options to find it.
 ]
 
 const durationOptions = [
@@ -307,7 +315,10 @@ async function loadCharacters() {
 }
 
 function open(initialSourceType = 'prompt', presetChannelId = null) {
-  wizardStep.value = 1
+  // If the caller passed initialSourceType='blank' (legacy path from the
+  // dashboard's empty-state button), jump straight to the blank-project
+  // mini-form. Otherwise default to the new step-0 path picker.
+  wizardStep.value = initialSourceType === 'blank' ? 3 : 0
   selectedNicheId.value = null
   customNicheSelected.value = false
   customNicheName.value = ''
@@ -392,7 +403,26 @@ function wizardNext() {
 }
 
 function wizardBack() {
-  wizardStep.value = Math.max(1, wizardStep.value - 1)
+  // Blank-path users (step 3 with sourceType='blank') go back to the path
+  // picker, not the niche / source-type steps they never saw.
+  if (wizardStep.value === 3 && wizardSourceType.value === 'blank') {
+    wizardSourceType.value = 'prompt'
+    wizardStep.value = 0
+    return
+  }
+  wizardStep.value = Math.max(0, wizardStep.value - 1)
+}
+
+// Step-0 handlers — picking a path.
+function pickStartFromScratch() {
+  wizardSourceType.value = 'blank'
+  wizardStep.value = 3
+}
+function pickGenerateFromBrief() {
+  // Reset back to prompt as the default within Generate so the source-type
+  // step doesn't carry 'blank' selected from a previous open.
+  if (wizardSourceType.value === 'blank') wizardSourceType.value = 'prompt'
+  wizardStep.value = 1
 }
 
 async function submitWizardProject() {
@@ -470,8 +500,9 @@ defineExpose({ open })
   <div v-if="show" class="modal-overlay" @click.self="close">
     <div class="modal wizard-modal">
 
-      <!-- Step indicator -->
-      <div class="wizard-steps">
+      <!-- Step indicator — hidden on the path picker (step 0) and on the
+           blank single-step form (since they're one-screen flows). -->
+      <div v-if="wizardStep >= 1 && wizardSourceType !== 'blank'" class="wizard-steps">
         <div :class="['wizard-step', wizardStep === 1 ? 'active' : wizardStep > 1 ? 'done' : '']">
           <div class="wizard-step-num">{{ wizardStep > 1 ? '✓' : '1' }}</div>
           <span>Pick Niche</span>
@@ -488,8 +519,46 @@ defineExpose({ open })
         </div>
       </div>
 
+      <!-- Step 0: Path Picker -->
+      <div v-if="wizardStep === 0">
+        <div class="modal-title">New Video</div>
+        <div class="modal-subtitle">How do you want to start?</div>
+
+        <div class="path-picker-grid">
+          <div class="path-card" role="button" tabindex="0"
+               @click="pickStartFromScratch"
+               @keydown.enter="pickStartFromScratch">
+            <div class="path-card-icon">🎬</div>
+            <div class="path-card-title">Start from Scratch</div>
+            <div class="path-card-desc">Build every scene yourself. Pick a title and format, then drop straight into the editor.</div>
+            <div class="path-card-tags">
+              <span class="path-card-tag">Full control</span>
+              <span class="path-card-tag">Manual scenes</span>
+            </div>
+          </div>
+
+          <div class="path-card path-card-featured" role="button" tabindex="0"
+               @click="pickGenerateFromBrief"
+               @keydown.enter="pickGenerateFromBrief">
+            <div class="path-card-badge">Most popular</div>
+            <div class="path-card-icon">✦</div>
+            <div class="path-card-title">Generate from a brief</div>
+            <div class="path-card-desc">Tell us your topic and we'll write the script, break it into scenes, and pre-fill visuals.</div>
+            <div class="path-card-tags">
+              <span class="path-card-tag">Script + scenes</span>
+              <span class="path-card-tag">Niche presets</span>
+              <span class="path-card-tag">~90s setup</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" @click="close">Cancel</button>
+        </div>
+      </div>
+
       <!-- Step 1: Pick Niche -->
-      <div v-if="wizardStep === 1">
+      <div v-else-if="wizardStep === 1">
         <div class="modal-title">Quick Start</div>
         <div class="modal-subtitle">Pick your content niche. WyvStudio pre-configures visuals, voice, captions, and music.</div>
         <div class="niche-grid">
@@ -962,6 +1031,21 @@ defineExpose({ open })
 
 .section-title { font-size: 18px; font-weight: 600; color: var(--color-text-primary); }
 .section-subtitle { margin-top: 4px; margin-bottom: 20px; font-size: 13px; color: var(--color-text-muted); }
+
+/* Step 0 — path picker. Two big cards, one orange-accented for the
+   recommended Generate path. */
+.path-picker-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 20px 0 8px; }
+.path-card { position: relative; display: flex; flex-direction: column; padding: 26px 22px; border-radius: 12px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; transition: border-color 0.18s, background 0.18s, transform 0.18s; min-height: 220px; }
+.path-card:hover { border-color: rgba(255,107,53,0.45); transform: translateY(-2px); }
+.path-card-featured { border-color: rgba(255,107,53,0.35); background: linear-gradient(180deg, rgba(255,107,53,0.06), transparent 60%); }
+.path-card-featured:hover { border-color: rgba(255,107,53,0.7); }
+.path-card-badge { position: absolute; top: 12px; right: 12px; font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--color-accent); color: #fff; text-transform: uppercase; letter-spacing: 0.4px; }
+.path-card-icon { font-size: 30px; line-height: 1; margin-bottom: 14px; }
+.path-card-title { font-size: 18px; font-weight: 700; color: var(--color-text); margin-bottom: 8px; letter-spacing: -0.3px; }
+.path-card-desc { font-size: 13px; color: var(--color-text-muted); line-height: 1.6; flex: 1; }
+.path-card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
+.path-card-tag { font-size: 10.5px; color: var(--color-text-muted); background: rgba(255,255,255,0.04); border: 1px solid var(--color-border); padding: 3px 9px; border-radius: 999px; font-family: "Space Mono", monospace; letter-spacing: 0.3px; }
+@media(max-width: 640px) { .path-picker-grid { grid-template-columns: 1fr; } .path-card { min-height: auto; } }
 
 .niche-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 8px; }
 .niche-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; padding: 16px 14px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; transition: border-color 0.2s, background 0.2s, transform 0.2s; overflow: hidden; }
