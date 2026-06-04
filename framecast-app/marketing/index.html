@@ -239,12 +239,29 @@ section{padding:100px 24px}
 .cta-fine{font-size:12px;color:var(--text-faint);margin-top:14px}
 
 /* ── FOOTER ── */
-footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;flex-direction:column;align-items:center;gap:18px;max-width:1080px;margin:0 auto;text-align:center}
-.footer-logo{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:var(--text-dim);text-decoration:none}
-.footer-links{display:flex;gap:22px;flex-wrap:wrap;justify-content:center}
-.footer-links a{font-size:12px;color:var(--text-faint);text-decoration:none;transition:.15s}
-.footer-links a:hover{color:var(--text-dim)}
-.footer-copy{font-size:12px;color:var(--text-faint)}
+footer{border-top:1px solid var(--border);max-width:1180px;margin:0 auto;padding:64px 24px 28px}
+.footer-top{display:grid;grid-template-columns:minmax(220px,1fr) 3fr;gap:56px;margin-bottom:44px}
+.footer-brand{display:flex;flex-direction:column;gap:16px}
+.footer-brand-logo{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:700;color:var(--text);text-decoration:none}
+.footer-tagline{font-size:13px;color:var(--text-dim);line-height:1.55;max-width:280px;margin:0}
+.footer-socials{display:flex;gap:8px}
+.footer-social{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;color:var(--text-faint);transition:.15s;text-decoration:none}
+.footer-social:hover{color:var(--text);border-color:#34343f;background:rgba(255,255,255,0.02)}
+.footer-social svg{width:14px;height:14px}
+.footer-cols{display:grid;grid-template-columns:repeat(4,1fr);gap:32px}
+.footer-col-title{font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px;font-family:"Space Mono",monospace}
+.footer-col a{display:block;font-size:13px;color:var(--text-faint);text-decoration:none;margin-bottom:9px;transition:.15s;line-height:1.4}
+.footer-col a:hover{color:var(--text-dim)}
+.footer-bottom{padding-top:24px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.footer-bottom-copy{font-size:12px;color:var(--text-faint)}
+.footer-back-top{font-size:12px;color:var(--text-faint);text-decoration:none;transition:.15s}
+.footer-back-top:hover{color:var(--text-dim)}
+@media(max-width:768px){
+  footer{padding:48px 20px 24px}
+  .footer-top{grid-template-columns:1fr;gap:36px;margin-bottom:32px}
+  .footer-cols{grid-template-columns:repeat(2,1fr);gap:28px 20px}
+  .footer-bottom{flex-direction:column;align-items:flex-start;gap:8px}
+}
 
 @media(max-width:900px){
   .uc-grid{grid-template-columns:repeat(2,1fr)}
@@ -942,26 +959,65 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;flex-di
 <!-- ── FOOTER ── -->
 <div style="border-top:1px solid var(--border)">
   <footer>
-    <div class="footer-links">
-      <a href="#how-it-works">How it works</a>
-      <a href="#features">Features</a>
-      <a href="#pricing">Pricing</a>
-      <a href="/help.html">FAQ</a>
-      <a href="mailto:hello@wyvstudio.com">Contact</a>
-      <a href="/privacy">Privacy Policy</a>
-      <a href="/terms">Terms of Service</a>
-      <a href="/acceptable-use">Acceptable Use</a>
-      <a href="/ai-safety">AI Safety</a>
-      <a href="/synthetic-media">Synthetic Media</a>
-      <a href="/copyright">Copyright / DMCA</a>
-      <a href="/refund">Refund Policy</a>
-      <a href="/data-deletion">Data Deletion</a>
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a href="#" class="footer-brand-logo">
+          <svg width="28" height="28" viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#ff6b35"/><path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          WyvStudio
+        </a>
+        <p class="footer-tagline">Short videos from whatever you have — script, podcast clip, product URL, or just an idea.</p>
+        <!-- Socials: hrefs are placeholders. Swap when handles are claimed.
+             X handle, LinkedIn page, and YouTube channel are F19/F20-adjacent
+             work, so they may land alongside the outbound launch. -->
+        <div class="footer-socials">
+          <a class="footer-social" href="https://x.com/wyvstudio" aria-label="WyvStudio on X" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z"/></svg>
+          </a>
+          <a class="footer-social" href="https://www.linkedin.com/company/wyvstudio" aria-label="WyvStudio on LinkedIn" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14zM8.27 18.5v-8.37H5.5v8.37h2.77zM6.88 8.56a1.68 1.68 0 1 0 0-3.37 1.68 1.68 0 0 0 0 3.37zm11.62 9.94v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79z"/></svg>
+          </a>
+          <a class="footer-social" href="https://youtube.com/@wyvstudio" aria-label="WyvStudio on YouTube" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23.5 6.2a3 3 0 0 0-2.12-2.13C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.52A3 3 0 0 0 .5 6.2C0 8.09 0 12 0 12s0 3.91.5 5.8a3 3 0 0 0 2.12 2.13c1.88.52 9.38.52 9.38.52s7.5 0 9.38-.52a3 3 0 0 0 2.12-2.13c.5-1.89.5-5.8.5-5.8s0-3.91-.5-5.8zM9.55 15.57V8.43L15.82 12 9.55 15.57z"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="footer-cols">
+        <div class="footer-col">
+          <div class="footer-col-title">Product</div>
+          <a href="#how-it-works">How it works</a>
+          <a href="#features">Features</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#use-cases">Use cases</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Resources</div>
+          <a href="/help.html">FAQ</a>
+          <a href="mailto:hello@wyvstudio.com">Contact</a>
+          <a href="https://app.wyvstudio.com/register">Start free</a>
+          <a href="https://app.wyvstudio.com/login">Sign in</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Legal</div>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/refund">Refund Policy</a>
+          <a href="/data-deletion">Data Deletion</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Trust &amp; Safety</div>
+          <a href="/ai-safety">AI Safety</a>
+          <a href="/acceptable-use">Acceptable Use</a>
+          <a href="/synthetic-media">Synthetic Media</a>
+          <a href="/copyright">Copyright / DMCA</a>
+        </div>
+      </div>
     </div>
-    <a href="#" class="footer-logo">
-      <svg width="22" height="22" viewBox="0 0 64 64" fill="none"><rect width="64" height="64" rx="14" fill="#ff6b35"/><path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-      WyvStudio
-    </a>
-    <div class="footer-copy">© 2026 Kollignton Kay LTD. All rights reserved.</div>
+
+    <div class="footer-bottom">
+      <div class="footer-bottom-copy">© 2026 Kollignton Kay LTD — UK Limited Company. All rights reserved.</div>
+      <a href="#" class="footer-back-top">Back to top ↑</a>
+    </div>
   </footer>
 </div>
 
