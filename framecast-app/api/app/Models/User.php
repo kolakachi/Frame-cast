@@ -63,6 +63,17 @@ class User extends Authenticatable
         return $this->password_hash ?? '';
     }
 
+    /**
+     * Always lowercase the stored email so 'Kola@Gmail.com' and 'kola@gmail.com'
+     * resolve to the same account. RFC 5321 says the local-part is technically
+     * case-sensitive, but every consumer mail provider treats it as not, and
+     * real users routinely type the same address in different casings.
+     */
+    public function setEmailAttribute(?string $value): void
+    {
+        $this->attributes['email'] = $value === null ? null : strtolower($value);
+    }
+
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);

@@ -157,11 +157,25 @@ function nicheTagsFor(niche) {
 function selectSeededNiche(nicheId) {
   selectedNicheId.value = nicheId
   customNicheSelected.value = false
+  scrollToActions()
 }
 
 function selectCustomNiche() {
   selectedNicheId.value = null
   customNicheSelected.value = true
+  scrollToActions()
+}
+
+// After a niche pick the Continue button is below the fold on small screens.
+// Smoothly bring it into view so the user doesn't have to hunt for it.
+function scrollToActions() {
+  // Defer one frame so the niche-selected styling has rendered first.
+  requestAnimationFrame(() => {
+    const target = document.querySelector('.wizard-modal-body .modal-actions')
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  })
 }
 
 function setWizardSourceType(sourceType) {

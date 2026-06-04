@@ -94,7 +94,11 @@ const API_ORIGIN = new URL(api.defaults.baseURL, window.location.origin).origin;
 const addScenePanelPosition = ref("");
 const selectedSceneType = ref("Narration");
 const selectedAddSceneVisualSource = ref("Stock Clip");
-const addSceneVisualMode = ref("stock_video");
+// '' = no source picked yet (UI shows tabs without one pre-selected, scene
+// gets created with visual_type='placeholder' so nothing is auto-attached).
+// User has to actively click a tab — Video / Image / AI / Assets — before
+// the scene picks up that source.
+const addSceneVisualMode = ref("");
 const addSceneStockSubType = ref("stock_clip");
 const addSceneVisualStyle = ref(null);
 const addSceneCustomVisualStyle = ref("");
@@ -1450,7 +1454,7 @@ function buildSceneLabel(sceneType) {
 function resetAddSceneDrafts() {
   selectedSceneType.value = "Narration";
   selectedAddSceneVisualSource.value = "Stock Clip";
-  addSceneVisualMode.value = "stock_video";
+  addSceneVisualMode.value = "";
   addSceneStockSubType.value = "stock_clip";
   addSceneVisualStyle.value = null;
   addSceneCustomVisualStyle.value = "";
@@ -3975,8 +3979,21 @@ async function createScene(insertAfterSceneId = null) {
       ? (addScenePickedAsset.value.asset_type === "video" ? "background_loop" : "image_montage")
       : "stock_clip",
   };
-  const visualType = addSceneModeTypeMap[addSceneVisualMode.value] ?? "stock_clip";
-  const visualQuery = addSceneVisualQuery.value.trim() || scriptText || buildSceneLabel(sceneType);
+  // When the user clicks Add Scene without picking a source tab (the new
+  // default after we stopped auto-defaulting to Stock Video), send the
+  // sentinel 'placeholder' so the backend stores a scene with no visual
+  // intent. The editor surfaces "No visual assigned — pick one" on that
+  // scene and the user fills it in afterward instead of silently getting
+  // a random stock clip they didn't ask for.
+  const visualType = addSceneVisualMode.value
+    ? (addSceneModeTypeMap[addSceneVisualMode.value] ?? "stock_clip")
+    : "placeholder";
+  // Only send the query (which the backend uses to seed a stock search) when
+  // the user typed it OR explicitly chose a source. An untouched popover
+  // sends no query → no auto-fetch.
+  const visualQuery = addSceneVisualMode.value
+    ? (addSceneVisualQuery.value.trim() || scriptText || buildSceneLabel(sceneType))
+    : null;
 
   try {
     const response = await api.post("/scenes", {
@@ -5212,6 +5229,16 @@ onBeforeUnmount(() => {
                   <button class="btn btn-ghost btn-sm panel-full-btn" type="button" :disabled="visualSwapPending" @click="swapVisual">
                     {{ visualSwapPending ? 'Swapping…' : '↻ Swap Image' }}
                   </button>
+                  <!-- Animate works on any image asset, including stock ones. -->
+                  <button
+                    v-if="canAnimateActiveScene && !activeSceneAnimationPending && !activeSceneVisualIsVideo"
+                    class="btn btn-sm animate-btn panel-full-btn"
+                    style="margin-top:8px;"
+                    type="button"
+                    @click="openAnimateModal"
+                  >
+                    {{ activeSceneAlreadyAnimated ? '⚡ Re-animate' : '⚡ Animate this image' }}
+                  </button>
                   <div v-if="visualSwapError" class="panel-error-copy">{{ visualSwapError }}</div>
                 </template>
 
@@ -5397,6 +5424,18 @@ onBeforeUnmount(() => {
                     </div>
                     <button class="btn btn-ghost btn-sm panel-full-btn" type="button" :disabled="visualSwapPending" @click="openMediaPicker('visual')">
                       Change Visual
+                    </button>
+                    <!-- Animate works on any image asset (uploaded photos,
+                         stock images, AI-generated). Hidden for video assets
+                         (which are already moving). -->
+                    <button
+                      v-if="canAnimateActiveScene && !activeSceneAnimationPending && !activeSceneVisualIsVideo"
+                      class="btn btn-sm animate-btn panel-full-btn"
+                      style="margin-top:8px;"
+                      type="button"
+                      @click="openAnimateModal"
+                    >
+                      {{ activeSceneAlreadyAnimated ? '⚡ Re-animate' : '⚡ Animate this image' }}
                     </button>
                   </template>
                   <!-- No asset from library yet -->

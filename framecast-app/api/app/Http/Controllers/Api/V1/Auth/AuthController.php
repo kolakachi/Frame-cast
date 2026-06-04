@@ -34,9 +34,11 @@ class AuthController extends Controller
             'password' => ['required', 'string', 'min:8'],
         ]);
 
+        $email = strtolower($validated['email']);
+
         $user = User::query()
             ->with('workspace')
-            ->where('email', $validated['email'])
+            ->where('email', $email)
             ->first();
 
         if (! $user || ! $user->password_hash || ! Hash::check($validated['password'], $user->password_hash)) {
@@ -247,7 +249,7 @@ class AuthController extends Controller
             return DB::transaction(function () use ($validated): User {
                 // Lock the row if it exists to prevent race conditions
                 $existingUser = User::query()
-                    ->where('email', $validated['email'])
+                    ->where('email', strtolower($validated['email']))
                     ->lockForUpdate()
                     ->first();
 
@@ -303,7 +305,7 @@ class AuthController extends Controller
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
             // Two simultaneous requests for the same email — the other request won the race.
             // Just return the now-existing user.
-            return User::query()->where('email', $validated['email'])->with('workspace')->firstOrFail();
+            return User::query()->where('email', strtolower($validated['email']))->with('workspace')->firstOrFail();
         }
     }
 
