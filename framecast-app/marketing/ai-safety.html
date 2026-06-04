@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WyvStudio AI Safety Policy</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/favicon.svg" />
+<meta name="theme-color" content="#ff6b35" />
+<meta name="description" content="WyvStudio AI Safety Policy — content filters, prohibited outputs, moderation pipeline, sanctions, and how we keep the platform safe for legitimate creators." />
+<meta property="og:title" content="WyvStudio AI Safety Policy" />
+<meta property="og:description" content="Content filters, prohibited outputs, and the moderation pipeline that backs WyvStudio." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://wyvstudio.com/ai-safety" />
+<meta property="og:image" content="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/og/og-default-v1.jpg" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/og/og-default-v1.jpg" />
+<link rel="canonical" href="https://wyvstudio.com/ai-safety" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a0f;--surface:#14141c;--border:#25252f;--text:#ececf3;--text-dim:#8b8b9a;--accent:#ff6b35}
+body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;line-height:1.7}
+nav{padding:0 32px;height:60px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(10,10,15,.9);backdrop-filter:blur(12px);z-index:10}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.nav-logo span{font-size:15px;font-weight:700;color:var(--text)}
+.nav-logo span em{color:var(--accent);font-style:normal}
+.container{max-width:720px;margin:0 auto;padding:64px 24px 120px}
+h1{font-size:32px;font-weight:700;letter-spacing:-.5px;margin-bottom:8px}
+.meta{font-size:13px;color:var(--text-dim);margin-bottom:48px;padding-bottom:24px;border-bottom:1px solid var(--border)}
+h2{font-size:18px;font-weight:600;margin:40px 0 12px;color:var(--text)}
+h3{font-size:15px;font-weight:600;margin:24px 0 8px;color:var(--text)}
+p{font-size:14px;color:var(--text-dim);margin-bottom:14px}
+ul{font-size:14px;color:var(--text-dim);padding-left:20px;margin-bottom:14px}
+ul li{margin-bottom:6px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.highlight{background:rgba(255,107,53,.08);border:1px solid rgba(255,107,53,.2);border-radius:8px;padding:14px 18px;margin:20px 0}
+.highlight p{margin:0;font-size:13px}
+footer{border-top:1px solid var(--border);padding:24px;text-align:center;font-size:12px;color:var(--text-dim)}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">
+    <svg width="32" height="32" viewBox="0 0 64 64" fill="none" aria-label="WyvStudio logo"><rect width="64" height="64" rx="14" fill="#ff6b35"/><path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    <span><em>Wyv</em>Studio</span>
+  </a>
+</nav>
+
+<div class="container">
+  <h1>WyvStudio AI Safety Policy</h1>
+  <div class="meta">Last updated: 4 June 2026 &nbsp;·&nbsp; Effective: 4 June 2026</div>
+
+  <div class="highlight">
+    <p>WyvStudio enables creators, brands, and operators to make short videos with AI assistance. Generative AI is powerful — and easy to misuse. This policy documents the safeguards, restrictions, and enforcement we apply so the platform stays useful for legitimate work and inhospitable to abuse.</p>
+  </div>
+
+  <h2>1. Our Position on AI Safety</h2>
+  <p>We believe responsible AI tools must do three things at once: serve real, lawful use cases; refuse to produce categories of harmful content; and provide credible recourse when abuse occurs. This policy describes how we deliver on each.</p>
+
+  <h2>2. Prohibited Outputs</h2>
+  <p>WyvStudio may not be used to generate, store, or distribute any of the following:</p>
+  <ul>
+    <li><strong>Child sexual abuse material (CSAM)</strong> — any sexual or suggestive depiction of minors, real or synthetic, in any context</li>
+    <li><strong>Non-consensual sexual content</strong> — including nudity, sexual acts, or sexualised likenesses of identifiable people who have not given written consent</li>
+    <li><strong>Deceptive likenesses of real people</strong> — voice, face, or persona of any identifiable person used without their documented permission. See our <a href="/synthetic-media">Synthetic Media Policy</a> for the full consent framework.</li>
+    <li><strong>Public-figure impersonation</strong> — politicians, celebrities, executives, journalists, or other public figures depicted saying or doing things they did not say or do</li>
+    <li><strong>Targeted harassment</strong> — content created to defame, threaten, dox, or intimidate a specific person or group</li>
+    <li><strong>Incitement of violence or self-harm</strong> — including glorification of suicide, terror attacks, or mass violence</li>
+    <li><strong>Hate speech</strong> — content that dehumanises people based on race, ethnicity, religion, gender, sexuality, disability, or national origin</li>
+    <li><strong>Fraud, scams, and misinformation</strong> — including health misinformation, election misinformation, financial scams, and impersonation of public officials or institutions</li>
+    <li><strong>Illegal goods and services</strong> — drugs, weapons, counterfeit goods, stolen credentials, illegal gambling, or trafficking-related content</li>
+    <li><strong>Malware, phishing, or cybercrime content</strong> — including tutorials, kits, or recruiting</li>
+  </ul>
+
+  <h2>3. How We Enforce These Rules</h2>
+
+  <h3>3.1 Upstream provider moderation</h3>
+  <p>Every image and video generation request is routed through commercial provider APIs (OpenAI, Google, Replicate) that apply their own content classifiers before producing output. Requests that violate the providers' safety policies are rejected before WyvStudio sees them. Our terms require that you also abide by the safety policies of the upstream providers we use; copies are linked from your account settings.</p>
+
+  <h3>3.2 Our own filters</h3>
+  <p>We apply additional filters in our pipeline:</p>
+  <ul>
+    <li>Reference image uploads are inspected for non-consensual or sexual imagery before they enter character generation</li>
+    <li>Prompt text is checked against a blocklist of public-figure names and persona patterns before being sent to upstream models</li>
+    <li>Outputs flagged by upstream provider safety systems are quarantined and the user receives a friendly notice with a link to retry with a compliant prompt</li>
+  </ul>
+
+  <h3>3.3 Auditability</h3>
+  <p>Every generation event is logged with the requesting user, workspace, reference asset, prompt, and provider response. Logs are retained for at least 90 days to enable investigation of reports, abuse, or legal compliance requests.</p>
+
+  <h3>3.4 User reporting</h3>
+  <p>Anyone — including non-users — can report suspected violations of this policy by emailing <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a> with the URL or shared link in question. We acknowledge reports within one business day and complete review within five business days.</p>
+
+  <h2>4. Sanctions for Violations</h2>
+  <p>When we determine that a user, workspace, or account has produced prohibited content, we apply the least severe sanction reasonably necessary to stop the harm and prevent recurrence:</p>
+  <ul>
+    <li><strong>Warning</strong> — a notice with a link to this policy and a request to remove the content</li>
+    <li><strong>Content takedown</strong> — removal of the offending asset(s) from the workspace and any public share links</li>
+    <li><strong>Feature suspension</strong> — temporary block on character generation, animation, or publishing while we investigate</li>
+    <li><strong>Account suspension</strong> — temporary or permanent disabling of the user account and connected workspace</li>
+    <li><strong>Workspace termination</strong> — closure of the workspace with no refund for the offending billing cycle and forfeiture of remaining credits</li>
+    <li><strong>Reporting to authorities</strong> — for CSAM, credible threats of violence, or evidence of trafficking, we report to NCMEC (CyberTipline) and any relevant law-enforcement agency. We may preserve records and respond to subpoenas without notice to the account holder.</li>
+  </ul>
+
+  <h2>5. Our Right to Refuse</h2>
+  <p>We may decline any generation request, suspend any account, or remove any output that, in our reasonable judgement, places our users, the public, or the platform at risk — even where no specific rule in this policy is matched. We are a small team and may err toward refusal in ambiguous cases. We will provide a reason in writing on request.</p>
+
+  <h2>6. Transparency Reporting</h2>
+  <p>Once we are above 100 paying customers, we will publish a transparency report at least annually summarising the volume of reports received, sanctions applied, government requests answered, and the categories of content blocked. We will not include personally identifiable information about reporters or users sanctioned for non-criminal violations.</p>
+
+  <h2>7. Updates to This Policy</h2>
+  <p>We will update this policy as the technology and the threat landscape evolve. Material changes will be announced via email or in-app notification, with at least seven days' notice before they take effect. Continued use of the Service after the effective date constitutes acceptance.</p>
+
+  <h2>8. Contact</h2>
+  <p>Report a violation or ask a question about this policy: <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a>. For DMCA / copyright matters, please use the dedicated process in our <a href="/copyright">Copyright &amp; DMCA Policy</a>.</p>
+</div>
+
+<footer>© 2026 Kollignton Kay LTD · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/acceptable-use">AUP</a> · <a href="/synthetic-media">Synthetic Media</a> · <a href="/copyright">Copyright</a> · <a href="/refund">Refund Policy</a> · <a href="/data-deletion">Data Deletion</a> · <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a></footer>
+<script src="/posthog-init.js" defer></script>
+<script src="/cookie-notice.js" defer></script>
+<script src="/crisp-chat.js" defer></script>
+</body>
+</html>
