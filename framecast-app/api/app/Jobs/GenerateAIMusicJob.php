@@ -112,9 +112,15 @@ class GenerateAIMusicJob implements ShouldQueue
                 'asset_id' => $asset->getKey(),
             ]);
         } catch (\Throwable $e) {
-            Log::warning('GenerateAIMusicJob: failed; scene continues without music', [
-                'scene_id' => $this->sceneId,
-                'error'    => $e->getMessage(),
+            // ERROR not warning: this is the path that ate the prod 404
+            // for ~a day without surfacing — silent swallow + no retry
+            // meant nobody knew music was broken. Loud-log so it lands
+            // in Sentry / log aggregation immediately next time.
+            Log::error('GenerateAIMusicJob: failed; scene continues without music', [
+                'scene_id'   => $this->sceneId,
+                'project_id' => $this->projectId,
+                'prompt'     => $this->prompt,
+                'error'      => $e->getMessage(),
             ]);
             // Music failure should NOT block the rest of the one-shot.
             // The scene already has its image + animation + voice; missing

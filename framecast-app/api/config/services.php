@@ -90,8 +90,14 @@ return [
         // MusicGen for the one-shot prompt flow's background music.
         // 'meta/musicgen' is the cheap workhorse; switch to 'meta/musicgen-melody-large'
         // for higher-quality output at ~5x the cost.
+        //
+        // The versionless endpoint (/v1/models/meta/musicgen/predictions)
+        // returns 404 for this model — Replicate only routes a subset of
+        // "official models" via that path, and meta/musicgen isn't one.
+        // Default to a known-good version hash so the flow works out of
+        // the box; override via env if you want a newer pin.
         'musicgen_model'   => env('REPLICATE_MUSICGEN_MODEL',   'meta/musicgen'),
-        'musicgen_version' => env('REPLICATE_MUSICGEN_VERSION', ''),
+        'musicgen_version' => env('REPLICATE_MUSICGEN_VERSION', '671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb'),
     ],
 
     'pixabay' => [
