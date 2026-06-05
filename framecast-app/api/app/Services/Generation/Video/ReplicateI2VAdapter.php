@@ -163,7 +163,12 @@ class ReplicateI2VAdapter implements I2VAdapter
      *   minimax/hailuo-2.3-fast → first_frame_image, prompt, duration, resolution, prompt_optimizer
      *   kwaivgi/kling-v2.1      → start_image, prompt, duration, negative_prompt, mode
      *
-     * All three accept `duration` in seconds, commonly 5 or 10. We clamp accordingly.
+     * Supported durations differ per model — DON'T assume 5+10 universally:
+     *   Wan 2.5         → 5 or 10
+     *   Hailuo 2.3-fast → 6 or 10  ← was the bug; 5 here returned 422
+     *   Kling 2.1       → 5 or 10
+     *
+     * Each tier picks the closest valid value to what the user asked for.
      *
      * @return array{0:string,1:?string,2:array<string,mixed>} [modelSlug, version, input]
      */
@@ -174,8 +179,14 @@ class ReplicateI2VAdapter implements I2VAdapter
         int $durationSeconds,
         array $options
     ): array {
-        // All three models in this set accept duration: 5 or 10.
-        $duration = $durationSeconds <= 7 ? 5 : 10;
+        // Per-tier valid durations sourced from the actual model schemas.
+        // The frontend is also constrained to these, but we re-validate here
+        // because the adapter is the source of truth.
+        $validDurations = match ($tier) {
+            'balanced' => [6, 10],
+            default    => [5, 10],
+        };
+        $duration = $durationSeconds <= 7 ? $validDurations[0] : $validDurations[1];
 
         return match ($tier) {
             'premium' => [

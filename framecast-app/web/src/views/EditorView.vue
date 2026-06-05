@@ -231,20 +231,37 @@ const aiImageError = ref("");
 // Animate (i2v rung 4) state.
 const animateModalOpen = ref(false);
 const animateTier = ref("quick");          // quick | balanced | premium
-const animateDuration = ref(5);            // 5 | 10 (Wan/Hailuo/Kling all accept these)
+const animateDuration = ref(5);            // value depends on tier — see ANIMATE_TIER_DURATIONS
 const animateMotionPrompt = ref("");
 const animateSubmitting = ref(false);
 const animateError = ref("");
-// Credits per 5s clip; 10s doubles. Mirror the backend cost calc exactly.
+// Credits per short clip; long clip doubles. Mirror the backend cost calc exactly.
 const ANIMATE_TIER_COSTS_5S = { quick: 60, balanced: 120, premium: 240 };
+// Valid durations per tier — each upstream model accepts only specific values.
+//   Wan 2.5 (quick)         → 5 or 10
+//   Hailuo 2.3-fast (balanced) → 6 or 10 (NOT 5; sending 5 returns Replicate 422)
+//   Kling 2.1 (premium)     → 5 or 10
+const ANIMATE_TIER_DURATIONS = { quick: [5, 10], balanced: [6, 10], premium: [5, 10] };
+const animateDurations = computed(() => ANIMATE_TIER_DURATIONS[animateTier.value] || [5, 10]);
+const animateShortDuration = computed(() => animateDurations.value[0]);
 const animateCost = computed(() =>
-  ANIMATE_TIER_COSTS_5S[animateTier.value] * (animateDuration.value === 10 ? 2 : 1)
+  // "Long" clip = the larger of the two valid durations (always 10 today).
+  ANIMATE_TIER_COSTS_5S[animateTier.value] * (animateDuration.value === animateDurations.value[1] ? 2 : 1)
 );
 const ANIMATE_TIER_META = {
   quick:    { name: "Quick",    sub: "Fast · cheap",     quality: "Good",   render: "~30s" },
   balanced: { name: "Balanced", sub: "Best for most",    quality: "Strong", render: "~90s" },
   premium:  { name: "Premium",  sub: "Cinematic",        quality: "Top",    render: "~3 min" },
 };
+
+// When the user switches tier, snap the chosen duration to one the new tier
+// actually supports. Prevents the 422 ("duration must be one of: 6, 10") that
+// fired when balanced inherited the 5s default from quick.
+watch(animateTier, () => {
+  if (!animateDurations.value.includes(animateDuration.value)) {
+    animateDuration.value = animateDurations.value[0];
+  }
+});
 // Quick-pick prompts for the animate modal — covers the motion patterns most
 // faceless creators reach for. Click sets the prompt; user can still edit.
 const ANIMATE_PROMPT_SUGGESTIONS = [
@@ -6508,7 +6525,7 @@ onBeforeUnmount(() => {
                 <div class="anim-tier-sub">{{ ANIMATE_TIER_META[key].sub }}</div>
                 <div class="anim-tier-row"><span>Quality</span><span>{{ ANIMATE_TIER_META[key].quality }}</span></div>
                 <div class="anim-tier-row"><span>Render</span><span>{{ ANIMATE_TIER_META[key].render }}</span></div>
-                <div class="anim-tier-row"><span>Cost (5 s)</span><span class="anim-tier-cost">{{ ANIMATE_TIER_COSTS_5S[key] }} credits</span></div>
+                <div class="anim-tier-row"><span>Cost ({{ ANIMATE_TIER_DURATIONS[key][0] }} s)</span><span class="anim-tier-cost">{{ ANIMATE_TIER_COSTS_5S[key] }} credits</span></div>
               </button>
             </div>
           </div>
@@ -6517,14 +6534,18 @@ onBeforeUnmount(() => {
             <label class="ap-label">Duration</label>
             <div class="anim-duration-row">
               <button
-                v-for="d in [5, 10]"
+                v-for="d in animateDurations"
                 :key="d"
                 type="button"
                 :class="['anim-dpill', animateDuration === d ? 'active' : '']"
                 @click="animateDuration = d"
               >{{ d }} s</button>
             </div>
-            <div class="ap-hint">10 s costs 2× — these models render in 5 s or 10 s chunks.</div>
+            <div class="ap-hint">
+              Long clip costs 2×. The
+              <strong>{{ ANIMATE_TIER_META[animateTier].name }}</strong>
+              tier renders in {{ animateDurations.join(' s or ') }} s chunks.
+            </div>
           </div>
 
           <div class="ap-field">
