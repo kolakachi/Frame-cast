@@ -1226,6 +1226,16 @@ defineExpose({ open })
 .format-chip:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }
 .format-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
 
+/* Toggle row used in step-4 one-shot form (animate switch). Label left, pill right. */
+.toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; }
+.toggle-row > div:first-child { flex: 1; min-width: 0; }
+.label-main { font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 3px; }
+.label-hint { font-size: 11.5px; color: var(--color-text-muted); line-height: 1.5; }
+.toggle { flex-shrink: 0; width: 38px; height: 22px; border-radius: 999px; background: var(--color-bg-card); border: 1px solid var(--color-border); position: relative; transition: background 0.18s, border-color 0.18s; }
+.toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--color-text-muted); transition: transform 0.18s, background 0.18s; }
+.toggle.on { background: rgba(255,107,53,0.25); border-color: var(--color-accent); }
+.toggle.on::after { transform: translateX(16px); background: var(--color-accent); }
+
 .upload-zone { border: 1px dashed var(--color-border); border-radius: 8px; padding: 20px 16px; color: var(--color-text-muted); font-size: 13px; text-align: center; background: var(--color-bg-card); }
 .upload-zone-input { display: block; cursor: pointer; transition: 0.15s ease; }
 .upload-zone-input:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }
