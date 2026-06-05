@@ -61,10 +61,63 @@ You convert a single user prompt about a short video scene into four channels:
                 drift, slow camera push-in" or "ambient steam rising,
                 static frame". ~30-80 chars.
 
-  style       — one of: photorealistic, cinematic, minimalist, vintage,
-                comic, watercolor, line_drawing, anime, neon, 3d_animated.
-                Pick the one that fits the prompt's tone; default
-                photorealistic for human/lifestyle/product subjects.
+  style       — pick ONE of the 21 styles below that best fits the
+                prompt's vibe. Do NOT default — read the prompt and
+                let the subject + tone drive the choice. If the user
+                explicitly names a style ("3D pixar look", "anime
+                style", "watercolor", "comic book") match it exactly.
+
+                photorealistic — sharp, modern, true-to-life, like a
+                                 high-end DSLR photo. Use for product
+                                 shots, real-world lifestyle, founders
+                                 to camera, b-roll of real environments.
+                realistic      — same as photorealistic but slightly
+                                 softer / less retouched. Documentary
+                                 vibe.
+                cinematic      — colour-graded, shallow depth, mood
+                                 lighting, hero composition. Trailers,
+                                 ads, anything that wants to FEEL
+                                 like a film still.
+                documentary    — handheld, natural light, candid. Use
+                                 for journalism, real stories.
+                dark           — moody, low-key, deep shadow. Horror,
+                                 thriller, dramatic narration.
+                film_noir      — high-contrast B&W, hard shadows,
+                                 1940s detective aesthetic.
+                vintage        — washed colour, light grain, retro
+                                 feel. Lifestyle nostalgia, family
+                                 archive, 70s/80s product.
+                minimalist     — clean negative space, single subject,
+                                 muted palette. Tech, design, brand.
+                neon           — vivid neon lights, night urban, rim
+                                 lighting. Gaming, nightlife, edgy.
+                cyberpunk_80s  — neon + retro tech, scan lines,
+                                 chrome. Tech futurism, synthwave.
+                anime          — modern Japanese animation, clean line,
+                                 saturated colour. General anime.
+                anime_80s      — Akira / Bubblegum Crisis era, cel
+                                 shading, painterly bg.
+                anime_90s      — Ghost in the Shell era, gritty, mature.
+                dark_fantasy   — Witcher / dark Souls feel, painterly,
+                                 moody. Mythic horror, lore-heavy.
+                fantasy_retro  — 80s pulp fantasy, vivid, painterly,
+                                 Frank Frazetta vibes.
+                comic          — bold ink, halftone dots, speech-bubble
+                                 ready. Western comics, action.
+                line_drawing   — pen sketch on white, illustrator-style.
+                                 Explainer, technical, b/w editorial.
+                watercolor     — soft washes, paper texture, hand-painted
+                                 feel. Children's books, gentle stories.
+                paper_cutout   — layered paper, drop shadow, craft feel.
+                                 Quirky, indie, hand-made vibe.
+                cartoon        — modern 2D cartoon, bright outlines,
+                                 flat shading. Saturday morning vibe.
+                3d_animated    — Pixar / DreamWorks 3D render, soft
+                                 light, volumetric. Use for cute
+                                 characters, family, animation-ad
+                                 vibes, kids content, anything where
+                                 the user says "3D" or "Pixar" or
+                                 "Disney" or "animated".
 
 Return STRICT JSON with exactly these five keys. No prose, no markdown.
 SYS;
@@ -132,8 +185,19 @@ SYS;
 
     private function validStyle(mixed $v): string
     {
-        $allowed = ['photorealistic', 'cinematic', 'minimalist', 'vintage', 'comic',
-                    'watercolor', 'line_drawing', 'anime', 'neon', '3d_animated'];
+        // Mirror AI_IMAGE_STYLES in EditorView.vue. Keep in sync if the
+        // editor adds / drops styles — the parser is intentionally given
+        // the full canonical list rather than a curated subset so a user
+        // who prompts "3D Pixar look" actually gets 3d_animated, not
+        // a forced fallback to photorealistic.
+        $allowed = [
+            'cinematic', 'dark', 'documentary', 'anime', 'minimalist',
+            'realistic', 'vintage', 'neon', 'photorealistic',
+            'cyberpunk_80s', 'anime_80s', 'anime_90s',
+            'dark_fantasy', 'fantasy_retro', 'comic', 'film_noir',
+            'line_drawing', 'watercolor', 'paper_cutout', 'cartoon',
+            '3d_animated',
+        ];
         $s = is_string($v) ? strtolower(trim($v)) : '';
         return in_array($s, $allowed, true) ? $s : 'photorealistic';
     }
