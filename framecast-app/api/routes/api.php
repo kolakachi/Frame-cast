@@ -37,6 +37,12 @@ Route::prefix('v1')->group(function (): void {
     // Paddle webhooks — unauthenticated, HMAC-verified inside the controller
     Route::post('/webhooks/paddle', PaddleWebhookController::class);
 
+    // FastSpring webhooks — same security model (HMAC inside the controller).
+    // Both routes can co-exist; the BILLING_PROVIDER env var decides which
+    // checkout flow the frontend kicks off, but either webhook will be
+    // honoured if the matching provider sends one.
+    Route::post('/webhooks/fastspring', \App\Http\Controllers\Api\V1\Billing\FastSpringWebhookController::class);
+
     // Public content-report endpoint (anyone can submit, no auth required).
     // Rate-limited per-IP inside the controller. Backs the form at /report.
     Route::post('/report-content', [\App\Http\Controllers\Api\V1\Public\ReportContentController::class, 'store']);

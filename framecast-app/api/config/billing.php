@@ -1,6 +1,74 @@
 <?php
 
 return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Active billing provider
+    |--------------------------------------------------------------------------
+    |
+    | Drives which service class is bound to BillingServiceContract in the
+    | container. 'paddle' keeps the existing PaddleService active (default
+    | for backwards compatibility with the historical code path). 'fastspring'
+    | switches over to FastSpringService once we have the sandbox/live
+    | credentials. Hot-swappable via env without any code change.
+    |
+    */
+    'provider' => env('BILLING_PROVIDER', 'paddle'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | FastSpring (Merchant of Record)
+    |--------------------------------------------------------------------------
+    |
+    | Sandbox URL is api.fastspring.com routed to the test storefront on the
+    | account; production is the same host with a different store_domain.
+    | The HMAC secret is set per-webhook-endpoint in the FastSpring dashboard
+    | (Webhooks -> Add Endpoint -> HMAC SHA256 secret).
+    |
+    */
+    'fastspring' => [
+        'sandbox'      => env('FASTSPRING_SANDBOX', true),
+        'api_base'     => env('FASTSPRING_API_BASE', 'https://api.fastspring.com'),
+        'api_user'     => env('FASTSPRING_API_USER', ''),
+        'api_password' => env('FASTSPRING_API_PASSWORD', ''),
+        'hmac_secret'  => env('FASTSPRING_HMAC_SECRET', ''),
+        'store_domain' => env('FASTSPRING_STORE_DOMAIN', ''), // e.g. 'wyvstudio'
+
+        // Plan -> product path (human-readable identifiers configured in
+        // the FastSpring dashboard). Monthly variants.
+        'product_paths' => [
+            'starter' => env('FASTSPRING_PRODUCT_STARTER', 'wyvstudio-starter-monthly'),
+            'creator' => env('FASTSPRING_PRODUCT_CREATOR', 'wyvstudio-creator-monthly'),
+            'pro'     => env('FASTSPRING_PRODUCT_PRO',     'wyvstudio-pro-monthly'),
+            'agency'  => env('FASTSPRING_PRODUCT_AGENCY',  'wyvstudio-agency-monthly'),
+        ],
+
+        // Yearly variants — same plan tier, billed annually.
+        'product_paths_yearly' => [
+            'starter' => env('FASTSPRING_PRODUCT_STARTER_YEARLY', 'wyvstudio-starter-yearly'),
+            'creator' => env('FASTSPRING_PRODUCT_CREATOR_YEARLY', 'wyvstudio-creator-yearly'),
+            'pro'     => env('FASTSPRING_PRODUCT_PRO_YEARLY',     'wyvstudio-pro-yearly'),
+            'agency'  => env('FASTSPRING_PRODUCT_AGENCY_YEARLY',  'wyvstudio-agency-yearly'),
+        ],
+
+        // One-time credit top-up packs — product path => credit grant size.
+        'topup_products' => [
+            env('FASTSPRING_PRODUCT_TOPUP_SMALL',  'wyvstudio-topup-500')  => 500,
+            env('FASTSPRING_PRODUCT_TOPUP_MEDIUM', 'wyvstudio-topup-1200') => 1200,
+            env('FASTSPRING_PRODUCT_TOPUP_LARGE',  'wyvstudio-topup-3000') => 3000,
+            env('FASTSPRING_PRODUCT_TOPUP_XL',     'wyvstudio-topup-8000') => 8000,
+        ],
+
+        // Frontend metadata for the top-up pack picker.
+        'topup_packs' => [
+            ['key' => 'small',  'credits' => 500,  'price_usd' => 5,  'product_path' => env('FASTSPRING_PRODUCT_TOPUP_SMALL',  'wyvstudio-topup-500')],
+            ['key' => 'medium', 'credits' => 1200, 'price_usd' => 10, 'product_path' => env('FASTSPRING_PRODUCT_TOPUP_MEDIUM', 'wyvstudio-topup-1200')],
+            ['key' => 'large',  'credits' => 3000, 'price_usd' => 22, 'product_path' => env('FASTSPRING_PRODUCT_TOPUP_LARGE',  'wyvstudio-topup-3000')],
+            ['key' => 'xl',     'credits' => 8000, 'price_usd' => 55, 'product_path' => env('FASTSPRING_PRODUCT_TOPUP_XL',     'wyvstudio-topup-8000')],
+        ],
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Paddle Billing
@@ -9,6 +77,8 @@ return [
     | All values are read from environment variables so secrets never live
     | in source control. The price IDs map each workspace plan_tier to the
     | corresponding Paddle price. Set PADDLE_SANDBOX=true in development.
+    |
+    | Kept active so we can fall back if FastSpring approval doesn't land.
     |
     */
 

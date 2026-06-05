@@ -25,6 +25,8 @@ class Workspace extends Model
         'plan_renews_at',
         'paddle_customer_id',
         'paddle_subscription_id',
+        'fastspring_account_id',
+        'fastspring_subscription_id',
         'status',
         'credits_monthly',
         'credits_topup',
