@@ -70,7 +70,10 @@ class GenerateAIMusicJob implements ShouldQueue
             $asset = Asset::query()->create([
                 'workspace_id'       => $scene->project->workspace_id,
                 'channel_id'         => $scene->project->channel_id,
-                'asset_type'         => 'audio',
+                // 'music' (not 'audio') so the editor's music picker
+                // — which queries /assets?asset_type=music — finds it.
+                // Matches what MusicTrackSeeder uses for stock tracks.
+                'asset_type'         => 'music',
                 'title'              => 'AI Music — ' . \Illuminate\Support\Str::limit($this->prompt, 40),
                 'description'        => $this->prompt,
                 'storage_url'        => $storagePath,
@@ -84,9 +87,19 @@ class GenerateAIMusicJob implements ShouldQueue
                 'created_by_user_id' => $scene->project->created_by_user_id,
             ]);
 
-            // Attach the music to the scene. We use sound_asset_id (the
-            // existing per-scene background-music slot) so the editor's
-            // music panel picks it up automatically.
+            // The editor's music panel binds to project.music_asset_id
+            // (project-wide bed), not scene.sound_asset_id. Set both so
+            // the UI picks up the new track on its next project refresh
+            // AND the scene-level sound slot stays consistent for the
+            // legacy regen-by-scene flow.
+            $scene->project->forceFill([
+                'music_asset_id'      => $asset->getKey(),
+                'music_settings_json' => array_merge(
+                    $scene->project->music_settings_json ?? [],
+                    ['volume' => 0.3, 'fade_in_ms' => 500, 'fade_out_ms' => 800, 'source' => 'ai_generated'],
+                ),
+            ])->save();
+
             $scene->forceFill([
                 'sound_asset_id' => $asset->getKey(),
                 'sound_settings_json' => array_merge(

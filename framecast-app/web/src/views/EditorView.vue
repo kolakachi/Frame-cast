@@ -209,16 +209,60 @@ async function regenerateAIMusic() {
       mood,
       duration_seconds: Math.max(3, Math.min(30, Math.round(activeScene.value.duration_seconds || 8))),
     });
-    // Job is async — start the scene poller so the new track shows up
-    // when ready. Same pattern as image gen + animation.
-    pollSceneUntilVisual(activeScene.value.id);
+    // pollSceneUntilVisual watches the scene's image_generation state
+    // (in_progress / animation_in_progress / visual_asset) — not music.
+    // Music lands on project.music_asset_id, so spawn a parallel poller
+    // that refreshes the project + music-tracks list until the id flips.
+    const beforeId = project.value?.music_asset_id ?? null;
+    pollProjectMusicUntilNew(beforeId);
     pushToast({ id: `ai-music-queued-${activeScene.value.id}-${Date.now()}`,
                 title: '✦ Generating music', message: `Mood: "${mood}". Ready in ~30s.` });
   } catch (e) {
     aiMusicError.value = e.response?.data?.error?.message ?? 'Music generation failed.';
-  } finally {
     aiMusicPending.value = false;
   }
+  // NOTE: don't clear aiMusicPending here — the music job is async.
+  // pollProjectMusicUntilNew clears it when the new music_asset_id lands
+  // (or after the timeout). Clearing here would re-enable the Generate
+  // button while the job is still running.
+}
+
+// Poll the project until music_asset_id changes from its pre-regen value
+// (or we hit the ceiling). When it changes: refresh musicTracks so the
+// new "AI Music — …" track appears in the picker, point the active
+// selection at it, and toast the user. ~30s ceiling matches the
+// MusicGen typical-runtime; loud-toast on timeout so the user knows.
+async function pollProjectMusicUntilNew(beforeId, attempt = 0) {
+  const MAX = 30;
+  if (attempt >= MAX) {
+    aiMusicPending.value = false;
+    pushToast({ id: `ai-music-timeout-${Date.now()}`,
+                title: 'Music taking longer than expected',
+                message: 'Refresh in a moment — it should arrive shortly.' });
+    return;
+  }
+  window.setTimeout(async () => {
+    try {
+      const res = await api.get(`/projects/${project.value.id}`);
+      const proj = res.data?.data?.project;
+      const newId = proj?.music_asset_id ?? null;
+      if (proj && newId && newId !== beforeId) {
+        // New music asset is live. Refresh the picker + bind to it so the
+        // editor shows the new track immediately.
+        project.value = { ...project.value, music_asset_id: newId, music_settings_json: proj.music_settings_json };
+        await loadMusicTracks();
+        selectedMusicTrackId.value = newId;
+        aiMusicPending.value = false;
+        pushToast({ id: `ai-music-done-${newId}`,
+                    title: '✦ Music ready',
+                    message: 'New AI track loaded — preview to hear it.' });
+        return;
+      }
+    } catch {
+      // Transient — keep polling.
+    }
+    pollProjectMusicUntilNew(beforeId, attempt + 1);
+  }, attempt < 4 ? 2500 : 5000);
 }
 const musicVolume = ref(30);
 const musicDuckVolume = ref(8);
