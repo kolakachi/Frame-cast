@@ -844,8 +844,9 @@ class ProjectController extends Controller
         ])->save();
 
         // Fan out: image + TTS + music run in parallel. Each gets its
-        // own tailored input from the LLM split. Animation chains off
-        // the image asset later via the scene watcher in the editor.
+        // own tailored input from the LLM split. Animation chains inside
+        // GenerateAIImageJob's success path (it needs the visual asset
+        // before i2v can run) — passed as constructor args below.
         \App\Jobs\GenerateAIImageJob::dispatch(
             $scene->getKey(),
             $project->getKey(),
@@ -853,6 +854,9 @@ class ProjectController extends Controller
             null,
             $parsed['style'],
             $imageToken,
+            $needsAnimation ? 5 : null,            // 5s clip on Quick tier
+            $needsAnimation ? $parsed['motion'] : null,
+            $needsAnimation ? 'quick'    : null,
         );
 
         \App\Jobs\GenerateTTSJob::dispatch($project->getKey());

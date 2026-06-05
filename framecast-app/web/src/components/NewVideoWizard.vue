@@ -453,7 +453,14 @@ async function submitOneShot() {
     const projectId = res.data?.data?.project?.id
     if (projectId) {
       show.value = false
-      router.push({ name: 'generation-progress', params: { projectId } })
+      // animate flag travels in the URL so the progress view knows to
+      // include the "Animating scene" stage (or skip it). Survives
+      // refresh; storeOneShot doesn't persist this on the project.
+      router.push({
+        name: 'generation-progress',
+        params: { projectId },
+        query: { animate: oneShotAnimate.value ? '1' : '0' },
+      })
     }
   } catch (err) {
     wizardCreateState.value = 'error'

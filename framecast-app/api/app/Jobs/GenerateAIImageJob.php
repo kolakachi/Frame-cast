@@ -37,6 +37,13 @@ class GenerateAIImageJob implements ShouldQueue
         public readonly ?string $promptOverride = null,
         public readonly ?string $visualStyle = null,
         public readonly ?string $generationToken = null,
+        // One-shot chain: when set, dispatches AnimateSceneJob on success so
+        // the user's "Animate the image" toggle actually animates. Was a
+        // gap before — storeOneShot only dispatched image+tts+music and the
+        // animation never ran (no AnimateSceneJob anywhere in the pipeline).
+        public readonly ?int $chainAnimateAfterSeconds = null,
+        public readonly ?string $chainAnimateMotionPrompt = null,
+        public readonly ?string $chainAnimateTier = null,
     ) {
         $this->onQueue('visual');
     }
@@ -227,6 +234,20 @@ class GenerateAIImageJob implements ShouldQueue
                 'asset_id'  => $asset->getKey(),
                 'image_url' => app(StorageService::class)->url($storagePath),
             ]);
+
+            // One-shot animate chain: image is ready, kick AnimateSceneJob so
+            // the user actually gets the animated clip they toggled on. Quick
+            // tier defaults to 5s (Wan 2.5 supports 5 or 10). Music + TTS were
+            // already dispatched in parallel by storeOneShot.
+            if ($this->chainAnimateAfterSeconds !== null) {
+                AnimateSceneJob::dispatch(
+                    $this->sceneId,
+                    $this->projectId,
+                    $this->chainAnimateTier ?? 'quick',
+                    $this->chainAnimateAfterSeconds,
+                    $this->chainAnimateMotionPrompt,
+                );
+            }
         } catch (\Throwable $e) {
             $isPolicyViolation = $this->isPolicyError($e->getMessage());
 

@@ -22,7 +22,28 @@ const baseStages = [
   { key: 'preview_assembly',label: 'Wrapping up' },
 ]
 
+// One-shot prompt projects skip the script/scene/hook pipeline — the
+// LLM parser splits the single prompt into voice/visual/music/motion
+// channels up-front, then 3-4 jobs fan out in parallel. Different stage
+// list keeps the progress page honest (no perpetually-skipped "Writing
+// script" / "Crafting hooks" steps).
+function oneShotStageDefinitions(project = null) {
+  // animate flag comes from the URL query param set by the wizard's
+  // submitOneShot (?animate=1|0). storeOneShot doesn't persist it on
+  // the project, so the URL is the source of truth across refresh.
+  const animate = route.query.animate !== '0'
+  return [
+    { key: 'ai_image',         label: 'Generating image' },
+    ...(animate ? [{ key: 'animation', label: 'Animating scene' }] : []),
+    { key: 'tts',              label: 'Recording voice' },
+    { key: 'ai_music',         label: 'Composing music' },
+    { key: 'preview_assembly', label: 'Wrapping up' },
+  ]
+}
+
 function stageDefinitions(project = null) {
+  if (project?.source_type === 'prompt') return oneShotStageDefinitions(project)
+
   const mode = project?.visual_generation_mode
   const visualStage =
     mode === 'ai_images'    ? { key: 'ai_image',     label: 'Generating AI visuals' }
@@ -144,7 +165,9 @@ function applyPipelineState(project) {
   }
 
   if (project?.status === 'generating' && stages.value.every((s) => s.status === 'pending')) {
-    markStage('script', 'active', 'Processing')
+    // First stage is what we light up. Brief-mode starts on 'script';
+    // one-shot starts on 'ai_image' (image is the first thing to run).
+    markStage(stages.value[0].key, 'active', 'Processing')
   }
 }
 
@@ -161,10 +184,15 @@ function updateStageFromEvent(payload) {
     script: 'script', scene_breakdown: 'scene_breakdown',
     hooks: 'hooks', hooks_scoring: 'hooks_scoring',
     visual_match: 'visual_match', ai_image: 'ai_image', tts: 'tts',
+    animation: 'animation', ai_music: 'ai_music',
   }
 
   const key  = stageMap[payload.stage]
   if (!key) return
+  // Ignore events for stages this project's pipeline doesn't include.
+  // (e.g. brief-mode project getting a stray 'animation' event from a
+  // user manually animating a scene mid-generation.)
+  if (!stageByKey(key)) return
 
   const done  = payload.done  ?? null
   const total = payload.total ?? null
@@ -181,7 +209,19 @@ function updateStageFromEvent(payload) {
       key === 'scene_breakdown' && total ? `${total} scene${total !== 1 ? 's' : ''}` : 'Done'
     markStage(key, 'complete', completedText, done, total)
 
-    if (key === 'tts') {
+    // Open the editor once every stage in this project's pipeline is
+    // terminal. For brief-mode that's effectively when tts finishes
+    // (no later stages run); for one-shot we wait on the slowest tail
+    // (typically music or animation, both ~30-60s).
+    const allDoneOrSkipped = stages.value.every(
+      (s) => s.status === 'complete' || s.status === 'failed',
+    )
+    if (allDoneOrSkipped) {
+      markStage('preview_assembly', 'complete', 'Done')
+      maybeOpenEditor()
+    } else if (key === 'tts' && !stageByKey('ai_music') && !stageByKey('animation')) {
+      // Legacy brief-mode shortcut: tts is the last real stage, so
+      // jump to editor without waiting on the preview_assembly fake.
       markStage('preview_assembly', 'complete', 'Done')
       maybeOpenEditor()
     }
@@ -190,6 +230,17 @@ function updateStageFromEvent(payload) {
 
   if (payload.status === 'failed') {
     markStage(key, 'failed', displayMessage(payload.message) || 'Failed')
+    // For one-shot, music failure is non-fatal — if it fails, treat as
+    // done so the wrap-up + editor transition still fire.
+    if (key === 'ai_music') {
+      const allDoneOrSkipped = stages.value.every(
+        (s) => s.status === 'complete' || s.status === 'failed',
+      )
+      if (allDoneOrSkipped) {
+        markStage('preview_assembly', 'complete', 'Done')
+        maybeOpenEditor()
+      }
+    }
   }
 }
 

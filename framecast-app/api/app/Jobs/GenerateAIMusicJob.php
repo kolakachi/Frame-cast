@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Events\GenerationProgressed;
 use App\Models\Asset;
 use App\Models\Scene;
 use App\Services\CreditService;
@@ -49,6 +50,8 @@ class GenerateAIMusicJob implements ShouldQueue
         if (! $scene || ! $scene->project) {
             return;
         }
+
+        GenerationProgressed::dispatch($this->projectId, 'ai_music', 'processing', null, ['scene_id' => $this->sceneId]);
 
         try {
             $result = $adapter->generate($this->prompt, $this->durationSeconds, $this->genre);
@@ -103,6 +106,11 @@ class GenerateAIMusicJob implements ShouldQueue
                     'metadata'   => ['provider_key' => $result['provider_key'], 'genre' => $this->genre],
                 ],
             ));
+
+            GenerationProgressed::dispatch($this->projectId, 'ai_music', 'completed', null, [
+                'scene_id' => $this->sceneId,
+                'asset_id' => $asset->getKey(),
+            ]);
         } catch (\Throwable $e) {
             Log::warning('GenerateAIMusicJob: failed; scene continues without music', [
                 'scene_id' => $this->sceneId,
@@ -111,6 +119,7 @@ class GenerateAIMusicJob implements ShouldQueue
             // Music failure should NOT block the rest of the one-shot.
             // The scene already has its image + animation + voice; missing
             // music is recoverable in the editor.
+            GenerationProgressed::dispatch($this->projectId, 'ai_music', 'failed', $e->getMessage(), ['scene_id' => $this->sceneId]);
         }
     }
 }
