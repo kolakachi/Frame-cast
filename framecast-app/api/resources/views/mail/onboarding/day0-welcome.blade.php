@@ -5,8 +5,8 @@
 <p>Quick orientation so you're not staring at a blank canvas:</p>
 
 <ol>
-  <li><strong>Start from anything.</strong> A script, a product page URL, a podcast clip, or a one-line prompt. WyvStudio writes the script, breaks it into scenes, generates voice + visuals, and exports for every platform.</li>
-  <li><strong>Use a recurring character.</strong> Upload one photo of a person (a spokesperson, you, a brand mascot). They'll show up consistently across every scene, every variant, every episode. This is the moat.</li>
+  <li><strong>Start from anything.</strong> A script, a product page URL, a podcast clip, or a one-line prompt. WyvStudio writes the script, breaks it into scenes, generates voice + visuals, and exports for every platform — YouTube, Reels, TikTok, LinkedIn, all aspect ratios in one go.</li>
+  <li><strong>One brief, every format.</strong> The same project outputs 9:16, 1:1, 4:5, and 16:9 with captions, transitions, and music auto-matched to each format. No re-editing per platform.</li>
   <li><strong>You start with 200 free credits.</strong> That's about 2 full shorts end-to-end (script → voice → visuals → animation → export). No credit card needed to try.</li>
 </ol>
 

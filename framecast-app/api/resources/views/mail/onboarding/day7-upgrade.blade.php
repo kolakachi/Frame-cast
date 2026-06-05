@@ -5,8 +5,8 @@
 <p>Quick math on what $19/month gets you:</p>
 
 <ul>
-  <li><strong>~25–30 full shorts per month</strong> (script + voice + visuals + animation + export)</li>
-  <li><strong>Recurring characters</strong> — upload a photo once, reuse across every project</li>
+  <li><strong>~25–30 full shorts per month</strong> (script + voice + visuals + animation + multi-format export)</li>
+  <li><strong>Brand-aware output</strong> — upload your logo, colours, and fonts once; they show up consistently across every video</li>
   <li><strong>Custom visual styles</strong> — paste your own brand descriptor instead of picking from presets</li>
   <li><strong>Direct publish</strong> to YouTube, Instagram Reels, Facebook Reels</li>
   <li><strong>Priority queue</strong> — your jobs run before free-tier jobs</li>
