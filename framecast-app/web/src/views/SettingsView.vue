@@ -830,7 +830,7 @@ onMounted(() => {
             <div class="settings-row danger-row" style="margin-top:14px;">
               <div>
                 <div class="label-main" style="color:#ff8888;">Delete account</div>
-                <div class="label-hint">Permanently removes your account, workspace, projects, characters, and all generated content. Billing records may be retained where required by UK tax law. Cannot be undone.</div>
+                <div class="label-hint">Permanently removes your account, workspace, projects, characters, and all generated content. Billing records may be retained where required by Nigerian tax law. Cannot be undone.</div>
               </div>
               <button class="btn btn-sm" type="button" style="background:rgba(220,80,80,0.14);border:1px solid rgba(220,80,80,0.45);color:#ff8888;" @click="openDeleteModal">
                 Delete account
