@@ -974,6 +974,64 @@ class SceneController extends Controller
         ]);
     }
 
+    /**
+     * Re-generate background music for this scene via MusicGen.
+     *
+     * Same job the one-shot pipeline uses; the user can call this from
+     * the editor's music panel to swap out the AI-generated track for
+     * one matching a different mood. Pre-checks credits up front so a
+     * busted balance gets a clear 402 instead of a half-billed retry.
+     */
+    public function regenerateMusic(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $validated = $request->validate([
+            // Music mood seed for MusicGen. ~3-7 words, e.g. "calm acoustic"
+            // or "upbeat indie pop". The wizard suggestion picker on the
+            // frontend hands users a curated set; this endpoint also accepts
+            // free-text.
+            'mood'    => ['required', 'string', 'min:2', 'max:100'],
+            'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:30'],
+        ]);
+
+        $cost = \App\Services\CreditService::AI_MUSIC;
+        $balance = (new \App\Services\CreditService())->balance((int) $user->workspace_id);
+        if ($balance < $cost) {
+            return $this->error(
+                'insufficient_credits',
+                "Music regen costs {$cost} credits. You have {$balance}.",
+                402,
+            );
+        }
+
+        $duration = (int) ($validated['duration_seconds'] ?? max(3, min(30, (int) ($scene->duration_seconds ?? 8))));
+
+        \App\Jobs\GenerateAIMusicJob::dispatch(
+            $scene->getKey(),
+            (int) $scene->project_id,
+            $validated['mood'],
+            $validated['mood'],
+            $duration,
+        );
+
+        return response()->json([
+            'data' => [
+                'status'  => 'queued',
+                'scene_id' => $scene->getKey(),
+                'mood'    => $validated['mood'],
+                'estimated_cost' => $cost,
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function useAnimationFromHistory(Request $request, int $sceneId): JsonResponse
     {
         /** @var User $user */

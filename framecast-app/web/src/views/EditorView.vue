@@ -179,7 +179,47 @@ const mediaPickerMode = ref("visual"); // 'visual' | 'music' | 'sound'
 // When the add-scene panel opened the picker, route selections into the
 // add-scene buffer instead of assigning to the currently-active scene.
 const addSceneAssetPickerActive = ref(false);
-const musicPanelTab = ref("library"); // 'library' | 'uploads'
+const musicPanelTab = ref("library"); // 'library' | 'uploads' | 'ai'
+
+// AI music regen — calls /scenes/{id}/regenerate-music which fires
+// GenerateAIMusicJob and swaps the scene's sound_asset_id when complete.
+const aiMusicMood = ref("");
+const aiMusicPending = ref(false);
+const aiMusicError = ref("");
+const AI_MUSIC_MOODS = [
+  "calm acoustic",
+  "upbeat indie pop",
+  "cinematic ambient",
+  "lo-fi chill",
+  "tense electronic",
+  "inspiring orchestral",
+  "warm folk",
+  "energetic synth",
+  "hopeful piano",
+];
+
+async function regenerateAIMusic() {
+  if (!activeScene.value?.id || aiMusicPending.value) return;
+  const mood = aiMusicMood.value.trim();
+  if (!mood) return;
+  aiMusicPending.value = true;
+  aiMusicError.value = "";
+  try {
+    await api.post(`/scenes/${activeScene.value.id}/regenerate-music`, {
+      mood,
+      duration_seconds: Math.max(3, Math.min(30, Math.round(activeScene.value.duration_seconds || 8))),
+    });
+    // Job is async — start the scene poller so the new track shows up
+    // when ready. Same pattern as image gen + animation.
+    pollSceneUntilVisual(activeScene.value.id);
+    pushToast({ id: `ai-music-queued-${activeScene.value.id}-${Date.now()}`,
+                title: '✦ Generating music', message: `Mood: "${mood}". Ready in ~30s.` });
+  } catch (e) {
+    aiMusicError.value = e.response?.data?.error?.message ?? 'Music generation failed.';
+  } finally {
+    aiMusicPending.value = false;
+  }
+}
 const musicVolume = ref(30);
 const musicDuckVolume = ref(8);
 const musicFadeInMs = ref(500);
@@ -3651,7 +3691,13 @@ function openAnimateModal() {
     ? lastSettings.animation_tier
     : 'quick';
   animateDuration.value = lastSettings.animation_duration === 10 ? 10 : 5;
-  animateMotionPrompt.value = lastSettings.animation_motion_prompt || "";
+  // Pre-fill priority: prior animation prompt → parser-suggested motion
+  // (stashed by one-shot prompt flow on scene.image_generation_settings.
+  // suggested_motion_prompt) → empty.
+  animateMotionPrompt.value =
+    lastSettings.animation_motion_prompt
+    || lastSettings.suggested_motion_prompt
+    || "";
   animateError.value = "";
   animateModalOpen.value = true;
 }
@@ -6115,7 +6161,40 @@ onBeforeUnmount(() => {
                     :class="['music-panel-tab', musicPanelTab === 'uploads' ? 'active' : '']"
                     @click="musicPanelTab = 'uploads'; openMediaPicker('music')"
                   >My Uploads</button>
+                  <button type="button"
+                    :class="['music-panel-tab', musicPanelTab === 'ai' ? 'active' : '']"
+                    @click="musicPanelTab = 'ai'"
+                  >✦ AI Generate</button>
                 </div>
+
+                <!-- AI Music tab -->
+                <template v-if="musicPanelTab === 'ai'">
+                  <div class="micro-label" style="margin:8px 0 6px;">Mood / genre</div>
+                  <div class="ai-music-moods">
+                    <button v-for="m in AI_MUSIC_MOODS" :key="m"
+                      type="button"
+                      :class="['ai-music-mood-chip', aiMusicMood === m ? 'selected' : '']"
+                      @click="aiMusicMood = m"
+                    >{{ m }}</button>
+                  </div>
+                  <input
+                    v-model="aiMusicMood"
+                    class="scene-query-input"
+                    style="margin-top:8px;"
+                    maxlength="100"
+                    placeholder="…or type your own: e.g. tense neon synth wave"
+                  />
+                  <div style="font-size:11px;color:var(--text-muted);margin:6px 0 10px;line-height:1.5;">
+                    Replaces the current background music. Costs 5 credits. Generation takes ~30s; you'll see it appear when ready.
+                  </div>
+                  <button class="btn btn-primary btn-sm panel-full-btn" type="button"
+                    :disabled="aiMusicPending || !aiMusicMood.trim()"
+                    @click="regenerateAIMusic"
+                  >
+                    {{ aiMusicPending ? '✦ Generating…' : '✦ Generate music (5 cr)' }}
+                  </button>
+                  <div v-if="aiMusicError" class="panel-error-copy" style="margin-top:8px;">{{ aiMusicError }}</div>
+                </template>
 
                 <!-- Library tab -->
                 <template v-if="musicPanelTab === 'library'">
@@ -9217,6 +9296,25 @@ select.control-value {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ai-music-moods { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.ai-music-mood-chip {
+  font-size: 11.5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: 0.15s;
+  font-family: inherit;
+}
+.ai-music-mood-chip:hover { color: var(--text-primary); border-color: var(--border-active); }
+.ai-music-mood-chip.selected {
+  background: rgba(255,107,53,0.12);
+  border-color: rgba(255,107,53,0.55);
+  color: var(--accent);
 }
 
 .music-filter-row {
