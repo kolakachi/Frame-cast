@@ -643,7 +643,7 @@ defineExpose({ open })
         <label class="toggle-row" style="margin-top:18px;">
           <div>
             <div class="label-main">Animate the image</div>
-            <div class="label-hint">Adds ~30 seconds and ~30 credits. Image-to-video on Quick tier (Wan 2.5).</div>
+            <div class="label-hint">Adds ~60–90 seconds and 60 credits. Image-to-video on Quick tier (Wan 2.5). You can still re-animate from the editor at higher tiers.</div>
           </div>
           <div :class="['toggle', oneShotAnimate ? 'on' : '']" @click="oneShotAnimate = !oneShotAnimate"></div>
         </label>
