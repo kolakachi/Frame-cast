@@ -123,6 +123,16 @@ function previousStageKeys(key) {
 function applyStoredGenerationState(project) {
   const storedStages = project?.generation_status_json?.stages ?? {}
 
+  // Brief-mode stages are sequential (script -> scenes -> hooks -> ...).
+  // One-shot stages are parallel (image + tts + music + animation all
+  // fan out from storeOneShot). The "if a later stage is done, all
+  // earlier ones must be done too" propagation is correct for the
+  // first case and dangerously wrong for the second — TTS finishes in
+  // ~8s while image/animation are still running, and propagating would
+  // mark them complete in the UI, defeating the ready_for_review guard
+  // and dumping the user into the editor mid-generation.
+  const isOneShot = project?.source_type === 'prompt'
+
   for (const [key, stageState] of Object.entries(storedStages)) {
     const status = normalizeEventStatus(stageState?.status)
     markStage(
@@ -133,7 +143,7 @@ function applyStoredGenerationState(project) {
       stageState?.total ?? null,
     )
 
-    if (status !== 'pending') {
+    if (status !== 'pending' && !isOneShot) {
       previousStageKeys(key).forEach((k) => {
         if (stageByKey(k)?.status === 'pending') markStage(k, 'complete', 'Done')
       })
@@ -150,25 +160,19 @@ function applyPipelineState(project) {
 
   if (project?.status === 'ready_for_review') {
     // For one-shot projects: the project flips to ready_for_review when
-    // TTS finishes (GenerateTTSJob:158/170), but animation runs AFTER
-    // image in our chain — often outlasting TTS. Routing to the editor
-    // here means landing on "Cancel animation" instead of a done scene.
-    // So gate the auto-open on every stage being terminal (complete or
-    // failed). The animation 'completed' event will then trip the
-    // transition via updateStageFromEvent's all-done check.
+    // TTS finishes (GenerateTTSJob:158/170), but image+music+animation
+    // run in parallel and frequently outlast TTS. Auto-routing here
+    // means landing in the editor mid-generation with "generating image"
+    // and "cancel animation" still showing. Block the open until every
+    // stage in the one-shot list is terminal (complete OR failed).
+    // updateStageFromEvent's all-done check trips the transition once
+    // the slowest tail (usually animation, ~70s) lands.
     if (project.source_type === 'prompt') {
-      const animationStage = stageByKey('animation')
-      const animationStillRunning =
-        animationStage && (animationStage.status === 'active' || animationStage.status === 'pending')
-      if (animationStillRunning) {
-        // Surface the truth: image/tts/music can be marked done, but
-        // animation stays in its real state until its event arrives.
-        stages.value.forEach((s) => {
-          if (s.key !== 'animation' && s.status === 'pending') markStage(s.key, 'complete', 'Done')
-        })
-        // Don't fire maybeOpenEditor — wait for the animation event.
-        return
-      }
+      const anyStillRunning = stages.value.some(
+        (s) => s.key !== 'preview_assembly'
+          && (s.status === 'active' || s.status === 'pending'),
+      )
+      if (anyStillRunning) return
     }
 
     stages.value.forEach((s) => markStage(s.key, 'complete', 'Done'))
