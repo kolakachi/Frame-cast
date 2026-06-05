@@ -86,6 +86,12 @@ return [
         'i2v_balanced_version' => env('REPLICATE_I2V_BALANCED_VERSION', ''),
         'i2v_premium_model'    => env('REPLICATE_I2V_PREMIUM_MODEL',  'kwaivgi/kling-v2.1'),
         'i2v_premium_version'  => env('REPLICATE_I2V_PREMIUM_VERSION', ''),
+
+        // MusicGen for the one-shot prompt flow's background music.
+        // 'meta/musicgen' is the cheap workhorse; switch to 'meta/musicgen-melody-large'
+        // for higher-quality output at ~5x the cost.
+        'musicgen_model'   => env('REPLICATE_MUSICGEN_MODEL',   'meta/musicgen'),
+        'musicgen_version' => env('REPLICATE_MUSICGEN_VERSION', ''),
     ],
 
     'pixabay' => [

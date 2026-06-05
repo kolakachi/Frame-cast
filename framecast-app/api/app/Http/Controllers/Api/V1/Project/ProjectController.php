@@ -730,6 +730,153 @@ class ProjectController extends Controller
         return response()->json(['data' => ['project' => $this->serializeProject($project->fresh())], 'meta' => []]);
     }
 
+    /**
+     * One-shot prompt -> single-scene project with image + (optional)
+     * animation + voice-over + AI music. Activation lever: a free-tier
+     * user with 200 credits can fire ~4 of these and feel the whole
+     * WyvStudio pipeline in ~90 seconds.
+     *
+     * Different from store() in two ways:
+     *   1. Skips niche / source-content validation — just a prompt.
+     *   2. Auto-dispatches the full pipeline (image -> [animate ->] tts
+     *      -> music) instead of leaving the user to wire it up scene by
+     *      scene.
+     */
+    public function storeOneShot(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        if (! $user->workspace_id) {
+            return $this->error('workspace_required', 'User is not assigned to a workspace.', 422);
+        }
+
+        $validated = $request->validate([
+            'prompt'        => ['required', 'string', 'min:3', 'max:1000'],
+            'title'         => ['nullable', 'string', 'max:200'],
+            'aspect_ratio'  => ['nullable', 'string', 'in:9:16,1:1,16:9,4:5'],
+            'animate'       => ['nullable', 'boolean'],
+            'channel_id'    => ['nullable', 'integer', 'exists:channels,id'],
+        ]);
+
+        // Credit check up-front so we don't half-create a project the
+        // user can't afford to complete.
+        $needsAnimation = (bool) ($validated['animate'] ?? true);
+        $estimatedCost  = CreditService::AI_MEDIUM
+            + CreditService::TTS
+            + CreditService::AI_MUSIC
+            + ($needsAnimation ? CreditService::VIDEO_QUICK : 0);
+
+        $balance = (new CreditService())->balance((int) $user->workspace_id);
+        if ($balance < $estimatedCost) {
+            return $this->error(
+                'insufficient_credits',
+                "This one-shot needs about {$estimatedCost} credits. You have {$balance}.",
+                402,
+            );
+        }
+
+        $promptText  = trim($validated['prompt']);
+        $aspectRatio = $validated['aspect_ratio'] ?? '9:16';
+        $title       = $validated['title']
+            ?? \Illuminate\Support\Str::limit($promptText, 60, '');
+
+        $project = Project::query()->create([
+            'workspace_id'        => $user->workspace_id,
+            'created_by_user_id'  => $user->getKey(),
+            'channel_id'          => $validated['channel_id'] ?? null,
+            'name'                => $title,
+            'aspect_ratio'        => $aspectRatio,
+            'duration_seconds'    => 8,
+            'visual_type'         => 'ai_image',
+            'ai_broll_style'      => 'photorealistic',
+            'status'              => 'generating',
+            'source_type'         => 'prompt',
+            'source_content_raw'  => $promptText,
+        ]);
+
+        // Single scene: script_text = the prompt itself (voiced verbatim
+        // by TTS). visual_prompt = the prompt (drives image gen).
+        $scene = Scene::query()->create([
+            'project_id'        => $project->getKey(),
+            'scene_order'       => 1,
+            'scene_type'        => 'narration',
+            'label'             => 'Scene 1',
+            'script_text'       => $promptText,
+            'duration_seconds'  => 8,
+            'voice_settings_json' => [
+                'voice_id'  => 'alloy',
+                'speed'     => 1.0,
+                'stability' => 'medium',
+            ],
+            'caption_settings_json' => [
+                'enabled'        => true,
+                'style_key'      => 'impact',
+                'highlight_mode' => 'keywords',
+                'position'       => 'bottom_third',
+                'font'           => 'Bebas Neue',
+                'highlight_color'=> '#ff6b35',
+            ],
+            'visual_type'   => 'ai_image',
+            'visual_prompt' => $promptText,
+            'visual_style'  => 'photorealistic',
+            'status'        => 'draft',
+        ]);
+
+        // Set in-progress + token so the editor's pending-state computed
+        // and the watchdog both see this scene as legitimately running.
+        $imageToken = (string) \Illuminate\Support\Str::uuid();
+        $scene->forceFill([
+            'image_generation_settings_json' => [
+                'in_progress'           => true,
+                'last_error'            => null,
+                'needs_visual'          => false,
+                'generation_token'      => $imageToken,
+                'generation_started_at' => now()->toIso8601String(),
+            ],
+        ])->save();
+
+        // Fan out: image + TTS + music run in parallel. Animation chains
+        // off the image asset later via the scene watcher in the editor
+        // (the user can also kick it manually if auto-animate is off).
+        \App\Jobs\GenerateAIImageJob::dispatch(
+            $scene->getKey(),
+            $project->getKey(),
+            'photorealistic',
+            null,
+            'photorealistic',
+            $imageToken,
+        );
+
+        \App\Jobs\GenerateTTSJob::dispatch($project->getKey());
+
+        \App\Jobs\GenerateAIMusicJob::dispatch(
+            $scene->getKey(),
+            $project->getKey(),
+            $promptText,
+            null,
+            8,
+        );
+
+        // If auto-animate is requested, the scene watcher in the existing
+        // GenerateAIImageJob success path doesn't auto-chain animation —
+        // we kick it from the frontend's generation-progress page once the
+        // image asset is ready, by calling the existing /scenes/{id}/animate
+        // endpoint. This keeps the chain visible to the user (image first,
+        // then animation badge appears).
+        $project->refresh();
+        return response()->json([
+            'data' => [
+                'project'    => $this->serializeProject($project),
+                'one_shot'   => [
+                    'estimated_cost' => $estimatedCost,
+                    'auto_animate'   => $needsAnimation,
+                    'scene_id'       => $scene->getKey(),
+                ],
+            ],
+            'meta' => [],
+        ]);
+    }
+
     public function destroy(Request $request, int $projectId): JsonResponse
     {
         /** @var User $user */

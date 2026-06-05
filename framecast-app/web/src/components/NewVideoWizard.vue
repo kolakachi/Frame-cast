@@ -410,6 +410,12 @@ function wizardBack() {
     wizardStep.value = 0
     return
   }
+  // One-shot users (step 4) go back to the path picker too.
+  if (wizardStep.value === 4) {
+    wizardSourceType.value = 'prompt'
+    wizardStep.value = 0
+    return
+  }
   wizardStep.value = Math.max(0, wizardStep.value - 1)
 }
 
@@ -421,8 +427,38 @@ function pickStartFromScratch() {
 function pickGenerateFromBrief() {
   // Reset back to prompt as the default within Generate so the source-type
   // step doesn't carry 'blank' selected from a previous open.
-  if (wizardSourceType.value === 'blank') wizardSourceType.value = 'prompt'
+  if (['blank', 'one_shot_prompt'].includes(wizardSourceType.value)) wizardSourceType.value = 'prompt'
   wizardStep.value = 1
+}
+function pickOneShotPrompt() {
+  wizardSourceType.value = 'one_shot_prompt'
+  wizardStep.value = 4   // one-shot form is its own step so it never gets the niche/source UI
+}
+
+// One-shot prompt state.
+const oneShotPrompt = ref('')
+const oneShotAnimate = ref(true)
+async function submitOneShot() {
+  if (!oneShotPrompt.value.trim() || wizardCreateState.value === 'loading') return
+  wizardCreateState.value = 'loading'
+  wizardCreateError.value = ''
+  try {
+    const res = await api.post('/projects/one-shot', {
+      prompt: oneShotPrompt.value.trim(),
+      title: title.value || undefined,
+      aspect_ratio: aspectRatio.value,
+      animate: oneShotAnimate.value,
+      channel_id: channelId.value ? Number(channelId.value) : undefined,
+    })
+    const projectId = res.data?.data?.project?.id
+    if (projectId) {
+      show.value = false
+      router.push({ name: 'generation-progress', params: { projectId } })
+    }
+  } catch (err) {
+    wizardCreateState.value = 'error'
+    wizardCreateError.value = err.response?.data?.error?.message ?? 'One-shot generation failed.'
+  }
 }
 
 async function submitWizardProject() {
@@ -524,7 +560,7 @@ defineExpose({ open })
         <div class="modal-title">New Video</div>
         <div class="modal-subtitle">How do you want to start?</div>
 
-        <div class="path-picker-grid">
+        <div class="path-picker-grid path-picker-grid-3">
           <div class="path-card" role="button" tabindex="0"
                @click="pickStartFromScratch"
                @keydown.enter="pickStartFromScratch">
@@ -550,10 +586,75 @@ defineExpose({ open })
               <span class="path-card-tag">~90s setup</span>
             </div>
           </div>
+
+          <div class="path-card" role="button" tabindex="0"
+               @click="pickOneShotPrompt"
+               @keydown.enter="pickOneShotPrompt">
+            <div class="path-card-icon">⚡</div>
+            <div class="path-card-title">One-shot from a prompt</div>
+            <div class="path-card-desc">Type one line and get back a single scene with AI image, animation, voice, and music. ~90 seconds end-to-end.</div>
+            <div class="path-card-tags">
+              <span class="path-card-tag">Instant demo</span>
+              <span class="path-card-tag">One scene</span>
+              <span class="path-card-tag">Full pipeline</span>
+            </div>
+          </div>
         </div>
 
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" @click="close">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Step 4: One-shot prompt form -->
+      <div v-else-if="wizardStep === 4">
+        <div class="section-title">One-shot from a prompt</div>
+        <div class="section-subtitle">Type a single line. We generate the image, voice, music — and optionally animate it. Lands in the editor in ~90 seconds.</div>
+
+        <label class="input-label-wrap" style="margin-top:18px;">
+          <span class="input-label">Title <span style="font-weight:400;opacity:.55;">(optional)</span></span>
+          <input v-model="title" class="field-input" type="text" maxlength="200" placeholder="Untitled project" />
+        </label>
+
+        <label class="input-label-wrap" style="margin-top:14px;">
+          <span class="input-label">Prompt</span>
+          <textarea
+            v-model="oneShotPrompt"
+            class="field-input textarea"
+            rows="3"
+            maxlength="1000"
+            placeholder="e.g. a calm founder explaining her morning ritual in a sunlit kitchen, warm tones, slow camera push-in"
+            @keydown.meta.enter="submitOneShot"
+            @keydown.ctrl.enter="submitOneShot"
+          ></textarea>
+          <div class="hint-box">This becomes the voice-over script AND the image/music descriptor. Be visual and specific — name the subject, mood, lighting, setting.</div>
+        </label>
+
+        <label class="input-label-wrap" style="margin-top:14px;">
+          <span class="input-label">Aspect ratio</span>
+          <div class="format-chips">
+            <div :class="['format-chip', aspectRatio === '9:16' ? 'active' : '']" @click="aspectRatio = '9:16'">9:16</div>
+            <div :class="['format-chip', aspectRatio === '1:1' ? 'active' : '']"  @click="aspectRatio = '1:1'">1:1</div>
+            <div :class="['format-chip', aspectRatio === '4:5' ? 'active' : '']"  @click="aspectRatio = '4:5'">4:5</div>
+            <div :class="['format-chip', aspectRatio === '16:9' ? 'active' : '']" @click="aspectRatio = '16:9'">16:9</div>
+          </div>
+        </label>
+
+        <label class="toggle-row" style="margin-top:18px;">
+          <div>
+            <div class="label-main">Animate the image</div>
+            <div class="label-hint">Adds ~30 seconds and ~30 credits. Image-to-video on Quick tier (Wan 2.5).</div>
+          </div>
+          <div :class="['toggle', oneShotAnimate ? 'on' : '']" @click="oneShotAnimate = !oneShotAnimate"></div>
+        </label>
+
+        <div v-if="wizardCreateError" class="modal-error" style="margin-top:14px;">{{ wizardCreateError }}</div>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" @click="wizardStep = 0">← Back</button>
+          <button class="btn btn-primary" type="button" :disabled="!oneShotPrompt.trim() || wizardCreateState === 'loading'" @click="submitOneShot">
+            {{ wizardCreateState === 'loading' ? 'Generating…' : '⚡ Generate one-shot' }}
+          </button>
         </div>
       </div>
 
@@ -1035,6 +1136,8 @@ defineExpose({ open })
 /* Step 0 — path picker. Two big cards, one orange-accented for the
    recommended Generate path. */
 .path-picker-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 20px 0 8px; }
+.path-picker-grid-3 { grid-template-columns: repeat(3, 1fr); }
+@media(max-width: 900px) { .path-picker-grid-3 { grid-template-columns: repeat(2, 1fr); } }
 .path-card { position: relative; display: flex; flex-direction: column; padding: 26px 22px; border-radius: 12px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; transition: border-color 0.18s, background 0.18s, transform 0.18s; min-height: 220px; }
 .path-card:hover { border-color: rgba(255,107,53,0.45); transform: translateY(-2px); }
 .path-card-featured { border-color: rgba(255,107,53,0.35); background: linear-gradient(180deg, rgba(255,107,53,0.06), transparent 60%); }

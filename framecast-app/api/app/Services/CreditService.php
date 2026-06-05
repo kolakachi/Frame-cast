@@ -15,6 +15,7 @@ class CreditService
     public const AI_MEDIUM    = 15;  // per scene, gpt-image-1 medium
     public const AI_HIGH      = 40;  // per scene, gpt-image-1 high
     public const AI_CHARACTER = 50;  // per scene, OpenAI gpt-image-2 /edits (character + reference image, high quality)
+    public const AI_MUSIC     = 5;   // per scene, Replicate MusicGen (~$0.01 upstream, ~$0.05 retail at 1cr=$0.01)
 
     // Image-to-video animation tiers — per 6-second clip; longer clips scale roughly proportionally.
     // Wan 2.1 480p / Hailuo / Kling 2.1 mapping.
