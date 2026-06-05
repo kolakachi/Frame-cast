@@ -780,6 +780,13 @@ class ProjectController extends Controller
         $title       = $validated['title']
             ?? \Illuminate\Support\Str::limit($promptText, 60, '');
 
+        // Split the user's single prompt into the four channels — voice
+        // script, image prompt, music mood, animation motion — so each
+        // downstream job gets a tailored input. ~$0.001 OpenAI call;
+        // gracefully falls back to the raw prompt for everything if it
+        // fails.
+        $parsed = app(\App\Services\Generation\OneShotPromptParser::class)->parse($promptText);
+
         $project = Project::query()->create([
             'workspace_id'        => $user->workspace_id,
             'created_by_user_id'  => $user->getKey(),
@@ -788,20 +795,21 @@ class ProjectController extends Controller
             'aspect_ratio'        => $aspectRatio,
             'duration_seconds'    => 8,
             'visual_type'         => 'ai_image',
-            'ai_broll_style'      => 'photorealistic',
+            'ai_broll_style'      => $parsed['style'],
             'status'              => 'generating',
             'source_type'         => 'prompt',
             'source_content_raw'  => $promptText,
         ]);
 
-        // Single scene: script_text = the prompt itself (voiced verbatim
-        // by TTS). visual_prompt = the prompt (drives image gen).
+        // Single scene with the LLM-derived split: script_text = the
+        // spoken voice-over (NOT the visual description), visual_prompt
+        // = what the image should look like.
         $scene = Scene::query()->create([
             'project_id'        => $project->getKey(),
             'scene_order'       => 1,
             'scene_type'        => 'narration',
             'label'             => 'Scene 1',
-            'script_text'       => $promptText,
+            'script_text'       => $parsed['script'],
             'duration_seconds'  => 8,
             'voice_settings_json' => [
                 'voice_id'  => 'alloy',
@@ -817,8 +825,8 @@ class ProjectController extends Controller
                 'highlight_color'=> '#ff6b35',
             ],
             'visual_type'   => 'ai_image',
-            'visual_prompt' => $promptText,
-            'visual_style'  => 'photorealistic',
+            'visual_prompt' => $parsed['visual'],
+            'visual_style'  => $parsed['style'],
             'status'        => 'draft',
         ]);
 
@@ -835,27 +843,40 @@ class ProjectController extends Controller
             ],
         ])->save();
 
-        // Fan out: image + TTS + music run in parallel. Animation chains
-        // off the image asset later via the scene watcher in the editor
-        // (the user can also kick it manually if auto-animate is off).
+        // Fan out: image + TTS + music run in parallel. Each gets its
+        // own tailored input from the LLM split. Animation chains off
+        // the image asset later via the scene watcher in the editor.
         \App\Jobs\GenerateAIImageJob::dispatch(
             $scene->getKey(),
             $project->getKey(),
-            'photorealistic',
+            $parsed['style'],
             null,
-            'photorealistic',
+            $parsed['style'],
             $imageToken,
         );
 
         \App\Jobs\GenerateTTSJob::dispatch($project->getKey());
 
+        // Music gets the LLM-derived mood seed (e.g. "calm acoustic")
+        // as the prompt + a separate genre hint. Much better output than
+        // feeding it the raw user description.
         \App\Jobs\GenerateAIMusicJob::dispatch(
             $scene->getKey(),
             $project->getKey(),
-            $promptText,
-            null,
+            $parsed['music_mood'],
+            $parsed['music_mood'],
             8,
         );
+
+        // Pre-stash the motion prompt for animation so the editor's
+        // auto-animate path (or the user's manual Animate click) has it
+        // ready. Lives in image_generation_settings_json so it ships
+        // with the scene state through the watchdog.
+        if (! empty($parsed['motion'])) {
+            $cfg = $scene->image_generation_settings_json ?? [];
+            $cfg['suggested_motion_prompt'] = $parsed['motion'];
+            $scene->forceFill(['image_generation_settings_json' => $cfg])->save();
+        }
 
         // If auto-animate is requested, the scene watcher in the existing
         // GenerateAIImageJob success path doesn't auto-chain animation —
