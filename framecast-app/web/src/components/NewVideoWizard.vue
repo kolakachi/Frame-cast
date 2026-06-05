@@ -705,7 +705,7 @@ defineExpose({ open })
           </div>
         </div>
         <div class="modal-actions">
-          <button class="btn btn-ghost" type="button" @click="close">Cancel</button>
+          <button class="btn btn-ghost" type="button" @click="wizardStep = 0">← Back</button>
           <button class="btn btn-primary" type="button" :disabled="!selectedNicheId && !customNicheSelected" @click="wizardNext">Continue →</button>
         </div>
       </div>
