@@ -156,7 +156,21 @@ class AnimateSceneJob implements ShouldQueue
                 'animation_history'                 => $history,
             ]);
 
-            GenerationProgressed::dispatch($this->projectId, 'animation', 'completed', null, ['scene_id' => $this->sceneId]);
+            // Multi-scene aware: count scenes with completed animation. Emit
+            // 'processing' with done/total until all scenes finish; then
+            // 'completed'. Keeps the progress page's animation stage honest
+            // for one-shot multi-scene (otherwise it'd tick complete after
+            // the first scene finishes animating).
+            $aniTotal = Scene::query()->where('project_id', $this->projectId)->count();
+            $aniDone  = Scene::query()->where('project_id', $this->projectId)
+                ->whereRaw("(image_generation_settings_json->>'animation_video_asset_id') IS NOT NULL")
+                ->count();
+            $aniStatus = ($aniDone >= $aniTotal) ? 'completed' : 'processing';
+            GenerationProgressed::dispatch($this->projectId, 'animation', $aniStatus, null, [
+                'scene_id' => $this->sceneId,
+                'done'     => $aniDone,
+                'total'    => $aniTotal,
+            ]);
         } catch (\Throwable $e) {
             // Animation safety rejections from Replicate (Kling/Hailuo/Wan
             // each have their own content filters) get logged to

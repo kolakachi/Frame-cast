@@ -285,10 +285,22 @@ class GenerateAIImageJob implements ShouldQueue
                     ],
                 ],
             ));
-            GenerationProgressed::dispatch($this->projectId, 'ai_image', 'completed', null, [
+            // Multi-scene aware progress: count scenes in this project that
+            // already have a visual_asset_id. If we're not the last one to
+            // finish, emit 'processing' with done/total so the progress view
+            // can render "Generating image · X / N" — keeps the user on the
+            // page through the full multi-scene wait instead of marking
+            // complete after the first scene's success.
+            $total = Scene::query()->where('project_id', $this->projectId)->count();
+            $done  = Scene::query()->where('project_id', $this->projectId)
+                ->whereNotNull('visual_asset_id')->count();
+            $stageStatus = ($done >= $total) ? 'completed' : 'processing';
+            GenerationProgressed::dispatch($this->projectId, 'ai_image', $stageStatus, null, [
                 'scene_id'  => $this->sceneId,
                 'asset_id'  => $asset->getKey(),
                 'image_url' => app(StorageService::class)->url($storagePath),
+                'done'      => $done,
+                'total'     => $total,
             ]);
 
             // One-shot animate chain: image is ready, kick AnimateSceneJob so
