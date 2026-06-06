@@ -61,7 +61,11 @@ const CRUISE_QUICK_PROMPTS = [
   'animate this scene',
   'add a CTA scene',
 ]
-const cruiseUserBalance = computed(() => mePayload.value?.credits?.balance ?? 0)
+// Credits live at response.data.data.credits — sibling to user, not nested
+// inside it. We mirror them into a dedicated ref so the action card's
+// top-up gate reads truth. Set by loadMe() / refreshed after each apply.
+const cruiseCreditsPayload = ref(null)
+const cruiseUserBalance = computed(() => cruiseCreditsPayload.value?.balance ?? 0)
 
 const cruiseScopeLabel = computed(() => {
   // Default scope: the active scene if any, otherwise whole project.
@@ -2396,6 +2400,8 @@ async function loadMe() {
   try {
     const response = await api.get("/me");
     mePayload.value = response.data?.data?.user ?? null;
+    // Credits live at data.credits — sibling to user, not nested inside.
+    cruiseCreditsPayload.value = response.data?.data?.credits ?? null;
     // Hydrate workspace-level Cruise prefs so the toggle reflects truth.
     cruiseAutoApply.value = response.data?.data?.cruise?.auto_apply ?? true;
     await Promise.all([loadVoiceProfiles(), loadCaptionPresets(), loadChannels(), loadBrandKits(), loadMusicTracks()]);
