@@ -769,6 +769,8 @@ class ProjectController extends Controller
             'source_image_asset_id'    => ['nullable', 'integer', 'exists:assets,id'],
             'character_id'             => ['nullable', 'integer', 'exists:characters,id'],
             'animation_tier'           => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro'],
+            // 1-8 scenes. 1 = instant demo, 3 = DTC ad shape, 8 = full Reel.
+            'scenes_count'             => ['nullable', 'integer', 'min:1', 'max:8'],
         ]);
 
         // Resolve references — flatten arrays + legacy singles into one
@@ -810,10 +812,10 @@ class ProjectController extends Controller
         $referenceAssets = $referenceAssets->unique('id')->take(4);
         $primaryCharacterId = $characterIds[0] ?? null;
 
-        // Credit check up-front so we don't half-create a project the
-        // user can't afford to complete. Image cost: gpt-image-2 /edits
-        // when any reference present (cost ≈ AI_CHARACTER), gpt-image-1
-        // text-to-image otherwise (cost ≈ AI_MEDIUM).
+        // Credit check up-front. Per-scene: image + TTS + (animate); plus
+        // ONE music bed for the whole video (shared across scenes). Image
+        // cost depends on path: AI_CHARACTER when refs present (gpt-image-2
+        // /edits), AI_MEDIUM for text-to-image fallback.
         $needsAnimation = (bool) ($validated['animate'] ?? true);
         $animationTier  = $validated['animation_tier'] ?? 'quick';
         $animationCost  = match ($animationTier) {
@@ -823,13 +825,13 @@ class ProjectController extends Controller
             'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
             default         => CreditService::VIDEO_QUICK,
         };
-        $imageCost = $referenceAssets->isNotEmpty()
+        $perSceneImageCost = $referenceAssets->isNotEmpty()
             ? CreditService::AI_CHARACTER
             : CreditService::AI_MEDIUM;
-        $estimatedCost = $imageCost
-            + CreditService::TTS
-            + CreditService::AI_MUSIC
-            + ($needsAnimation ? $animationCost : 0);
+        $sceneCount = (int) ($validated['scenes_count'] ?? 1);
+        $sceneCount = max(1, min(8, $sceneCount));
+        $perScene = $perSceneImageCost + CreditService::TTS + ($needsAnimation ? $animationCost : 0);
+        $estimatedCost = ($perScene * $sceneCount) + CreditService::AI_MUSIC;
 
         $balance = (new CreditService())->balance((int) $user->workspace_id);
         if ($balance < $estimatedCost) {
@@ -845,12 +847,12 @@ class ProjectController extends Controller
         $title       = $validated['title']
             ?? \Illuminate\Support\Str::limit($promptText, 60, '');
 
-        // Split the user's single prompt into the four channels — voice
-        // script, image prompt, music mood, animation motion — so each
-        // downstream job gets a tailored input. ~$0.001 OpenAI call;
-        // gracefully falls back to the raw prompt for everything if it
-        // fails.
-        $parsed = app(\App\Services\Generation\OneShotPromptParser::class)->parse($promptText);
+        // Split the user's prompt into N scenes via the multi-scene parser.
+        // For N=1 the parser short-circuits to the single-scene path. For
+        // N>1 we get one LLM call that returns an array of {script,visual,
+        // motion} per scene plus shared music_mood and style.
+        $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
+            ->parseMultiScene($promptText, $sceneCount);
 
         $project = Project::query()->create([
             'workspace_id'        => $user->workspace_id,
@@ -858,7 +860,7 @@ class ProjectController extends Controller
             'channel_id'          => $validated['channel_id'] ?? null,
             'name'                => $title,
             'aspect_ratio'        => $aspectRatio,
-            'duration_seconds'    => 8,
+            'duration_seconds'    => 8 * $sceneCount,
             'visual_type'         => 'ai_image',
             'ai_broll_style'      => $parsed['style'],
             'status'              => 'generating',
@@ -866,96 +868,92 @@ class ProjectController extends Controller
             'source_content_raw'  => $promptText,
         ]);
 
-        // Single scene with the LLM-derived split: script_text = the
-        // spoken voice-over (NOT the visual description), visual_prompt
-        // = what the image should look like.
-        $scene = Scene::query()->create([
-            'project_id'        => $project->getKey(),
-            'scene_order'       => 1,
-            'scene_type'        => 'narration',
-            'label'             => 'Scene 1',
-            'script_text'       => $parsed['script'],
-            'duration_seconds'  => 8,
-            'voice_settings_json' => [
-                'voice_id'  => 'alloy',
-                'speed'     => 1.0,
-                'stability' => 'medium',
-            ],
-            'caption_settings_json' => [
-                'enabled'        => true,
-                'style_key'      => 'impact',
-                'highlight_mode' => 'keywords',
-                'position'       => 'bottom_third',
-                'font'           => 'Bebas Neue',
-                'highlight_color'=> '#ff6b35',
-            ],
-            'visual_type'   => 'ai_image',
-            'visual_prompt' => $parsed['visual'],
-            'visual_style'  => $parsed['style'],
-            'status'        => 'draft',
-        ]);
-
         // Animation parameters — Balanced (Hailuo) needs 6 or 10; the rest
         // use 5 or 10.
         $animateDuration = $animationTier === 'balanced' ? 6 : 5;
+        $referenceIdsArr = $referenceAssets->pluck('id')->all();
+        $firstSceneId    = null;
 
-        // Single unified dispatch path. References (uploads + character
-        // photos) flow as hints to image gen; the job picks the right
-        // adapter based on whether references were provided. Always
-        // animates if requested — animation chains off image success.
-        $imageToken = (string) \Illuminate\Support\Str::uuid();
-        $scene->forceFill([
-            'image_generation_settings_json' => [
-                'in_progress'           => true,
-                'last_error'            => null,
-                'needs_visual'          => false,
-                'generation_token'      => $imageToken,
-                'generation_started_at' => now()->toIso8601String(),
-                'reference_asset_ids'   => $referenceAssets->pluck('id')->all(),
-            ],
-        ])->save();
+        // Create N scenes + dispatch image/animate per scene. Music dispatches
+        // ONCE for the whole project (one bed across all scenes). TTS dispatches
+        // once per project — GenerateTTSJob walks every scene with script_text.
+        //
+        // Staggered dispatch (delay = $i * 3s) spaces upstream calls so we
+        // don't burst N parallel image-gen requests at OpenAI / Replicate.
+        // Keeps multi-scene under OpenAI gpt-image-1 Tier-1 (~5 RPM) safely
+        // at N≤8 and avoids Replicate prediction queueing under load.
+        foreach ($parsed['scenes'] as $idx => $sceneDef) {
+            $sceneOrder = $idx + 1;
+            $imageToken = (string) \Illuminate\Support\Str::uuid();
 
-        // Bind primary character to the scene if any picked, so subsequent
-        // edits + the auto-route in the job stay coherent.
-        if ($primaryCharacterId) {
-            $scene->forceFill(['character_id' => $primaryCharacterId])->save();
+            $scene = Scene::query()->create([
+                'project_id'        => $project->getKey(),
+                'scene_order'       => $sceneOrder,
+                'scene_type'        => 'narration',
+                'label'             => "Scene {$sceneOrder}",
+                'script_text'       => $sceneDef['script'],
+                'duration_seconds'  => 8,
+                'voice_settings_json' => [
+                    'voice_id'  => 'alloy',
+                    'speed'     => 1.0,
+                    'stability' => 'medium',
+                ],
+                'caption_settings_json' => [
+                    'enabled'        => true,
+                    'style_key'      => 'impact',
+                    'highlight_mode' => 'keywords',
+                    'position'       => 'bottom_third',
+                    'font'           => 'Bebas Neue',
+                    'highlight_color'=> '#ff6b35',
+                ],
+                'visual_type'   => 'ai_image',
+                'visual_prompt' => $sceneDef['visual'],
+                'visual_style'  => $parsed['style'],
+                'status'        => 'draft',
+                'character_id'  => $primaryCharacterId,
+            ]);
+
+            $scene->forceFill([
+                'image_generation_settings_json' => [
+                    'in_progress'             => true,
+                    'last_error'              => null,
+                    'needs_visual'            => false,
+                    'generation_token'        => $imageToken,
+                    'generation_started_at'   => now()->toIso8601String(),
+                    'reference_asset_ids'     => $referenceIdsArr,
+                    'suggested_motion_prompt' => $sceneDef['motion'],
+                ],
+            ])->save();
+
+            \App\Jobs\GenerateAIImageJob::dispatch(
+                $scene->getKey(),
+                $project->getKey(),
+                $parsed['style'],
+                null,
+                $parsed['style'],
+                $imageToken,
+                $needsAnimation ? $animateDuration : null,
+                $needsAnimation ? $sceneDef['motion'] : null,
+                $needsAnimation ? $animationTier      : null,
+                null,
+                $referenceIdsArr,
+            )->delay(now()->addSeconds($idx * 3));
+
+            $firstSceneId = $firstSceneId ?? $scene->getKey();
         }
 
-        \App\Jobs\GenerateAIImageJob::dispatch(
-            $scene->getKey(),
-            $project->getKey(),
-            $parsed['style'],
-            null,
-            $parsed['style'],
-            $imageToken,
-            $needsAnimation ? $animateDuration : null,
-            $needsAnimation ? $parsed['motion'] : null,
-            $needsAnimation ? $animationTier   : null,
-            null,                                        // no model_key override — adapter picked by reference presence
-            $referenceAssets->pluck('id')->all(),        // flatten to plain array for the job
-        );
-
+        // TTS walks every scene with script_text (existing behavior).
         \App\Jobs\GenerateTTSJob::dispatch($project->getKey());
 
-        // Music gets the LLM-derived mood seed (e.g. "calm acoustic")
-        // as the prompt + a separate genre hint. Much better output than
-        // feeding it the raw user description.
+        // Music dispatches once with the first scene id as anchor — the
+        // job attaches it to project.music_asset_id which is video-wide.
         \App\Jobs\GenerateAIMusicJob::dispatch(
-            $scene->getKey(),
+            $firstSceneId,
             $project->getKey(),
             $parsed['music_mood'],
             $parsed['music_mood'],
             8,
         );
-
-        // Pre-stash the motion prompt for the editor's animate-modal
-        // pre-fill. Note: the source-asset path above already stashed
-        // this earlier; harmless to re-set here for the prompt path.
-        if (! empty($parsed['motion'])) {
-            $cfg = $scene->image_generation_settings_json ?? [];
-            $cfg['suggested_motion_prompt'] = $parsed['motion'];
-            $scene->forceFill(['image_generation_settings_json' => $cfg])->save();
-        }
 
         $project->refresh();
         return response()->json([
@@ -964,7 +962,8 @@ class ProjectController extends Controller
                 'one_shot'   => [
                     'estimated_cost' => $estimatedCost,
                     'auto_animate'   => $needsAnimation,
-                    'scene_id'       => $scene->getKey(),
+                    'scene_id'       => $firstSceneId,
+                    'scenes_count'   => $sceneCount,
                 ],
             ],
             'meta' => [],

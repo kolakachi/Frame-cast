@@ -349,11 +349,13 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   oneShotPrompt.value = ''
   oneShotAnimate.value = true
   oneShotAnimateTier.value = 'quick'
+  oneShotScenesCount.value = 3
   oneShotReferences.value = []
   oneShotUploadError.value = ''
   oneShotAddMenuOpen.value = false
   oneShotAspectOpen.value = false
   oneShotAnimMenuOpen.value = false
+  oneShotScenesOpen.value = false
   oneShotShowCharacters.value = false
   show.value = true
   loadNiches()
@@ -451,6 +453,16 @@ function pickOneShotPrompt() {
 const oneShotPrompt = ref('')
 const oneShotAnimate = ref(true)
 const oneShotAnimateTier = ref('quick')
+// Number of scenes. 1 = instant demo, 3 = DTC ad (default), 5 = narrative,
+// 8 = full Reel. Backend caps at 8 (parser quality + cost + concurrency).
+const oneShotScenesCount = ref(3)
+const ONE_SHOT_SCENE_OPTIONS = [
+  { count: 1, label: '1 scene',  hint: 'fastest demo' },
+  { count: 3, label: '3 scenes', hint: 'DTC ad shape' },
+  { count: 5, label: '5 scenes', hint: 'narrative' },
+  { count: 8, label: '8 scenes', hint: 'full Reel ~40s' },
+]
+const oneShotScenesOpen = ref(false)
 // Unified references list — both uploaded images and selected characters
 // live here. Backend flattens to source_image_asset_ids + character_ids.
 // Each entry: { uid, kind: 'upload'|'character', asset_id?, character_id?,
@@ -575,6 +587,7 @@ async function submitOneShot() {
       aspect_ratio: aspectRatio.value,
       animate: oneShotAnimate.value,
       animation_tier: oneShotAnimateTier.value,
+      scenes_count: oneShotScenesCount.value,
       channel_id: channelId.value ? Number(channelId.value) : undefined,
       ...(sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
       ...(characterIds.length   ? { character_ids: characterIds }            : {}),
@@ -798,6 +811,18 @@ defineExpose({ open })
                 </button>
                 <div v-if="oneShotAspectOpen" class="composer-pill-menu">
                   <button v-for="r in ['9:16','1:1','4:5','16:9']" :key="r" type="button" :class="['composer-pill-option', aspectRatio === r ? 'selected' : '']" @click="aspectRatio = r; oneShotAspectOpen = false">{{ r }}</button>
+                </div>
+              </div>
+
+              <!-- Scenes dropdown -->
+              <div class="composer-pill-wrap">
+                <button type="button" class="composer-pill" @click="oneShotScenesOpen = !oneShotScenesOpen">
+                  <span>🎞 {{ oneShotScenesCount }} scene{{ oneShotScenesCount > 1 ? 's' : '' }}</span><span class="composer-pill-caret">▾</span>
+                </button>
+                <div v-if="oneShotScenesOpen" class="composer-pill-menu composer-pill-menu--wide">
+                  <button v-for="o in ONE_SHOT_SCENE_OPTIONS" :key="o.count" type="button" :class="['composer-pill-option', oneShotScenesCount === o.count ? 'selected' : '']" @click="oneShotScenesCount = o.count; oneShotScenesOpen = false">
+                    <span>{{ o.label }}</span><span class="composer-pill-option-sub">{{ o.hint }}</span>
+                  </button>
                 </div>
               </div>
 

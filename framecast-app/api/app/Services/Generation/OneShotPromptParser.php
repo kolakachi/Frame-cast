@@ -162,6 +162,163 @@ SYS;
     }
 
     /**
+     * Multi-scene variant. Splits a user prompt into N scenes that flow as
+     * a short-form video — for N=3 follows hook/body/CTA, N=5 narrative arc,
+     * N=8 a richer storyboard. Each scene gets its own script + visual +
+     * motion. music_mood + style are shared across all scenes (one music
+     * bed, consistent visual treatment).
+     *
+     * @return array{
+     *   scenes: list<array{script:string,visual:string,motion:string}>,
+     *   music_mood: string,
+     *   style: string,
+     * }
+     */
+    public function parseMultiScene(string $userPrompt, int $sceneCount): array
+    {
+        $sceneCount = max(1, min(8, $sceneCount));
+        $singleFallback = $this->parse($userPrompt);
+        $fallback = $this->fallbackMulti($singleFallback, $sceneCount);
+
+        // For single-scene, no need for the extra LLM call — wrap the
+        // existing parse() output to keep the shape consistent.
+        if ($sceneCount === 1) {
+            return [
+                'scenes' => [[
+                    'script' => $singleFallback['script'],
+                    'visual' => $singleFallback['visual'],
+                    'motion' => $singleFallback['motion'],
+                ]],
+                'music_mood' => $singleFallback['music_mood'],
+                'style'      => $singleFallback['style'],
+            ];
+        }
+
+        $apiKey = config('services.openai.api_key');
+        if (empty($apiKey)) {
+            Log::warning('OneShotPromptParser: OpenAI key missing — multi-scene fallback');
+            return $fallback;
+        }
+
+        $arc = $sceneCount === 3
+            ? "Use the classic short-form ad arc: scene 1 = HOOK (pattern interrupt or problem), scene 2 = BODY (product / proof / use-case), scene 3 = CTA (call-to-action / offer)."
+            : ($sceneCount <= 5
+                ? "Build a narrative arc across {$sceneCount} scenes that escalates emotion and pays off."
+                : "Build a rich storyboard across {$sceneCount} scenes. Each scene should feel distinct visually and progress the story.");
+
+        $systemPrompt = <<<SYS
+You convert a single user prompt into {$sceneCount} short-form video scenes.
+Each scene gets its own script (voice-over), visual (image prompt), and
+motion (animation direction). music_mood and style are shared across all
+scenes — pick ONE for the whole video.
+
+{$arc}
+
+Per scene, return:
+  script  — what the voice ACTUALLY SAYS. 1 sentence, first/second person.
+            Never describe the scene; speak it. ~50-130 chars per scene.
+            Across scenes the voice should feel continuous, not disjoint.
+  visual  — what the image generator should produce for this scene. Keep
+            visual continuity across scenes (same subject if applicable,
+            same lighting feel). ~80-180 chars.
+  motion  — 1 short clause for how the still image animates. ~30-80 chars.
+
+Shared:
+  music_mood — 3-7 word genre/mood seed. Pick from:
+               calm acoustic / cinematic ambient / upbeat indie pop /
+               lo-fi chill / tense electronic / inspiring orchestral /
+               warm folk / energetic synth / hopeful piano.
+  style      — pick ONE of these for the whole video, matching the prompt:
+               photorealistic, realistic, cinematic, documentary, dark,
+               film_noir, vintage, minimalist, neon, cyberpunk_80s, anime,
+               anime_80s, anime_90s, dark_fantasy, fantasy_retro, comic,
+               line_drawing, watercolor, paper_cutout, cartoon, 3d_animated.
+
+Return STRICT JSON, no markdown:
+{
+  "scenes": [
+    { "script": "…", "visual": "…", "motion": "…" }
+  ],
+  "music_mood": "…",
+  "style": "…"
+}
+
+The scenes array MUST have exactly {$sceneCount} items.
+SYS;
+
+        try {
+            $response = Http::withToken($apiKey)
+                ->timeout(30)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model'           => config('services.openai.cheap_model', 'gpt-4o-mini'),
+                    'temperature'     => 0.5,
+                    'response_format' => ['type' => 'json_object'],
+                    'messages' => [
+                        ['role' => 'system', 'content' => $systemPrompt],
+                        ['role' => 'user',   'content' => $userPrompt],
+                    ],
+                ]);
+
+            if (! $response->successful()) {
+                Log::warning('OneShotPromptParser: multi-scene HTTP not successful', ['status' => $response->status()]);
+                return $fallback;
+            }
+
+            $content = (string) data_get($response->json(), 'choices.0.message.content', '');
+            $parsed  = json_decode($content, true);
+            if (! is_array($parsed) || ! is_array($parsed['scenes'] ?? null)) {
+                Log::warning('OneShotPromptParser: multi-scene non-JSON or missing scenes');
+                return $fallback;
+            }
+
+            $scenes = [];
+            foreach (array_slice($parsed['scenes'], 0, $sceneCount) as $s) {
+                $scenes[] = [
+                    'script' => $this->cleanString($s['script'] ?? $singleFallback['script'], 400),
+                    'visual' => $this->cleanString($s['visual'] ?? $singleFallback['visual'], 500),
+                    'motion' => $this->cleanString($s['motion'] ?? $singleFallback['motion'], 160),
+                ];
+            }
+            // Top up if the model returned fewer than requested (rare but
+            // not impossible). Pad with copies of the last scene rather
+            // than throwing — better degraded output than 500.
+            while (count($scenes) < $sceneCount) {
+                $scenes[] = $scenes[count($scenes) - 1] ?? [
+                    'script' => $singleFallback['script'],
+                    'visual' => $singleFallback['visual'],
+                    'motion' => $singleFallback['motion'],
+                ];
+            }
+
+            return [
+                'scenes'     => $scenes,
+                'music_mood' => $this->cleanString($parsed['music_mood'] ?? $singleFallback['music_mood'], 60),
+                'style'      => $this->validStyle($parsed['style'] ?? $singleFallback['style']),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('OneShotPromptParser: multi-scene exception', ['error' => $e->getMessage()]);
+            return $fallback;
+        }
+    }
+
+    private function fallbackMulti(array $single, int $sceneCount): array
+    {
+        $scenes = [];
+        for ($i = 0; $i < $sceneCount; $i++) {
+            $scenes[] = [
+                'script' => $single['script'],
+                'visual' => $single['visual'],
+                'motion' => $single['motion'],
+            ];
+        }
+        return [
+            'scenes'     => $scenes,
+            'music_mood' => $single['music_mood'],
+            'style'      => $single['style'],
+        ];
+    }
+
+    /**
      * When the LLM call fails (no key, network error, malformed response),
      * fall back to "use the raw prompt for everything" so the one-shot
      * still ships. Worse output, but better than 500.

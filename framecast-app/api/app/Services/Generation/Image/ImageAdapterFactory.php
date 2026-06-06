@@ -49,21 +49,26 @@ class ImageAdapterFactory
         'nano-banana' => [
             'label'   => 'Nano Banana',
             'sub'     => 'Google · cheap fast portraits',
-            'cost'    => 8,
+            // Was 8 (≈at-cost); bumped to 15 to keep ~2× margin on the
+            // ~$0.04 upstream price.
+            'cost'    => 15,
             'render'  => '~10s',
             'adapter' => NanoBananaImageAdapter::class,
         ],
         'flux-schnell' => [
             'label'   => 'Flux Schnell',
             'sub'     => 'BFL · cheapest, ~3s render',
-            'cost'    => 1,
+            // Was 1 (at-cost); bumped to 3 for a minimal margin layer
+            // — upstream is ~$0.003 so even 3cr is a ~5× markup, which
+            // covers our own infra+ledger overhead.
+            'cost'    => 3,
             'render'  => '~5s',
             'adapter' => FluxSchnellImageAdapter::class,
         ],
         'sdxl-lightning' => [
             'label'   => 'SDXL Lightning',
             'sub'     => 'ByteDance · cheap stylish',
-            'cost'    => 1,
+            'cost'    => 3,    // same logic as flux-schnell
             'render'  => '~5s',
             'adapter' => SdxlLightningImageAdapter::class,
         ],
