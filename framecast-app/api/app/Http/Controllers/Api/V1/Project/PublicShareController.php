@@ -133,10 +133,4 @@ class PublicShareController extends Controller
         ]);
     }
 
-    private function error(string $code, string $message, int $status): JsonResponse
-    {
-        return response()->json([
-            'error' => ['code' => $code, 'message' => $message],
-        ], $status);
-    }
 }

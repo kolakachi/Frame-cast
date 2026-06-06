@@ -36,6 +36,126 @@ function onCruiseKeydown(e) {
     if (cruiseTab.value === 'assistant') cruiseAssistantPending.value = false
   }
 }
+
+// Cruise Control Phase 1B — chat state. Conversation is purely client-side
+// in 1B; persistence lands in 1C. Each message has:
+//   { id, role: 'user'|'assistant', text, action?, action_status?, action_credits? }
+const cruiseMessages = ref([])
+const cruiseInputText = ref('')
+const cruiseResolving = ref(false)
+const cruiseApplying = ref(null) // message id currently being applied
+const cruiseScopeSceneId = ref(null) // null = follow activeScene; otherwise explicit
+const cruiseChatScrollRef = ref(null)
+const cruisePulseSection = ref(null) // 'voice' | 'visual' | 'music' | 'motion' (drives the pulse animation)
+const cruiseToast = ref('')
+let cruiseToastTimer = null
+
+const cruiseScopeLabel = computed(() => {
+  // Default scope: the active scene if any, otherwise whole project.
+  // Manually flipped scope (via the ↻ link) overrides activeScene.
+  if (cruiseScopeSceneId.value === null) return 'whole project'
+  if (cruiseScopeSceneId.value === 'active') return activeScene.value ? `Scene ${activeScene.value.scene_order}` : 'whole project'
+  const s = scenes.value.find((x) => x.id === cruiseScopeSceneId.value)
+  return s ? `Scene ${s.scene_order}` : 'whole project'
+})
+
+function cruiseEffectiveSceneId() {
+  // What we actually send to the backend as scope_scene_id.
+  if (cruiseScopeSceneId.value && cruiseScopeSceneId.value !== 'active') return cruiseScopeSceneId.value
+  return activeScene.value?.id ?? null
+}
+
+function cruiseActionIcon(section) {
+  return { voice: '🎤', visual: '🎨', music: '🎵', motion: '🎬', scene: '＋' }[section] ?? '✦'
+}
+function cruiseActionTitle(tool) {
+  return {
+    rerecord_voice: 'Re-record voice',
+    swap_visual_from_library: 'Swap visual',
+    change_music: 'Regenerate music',
+  }[tool] ?? tool
+}
+
+async function cruiseSubmitIntent() {
+  const text = cruiseInputText.value.trim()
+  if (!text || cruiseResolving.value || !projectId.value) return
+  cruiseMessages.value.push({ id: `u-${Date.now()}`, role: 'user', text })
+  cruiseInputText.value = ''
+  cruiseResolving.value = true
+  await nextTick(); cruiseScrollChatToBottom()
+  try {
+    const res = await api.post('/cruise/resolve', {
+      project_id: projectId.value,
+      intent: text,
+      scope_scene_id: cruiseEffectiveSceneId(),
+    })
+    const reply = res?.data?.data?.reply_to_user ?? 'Okay.'
+    const action = res?.data?.data?.action ?? null
+    cruiseMessages.value.push({
+      id: `a-${Date.now()}`,
+      role: 'assistant',
+      text: reply,
+      action,
+      action_status: 'proposed',
+    })
+    // If user has flipped to Config since asking, light the pending dot.
+    if (cruiseTab.value !== 'assistant') cruiseAssistantPending.value = true
+  } catch (e) {
+    const msg = e?.response?.data?.error?.message ?? 'Assistant is unavailable. Try again.'
+    cruiseMessages.value.push({ id: `a-${Date.now()}`, role: 'assistant', text: msg })
+  } finally {
+    cruiseResolving.value = false
+    await nextTick(); cruiseScrollChatToBottom()
+  }
+}
+
+function cruiseSkipAction(msg) {
+  msg.action_status = 'skipped'
+}
+
+async function cruiseApplyAction(msg) {
+  if (!msg.action || cruiseApplying.value) return
+  cruiseApplying.value = msg.id
+  try {
+    const res = await api.post('/cruise/apply', {
+      project_id: projectId.value,
+      tool: msg.action.tool,
+      params: msg.action.params,
+    })
+    const out = res?.data?.data
+    msg.action_status = 'applied'
+    msg.action_credits = out?.credits_spent ?? 0
+    // Auto-flip to Config, pulse affected section, toast the spend.
+    cruiseTab.value = 'config'
+    cruiseAssistantPending.value = false
+    cruisePulseSection.value = out?.affected_section ?? null
+    window.setTimeout(() => { cruisePulseSection.value = null }, 1800)
+    cruiseShowToast(`✓ ${out?.summary} · spent ${out?.credits_spent ?? 0} cr`)
+    // Refresh the project so the new scene state hydrates into the editor.
+    loadProject?.()
+    loadMe?.()
+  } catch (e) {
+    msg.action_status = 'failed'
+    msg.action_error = e?.response?.data?.error?.message ?? 'Apply failed.'
+  } finally {
+    cruiseApplying.value = null
+  }
+}
+
+function cruiseShowToast(text) {
+  cruiseToast.value = text
+  if (cruiseToastTimer) window.clearTimeout(cruiseToastTimer)
+  cruiseToastTimer = window.setTimeout(() => { cruiseToast.value = '' }, 4500)
+}
+
+function cruiseScrollChatToBottom() {
+  const el = cruiseChatScrollRef.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+
+// Pulse a Config panel-section after an apply. The CSS class
+// .panel-section.cruise-pulse drives the animation.
+const cruisePulseClass = (sectionKey) => cruisePulseSection.value === sectionKey ? 'cruise-pulse' : ''
 const hookOptions = ref([]);
 const mePayload = ref(null);
 const isAdmin = computed(() => ["super_admin", "platform_admin"].includes(mePayload.value?.role ?? authStore.user?.role));
@@ -5391,6 +5511,9 @@ onBeforeUnmount(() => {
 
             <div v-show="cruiseTab === 'config'" class="cruise-config-view">
 
+            <!-- Cruise apply toast — fires after an Assistant action succeeds -->
+            <div v-if="cruiseToast" class="cruise-toast">{{ cruiseToast }}</div>
+
             <!-- Project metadata — first section -->
             <div :class="`panel-section ${panelState.project ? 'collapsed' : ''}`">
               <div class="panel-section-header" @click="togglePanel('project')">
@@ -5533,7 +5656,7 @@ onBeforeUnmount(() => {
             </div>
 
             <div
-              :class="`panel-section ${panelState.visual ? 'collapsed' : ''}`"
+              :class="['panel-section', panelState.visual ? 'collapsed' : '', cruisePulseClass('visual')]"
             >
               <div class="panel-section-header" @click="togglePanel('visual')">
                 <div class="panel-label-row">
@@ -5949,7 +6072,7 @@ onBeforeUnmount(() => {
             <!-- Motion panel — visible only when scene visual is a still image -->
             <div
               v-if="activeSceneIsStillImage"
-              :class="`panel-section ${panelState.motion ? 'collapsed' : ''}`"
+              :class="['panel-section', panelState.motion ? 'collapsed' : '', cruisePulseClass('motion')]"
             >
               <div class="panel-section-header" @click="togglePanel('motion')">
                 <div class="panel-label-row">
@@ -5985,7 +6108,7 @@ onBeforeUnmount(() => {
             </div>
 
             <div
-              :class="`panel-section ${panelState.voice ? 'collapsed' : ''}`"
+              :class="['panel-section', panelState.voice ? 'collapsed' : '', cruisePulseClass('voice')]"
             >
               <div class="panel-section-header" @click="togglePanel('voice')">
                 <div class="panel-label-row">
@@ -6477,7 +6600,7 @@ onBeforeUnmount(() => {
             </div>
 
             <div
-              :class="`panel-section ${panelState.music ? 'collapsed' : ''}`"
+              :class="['panel-section', panelState.music ? 'collapsed' : '', cruisePulseClass('music')]"
             >
               <div class="panel-section-header" @click="togglePanel('music')">
                 <div class="panel-label-row">
@@ -6681,30 +6804,82 @@ onBeforeUnmount(() => {
             </div>
             <!-- /cruise-config-view -->
 
-            <!-- Phase 1A placeholder for the Assistant view. Real chat lands
-                 in Phase 1B (see spec/CRUISE_CONTROL_PLAN.md). Keeping the
-                 shell here so the toggle reads "real" even when disabled. -->
+            <!-- Cruise Control Assistant — Phase 1B chat UI.
+                 Scope bar → message list → input. Action cards inline
+                 with each assistant turn that proposes one. -->
             <div v-show="cruiseTab === 'assistant'" class="cruise-assistant-view">
               <div class="cruise-scope-bar">
                 <span class="cruise-scope-label">Editing</span>
-                <span class="cruise-scope-pill">{{ activeScene ? `Scene ${activeScene.scene_order}` : 'whole project' }}</span>
-                <span v-if="activeScene" class="cruise-scope-flip">↻ whole project</span>
+                <span class="cruise-scope-pill">{{ cruiseScopeLabel }}</span>
+                <span v-if="cruiseScopeSceneId !== null" class="cruise-scope-flip" @click="cruiseScopeSceneId = null">↻ whole project</span>
+                <span v-else-if="activeScene" class="cruise-scope-flip" @click="cruiseScopeSceneId = activeScene.id">↻ Scene {{ activeScene.scene_order }}</span>
               </div>
-              <div class="cruise-assistant-body">
-                <div class="cruise-coming-soon">
+
+              <div class="cruise-assistant-body" ref="cruiseChatScrollRef">
+                <!-- Empty state until the user types something -->
+                <div v-if="cruiseMessages.length === 0" class="cruise-coming-soon">
                   <div class="cruise-coming-icon">✦</div>
-                  <div class="cruise-coming-title">Assistant is almost here</div>
+                  <div class="cruise-coming-title">What should I change?</div>
                   <div class="cruise-coming-body">
-                    Soon you'll be able to type things like
-                    <em>"make scene 2 voice more authoritative"</em> or
-                    <em>"add a CTA scene at the end"</em> and the editor
-                    will handle the rest. Phase 1B.
+                    Try: <em>"swap voice on scene 2 to onyx"</em>,
+                    <em>"change music to upbeat indie pop"</em>,
+                    or <em>"use my logo asset on scene 1"</em>.
+                  </div>
+                </div>
+
+                <div v-for="m in cruiseMessages" :key="m.id" :class="['cruise-msg', `cruise-msg-${m.role}`]">
+                  <div class="cruise-msg-avatar">{{ m.role === 'user' ? (mePayload?.name?.[0] ?? 'U') : '✦' }}</div>
+                  <div class="cruise-msg-body">
+                    <div class="cruise-msg-text">{{ m.text }}</div>
+
+                    <!-- Action card -->
+                    <div v-if="m.action" class="cruise-action">
+                      <div class="cruise-action-head">
+                        <span class="cruise-action-icon">{{ cruiseActionIcon(m.action.affected_section) }}</span>
+                        <span class="cruise-action-title">{{ cruiseActionTitle(m.action.tool) }}</span>
+                        <span class="cruise-action-cost">~{{ m.action.estimated_cost }} cr</span>
+                      </div>
+                      <div class="cruise-action-body">
+                        <div v-for="(line, i) in m.action.diff_lines" :key="i">{{ line }}</div>
+                      </div>
+                      <div v-if="m.action_status === 'applied'" class="cruise-action-status applied">
+                        ✓ Applied · spent {{ m.action_credits ?? m.action.estimated_cost }} cr
+                      </div>
+                      <div v-else-if="m.action_status === 'failed'" class="cruise-action-status failed">
+                        ✕ {{ m.action_error || 'Apply failed' }}
+                      </div>
+                      <div v-else class="cruise-action-foot">
+                        <button class="cruise-action-btn cruise-action-btn-ghost" @click="cruiseSkipAction(m)">Skip</button>
+                        <button class="cruise-action-btn cruise-action-btn-primary" :disabled="cruiseApplying === m.id" @click="cruiseApplyAction(m)">
+                          {{ cruiseApplying === m.id ? 'Applying…' : 'Apply ⏎' }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="cruiseResolving" class="cruise-msg cruise-msg-ai">
+                  <div class="cruise-msg-avatar">✦</div>
+                  <div class="cruise-msg-body">
+                    <div class="cruise-msg-text cruise-msg-thinking">Thinking…</div>
                   </div>
                 </div>
               </div>
+
               <div class="cruise-input-wrap">
-                <div class="cruise-input-box cruise-input-disabled">
-                  <textarea class="cruise-input" rows="2" placeholder="Coming soon — Phase 1B" disabled></textarea>
+                <div class="cruise-input-box">
+                  <textarea
+                    v-model="cruiseInputText"
+                    class="cruise-input"
+                    rows="2"
+                    placeholder="Describe what you want to change…"
+                    @keydown.meta.enter.prevent="cruiseSubmitIntent"
+                    @keydown.ctrl.enter.prevent="cruiseSubmitIntent"
+                  ></textarea>
+                  <div class="cruise-input-row">
+                    <span class="cruise-input-mode">{{ cruiseScopeLabel }}</span>
+                    <button class="cruise-input-send" :disabled="!cruiseInputText.trim() || cruiseResolving" @click="cruiseSubmitIntent">Send ⌘⏎</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -7751,6 +7926,60 @@ button {
   resize: none;
 }
 .cruise-input::placeholder { color: var(--color-text-muted); }
+.cruise-input-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.cruise-input-mode { padding: 2px 8px; border-radius: 999px; background: rgba(255,107,53,0.12); color: var(--color-accent); font-size: 10.5px; font-weight: 600; font-family: "Space Mono", monospace; }
+.cruise-input-send { margin-left: auto; background: var(--color-accent); color: #fff; border: 0; border-radius: 6px; padding: 5px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.cruise-input-send:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Chat messages */
+.cruise-msg { display: flex; gap: 9px; }
+.cruise-msg-avatar { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; font-weight: 600; }
+.cruise-msg-user .cruise-msg-avatar { background: rgba(255,255,255,0.06); color: var(--color-text-primary); }
+.cruise-msg-ai .cruise-msg-avatar { background: rgba(255,107,53,0.14); color: var(--color-accent); }
+.cruise-msg-body { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.55; }
+.cruise-msg-text { color: var(--color-text-primary); }
+.cruise-msg-thinking { color: var(--color-text-muted); font-style: italic; }
+
+/* Action card */
+.cruise-action { margin-top: 8px; border: 1px solid var(--color-border); border-radius: 9px; overflow: hidden; background: var(--color-bg-card); }
+.cruise-action-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--color-border); }
+.cruise-action-icon { color: var(--color-accent); }
+.cruise-action-title { font-weight: 600; font-size: 12px; flex: 1; color: var(--color-text-primary); }
+.cruise-action-cost { font-family: "Space Mono", monospace; color: var(--color-text-muted); font-size: 10.5px; }
+.cruise-action-body { padding: 10px 12px; font-size: 11.5px; color: var(--color-text-muted); line-height: 1.7; }
+.cruise-action-foot { padding: 8px 10px; display: flex; gap: 6px; border-top: 1px solid var(--color-border); }
+.cruise-action-btn { padding: 5px 11px; border-radius: 6px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text-primary); font-size: 11.5px; cursor: pointer; font-family: inherit; }
+.cruise-action-btn:hover:not(:disabled) { border-color: var(--color-border-active, rgba(255,255,255,0.18)); }
+.cruise-action-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.cruise-action-btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; font-weight: 600; }
+.cruise-action-btn-ghost { color: var(--color-text-muted); }
+.cruise-action-status { padding: 8px 12px; border-top: 1px solid var(--color-border); font-size: 11.5px; font-weight: 600; }
+.cruise-action-status.applied { color: #34d399; background: rgba(52,211,153,0.06); }
+.cruise-action-status.failed { color: #f87171; background: rgba(248,113,113,0.06); }
+
+/* Apply toast at top of Config view */
+.cruise-toast {
+  margin: 8px 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(52,211,153,0.10);
+  border: 1px solid rgba(52,211,153,0.32);
+  color: #34d399;
+  font-size: 12px;
+  font-weight: 600;
+  animation: cruise-toast-in 0.25s ease-out;
+}
+@keyframes cruise-toast-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Pulse animation on Config sections after a Cruise apply lands */
+.panel-section.cruise-pulse {
+  animation: cruise-section-pulse 1.6s ease-out;
+}
+@keyframes cruise-section-pulse {
+  0%   { box-shadow: inset 0 0 0 2px rgba(52,211,153,0.55); background-color: rgba(52,211,153,0.10); }
+  60%  { box-shadow: inset 0 0 0 1px rgba(52,211,153,0.30); background-color: rgba(52,211,153,0.05); }
+  100% { box-shadow: inset 0 0 0 0 transparent; background-color: transparent; }
+}
 
 .notif-badge {
   position: absolute;

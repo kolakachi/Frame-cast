@@ -83,6 +83,10 @@ Route::prefix('v1')->group(function (): void {
         // Daily streak — Spin & Win retention gamification
         Route::get('/daily-streak', [\App\Http\Controllers\Api\V1\Workspace\DailyStreakController::class, 'show']);
         Route::post('/daily-streak/claim', [\App\Http\Controllers\Api\V1\Workspace\DailyStreakController::class, 'claim']);
+
+        // Cruise Control — chat-driven editor (see spec/CRUISE_CONTROL_PLAN.md)
+        Route::post('/cruise/resolve', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'resolve']);
+        Route::post('/cruise/apply',   [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'apply']);
         Route::patch('/me', [VerificationController::class, 'updateMe']);
         Route::get('/me/export', [VerificationController::class, 'exportMe']);
         Route::delete('/me', [VerificationController::class, 'deleteMe']);
