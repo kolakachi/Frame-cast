@@ -857,20 +857,27 @@ onMounted(async () => {
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 10px;
+  padding: 0;
   font-family: inherit;
   color: var(--text);
   cursor: pointer;
   transition: all 0.15s;
   text-align: left;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  overflow: hidden;
 }
 .ob-style-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
 .ob-style-card.selected { border-color: var(--accent); background: var(--accent-soft); }
-.ob-style-swatch { width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.06); }
-.ob-style-name { font-size: 12px; font-weight: 500; }
+/* Big swatch — matches the wizard card so users see the sample render
+   instead of a 28px gradient thumb. Top-anchored 25% keeps the face
+   in frame across all 21 samples. */
+.ob-style-swatch {
+  display: block; width: 100%; height: 100px;
+  border-radius: 0; border: 0; border-bottom: 1px solid var(--border);
+  background-size: cover; background-position: center 25%; background-repeat: no-repeat;
+}
+.ob-style-name { font-size: 12px; font-weight: 500; padding: 8px 10px; }
 
 /* ── Audiogram ── */
 .ob-ag-grid {

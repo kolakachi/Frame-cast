@@ -441,8 +441,14 @@ async function loadImageStyleCatalog() {
   } catch { /* keep static fallback */ }
 }
 
-// Visible/hidden state for the in-line style picker dropdown.
+// Open-state refs for the three style-picker dropdowns:
+//   stylePickerOpen           – main editor's AI image panel
+//   topAddStylePickerOpen     – "Add scene" panel at the top of the editor
+//   perSceneAddStyleOpenId    – inline "Add scene" rendered under each scene
+//                                (per-scene because there are N of them)
 const stylePickerOpen = ref(false);
+const topAddStylePickerOpen = ref(false);
+const perSceneAddStyleOpenId = ref(null);
 
 const exportPending = ref(false);
 
@@ -4835,13 +4841,27 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div class="micro-label" style="margin:10px 0 6px;">Style</div>
-                    <div class="style-picker-grid">
-                      <div v-for="s in AI_IMAGE_STYLES" :key="`top-add-style-${s.key}`"
-                        :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
-                        @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key">
-                        <img v-if="imageStylesByKey.get(s.key)?.sample_url" :src="imageStylesByKey.get(s.key).sample_url" class="style-opt-thumb" :alt="s.label" />
-                        <span v-else class="style-opt-ico">{{ s.icon }}</span>
-                        <div class="style-opt-name">{{ s.label }}</div>
+                    <!-- Custom row-style dropdown, matches the main editor's
+                         style picker so the editor reads as one consistent UI. -->
+                    <div class="picker-wrap">
+                      <button type="button" class="picker-trigger" @click="topAddStylePickerOpen = !topAddStylePickerOpen">
+                        <img v-if="imageStylesByKey.get(addSceneVisualStyle)?.sample_url" :src="imageStylesByKey.get(addSceneVisualStyle).sample_url" class="picker-trigger-thumb" alt="" />
+                        <span v-else class="picker-trigger-glyph">{{ imageStylesByKey.get(addSceneVisualStyle)?.icon ?? '✦' }}</span>
+                        <span class="picker-trigger-label">{{ imageStylesByKey.get(addSceneVisualStyle)?.label ?? 'Pick a style' }}</span>
+                        <span class="picker-trigger-caret">▾</span>
+                      </button>
+                      <div v-if="topAddStylePickerOpen" class="picker-panel">
+                        <div v-for="s in stylePickerRows" :key="`top-add-style-${s.key}`"
+                          :class="['picker-row', addSceneVisualStyle === s.key ? 'selected' : '']"
+                          @click="addSceneVisualStyle = s.key; topAddStylePickerOpen = false">
+                          <img v-if="s.sample_url" :src="s.sample_url" :alt="s.label" class="picker-row-thumb" />
+                          <span v-else class="picker-row-glyph">{{ s.icon ?? '✦' }}</span>
+                          <div class="picker-row-text">
+                            <div class="picker-row-name">{{ s.label }}</div>
+                            <div v-if="s.description" class="picker-row-desc">{{ s.description }}</div>
+                          </div>
+                          <span v-if="addSceneVisualStyle === s.key" class="picker-row-check">✓</span>
+                        </div>
                       </div>
                     </div>
                     <div v-if="addSceneVisualStyle === 'custom'" class="custom-style-panel">
@@ -5091,13 +5111,26 @@ onBeforeUnmount(() => {
                       </div>
 
                       <div class="micro-label" style="margin:10px 0 6px;">Style</div>
-                      <div class="style-picker-grid">
-                        <div v-for="s in AI_IMAGE_STYLES" :key="`add-style-${scene.id}-${s.key}`"
-                          :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
-                          @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key">
-                          <img v-if="imageStylesByKey.get(s.key)?.sample_url" :src="imageStylesByKey.get(s.key).sample_url" class="style-opt-thumb" :alt="s.label" />
-                          <span v-else class="style-opt-ico">{{ s.icon }}</span>
-                          <div class="style-opt-name">{{ s.label }}</div>
+                      <!-- Dropdown variant — same as the main editor picker. -->
+                      <div class="picker-wrap">
+                        <button type="button" class="picker-trigger" @click="perSceneAddStyleOpenId = perSceneAddStyleOpenId === scene.id ? null : scene.id">
+                          <img v-if="imageStylesByKey.get(addSceneVisualStyle)?.sample_url" :src="imageStylesByKey.get(addSceneVisualStyle).sample_url" class="picker-trigger-thumb" alt="" />
+                          <span v-else class="picker-trigger-glyph">{{ imageStylesByKey.get(addSceneVisualStyle)?.icon ?? '✦' }}</span>
+                          <span class="picker-trigger-label">{{ imageStylesByKey.get(addSceneVisualStyle)?.label ?? 'Pick a style' }}</span>
+                          <span class="picker-trigger-caret">▾</span>
+                        </button>
+                        <div v-if="perSceneAddStyleOpenId === scene.id" class="picker-panel">
+                          <div v-for="s in stylePickerRows" :key="`add-style-${scene.id}-${s.key}`"
+                            :class="['picker-row', addSceneVisualStyle === s.key ? 'selected' : '']"
+                            @click="addSceneVisualStyle = s.key; perSceneAddStyleOpenId = null">
+                            <img v-if="s.sample_url" :src="s.sample_url" :alt="s.label" class="picker-row-thumb" />
+                            <span v-else class="picker-row-glyph">{{ s.icon ?? '✦' }}</span>
+                            <div class="picker-row-text">
+                              <div class="picker-row-name">{{ s.label }}</div>
+                              <div v-if="s.description" class="picker-row-desc">{{ s.description }}</div>
+                            </div>
+                            <span v-if="addSceneVisualStyle === s.key" class="picker-row-check">✓</span>
+                          </div>
                         </div>
                       </div>
                       <div v-if="addSceneVisualStyle === 'custom'" class="custom-style-panel">

@@ -1146,7 +1146,7 @@ defineExpose({ open })
                 type="button"
                 @click="aiBrollStyle = style.key"
               >
-                <span class="ai-broll-art" :style="styleSampleByKey[style.key] ? { backgroundImage: `url(${styleSampleByKey[style.key]})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}"></span>
+                <span class="ai-broll-art" :style="styleSampleByKey[style.key] ? { backgroundImage: `url(${styleSampleByKey[style.key]})`, backgroundSize: 'cover', backgroundPosition: 'center 25%' } : {}"></span>
                 <span class="ai-broll-label">{{ style.label }}</span>
                 <span class="ai-broll-hint">{{ style.hint }}</span>
               </button>
@@ -1229,7 +1229,7 @@ defineExpose({ open })
                 type="button"
                 @click="aiBrollStyle = style.key"
               >
-                <span class="ai-broll-art" :style="styleSampleByKey[style.key] ? { backgroundImage: `url(${styleSampleByKey[style.key]})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}"></span>
+                <span class="ai-broll-art" :style="styleSampleByKey[style.key] ? { backgroundImage: `url(${styleSampleByKey[style.key]})`, backgroundSize: 'cover', backgroundPosition: 'center 25%' } : {}"></span>
                 <span class="ai-broll-label">{{ style.label }}</span>
                 <span class="ai-broll-hint">{{ style.hint }}</span>
               </button>
@@ -1565,10 +1565,17 @@ defineExpose({ open })
 
 .ai-broll-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
 .custom-style-panel { padding: 12px; border-radius: 8px; background: rgba(255,107,53,0.04); border: 1px solid rgba(255,107,53,0.2); margin: -6px 0 14px; }
-.ai-broll-card { min-height: 112px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; padding: 0; overflow: hidden; transition: 0.15s; }
+.ai-broll-card { min-height: 200px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; padding: 0; overflow: hidden; transition: 0.15s; display: flex; flex-direction: column; }
 .ai-broll-card:hover { border-color: rgba(255,107,53,0.35); transform: translateY(-1px); }
 .ai-broll-card.selected { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px rgba(255,107,53,0.2); }
-.ai-broll-art { display: block; height: 58px; background: radial-gradient(circle at 30% 20%, var(--style-tone), transparent 34%), linear-gradient(135deg, var(--style-tone), rgba(255,255,255,0.05)); border-bottom: 1px solid var(--color-border); }
+/* Taller art block — face stays in frame because the inline style sets
+   background-position to 'center 25%' which anchors the upper third of
+   the sample. Falls back to the --style-tone radial when no sample
+   image URL is bound. */
+.ai-broll-art { display: block; height: 130px; background-repeat: no-repeat; background-color: var(--color-bg-card); border-bottom: 1px solid var(--color-border); }
+.ai-broll-art:not([style*="background-image"]) { background: radial-gradient(circle at 30% 20%, var(--style-tone), transparent 34%), linear-gradient(135deg, var(--style-tone), rgba(255,255,255,0.05)); }
+.ai-broll-label { display: block; padding: 12px 14px 4px; font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.ai-broll-hint { display: block; padding: 0 14px 12px; font-size: 11px; color: var(--color-text-muted); line-height: 1.4; }
 .ai-broll-label { display: block; padding: 8px 8px 2px; color: var(--color-text-primary); font-size: 12px; font-weight: 700; }
 .ai-broll-hint { display: block; padding: 0 8px 8px; color: var(--color-text-muted); font-size: 10px; line-height: 1.3; }
 
