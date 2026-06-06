@@ -124,6 +124,7 @@ class AnimateSceneTool implements CruiseTool
         return [
             'summary'       => "Animating Scene {$scene->scene_order} ({$tier}, {$duration}s)",
             'credits_spent' => $this->estimateCost($project, $params),
+            'affected_scene_id' => (int) $scene->getKey(),
         ];
     }
 }

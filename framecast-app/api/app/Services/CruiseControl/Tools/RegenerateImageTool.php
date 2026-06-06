@@ -215,6 +215,7 @@ class RegenerateImageTool implements CruiseTool
         return [
             'summary'       => $summary,
             'credits_spent' => $this->estimateCost($project, $params),
+            'affected_scene_id' => (int) $scene->getKey(),
         ];
     }
 }

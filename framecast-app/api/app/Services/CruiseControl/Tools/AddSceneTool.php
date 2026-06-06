@@ -179,6 +179,10 @@ class AddSceneTool implements CruiseTool
             return [
                 'summary'       => "Added Scene {$position} (\"" . mb_substr($scriptText, 0, 30) . "\")",
                 'credits_spent' => $this->estimateCost($project, $params),
+                // Frontend needs this to (a) start polling against the new
+                // scene and (b) drop it into scenes.value so the editor
+                // shows the pending placeholder while jobs run.
+                'affected_scene_id' => (int) $scene->getKey(),
             ];
         });
     }

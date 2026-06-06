@@ -133,6 +133,7 @@ class RerecordVoiceTool implements CruiseTool
         return [
             'summary'         => "Re-recording Scene {$scene->scene_order}{$detail}",
             'credits_spent'   => CreditService::TTS,
+            'affected_scene_id' => (int) $scene->getKey(),
         ];
     }
 }

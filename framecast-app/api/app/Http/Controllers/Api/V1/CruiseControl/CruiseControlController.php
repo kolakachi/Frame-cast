@@ -216,10 +216,11 @@ class CruiseControlController extends Controller
 
         return response()->json([
             'data' => [
-                'success'          => true,
-                'summary'          => $result['summary'],
-                'credits_spent'    => $result['credits_spent'] ?? 0,
-                'affected_section' => $tool->affectedSection(),
+                'success'           => true,
+                'summary'           => $result['summary'],
+                'credits_spent'     => $result['credits_spent'] ?? 0,
+                'affected_section'  => $tool->affectedSection(),
+                'affected_scene_id' => $result['affected_scene_id'] ?? null,
             ],
             'meta' => [],
         ]);

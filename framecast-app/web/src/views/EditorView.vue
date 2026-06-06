@@ -189,6 +189,7 @@ async function cruiseApplyAction(msg) {
     msg.progress_text = cruiseInitialProgressText(msg.action.tool)
     msg.expected_stages = cruiseExpectedStages(msg.action.tool, msg.action.params)
     msg.completed_stages = []
+    msg.affected_scene_id = out?.affected_scene_id ?? msg.action.params?.scene_id ?? null
     msg.action_status = cruiseToolHasAsyncWork(msg.action.tool) ? 'running' : 'applied'
     // Stay on the Assistant tab so the user can watch progress in chat.
     // Pulse the affected section in case they switch to Config.
@@ -199,6 +200,16 @@ async function cruiseApplyAction(msg) {
     // the affected scene in place when the job completes. Just refresh the
     // balance so the footer hint reflects the spend.
     loadMe?.()
+    // One-shot scene fetch on apply so the editor picks up the new scene
+    // (add_scene) and / or the in_progress flags (regenerate_image,
+    // animate_scene) — keeps Config and Assistant tabs consistent.
+    if (msg.affected_scene_id) {
+      try {
+        const r = await api.get(`/scenes/${msg.affected_scene_id}/preview`)
+        const fresh = r?.data?.data?.scene
+        if (fresh) replaceSceneInCollection(normalizeScenePayload(fresh))
+      } catch (_) {}
+    }
     // Kick off the rotating-text loop so the chat never looks frozen,
     // even if Reverb misses an event. Also start a polling fallback that
     // detects completion by checking the scene state.
@@ -283,10 +294,14 @@ const CRUISE_POLL_TIMEOUT_MS = 5 * 60 * 1000
 
 function cruiseStartPollingFallback(msg) {
   if (msg._pollTimer) return
-  const sceneId = Number(msg.action?.params?.scene_id ?? 0)
+  const sceneId = Number(msg.affected_scene_id ?? msg.action?.params?.scene_id ?? 0)
   if (!sceneId) return
   const startedAt = Date.now()
+  let attempts = 0
+  const MAX_ATTEMPTS = Math.floor(CRUISE_POLL_TIMEOUT_MS / CRUISE_POLL_INTERVAL_MS) + 5
   // Snapshot the scene's pre-apply state so we can detect a real change.
+  // For add_scene the scene didn't exist yet — baseline is "no asset",
+  // any non-null asset id counts as a completion.
   const baselineScene = scenes.value?.find?.((s) => s.id === sceneId) || {}
   const baseline = {
     visual_asset_id: baselineScene.visual_asset_id ?? null,
@@ -295,8 +310,13 @@ function cruiseStartPollingFallback(msg) {
   }
   msg._pollTimer = window.setInterval(async () => {
     if (msg.action_status !== 'running') { cruiseStopPolling(msg); return }
-    if (Date.now() - startedAt > CRUISE_POLL_TIMEOUT_MS) {
+    attempts++
+    if (attempts > MAX_ATTEMPTS || Date.now() - startedAt > CRUISE_POLL_TIMEOUT_MS) {
+      // Hard-stop. Don't leave the chip spinning forever.
+      msg.action_status = 'failed'
+      msg.action_error = 'Generation timed out — check the Config tab for the latest scene state.'
       cruiseStopPolling(msg)
+      cruiseStopProgressLoop(msg)
       return
     }
     try {
@@ -329,8 +349,12 @@ function cruiseStartPollingFallback(msg) {
         cruiseStopPolling(msg)
         cruiseStopProgressLoop(msg)
       } else {
-        // Partial — update chat text, DON'T touch the editor.
+        // Partial — update chat text AND swap the partial scene in (so
+        // the editor shows e.g. the still image while animation is
+        // still queued). Editor only paints fields that actually
+        // changed, so this is safe now that scene mutation is in-place.
         msg.progress_text = cruiseStagePendingText(msg.action.tool, expected, msg.completed_stages)
+        try { replaceSceneInCollection(normalizeScenePayload(fresh)) } catch (_) {}
       }
     } catch (_) { /* keep polling */ }
   }, CRUISE_POLL_INTERVAL_MS)
@@ -432,31 +456,20 @@ function cruiseFindMessageForProgress(payload) {
   return null
 }
 
-// Drive the running action card's progress_text from the Reverb event.
-// Called from the existing project-channel listener so we don't open a
-// second subscription.
-//
-// Returns true when the event belongs to a cruise action that is NOT
-// yet fully complete — the caller should then skip its own scene
-// refresh so the editor doesn't flicker between intermediate states
-// (e.g. swap in the still image, then immediately swap to video).
-// Returns false for non-cruise events OR when the cruise action just
-// terminated (so the normal scene refresh can paint the final result).
+// Drive the running action card's progress_text + checklist from the
+// Reverb event. Called from the project-channel listener so we don't
+// open a second subscription. No longer returns a suppress flag — with
+// in-place scene mutation, per-stage refreshes don't flicker, so the
+// editor (Config tab) and the chat checklist stay consistent.
 function cruiseHandleProgressEvent(payload) {
   const msg = cruiseFindMessageForProgress(payload)
-  if (!msg) return false
+  if (!msg) return
   const status = String(payload.status || '')
   if (status === 'processing') {
-    // First time this stage starts — update text but keep all timers.
-    // Don't suppress the existing handler so the editor's own pending
-    // indicators (aiImagePending etc.) stay coherent.
-    if (msg.completed_stages?.length) {
-      msg.progress_text = cruiseStagePendingText(msg.action.tool, msg.expected_stages || [], msg.completed_stages)
-    } else {
-      msg.progress_text = cruiseInitialProgressText(msg.action.tool)
-    }
-    // Mid-flight — tell the caller to hold off refreshing the scene.
-    return true
+    msg.progress_text = msg.completed_stages?.length
+      ? cruiseStagePendingText(msg.action.tool, msg.expected_stages || [], msg.completed_stages)
+      : cruiseInitialProgressText(msg.action.tool)
+    return
   }
   if (status === 'completed') {
     const expected = msg.expected_stages || []
@@ -469,25 +482,30 @@ function cruiseHandleProgressEvent(payload) {
       msg.progress_text = cruiseSuccessText(msg.action.tool, payload.stage)
       cruiseStopProgressLoop(msg)
       cruiseStopPolling(msg)
-      // Terminal — allow the normal handler to swap in the final scene.
-      return false
+    } else {
+      msg.progress_text = cruiseStagePendingText(msg.action.tool, expected, completed)
     }
-    // Partial completion: e.g. voice done, image still cooking. Update
-    // the chat text but suppress the scene refresh so the editor doesn't
-    // paint an intermediate state.
-    msg.progress_text = cruiseStagePendingText(msg.action.tool, expected, completed)
-    return true
+    return
   }
   if (status === 'failed') {
     msg.action_status = 'failed'
     msg.action_error = payload.message || 'Generation failed.'
     cruiseStopProgressLoop(msg)
     cruiseStopPolling(msg)
-    // Failure is terminal — let the normal handler surface whatever
-    // partial state landed.
-    return false
   }
-  return false
+}
+
+// Stage label for the bullet checklist. "done" form strikes through
+// past-tense; "pending" form is present participle so the user sees
+// what's happening right now.
+function cruiseStageLabel(stage, done) {
+  const labels = {
+    ai_image:  done ? 'Image generated'    : 'Generating image',
+    animation: done ? 'Animation rendered' : 'Animating scene',
+    tts:       done ? 'Voice recorded'     : 'Recording voice',
+    ai_music:  done ? 'Music composed'     : 'Composing music',
+  }
+  return labels[stage] ?? stage
 }
 
 function cruiseSuccessText(tool, stage) {
@@ -4743,14 +4761,11 @@ function subscribeProjectChannel() {
 
   echo.private(projectChannelName).listen(".generation.progress", (payload) => {
     // Drive the Cruise chat's running action card from the same event
-    // stream so the user sees "Generating image…" → "Image ready" inline.
-    // When a cruise action is partway through a multi-stage job, the
-    // handler returns true to tell us NOT to refresh the editor yet —
-    // otherwise we'd flicker the canvas between intermediate states
-    // (e.g. swap in the still then immediately swap to the video).
-    let cruiseSuppress = false;
-    try { cruiseSuppress = cruiseHandleProgressEvent(payload); } catch (_) {}
-    if (cruiseSuppress) return;
+    // stream so the user sees the checklist tick off stage by stage.
+    // We no longer suppress the editor refresh — replaceSceneInCollection
+    // mutates in place now so per-stage updates are cheap and the Config
+    // tab stays consistent with the Assistant's checklist.
+    try { cruiseHandleProgressEvent(payload); } catch (_) {}
 
     if (payload.stage === "tts" && ["completed", "failed"].includes(String(payload.status || ""))) {
       refreshProjectPayload().catch(() => {});
@@ -7325,8 +7340,22 @@ onBeforeUnmount(() => {
                         <div v-for="(line, i) in m.action.diff_lines" :key="i">{{ line }}</div>
                       </div>
                       <div v-if="m.action_status === 'running'" class="cruise-action-status running">
-                        <span class="cruise-action-spinner"></span>
-                        <span class="cruise-action-running-text">{{ m.progress_text || 'Working…' }}<span class="cruise-action-dots"><span>.</span><span>.</span><span>.</span></span></span>
+                        <!-- Multi-stage checklist when the tool dispatches >1 job,
+                             single spinning line for the simple case. -->
+                        <ul v-if="(m.expected_stages || []).length > 1" class="cruise-action-checklist">
+                          <li v-for="stage in m.expected_stages" :key="stage"
+                              :class="['cruise-checklist-item', (m.completed_stages || []).includes(stage) ? 'done' : 'pending']">
+                            <span class="cruise-checklist-icon">
+                              <span v-if="(m.completed_stages || []).includes(stage)">✓</span>
+                              <span v-else class="cruise-action-spinner"></span>
+                            </span>
+                            <span class="cruise-checklist-label">{{ cruiseStageLabel(stage, (m.completed_stages || []).includes(stage)) }}</span>
+                          </li>
+                        </ul>
+                        <template v-else>
+                          <span class="cruise-action-spinner"></span>
+                          <span class="cruise-action-running-text">{{ m.progress_text || 'Working…' }}<span class="cruise-action-dots"><span>.</span><span>.</span><span>.</span></span></span>
+                        </template>
                       </div>
                       <div v-else-if="m.action_status === 'applied'" class="cruise-action-status applied">
                         ✓ {{ m.progress_text || 'Applied' }} · spent {{ m.action_credits ?? m.action.estimated_cost }} cr
@@ -8478,6 +8507,13 @@ button {
 .cruise-action-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,107,53,0.25); border-top-color: var(--color-accent, #ff6b35); border-radius: 50%; animation: cruise-spinner-rot 0.8s linear infinite; flex-shrink: 0; }
 @keyframes cruise-spinner-rot { to { transform: rotate(360deg); } }
 .cruise-action-running-text { display: inline-flex; align-items: baseline; }
+.cruise-action-checklist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.cruise-checklist-item { display: flex; align-items: center; gap: 8px; font-size: 11.5px; transition: color 0.2s, opacity 0.2s; }
+.cruise-checklist-item.pending { color: var(--color-accent, #ff6b35); }
+.cruise-checklist-item.done { color: var(--color-text-muted, #94a3b8); opacity: 0.7; }
+.cruise-checklist-item.done .cruise-checklist-label { text-decoration: line-through; }
+.cruise-checklist-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex-shrink: 0; }
+.cruise-checklist-icon > span { font-weight: 700; color: #34d399; }
 .cruise-action-dots { display: inline-flex; margin-left: 1px; }
 .cruise-action-dots > span { opacity: 0.2; animation: cruise-dots-blink 1.4s infinite both; }
 .cruise-action-dots > span:nth-child(2) { animation-delay: 0.2s; }
