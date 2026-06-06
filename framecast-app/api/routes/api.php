@@ -88,6 +88,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/cruise/resolve', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'resolve']);
         Route::post('/cruise/apply',   [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'apply']);
         Route::get('/cruise/conversation/{projectId}', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'conversation'])->whereNumber('projectId');
+        Route::patch('/cruise/settings', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'updateSettings']);
         Route::patch('/me', [VerificationController::class, 'updateMe']);
         Route::get('/me/export', [VerificationController::class, 'exportMe']);
         Route::delete('/me', [VerificationController::class, 'deleteMe']);

@@ -49,6 +49,19 @@ const cruiseChatScrollRef = ref(null)
 const cruisePulseSection = ref(null) // 'voice' | 'visual' | 'music' | 'motion' (drives the pulse animation)
 const cruiseToast = ref('')
 let cruiseToastTimer = null
+// Workspace-level pref — when true, confirmation_class='auto' tools
+// apply immediately on resolve without showing the Apply button.
+const cruiseAutoApply = ref(true)
+// Frequently-used prompts shown above the input.
+const CRUISE_QUICK_PROMPTS = [
+  'change voice on this scene',
+  'use upbeat music',
+  'swap visual to stock',
+  'rewrite this script punchier',
+  'animate this scene',
+  'add a CTA scene',
+]
+const cruiseUserBalance = computed(() => mePayload.value?.credits?.balance ?? 0)
 
 const cruiseScopeLabel = computed(() => {
   // Default scope: the active scene if any, otherwise whole project.
@@ -117,14 +130,17 @@ async function cruiseSubmitIntent() {
     if (tempIdx >= 0 && data.user_message_id) {
       cruiseMessages.value[tempIdx] = { ...cruiseMessages.value[tempIdx], id: data.user_message_id }
     }
-    cruiseMessages.value.push({
+    const assistantMsg = {
       id: data.assistant_message_id ?? `a-${Date.now()}`,
       role: 'assistant',
       text: data.reply_to_user ?? 'Okay.',
       action: data.action ?? null,
       action_status: 'proposed',
-    })
+    }
+    cruiseMessages.value.push(assistantMsg)
     if (cruiseTab.value !== 'assistant') cruiseAssistantPending.value = true
+    // Fire-and-forget the auto-apply path.
+    maybeAutoApply(assistantMsg)
   } catch (e) {
     const msg = e?.response?.data?.error?.message ?? 'Assistant is unavailable. Try again.'
     cruiseMessages.value.push({ id: `a-${Date.now()}`, role: 'assistant', text: msg })
@@ -2380,6 +2396,8 @@ async function loadMe() {
   try {
     const response = await api.get("/me");
     mePayload.value = response.data?.data?.user ?? null;
+    // Hydrate workspace-level Cruise prefs so the toggle reflects truth.
+    cruiseAutoApply.value = response.data?.data?.cruise?.auto_apply ?? true;
     await Promise.all([loadVoiceProfiles(), loadCaptionPresets(), loadChannels(), loadBrandKits(), loadMusicTracks()]);
     await loadNotifications();
     subscribeWorkspaceNotifications();
@@ -2389,6 +2407,40 @@ async function loadMe() {
     channels.value = [];
     brandKits.value = [];
   }
+}
+
+// Toggle the workspace's Cruise auto-apply pref. Optimistic UI — flip
+// the local ref immediately, send PATCH in the background. Revert on
+// failure.
+async function setCruiseAutoApply(next) {
+  const previous = cruiseAutoApply.value
+  cruiseAutoApply.value = next
+  try {
+    await api.patch('/cruise/settings', { auto_apply: next })
+  } catch {
+    cruiseAutoApply.value = previous
+  }
+}
+
+// Auto-apply runs the action right after resolve when:
+//   - workspace pref is on
+//   - the proposed action's confirmation_class is 'auto'
+//   - user can afford it
+// Skips action cards that need confirmation (prompt / always_prompt) or
+// would push the user below zero balance.
+async function maybeAutoApply(msg) {
+  if (!cruiseAutoApply.value) return
+  if (!msg?.action) return
+  if (msg.action.confirmation_class !== 'auto') return
+  if (cruiseUserBalance.value < (msg.action.estimated_cost ?? 0)) return
+  await cruiseApplyAction(msg)
+}
+
+// Quick prompt was clicked — fill the input and submit immediately.
+async function cruiseUseQuickPrompt(text) {
+  if (cruiseResolving.value) return
+  cruiseInputText.value = text
+  await cruiseSubmitIntent()
 }
 
 async function loadVoiceProfiles() {
@@ -6896,6 +6948,12 @@ onBeforeUnmount(() => {
                       <div v-else-if="m.action_status === 'failed'" class="cruise-action-status failed">
                         ✕ {{ m.action_error || 'Apply failed' }}
                       </div>
+                      <div v-else-if="cruiseUserBalance < (m.action.estimated_cost ?? 0)" class="cruise-action-foot">
+                        <span class="cruise-action-shortfall">Need {{ m.action.estimated_cost }} cr · you have {{ cruiseUserBalance }}</span>
+                        <button class="cruise-action-btn cruise-action-btn-primary" type="button" @click="router.push({ name: 'settings', query: { section: 'billing' } })">
+                          Top up →
+                        </button>
+                      </div>
                       <div v-else class="cruise-action-foot">
                         <button class="cruise-action-btn cruise-action-btn-ghost" @click="cruiseSkipAction(m)">Skip</button>
                         <button class="cruise-action-btn cruise-action-btn-primary" :disabled="cruiseApplying === m.id" @click="cruiseApplyAction(m)">
@@ -6914,6 +6972,14 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
+              <!-- Quick-prompt chips: only render when the chat is empty so
+                   they fight blank-box paralysis without nagging on every turn. -->
+              <div v-if="cruiseMessages.length === 0" class="cruise-quick-row">
+                <span v-for="qp in CRUISE_QUICK_PROMPTS" :key="qp" class="cruise-quick-chip" @click="cruiseUseQuickPrompt(qp)">
+                  {{ qp }}
+                </span>
+              </div>
+
               <div class="cruise-input-wrap">
                 <div class="cruise-input-box">
                   <textarea
@@ -6929,6 +6995,15 @@ onBeforeUnmount(() => {
                     <button class="cruise-input-send" :disabled="!cruiseInputText.trim() || cruiseResolving" @click="cruiseSubmitIntent">Send ⌘⏎</button>
                   </div>
                 </div>
+              </div>
+
+              <!-- Footer: auto-apply pref + running session spend hint -->
+              <div class="cruise-assistant-foot">
+                <label class="cruise-auto-toggle" :title="cruiseAutoApply ? 'Cheap, reversible edits apply immediately. Paid/structural changes still prompt.' : 'Every action shows an Apply button before running.'">
+                  <input type="checkbox" :checked="cruiseAutoApply" @change="setCruiseAutoApply($event.target.checked)" />
+                  <span>Auto-apply low-risk</span>
+                </label>
+                <span class="cruise-balance-hint">Balance: {{ cruiseUserBalance }} cr</span>
               </div>
             </div>
 
@@ -8004,6 +8079,42 @@ button {
 .cruise-action-status { padding: 8px 12px; border-top: 1px solid var(--color-border); font-size: 11.5px; font-weight: 600; }
 .cruise-action-status.applied { color: #34d399; background: rgba(52,211,153,0.06); }
 .cruise-action-status.failed { color: #f87171; background: rgba(248,113,113,0.06); }
+.cruise-action-shortfall { font-size: 11.5px; color: var(--color-text-muted); margin-right: auto; padding: 6px 0; }
+
+/* Quick prompt chips — only shown when conversation is empty */
+.cruise-quick-row {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--color-border);
+}
+.cruise-quick-chip {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: 0.15s;
+}
+.cruise-quick-chip:hover { border-color: rgba(255,107,53,0.4); color: var(--color-text-primary); }
+
+/* Assistant footer — auto-apply pref + balance */
+.cruise-assistant-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--color-border);
+  font-size: 10.5px;
+  font-family: "Space Mono", monospace;
+  color: var(--color-text-muted);
+}
+.cruise-auto-toggle {
+  display: flex; align-items: center; gap: 6px;
+  cursor: pointer;
+}
+.cruise-auto-toggle input[type="checkbox"] { accent-color: var(--color-accent); cursor: pointer; }
+.cruise-balance-hint { white-space: nowrap; }
 
 /* Apply toast at top of Config view */
 .cruise-toast {

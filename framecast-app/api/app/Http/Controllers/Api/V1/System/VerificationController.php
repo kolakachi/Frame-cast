@@ -38,6 +38,9 @@ class VerificationController extends Controller
                     'billing_renews_at'=> $workspace?->billing_renews_at?->toIso8601String(),
                     'plan_monthly_allocation' => CreditService::PLAN_CREDITS[$workspace?->plan_tier ?? 'free'] ?? 0,
                 ],
+                'cruise' => [
+                    'auto_apply' => (bool) ($workspace?->cruise_auto_apply ?? true),
+                ],
             ],
             'meta' => [],
         ]);

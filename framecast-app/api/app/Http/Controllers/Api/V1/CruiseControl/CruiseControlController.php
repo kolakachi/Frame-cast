@@ -226,6 +226,28 @@ class CruiseControlController extends Controller
     }
 
     /**
+     * Update workspace-level Cruise prefs (auto-apply for now).
+     */
+    public function updateSettings(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $workspace = Workspace::query()->whereKey($user->workspace_id)->first();
+        if (! $workspace) {
+            return $this->error('no_workspace', 'No workspace.', 422);
+        }
+        $validated = $request->validate([
+            'auto_apply' => ['required', 'boolean'],
+        ]);
+        $workspace->forceFill(['cruise_auto_apply' => $validated['auto_apply']])->save();
+
+        return response()->json([
+            'data' => ['auto_apply' => (bool) $workspace->cruise_auto_apply],
+            'meta' => [],
+        ]);
+    }
+
+    /**
      * Hydrate the chat history for a project. Frontend loads this on
      * editor mount so the conversation survives refresh / re-open.
      */

@@ -34,6 +34,7 @@ class Workspace extends Model
         'billing_renews_at',
         'daily_streak_count',
         'daily_streak_last_claim_at',
+        'cruise_auto_apply',
     ];
 
     protected $casts = [
@@ -44,6 +45,7 @@ class Workspace extends Model
         'credits_free_granted' => 'integer',
         'daily_streak_count' => 'integer',
         'daily_streak_last_claim_at' => 'datetime',
+        'cruise_auto_apply' => 'boolean',
     ];
 
     public function creditsBalance(): int
