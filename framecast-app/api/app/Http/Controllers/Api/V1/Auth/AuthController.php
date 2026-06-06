@@ -146,6 +146,17 @@ class AuthController extends Controller
         try {
             Mail::to($user->email)->send(new MagicLinkMail($user, $magicLink));
         } catch (\Throwable $e) {
+            // Loud-log: this is the path that silently ate the Resend
+            // transport failure (class-not-found from the missing
+            // resend/resend-laravel package) for ~an hour before we caught
+            // it via direct Tinker probe. report() routes to Sentry; the
+            // Log::error gives recipient + exception class for log greps.
+            \Illuminate\Support\Facades\Log::error('Magic link mail failed', [
+                'email'     => $user->email,
+                'exception' => get_class($e),
+                'message'   => $e->getMessage(),
+            ]);
+            report($e);
             return $this->error(
                 'email_delivery_failed',
                 'We could not deliver the magic link to this email address. Please check the address and try again.',
