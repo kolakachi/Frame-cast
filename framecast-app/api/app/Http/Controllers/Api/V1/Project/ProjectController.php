@@ -756,41 +756,64 @@ class ProjectController extends Controller
             'aspect_ratio'  => ['nullable', 'string', 'in:9:16,1:1,16:9,4:5'],
             'animate'       => ['nullable', 'boolean'],
             'channel_id'    => ['nullable', 'integer', 'exists:channels,id'],
-            // Image source: optional. One of these short-circuits the
-            // AI image generation step — if the user gave us a photo or
-            // a saved character, we skip GenerateAIImageJob and animate
-            // off their asset directly. character_id wins if both passed.
-            'source_image_asset_id' => ['nullable', 'integer', 'exists:assets,id'],
-            'character_id'          => ['nullable', 'integer', 'exists:characters,id'],
-            // Image model picker for the generate-from-prompt path. Falls
-            // back to gpt-image-1 if absent. Ignored when source_image or
-            // character is provided.
-            'image_model_key'       => ['nullable', 'string', 'in:' . implode(',', array_keys(\App\Services\Generation\Image\ImageAdapterFactory::AVAILABLE))],
-            'animation_tier'        => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro'],
+            // References (optional, multiple). Both arrays go through gpt-image-2
+            // /edits when any are present — model handles up to 4 reference
+            // images and uses them to anchor identity/composition. When BOTH
+            // arrays are empty, we fall back to text-to-image (gpt-image-1).
+            'source_image_asset_ids'   => ['nullable', 'array', 'max:4'],
+            'source_image_asset_ids.*' => ['integer', 'exists:assets,id'],
+            'character_ids'            => ['nullable', 'array', 'max:4'],
+            'character_ids.*'          => ['integer', 'exists:characters,id'],
+            // Legacy singles — keep accepting them for any callers that
+            // haven't moved to the array form yet (older wizard build).
+            'source_image_asset_id'    => ['nullable', 'integer', 'exists:assets,id'],
+            'character_id'             => ['nullable', 'integer', 'exists:characters,id'],
+            'animation_tier'           => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro'],
         ]);
 
-        // Resolve image source: explicit asset, character's reference, or
-        // null (which means generate from prompt). Validate ownership now
-        // so the job doesn't have to.
-        $sourceAsset = null;
-        if (! empty($validated['character_id'])) {
-            $character = \App\Models\Character::query()
-                ->whereKey($validated['character_id'])
+        // Resolve references — flatten arrays + legacy singles into one
+        // list of Asset rows scoped to this workspace. The list (possibly
+        // empty) drives the image-gen path: empty -> text-to-image, any -> /edits.
+        $assetIds = array_filter(array_merge(
+            $validated['source_image_asset_ids'] ?? [],
+            ! empty($validated['source_image_asset_id']) ? [$validated['source_image_asset_id']] : [],
+        ));
+        $characterIds = array_filter(array_merge(
+            $validated['character_ids'] ?? [],
+            ! empty($validated['character_id']) ? [$validated['character_id']] : [],
+        ));
+
+        $referenceAssets = collect();
+        if (! empty($assetIds)) {
+            $referenceAssets = $referenceAssets->merge(
+                \App\Models\Asset::query()
+                    ->whereIn('id', $assetIds)
+                    ->where('workspace_id', $user->workspace_id)
+                    ->where('asset_type', 'image')
+                    ->get()
+            );
+        }
+        if (! empty($characterIds)) {
+            $characters = \App\Models\Character::query()
+                ->whereIn('id', $characterIds)
                 ->where('workspace_id', $user->workspace_id)
                 ->with('referenceAsset')
-                ->first();
-            $sourceAsset = $character?->referenceAsset;
-        } elseif (! empty($validated['source_image_asset_id'])) {
-            $sourceAsset = \App\Models\Asset::query()
-                ->whereKey($validated['source_image_asset_id'])
-                ->where('workspace_id', $user->workspace_id)
-                ->where('asset_type', 'image')
-                ->first();
+                ->get();
+            foreach ($characters as $c) {
+                if ($c->referenceAsset) {
+                    $referenceAssets->push($c->referenceAsset);
+                }
+            }
         }
+        // De-duplicate (same character + uploaded photo could resolve to same
+        // asset) and cap at 4 (OpenAI's hard limit per /edits call).
+        $referenceAssets = $referenceAssets->unique('id')->take(4);
+        $primaryCharacterId = $characterIds[0] ?? null;
 
         // Credit check up-front so we don't half-create a project the
-        // user can't afford to complete. Image cost drops to 0 when we're
-        // using a user-provided source asset.
+        // user can't afford to complete. Image cost: gpt-image-2 /edits
+        // when any reference present (cost ≈ AI_CHARACTER), gpt-image-1
+        // text-to-image otherwise (cost ≈ AI_MEDIUM).
         $needsAnimation = (bool) ($validated['animate'] ?? true);
         $animationTier  = $validated['animation_tier'] ?? 'quick';
         $animationCost  = match ($animationTier) {
@@ -800,9 +823,9 @@ class ProjectController extends Controller
             'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
             default         => CreditService::VIDEO_QUICK,
         };
-        $imageCost = $sourceAsset
-            ? 0
-            : app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor($validated['image_model_key'] ?? null);
+        $imageCost = $referenceAssets->isNotEmpty()
+            ? CreditService::AI_CHARACTER
+            : CreditService::AI_MEDIUM;
         $estimatedCost = $imageCost
             + CreditService::TTS
             + CreditService::AI_MUSIC
@@ -872,81 +895,45 @@ class ProjectController extends Controller
             'status'        => 'draft',
         ]);
 
-        // Animation parameters — picked once so the two dispatch branches
-        // below (with-source-asset vs generate-from-prompt) stay in sync.
-        // Balanced (Hailuo) needs 6 or 10; everything else uses 5 or 10.
+        // Animation parameters — Balanced (Hailuo) needs 6 or 10; the rest
+        // use 5 or 10.
         $animateDuration = $animationTier === 'balanced' ? 6 : 5;
 
-        if ($sourceAsset) {
-            // User supplied a photo (upload or character reference) — wire
-            // it as the scene's visual asset, skip GenerateAIImageJob, and
-            // kick AnimateSceneJob directly. Saves the user the image-gen
-            // cost AND the wait.
-            $scene->forceFill([
-                'visual_asset_id'                => $sourceAsset->getKey(),
-                'image_generation_settings_json' => [
-                    'in_progress'   => false,
-                    'needs_visual'  => false,
-                    'last_error'    => null,
-                    'source'        => $validated['character_id'] ? 'character' : 'upload',
-                    'source_asset_id' => $sourceAsset->getKey(),
-                ],
-            ])->save();
+        // Single unified dispatch path. References (uploads + character
+        // photos) flow as hints to image gen; the job picks the right
+        // adapter based on whether references were provided. Always
+        // animates if requested — animation chains off image success.
+        $imageToken = (string) \Illuminate\Support\Str::uuid();
+        $scene->forceFill([
+            'image_generation_settings_json' => [
+                'in_progress'           => true,
+                'last_error'            => null,
+                'needs_visual'          => false,
+                'generation_token'      => $imageToken,
+                'generation_started_at' => now()->toIso8601String(),
+                'reference_asset_ids'   => $referenceAssets->pluck('id')->all(),
+            ],
+        ])->save();
 
-            // Stash motion prompt for the editor's animate modal pre-fill.
-            $scene->forceFill([
-                'image_generation_settings_json' => array_merge(
-                    $scene->image_generation_settings_json ?? [],
-                    ['suggested_motion_prompt' => $parsed['motion']],
-                ),
-            ])->save();
-
-            // Bind character if provided so subsequent edits keep the linkage.
-            if (! empty($validated['character_id'])) {
-                $scene->forceFill(['character_id' => $validated['character_id']])->save();
-            }
-
-            \App\Events\GenerationProgressed::dispatch($project->getKey(), 'ai_image', 'completed', null, [
-                'scene_id'  => $scene->getKey(),
-                'asset_id'  => $sourceAsset->getKey(),
-                'image_url' => app(\App\Services\Media\StorageService::class)->url($sourceAsset->storage_url),
-            ]);
-
-            if ($needsAnimation) {
-                \App\Jobs\AnimateSceneJob::dispatch(
-                    $scene->getKey(),
-                    $project->getKey(),
-                    $animationTier,
-                    $animateDuration,
-                    $parsed['motion'],
-                );
-            }
-        } else {
-            // Generate-from-prompt path — original flow.
-            $imageToken = (string) \Illuminate\Support\Str::uuid();
-            $scene->forceFill([
-                'image_generation_settings_json' => [
-                    'in_progress'           => true,
-                    'last_error'            => null,
-                    'needs_visual'          => false,
-                    'generation_token'      => $imageToken,
-                    'generation_started_at' => now()->toIso8601String(),
-                ],
-            ])->save();
-
-            \App\Jobs\GenerateAIImageJob::dispatch(
-                $scene->getKey(),
-                $project->getKey(),
-                $parsed['style'],
-                null,
-                $parsed['style'],
-                $imageToken,
-                $needsAnimation ? $animateDuration : null,
-                $needsAnimation ? $parsed['motion'] : null,
-                $needsAnimation ? $animationTier   : null,
-                $validated['image_model_key'] ?? null,
-            );
+        // Bind primary character to the scene if any picked, so subsequent
+        // edits + the auto-route in the job stay coherent.
+        if ($primaryCharacterId) {
+            $scene->forceFill(['character_id' => $primaryCharacterId])->save();
         }
+
+        \App\Jobs\GenerateAIImageJob::dispatch(
+            $scene->getKey(),
+            $project->getKey(),
+            $parsed['style'],
+            null,
+            $parsed['style'],
+            $imageToken,
+            $needsAnimation ? $animateDuration : null,
+            $needsAnimation ? $parsed['motion'] : null,
+            $needsAnimation ? $animationTier   : null,
+            null,                                        // no model_key override — adapter picked by reference presence
+            $referenceAssets->pluck('id')->all(),        // flatten to plain array for the job
+        );
 
         \App\Jobs\GenerateTTSJob::dispatch($project->getKey());
 

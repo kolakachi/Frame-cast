@@ -344,15 +344,17 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   videoFile.value = null
   revokeImagePreviewItems()
   selectedCharacterId.value = ''
-  // One-shot defaults reset on every open so a prior session's photo /
-  // character pick doesn't bleed into the new project.
+  // One-shot defaults reset on every open so a prior session's references
+  // and menu state don't bleed into the new project.
   oneShotPrompt.value = ''
   oneShotAnimate.value = true
-  oneShotSourceMode.value = 'generate'
-  oneShotImageModelKey.value = 'gpt-image-1'
   oneShotAnimateTier.value = 'quick'
-  clearOneShotUpload()
-  oneShotCharacterId.value = null
+  oneShotReferences.value = []
+  oneShotUploadError.value = ''
+  oneShotAddMenuOpen.value = false
+  oneShotAspectOpen.value = false
+  oneShotAnimMenuOpen.value = false
+  oneShotShowCharacters.value = false
   show.value = true
   loadNiches()
   loadBrandKits()
@@ -448,26 +450,22 @@ function pickOneShotPrompt() {
 // One-shot prompt state.
 const oneShotPrompt = ref('')
 const oneShotAnimate = ref(true)
-// Source: how does the image come into the scene? 'generate' = AI, 'upload'
-// = user-uploaded photo, 'character' = saved character's reference photo.
-const oneShotSourceMode = ref('generate')
-const oneShotImageModelKey = ref('gpt-image-1')
-const oneShotAnimateTier   = ref('quick')
+const oneShotAnimateTier = ref('quick')
+// Unified references list — both uploaded images and selected characters
+// live here. Backend flattens to source_image_asset_ids + character_ids.
+// Each entry: { uid, kind: 'upload'|'character', asset_id?, character_id?,
+// thumb?, label }. uid is local-only so we can remove by identity even when
+// the same asset/character is added twice (we de-dupe before submit anyway).
+const oneShotReferences = ref([])
 const oneShotUploadingPhoto = ref(false)
-const oneShotUploadedAssetId = ref(null)
-const oneShotUploadedPreview = ref(null)
-const oneShotUploadedTitle = ref(null)
 const oneShotUploadError = ref('')
-const oneShotCharacterId = ref(null)
-// Catalog filled from GET /image-models on first open. Falls back to a
-// static list so the picker still renders if the API call fails.
-const availableImageModels = ref([
-  { key: 'gpt-image-1',    label: 'GPT Image 1',    sub: 'OpenAI · photoreal',        cost: 15, render: '~20s', requires_reference: false },
-  { key: 'gpt-image-2',    label: 'GPT Image 2',    sub: 'OpenAI · newer, higher fidelity', cost: 35, render: '~30s', requires_reference: false },
-  { key: 'nano-banana',    label: 'Nano Banana',    sub: 'Google · cheap fast',        cost:  8, render: '~10s', requires_reference: false },
-  { key: 'flux-schnell',   label: 'Flux Schnell',   sub: 'BFL · cheapest',             cost:  1, render: '~5s',  requires_reference: false },
-  { key: 'sdxl-lightning', label: 'SDXL Lightning', sub: 'ByteDance · stylish',        cost:  1, render: '~5s',  requires_reference: false },
-])
+
+// Local UI flags for the composer's pop-overs / expandable sections.
+const oneShotAddMenuOpen     = ref(false)
+const oneShotAspectOpen      = ref(false)
+const oneShotAnimMenuOpen    = ref(false)
+const oneShotShowCharacters  = ref(false)
+
 const availableCharacters = ref([])
 const ONE_SHOT_ANIM_TIERS = [
   { key: 'quick',         label: 'Wan 2.5',       sub: 'Fast · cheap',      cost: 60,  render: '~30s' },
@@ -477,77 +475,100 @@ const ONE_SHOT_ANIM_TIERS = [
   { key: 'premium',       label: 'Kling 2.1',     sub: 'Cinematic',         cost: 240, render: '~3 min' },
 ]
 
+function animateTierLabel(key) {
+  return (ONE_SHOT_ANIM_TIERS.find((m) => m.key === key) || ONE_SHOT_ANIM_TIERS[0]).label
+}
+
 async function loadOneShotCatalogs() {
   try {
-    const [models, chars] = await Promise.all([
-      api.get('/image-models').catch(() => null),
-      api.get('/characters').catch(() => null),
-    ])
-    if (models?.data?.data?.models?.length) availableImageModels.value = models.data.data.models
+    const chars = await api.get('/characters').catch(() => null)
     availableCharacters.value = chars?.data?.data?.characters ?? []
-  } catch { /* keep fallbacks */ }
+  } catch { /* keep empty */ }
 }
 
-function setOneShotSourceMode(mode) {
-  oneShotSourceMode.value = mode
-  if (mode !== 'upload')    clearOneShotUpload()
-  if (mode !== 'character') oneShotCharacterId.value = null
-}
+function closeAddMenu() { oneShotAddMenuOpen.value = false }
 
-function clearOneShotUpload() {
-  oneShotUploadedAssetId.value = null
-  oneShotUploadedPreview.value = null
-  oneShotUploadedTitle.value = null
+function removeOneShotReference(uid) {
+  oneShotReferences.value = oneShotReferences.value.filter((r) => r.uid !== uid)
   oneShotUploadError.value = ''
 }
 
-async function onOneShotPhotoChange(event) {
-  const file = event.target?.files?.[0]
-  if (!file) return
-  if (file.size > 8 * 1024 * 1024) {
-    oneShotUploadError.value = 'Image is over 8 MB — try a smaller file.'
+function oneShotHasCharacter(charId) {
+  return oneShotReferences.value.some((r) => r.kind === 'character' && r.character_id === charId)
+}
+
+function toggleOneShotCharacter(c) {
+  if (oneShotHasCharacter(c.id)) {
+    oneShotReferences.value = oneShotReferences.value.filter(
+      (r) => !(r.kind === 'character' && r.character_id === c.id),
+    )
     return
   }
-  oneShotUploadingPhoto.value = true
-  oneShotUploadError.value = ''
-  try {
-    const fd = new FormData()
-    // Backend field is asset_file (AssetController::store) — was 'file' which
-    // tripped the validator with "asset_file field is required".
-    fd.append('asset_file', file)
-    fd.append('asset_type', 'image')
-    fd.append('title', file.name.replace(/\.[^.]+$/, ''))
-    const res = await api.post('/assets', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
-    const asset = res.data?.data?.asset
-    if (asset?.id) {
-      oneShotUploadedAssetId.value = asset.id
-      oneShotUploadedPreview.value = asset.thumbnail_url || asset.storage_url || null
-      oneShotUploadedTitle.value = asset.title
-    } else {
-      oneShotUploadError.value = 'Upload returned no asset.'
-    }
-  } catch (e) {
-    oneShotUploadError.value = e.response?.data?.error?.message ?? 'Upload failed.'
-  } finally {
-    oneShotUploadingPhoto.value = false
-    event.target.value = ''   // allow re-picking the same file
+  if (oneShotReferences.value.length >= 4) {
+    oneShotUploadError.value = 'Up to 4 references — remove one to add another.'
+    return
   }
+  oneShotReferences.value.push({
+    uid: `c-${c.id}-${Date.now()}`,
+    kind: 'character',
+    character_id: c.id,
+    thumb: c.reference_asset?.thumbnail_url ?? null,
+    label: c.name,
+  })
 }
 
-// Submit gate: prompt required in all modes; upload requires an asset;
-// character requires a pick. Generate has no extra requirements.
-const canSubmitOneShot = computed(() => {
-  if (!oneShotPrompt.value.trim()) return false
-  if (oneShotSourceMode.value === 'upload'    && !oneShotUploadedAssetId.value) return false
-  if (oneShotSourceMode.value === 'character' && !oneShotCharacterId.value)    return false
-  return true
-})
+// Multi-file upload. Iterates files, queues them as upload references.
+// Skips files >8 MB. Bumps the 4-reference cap as a soft limit.
+async function onOneShotPhotoChange(event) {
+  const files = Array.from(event.target?.files ?? [])
+  if (!files.length) return
+  oneShotUploadingPhoto.value = true
+  oneShotUploadError.value = ''
+  closeAddMenu()
+  for (const file of files) {
+    if (oneShotReferences.value.length >= 4) {
+      oneShotUploadError.value = 'Reached the 4-reference cap — skipped remaining files.'
+      break
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      oneShotUploadError.value = `${file.name} is over 8 MB — skipped.`
+      continue
+    }
+    try {
+      const fd = new FormData()
+      fd.append('asset_file', file)
+      fd.append('asset_type', 'image')
+      fd.append('title', file.name.replace(/\.[^.]+$/, ''))
+      const res = await api.post('/assets', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const asset = res.data?.data?.asset
+      if (asset?.id) {
+        oneShotReferences.value.push({
+          uid: `u-${asset.id}-${Date.now()}`,
+          kind: 'upload',
+          asset_id: asset.id,
+          thumb: asset.thumbnail_url || asset.storage_url || null,
+          label: asset.title || file.name,
+        })
+      }
+    } catch (e) {
+      oneShotUploadError.value = e.response?.data?.error?.message ?? `Upload of ${file.name} failed.`
+    }
+  }
+  oneShotUploadingPhoto.value = false
+  event.target.value = ''   // allow re-picking the same file
+}
+
+// Submit gate: prompt is the only hard requirement now. References are
+// optional hints to the model — empty is fine (text-to-image).
+const canSubmitOneShot = computed(() => !!oneShotPrompt.value.trim())
 
 async function submitOneShot() {
   if (!canSubmitOneShot.value || wizardCreateState.value === 'loading') return
   wizardCreateState.value = 'loading'
   wizardCreateError.value = ''
   try {
+    const sourceAssetIds = oneShotReferences.value.filter((r) => r.kind === 'upload').map((r) => r.asset_id)
+    const characterIds   = oneShotReferences.value.filter((r) => r.kind === 'character').map((r) => r.character_id)
     const payload = {
       prompt: oneShotPrompt.value.trim(),
       title: title.value || undefined,
@@ -555,13 +576,8 @@ async function submitOneShot() {
       animate: oneShotAnimate.value,
       animation_tier: oneShotAnimateTier.value,
       channel_id: channelId.value ? Number(channelId.value) : undefined,
-    }
-    if (oneShotSourceMode.value === 'generate') {
-      payload.image_model_key = oneShotImageModelKey.value
-    } else if (oneShotSourceMode.value === 'upload') {
-      payload.source_image_asset_id = oneShotUploadedAssetId.value
-    } else if (oneShotSourceMode.value === 'character') {
-      payload.character_id = oneShotCharacterId.value
+      ...(sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
+      ...(characterIds.length   ? { character_ids: characterIds }            : {}),
     }
     const res = await api.post('/projects/one-shot', payload)
     const projectId = res.data?.data?.project?.id
@@ -570,13 +586,7 @@ async function submitOneShot() {
       router.push({
         name: 'generation-progress',
         params: { projectId },
-        query: {
-          animate: oneShotAnimate.value ? '1' : '0',
-          // skip_image=1 tells the progress view that the image stage is
-          // already done (we used a source asset), so it can render the
-          // pipeline accurately.
-          skip_image: oneShotSourceMode.value === 'generate' ? '0' : '1',
-        },
+        query: { animate: oneShotAnimate.value ? '1' : '0' },
       })
     }
   } catch (err) {
@@ -730,153 +740,121 @@ defineExpose({ open })
         </div>
       </div>
 
-      <!-- Step 4: One-shot prompt form -->
+      <!-- Step 4: One-shot prompt — Claude-input-box style composer.
+           One prompt box. References (uploads + characters) live as chips
+           inside it. Settings collapse below. -->
       <div v-else-if="wizardStep === 4">
-        <div class="section-title">One-shot from a prompt</div>
-        <div class="section-subtitle">Type a single line. We generate the image, voice, music — and optionally animate it. Lands in the editor in ~90 seconds.</div>
+        <div class="section-title">⚡ One-shot</div>
+        <div class="section-subtitle">Describe what you want. Add reference photos or characters if you have them.</div>
 
-        <label class="input-label-wrap" style="margin-top:18px;">
-          <span class="input-label">Title <span style="font-weight:400;opacity:.55;">(optional)</span></span>
-          <input v-model="title" class="field-input" type="text" maxlength="200" placeholder="Untitled project" />
-        </label>
+        <!-- Composer: textarea + chip strip + footer toolbar. Mirrors the
+             Claude prompt-box pattern: one rounded container, chips at the
+             top, prompt body, action row at the bottom. -->
+        <div class="composer">
+          <!-- Reference chips (only when any present) -->
+          <div v-if="oneShotReferences.length" class="composer-chips">
+            <div v-for="ref in oneShotReferences" :key="ref.uid" class="ref-chip" :title="ref.label">
+              <img v-if="ref.thumb" :src="ref.thumb" :alt="ref.label" class="ref-chip-thumb" />
+              <span v-else class="ref-chip-glyph">{{ ref.kind === 'character' ? '👤' : '📷' }}</span>
+              <span class="ref-chip-label">{{ ref.label }}</span>
+              <button type="button" class="ref-chip-remove" @click="removeOneShotReference(ref.uid)" :title="`Remove ${ref.label}`">×</button>
+            </div>
+          </div>
 
-        <label class="input-label-wrap" style="margin-top:14px;">
-          <span class="input-label">Prompt</span>
           <textarea
             v-model="oneShotPrompt"
-            class="field-input textarea"
-            rows="3"
+            class="composer-textarea"
+            rows="4"
             maxlength="1000"
             placeholder="e.g. a calm founder explaining her morning ritual in a sunlit kitchen, warm tones, slow camera push-in"
             @keydown.meta.enter="submitOneShot"
             @keydown.ctrl.enter="submitOneShot"
           ></textarea>
-          <div class="hint-box">This becomes the voice-over script AND the image/music descriptor. Be visual and specific — name the subject, mood, lighting, setting.</div>
-        </label>
 
-        <!-- Source mode: generate AI image OR use a photo OR use a saved character -->
-        <label class="input-label-wrap" style="margin-top:14px;">
-          <span class="input-label">Image source</span>
-          <div class="format-chips">
-            <div :class="['format-chip', oneShotSourceMode === 'generate' ? 'active' : '']"  @click="setOneShotSourceMode('generate')">✦ Generate AI image</div>
-            <div :class="['format-chip', oneShotSourceMode === 'upload'   ? 'active' : '']"  @click="setOneShotSourceMode('upload')">📷 Upload photo</div>
-            <div :class="['format-chip', oneShotSourceMode === 'character'? 'active' : '']"  @click="setOneShotSourceMode('character')">👤 Use character</div>
-          </div>
-        </label>
+          <!-- Toolbar: + Add (popover), aspect ratio chip, animate model chip, char count -->
+          <div class="composer-toolbar">
+            <div class="composer-tools-left">
+              <!-- + Add references — popover menu -->
+              <div class="composer-add">
+                <button type="button" class="composer-add-btn" @click="oneShotAddMenuOpen = !oneShotAddMenuOpen" :disabled="oneShotReferences.length >= 4" :title="oneShotReferences.length >= 4 ? 'Up to 4 references' : 'Add reference image or character'">+</button>
+                <div v-if="oneShotAddMenuOpen" class="composer-add-menu">
+                  <label class="composer-add-item">
+                    <span>📷</span><span>Upload image{{ oneShotUploadingPhoto ? '…' : '' }}</span>
+                    <input type="file" accept="image/*" multiple class="hidden-file-input" @change="onOneShotPhotoChange" :disabled="oneShotUploadingPhoto" />
+                  </label>
+                  <button v-if="availableCharacters.length" type="button" class="composer-add-item" @click="oneShotShowCharacters = !oneShotShowCharacters">
+                    <span>👤</span><span>{{ oneShotShowCharacters ? 'Hide characters' : 'Pick character' }}</span>
+                  </button>
+                  <div v-else class="composer-add-item composer-add-item--empty">
+                    <span>👤</span><span>No characters saved yet</span>
+                  </div>
+                </div>
+              </div>
 
-        <!-- Generate mode: image model picker -->
-        <label v-if="oneShotSourceMode === 'generate'" class="input-label-wrap" style="margin-top:14px;">
-          <span class="input-label">Image model</span>
-          <div class="model-grid">
-            <div
-              v-for="m in availableImageModels"
-              :key="m.key"
-              :class="['model-card', oneShotImageModelKey === m.key ? 'selected' : '', m.requires_reference ? 'disabled' : '']"
-              :title="m.requires_reference ? 'Needs a character reference — use the Character source mode' : ''"
-              @click="!m.requires_reference && (oneShotImageModelKey = m.key)"
-            >
-              <div class="model-card-name">{{ m.label }}</div>
-              <div class="model-card-sub">{{ m.sub }}</div>
-              <div class="model-card-foot">
-                <span class="model-card-cost">{{ m.cost }} cr</span>
-                <span class="model-card-render">{{ m.render }}</span>
+              <!-- Aspect ratio dropdown — compact -->
+              <div class="composer-pill-wrap">
+                <button type="button" class="composer-pill" @click="oneShotAspectOpen = !oneShotAspectOpen">
+                  <span>📐 {{ aspectRatio }}</span><span class="composer-pill-caret">▾</span>
+                </button>
+                <div v-if="oneShotAspectOpen" class="composer-pill-menu">
+                  <button v-for="r in ['9:16','1:1','4:5','16:9']" :key="r" type="button" :class="['composer-pill-option', aspectRatio === r ? 'selected' : '']" @click="aspectRatio = r; oneShotAspectOpen = false">{{ r }}</button>
+                </div>
+              </div>
+
+              <!-- Animate dropdown — model + on/off in one control -->
+              <div class="composer-pill-wrap">
+                <button type="button" class="composer-pill" @click="oneShotAnimMenuOpen = !oneShotAnimMenuOpen">
+                  <span>🎬 {{ oneShotAnimate ? animateTierLabel(oneShotAnimateTier) : 'No animation' }}</span><span class="composer-pill-caret">▾</span>
+                </button>
+                <div v-if="oneShotAnimMenuOpen" class="composer-pill-menu composer-pill-menu--wide">
+                  <button type="button" :class="['composer-pill-option', !oneShotAnimate ? 'selected' : '']" @click="oneShotAnimate = false; oneShotAnimMenuOpen = false">
+                    <span>No animation</span><span class="composer-pill-option-sub">image only</span>
+                  </button>
+                  <button v-for="m in ONE_SHOT_ANIM_TIERS" :key="m.key" type="button" :class="['composer-pill-option', oneShotAnimate && oneShotAnimateTier === m.key ? 'selected' : '']" @click="oneShotAnimate = true; oneShotAnimateTier = m.key; oneShotAnimMenuOpen = false">
+                    <span>{{ m.label }}</span><span class="composer-pill-option-sub">{{ m.cost }} cr · {{ m.render }}</span>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </label>
 
-        <!-- Upload mode: file picker -->
-        <label v-if="oneShotSourceMode === 'upload'" class="input-label-wrap" style="margin-top:14px;">
-          <span class="input-label">Photo</span>
-          <div class="upload-zone">
-            <div v-if="!oneShotUploadedAssetId">
-              <label class="upload-zone-input">
-                <span v-if="!oneShotUploadingPhoto">📷 Click to choose an image · PNG / JPG · max 8 MB</span>
-                <span v-else>Uploading…</span>
-                <input class="hidden-file-input" type="file" accept="image/*" @change="onOneShotPhotoChange" :disabled="oneShotUploadingPhoto" />
-              </label>
-            </div>
-            <div v-else style="display:flex;align-items:center;gap:10px;">
-              <img v-if="oneShotUploadedPreview" :src="oneShotUploadedPreview" alt="" style="width:60px;height:60px;border-radius:6px;object-fit:cover;" />
-              <div style="flex:1;font-size:12px;">
-                <div style="color:var(--color-text-primary);font-weight:600;">{{ oneShotUploadedTitle || 'Uploaded photo' }}</div>
-                <div style="color:var(--color-text-muted);">Ready · we'll animate this directly</div>
-              </div>
-              <button class="btn btn-ghost" type="button" @click="clearOneShotUpload" style="padding:4px 10px;font-size:12px;">Remove</button>
+            <div class="composer-tools-right">
+              <span class="composer-count">{{ oneShotPrompt.length }}/1000</span>
+              <button class="composer-submit" type="button" :disabled="!canSubmitOneShot || wizardCreateState === 'loading'" @click="submitOneShot" :title="canSubmitOneShot ? 'Generate (Cmd+Enter)' : 'Type a prompt to enable'">
+                {{ wizardCreateState === 'loading' ? '…' : '↑' }}
+              </button>
             </div>
           </div>
-          <div v-if="oneShotUploadError" class="modal-error" style="margin-top:8px;">{{ oneShotUploadError }}</div>
-        </label>
+        </div>
 
-        <!-- Character mode: thumbnail picker grid -->
-        <label v-if="oneShotSourceMode === 'character'" class="input-label-wrap" style="margin-top:14px;">
-          <span class="input-label">Character</span>
-          <div v-if="availableCharacters.length === 0" class="hint-box">
-            No saved characters yet. Create one from <strong>Characters</strong> in the sidebar — upload a reference photo, give them a name, and they'll appear here.
-          </div>
-          <div v-else class="character-pick-grid">
+        <!-- Inline upload error (sits below composer) -->
+        <div v-if="oneShotUploadError" class="modal-error" style="margin-top:10px;">{{ oneShotUploadError }}</div>
+
+        <!-- Character picker — only when user expanded it from the + menu.
+             Multi-select; clicking a card toggles it in/out of refs. -->
+        <div v-if="oneShotShowCharacters && availableCharacters.length" style="margin-top:14px;">
+          <div class="micro-section-label">Pick characters as references</div>
+          <div class="character-pick-grid">
             <div
               v-for="c in availableCharacters"
               :key="c.id"
-              :class="['character-pick-card', oneShotCharacterId === c.id ? 'selected' : '', !c.reference_asset?.thumbnail_url ? 'no-thumb' : '']"
-              @click="oneShotCharacterId = c.id"
+              :class="['character-pick-card', oneShotHasCharacter(c.id) ? 'selected' : '', !c.reference_asset?.thumbnail_url ? 'no-thumb' : '']"
+              @click="toggleOneShotCharacter(c)"
               :title="c.description || c.name"
             >
               <div class="character-pick-thumb">
                 <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" :alt="c.name" />
                 <span v-else>👤</span>
-                <div v-if="oneShotCharacterId === c.id" class="character-pick-check">✓</div>
+                <div v-if="oneShotHasCharacter(c.id)" class="character-pick-check">✓</div>
               </div>
               <div class="character-pick-name">{{ c.name }}</div>
             </div>
           </div>
-        </label>
-
-        <label class="input-label-wrap" style="margin-top:14px;">
-          <span class="input-label">Aspect ratio</span>
-          <div class="format-chips">
-            <div :class="['format-chip', aspectRatio === '9:16' ? 'active' : '']" @click="aspectRatio = '9:16'">9:16</div>
-            <div :class="['format-chip', aspectRatio === '1:1' ? 'active' : '']"  @click="aspectRatio = '1:1'">1:1</div>
-            <div :class="['format-chip', aspectRatio === '4:5' ? 'active' : '']"  @click="aspectRatio = '4:5'">4:5</div>
-            <div :class="['format-chip', aspectRatio === '16:9' ? 'active' : '']" @click="aspectRatio = '16:9'">16:9</div>
-          </div>
-        </label>
-
-        <label class="toggle-row" style="margin-top:18px;">
-          <div>
-            <div class="label-main">Animate the image</div>
-            <div class="label-hint">Generates an animated clip from the image. Re-animate from the editor with a different model anytime.</div>
-          </div>
-          <div :class="['toggle', oneShotAnimate ? 'on' : '']" @click="oneShotAnimate = !oneShotAnimate"></div>
-        </label>
-
-        <!-- Animation model picker (only when animate is on) -->
-        <label v-if="oneShotAnimate" class="input-label-wrap" style="margin-top:14px;">
-          <span class="input-label">Animation model</span>
-          <div class="model-grid">
-            <div
-              v-for="m in ONE_SHOT_ANIM_TIERS"
-              :key="m.key"
-              :class="['model-card', oneShotAnimateTier === m.key ? 'selected' : '']"
-              @click="oneShotAnimateTier = m.key"
-            >
-              <div class="model-card-name">{{ m.label }}</div>
-              <div class="model-card-sub">{{ m.sub }}</div>
-              <div class="model-card-foot">
-                <span class="model-card-cost">{{ m.cost }} cr</span>
-                <span class="model-card-render">{{ m.render }}</span>
-              </div>
-            </div>
-          </div>
-        </label>
+        </div>
 
         <div v-if="wizardCreateError" class="modal-error" style="margin-top:14px;">{{ wizardCreateError }}</div>
 
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" @click="wizardStep = 0">← Back</button>
-          <button class="btn btn-primary" type="button" :disabled="!canSubmitOneShot || wizardCreateState === 'loading'" @click="submitOneShot">
-            {{ wizardCreateState === 'loading' ? 'Generating…' : '⚡ Generate one-shot' }}
-          </button>
         </div>
       </div>
 
@@ -1474,6 +1452,56 @@ defineExpose({ open })
 .model-card-foot { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; font-family: "Space Mono", monospace; }
 .model-card-cost { color: var(--color-accent); font-weight: 600; }
 .model-card-render { color: var(--color-text-muted); }
+
+/* ── Claude-style composer for one-shot step ───────────────────────
+   Single rounded container with: optional reference-chip strip,
+   textarea body, and footer toolbar with + (add refs), aspect, animate,
+   submit. Tries to feel like a chat input — one thing to focus on. */
+.composer { border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-bg-elevated); padding: 10px 12px 8px; transition: border-color 0.18s; }
+.composer:focus-within { border-color: rgba(255,107,53,0.45); }
+
+.composer-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.ref-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 4px; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-card); font-size: 11.5px; max-width: 180px; }
+.ref-chip-thumb { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.ref-chip-glyph { width: 20px; height: 20px; border-radius: 50%; background: var(--color-bg-elevated); display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+.ref-chip-label { color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ref-chip-remove { background: none; border: none; color: var(--color-text-muted); cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; }
+.ref-chip-remove:hover { color: var(--color-text-primary); }
+
+.composer-textarea { width: 100%; border: none; background: transparent; color: var(--color-text-primary); font-size: 14px; line-height: 1.5; resize: none; outline: none; padding: 4px 2px; font-family: inherit; }
+.composer-textarea::placeholder { color: var(--color-text-muted); }
+
+.composer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.04); }
+.composer-tools-left { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.composer-tools-right { display: flex; align-items: center; gap: 8px; }
+.composer-count { font-size: 11px; color: var(--color-text-muted); font-family: "Space Mono", monospace; }
+
+.composer-add { position: relative; }
+.composer-add-btn { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-primary); font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.15s; }
+.composer-add-btn:hover:not(:disabled) { border-color: rgba(255,107,53,0.4); }
+.composer-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.composer-add-menu { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 180px; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 10; }
+.composer-add-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: none; background: transparent; color: var(--color-text-primary); font-size: 12.5px; cursor: pointer; border-radius: 6px; width: 100%; text-align: left; font-family: inherit; }
+.composer-add-item:hover { background: var(--color-bg-elevated); }
+.composer-add-item--empty { color: var(--color-text-muted); cursor: default; }
+.composer-add-item--empty:hover { background: transparent; }
+
+.composer-pill-wrap { position: relative; }
+.composer-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-secondary); font-size: 11.5px; cursor: pointer; transition: 0.15s; font-family: inherit; }
+.composer-pill:hover { border-color: rgba(255,107,53,0.4); color: var(--color-text-primary); }
+.composer-pill-caret { font-size: 9px; opacity: 0.6; }
+.composer-pill-menu { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 140px; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 10; }
+.composer-pill-menu--wide { min-width: 220px; }
+.composer-pill-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: none; background: transparent; color: var(--color-text-primary); font-size: 12.5px; cursor: pointer; border-radius: 6px; width: 100%; text-align: left; font-family: inherit; }
+.composer-pill-option:hover { background: var(--color-bg-elevated); }
+.composer-pill-option.selected { background: rgba(255,107,53,0.08); color: var(--color-accent); }
+.composer-pill-option-sub { font-size: 11px; color: var(--color-text-muted); font-family: "Space Mono", monospace; }
+
+.composer-submit { width: 30px; height: 30px; border-radius: 8px; border: none; background: var(--color-accent); color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.15s; }
+.composer-submit:hover:not(:disabled) { transform: translateY(-1px); }
+.composer-submit:disabled { opacity: 0.35; cursor: not-allowed; background: var(--color-bg-card); color: var(--color-text-muted); }
+
+.micro-section-label { font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; font-family: "Space Mono", monospace; }
 
 /* Character thumbnail picker — one-shot character source mode. */
 .character-pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }

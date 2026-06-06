@@ -63,10 +63,19 @@ class CharacterImageAdapter implements ImageGenerationAdapter
             throw new RuntimeException('OpenAI API key is not configured (OPENAI_API_KEY).');
         }
 
-        $referenceUrl = $options['reference_image_url'] ?? null;
-        if (! $referenceUrl) {
-            throw new RuntimeException('Character adapter requires reference_image_url in options.');
+        // Multi-reference support: gpt-image-2 /edits accepts image[] as an
+        // array. Collect from either reference_image_urls (new array form,
+        // preferred) or reference_image_url (legacy single, backward compat).
+        $referenceUrls = $options['reference_image_urls'] ?? null;
+        if (! is_array($referenceUrls) || empty($referenceUrls)) {
+            $single = $options['reference_image_url'] ?? null;
+            $referenceUrls = $single ? [$single] : [];
         }
+        if (empty($referenceUrls)) {
+            throw new RuntimeException('Character adapter requires at least one reference_image_url(s) in options.');
+        }
+        // Cap at 4 — OpenAI's hard limit. Beyond that the call rejects.
+        $referenceUrls = array_slice(array_values($referenceUrls), 0, 4);
 
         $model   = (string) config('services.openai.character_model', 'gpt-image-2');
         $size    = self::SIZE_MAP[$aspectRatio] ?? self::SIZE_MAP['9:16'];
@@ -89,18 +98,33 @@ class CharacterImageAdapter implements ImageGenerationAdapter
 
         $usageContext = $this->usage->contextFromOptions($options);
 
-        // Fetch the reference image bytes; gpt-image-2 /edits is multipart-only.
-        $refResponse = Http::timeout(30)->get($referenceUrl);
-        if (! $refResponse->successful()) {
-            throw new RuntimeException("Could not fetch character reference image ({$refResponse->status()}).");
+        // Fetch every reference image's bytes; gpt-image-2 /edits is
+        // multipart-only and accepts image[] as a repeated multipart field.
+        $refs = [];
+        foreach ($referenceUrls as $url) {
+            $refResponse = Http::timeout(30)->get($url);
+            if (! $refResponse->successful()) {
+                Log::warning('CharacterImageAdapter: skipping unreachable reference', [
+                    'url' => $url, 'status' => $refResponse->status(),
+                ]);
+                continue;
+            }
+            $refs[] = [
+                'bytes' => $refResponse->body(),
+                'name'  => 'reference.' . $this->guessExtension($refResponse->header('Content-Type')),
+            ];
         }
-        $refBytes    = $refResponse->body();
-        $refFilename = 'reference.' . $this->guessExtension($refResponse->header('Content-Type'));
+        if (empty($refs)) {
+            throw new RuntimeException('Could not fetch any reference images.');
+        }
 
         try {
-            $response = Http::withToken($apiKey)
-                ->timeout(180)
-                ->attach('image[]', $refBytes, $refFilename)
+            $req = Http::withToken($apiKey)->timeout(180);
+            foreach ($refs as $i => $ref) {
+                // Each reference attaches as a separate image[] part.
+                $req = $req->attach('image[]', $ref['bytes'], $ref['name']);
+            }
+            $response = $req
                 ->post('https://api.openai.com/v1/images/edits', [
                     'model'   => $model,
                     'prompt'  => $fullPrompt,

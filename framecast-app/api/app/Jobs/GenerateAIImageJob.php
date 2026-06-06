@@ -48,6 +48,11 @@ class GenerateAIImageJob implements ShouldQueue
         // the DI-injected default (DalleImageAdapter / gpt-image-1) wins so
         // existing callers without the picker keep working.
         public readonly ?string $modelKey = null,
+        // One-shot multi-reference: when set, GenerateAIImageJob routes
+        // through CharacterImageAdapter with these references passed as
+        // image[] parts on /v1/images/edits. Up to 4 (OpenAI cap). Wins
+        // over the scene.character_id auto-route.
+        public readonly array $referenceAssetIds = [],
     ) {
         $this->onQueue('visual');
     }
@@ -92,7 +97,38 @@ class GenerateAIImageJob implements ShouldQueue
                     ?: null,
             ];
 
-            if ($useCharacterRef) {
+            // Multi-reference path (one-shot wizard): when storeOneShot
+            // passes referenceAssetIds, route through CharacterImageAdapter
+            // with all references as image[] parts. Wins over the legacy
+            // scene.character_id auto-route below.
+            if (! empty($this->referenceAssetIds)) {
+                $refAssets = \App\Models\Asset::query()
+                    ->whereIn('id', $this->referenceAssetIds)
+                    ->where('asset_type', 'image')
+                    ->get();
+                $urls = [];
+                foreach ($refAssets as $a) {
+                    $signed = $this->signedReferenceUrl($a);
+                    if ($signed) $urls[] = $signed;
+                }
+                if (! empty($urls)) {
+                    $options['reference_image_urls'] = array_slice($urls, 0, 4);
+                    $options['quality'] = 'high';
+                    try {
+                        $result = app(\App\Services\Generation\Image\CharacterImageAdapter::class)
+                            ->generate($prompt, $this->style, $aspectRatio, $options);
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning('GenerateAIImageJob: multi-reference adapter failed, falling back to text-to-image', [
+                            'scene_id'      => $this->sceneId,
+                            'reference_ct'  => count($urls),
+                            'error'         => $e->getMessage(),
+                        ]);
+                        unset($options['reference_image_urls']);
+                    }
+                }
+            }
+
+            if ($useCharacterRef && ! isset($result)) {
                 $referenceUrl = $this->signedReferenceUrl($scene->character->referenceAsset);
                 if ($referenceUrl) {
                     $options['reference_image_url'] = $referenceUrl;
