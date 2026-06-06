@@ -8107,7 +8107,12 @@ button {
 /* .cruise-config-view is the wrapper around the existing panel-sections
    — no styling needed, the panel-section rules already apply. */
 
-.cruise-assistant-view { display: flex; flex-direction: column; min-height: 0; }
+.cruise-assistant-view { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.editor-right > .cruise-assistant-view { flex: 1; min-height: 0; }
+.cruise-assistant-view > .cruise-scope-bar,
+.cruise-assistant-view > .cruise-quick-row,
+.cruise-assistant-view > .cruise-input-wrap,
+.cruise-assistant-view > .cruise-assistant-foot { flex: 0 0 auto; }
 .cruise-scope-bar {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 14px;
@@ -9538,6 +9543,19 @@ button {
 .editor-right {
   width: 300px;
   border-left: 1px solid var(--border);
+  /* Flex column so the active view (Config or Assistant) can claim the
+     remaining height after the toggle bar and handle its own scrolling.
+     Was overflow-y:auto on the rail itself — that pushed the Assistant
+     input + footer off the bottom when the chat grew tall. */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.editor-right > .cruise-toggle-bar { flex: 0 0 auto; }
+.editor-right > .cruise-config-view {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
