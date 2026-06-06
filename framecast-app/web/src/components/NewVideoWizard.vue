@@ -71,7 +71,12 @@ const characterPickerOpen = ref(false)
 async function loadWizardVoices() {
   try {
     const res = await api.get('/voice-profiles')
-    const list = Array.isArray(res?.data?.data) ? res.data.data : []
+    // Endpoint returns { data: { voice_profiles: [...] } } — NOT a bare array.
+    // Earlier I was reading res.data.data which gave back the wrapper object,
+    // so wizardVoices stayed [] and the trigger showed the 'Default' fallback.
+    const list = Array.isArray(res?.data?.data?.voice_profiles)
+      ? res.data.data.voice_profiles
+      : []
     if (list.length) {
       wizardVoices.value = list
       // Default to whatever was first if nothing matches the current pick.
