@@ -624,21 +624,82 @@ async function loadCruiseConversation() {
         // ones store actions[]. Promote singular to array on hydrate.
         const rawActions = Array.isArray(m.actions) && m.actions.length
           ? m.actions
-          : (m.action ? [{ ...m.action, status: m.action_status === 'running' ? 'applied' : (m.action_status ?? 'proposed'), credits: m.action_credits ?? 0 }] : [])
+          : (m.action ? [{ ...m.action, status: m.action_status ?? 'proposed', credits: m.action_credits ?? 0, affected_scene_id: m.affected_scene_id ?? null }] : [])
         const out = {
           id: m.id,
           role: m.role,
           text: m.text,
-          actions: rawActions.map((a) => cruiseInitActionState(a, a.status === 'running' ? 'applied' : (a.status ?? 'proposed'))),
+          actions: rawActions.map((a) => {
+            const card = cruiseInitActionState(a, a.status ?? 'proposed')
+            // Restore the bits that drive hydrate verification.
+            card.credits = a.credits ?? 0
+            card.affected_scene_id = a.affected_scene_id ?? null
+            return card
+          }),
         }
-        // Hydrate per-card credits when the persisted blob carried them.
-        rawActions.forEach((a, i) => { if (a.credits) out.actions[i].credits = a.credits })
         cruiseRecomputeMessageStatus(out)
         return out
       })
       await nextTick(); cruiseScrollChatToBottom()
+      // Resume polling for anything that's still cooking on the backend.
+      // Runs after the messages array is committed so the message refs
+      // we hand to cruiseStartPollingFallback are reactive.
+      await cruiseResumeInflightAfterHydrate()
     }
   } catch { /* silent — empty conversation is fine */ }
+}
+
+// On hydrate, walk every applied card with an affected_scene_id and
+// verify the scene actually has the assets the action was supposed to
+// produce. If anything's still pending, flip the card back to 'running'
+// and resume the polling fallback + spinner. This is what makes a page
+// refresh mid-generation pick up where the user left off.
+async function cruiseResumeInflightAfterHydrate() {
+  // Dedup: one scene fetch per affected_scene_id even if multiple
+  // cards share it.
+  const toCheck = new Map()
+  for (const m of cruiseMessages.value) {
+    for (const card of (m.actions || [])) {
+      if (card.status !== 'applied') continue
+      if (!card.affected_scene_id) continue
+      const expected = cruiseExpectedStages(card.tool, card.params)
+      if (!expected.length) continue
+      // Cache scene fetch by id; pin (msg, card, expected) for processing.
+      const bucket = toCheck.get(card.affected_scene_id) || []
+      bucket.push({ msg: m, card, expected })
+      toCheck.set(card.affected_scene_id, bucket)
+    }
+  }
+  if (!toCheck.size) return
+  await Promise.all([...toCheck.entries()].map(async ([sceneId, items]) => {
+    try {
+      const res = await api.get(`/scenes/${sceneId}/preview`)
+      const scene = res?.data?.data?.scene
+      if (!scene) return
+      const stageDone = {
+        ai_image:  !!scene.visual_asset_id,
+        animation: !!scene.video_asset_id,
+        tts:       !!scene.audio_asset_id,
+        ai_music:  true, // project-level, can't verify from scene
+      }
+      for (const { msg, card, expected } of items) {
+        const allDone = expected.every(s => stageDone[s])
+        if (allDone) continue
+        // Still cooking. Flip back to running, record what's already
+        // done, kick off progress loop + polling so the user sees it
+        // resume even though Reverb missed the last event.
+        card.status = 'running'
+        card.expected_stages = expected
+        card.completed_stages = expected.filter(s => stageDone[s])
+        card.progress_text = card.completed_stages.length
+          ? cruiseStagePendingText(card.tool, expected, card.completed_stages)
+          : cruiseInitialProgressText(card.tool)
+        cruiseStartProgressLoop(card)
+        cruiseStartPollingFallback(card)
+        cruiseRecomputeMessageStatus(msg)
+      }
+    } catch (_) { /* silent — leave card as 'applied' */ }
+  }))
 }
 
 // Pulse a Config panel-section after an apply. The CSS class

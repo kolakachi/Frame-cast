@@ -229,6 +229,7 @@ class CruiseControlController extends Controller
                 'applied',
                 (int) ($result['credits_spent'] ?? 0),
                 $validated['action_index'] ?? null,
+                $result['affected_scene_id'] ?? null,
             );
         }
 
@@ -419,9 +420,9 @@ class CruiseControlController extends Controller
      * (multi-action turns). When it's null we stamp the legacy singular
      * action_status on the message itself (old single-action messages).
      */
-    private function updateMessageStatus(User $user, Project $project, string $messageId, string $status, int $creditsSpent = 0, ?int $actionIndex = null): void
+    private function updateMessageStatus(User $user, Project $project, string $messageId, string $status, int $creditsSpent = 0, ?int $actionIndex = null, ?int $affectedSceneId = null): void
     {
-        DB::transaction(function () use ($user, $project, $messageId, $status, $creditsSpent, $actionIndex) {
+        DB::transaction(function () use ($user, $project, $messageId, $status, $creditsSpent, $actionIndex, $affectedSceneId) {
             $conv = CruiseConversation::query()
                 ->where('workspace_id', $user->workspace_id)
                 ->where('project_id', $project->getKey())
@@ -433,22 +434,23 @@ class CruiseControlController extends Controller
             foreach ($messages as $i => $m) {
                 if (($m['id'] ?? null) !== $messageId) continue;
 
-                // Multi-action path: update the indexed entry in actions[].
                 if ($actionIndex !== null && is_array($m['actions'] ?? null) && isset($m['actions'][$actionIndex])) {
                     $messages[$i]['actions'][$actionIndex]['status'] = $status;
                     if ($creditsSpent > 0) $messages[$i]['actions'][$actionIndex]['credits'] = $creditsSpent;
+                    // Persist affected_scene_id so the frontend can
+                    // re-verify on refresh whether the work is still
+                    // in flight and resume polling if so.
+                    if ($affectedSceneId) $messages[$i]['actions'][$actionIndex]['affected_scene_id'] = $affectedSceneId;
 
-                    // Aggregate action_status for legacy clients: if every
-                    // action is applied or skipped, mark the message done.
                     $statuses = array_column($messages[$i]['actions'], 'status');
                     $allTerminal = ! empty($statuses) && ! in_array('proposed', $statuses, true);
                     if ($allTerminal) {
                         $messages[$i]['action_status'] = in_array('failed', $statuses, true) ? 'failed' : 'applied';
                     }
                 } else {
-                    // Legacy single-action path.
                     $messages[$i]['action_status'] = $status;
                     if ($creditsSpent > 0) $messages[$i]['action_credits'] = $creditsSpent;
+                    if ($affectedSceneId) $messages[$i]['affected_scene_id'] = $affectedSceneId;
                 }
                 break;
             }

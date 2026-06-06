@@ -21,6 +21,11 @@ class CruiseControlService
     {
     }
 
+    private function projectDefaultVoice(Project $project): string
+    {
+        return (string) (data_get($project->default_voice_settings_json, 'voice_id') ?? 'alloy');
+    }
+
     /**
      * USER PREFERENCES block. Empty (just a blank line) when no prefs
      * are set — keeps the prompt tight for users who haven't touched
@@ -176,15 +181,27 @@ class CruiseControlService
         $scenes = Scene::query()
             ->where('project_id', $project->getKey())
             ->orderBy('scene_order')
-            ->get(['id', 'scene_order', 'label', 'script_text']);
+            ->get(['id', 'scene_order', 'label', 'script_text',
+                   'voice_settings_json', 'visual_style', 'character_id',
+                   'visual_type']);
 
-        $sceneList = $scenes->map(fn ($s) => sprintf(
-            '  - id=%d order=%d label="%s" script="%s"',
-            $s->id,
-            $s->scene_order,
-            mb_substr((string) $s->label, 0, 40),
-            mb_substr((string) $s->script_text, 0, 80),
-        ))->implode("\n");
+        // Per-scene voice + style + character so the LLM can keep new
+        // scenes consistent with existing ones ("match the previous
+        // scene's voice"). Without this the LLM had to ask or guess.
+        $sceneList = $scenes->map(function ($s) {
+            $voiceId = data_get($s->voice_settings_json, 'voice_id', '?');
+            $bits = [
+                "id={$s->id}",
+                "order={$s->scene_order}",
+                "voice={$voiceId}",
+            ];
+            if ($s->visual_style)  $bits[] = "style={$s->visual_style}";
+            if ($s->character_id)  $bits[] = "character_id={$s->character_id}";
+            if ($s->visual_type)   $bits[] = "visual={$s->visual_type}";
+            $bits[] = 'label="' . mb_substr((string) $s->label, 0, 30) . '"';
+            $bits[] = 'script="' . mb_substr((string) $s->script_text, 0, 70) . '"';
+            return '  - ' . implode(' ', $bits);
+        })->implode("\n");
 
         // Workspace characters — so the LLM can resolve "use my Kay" to a
         // character_id without asking. Capped to 10 so the prompt stays
@@ -230,8 +247,11 @@ PROJECT
   title: {$project->title}
   aspect_ratio: {$project->aspect_ratio}
   scenes: {$scenes->count()}
+  tone: {$project->tone}
+  default_voice: {$this->projectDefaultVoice($project)}
+  default_visual_style: {$project->ai_broll_style}
 
-SCENES
+SCENES (voice, style, character per scene — keep new actions consistent)
 {$sceneList}
 
 CHARACTERS (saved in workspace)
@@ -298,6 +318,20 @@ WRITING IMAGE PROMPTS — be the prompt engineer the user isn't
   the warm honey sky. Cinematic depth of field, faint dust motes in
   the air, painterly atmosphere, photoreal, unposed and intimate."
   (~800 chars — that's the bar.)
+
+CONSISTENCY WITH EXISTING SCENES
+- Read the SCENES list above. When ADDING a scene or RE-RECORDING
+  a voice without an explicit voice_id from the user, MATCH the
+  voice_id that the majority of existing scenes use (or the
+  project default_voice). Do NOT silently switch to 'alloy'.
+- When ADDING a scene without an explicit style, MATCH the project's
+  default_visual_style (or the style most scenes use).
+- When ADDING a scene, write the script_text so it flows naturally
+  from the closest existing scene — pick up its tone, callbacks, and
+  any concrete nouns the project has already established (subject,
+  location, brand).
+- When ADDING a scene right after a character-locked scene, copy the
+  character_id forward unless the user names a different character.
 
 CLARIFY ONLY IF YOU MUST
 - If the user gave you enough to act, ACT. Don't ask for asset IDs
