@@ -804,16 +804,28 @@ defineExpose({ open })
           <div v-if="oneShotUploadError" class="modal-error" style="margin-top:8px;">{{ oneShotUploadError }}</div>
         </label>
 
-        <!-- Character mode: dropdown -->
+        <!-- Character mode: thumbnail picker grid -->
         <label v-if="oneShotSourceMode === 'character'" class="input-label-wrap" style="margin-top:14px;">
           <span class="input-label">Character</span>
           <div v-if="availableCharacters.length === 0" class="hint-box">
             No saved characters yet. Create one from <strong>Characters</strong> in the sidebar — upload a reference photo, give them a name, and they'll appear here.
           </div>
-          <select v-else v-model="oneShotCharacterId" class="field-input">
-            <option :value="null">— Pick a character —</option>
-            <option v-for="c in availableCharacters" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
+          <div v-else class="character-pick-grid">
+            <div
+              v-for="c in availableCharacters"
+              :key="c.id"
+              :class="['character-pick-card', oneShotCharacterId === c.id ? 'selected' : '', !c.reference_asset?.thumbnail_url ? 'no-thumb' : '']"
+              @click="oneShotCharacterId = c.id"
+              :title="c.description || c.name"
+            >
+              <div class="character-pick-thumb">
+                <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" :alt="c.name" />
+                <span v-else>👤</span>
+                <div v-if="oneShotCharacterId === c.id" class="character-pick-check">✓</div>
+              </div>
+              <div class="character-pick-name">{{ c.name }}</div>
+            </div>
+          </div>
         </label>
 
         <label class="input-label-wrap" style="margin-top:14px;">
@@ -1458,6 +1470,17 @@ defineExpose({ open })
 .model-card-foot { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; font-family: "Space Mono", monospace; }
 .model-card-cost { color: var(--color-accent); font-weight: 600; }
 .model-card-render { color: var(--color-text-muted); }
+
+/* Character thumbnail picker — one-shot character source mode. */
+.character-pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.character-pick-card { cursor: pointer; text-align: center; transition: transform 0.15s; }
+.character-pick-card:hover { transform: translateY(-2px); }
+.character-pick-thumb { position: relative; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden; border: 2px solid var(--color-border); background: var(--color-bg-elevated); display: flex; align-items: center; justify-content: center; transition: border-color 0.15s; font-size: 28px; color: var(--color-text-muted); }
+.character-pick-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.character-pick-card.selected .character-pick-thumb { border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(255,107,53,0.18); }
+.character-pick-card.no-thumb .character-pick-thumb { background: var(--color-bg-card); }
+.character-pick-check { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: var(--color-accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+.character-pick-name { margin-top: 6px; font-size: 11.5px; color: var(--color-text-primary); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .image-mode-toggle { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
 .image-mode-btn { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.15s; }
