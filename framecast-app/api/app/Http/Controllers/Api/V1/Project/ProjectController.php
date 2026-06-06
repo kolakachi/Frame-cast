@@ -995,6 +995,159 @@ class ProjectController extends Controller
         ]);
     }
 
+    /**
+     * Re-dispatch jobs for scenes whose image-gen or animation failed
+     * mid-pipeline. Common case: user submitted a multi-scene one-shot
+     * just past their credit ceiling, X scenes succeeded, Y failed
+     * because we under-estimated (or upstream costs hit a spike), they
+     * topped up, and now they want to finish without clicking each
+     * failed scene's Regenerate button manually.
+     *
+     * Idempotent: scenes that already succeeded are skipped. Pre-flight
+     * estimates the cost of just the failed re-dispatch (not the whole
+     * project) and 402s if the user still can't afford it.
+     */
+    public function resumeFailed(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $scenes = Scene::query()
+            ->where('project_id', $project->getKey())
+            ->orderBy('scene_order')
+            ->get();
+
+        // Classify each scene's failure state. needs_image gets the full
+        // image+animate chain back; needs_animate gets only the animate job
+        // because image succeeded but i2v failed downstream.
+        $needsImage = [];
+        $needsAnimate = [];
+        foreach ($scenes as $scene) {
+            $cfg = $scene->image_generation_settings_json ?? [];
+            $imageBroken =
+                ! empty($cfg['needs_visual'])
+                || (! empty($cfg['last_error']) && empty($scene->visual_asset_id));
+            $animationBroken =
+                ! empty($cfg['animation_last_error'])
+                && empty($cfg['animation_video_asset_id']);
+            if ($imageBroken) {
+                $needsImage[] = $scene;
+            } elseif ($animationBroken) {
+                $needsAnimate[] = $scene;
+            }
+        }
+
+        if (empty($needsImage) && empty($needsAnimate)) {
+            return response()->json([
+                'data' => [
+                    'resumed' => 0,
+                    'message' => 'No failed scenes — nothing to resume.',
+                ],
+                'meta' => [],
+            ]);
+        }
+
+        // Cost estimate — same constants as storeOneShot uses up-front.
+        // We can't know which animation tier the user originally picked
+        // without persisting it; default to quick (Wan), the cheapest.
+        // Users can re-animate manually at higher tiers from the editor.
+        $animationTier = 'quick';
+        $animationCost = CreditService::VIDEO_QUICK;
+        $perImageScene = CreditService::AI_MEDIUM + $animationCost; // image + chained animate
+        $perAnimateOnly = $animationCost;
+        $estimatedCost = count($needsImage) * $perImageScene + count($needsAnimate) * $perAnimateOnly;
+
+        $balance = (new CreditService())->balance((int) $user->workspace_id);
+        if ($balance < $estimatedCost) {
+            return $this->error(
+                'insufficient_credits',
+                "Resuming {$this->countWord(count($needsImage) + count($needsAnimate))} needs about {$estimatedCost} credits. You have {$balance}.",
+                402,
+            );
+        }
+
+        // Re-dispatch. Stagger 3s per scene so we don't burst upstream
+        // (same pattern as storeOneShot's fan-out).
+        $resumedCount = 0;
+        $delaySec = 0;
+        foreach ($needsImage as $scene) {
+            $imageToken = (string) \Illuminate\Support\Str::uuid();
+            $cfg = $scene->image_generation_settings_json ?? [];
+            $referenceIds = $cfg['reference_asset_ids'] ?? [];
+            $motionPrompt = $cfg['suggested_motion_prompt'] ?? null;
+            $scene->forceFill([
+                'image_generation_settings_json' => array_merge($cfg, [
+                    'in_progress'           => true,
+                    'last_error'            => null,
+                    'needs_visual'          => false,
+                    'generation_token'      => $imageToken,
+                    'generation_started_at' => now()->toIso8601String(),
+                ]),
+            ])->save();
+            \App\Jobs\GenerateAIImageJob::dispatch(
+                $scene->getKey(),
+                $project->getKey(),
+                $scene->visual_style ?? $project->ai_broll_style ?? 'cinematic',
+                null,
+                $scene->visual_style ?? $project->ai_broll_style ?? 'cinematic',
+                $imageToken,
+                5,                       // animate duration (Wan quick = 5 or 10)
+                $motionPrompt,
+                $animationTier,
+                null,
+                $referenceIds,
+            )->delay(now()->addSeconds($delaySec));
+            $delaySec += 3;
+            $resumedCount++;
+        }
+        foreach ($needsAnimate as $scene) {
+            $cfg = $scene->image_generation_settings_json ?? [];
+            $motionPrompt = $cfg['suggested_motion_prompt'] ?? null;
+            \App\Jobs\AnimateSceneJob::dispatch(
+                $scene->getKey(),
+                $project->getKey(),
+                $animationTier,
+                5,
+                $motionPrompt,
+            )->delay(now()->addSeconds($delaySec));
+            // Clear the prior error so the failure banner doesn't keep
+            // showing the stale message while we retry.
+            $scene->forceFill([
+                'image_generation_settings_json' => array_merge($cfg, [
+                    'animation_last_error' => null,
+                ]),
+            ])->save();
+            $delaySec += 3;
+            $resumedCount++;
+        }
+
+        // Reflect that the project is generating again so the editor's
+        // status pills (and the dashboard's project card) update.
+        $project->forceFill(['status' => 'generating'])->save();
+
+        return response()->json([
+            'data' => [
+                'resumed'        => $resumedCount,
+                'image_resumed'  => count($needsImage),
+                'animate_resumed'=> count($needsAnimate),
+                'estimated_cost' => $estimatedCost,
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    private function countWord(int $n): string
+    {
+        return $n . ' scene' . ($n === 1 ? '' : 's');
+    }
+
     public function export(Request $request, int $projectId): JsonResponse
     {
         /** @var User $user */

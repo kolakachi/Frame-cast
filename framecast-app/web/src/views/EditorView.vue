@@ -914,6 +914,50 @@ const latestExportJob = computed(() => exportJobs.value[0] ?? null);
 const latestExportDownloadUrl = computed(
   () => latestExportJob.value?.output_asset?.storage_url ?? null
 );
+// Resume-failed: scan scenes for image / animation failures so we can
+// surface a banner that re-runs everything in one click. Mirrors the
+// backend's needs_visual + animation_last_error classification in
+// ProjectController::resumeFailed.
+const failedScenes = computed(() => {
+  const failed = [];
+  for (const s of scenes.value) {
+    const cfg = s.image_generation_settings ?? {};
+    const imageBroken = !!cfg.needs_visual || (cfg.last_error && !s.visual_asset_id);
+    const animBroken  = !!cfg.animation_last_error && !cfg.animation_video_asset_id;
+    if (imageBroken) failed.push({ id: s.id, order: s.scene_order, kind: 'image' });
+    else if (animBroken) failed.push({ id: s.id, order: s.scene_order, kind: 'animate' });
+  }
+  return failed;
+});
+const failedSceneCount = computed(() => failedScenes.value.length);
+const resumePending = ref(false);
+const resumeError = ref('');
+async function resumeFailedScenes() {
+  if (!project.value?.id || resumePending.value || failedSceneCount.value === 0) return;
+  resumePending.value = true;
+  resumeError.value = '';
+  try {
+    const res = await api.post(`/projects/${project.value.id}/resume-failed`);
+    pushToast({
+      id: `resume-${Date.now()}`,
+      title: `Resuming ${res.data?.data?.resumed ?? failedSceneCount.value} scene${failedSceneCount.value === 1 ? '' : 's'}`,
+      message: 'Re-dispatched the failed jobs — they\'ll finish in the background.',
+    });
+    // Pop active scene poller so the editor picks up the new state as
+    // each scene completes.
+    for (const f of failedScenes.value) pollSceneUntilVisual(f.id);
+  } catch (e) {
+    const code = e?.response?.status;
+    if (code === 402) {
+      resumeError.value = e.response.data?.error?.message ?? 'Not enough credits to resume.';
+    } else {
+      resumeError.value = e.response?.data?.error?.message ?? 'Resume failed.';
+    }
+  } finally {
+    resumePending.value = false;
+  }
+}
+
 const exportBlockerMessage = computed(() => {
   const VISUAL_OPTIONAL = ["text_card", "waveform"];
   for (const scene of scenes.value) {
@@ -4622,6 +4666,26 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
+        <!-- Resume-failed banner — only when 1+ scenes are in a broken state.
+             Shows count + click-to-retry; surfaces credit shortage inline. -->
+        <div v-if="failedSceneCount > 0" class="resume-failed-banner">
+          <div class="resume-failed-msg">
+            <span class="resume-failed-icon">⚠</span>
+            <div>
+              <strong>{{ failedSceneCount }} scene{{ failedSceneCount === 1 ? '' : 's' }} failed</strong> to finish.
+              {{ resumeError || 'You can re-run them in one click. Costs ~' + (failedSceneCount * 75) + ' credits at Quick tier.' }}
+            </div>
+          </div>
+          <button
+            class="btn btn-primary btn-sm"
+            type="button"
+            :disabled="resumePending"
+            @click="resumeFailedScenes"
+          >
+            {{ resumePending ? 'Resuming…' : '↻ Resume failed' }}
+          </button>
+        </div>
+
         <div class="editor-body">
         <div class="editor active">
           <div class="editor-sidebar">
@@ -7012,6 +7076,19 @@ button {
   font-size: 11px;
   font-family: "Space Mono", monospace;
 }
+
+/* Resume-failed banner — sits between header and editor body. Soft red
+   so it reads as "needs attention" without being alarming. */
+.resume-failed-banner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; margin: 8px 14px 0; padding: 11px 14px;
+  border-radius: 8px; border: 1px solid rgba(248,113,113,0.32);
+  background: rgba(248,113,113,0.06);
+  font-size: 13px;
+}
+.resume-failed-msg { display: flex; align-items: center; gap: 10px; line-height: 1.45; color: var(--color-text-primary); }
+.resume-failed-icon { color: #f87171; font-size: 18px; }
+.resume-failed-msg strong { color: #f87171; }
 
 .export-pill-schedule {
   background: none;

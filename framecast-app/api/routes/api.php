@@ -206,6 +206,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{projectId}/export', [ProjectController::class, 'export'])->whereNumber('projectId');
             // Toggle public share link for the /sample/<token> page
             Route::post('/{projectId}/share', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'toggle'])->whereNumber('projectId');
+            Route::post('/{projectId}/resume-failed', [ProjectController::class, 'resumeFailed'])->whereNumber('projectId');
             Route::post('/{projectId}/retry-generation', [ProjectController::class, 'retryGeneration'])->whereNumber('projectId');
             Route::delete('/{projectId}', [ProjectController::class, 'destroy'])->whereNumber('projectId');
         });
