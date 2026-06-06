@@ -21,6 +21,21 @@ const loading = ref(true);
 const error = ref("");
 const project = ref(null);
 const scenes = ref([]);
+
+// Cruise Control — Phase 1A scaffolding. Flips the right rail between the
+// existing accordion ("Config") and the chat shell ("Assistant"). LLM glue
+// lands in Phase 1B. cruiseAssistantPending is the blue dot on the
+// Assistant tab — fires when a resolve completes while the user is on
+// Config. Keyboard shortcut: Cmd/Ctrl+J toggles.
+const cruiseTab = ref('config')
+const cruiseAssistantPending = ref(false)
+function onCruiseKeydown(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+    e.preventDefault()
+    cruiseTab.value = cruiseTab.value === 'config' ? 'assistant' : 'config'
+    if (cruiseTab.value === 'assistant') cruiseAssistantPending.value = false
+  }
+}
 const hookOptions = ref([]);
 const mePayload = ref(null);
 const isAdmin = computed(() => ["super_admin", "platform_admin"].includes(mePayload.value?.role ?? authStore.user?.role));
@@ -4573,6 +4588,7 @@ onMounted(() => {
     }
   };
   window.addEventListener("beforeunload", beforeUnloadHandler);
+  window.addEventListener("keydown", onCruiseKeydown);
   loadMe();
   loadProject();
   loadCharacters();
@@ -4593,6 +4609,7 @@ watch(musicAudioRef, (el) => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onCruiseKeydown);
   if (exportPollTimer) { clearInterval(exportPollTimer); exportPollTimer = null; }
   stopWaveformAnimation();
   if (waveformAudioCtx) {
@@ -5353,6 +5370,27 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="editor-right">
+            <!-- Cruise Control rail toggle. Flips between Config (the
+                 existing accordion) and Assistant (chat-driven editing,
+                 Phase 1B). Brand orange accent — see spec/CRUISE_CONTROL_PLAN.md. -->
+            <div class="cruise-toggle-bar">
+              <button
+                type="button"
+                :class="['cruise-toggle-pill', cruiseTab === 'config' ? 'active' : '']"
+                @click="cruiseTab = 'config'"
+              >Config</button>
+              <button
+                type="button"
+                :class="['cruise-toggle-pill', cruiseTab === 'assistant' ? 'active' : '']"
+                @click="cruiseTab = 'assistant'"
+              >
+                Assistant
+                <span v-if="cruiseAssistantPending" class="cruise-toggle-dot"></span>
+              </button>
+            </div>
+
+            <div v-show="cruiseTab === 'config'" class="cruise-config-view">
+
             <!-- Project metadata — first section -->
             <div :class="`panel-section ${panelState.project ? 'collapsed' : ''}`">
               <div class="panel-section-header" @click="togglePanel('project')">
@@ -6640,6 +6678,36 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
+            </div>
+            <!-- /cruise-config-view -->
+
+            <!-- Phase 1A placeholder for the Assistant view. Real chat lands
+                 in Phase 1B (see spec/CRUISE_CONTROL_PLAN.md). Keeping the
+                 shell here so the toggle reads "real" even when disabled. -->
+            <div v-show="cruiseTab === 'assistant'" class="cruise-assistant-view">
+              <div class="cruise-scope-bar">
+                <span class="cruise-scope-label">Editing</span>
+                <span class="cruise-scope-pill">{{ activeScene ? `Scene ${activeScene.scene_order}` : 'whole project' }}</span>
+                <span v-if="activeScene" class="cruise-scope-flip">↻ whole project</span>
+              </div>
+              <div class="cruise-assistant-body">
+                <div class="cruise-coming-soon">
+                  <div class="cruise-coming-icon">✦</div>
+                  <div class="cruise-coming-title">Assistant is almost here</div>
+                  <div class="cruise-coming-body">
+                    Soon you'll be able to type things like
+                    <em>"make scene 2 voice more authoritative"</em> or
+                    <em>"add a CTA scene at the end"</em> and the editor
+                    will handle the rest. Phase 1B.
+                  </div>
+                </div>
+              </div>
+              <div class="cruise-input-wrap">
+                <div class="cruise-input-box cruise-input-disabled">
+                  <textarea class="cruise-input" rows="2" placeholder="Coming soon — Phase 1B" disabled></textarea>
+                </div>
+              </div>
+            </div>
 
           </div>
         </div>
@@ -7565,6 +7633,124 @@ button {
   line-height: 1.45;
   color: var(--text-secondary);
 }
+
+/* ── Cruise Control rail toggle + Assistant placeholder (Phase 1A) ─── */
+.cruise-toggle-bar {
+  display: flex;
+  gap: 4px;
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  background: var(--color-bg-panel, var(--color-bg-elevated));
+  z-index: 5;
+}
+.cruise-toggle-pill {
+  flex: 1;
+  padding: 7px 0;
+  border: 0;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--color-text-muted);
+  position: relative;
+  transition: background 0.18s, color 0.18s;
+}
+.cruise-toggle-pill:hover:not(.active) { color: var(--color-text-primary); }
+.cruise-toggle-pill.active {
+  background: var(--color-accent);
+  color: #fff;
+}
+.cruise-toggle-dot {
+  position: absolute;
+  top: 6px; right: 12px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-bg-panel);
+}
+
+/* .cruise-config-view is the wrapper around the existing panel-sections
+   — no styling needed, the panel-section rules already apply. */
+
+.cruise-assistant-view { display: flex; flex-direction: column; min-height: 0; }
+.cruise-scope-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 11.5px;
+}
+.cruise-scope-label { color: var(--color-text-muted); }
+.cruise-scope-pill {
+  background: rgba(255, 107, 53, 0.12);
+  color: var(--color-accent);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: "Space Mono", monospace;
+  font-weight: 600;
+}
+.cruise-scope-flip {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.cruise-scope-flip:hover { color: var(--color-text-primary); }
+
+.cruise-assistant-body {
+  flex: 1; overflow-y: auto;
+  padding: 24px 18px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.cruise-coming-soon {
+  margin: auto;
+  text-align: center;
+  max-width: 240px;
+}
+.cruise-coming-icon {
+  font-size: 28px;
+  color: var(--color-accent);
+  opacity: 0.8;
+  margin-bottom: 8px;
+}
+.cruise-coming-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 6px;
+}
+.cruise-coming-body {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.55;
+}
+.cruise-coming-body em { color: var(--color-text-secondary); font-style: normal; background: rgba(255,255,255,0.03); padding: 1px 4px; border-radius: 3px; }
+
+.cruise-input-wrap {
+  padding: 10px 14px;
+  border-top: 1px solid var(--color-border);
+}
+.cruise-input-box {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  padding: 8px 10px;
+}
+.cruise-input-disabled { opacity: 0.55; }
+.cruise-input {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+  font-family: inherit;
+  resize: none;
+}
+.cruise-input::placeholder { color: var(--color-text-muted); }
 
 .notif-badge {
   position: absolute;
