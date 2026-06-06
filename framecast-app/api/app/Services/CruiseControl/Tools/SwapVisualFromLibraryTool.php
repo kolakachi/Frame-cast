@@ -19,7 +19,7 @@ class SwapVisualFromLibraryTool implements CruiseTool
 
     public function description(): string
     {
-        return 'Replace a scene\'s visual with an existing asset from the user\'s library. Use only when you can identify an asset id from context or the user names a specific asset. Otherwise ask for clarification.';
+        return 'Replace a scene\'s visual with an EXISTING asset from the user\'s library. ONLY use this tool when the user references a specific asset by id or unambiguous name (e.g. "use asset 142", "use my logo"). NEVER use this tool when the user wants to GENERATE a new image — use regenerate_image instead. If the user describes new visual content (a scene, characters, scenery) they want generation, not library swap.';
     }
 
     public function paramsSchema(): array

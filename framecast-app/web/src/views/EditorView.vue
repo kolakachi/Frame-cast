@@ -87,10 +87,19 @@ async function cruiseSubmitIntent() {
   cruiseResolving.value = true
   await nextTick(); cruiseScrollChatToBottom()
   try {
+    // Pass the last 6 turns so the LLM can resolve pronouns ("it", "that")
+    // and the user doesn't have to repeat themselves. Filter out the
+    // user message we just pushed so we don't duplicate it as the
+    // current turn AND as history.
+    const recent = cruiseMessages.value
+      .slice(0, -1)
+      .slice(-6)
+      .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text }))
     const res = await api.post('/cruise/resolve', {
       project_id: projectId.value,
       intent: text,
       scope_scene_id: cruiseEffectiveSceneId(),
+      history: recent,
     })
     const reply = res?.data?.data?.reply_to_user ?? 'Okay.'
     const action = res?.data?.data?.action ?? null

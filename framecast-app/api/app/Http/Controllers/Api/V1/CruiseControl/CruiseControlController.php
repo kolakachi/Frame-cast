@@ -53,6 +53,9 @@ class CruiseControlController extends Controller
             'project_id' => ['required', 'integer'],
             'intent'     => ['required', 'string', 'min:2', 'max:1000'],
             'scope_scene_id' => ['nullable', 'integer'],
+            'history'    => ['nullable', 'array', 'max:12'],
+            'history.*.role' => ['required_with:history', 'string', 'in:user,assistant'],
+            'history.*.text' => ['required_with:history', 'string', 'max:800'],
         ]);
 
         $project = Project::query()
@@ -71,7 +74,12 @@ class CruiseControlController extends Controller
                 ->first();
         }
 
-        $result = $this->service->resolve($validated['intent'], $project, $scope);
+        $result = $this->service->resolve(
+            $validated['intent'],
+            $project,
+            $scope,
+            $validated['history'] ?? [],
+        );
 
         CruiseAuditLog::create([
             'workspace_id'    => $user->workspace_id,

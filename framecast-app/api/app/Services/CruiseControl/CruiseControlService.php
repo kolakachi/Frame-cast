@@ -22,12 +22,16 @@ class CruiseControlService
     }
 
     /**
-     * @param string $intent    user's free-text prompt
-     * @param Project $project  the project being edited
-     * @param ?Scene $scope     the scene the user is focused on (null = whole project)
+     * @param string $intent          user's free-text prompt
+     * @param Project $project        the project being edited
+     * @param ?Scene $scope           the scene the user is focused on (null = whole project)
+     * @param array<int, array{role:string, text:string}> $history  prior turns
+     *                                (oldest first). Used so the LLM can resolve
+     *                                pronouns like "it" across turns. Capped to
+     *                                the last 6 entries before sending.
      * @return array{reply_to_user:string, action:?array}
      */
-    public function resolve(string $intent, Project $project, ?Scene $scope): array
+    public function resolve(string $intent, Project $project, ?Scene $scope, array $history = []): array
     {
         $apiKey = config('services.openai.api_key');
         if (! $apiKey) {
@@ -39,6 +43,20 @@ class CruiseControlService
 
         $systemPrompt = $this->buildSystemPrompt($project, $scope);
 
+        // Build the message stack with up to 6 prior turns so the LLM can
+        // resolve cross-turn references like "it" / "that" / "the one
+        // before". Without this, every call is an amnesic single-shot and
+        // users have to repeat the full intent every turn — which is
+        // exactly the bug that surfaced before this fix.
+        $messages = [['role' => 'system', 'content' => $systemPrompt]];
+        foreach (array_slice($history, -6) as $turn) {
+            $role = ($turn['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
+            $text = mb_substr((string) ($turn['text'] ?? ''), 0, 800);
+            if ($text === '') continue;
+            $messages[] = ['role' => $role, 'content' => $text];
+        }
+        $messages[] = ['role' => 'user', 'content' => $intent];
+
         try {
             $response = Http::withToken($apiKey)
                 ->timeout(25)
@@ -46,10 +64,7 @@ class CruiseControlService
                     'model'           => config('services.openai.cheap_model', 'gpt-4o-mini'),
                     'temperature'     => 0.2,
                     'response_format' => ['type' => 'json_object'],
-                    'messages' => [
-                        ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user',   'content' => $intent],
-                    ],
+                    'messages' => $messages,
                 ]);
 
             if (! $response->successful()) {
@@ -151,10 +166,35 @@ RULES
 - If the user's request maps cleanly to a tool, set action with the
   smallest correct params. Default scene_id to the focused scene unless
   the user names a different one.
-- If the user is ambiguous, set action=null and ask one short clarifying
-  question in reply_to_user.
+- Use the conversation history above to resolve pronouns ("it", "that",
+  "the one") and avoid asking the user to repeat themselves.
+
+ROUTING DISAMBIGUATION
+- "generate / create / make / replace with / swap to a [DESCRIPTION]"
+  -> regenerate_image, prompt_override = the description. NOT
+  swap_visual_from_library.
+- "use my [ASSET NAME] / use asset 142 / use the kitchen photo I uploaded"
+  -> swap_visual_from_library, asset_id = the matched asset.
+- "make it more [ADJECTIVE]" for visuals -> regenerate_image with a
+  prompt_override that incorporates the adjective.
+- Style cues map to the style param: "3D" / "Pixar" / "Disney" / "animated"
+  -> 3d_animated. "anime" -> anime. "watercolor" -> watercolor.
+  "cinematic" -> cinematic. "photo" / "realistic" -> photorealistic.
+- "animate / make it move / add motion" -> animate_scene. Default
+  tier="quick" unless user says "cinematic"/"premium" (premium) or
+  "high quality"/"best" (premium).
+- "add a [scene/cta/intro/outro]" -> add_scene. Write the script in
+  first/second person speech. Visual prompt is a concrete image
+  description.
+
+CLARIFY ONLY IF YOU MUST
+- If the user gave you enough to act, ACT. Don't ask for asset IDs
+  unless the user explicitly named an existing asset.
+- If the user is genuinely ambiguous, set action=null and ask ONE
+  short clarifying question. Otherwise just resolve.
 - If the user asks for something not supported, set action=null and
-  briefly say what you CAN do.
+  briefly say what you CAN do (list 2-3 capabilities, not all 6).
+
 - reply_to_user is one sentence, conversational, present-tense.
 
 RESPONSE — STRICT JSON, NO MARKDOWN:

@@ -21,13 +21,17 @@ use App\Services\CruiseControl\Tools\SwapVisualFromLibraryTool;
  */
 class CruiseToolRegistry
 {
+    // Ordered for the LLM's prompt — generation tools first, then mutations,
+    // then library swap at the end (it's the most-misrouted case; making it
+    // the LAST option nudges the LLM toward the right choice when the user
+    // is describing new content vs. naming an existing asset).
     private const TOOL_CLASSES = [
-        RerecordVoiceTool::class,
-        SwapVisualFromLibraryTool::class,
-        ChangeMusicTool::class,
         RegenerateImageTool::class,
+        RerecordVoiceTool::class,
+        ChangeMusicTool::class,
         AnimateSceneTool::class,
         AddSceneTool::class,
+        SwapVisualFromLibraryTool::class,
     ];
 
     /** @var array<string, CruiseTool> */

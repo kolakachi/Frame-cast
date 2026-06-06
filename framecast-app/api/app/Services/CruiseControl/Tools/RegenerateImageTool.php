@@ -23,7 +23,7 @@ class RegenerateImageTool implements CruiseTool
 
     public function description(): string
     {
-        return 'Regenerate the AI image on a scene. Optionally swap the visual style or pass a one-shot prompt override. Models: gpt-image-1 (15 cr, default photoreal), gpt-image-2 (35 cr, OpenAI newer), nano-banana (15 cr, Google fast), flux-schnell (3 cr, fastest+cheapest), sdxl-lightning (3 cr, stylish).';
+        return 'Generate a NEW AI image for a scene. THIS IS THE CORRECT TOOL when the user wants to "generate", "create", "make", "replace with AI", or describes the content of a new visual ("a man holding a woman under a tree", "a 3D image of...", "swap to anime style"). Pass prompt_override with the user\'s described content. Use style to match what they ask for: "3D" or "Pixar" -> 3d_animated, "anime" -> anime, "watercolor" -> watercolor, etc. Models: gpt-image-1 (15 cr, default photoreal), gpt-image-2 (35 cr, OpenAI newer), nano-banana (15 cr, Google fast), flux-schnell (3 cr, fastest+cheapest), sdxl-lightning (3 cr, stylish).';
     }
 
     public function paramsSchema(): array
