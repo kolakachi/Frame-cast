@@ -131,6 +131,24 @@ class AddSceneTool implements CruiseTool
                     ->where('scene_order', '>=', $position)
                     ->orderByDesc('scene_order')   // bump from the back to avoid collisions
                     ->update(['scene_order' => DB::raw('scene_order + 1')]);
+
+                // Update labels that still reference the OLD scene_order
+                // as "Scene N". Without this, inserting at position 5
+                // when a "Scene 5" labelled row already existed left two
+                // rows both labelled "Scene 5" — confusing the editor.
+                // Only touch labels that match the default "Scene N"
+                // pattern; custom labels stay as the user set them.
+                $bumped = Scene::query()
+                    ->where('project_id', $project->getKey())
+                    ->where('scene_order', '>', $position)   // already shifted to N+1
+                    ->orderBy('scene_order')
+                    ->get(['id', 'scene_order', 'label']);
+                foreach ($bumped as $b) {
+                    $expectedOld = 'Scene ' . ($b->scene_order - 1);
+                    if (trim((string) $b->label) === $expectedOld) {
+                        Scene::query()->whereKey($b->id)->update(['label' => 'Scene ' . $b->scene_order]);
+                    }
+                }
             }
 
             $imageToken = (string) Str::uuid();

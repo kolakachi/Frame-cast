@@ -362,10 +362,16 @@ function cruiseStartPollingFallback(card) {
   // For add_scene the scene didn't exist yet — baseline is "no asset",
   // any non-null asset id counts as a completion.
   const baselineScene = scenes.value?.find?.((s) => s.id === sceneId) || {}
+  // Scene's per-stage asset locations:
+  //   image     -> scene.visual_asset_id (top-level column)
+  //   animation -> scene.image_generation_settings.animation_video_asset_id
+  //   tts       -> scene.voice_settings.audio_asset_id (nested)
+  // The frontend used to look at fresh.video_asset_id / fresh.audio_asset_id
+  // which DO NOT EXIST on the scene model — TTS polling never finished.
   const baseline = {
-    visual_asset_id: baselineScene.visual_asset_id ?? null,
-    video_asset_id:  baselineScene.video_asset_id ?? null,
-    audio_asset_id:  baselineScene.audio_asset_id ?? null,
+    visual_asset_id:           baselineScene.visual_asset_id ?? null,
+    animation_video_asset_id:  baselineScene.image_generation_settings?.animation_video_asset_id ?? null,
+    audio_asset_id:            baselineScene.voice_settings?.audio_asset_id ?? null,
   }
   card._pollTimer = window.setInterval(async () => {
     if (card.status !== 'running') { cruiseStopPolling(card); return }
@@ -379,15 +385,18 @@ function cruiseStartPollingFallback(card) {
     }
     try {
       const res = await api.get(`/scenes/${sceneId}/preview`)
-      const fresh = res?.data?.data?.scene
-      if (!fresh) return
+      const freshRaw = res?.data?.data?.scene
+      if (!freshRaw) return
+      const fresh = normalizeScenePayload(freshRaw)
       const expected = card.expected_stages || []
       const completed = card.completed_stages || []
       const newlyDone = []
       const stageDoneByAsset = {
         ai_image:  fresh.visual_asset_id && fresh.visual_asset_id !== baseline.visual_asset_id,
-        animation: fresh.video_asset_id && fresh.video_asset_id !== baseline.video_asset_id,
-        tts:       fresh.audio_asset_id && fresh.audio_asset_id !== baseline.audio_asset_id,
+        animation: fresh.image_generation_settings?.animation_video_asset_id
+                   && fresh.image_generation_settings.animation_video_asset_id !== baseline.animation_video_asset_id,
+        tts:       fresh.voice_settings?.audio_asset_id
+                   && fresh.voice_settings.audio_asset_id !== baseline.audio_asset_id,
       }
       for (const stage of expected) {
         if (!completed.includes(stage) && stageDoneByAsset[stage]) newlyDone.push(stage)
@@ -674,12 +683,13 @@ async function cruiseResumeInflightAfterHydrate() {
   await Promise.all([...toCheck.entries()].map(async ([sceneId, items]) => {
     try {
       const res = await api.get(`/scenes/${sceneId}/preview`)
-      const scene = res?.data?.data?.scene
-      if (!scene) return
+      const sceneRaw = res?.data?.data?.scene
+      if (!sceneRaw) return
+      const scene = normalizeScenePayload(sceneRaw)
       const stageDone = {
         ai_image:  !!scene.visual_asset_id,
-        animation: !!scene.video_asset_id,
-        tts:       !!scene.audio_asset_id,
+        animation: !!scene.image_generation_settings?.animation_video_asset_id,
+        tts:       !!scene.voice_settings?.audio_asset_id,
         ai_music:  true, // project-level, can't verify from scene
       }
       for (const { msg, card, expected } of items) {
