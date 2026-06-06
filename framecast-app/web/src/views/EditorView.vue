@@ -73,6 +73,9 @@ function cruiseActionTitle(tool) {
     rerecord_voice: 'Re-record voice',
     swap_visual_from_library: 'Swap visual',
     change_music: 'Regenerate music',
+    regenerate_image: 'Regenerate image',
+    animate_scene: 'Animate scene',
+    add_scene: 'Add a new scene',
   }[tool] ?? tool
 }
 

@@ -2,8 +2,11 @@
 
 namespace App\Services\CruiseControl;
 
+use App\Services\CruiseControl\Tools\AddSceneTool;
+use App\Services\CruiseControl\Tools\AnimateSceneTool;
 use App\Services\CruiseControl\Tools\ChangeMusicTool;
 use App\Services\CruiseControl\Tools\CruiseTool;
+use App\Services\CruiseControl\Tools\RegenerateImageTool;
 use App\Services\CruiseControl\Tools\RerecordVoiceTool;
 use App\Services\CruiseControl\Tools\SwapVisualFromLibraryTool;
 
@@ -22,6 +25,9 @@ class CruiseToolRegistry
         RerecordVoiceTool::class,
         SwapVisualFromLibraryTool::class,
         ChangeMusicTool::class,
+        RegenerateImageTool::class,
+        AnimateSceneTool::class,
+        AddSceneTool::class,
     ];
 
     /** @var array<string, CruiseTool> */
