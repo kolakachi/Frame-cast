@@ -197,11 +197,136 @@ async function cruiseApplyAction(msg) {
     // the affected scene in place when the job completes. Just refresh the
     // balance so the footer hint reflects the spend.
     loadMe?.()
+    // Kick off the rotating-text loop so the chat never looks frozen,
+    // even if Reverb misses an event. Also start a polling fallback that
+    // detects completion by checking the scene state.
+    if (msg.action_status === 'running') {
+      cruiseStartProgressLoop(msg)
+      cruiseStartPollingFallback(msg)
+    }
   } catch (e) {
     msg.action_status = 'failed'
     msg.action_error = e?.response?.data?.error?.message ?? 'Apply failed.'
   } finally {
     cruiseApplying.value = null
+  }
+}
+
+// Rotating "Claude Code-style" progress text. Cycles every 2.5s while
+// the action is 'running' so the chat looks alive even between Reverb
+// events. Phrases are per-tool so the user sees something specific.
+const CRUISE_PROGRESS_PHRASES = {
+  regenerate_image: [
+    'Generating image…',
+    'Composing the prompt…',
+    'Painting pixels…',
+    'Almost there…',
+  ],
+  animate_scene: [
+    'Animating scene…',
+    'Setting up motion…',
+    'Rendering frames…',
+    'Polishing the clip…',
+  ],
+  rerecord_voice: [
+    'Generating voice…',
+    'Warming up the model…',
+    'Synthesising audio…',
+    'Almost there…',
+  ],
+  change_music: [
+    'Composing music…',
+    'Picking a vibe…',
+    'Mixing tracks…',
+    'Almost there…',
+  ],
+  add_scene: [
+    'Adding scene…',
+    'Writing the script…',
+    'Generating image…',
+    'Recording voice…',
+  ],
+}
+
+function cruiseStartProgressLoop(msg) {
+  if (msg._progressTimer) return
+  const phrases = CRUISE_PROGRESS_PHRASES[msg.action?.tool] || ['Working…']
+  let i = 0
+  msg.progress_text = phrases[0]
+  msg._progressTimer = window.setInterval(() => {
+    if (msg.action_status !== 'running') {
+      cruiseStopProgressLoop(msg)
+      return
+    }
+    // Skip rotating once Reverb has set a terminal-ish text like
+    // 'Image ready · animating…' — let the event truth win.
+    if (msg.progress_text && msg.progress_text.includes('·')) return
+    i = (i + 1) % phrases.length
+    msg.progress_text = phrases[i]
+  }, 2500)
+}
+function cruiseStopProgressLoop(msg) {
+  if (msg._progressTimer) {
+    window.clearInterval(msg._progressTimer)
+    msg._progressTimer = null
+  }
+}
+
+// Polling fallback: every 5s while running, hit /scenes/{id}/preview
+// to detect completion. Reverb is primary; this catches misses (lost
+// websocket, ad blockers, network blip). Gives up after 5 minutes so a
+// truly-stuck job doesn't poll forever.
+const CRUISE_POLL_INTERVAL_MS = 5000
+const CRUISE_POLL_TIMEOUT_MS = 5 * 60 * 1000
+
+function cruiseStartPollingFallback(msg) {
+  if (msg._pollTimer) return
+  const sceneId = Number(msg.action?.params?.scene_id ?? 0)
+  if (!sceneId) return
+  const tool = msg.action.tool
+  const startedAt = Date.now()
+  // Snapshot the scene's pre-apply state so we can detect a real change.
+  const baselineScene = scenes.value?.find?.((s) => s.id === sceneId) || {}
+  const baseline = {
+    visual_asset_id: baselineScene.visual_asset_id ?? null,
+    video_asset_id:  baselineScene.video_asset_id ?? null,
+    audio_asset_id:  baselineScene.audio_asset_id ?? null,
+  }
+  msg._pollTimer = window.setInterval(async () => {
+    if (msg.action_status !== 'running') { cruiseStopPolling(msg); return }
+    if (Date.now() - startedAt > CRUISE_POLL_TIMEOUT_MS) {
+      cruiseStopPolling(msg)
+      return
+    }
+    try {
+      const res = await api.get(`/scenes/${sceneId}/preview`)
+      const fresh = res?.data?.data?.scene
+      if (!fresh) return
+      let done = false
+      if (tool === 'regenerate_image' || tool === 'add_scene') {
+        done = fresh.visual_asset_id && fresh.visual_asset_id !== baseline.visual_asset_id
+      } else if (tool === 'animate_scene') {
+        done = fresh.video_asset_id && fresh.video_asset_id !== baseline.video_asset_id
+      } else if (tool === 'rerecord_voice') {
+        done = fresh.audio_asset_id && fresh.audio_asset_id !== baseline.audio_asset_id
+      } else if (tool === 'change_music') {
+        // Music lands on the project, not the scene. Skip — Reverb covers.
+        return
+      }
+      if (done) {
+        msg.action_status = 'applied'
+        msg.progress_text = cruiseSuccessText(msg.action.tool, null)
+        try { replaceSceneInCollection(normalizeScenePayload(fresh)) } catch (_) {}
+        cruiseStopPolling(msg)
+        cruiseStopProgressLoop(msg)
+      }
+    } catch (_) { /* keep polling */ }
+  }, CRUISE_POLL_INTERVAL_MS)
+}
+function cruiseStopPolling(msg) {
+  if (msg._pollTimer) {
+    window.clearInterval(msg._pollTimer)
+    msg._pollTimer = null
   }
 }
 
@@ -284,9 +409,13 @@ function cruiseHandleProgressEvent(payload) {
     }
     msg.action_status = 'applied'
     msg.progress_text = cruiseSuccessText(msg.action.tool, payload.stage)
+    cruiseStopProgressLoop(msg)
+    cruiseStopPolling(msg)
   } else if (status === 'failed') {
     msg.action_status = 'failed'
     msg.action_error = payload.message || 'Generation failed.'
+    cruiseStopProgressLoop(msg)
+    cruiseStopPolling(msg)
   }
 }
 
@@ -295,7 +424,15 @@ function cruiseSuccessText(tool, stage) {
   if (stage === 'animation') return 'Animation ready'
   if (stage === 'tts')       return 'Voice ready'
   if (stage === 'ai_music')  return 'Music ready'
-  return 'Done'
+  // Fallback for polling path (no stage)
+  switch (tool) {
+    case 'regenerate_image': return 'Image ready'
+    case 'animate_scene':    return 'Animation ready'
+    case 'rerecord_voice':   return 'Voice ready'
+    case 'change_music':     return 'Music ready'
+    case 'add_scene':        return 'Scene added'
+    default:                 return 'Done'
+  }
 }
 
 function cruiseShowToast(text) {
@@ -7070,7 +7207,7 @@ onBeforeUnmount(() => {
                       </div>
                       <div v-if="m.action_status === 'running'" class="cruise-action-status running">
                         <span class="cruise-action-spinner"></span>
-                        {{ m.progress_text || 'Working…' }}
+                        <span class="cruise-action-running-text">{{ m.progress_text || 'Working…' }}<span class="cruise-action-dots"><span>.</span><span>.</span><span>.</span></span></span>
                       </div>
                       <div v-else-if="m.action_status === 'applied'" class="cruise-action-status applied">
                         ✓ {{ m.progress_text || 'Applied' }} · spent {{ m.action_credits ?? m.action.estimated_cost }} cr
@@ -8221,6 +8358,12 @@ button {
 .cruise-action-status.skipped { color: var(--color-text-muted, #94a3b8); background: rgba(148,163,184,0.06); }
 .cruise-action-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,107,53,0.25); border-top-color: var(--color-accent, #ff6b35); border-radius: 50%; animation: cruise-spinner-rot 0.8s linear infinite; flex-shrink: 0; }
 @keyframes cruise-spinner-rot { to { transform: rotate(360deg); } }
+.cruise-action-running-text { display: inline-flex; align-items: baseline; }
+.cruise-action-dots { display: inline-flex; margin-left: 1px; }
+.cruise-action-dots > span { opacity: 0.2; animation: cruise-dots-blink 1.4s infinite both; }
+.cruise-action-dots > span:nth-child(2) { animation-delay: 0.2s; }
+.cruise-action-dots > span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes cruise-dots-blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
 .cruise-action-shortfall { font-size: 11.5px; color: var(--color-text-muted); margin-right: auto; padding: 6px 0; }
 
 /* Quick prompt chips — only shown when conversation is empty */
