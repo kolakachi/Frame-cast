@@ -226,6 +226,43 @@ class CruiseControlController extends Controller
     }
 
     /**
+     * Persist that the user dismissed a proposed action. Flips the
+     * message's action_status to 'skipped' so refresh / re-open shows the
+     * Skipped pill instead of the Apply button again.
+     */
+    public function skip(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'project_id' => ['required', 'integer'],
+            'message_id' => ['required', 'string', 'max:64'],
+        ]);
+
+        $project = Project::query()
+            ->whereKey($validated['project_id'])
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $this->updateMessageStatus($user, $project, $validated['message_id'], 'skipped');
+
+        CruiseAuditLog::create([
+            'workspace_id'  => $user->workspace_id,
+            'user_id'       => $user->getKey(),
+            'project_id'    => $project->getKey(),
+            'phase'         => 'apply',
+            'applied'       => false,
+            'outcome'       => 'skipped',
+        ]);
+
+        return response()->json(['data' => ['success' => true], 'meta' => []]);
+    }
+
+    /**
      * Update workspace-level Cruise prefs (auto-apply for now).
      */
     public function updateSettings(Request $request): JsonResponse

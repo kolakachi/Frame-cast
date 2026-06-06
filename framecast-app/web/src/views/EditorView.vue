@@ -154,8 +154,20 @@ async function cruiseSubmitIntent() {
   }
 }
 
-function cruiseSkipAction(msg) {
+async function cruiseSkipAction(msg) {
+  if (!msg.action || msg.action_status === 'skipped') return
   msg.action_status = 'skipped'
+  // Best-effort persist — UI already updated optimistically. If the
+  // network call fails we silently revert; refresh will reconcile from
+  // the server's truth.
+  try {
+    await api.post('/cruise/skip', {
+      project_id: projectId.value,
+      message_id: msg.id,
+    })
+  } catch (_) {
+    // leave the optimistic state — user can re-Apply on refresh
+  }
 }
 
 async function cruiseApplyAction(msg) {
@@ -7066,6 +7078,9 @@ onBeforeUnmount(() => {
                       <div v-else-if="m.action_status === 'failed'" class="cruise-action-status failed">
                         ✕ {{ m.action_error || 'Apply failed' }}
                       </div>
+                      <div v-else-if="m.action_status === 'skipped'" class="cruise-action-status skipped">
+                        ⏭ Skipped
+                      </div>
                       <div v-else-if="cruiseUserBalance < (m.action.estimated_cost ?? 0)" class="cruise-action-foot">
                         <span class="cruise-action-shortfall">Need {{ m.action.estimated_cost }} cr · you have {{ cruiseUserBalance }}</span>
                         <button class="cruise-action-btn cruise-action-btn-primary" type="button" @click="router.push({ name: 'settings', query: { section: 'billing' } })">
@@ -8198,6 +8213,7 @@ button {
 .cruise-action-status.applied { color: #34d399; background: rgba(52,211,153,0.06); }
 .cruise-action-status.failed { color: #f87171; background: rgba(248,113,113,0.06); }
 .cruise-action-status.running { color: var(--color-accent, #ff6b35); background: rgba(255,107,53,0.06); }
+.cruise-action-status.skipped { color: var(--color-text-muted, #94a3b8); background: rgba(148,163,184,0.06); }
 .cruise-action-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,107,53,0.25); border-top-color: var(--color-accent, #ff6b35); border-radius: 50%; animation: cruise-spinner-rot 0.8s linear infinite; flex-shrink: 0; }
 @keyframes cruise-spinner-rot { to { transform: rotate(360deg); } }
 .cruise-action-shortfall { font-size: 11.5px; color: var(--color-text-muted); margin-right: auto; padding: 6px 0; }
