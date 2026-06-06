@@ -184,6 +184,7 @@ class ReplicateI2VAdapter implements I2VAdapter
         // because the adapter is the source of truth.
         $validDurations = match ($tier) {
             'balanced' => [6, 10],
+            'seedance_lite', 'seedance_pro' => [5, 10],
             default    => [5, 10],
         };
         $duration = $durationSeconds <= 7 ? $validDurations[0] : $validDurations[1];
@@ -207,6 +208,27 @@ class ReplicateI2VAdapter implements I2VAdapter
                     'prompt'            => $prompt !== '' ? $prompt : 'cinematic gentle motion',
                     'duration'          => $duration,
                     'prompt_optimizer'  => true,
+                ],
+            ],
+            // Both Seedance variants share the same input shape: image,
+            // prompt, duration. Pro produces higher fidelity; Lite is the
+            // cheap iteration path.
+            'seedance_lite' => [
+                config('services.replicate.i2v_seedance_lite_model'),
+                config('services.replicate.i2v_seedance_lite_version'),
+                [
+                    'image'    => $imageUrl,
+                    'prompt'   => $prompt !== '' ? $prompt : 'subtle natural motion',
+                    'duration' => $duration,
+                ],
+            ],
+            'seedance_pro' => [
+                config('services.replicate.i2v_seedance_pro_model'),
+                config('services.replicate.i2v_seedance_pro_version'),
+                [
+                    'image'    => $imageUrl,
+                    'prompt'   => $prompt !== '' ? $prompt : 'cinematic motion, gentle camera move',
+                    'duration' => $duration,
                 ],
             ],
             default => [

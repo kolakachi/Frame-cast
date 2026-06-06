@@ -33,11 +33,18 @@ class ImageAdapterFactory
         ],
         'gpt-image-2' => [
             'label'   => 'GPT Image 2',
-            'sub'     => 'OpenAI · character consistency',
-            'cost'    => 50,
-            'render'  => '~60s',
-            'adapter' => CharacterImageAdapter::class,
-            'requires_reference' => true,
+            'sub'     => 'OpenAI · newer, higher fidelity',
+            'cost'    => 35,
+            'render'  => '~30s',
+            // Routes through DalleImageAdapter (text-to-image /generations)
+            // with the model overridden to gpt-image-2 via openai_model.
+            // The character /edits path is auto-routed separately by
+            // GenerateAIImageJob when a character with reference asset is
+            // bound to the scene — that path uses CharacterImageAdapter
+            // regardless of which model the user picked here.
+            'adapter'       => DalleImageAdapter::class,
+            'openai_model'  => 'gpt-image-2',
+            'requires_reference' => false,
         ],
         'nano-banana' => [
             'label'   => 'Nano Banana',
@@ -86,6 +93,20 @@ class ImageAdapterFactory
             ? $modelKey
             : 'gpt-image-1';
         return (int) (self::AVAILABLE[$key]['cost'] ?? 15);
+    }
+
+    /**
+     * For OpenAI-backed entries, return the specific model name to pass to
+     * the /v1/images/generations call. Lets the picker pin a model name
+     * (e.g. gpt-image-2) without touching the global config default.
+     * Null for non-OpenAI models — the adapter ignores it.
+     */
+    public function openaiModelOverride(?string $modelKey): ?string
+    {
+        $key = $modelKey && isset(self::AVAILABLE[$modelKey])
+            ? $modelKey
+            : null;
+        return $key ? (self::AVAILABLE[$key]['openai_model'] ?? null) : null;
     }
 
     /**

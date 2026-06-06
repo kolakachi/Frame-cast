@@ -463,16 +463,18 @@ const oneShotCharacterId = ref(null)
 // static list so the picker still renders if the API call fails.
 const availableImageModels = ref([
   { key: 'gpt-image-1',    label: 'GPT Image 1',    sub: 'OpenAI · photoreal',        cost: 15, render: '~20s', requires_reference: false },
-  { key: 'gpt-image-2',    label: 'GPT Image 2',    sub: 'OpenAI · character',         cost: 50, render: '~60s', requires_reference: true  },
+  { key: 'gpt-image-2',    label: 'GPT Image 2',    sub: 'OpenAI · newer, higher fidelity', cost: 35, render: '~30s', requires_reference: false },
   { key: 'nano-banana',    label: 'Nano Banana',    sub: 'Google · cheap fast',        cost:  8, render: '~10s', requires_reference: false },
   { key: 'flux-schnell',   label: 'Flux Schnell',   sub: 'BFL · cheapest',             cost:  1, render: '~5s',  requires_reference: false },
   { key: 'sdxl-lightning', label: 'SDXL Lightning', sub: 'ByteDance · stylish',        cost:  1, render: '~5s',  requires_reference: false },
 ])
 const availableCharacters = ref([])
 const ONE_SHOT_ANIM_TIERS = [
-  { key: 'quick',    label: 'Wan 2.5',    sub: 'Fast · cheap',     cost: 60,  render: '~30s' },
-  { key: 'balanced', label: 'Hailuo 2.3', sub: 'Best for most',    cost: 120, render: '~90s' },
-  { key: 'premium',  label: 'Kling 2.1',  sub: 'Cinematic',        cost: 240, render: '~3 min' },
+  { key: 'quick',         label: 'Wan 2.5',       sub: 'Fast · cheap',      cost: 60,  render: '~30s' },
+  { key: 'seedance_lite', label: 'Seedance Lite', sub: 'ByteDance · cheap', cost: 100, render: '~45s' },
+  { key: 'balanced',      label: 'Hailuo 2.3',    sub: 'Best for most',     cost: 120, render: '~90s' },
+  { key: 'seedance_pro',  label: 'Seedance Pro',  sub: 'ByteDance · sharp', cost: 200, render: '~2 min' },
+  { key: 'premium',       label: 'Kling 2.1',     sub: 'Cinematic',         cost: 240, render: '~3 min' },
 ]
 
 async function loadOneShotCatalogs() {

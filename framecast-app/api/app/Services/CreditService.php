@@ -22,6 +22,8 @@ class CreditService
     public const VIDEO_QUICK    = 60;   // ~$0.30 per 6s clip — Wan 2.1 i2v 480p
     public const VIDEO_BALANCED = 120;  // ~$0.60 per 6s clip — Hailuo MiniMax
     public const VIDEO_PREMIUM  = 240;  // ~$1.20 per 6s clip — Kling 2.1
+    public const VIDEO_SEEDANCE_LITE = 100;  // ~$0.50 per 5s clip — ByteDance Seedance 1 Lite
+    public const VIDEO_SEEDANCE_PRO  = 200;  // ~$1.00 per 5s clip — ByteDance Seedance 1 Pro
     public const EXPORT     = 5;
 
     // Monthly credit allocations per plan

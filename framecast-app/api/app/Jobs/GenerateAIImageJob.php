@@ -127,10 +127,20 @@ class GenerateAIImageJob implements ShouldQueue
             if (! isset($result)) {
                 // If the caller picked a specific model, override the DI default
                 // and resolve via the factory. Lets users hit nano-banana /
-                // flux-schnell / sdxl-lightning without changing the global bind.
-                $resolved = $this->modelKey
-                    ? app(\App\Services\Generation\Image\ImageAdapterFactory::class)->resolve($this->modelKey)
-                    : $adapter;
+                // flux-schnell / sdxl-lightning / gpt-image-2 without changing
+                // the global bind. For OpenAI entries, pass the specific model
+                // name through options so DalleImageAdapter routes to the right
+                // /generations endpoint.
+                if ($this->modelKey) {
+                    $factory = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+                    $resolved = $factory->resolve($this->modelKey);
+                    $override = $factory->openaiModelOverride($this->modelKey);
+                    if ($override) {
+                        $options['openai_model_override'] = $override;
+                    }
+                } else {
+                    $resolved = $adapter;
+                }
                 $result = $resolved->generate($prompt, $this->style, $aspectRatio, $options);
             }
 

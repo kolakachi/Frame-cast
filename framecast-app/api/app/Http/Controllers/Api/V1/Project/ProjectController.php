@@ -766,7 +766,7 @@ class ProjectController extends Controller
             // back to gpt-image-1 if absent. Ignored when source_image or
             // character is provided.
             'image_model_key'       => ['nullable', 'string', 'in:' . implode(',', array_keys(\App\Services\Generation\Image\ImageAdapterFactory::AVAILABLE))],
-            'animation_tier'        => ['nullable', 'string', 'in:quick,balanced,premium'],
+            'animation_tier'        => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro'],
         ]);
 
         // Resolve image source: explicit asset, character's reference, or
@@ -794,9 +794,11 @@ class ProjectController extends Controller
         $needsAnimation = (bool) ($validated['animate'] ?? true);
         $animationTier  = $validated['animation_tier'] ?? 'quick';
         $animationCost  = match ($animationTier) {
-            'premium'  => CreditService::VIDEO_PREMIUM,
-            'balanced' => CreditService::VIDEO_BALANCED,
-            default    => CreditService::VIDEO_QUICK,
+            'premium'       => CreditService::VIDEO_PREMIUM,
+            'balanced'      => CreditService::VIDEO_BALANCED,
+            'seedance_pro'  => CreditService::VIDEO_SEEDANCE_PRO,
+            'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
+            default         => CreditService::VIDEO_QUICK,
         };
         $imageCost = $sourceAsset
             ? 0
@@ -872,6 +874,7 @@ class ProjectController extends Controller
 
         // Animation parameters — picked once so the two dispatch branches
         // below (with-source-asset vs generate-from-prompt) stay in sync.
+        // Balanced (Hailuo) needs 6 or 10; everything else uses 5 or 10.
         $animateDuration = $animationTier === 'balanced' ? 6 : 5;
 
         if ($sourceAsset) {

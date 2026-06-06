@@ -882,9 +882,9 @@ class SceneController extends Controller
         }
 
         $validated = $request->validate([
-            'tier'             => ['required', 'string', \Illuminate\Validation\Rule::in(['quick', 'balanced', 'premium'])],
+            'tier'             => ['required', 'string', \Illuminate\Validation\Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro'])],
             // Accept any 3–10s from clients; the adapter clamps to 5 or 10 internally
-            // (the Wan/Hailuo/Kling models only render those two buckets).
+            // (the Wan/Hailuo/Kling/Seedance models only render those two buckets).
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
@@ -901,9 +901,11 @@ class SceneController extends Controller
         }
 
         $base = match ($validated['tier']) {
-            'premium'  => CreditService::VIDEO_PREMIUM,
-            'balanced' => CreditService::VIDEO_BALANCED,
-            default    => CreditService::VIDEO_QUICK,
+            'premium'       => CreditService::VIDEO_PREMIUM,
+            'balanced'      => CreditService::VIDEO_BALANCED,
+            'seedance_pro'  => CreditService::VIDEO_SEEDANCE_PRO,
+            'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
+            default         => CreditService::VIDEO_QUICK,
         };
         // Constants are the 5-second baseline; 10s clips cost 2× (the upstream
         // models render in 5s or 10s chunks at roughly proportional cost).

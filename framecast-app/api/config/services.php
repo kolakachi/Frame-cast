@@ -86,6 +86,13 @@ return [
         'i2v_balanced_version' => env('REPLICATE_I2V_BALANCED_VERSION', ''),
         'i2v_premium_model'    => env('REPLICATE_I2V_PREMIUM_MODEL',  'kwaivgi/kling-v2.1'),
         'i2v_premium_version'  => env('REPLICATE_I2V_PREMIUM_VERSION', ''),
+        // ByteDance Seedance — two flavors. Lite for cheap iteration,
+        // Pro for higher fidelity. Both versionless endpoints work
+        // (official Replicate models, no version pin required).
+        'i2v_seedance_lite_model'   => env('REPLICATE_I2V_SEEDANCE_LITE_MODEL', 'bytedance/seedance-1-lite'),
+        'i2v_seedance_lite_version' => env('REPLICATE_I2V_SEEDANCE_LITE_VERSION', ''),
+        'i2v_seedance_pro_model'    => env('REPLICATE_I2V_SEEDANCE_PRO_MODEL',  'bytedance/seedance-1-pro'),
+        'i2v_seedance_pro_version'  => env('REPLICATE_I2V_SEEDANCE_PRO_VERSION', ''),
 
         // MusicGen for the one-shot prompt flow's background music.
         // 'meta/musicgen' is the cheap workhorse; switch to 'meta/musicgen-melody-large'

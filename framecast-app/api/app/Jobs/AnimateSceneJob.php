@@ -33,7 +33,7 @@ class AnimateSceneJob implements ShouldQueue
     public function __construct(
         public readonly int $sceneId,
         public readonly int $projectId,
-        public readonly string $tier = 'quick',          // quick | balanced | premium
+        public readonly string $tier = 'quick',          // quick | balanced | premium | seedance_lite | seedance_pro
         public readonly int $durationSeconds = 6,        // 3–10
         public readonly ?string $motionPrompt = null,
     ) {
@@ -52,9 +52,11 @@ class AnimateSceneJob implements ShouldQueue
         // Mark animation as in-progress so the editor can show distinct loading state.
         // animation_cost is what we'd refund if the user cancels.
         $cost = match ($this->tier) {
-            'premium'  => \App\Services\CreditService::VIDEO_PREMIUM,
-            'balanced' => \App\Services\CreditService::VIDEO_BALANCED,
-            default    => \App\Services\CreditService::VIDEO_QUICK,
+            'premium'       => \App\Services\CreditService::VIDEO_PREMIUM,
+            'balanced'      => \App\Services\CreditService::VIDEO_BALANCED,
+            'seedance_pro'  => \App\Services\CreditService::VIDEO_SEEDANCE_PRO,
+            'seedance_lite' => \App\Services\CreditService::VIDEO_SEEDANCE_LITE,
+            default         => \App\Services\CreditService::VIDEO_QUICK,
         } * ($this->durationSeconds >= 10 ? 2 : 1);
         $this->stampAnimationState($scene, [
             'animation_in_progress'   => true,

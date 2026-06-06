@@ -316,7 +316,7 @@ const aiImagePending = ref(false);
 const aiImageModelKey = ref('gpt-image-1');
 const availableImageModelsEditor = ref([
   { key: 'gpt-image-1',    label: 'GPT Image 1',    sub: 'OpenAI photoreal',   cost: 15, render: '~20s', requires_reference: false },
-  { key: 'gpt-image-2',    label: 'GPT Image 2',    sub: 'character',           cost: 50, render: '~60s', requires_reference: true  },
+  { key: 'gpt-image-2',    label: 'GPT Image 2',    sub: 'OpenAI · newer',      cost: 35, render: '~30s', requires_reference: false },
   { key: 'nano-banana',    label: 'Nano Banana',    sub: 'Google · cheap',      cost:  8, render: '~10s', requires_reference: false },
   { key: 'flux-schnell',   label: 'Flux Schnell',   sub: 'cheapest',            cost:  1, render: '~5s',  requires_reference: false },
   { key: 'sdxl-lightning', label: 'SDXL Lightning', sub: 'stylish',             cost:  1, render: '~5s',  requires_reference: false },
@@ -329,31 +329,33 @@ const aiImageError = ref("");
 
 // Animate (i2v rung 4) state.
 const animateModalOpen = ref(false);
-const animateTier = ref("quick");          // quick | balanced | premium
+const animateTier = ref("quick");          // quick | balanced | premium | seedance_lite | seedance_pro
 const animateDuration = ref(5);            // value depends on tier — see ANIMATE_TIER_DURATIONS
 const animateMotionPrompt = ref("");
 const animateSubmitting = ref(false);
 const animateError = ref("");
 // Credits per short clip; long clip doubles. Mirror the backend cost calc exactly.
-const ANIMATE_TIER_COSTS_5S = { quick: 60, balanced: 120, premium: 240 };
+const ANIMATE_TIER_COSTS_5S = { quick: 60, balanced: 120, premium: 240, seedance_lite: 100, seedance_pro: 200 };
 // Valid durations per tier — each upstream model accepts only specific values.
 //   Wan 2.5 (quick)         → 5 or 10
 //   Hailuo 2.3-fast (balanced) → 6 or 10 (NOT 5; sending 5 returns Replicate 422)
 //   Kling 2.1 (premium)     → 5 or 10
-const ANIMATE_TIER_DURATIONS = { quick: [5, 10], balanced: [6, 10], premium: [5, 10] };
+const ANIMATE_TIER_DURATIONS = { quick: [5, 10], balanced: [6, 10], premium: [5, 10], seedance_lite: [5, 10], seedance_pro: [5, 10] };
 const animateDurations = computed(() => ANIMATE_TIER_DURATIONS[animateTier.value] || [5, 10]);
 const animateShortDuration = computed(() => animateDurations.value[0]);
 const animateCost = computed(() =>
   // "Long" clip = the larger of the two valid durations (always 10 today).
   ANIMATE_TIER_COSTS_5S[animateTier.value] * (animateDuration.value === animateDurations.value[1] ? 2 : 1)
 );
-// Animation models. We expose the actual model names (Wan/Hailuo/Kling)
+// Animation models. We expose actual model names (Wan/Hailuo/Kling/Seedance)
 // instead of generic tier labels so power users know what they're picking.
 // `key` still maps to the backend tier so the API doesn't need to change.
 const ANIMATE_TIER_META = {
-  quick:    { name: "Wan 2.5",    sub: "Fast · cheap",     quality: "Good",   render: "~30s" },
-  balanced: { name: "Hailuo 2.3", sub: "Best for most",    quality: "Strong", render: "~90s" },
-  premium:  { name: "Kling 2.1",  sub: "Cinematic",        quality: "Top",    render: "~3 min" },
+  quick:         { name: "Wan 2.5",       sub: "Fast · cheap",      quality: "Good",       render: "~30s" },
+  seedance_lite: { name: "Seedance Lite", sub: "ByteDance · cheap", quality: "Strong",     render: "~45s" },
+  balanced:      { name: "Hailuo 2.3",    sub: "Best for most",     quality: "Strong",     render: "~90s" },
+  seedance_pro:  { name: "Seedance Pro",  sub: "ByteDance · sharp", quality: "Very high",  render: "~2 min" },
+  premium:       { name: "Kling 2.1",     sub: "Cinematic",         quality: "Top",        render: "~3 min" },
 };
 
 // When the user switches tier, snap the chosen duration to one the new tier
@@ -3759,7 +3761,7 @@ function openAnimateModal() {
   // Pre-fill with the scene's last animation settings if any — saves the
   // re-animate flow a tier/duration click.
   const lastSettings = activeScene.value?.image_generation_settings ?? {};
-  animateTier.value = ['quick','balanced','premium'].includes(lastSettings.animation_tier)
+  animateTier.value = ['quick','balanced','premium','seedance_lite','seedance_pro'].includes(lastSettings.animation_tier)
     ? lastSettings.animation_tier
     : 'quick';
   animateDuration.value = lastSettings.animation_duration === 10 ? 10 : 5;

@@ -73,7 +73,10 @@ class DalleImageAdapter implements ImageGenerationAdapter
         }
         $composition = self::ASPECT_RATIO_COMPOSITION[$aspectRatio] ?? self::ASPECT_RATIO_COMPOSITION['9:16'];
         $fullPrompt = trim("{$stylePrefix} {$prompt}. {$composition} No text, no writing, no letters, no words, no watermarks, no captions, no signs with readable text.");
-        $model = config('services.openai.image_model', 'gpt-image-1');
+        // options['openai_model_override'] lets the picker route a specific
+        // OpenAI model name (e.g. gpt-image-2 for text-to-image, not just
+        // for the /edits character path) without changing the global config.
+        $model = (string) ($options['openai_model_override'] ?? config('services.openai.image_model', 'gpt-image-1'));
         // gpt-image-1 uses low/medium/high; dall-e-3 used standard/hd
         $rawQuality = (string) ($options['quality'] ?? 'medium');
         $quality = match ($rawQuality) {
