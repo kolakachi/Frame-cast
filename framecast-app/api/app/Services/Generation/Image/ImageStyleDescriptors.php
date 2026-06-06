@@ -41,6 +41,35 @@ final class ImageStyleDescriptors
     ];
 
     /**
+     * Human-readable label + one-line use-case description per style. Drives
+     * the editor's style picker rows. Keep keys aligned with MAP.
+     * @var array<string,array{label:string,description:string}>
+     */
+    public const META = [
+        'photorealistic' => ['label' => 'Photorealistic',     'description' => 'Sharp DSLR-quality. Product shots, lifestyle, founders to camera.'],
+        'realistic'      => ['label' => 'Realistic',          'description' => 'Documentary-soft photography. Real moments, less retouching.'],
+        'cinematic'      => ['label' => 'Cinematic',          'description' => 'Color-graded film still. Trailers, ads, hero shots.'],
+        'documentary'    => ['label' => 'Documentary',        'description' => 'Handheld, natural light, candid. Journalism, real stories.'],
+        'dark'           => ['label' => 'Dark',               'description' => 'Moody low-key shadows. Horror, thriller, drama.'],
+        'film_noir'      => ['label' => 'Film Noir',          'description' => 'High-contrast B&W, 1940s detective aesthetic.'],
+        'vintage'        => ['label' => 'Vintage',            'description' => 'Faded color, light grain. 70s/80s nostalgia.'],
+        'minimalist'     => ['label' => 'Minimalist',         'description' => 'Clean negative space, muted palette. Tech, design, brand.'],
+        'neon'           => ['label' => 'Neon',               'description' => 'Vivid neon, rim lighting, night urban. Gaming, nightlife.'],
+        'cyberpunk_80s'  => ['label' => 'Cyberpunk 80s',      'description' => 'Neon + retro tech, chrome, scan lines. Tech futurism.'],
+        'anime'          => ['label' => 'Anime',              'description' => 'Modern Japanese animation, clean line, saturated color.'],
+        'anime_80s'      => ['label' => 'Anime 80s',          'description' => 'Akira / Bubblegum era. Cel shading, painterly backgrounds.'],
+        'anime_90s'      => ['label' => 'Anime 90s',          'description' => 'Ghost in the Shell era. Gritty, mature.'],
+        'dark_fantasy'   => ['label' => 'Dark Fantasy',       'description' => 'Witcher / dark Souls. Painterly, mythic horror, lore.'],
+        'fantasy_retro'  => ['label' => 'Fantasy Retro',      'description' => '80s pulp fantasy. Frank Frazetta vibes, painterly.'],
+        'comic'          => ['label' => 'Comic',              'description' => 'Bold ink, halftone dots. Western comics, action.'],
+        'line_drawing'   => ['label' => 'Line Drawing',       'description' => 'Pen sketch on white. Explainer, technical, editorial.'],
+        'watercolor'     => ['label' => 'Watercolor',         'description' => 'Soft washes, paper texture. Children\'s books, gentle stories.'],
+        'paper_cutout'   => ['label' => 'Paper Cutout',       'description' => 'Layered paper, drop shadow. Quirky, indie, hand-made.'],
+        'cartoon'        => ['label' => 'Cartoon',            'description' => 'Modern 2D cartoon. Bright outlines, Saturday-morning vibe.'],
+        '3d_animated'    => ['label' => '3D Animated',        'description' => 'Pixar / Disney render. Volumetric light, family content.'],
+    ];
+
+    /**
      * Sentinel key for the user-defined style. When the editor / wizard
      * picks "Custom", the actual descriptor text lives on the scene/project
      * as `custom_visual_style` and is passed in here as the second arg.

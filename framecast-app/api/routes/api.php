@@ -93,6 +93,25 @@ Route::prefix('v1')->group(function (): void {
                 'meta' => [],
             ]);
         });
+
+        // Catalog of image styles with sample thumbnail URLs (rendered by
+        // `php artisan generate:style-samples` and stored in B2 at
+        // style-samples/<key>.jpg). Drives the editor's style picker.
+        Route::get('/image-styles', function (\App\Services\Media\StorageService $storage) {
+            $styles = [];
+            foreach (\App\Services\Generation\Image\ImageStyleDescriptors::META as $key => $meta) {
+                $styles[] = [
+                    'key'         => $key,
+                    'label'       => $meta['label'],
+                    'description' => $meta['description'],
+                    'sample_url'  => $storage->url("style-samples/{$key}.jpg"),
+                ];
+            }
+            return response()->json([
+                'data' => ['styles' => $styles],
+                'meta' => [],
+            ]);
+        });
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
         Route::get('/voice-profiles', [VoiceProfileController::class, 'index']);

@@ -416,6 +416,34 @@ const AI_IMAGE_STYLES = [
   // preset string in every scene's image prompt for this scene.
   { key: "custom",       label: "Custom",         icon: "✦" },
 ];
+
+// Style catalog from /api/v1/image-styles — same keys + labels + a
+// sample_url thumbnail rendered by `php artisan generate:style-samples`
+// and stored in B2 at style-samples/<key>.jpg. Static AI_IMAGE_STYLES
+// stays as a fallback when the API call fails or hasn't returned yet.
+const richImageStyles = ref([]);
+const imageStylesByKey = computed(() => {
+  const map = new Map();
+  for (const s of richImageStyles.value) map.set(s.key, s);
+  // Layer the static list on top so 'custom' (not in META) still renders.
+  for (const s of AI_IMAGE_STYLES) {
+    if (!map.has(s.key)) map.set(s.key, { ...s, sample_url: null, description: '' });
+  }
+  return map;
+});
+const stylePickerRows = computed(() => Array.from(imageStylesByKey.value.values()));
+
+async function loadImageStyleCatalog() {
+  try {
+    const res = await api.get('/image-styles');
+    const styles = res?.data?.data?.styles;
+    if (Array.isArray(styles)) richImageStyles.value = styles;
+  } catch { /* keep static fallback */ }
+}
+
+// Visible/hidden state for the in-line style picker dropdown.
+const stylePickerOpen = ref(false);
+
 const exportPending = ref(false);
 
 // Public share state for the export header's "🔗 Share publicly" button.
@@ -2104,6 +2132,9 @@ async function loadImageModelCatalog() {
   } catch { /* keep fallback list */ }
 }
 
+const modelPickerOpen = ref(false);
+const activeImageModelLabel = computed(() => activeImageModelMeta.value?.label ?? 'GPT Image 1');
+
 async function loadProject() {
   loading.value = true;
   error.value = "";
@@ -2113,6 +2144,7 @@ async function loadProject() {
     applyProjectPayload(response.data?.data, { preserveActiveScene: false });
     await loadExportJobs();
     loadImageModelCatalog();   // fire-and-forget — falls back to static list
+    loadImageStyleCatalog();   // fire-and-forget — falls back to icon list
     subscribeProjectChannel();
   } catch (requestError) {
     error.value =
@@ -5558,15 +5590,44 @@ onBeforeUnmount(() => {
                   <div v-if="activeScene?.visual_type === 'ai_image' && (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style)" class="current-style-note">
                     Last generated with <strong>{{ AI_IMAGE_STYLES.find(s => s.key === (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style))?.label ?? (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style) }}</strong>
                   </div>
-                  <div class="style-picker-grid">
-                    <div
-                      v-for="s in AI_IMAGE_STYLES"
-                      :key="s.key"
-                      :class="['style-opt', (visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style) === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
-                      @click="visualStyleDraft = (visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style) === s.key ? null : s.key"
+                  <!-- Custom row-style style picker — collapsed button that
+                       opens a panel of thumbnail rows. Replaces the old emoji
+                       grid; thumbnails come from /image-styles (B2-hosted
+                       samples rendered by generate:style-samples). -->
+                  <div class="picker-wrap">
+                    <button
+                      type="button"
+                      class="picker-trigger"
+                      @click="stylePickerOpen = !stylePickerOpen"
                     >
-                      <span class="style-opt-ico">{{ s.icon }}</span>
-                      <div class="style-opt-name">{{ s.label }}</div>
+                      <template v-if="(() => { const k = visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style; const s = imageStylesByKey.get(k); return s && s.sample_url; })()">
+                        <img
+                          :src="imageStylesByKey.get(visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style)?.sample_url"
+                          alt=""
+                          class="picker-trigger-thumb"
+                        />
+                      </template>
+                      <span v-else class="picker-trigger-glyph">{{ imageStylesByKey.get(visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style)?.icon ?? '✦' }}</span>
+                      <span class="picker-trigger-label">
+                        {{ imageStylesByKey.get(visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style)?.label ?? 'Pick a style' }}
+                      </span>
+                      <span class="picker-trigger-caret">▾</span>
+                    </button>
+                    <div v-if="stylePickerOpen" class="picker-panel">
+                      <div
+                        v-for="s in stylePickerRows"
+                        :key="s.key"
+                        :class="['picker-row', (visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style) === s.key ? 'selected' : '']"
+                        @click="visualStyleDraft = s.key; stylePickerOpen = false;"
+                      >
+                        <img v-if="s.sample_url" :src="s.sample_url" :alt="s.label" class="picker-row-thumb" />
+                        <span v-else class="picker-row-glyph">{{ s.icon ?? '✦' }}</span>
+                        <div class="picker-row-text">
+                          <div class="picker-row-name">{{ s.label }}</div>
+                          <div v-if="s.description" class="picker-row-desc">{{ s.description }}</div>
+                        </div>
+                        <span v-if="(visualStyleDraft ?? activeScene?.visual_style ?? activeScene?.image_generation_settings?.style) === s.key" class="picker-row-check">✓</span>
+                      </div>
                     </div>
                   </div>
 
@@ -5590,15 +5651,36 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
 
-                  <!-- Image model picker -->
+                  <!-- Image model picker — same row-list pattern as styles
+                       but text-only (no thumbnail needed). Right rail shows
+                       cost so users can compare price/quality at a glance. -->
                   <div class="micro-label" style="margin-bottom:4px;">
                     Model <span style="font-weight:400;opacity:.5;">— {{ activeImageModelMeta?.cost ?? 15 }} cr · {{ activeImageModelMeta?.render ?? '~20s' }}</span>
                   </div>
-                  <select v-model="aiImageModelKey" class="ai-prompt-area" style="padding:6px 10px;">
-                    <option v-for="m in availableImageModelsEditor" :key="m.key" :value="m.key" :disabled="m.requires_reference && !activeSceneHasCharacter">
-                      {{ m.label }} — {{ m.sub }}{{ m.requires_reference && !activeSceneHasCharacter ? ' (needs character)' : '' }}
-                    </option>
-                  </select>
+                  <div class="picker-wrap">
+                    <button type="button" class="picker-trigger" @click="modelPickerOpen = !modelPickerOpen">
+                      <span class="picker-trigger-label">{{ activeImageModelLabel }}</span>
+                      <span class="picker-trigger-sub">{{ activeImageModelMeta?.sub ?? '' }}</span>
+                      <span class="picker-trigger-cost">{{ activeImageModelMeta?.cost ?? 15 }} cr</span>
+                      <span class="picker-trigger-caret">▾</span>
+                    </button>
+                    <div v-if="modelPickerOpen" class="picker-panel">
+                      <div
+                        v-for="m in availableImageModelsEditor"
+                        :key="m.key"
+                        :class="['picker-row', aiImageModelKey === m.key ? 'selected' : '', (m.requires_reference && !activeSceneHasCharacter) ? 'disabled' : '']"
+                        :title="m.requires_reference && !activeSceneHasCharacter ? 'Needs a character reference on this scene' : ''"
+                        @click="!(m.requires_reference && !activeSceneHasCharacter) && (aiImageModelKey = m.key, modelPickerOpen = false)"
+                      >
+                        <div class="picker-row-text picker-row-text-flex">
+                          <div class="picker-row-name">{{ m.label }}</div>
+                          <div class="picker-row-desc">{{ m.sub }}{{ m.requires_reference && !activeSceneHasCharacter ? ' (needs character)' : '' }}</div>
+                        </div>
+                        <span class="picker-row-cost">{{ m.cost }} cr · {{ m.render }}</span>
+                        <span v-if="aiImageModelKey === m.key" class="picker-row-check">✓</span>
+                      </div>
+                    </div>
+                  </div>
 
                   <!-- Prompt override -->
                   <div class="micro-label" style="margin-bottom:4px;margin-top:8px;">
@@ -7624,6 +7706,51 @@ button {
 .scene-action-btn.danger {
   color: #ff9d9d;
 }
+
+/* ── Custom row-list pickers (style + model) ─────────────────────────
+   One rounded trigger button that opens a panel of stacked rows. Each
+   row: [thumbnail | label / desc | cost? | check]. Visually richer than
+   a native <select> while still being a single concentrated control. */
+.picker-wrap { position: relative; }
+.picker-trigger {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 12px; border-radius: 8px;
+  border: 1px solid var(--color-border); background: var(--color-bg-elevated);
+  color: var(--color-text-primary); cursor: pointer;
+  text-align: left; font-family: inherit; font-size: 13px;
+  transition: border-color 0.15s;
+}
+.picker-trigger:hover { border-color: rgba(255,107,53,0.4); }
+.picker-trigger-thumb { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+.picker-trigger-glyph { width: 28px; height: 28px; border-radius: 6px; background: var(--color-bg-card); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.picker-trigger-label { font-weight: 600; flex-shrink: 0; }
+.picker-trigger-sub { font-size: 11.5px; color: var(--color-text-muted); margin-left: 4px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picker-trigger-cost { font-family: "Space Mono", monospace; font-size: 11px; color: var(--color-accent); font-weight: 600; }
+.picker-trigger-caret { font-size: 9px; opacity: 0.55; margin-left: 4px; }
+
+.picker-panel {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: var(--color-bg-panel); border: 1px solid var(--color-border);
+  border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,0.5);
+  max-height: 360px; overflow-y: auto; padding: 4px; z-index: 30;
+}
+.picker-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 7px; cursor: pointer;
+  transition: background 0.12s;
+}
+.picker-row:hover:not(.disabled) { background: var(--color-bg-elevated); }
+.picker-row.selected { background: rgba(255,107,53,0.08); }
+.picker-row.disabled { opacity: 0.4; cursor: not-allowed; }
+.picker-row-thumb { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--color-bg-card); }
+.picker-row-glyph { width: 44px; height: 44px; border-radius: 6px; background: var(--color-bg-card); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.picker-row-text { flex: 1; min-width: 0; }
+.picker-row-text-flex { display: flex; flex-direction: column; gap: 1px; }
+.picker-row-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.picker-row-desc { font-size: 11px; color: var(--color-text-muted); margin-top: 1px; line-height: 1.4; }
+.picker-row-cost { font-size: 10.5px; color: var(--color-text-muted); font-family: "Space Mono", monospace; flex-shrink: 0; }
+.picker-row.selected .picker-row-cost { color: var(--color-accent); }
+.picker-row-check { color: var(--color-accent); font-size: 14px; font-weight: 700; flex-shrink: 0; margin-left: 4px; }
 
 .scene-tag {
   padding: 2px 6px;
