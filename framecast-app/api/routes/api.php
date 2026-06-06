@@ -80,6 +80,9 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/billing/status', [BillingController::class, 'status']);
         Route::post('/billing/portal', [BillingController::class, 'portal']);
         Route::get('/me', [VerificationController::class, 'me']);
+        // Daily streak — Spin & Win retention gamification
+        Route::get('/daily-streak', [\App\Http\Controllers\Api\V1\Workspace\DailyStreakController::class, 'show']);
+        Route::post('/daily-streak/claim', [\App\Http\Controllers\Api\V1\Workspace\DailyStreakController::class, 'claim']);
         Route::patch('/me', [VerificationController::class, 'updateMe']);
         Route::get('/me/export', [VerificationController::class, 'exportMe']);
         Route::delete('/me', [VerificationController::class, 'deleteMe']);

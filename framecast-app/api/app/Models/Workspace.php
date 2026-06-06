@@ -32,6 +32,8 @@ class Workspace extends Model
         'credits_topup',
         'credits_free_granted',
         'billing_renews_at',
+        'daily_streak_count',
+        'daily_streak_last_claim_at',
     ];
 
     protected $casts = [
@@ -40,6 +42,8 @@ class Workspace extends Model
         'credits_monthly'   => 'integer',
         'credits_topup'     => 'integer',
         'credits_free_granted' => 'integer',
+        'daily_streak_count' => 'integer',
+        'daily_streak_last_claim_at' => 'datetime',
     ];
 
     public function creditsBalance(): int

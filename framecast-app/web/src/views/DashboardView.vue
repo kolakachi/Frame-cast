@@ -7,6 +7,7 @@ import { getEcho } from '../services/echo'
 import AppSidebar from '../components/AppSidebar.vue'
 import NotifBell from '../components/NotifBell.vue'
 import NewVideoWizard from '../components/NewVideoWizard.vue'
+import DailyStreakModal from '../components/DailyStreakModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +20,30 @@ const notifications = ref([])
 const notificationToasts = ref([])
 let workspaceChannelName = null
 let dashboardPollTimer = null
+
+// Daily streak — chip + modal. Auto-opens once per day on first dashboard
+// load when the user has an unclaimed bonus (gated by localStorage flag
+// keyed to the date so we don't nag).
+const streakState = ref(null)
+const streakModalOpen = ref(false)
+async function loadDailyStreak() {
+  try {
+    const res = await api.get('/daily-streak')
+    streakState.value = res?.data?.data ?? null
+    // Auto-open once per local day if they haven't claimed AND haven't
+    // dismissed it already today.
+    const todayKey = new Date().toISOString().slice(0, 10)
+    const seenKey = `wyv_streak_seen_${todayKey}`
+    if (streakState.value?.can_claim && !localStorage.getItem(seenKey)) {
+      streakModalOpen.value = true
+      localStorage.setItem(seenKey, '1')
+    }
+  } catch { /* silent — chip just shows placeholder */ }
+}
+function onStreakClaimed({ granted }) {
+  // Refresh the credits card so the new balance shows immediately.
+  if (granted > 0) loadMe()
+}
 
 const projects = ref([])
 const queueRows = ref([])
@@ -440,6 +465,7 @@ watch(
 onMounted(async () => {
   await loadMe()
   maybeOpenWizardFromRoute()
+  loadDailyStreak()   // fire-and-forget, won't block first paint
 })
 
 onBeforeUnmount(() => {
@@ -541,6 +567,21 @@ onBeforeUnmount(() => {
               <template v-else-if="creditsPayload.balance <= 0">No credits — upgrade to continue</template>
               <template v-else-if="creditsPayload.plan_monthly_allocation > 0">of {{ creditsPayload.plan_monthly_allocation.toLocaleString() }} this month</template>
               <template v-else>Free tier — {{ creditsPayload.balance }} remaining</template>
+            </div>
+          </div>
+          <!-- Daily Streak card — clickable, opens the streak modal. Pulses
+               when there's an unclaimed bonus today. -->
+          <div :class="['stat-card', 'streak-card', streakState?.can_claim ? 'streak-pulse' : '']"
+               @click="streakModalOpen = true"
+               role="button"
+               tabindex="0"
+               @keydown.enter="streakModalOpen = true">
+            <div class="stat-label">🔥 Daily Streak</div>
+            <div class="stat-value">{{ streakState ? `Day ${streakState.current_day}` : '—' }}</div>
+            <div class="stat-change">
+              <template v-if="!streakState">Loading…</template>
+              <template v-else-if="streakState.can_claim">Claim {{ streakState.today_prize }} credits →</template>
+              <template v-else>Come back tomorrow</template>
             </div>
           </div>
         </div>
@@ -821,6 +862,12 @@ onBeforeUnmount(() => {
 
     <NewVideoWizard ref="wizardRef" :channels="channels" />
 
+    <DailyStreakModal
+      :visible="streakModalOpen"
+      @close="streakModalOpen = false"
+      @claimed="onStreakClaimed"
+    />
+
     <div v-if="deleteConfirmProject" class="modal-overlay delete-modal-overlay" @click.self="closeDeleteConfirm">
       <div class="delete-modal">
         <div class="delete-modal-icon">
@@ -895,6 +942,13 @@ onBeforeUnmount(() => {
 /* Stats */
 .stats-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .stat-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; padding: 18px 20px; }
+.streak-card { cursor: pointer; transition: border-color 0.15s, transform 0.15s; }
+.streak-card:hover { border-color: rgba(255,107,53,0.45); transform: translateY(-1px); }
+.streak-card.streak-pulse { border-color: rgba(255,107,53,0.5); animation: streak-pulse 2.4s ease-in-out infinite; }
+@keyframes streak-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,53,0.30); }
+  50%      { box-shadow: 0 0 0 6px rgba(255,107,53,0); }
+}
 .stat-card-warn { border-color: rgba(251,191,36,.3); background: rgba(251,191,36,.04); }
 .stat-card-danger { border-color: rgba(248,113,113,.3); background: rgba(248,113,113,.04); }
 .stat-card.accent-stat { background: rgba(255,107,53,0.06); border-color: rgba(255,107,53,0.2); }
