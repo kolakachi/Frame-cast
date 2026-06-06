@@ -169,16 +169,21 @@ async function cruiseApplyAction(msg) {
       message_id: msg.id,    // so backend can stamp action_status='applied' on the persisted msg
     })
     const out = res?.data?.data
-    msg.action_status = 'applied'
+    // Flip to 'running' (not 'applied') so the action card shows progress
+    // text driven by the Reverb listener. Terminal status comes from
+    // generation.progress 'completed'/'failed'. If the tool is one whose
+    // work is fully synchronous (no job dispatched), mark applied now.
     msg.action_credits = out?.credits_spent ?? 0
-    // Auto-flip to Config, pulse affected section, toast the spend.
-    cruiseTab.value = 'config'
-    cruiseAssistantPending.value = false
+    msg.progress_text = cruiseInitialProgressText(msg.action.tool)
+    msg.action_status = cruiseToolHasAsyncWork(msg.action.tool) ? 'running' : 'applied'
+    // Stay on the Assistant tab so the user can watch progress in chat.
+    // Pulse the affected section in case they switch to Config.
     cruisePulseSection.value = out?.affected_section ?? null
     window.setTimeout(() => { cruisePulseSection.value = null }, 1800)
-    cruiseShowToast(`✓ ${out?.summary} · spent ${out?.credits_spent ?? 0} cr`)
-    // Refresh the project so the new scene state hydrates into the editor.
-    loadProject?.()
+    cruiseShowToast(`${out?.summary} · spent ${out?.credits_spent ?? 0} cr`)
+    // Don't re-fetch the whole project — the Reverb subscription updates
+    // the affected scene in place when the job completes. Just refresh the
+    // balance so the footer hint reflects the spend.
     loadMe?.()
   } catch (e) {
     msg.action_status = 'failed'
@@ -186,6 +191,99 @@ async function cruiseApplyAction(msg) {
   } finally {
     cruiseApplying.value = null
   }
+}
+
+// Tools whose work is synchronous (no GenerationProgressed event will
+// fire) — stamp 'applied' immediately. Everything else dispatches a job
+// and we wait for the Reverb 'completed' event before stamping ✓.
+function cruiseToolHasAsyncWork(tool) {
+  return [
+    'regenerate_image', 'animate_scene', 'rerecord_voice',
+    'change_music', 'add_scene',
+  ].includes(tool)
+}
+
+// First line shown the instant Apply lands, before any event fires.
+function cruiseInitialProgressText(tool) {
+  switch (tool) {
+    case 'regenerate_image':  return 'Generating image…'
+    case 'animate_scene':     return 'Animating scene…'
+    case 'rerecord_voice':    return 'Generating voice…'
+    case 'change_music':      return 'Composing music…'
+    case 'add_scene':         return 'Adding scene…'
+    default:                  return 'Working…'
+  }
+}
+
+// Match an incoming generation.progress event to the most recent cruise
+// message whose action covers this work. Stage→tool map:
+//   ai_image -> regenerate_image | add_scene
+//   animation -> animate_scene (or chained regenerate_image)
+//   tts -> rerecord_voice | add_scene
+//   ai_music -> change_music
+// Scene scoping: when payload.scene_id is set, prefer a message whose
+// action.params.scene_id matches. Falls back to the most recent matching
+// tool when scene_id is absent from the event (e.g. ai_image 'processing'
+// hasn't been dispatched with scene_id).
+function cruiseFindMessageForProgress(payload) {
+  const stage = payload.stage
+  const sceneId = payload.scene_id ? Number(payload.scene_id) : null
+  const stageTools = {
+    ai_image:  ['regenerate_image', 'add_scene'],
+    animation: ['animate_scene', 'regenerate_image'], // chained tier
+    tts:       ['rerecord_voice', 'add_scene'],
+    ai_music:  ['change_music'],
+  }[stage] || []
+  if (!stageTools.length) return null
+  // Walk newest -> oldest; first running/proposed match wins.
+  for (let i = cruiseMessages.value.length - 1; i >= 0; i--) {
+    const m = cruiseMessages.value[i]
+    if (!m.action || !stageTools.includes(m.action.tool)) continue
+    if (m.action_status !== 'running' && m.action_status !== 'proposed') continue
+    if (sceneId) {
+      const msgSceneId = Number(m.action.params?.scene_id ?? 0)
+      if (msgSceneId && msgSceneId !== sceneId) continue
+    }
+    return m
+  }
+  return null
+}
+
+// Drive the running action card's progress_text from the Reverb event.
+// Called from the existing project-channel listener so we don't open a
+// second subscription.
+function cruiseHandleProgressEvent(payload) {
+  const msg = cruiseFindMessageForProgress(payload)
+  if (!msg) return
+  const status = String(payload.status || '')
+  const isChained = !!msg.action?.params?.chain_animate_tier
+  if (status === 'processing') {
+    if (payload.stage === 'animation' && msg.action.tool === 'regenerate_image' && isChained) {
+      msg.progress_text = 'Animating scene…'
+    } else {
+      msg.progress_text = cruiseInitialProgressText(msg.action.tool)
+    }
+  } else if (status === 'completed') {
+    // Chained image+animate: image done, but animation still pending.
+    // Keep status='running' until the animation event lands.
+    if (payload.stage === 'ai_image' && msg.action.tool === 'regenerate_image' && isChained) {
+      msg.progress_text = 'Image ready · animating…'
+      return
+    }
+    msg.action_status = 'applied'
+    msg.progress_text = cruiseSuccessText(msg.action.tool, payload.stage)
+  } else if (status === 'failed') {
+    msg.action_status = 'failed'
+    msg.action_error = payload.message || 'Generation failed.'
+  }
+}
+
+function cruiseSuccessText(tool, stage) {
+  if (stage === 'ai_image')  return 'Image ready'
+  if (stage === 'animation') return 'Animation ready'
+  if (stage === 'tts')       return 'Voice ready'
+  if (stage === 'ai_music')  return 'Music ready'
+  return 'Done'
 }
 
 function cruiseShowToast(text) {
@@ -212,8 +310,14 @@ async function loadCruiseConversation() {
         role: m.role,
         text: m.text,
         action: m.action ?? null,
-        action_status: m.action_status ?? null,
+        // A persisted 'running' state survived a refresh — the job is
+        // either still in flight (Reverb will land the terminal event) or
+        // already done (Reverb missed; refreshProjectPayload below will
+        // hydrate the scene's real state). Leave as 'applied' on rehydrate
+        // for now so the chat doesn't look stuck.
+        action_status: m.action_status === 'running' ? 'applied' : (m.action_status ?? null),
         action_credits: m.action_credits ?? null,
+        progress_text: null,
       }))
       await nextTick(); cruiseScrollChatToBottom()
     }
@@ -4376,6 +4480,10 @@ function subscribeProjectChannel() {
   projectChannelName = `project.${projectId.value}`;
 
   echo.private(projectChannelName).listen(".generation.progress", (payload) => {
+    // Drive the Cruise chat's running action card from the same event
+    // stream so the user sees "Generating image…" → "Image ready" inline.
+    try { cruiseHandleProgressEvent(payload); } catch (_) {}
+
     if (payload.stage === "tts" && ["completed", "failed"].includes(String(payload.status || ""))) {
       refreshProjectPayload().catch(() => {});
       return;
@@ -6948,8 +7056,12 @@ onBeforeUnmount(() => {
                       <div class="cruise-action-body">
                         <div v-for="(line, i) in m.action.diff_lines" :key="i">{{ line }}</div>
                       </div>
-                      <div v-if="m.action_status === 'applied'" class="cruise-action-status applied">
-                        ✓ Applied · spent {{ m.action_credits ?? m.action.estimated_cost }} cr
+                      <div v-if="m.action_status === 'running'" class="cruise-action-status running">
+                        <span class="cruise-action-spinner"></span>
+                        {{ m.progress_text || 'Working…' }}
+                      </div>
+                      <div v-else-if="m.action_status === 'applied'" class="cruise-action-status applied">
+                        ✓ {{ m.progress_text || 'Applied' }} · spent {{ m.action_credits ?? m.action.estimated_cost }} cr
                       </div>
                       <div v-else-if="m.action_status === 'failed'" class="cruise-action-status failed">
                         ✕ {{ m.action_error || 'Apply failed' }}
@@ -8082,9 +8194,12 @@ button {
 .cruise-action-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .cruise-action-btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; font-weight: 600; }
 .cruise-action-btn-ghost { color: var(--color-text-muted); }
-.cruise-action-status { padding: 8px 12px; border-top: 1px solid var(--color-border); font-size: 11.5px; font-weight: 600; }
+.cruise-action-status { padding: 8px 12px; border-top: 1px solid var(--color-border); font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .cruise-action-status.applied { color: #34d399; background: rgba(52,211,153,0.06); }
 .cruise-action-status.failed { color: #f87171; background: rgba(248,113,113,0.06); }
+.cruise-action-status.running { color: var(--color-accent, #ff6b35); background: rgba(255,107,53,0.06); }
+.cruise-action-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,107,53,0.25); border-top-color: var(--color-accent, #ff6b35); border-radius: 50%; animation: cruise-spinner-rot 0.8s linear infinite; flex-shrink: 0; }
+@keyframes cruise-spinner-rot { to { transform: rotate(360deg); } }
 .cruise-action-shortfall { font-size: 11.5px; color: var(--color-text-muted); margin-right: auto; padding: 6px 0; }
 
 /* Quick prompt chips — only shown when conversation is empty */

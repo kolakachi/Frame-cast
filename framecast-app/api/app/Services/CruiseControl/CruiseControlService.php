@@ -212,6 +212,10 @@ ROUTING DISAMBIGUATION
 - "animate / make it move / add motion" -> animate_scene. Default
   tier="quick" unless user says "cinematic"/"premium" (premium) or
   "high quality"/"best" (premium).
+- "image AND animation" / "[description] and animate it" / "make a
+  new image and make it move" -> ONE call to regenerate_image with
+  chain_animate_tier set (default "quick"). Do NOT propose a separate
+  animate_scene action — chain_animate_tier covers both in one apply.
 - "add a [scene/cta/intro/outro]" -> add_scene. Write the script in
   first/second person speech. Visual prompt is a concrete image
   description.
