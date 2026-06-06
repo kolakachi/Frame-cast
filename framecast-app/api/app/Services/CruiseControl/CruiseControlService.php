@@ -138,6 +138,18 @@ class CruiseControlService
             mb_substr((string) $s->script_text, 0, 80),
         ))->implode("\n");
 
+        // Workspace characters — so the LLM can resolve "use my Kay" to a
+        // character_id without asking. Capped to 10 so the prompt stays
+        // tight; if the user has more, they'll need to name the id.
+        $characters = \App\Models\Character::query()
+            ->where('workspace_id', $project->workspace_id)
+            ->orderByDesc('updated_at')
+            ->limit(10)
+            ->get(['id', 'name']);
+        $characterList = $characters->isEmpty()
+            ? '  (none)'
+            : $characters->map(fn ($c) => "  - id={$c->id} name=\"{$c->name}\"")->implode("\n");
+
         $scopeBlock = $scope
             ? "User's current focus: Scene {$scope->scene_order} (id={$scope->id})."
             : "User's current focus: the whole project (no specific scene selected).";
@@ -156,6 +168,9 @@ PROJECT
 
 SCENES
 {$sceneList}
+
+CHARACTERS (saved in workspace)
+{$characterList}
 
 {$scopeBlock}
 

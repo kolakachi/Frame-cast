@@ -76,6 +76,10 @@ function cruiseActionTitle(tool) {
     regenerate_image: 'Regenerate image',
     animate_scene: 'Animate scene',
     add_scene: 'Add a new scene',
+    find_stock_video: 'Find stock video',
+    find_stock_image: 'Find stock image',
+    pick_library_music: 'Pick library music',
+    set_audiogram_visual: 'Set audiogram',
   }[tool] ?? tool
 }
 

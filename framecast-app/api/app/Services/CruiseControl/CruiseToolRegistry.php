@@ -6,8 +6,12 @@ use App\Services\CruiseControl\Tools\AddSceneTool;
 use App\Services\CruiseControl\Tools\AnimateSceneTool;
 use App\Services\CruiseControl\Tools\ChangeMusicTool;
 use App\Services\CruiseControl\Tools\CruiseTool;
+use App\Services\CruiseControl\Tools\FindStockImageTool;
+use App\Services\CruiseControl\Tools\FindStockVideoTool;
+use App\Services\CruiseControl\Tools\PickLibraryMusicTool;
 use App\Services\CruiseControl\Tools\RegenerateImageTool;
 use App\Services\CruiseControl\Tools\RerecordVoiceTool;
+use App\Services\CruiseControl\Tools\SetAudiogramVisualTool;
 use App\Services\CruiseControl\Tools\SwapVisualFromLibraryTool;
 
 /**
@@ -22,15 +26,23 @@ use App\Services\CruiseControl\Tools\SwapVisualFromLibraryTool;
 class CruiseToolRegistry
 {
     // Ordered for the LLM's prompt — generation tools first, then mutations,
-    // then library swap at the end (it's the most-misrouted case; making it
-    // the LAST option nudges the LLM toward the right choice when the user
-    // is describing new content vs. naming an existing asset).
+    // then library / search tools at the end. The "describe new content vs
+    // name existing asset" routing is the LLM's most common confusion;
+    // putting the search/library tools last nudges it toward generation
+    // when the user is describing something new.
     private const TOOL_CLASSES = [
+        // Generation (creates new content)
         RegenerateImageTool::class,
-        RerecordVoiceTool::class,
-        ChangeMusicTool::class,
         AnimateSceneTool::class,
         AddSceneTool::class,
+        ChangeMusicTool::class,
+        // Property mutation
+        RerecordVoiceTool::class,
+        SetAudiogramVisualTool::class,
+        // Library / search (pick from existing)
+        FindStockVideoTool::class,
+        FindStockImageTool::class,
+        PickLibraryMusicTool::class,
         SwapVisualFromLibraryTool::class,
     ];
 

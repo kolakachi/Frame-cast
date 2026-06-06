@@ -3,6 +3,7 @@
 namespace App\Services\CruiseControl\Tools;
 
 use App\Jobs\GenerateAIImageJob;
+use App\Models\Character;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Models\Workspace;
@@ -46,6 +47,16 @@ class RegenerateImageTool implements CruiseTool
                 'required' => false,
                 'enum' => array_keys(ImageAdapterFactory::AVAILABLE),
             ],
+            'character_id' => [
+                'type' => 'integer',
+                'required' => false,
+                'description' => 'Saved character id to use as the reference face. If user says "use my [character name]" or "with my [character]", look up the character in context and pass the id.',
+            ],
+            'custom_style_descriptor' => [
+                'type' => 'string',
+                'required' => false,
+                'description' => 'Free-text style descriptor when no preset style fits. E.g. "baroque oil painting, Caravaggio lighting". When set, the tool routes to style=custom and uses this descriptor instead of a preset. Up to 500 chars.',
+            ],
         ];
     }
 
@@ -87,12 +98,31 @@ class RegenerateImageTool implements CruiseTool
             throw new RuntimeException('Scene needs a script or prompt before we can regenerate.');
         }
 
-        // Lock the scene + stamp a fresh generation token (same pattern the
-        // editor's regen button uses, see SceneController::generateImage).
+        // Resolve style. Custom descriptor wins — when set we route to
+        // style='custom' and stash the descriptor on the scene so the
+        // adapter picks it up.
+        $customDescriptor = trim((string) ($params['custom_style_descriptor'] ?? ''));
+        $style = $customDescriptor !== ''
+            ? 'custom'
+            : ($params['style'] ?? ($scene->visual_style ?? $project->ai_broll_style ?? 'photorealistic'));
+
+        // Resolve character reference — bind to scene + pass the reference
+        // through to the image job (it auto-routes to CharacterImageAdapter
+        // when a character with a referenceAsset is bound to the scene).
+        $characterId = $params['character_id'] ?? null;
+        if ($characterId) {
+            $character = Character::query()
+                ->whereKey($characterId)
+                ->where('workspace_id', $workspace->getKey())
+                ->first();
+            if (! $character) {
+                throw new RuntimeException('Character not found in your library.');
+            }
+        }
+
         $imageToken = (string) Str::uuid();
-        $style = $params['style'] ?? ($scene->visual_style ?? $project->ai_broll_style ?? 'photorealistic');
         $existing = $scene->image_generation_settings_json ?? [];
-        $scene->forceFill([
+        $sceneUpdate = [
             'visual_style' => $style,
             'image_generation_settings_json' => array_merge($existing, [
                 'in_progress'           => true,
@@ -101,7 +131,14 @@ class RegenerateImageTool implements CruiseTool
                 'generation_token'      => $imageToken,
                 'generation_started_at' => now()->toIso8601String(),
             ]),
-        ])->save();
+        ];
+        if ($customDescriptor !== '') {
+            $sceneUpdate['custom_visual_style'] = mb_substr($customDescriptor, 0, 500);
+        }
+        if ($characterId) {
+            $sceneUpdate['character_id'] = $characterId;
+        }
+        $scene->forceFill($sceneUpdate)->save();
 
         GenerateAIImageJob::dispatch(
             $scene->getKey(),
@@ -112,7 +149,8 @@ class RegenerateImageTool implements CruiseTool
             $imageToken,
             null, null, null,             // no chained animate
             $params['model_key'] ?? null,
-            [],                            // no reference asset overrides
+            [],                            // no reference asset overrides — character path
+                                            // auto-routes via scene.character_id
         );
 
         return [
