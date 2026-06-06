@@ -46,6 +46,8 @@ class Project extends Model
         'series_id',
         'series_episode_number',
         'series_episode_summary',
+        'share_token',
+        'is_shared',
     ];
 
     protected function casts(): array
@@ -65,6 +67,7 @@ class Project extends Model
             'series_episode_number' => 'integer',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'is_shared' => 'boolean',
         ];
     }
 

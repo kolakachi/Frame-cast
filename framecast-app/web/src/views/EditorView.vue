@@ -417,6 +417,42 @@ const AI_IMAGE_STYLES = [
   { key: "custom",       label: "Custom",         icon: "✦" },
 ];
 const exportPending = ref(false);
+
+// Public share state for the export header's "🔗 Share publicly" button.
+// project.is_shared + project.share_url come from the project serializer.
+// First click enables share + copies; subsequent clicks just re-copy.
+const shareTogglePending = ref(false);
+const shareCopiedToast = ref('');
+let shareCopiedTimer = null;
+async function toggleShareLink() {
+  if (!project.value?.id || shareTogglePending.value) return;
+  shareTogglePending.value = true;
+  try {
+    // Idempotent: if already shared, this is a no-op server-side and
+    // returns the existing share_url for us to copy.
+    const res = await api.post(`/projects/${project.value.id}/share`, { enabled: true });
+    const url = res.data?.data?.share_url;
+    if (url) {
+      // Mutate the local project state so the button label flips
+      // immediately, then copy.
+      project.value = { ...project.value, is_shared: true, share_token: res.data.data.share_token, share_url: url };
+      try {
+        await navigator.clipboard.writeText(url);
+        shareCopiedToast.value = 'Copied!';
+      } catch {
+        // Some browsers gate clipboard behind permissions; show URL inline
+        // so the user can copy manually.
+        shareCopiedToast.value = url;
+      }
+      if (shareCopiedTimer) window.clearTimeout(shareCopiedTimer);
+      shareCopiedTimer = window.setTimeout(() => { shareCopiedToast.value = ''; }, 3000);
+    }
+  } catch (e) {
+    pushToast({ id: `share-fail-${Date.now()}`, title: 'Could not generate share link', message: e?.response?.data?.error?.message ?? 'Try again in a moment.' });
+  } finally {
+    shareTogglePending.value = false;
+  }
+}
 const exportState = ref("idle");
 const timelineOpen = ref(false);
 watch(timelineOpen, (open) => {
@@ -4553,6 +4589,12 @@ onBeforeUnmount(() => {
                 <button class="export-pill-link export-pill-schedule" @click="scheduleModalOpen = true">📅 Schedule</button>
                 <span class="export-pill-sep">·</span>
                 <button class="export-pill-link" @click="approvalModalOpen = true">📝 Send for approval</button>
+                <span class="export-pill-sep">·</span>
+                <button class="export-pill-link" @click="toggleShareLink" :disabled="shareTogglePending" :title="project?.is_shared ? 'Public link is on — click again to copy' : 'Generate a public link anyone can watch'">
+                  {{ shareTogglePending ? '…' : (project?.is_shared ? '🔗 Copy share link' : '🔗 Share publicly') }}
+                </button>
+                <span v-if="shareCopiedToast" class="export-pill-sep">·</span>
+                <span v-if="shareCopiedToast" class="export-share-copied">{{ shareCopiedToast }}</span>
               </template>
             </div>
             <button :class="['btn btn-ghost btn-timeline-toggle', timelineOpen ? 'active' : '']" type="button" @click="timelineOpen = !timelineOpen">
@@ -6957,6 +6999,18 @@ button {
 
 .export-pill-link:hover {
   color: var(--accent);
+}
+.export-pill-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Copied-link feedback chip — small inline confirmation after Share. */
+.export-share-copied {
+  color: #34d399;
+  font-weight: 600;
+  font-size: 11px;
+  font-family: "Space Mono", monospace;
 }
 
 .export-pill-schedule {

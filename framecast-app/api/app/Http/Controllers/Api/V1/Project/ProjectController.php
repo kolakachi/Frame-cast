@@ -1609,6 +1609,11 @@ class ProjectController extends Controller
             'title' => $project->title,
             'script_text' => $project->script_text,
             'status' => $project->status,
+            'share_token' => $project->share_token,
+            'is_shared'   => (bool) $project->is_shared,
+            'share_url'   => $project->share_token
+                ? rtrim((string) config('app.frontend_url'), '/') . '/sample/' . $project->share_token
+                : null,
             'generation_status_json' => \App\Events\GenerationProgressed::getProgress($project->getKey()),
             'music_asset_id' => $project->music_asset_id,
             'music_settings_json' => $project->music_settings_json,

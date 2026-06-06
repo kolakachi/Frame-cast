@@ -23,6 +23,7 @@ import JobsView from '../views/JobsView.vue'
 import CalendarView from '../views/CalendarView.vue'
 import CharactersView from '../views/CharactersView.vue'
 import ApprovalReviewView from '../views/ApprovalReviewView.vue'
+import SampleView from '../views/SampleView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -34,6 +35,8 @@ const routes = [
   { path: '/auth/forgot', name: 'forgot-password', component: ForgotPasswordView, meta: { guestOnly: true } },
   { path: '/auth/reset', name: 'reset-password', component: ResetPasswordView, meta: { guestOnly: true } },
   { path: '/approve/:token', name: 'approval-review', component: ApprovalReviewView, meta: { public: true } },
+  // Public share page for cold-DM motion — no auth needed
+  { path: '/sample/:token', name: 'sample', component: SampleView, meta: { public: true } },
   { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/assets', name: 'asset-library', component: AssetLibraryView, meta: { requiresAuth: true } },
   { path: '/workspace', name: 'workspace', component: WorkspaceView, meta: { requiresAuth: true } },
@@ -73,12 +76,15 @@ router.beforeEach(function (to) {
     return { name: 'dashboard' }
   }
 
-  // Redirect unonboarded users to the wizard (except the wizard itself and auth routes)
+  // Redirect unonboarded users to the wizard (except the wizard itself,
+  // auth routes, and public-share/approval pages that anyone — incl.
+  // unonboarded users hitting a share link — should see).
   if (
     authStore.isAuthenticated &&
     !authStore.isOnboarded &&
     !to.meta.skipOnboardingGuard &&
-    !to.meta.guestOnly
+    !to.meta.guestOnly &&
+    !to.meta.public
   ) {
     return { name: 'onboarding' }
   }

@@ -73,6 +73,9 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/approve/{token}', [ApprovalController::class, 'publicShow']);
     Route::post('/approve/{token}/decide', [ApprovalController::class, 'publicDecide']);
 
+    // Public share page for the /sample/<token> cold-DM motion.
+    Route::get('/public/projects/{token}', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'show']);
+
     Route::middleware('auth.jwt')->group(function (): void {
         Route::get('/billing/status', [BillingController::class, 'status']);
         Route::post('/billing/portal', [BillingController::class, 'portal']);
@@ -201,6 +204,8 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{projectId}/localizations', [LocalizationController::class, 'index'])->whereNumber('projectId');
             Route::post('/{projectId}/localizations', [LocalizationController::class, 'store'])->whereNumber('projectId');
             Route::post('/{projectId}/export', [ProjectController::class, 'export'])->whereNumber('projectId');
+            // Toggle public share link for the /sample/<token> page
+            Route::post('/{projectId}/share', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'toggle'])->whereNumber('projectId');
             Route::post('/{projectId}/retry-generation', [ProjectController::class, 'retryGeneration'])->whereNumber('projectId');
             Route::delete('/{projectId}', [ProjectController::class, 'destroy'])->whereNumber('projectId');
         });
