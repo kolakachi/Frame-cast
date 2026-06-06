@@ -512,7 +512,9 @@ async function onOneShotPhotoChange(event) {
   oneShotUploadError.value = ''
   try {
     const fd = new FormData()
-    fd.append('file', file)
+    // Backend field is asset_file (AssetController::store) — was 'file' which
+    // tripped the validator with "asset_file field is required".
+    fd.append('asset_file', file)
     fd.append('asset_type', 'image')
     fd.append('title', file.name.replace(/\.[^.]+$/, ''))
     const res = await api.post('/assets', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
