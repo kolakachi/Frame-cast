@@ -463,7 +463,15 @@ function cruiseExpectedStages(tool, params) {
     case 'animate_scene':    return ['animation']
     case 'rerecord_voice':   return ['tts']
     case 'change_music':     return ['ai_music']
-    case 'add_scene':        return ['ai_image', 'tts']
+    case 'add_scene': {
+      // animate_tier is the add_scene-specific param name (different from
+      // regenerate_image's chain_animate_tier). When set, the image job
+      // dispatches an animation job after the image lands — we need to
+      // wait on both stages before stamping the card applied.
+      const stages = ['ai_image', 'tts']
+      if (params?.animate_tier) stages.push('animation')
+      return stages
+    }
     default:                 return []
   }
 }
@@ -515,7 +523,9 @@ function cruiseFindCardForProgress(payload) {
   const sceneId = payload.scene_id ? Number(payload.scene_id) : null
   const stageTools = {
     ai_image:  ['regenerate_image', 'add_scene'],
-    animation: ['animate_scene', 'regenerate_image'], // chained tier
+    // add_scene with animate_tier chains into AnimateSceneJob too, so an
+    // 'animation' event can legitimately belong to an add_scene card.
+    animation: ['animate_scene', 'regenerate_image', 'add_scene'],
     tts:       ['rerecord_voice', 'add_scene'],
     ai_music:  ['change_music'],
   }[stage] || []
