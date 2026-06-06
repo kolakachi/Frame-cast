@@ -819,9 +819,6 @@ defineExpose({ open })
 
             <div class="composer-tools-right">
               <span class="composer-count">{{ oneShotPrompt.length }}/1000</span>
-              <button class="composer-submit" type="button" :disabled="!canSubmitOneShot || wizardCreateState === 'loading'" @click="submitOneShot" :title="canSubmitOneShot ? 'Generate (Cmd+Enter)' : 'Type a prompt to enable'">
-                {{ wizardCreateState === 'loading' ? '…' : '↑' }}
-              </button>
             </div>
           </div>
         </div>
@@ -855,6 +852,9 @@ defineExpose({ open })
 
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" @click="wizardStep = 0">← Back</button>
+          <button class="btn btn-primary" type="button" :disabled="!canSubmitOneShot || wizardCreateState === 'loading'" @click="submitOneShot">
+            {{ wizardCreateState === 'loading' ? 'Generating…' : '⚡ Generate one-shot' }}
+          </button>
         </div>
       </div>
 
