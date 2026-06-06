@@ -3,7 +3,9 @@
 namespace App\Services\CruiseControl;
 
 use App\Services\CruiseControl\Tools\AddSceneTool;
+use App\Services\CruiseControl\Tools\AddSoundEffectTool;
 use App\Services\CruiseControl\Tools\AnimateSceneTool;
+use App\Services\CruiseControl\Tools\ApplyBrandKitTool;
 use App\Services\CruiseControl\Tools\ChangeMusicTool;
 use App\Services\CruiseControl\Tools\CruiseTool;
 use App\Services\CruiseControl\Tools\FindStockImageTool;
@@ -13,6 +15,8 @@ use App\Services\CruiseControl\Tools\RegenerateImageTool;
 use App\Services\CruiseControl\Tools\RerecordVoiceTool;
 use App\Services\CruiseControl\Tools\SetAudiogramVisualTool;
 use App\Services\CruiseControl\Tools\SwapVisualFromLibraryTool;
+use App\Services\CruiseControl\Tools\UpdateCaptionsTool;
+use App\Services\CruiseControl\Tools\UpdateSceneScriptTool;
 
 /**
  * Canonical list of Cruise Control tools. Whitelist — anything not in here
@@ -37,13 +41,17 @@ class CruiseToolRegistry
         AddSceneTool::class,
         ChangeMusicTool::class,
         // Property mutation
+        UpdateSceneScriptTool::class,
         RerecordVoiceTool::class,
         SetAudiogramVisualTool::class,
+        UpdateCaptionsTool::class,
+        ApplyBrandKitTool::class,
         // Library / search (pick from existing)
         FindStockVideoTool::class,
         FindStockImageTool::class,
         PickLibraryMusicTool::class,
         SwapVisualFromLibraryTool::class,
+        AddSoundEffectTool::class,
     ];
 
     /** @var array<string, CruiseTool> */

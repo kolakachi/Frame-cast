@@ -150,6 +150,17 @@ class CruiseControlService
             ? '  (none)'
             : $characters->map(fn ($c) => "  - id={$c->id} name=\"{$c->name}\"")->implode("\n");
 
+        // Brand kits — same idea. Lets the LLM resolve "use my Acme kit" to
+        // a brand_kit_id for apply_brand_kit.
+        $brandKits = \App\Models\BrandKit::query()
+            ->where('workspace_id', $project->workspace_id)
+            ->orderBy('name')
+            ->limit(10)
+            ->get(['id', 'name']);
+        $kitList = $brandKits->isEmpty()
+            ? '  (none)'
+            : $brandKits->map(fn ($k) => "  - id={$k->id} name=\"{$k->name}\"")->implode("\n");
+
         $scopeBlock = $scope
             ? "User's current focus: Scene {$scope->scene_order} (id={$scope->id})."
             : "User's current focus: the whole project (no specific scene selected).";
@@ -171,6 +182,9 @@ SCENES
 
 CHARACTERS (saved in workspace)
 {$characterList}
+
+BRAND KITS (saved in workspace)
+{$kitList}
 
 {$scopeBlock}
 

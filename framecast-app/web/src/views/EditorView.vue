@@ -66,7 +66,10 @@ function cruiseEffectiveSceneId() {
 }
 
 function cruiseActionIcon(section) {
-  return { voice: '🎤', visual: '🎨', music: '🎵', motion: '🎬', scene: '＋' }[section] ?? '✦'
+  return {
+    voice: '🎤', visual: '🎨', music: '🎵', motion: '🎬',
+    scene: '＋', script: '📝', captions: '💬', sounds: '🔊', brand: '🎨',
+  }[section] ?? '✦'
 }
 function cruiseActionTitle(tool) {
   return {
@@ -80,6 +83,10 @@ function cruiseActionTitle(tool) {
     find_stock_image: 'Find stock image',
     pick_library_music: 'Pick library music',
     set_audiogram_visual: 'Set audiogram',
+    update_scene_script: 'Edit script',
+    update_captions: 'Update captions',
+    apply_brand_kit: 'Apply brand kit',
+    add_sound_effect: 'Add sound effect',
   }[tool] ?? tool
 }
 
