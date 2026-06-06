@@ -299,7 +299,9 @@ class CruiseControlController extends Controller
     }
 
     /**
-     * Update workspace-level Cruise prefs (auto-apply for now).
+     * Update workspace-level Cruise prefs. Each field is independently
+     * optional — frontend PATCHes only what changed (no merge bugs from
+     * stale values clobbering current ones).
      */
     public function updateSettings(Request $request): JsonResponse
     {
@@ -310,12 +312,29 @@ class CruiseControlController extends Controller
             return $this->error('no_workspace', 'No workspace.', 422);
         }
         $validated = $request->validate([
-            'auto_apply' => ['required', 'boolean'],
+            'auto_apply'      => ['nullable', 'boolean'],
+            'image_model'     => ['nullable', 'string', 'in:gpt-image-1,gpt-image-2,nano-banana,flux-schnell,sdxl-lightning'],
+            'animation_tier'  => ['nullable', 'string', 'in:quick,seedance_lite,balanced,seedance_pro,premium'],
+            // 'auto' explicitly clears the bias; a value locks the default.
+            'visual_source'   => ['nullable', 'string', 'in:auto,ai_image,stock_video,stock_image,audiogram'],
         ]);
-        $workspace->forceFill(['cruise_auto_apply' => $validated['auto_apply']])->save();
+
+        $updates = [];
+        if (array_key_exists('auto_apply', $validated))     $updates['cruise_auto_apply']     = (bool) $validated['auto_apply'];
+        if (array_key_exists('image_model', $validated))    $updates['cruise_image_model']    = $validated['image_model'];
+        if (array_key_exists('animation_tier', $validated)) $updates['cruise_animation_tier'] = $validated['animation_tier'];
+        if (array_key_exists('visual_source', $validated)) {
+            $updates['cruise_visual_source'] = $validated['visual_source'] === 'auto' ? null : $validated['visual_source'];
+        }
+        if (! empty($updates)) $workspace->forceFill($updates)->save();
 
         return response()->json([
-            'data' => ['auto_apply' => (bool) $workspace->cruise_auto_apply],
+            'data' => [
+                'auto_apply'     => (bool) $workspace->cruise_auto_apply,
+                'image_model'    => $workspace->cruise_image_model,
+                'animation_tier' => $workspace->cruise_animation_tier,
+                'visual_source'  => $workspace->cruise_visual_source ?? 'auto',
+            ],
             'meta' => [],
         ]);
     }

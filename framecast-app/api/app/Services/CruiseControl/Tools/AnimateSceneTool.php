@@ -80,7 +80,7 @@ class AnimateSceneTool implements CruiseTool
 
     public function estimateCost(Project $project, array $params): int
     {
-        $tier = $params['tier'] ?? 'quick';
+        $tier = $params['tier'] ?? $project->workspace?->cruise_animation_tier ?? 'quick';
         $base = self::TIERS[$tier]['cost_const'] ?? CreditService::VIDEO_QUICK;
         $duration = (int) ($params['duration_seconds'] ?? self::TIERS[$tier]['duration_5'] ?? 5);
         // 10s clips cost 2× (matches AnimateSceneJob's pricing — see line 58).
@@ -99,7 +99,7 @@ class AnimateSceneTool implements CruiseTool
         if (! $scene->visual_asset_id) {
             throw new RuntimeException('Scene needs a still image before we can animate it.');
         }
-        $tier = $params['tier'] ?? 'quick';
+        $tier = $params['tier'] ?? $workspace->cruise_animation_tier ?? 'quick';
         if (! isset(self::TIERS[$tier])) {
             throw new RuntimeException('Unknown animation tier.');
         }

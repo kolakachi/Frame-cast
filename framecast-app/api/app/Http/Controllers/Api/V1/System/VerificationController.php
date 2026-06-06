@@ -39,7 +39,10 @@ class VerificationController extends Controller
                     'plan_monthly_allocation' => CreditService::PLAN_CREDITS[$workspace?->plan_tier ?? 'free'] ?? 0,
                 ],
                 'cruise' => [
-                    'auto_apply' => (bool) ($workspace?->cruise_auto_apply ?? true),
+                    'auto_apply'     => (bool) ($workspace?->cruise_auto_apply ?? true),
+                    'image_model'    => $workspace?->cruise_image_model,     // null = adapter default
+                    'animation_tier' => $workspace?->cruise_animation_tier,  // null = LLM picks
+                    'visual_source'  => $workspace?->cruise_visual_source ?? 'auto',
                 ],
             ],
             'meta' => [],

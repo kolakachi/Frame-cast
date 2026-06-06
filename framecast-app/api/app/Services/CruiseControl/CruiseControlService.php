@@ -22,6 +22,33 @@ class CruiseControlService
     }
 
     /**
+     * USER PREFERENCES block. Empty (just a blank line) when no prefs
+     * are set — keeps the prompt tight for users who haven't touched
+     * the Assistant settings.
+     */
+    private function buildPrefsBlock(?\App\Models\Workspace $workspace): string
+    {
+        if (! $workspace) return '';
+        $lines = [];
+        if ($workspace->cruise_image_model) {
+            $lines[] = "- Default image model: {$workspace->cruise_image_model}. Pass model_key on regenerate_image unless the user explicitly names a different model.";
+        }
+        if ($workspace->cruise_animation_tier) {
+            $lines[] = "- Default animation tier: {$workspace->cruise_animation_tier}. Use this for animate_scene and chain_animate_tier unless the user says \"cinematic\"/\"premium\"/\"high quality\" (then upgrade).";
+        }
+        if ($workspace->cruise_visual_source) {
+            $lines[] = match ($workspace->cruise_visual_source) {
+                'stock_video' => '- Visual source bias: STOCK VIDEO. For vague "add a visual" / "swap the visual" intents, route to find_stock_video. For specific creative descriptions, regenerate_image still wins.',
+                'stock_image' => '- Visual source bias: STOCK IMAGE. Same rule with find_stock_image.',
+                'audiogram'   => '- Visual source bias: AUDIOGRAM. Same rule with set_audiogram_visual.',
+                default       => '',
+            };
+        }
+        if (empty($lines)) return '';
+        return "USER PREFERENCES (hints — explicit user wording always wins)\n" . implode("\n", $lines) . "\n";
+    }
+
+    /**
      * @param string $intent          user's free-text prompt
      * @param Project $project        the project being edited
      * @param ?Scene $scope           the scene the user is focused on (null = whole project)
@@ -186,6 +213,12 @@ class CruiseControlService
             ? "User's current focus: Scene {$scope->scene_order} (id={$scope->id})."
             : "User's current focus: the whole project (no specific scene selected).";
 
+        // Workspace defaults — bias the LLM towards the user's saved prefs
+        // when they didn't explicitly name a model/tier/source. Hints only;
+        // explicit user wording still wins.
+        $workspace = \App\Models\Workspace::query()->whereKey($project->workspace_id)->first();
+        $prefsBlock = $this->buildPrefsBlock($workspace);
+
         $tools = $this->registry->promptCatalog();
 
         return <<<SYS
@@ -209,6 +242,7 @@ BRAND KITS (saved in workspace)
 
 {$scopeBlock}
 
+{$prefsBlock}
 AVAILABLE TOOLS
 {$tools}
 

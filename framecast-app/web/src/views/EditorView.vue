@@ -52,6 +52,11 @@ let cruiseToastTimer = null
 // Workspace-level pref — when true, confirmation_class='auto' tools
 // apply immediately on resolve without showing the Apply button.
 const cruiseAutoApply = ref(true)
+// Workspace-level Cruise prefs. Hydrated from /me. null = no bias
+// (LLM picks per turn). visual_source is special: 'auto' renders as
+// "no bias" but is the explicit on-the-wire sentinel.
+const cruisePrefs = ref({ image_model: null, animation_tier: null, visual_source: 'auto' })
+const cruisePrefsOpen = ref(false)
 // Frequently-used prompts shown above the input.
 const CRUISE_QUICK_PROMPTS = [
   'change voice on this scene',
@@ -2862,6 +2867,11 @@ async function loadMe() {
     cruiseCreditsPayload.value = response.data?.data?.credits ?? null;
     // Hydrate workspace-level Cruise prefs so the toggle reflects truth.
     cruiseAutoApply.value = response.data?.data?.cruise?.auto_apply ?? true;
+    cruisePrefs.value = {
+      image_model:    response.data?.data?.cruise?.image_model    ?? null,
+      animation_tier: response.data?.data?.cruise?.animation_tier ?? null,
+      visual_source:  response.data?.data?.cruise?.visual_source  ?? 'auto',
+    };
     await Promise.all([loadVoiceProfiles(), loadCaptionPresets(), loadChannels(), loadBrandKits(), loadMusicTracks()]);
     await loadNotifications();
     subscribeWorkspaceNotifications();
@@ -2883,6 +2893,19 @@ async function setCruiseAutoApply(next) {
     await api.patch('/cruise/settings', { auto_apply: next })
   } catch {
     cruiseAutoApply.value = previous
+  }
+}
+
+// Patch a single pref. Optimistic — flip locally, revert on network
+// failure. Keys map 1:1 to backend (image_model, animation_tier,
+// visual_source). Passing null clears the bias.
+async function setCruisePref(key, value) {
+  const previous = cruisePrefs.value[key]
+  cruisePrefs.value = { ...cruisePrefs.value, [key]: value }
+  try {
+    await api.patch('/cruise/settings', { [key]: value })
+  } catch {
+    cruisePrefs.value = { ...cruisePrefs.value, [key]: previous }
   }
 }
 
@@ -7511,13 +7534,61 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <!-- Footer: auto-apply pref + running session spend hint -->
+              <!-- Footer: auto-apply pref + gear + balance hint -->
               <div class="cruise-assistant-foot">
                 <label class="cruise-auto-toggle" :title="cruiseAutoApply ? 'Cheap, reversible edits apply immediately. Paid/structural changes still prompt.' : 'Every action shows an Apply button before running.'">
                   <input type="checkbox" :checked="cruiseAutoApply" @change="setCruiseAutoApply($event.target.checked)" />
                   <span>Auto-apply low-risk</span>
                 </label>
+                <button class="cruise-prefs-trigger" type="button" :title="cruisePrefsOpen ? 'Hide assistant preferences' : 'Assistant preferences'" @click="cruisePrefsOpen = !cruisePrefsOpen">
+                  ⚙
+                </button>
                 <span class="cruise-balance-hint">Balance: {{ cruiseUserBalance }} cr</span>
+              </div>
+
+              <!-- Preferences popover — defaults the LLM biases towards
+                   when the user doesn't name a model/tier/source.
+                   "Hint" semantics: explicit user words still win. -->
+              <div v-if="cruisePrefsOpen" class="cruise-prefs-panel">
+                <div class="cruise-prefs-head">
+                  <span>Assistant defaults</span>
+                  <button class="cruise-prefs-close" type="button" @click="cruisePrefsOpen = false">✕</button>
+                </div>
+                <div class="cruise-prefs-row">
+                  <label>Image model</label>
+                  <select :value="cruisePrefs.image_model || ''" @change="setCruisePref('image_model', $event.target.value || null)">
+                    <option value="">Let me pick per turn</option>
+                    <option value="gpt-image-1">gpt-image-1 · 15 cr · photoreal</option>
+                    <option value="gpt-image-2">gpt-image-2 · 35 cr · newer OpenAI</option>
+                    <option value="nano-banana">nano-banana · 15 cr · Google fast</option>
+                    <option value="flux-schnell">flux-schnell · 3 cr · fastest</option>
+                    <option value="sdxl-lightning">sdxl-lightning · 3 cr · stylish</option>
+                  </select>
+                </div>
+                <div class="cruise-prefs-row">
+                  <label>Animation tier</label>
+                  <select :value="cruisePrefs.animation_tier || ''" @change="setCruisePref('animation_tier', $event.target.value || null)">
+                    <option value="">Let me pick per turn</option>
+                    <option value="quick">quick · Wan 2.5 · 60 cr</option>
+                    <option value="seedance_lite">seedance lite · 100 cr</option>
+                    <option value="balanced">balanced · Hailuo · 120 cr</option>
+                    <option value="seedance_pro">seedance pro · 200 cr</option>
+                    <option value="premium">premium · Kling · 240 cr</option>
+                  </select>
+                </div>
+                <div class="cruise-prefs-row">
+                  <label>Visual source</label>
+                  <select :value="cruisePrefs.visual_source || 'auto'" @change="setCruisePref('visual_source', $event.target.value)">
+                    <option value="auto">Auto — assistant decides</option>
+                    <option value="ai_image">AI image</option>
+                    <option value="stock_video">Stock video</option>
+                    <option value="stock_image">Stock image</option>
+                    <option value="audiogram">Audiogram</option>
+                  </select>
+                </div>
+                <div class="cruise-prefs-hint">
+                  These are hints — if you say "use Kling for this one" the assistant still does.
+                </div>
               </div>
             </div>
 
@@ -8493,7 +8564,8 @@ button {
 .cruise-assistant-view > .cruise-scope-bar,
 .cruise-assistant-view > .cruise-quick-row,
 .cruise-assistant-view > .cruise-input-wrap,
-.cruise-assistant-view > .cruise-assistant-foot { flex: 0 0 auto; }
+.cruise-assistant-view > .cruise-assistant-foot,
+.cruise-assistant-view > .cruise-prefs-panel { flex: 0 0 auto; }
 .cruise-scope-bar {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 14px;
@@ -8644,6 +8716,37 @@ button {
   transition: 0.15s;
 }
 .cruise-quick-chip:hover { border-color: rgba(255,107,53,0.4); color: var(--color-text-primary); }
+
+.cruise-prefs-trigger {
+  background: transparent; border: 1px solid var(--color-border);
+  color: var(--color-text-muted); cursor: pointer; padding: 2px 7px;
+  border-radius: 6px; font-size: 13px; font-family: inherit;
+}
+.cruise-prefs-trigger:hover { color: var(--color-accent); border-color: var(--color-accent); }
+.cruise-prefs-panel {
+  border-top: 1px solid var(--color-border);
+  padding: 12px 14px; background: var(--color-bg-card);
+  display: flex; flex-direction: column; gap: 10px;
+  flex: 0 0 auto;
+}
+.cruise-prefs-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11.5px; font-weight: 600; color: var(--color-text-primary);
+}
+.cruise-prefs-close {
+  background: transparent; border: 0; color: var(--color-text-muted);
+  cursor: pointer; font-size: 12px; padding: 2px 4px;
+}
+.cruise-prefs-close:hover { color: var(--color-text-primary); }
+.cruise-prefs-row { display: flex; flex-direction: column; gap: 4px; }
+.cruise-prefs-row label { font-size: 10.5px; color: var(--color-text-muted); letter-spacing: 0.02em; }
+.cruise-prefs-row select {
+  background: var(--color-bg-card); border: 1px solid var(--color-border);
+  border-radius: 6px; padding: 6px 8px; font-size: 11.5px;
+  color: var(--color-text-primary); font-family: inherit;
+}
+.cruise-prefs-row select:focus { outline: none; border-color: var(--color-accent); }
+.cruise-prefs-hint { font-size: 10.5px; color: var(--color-text-muted); line-height: 1.5; }
 
 /* Assistant footer — auto-apply pref + balance */
 .cruise-assistant-foot {

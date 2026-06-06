@@ -35,6 +35,9 @@ class Workspace extends Model
         'daily_streak_count',
         'daily_streak_last_claim_at',
         'cruise_auto_apply',
+        'cruise_image_model',
+        'cruise_animation_tier',
+        'cruise_visual_source',
     ];
 
     protected $casts = [

@@ -112,8 +112,9 @@ class RegenerateImageTool implements CruiseTool
 
     public function estimateCost(Project $project, array $params): int
     {
-        $imageCost = app(ImageAdapterFactory::class)->costFor($params['model_key'] ?? null);
-        $tier = $params['chain_animate_tier'] ?? null;
+        $modelKey = $params['model_key'] ?? $project->workspace?->cruise_image_model ?? null;
+        $imageCost = app(ImageAdapterFactory::class)->costFor($modelKey);
+        $tier = $params['chain_animate_tier'] ?? $project->workspace?->cruise_animation_tier ?? null;
         if ($tier && isset(self::CHAIN_TIERS[$tier])) {
             $base = self::CHAIN_TIERS[$tier]['cost_const'];
             $dur  = (int) ($params['chain_animate_duration'] ?? 5);
@@ -193,6 +194,12 @@ class RegenerateImageTool implements CruiseTool
             $chainMotion   = $params['chain_animate_motion_prompt'] ?? null;
         }
 
+        // Apply workspace defaults as fallbacks when the LLM omitted the
+        // explicit param. Workspace.cruise_image_model / animation_tier
+        // are hints — the LLM's value (from the user's wording) always
+        // wins because it's checked first via the ?? chain.
+        $modelKey = $params['model_key'] ?? $workspace->cruise_image_model ?? null;
+
         GenerateAIImageJob::dispatch(
             $scene->getKey(),
             $project->getKey(),
@@ -203,7 +210,7 @@ class RegenerateImageTool implements CruiseTool
             $chainDuration,
             $chainMotion,
             $chainTier,
-            $params['model_key'] ?? null,
+            $modelKey,
             [],                            // no reference asset overrides — character path
                                             // auto-routes via scene.character_id
         );
