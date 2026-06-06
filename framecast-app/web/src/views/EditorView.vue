@@ -134,16 +134,22 @@ async function cruiseSubmitIntent() {
     if (tempIdx >= 0 && data.user_message_id) {
       cruiseMessages.value[tempIdx] = { ...cruiseMessages.value[tempIdx], id: data.user_message_id }
     }
+    // Normalise to actions[] regardless of the backend response shape.
+    // New backend always returns actions[]; older clients may still see
+    // the singular 'action' on the persisted side.
+    const rawActions = Array.isArray(data.actions)
+      ? data.actions
+      : (data.action ? [data.action] : [])
     const assistantMsg = {
       id: data.assistant_message_id ?? `a-${Date.now()}`,
       role: 'assistant',
       text: data.reply_to_user ?? 'Okay.',
-      action: data.action ?? null,
-      action_status: 'proposed',
+      actions: rawActions.map((a) => cruiseInitActionState(a, 'proposed')),
+      action_status: rawActions.length ? 'proposed' : null,
     }
     cruiseMessages.value.push(assistantMsg)
     if (cruiseTab.value !== 'assistant') cruiseAssistantPending.value = true
-    // Fire-and-forget the auto-apply path.
+    // Fire-and-forget the auto-apply path for any low-risk actions.
     maybeAutoApply(assistantMsg)
   } catch (e) {
     const msg = e?.response?.data?.error?.message ?? 'Assistant is unavailable. Try again.'
@@ -154,75 +160,123 @@ async function cruiseSubmitIntent() {
   }
 }
 
-async function cruiseSkipAction(msg) {
-  if (!msg.action || msg.action_status === 'skipped') return
-  msg.action_status = 'skipped'
-  // Best-effort persist — UI already updated optimistically. If the
-  // network call fails we silently revert; refresh will reconcile from
-  // the server's truth.
+async function cruiseSkipAction(msg, actionIndex = 0) {
+  const card = cruiseGetCard(msg, actionIndex)
+  if (!card || card.status === 'skipped') return
+  card.status = 'skipped'
+  cruiseRecomputeMessageStatus(msg)
   try {
     await api.post('/cruise/skip', {
       project_id: projectId.value,
       message_id: msg.id,
+      action_index: actionIndex,
     })
-  } catch (_) {
-    // leave the optimistic state — user can re-Apply on refresh
+  } catch (_) { /* optimistic — refresh will reconcile */ }
+}
+
+// Skip every still-proposed card in this message in one click.
+async function cruiseSkipAll(msg) {
+  const cards = msg.actions || []
+  for (let i = 0; i < cards.length; i++) {
+    if (cards[i].status === 'proposed') await cruiseSkipAction(msg, i)
   }
 }
 
-async function cruiseApplyAction(msg) {
-  if (!msg.action || cruiseApplying.value) return
-  cruiseApplying.value = msg.id
+// Apply ONE card by index. Same flow as before but writes onto the
+// indexed card, not the message.
+async function cruiseApplyAction(msg, actionIndex = 0) {
+  const card = cruiseGetCard(msg, actionIndex)
+  if (!card || cruiseApplying.value) return
+  cruiseApplying.value = `${msg.id}:${actionIndex}`
   try {
     const res = await api.post('/cruise/apply', {
       project_id: projectId.value,
-      tool: msg.action.tool,
-      params: msg.action.params,
-      message_id: msg.id,    // so backend can stamp action_status='applied' on the persisted msg
+      tool: card.tool,
+      params: card.params,
+      message_id: msg.id,
+      action_index: actionIndex,
     })
     const out = res?.data?.data
-    // Flip to 'running' (not 'applied') so the action card shows progress
-    // text driven by the Reverb listener. Terminal status comes from
-    // generation.progress 'completed'/'failed'. If the tool is one whose
-    // work is fully synchronous (no job dispatched), mark applied now.
-    msg.action_credits = out?.credits_spent ?? 0
-    msg.progress_text = cruiseInitialProgressText(msg.action.tool)
-    msg.expected_stages = cruiseExpectedStages(msg.action.tool, msg.action.params)
-    msg.completed_stages = []
-    msg.affected_scene_id = out?.affected_scene_id ?? msg.action.params?.scene_id ?? null
-    msg.action_status = cruiseToolHasAsyncWork(msg.action.tool) ? 'running' : 'applied'
-    // Stay on the Assistant tab so the user can watch progress in chat.
-    // Pulse the affected section in case they switch to Config.
+    card.credits = out?.credits_spent ?? 0
+    card.progress_text = cruiseInitialProgressText(card.tool)
+    card.expected_stages = cruiseExpectedStages(card.tool, card.params)
+    card.completed_stages = []
+    card.affected_scene_id = out?.affected_scene_id ?? card.params?.scene_id ?? null
+    card.status = cruiseToolHasAsyncWork(card.tool) ? 'running' : 'applied'
+    cruiseRecomputeMessageStatus(msg)
     cruisePulseSection.value = out?.affected_section ?? null
     window.setTimeout(() => { cruisePulseSection.value = null }, 1800)
     cruiseShowToast(`${out?.summary} · spent ${out?.credits_spent ?? 0} cr`)
-    // Don't re-fetch the whole project — the Reverb subscription updates
-    // the affected scene in place when the job completes. Just refresh the
-    // balance so the footer hint reflects the spend.
     loadMe?.()
-    // One-shot scene fetch on apply so the editor picks up the new scene
-    // (add_scene) and / or the in_progress flags (regenerate_image,
-    // animate_scene) — keeps Config and Assistant tabs consistent.
-    if (msg.affected_scene_id) {
+    // One-shot scene fetch so the editor picks up the new scene
+    // (add_scene) or the in_progress flag (regenerate_image / animate).
+    if (card.affected_scene_id) {
       try {
-        const r = await api.get(`/scenes/${msg.affected_scene_id}/preview`)
+        const r = await api.get(`/scenes/${card.affected_scene_id}/preview`)
         const fresh = r?.data?.data?.scene
         if (fresh) replaceSceneInCollection(normalizeScenePayload(fresh))
       } catch (_) {}
     }
-    // Kick off the rotating-text loop so the chat never looks frozen,
-    // even if Reverb misses an event. Also start a polling fallback that
-    // detects completion by checking the scene state.
-    if (msg.action_status === 'running') {
-      cruiseStartProgressLoop(msg)
-      cruiseStartPollingFallback(msg)
+    if (card.status === 'running') {
+      cruiseStartProgressLoop(card)
+      cruiseStartPollingFallback(card)
     }
   } catch (e) {
-    msg.action_status = 'failed'
-    msg.action_error = e?.response?.data?.error?.message ?? 'Apply failed.'
+    card.status = 'failed'
+    card.error = e?.response?.data?.error?.message ?? 'Apply failed.'
+    cruiseRecomputeMessageStatus(msg)
   } finally {
     cruiseApplying.value = null
   }
+}
+
+// Run every proposed card in this message back-to-back. Stops on the
+// first failure so the user can decide whether to retry / skip the rest.
+async function cruiseApplyAll(msg) {
+  const cards = msg.actions || []
+  for (let i = 0; i < cards.length; i++) {
+    if (cards[i].status !== 'proposed') continue
+    await cruiseApplyAction(msg, i)
+    // Wait for the action to terminate (applied / failed / skipped).
+    // Running actions complete async via Reverb / polling — we don't
+    // block the queue waiting for the generation to finish, but we DO
+    // wait for the apply call itself before firing the next one.
+    if (cards[i].status === 'failed') break
+  }
+}
+
+function cruiseGetCard(msg, idx) {
+  return (msg.actions && msg.actions[idx]) || null
+}
+
+function cruiseProposedCount(msg) {
+  return (msg.actions || []).filter((c) => c.status === 'proposed').length
+}
+
+function cruiseTotalCost(msg) {
+  return (msg.actions || []).reduce((sum, c) => sum + (c.estimated_cost ?? 0), 0)
+}
+
+// Disable "Apply all" when the user can't cover the combined cost.
+function cruiseCanApplyAll(msg) {
+  const need = (msg.actions || [])
+    .filter((c) => c.status === 'proposed')
+    .reduce((sum, c) => sum + (c.estimated_cost ?? 0), 0)
+  return cruiseUserBalance.value >= need
+}
+
+// Aggregate per-card statuses into the legacy message-level
+// action_status so older code paths (the Apply-tab pending dot,
+// rehydrate, etc.) keep working.
+function cruiseRecomputeMessageStatus(msg) {
+  const statuses = (msg.actions || []).map((a) => a.status)
+  if (statuses.includes('running')) { msg.action_status = 'running'; return }
+  if (statuses.length && statuses.every((s) => s === 'applied' || s === 'skipped')) {
+    msg.action_status = statuses.includes('failed') ? 'failed' : 'applied'
+    return
+  }
+  if (statuses.includes('failed')) { msg.action_status = 'failed'; return }
+  msg.action_status = statuses.includes('proposed') ? 'proposed' : null
 }
 
 // Rotating "Claude Code-style" progress text. Cycles every 2.5s while
@@ -261,27 +315,27 @@ const CRUISE_PROGRESS_PHRASES = {
   ],
 }
 
-function cruiseStartProgressLoop(msg) {
-  if (msg._progressTimer) return
-  const phrases = CRUISE_PROGRESS_PHRASES[msg.action?.tool] || ['Working…']
+// All progress + polling now operates on a CARD (one entry from
+// msg.actions[]), not the message. Callers pass card; the card holds
+// its own status, progress_text, expected_stages, _progressTimer, etc.
+function cruiseStartProgressLoop(card) {
+  if (card._progressTimer) return
+  const phrases = CRUISE_PROGRESS_PHRASES[card.tool] || ['Working…']
   let i = 0
-  msg.progress_text = phrases[0]
-  msg._progressTimer = window.setInterval(() => {
-    if (msg.action_status !== 'running') {
-      cruiseStopProgressLoop(msg)
-      return
-    }
-    // Skip rotating once Reverb has set a terminal-ish text like
-    // 'Image ready · animating…' — let the event truth win.
-    if (msg.progress_text && msg.progress_text.includes('·')) return
+  card.progress_text = phrases[0]
+  card._progressTimer = window.setInterval(() => {
+    if (card.status !== 'running') { cruiseStopProgressLoop(card); return }
+    // Skip rotating once Reverb has set a multi-stage status like
+    // 'Voice ready · generating image…' — let the event truth win.
+    if (card.progress_text && card.progress_text.includes('·')) return
     i = (i + 1) % phrases.length
-    msg.progress_text = phrases[i]
+    card.progress_text = phrases[i]
   }, 2500)
 }
-function cruiseStopProgressLoop(msg) {
-  if (msg._progressTimer) {
-    window.clearInterval(msg._progressTimer)
-    msg._progressTimer = null
+function cruiseStopProgressLoop(card) {
+  if (card._progressTimer) {
+    window.clearInterval(card._progressTimer)
+    card._progressTimer = null
   }
 }
 
@@ -292,9 +346,9 @@ function cruiseStopProgressLoop(msg) {
 const CRUISE_POLL_INTERVAL_MS = 5000
 const CRUISE_POLL_TIMEOUT_MS = 5 * 60 * 1000
 
-function cruiseStartPollingFallback(msg) {
-  if (msg._pollTimer) return
-  const sceneId = Number(msg.affected_scene_id ?? msg.action?.params?.scene_id ?? 0)
+function cruiseStartPollingFallback(card) {
+  if (card._pollTimer) return
+  const sceneId = Number(card.affected_scene_id ?? card.params?.scene_id ?? 0)
   if (!sceneId) return
   const startedAt = Date.now()
   let attempts = 0
@@ -308,28 +362,22 @@ function cruiseStartPollingFallback(msg) {
     video_asset_id:  baselineScene.video_asset_id ?? null,
     audio_asset_id:  baselineScene.audio_asset_id ?? null,
   }
-  msg._pollTimer = window.setInterval(async () => {
-    if (msg.action_status !== 'running') { cruiseStopPolling(msg); return }
+  card._pollTimer = window.setInterval(async () => {
+    if (card.status !== 'running') { cruiseStopPolling(card); return }
     attempts++
     if (attempts > MAX_ATTEMPTS || Date.now() - startedAt > CRUISE_POLL_TIMEOUT_MS) {
-      // Hard-stop. Don't leave the chip spinning forever.
-      msg.action_status = 'failed'
-      msg.action_error = 'Generation timed out — check the Config tab for the latest scene state.'
-      cruiseStopPolling(msg)
-      cruiseStopProgressLoop(msg)
+      card.status = 'failed'
+      card.error = 'Generation timed out — check the Config tab for the latest scene state.'
+      cruiseStopPolling(card)
+      cruiseStopProgressLoop(card)
       return
     }
     try {
       const res = await api.get(`/scenes/${sceneId}/preview`)
       const fresh = res?.data?.data?.scene
       if (!fresh) return
-      // Detect which expected stages have completed by sniffing the
-      // scene's assets. Only when ALL expected stages are done do we
-      // mark 'applied' and swap the scene in. Intermediate detections
-      // update the progress text but don't touch the editor — that's
-      // what was causing the flicker.
-      const expected = msg.expected_stages || []
-      const completed = msg.completed_stages || []
+      const expected = card.expected_stages || []
+      const completed = card.completed_stages || []
       const newlyDone = []
       const stageDoneByAsset = {
         ai_image:  fresh.visual_asset_id && fresh.visual_asset_id !== baseline.visual_asset_id,
@@ -340,29 +388,42 @@ function cruiseStartPollingFallback(msg) {
         if (!completed.includes(stage) && stageDoneByAsset[stage]) newlyDone.push(stage)
       }
       if (!newlyDone.length) return
-      msg.completed_stages = [...completed, ...newlyDone]
-      const allDone = expected.every(s => msg.completed_stages.includes(s))
+      card.completed_stages = [...completed, ...newlyDone]
+      const allDone = expected.every(s => card.completed_stages.includes(s))
       if (allDone) {
-        msg.action_status = 'applied'
-        msg.progress_text = cruiseSuccessText(msg.action.tool, null)
+        card.status = 'applied'
+        card.progress_text = cruiseSuccessText(card.tool, null)
         try { replaceSceneInCollection(normalizeScenePayload(fresh)) } catch (_) {}
-        cruiseStopPolling(msg)
-        cruiseStopProgressLoop(msg)
+        cruiseStopPolling(card)
+        cruiseStopProgressLoop(card)
       } else {
-        // Partial — update chat text AND swap the partial scene in (so
-        // the editor shows e.g. the still image while animation is
-        // still queued). Editor only paints fields that actually
-        // changed, so this is safe now that scene mutation is in-place.
-        msg.progress_text = cruiseStagePendingText(msg.action.tool, expected, msg.completed_stages)
+        card.progress_text = cruiseStagePendingText(card.tool, expected, card.completed_stages)
         try { replaceSceneInCollection(normalizeScenePayload(fresh)) } catch (_) {}
       }
     } catch (_) { /* keep polling */ }
   }, CRUISE_POLL_INTERVAL_MS)
 }
-function cruiseStopPolling(msg) {
-  if (msg._pollTimer) {
-    window.clearInterval(msg._pollTimer)
-    msg._pollTimer = null
+function cruiseStopPolling(card) {
+  if (card._pollTimer) {
+    window.clearInterval(card._pollTimer)
+    card._pollTimer = null
+  }
+}
+
+// Per-action state used by every render path (chat card, polling,
+// progress checklist). raw = the {tool, params, diff_lines, ...} blob
+// from the backend. We layer per-card status fields on top so the
+// frontend can drive each action independently in a multi-action turn.
+function cruiseInitActionState(raw, status = 'proposed') {
+  return {
+    ...raw,
+    status,                    // 'proposed' | 'running' | 'applied' | 'failed' | 'skipped'
+    credits: 0,                // populated on apply
+    progress_text: null,       // single-line spinner phrase
+    expected_stages: [],       // filled at apply time
+    completed_stages: [],
+    affected_scene_id: null,
+    error: null,
   }
 }
 
@@ -432,7 +493,10 @@ function cruiseInitialProgressText(tool) {
 // action.params.scene_id matches. Falls back to the most recent matching
 // tool when scene_id is absent from the event (e.g. ai_image 'processing'
 // hasn't been dispatched with scene_id).
-function cruiseFindMessageForProgress(payload) {
+// Returns {msg, card} when the event belongs to a cruise card that's
+// running/proposed; null otherwise. Walks every message's actions[]
+// because a single message can carry multiple in-flight cards.
+function cruiseFindCardForProgress(payload) {
   const stage = payload.stage
   const sceneId = payload.scene_id ? Number(payload.scene_id) : null
   const stageTools = {
@@ -442,56 +506,63 @@ function cruiseFindMessageForProgress(payload) {
     ai_music:  ['change_music'],
   }[stage] || []
   if (!stageTools.length) return null
-  // Walk newest -> oldest; first running/proposed match wins.
   for (let i = cruiseMessages.value.length - 1; i >= 0; i--) {
     const m = cruiseMessages.value[i]
-    if (!m.action || !stageTools.includes(m.action.tool)) continue
-    if (m.action_status !== 'running' && m.action_status !== 'proposed') continue
-    if (sceneId) {
-      const msgSceneId = Number(m.action.params?.scene_id ?? 0)
-      if (msgSceneId && msgSceneId !== sceneId) continue
+    if (!Array.isArray(m.actions) || !m.actions.length) continue
+    // Newest action first inside a message so the most-recently-Applied
+    // card wins on ambiguous matches (e.g. two regenerate_image cards
+    // in one turn, only one in flight).
+    for (let j = m.actions.length - 1; j >= 0; j--) {
+      const card = m.actions[j]
+      if (!stageTools.includes(card.tool)) continue
+      if (card.status !== 'running') continue
+      if (sceneId) {
+        const cardSceneId = Number(card.affected_scene_id ?? card.params?.scene_id ?? 0)
+        if (cardSceneId && cardSceneId !== sceneId) continue
+      }
+      return { msg: m, card }
     }
-    return m
   }
   return null
 }
 
-// Drive the running action card's progress_text + checklist from the
-// Reverb event. Called from the project-channel listener so we don't
-// open a second subscription. No longer returns a suppress flag — with
-// in-place scene mutation, per-stage refreshes don't flicker, so the
-// editor (Config tab) and the chat checklist stay consistent.
+// Drive a running CARD's progress text + checklist from the Reverb
+// event. Resolves to {msg, card} via cruiseFindCardForProgress so each
+// in-flight card in a multi-action turn updates independently.
 function cruiseHandleProgressEvent(payload) {
-  const msg = cruiseFindMessageForProgress(payload)
-  if (!msg) return
+  const found = cruiseFindCardForProgress(payload)
+  if (!found) return
+  const { msg, card } = found
   const status = String(payload.status || '')
   if (status === 'processing') {
-    msg.progress_text = msg.completed_stages?.length
-      ? cruiseStagePendingText(msg.action.tool, msg.expected_stages || [], msg.completed_stages)
-      : cruiseInitialProgressText(msg.action.tool)
+    card.progress_text = card.completed_stages?.length
+      ? cruiseStagePendingText(card.tool, card.expected_stages || [], card.completed_stages)
+      : cruiseInitialProgressText(card.tool)
     return
   }
   if (status === 'completed') {
-    const expected = msg.expected_stages || []
-    const completed = msg.completed_stages || []
+    const expected = card.expected_stages || []
+    const completed = card.completed_stages || []
     if (!completed.includes(payload.stage)) completed.push(payload.stage)
-    msg.completed_stages = completed
+    card.completed_stages = completed
     const allDone = expected.length > 0 && expected.every(s => completed.includes(s))
     if (allDone) {
-      msg.action_status = 'applied'
-      msg.progress_text = cruiseSuccessText(msg.action.tool, payload.stage)
-      cruiseStopProgressLoop(msg)
-      cruiseStopPolling(msg)
+      card.status = 'applied'
+      card.progress_text = cruiseSuccessText(card.tool, payload.stage)
+      cruiseStopProgressLoop(card)
+      cruiseStopPolling(card)
+      cruiseRecomputeMessageStatus(msg)
     } else {
-      msg.progress_text = cruiseStagePendingText(msg.action.tool, expected, completed)
+      card.progress_text = cruiseStagePendingText(card.tool, expected, completed)
     }
     return
   }
   if (status === 'failed') {
-    msg.action_status = 'failed'
-    msg.action_error = payload.message || 'Generation failed.'
-    cruiseStopProgressLoop(msg)
-    cruiseStopPolling(msg)
+    card.status = 'failed'
+    card.error = payload.message || 'Generation failed.'
+    cruiseStopProgressLoop(card)
+    cruiseStopPolling(card)
+    cruiseRecomputeMessageStatus(msg)
   }
 }
 
@@ -543,20 +614,23 @@ async function loadCruiseConversation() {
     const res = await api.get(`/cruise/conversation/${projectId.value}`)
     const msgs = res?.data?.data?.messages
     if (Array.isArray(msgs) && msgs.length) {
-      cruiseMessages.value = msgs.map((m) => ({
-        id: m.id,
-        role: m.role,
-        text: m.text,
-        action: m.action ?? null,
-        // A persisted 'running' state survived a refresh — the job is
-        // either still in flight (Reverb will land the terminal event) or
-        // already done (Reverb missed; refreshProjectPayload below will
-        // hydrate the scene's real state). Leave as 'applied' on rehydrate
-        // for now so the chat doesn't look stuck.
-        action_status: m.action_status === 'running' ? 'applied' : (m.action_status ?? null),
-        action_credits: m.action_credits ?? null,
-        progress_text: null,
-      }))
+      cruiseMessages.value = msgs.map((m) => {
+        // Backwards compat: older messages stored a single action; new
+        // ones store actions[]. Promote singular to array on hydrate.
+        const rawActions = Array.isArray(m.actions) && m.actions.length
+          ? m.actions
+          : (m.action ? [{ ...m.action, status: m.action_status === 'running' ? 'applied' : (m.action_status ?? 'proposed'), credits: m.action_credits ?? 0 }] : [])
+        const out = {
+          id: m.id,
+          role: m.role,
+          text: m.text,
+          actions: rawActions.map((a) => cruiseInitActionState(a, a.status === 'running' ? 'applied' : (a.status ?? 'proposed'))),
+        }
+        // Hydrate per-card credits when the persisted blob carried them.
+        rawActions.forEach((a, i) => { if (a.credits) out.actions[i].credits = a.credits })
+        cruiseRecomputeMessageStatus(out)
+        return out
+      })
       await nextTick(); cruiseScrollChatToBottom()
     }
   } catch { /* silent — empty conversation is fine */ }
@@ -2820,10 +2894,19 @@ async function setCruiseAutoApply(next) {
 // would push the user below zero balance.
 async function maybeAutoApply(msg) {
   if (!cruiseAutoApply.value) return
-  if (!msg?.action) return
-  if (msg.action.confirmation_class !== 'auto') return
-  if (cruiseUserBalance.value < (msg.action.estimated_cost ?? 0)) return
-  await cruiseApplyAction(msg)
+  const cards = msg?.actions || []
+  if (!cards.length) return
+  // Auto-apply each card flagged 'auto' if balance covers it. Stops at
+  // the first 'prompt'/'always_prompt' card so the user still confirms
+  // anything risky / expensive.
+  let runningTotal = 0
+  for (let i = 0; i < cards.length; i++) {
+    const c = cards[i]
+    if (c.confirmation_class !== 'auto') break
+    runningTotal += (c.estimated_cost ?? 0)
+    if (cruiseUserBalance.value < runningTotal) break
+    await cruiseApplyAction(msg, i)
+  }
 }
 
 // Quick prompt was clicked — fill the input and submit immediately.
@@ -7329,53 +7412,66 @@ onBeforeUnmount(() => {
                   <div class="cruise-msg-body">
                     <div class="cruise-msg-text">{{ m.text }}</div>
 
-                    <!-- Action card -->
-                    <div v-if="m.action" class="cruise-action">
-                      <div class="cruise-action-head">
-                        <span class="cruise-action-icon">{{ cruiseActionIcon(m.action.affected_section) }}</span>
-                        <span class="cruise-action-title">{{ cruiseActionTitle(m.action.tool) }}</span>
-                        <span class="cruise-action-cost">~{{ m.action.estimated_cost }} cr</span>
+                    <!-- Action cards: one per entry in m.actions[]. Stacked
+                         vertically. Multi-action turns get an "Apply all"
+                         master footer that runs them sequentially. -->
+                    <div v-if="(m.actions || []).length" class="cruise-actions-stack">
+                      <div v-if="m.actions.length > 1" class="cruise-actions-meta">
+                        Plan: {{ m.actions.length }} actions · ~{{ cruiseTotalCost(m) }} cr total
                       </div>
-                      <div class="cruise-action-body">
-                        <div v-for="(line, i) in m.action.diff_lines" :key="i">{{ line }}</div>
+                      <div v-for="(card, idx) in m.actions" :key="idx" class="cruise-action">
+                        <div class="cruise-action-head">
+                          <span class="cruise-action-icon">{{ cruiseActionIcon(card.affected_section) }}</span>
+                          <span class="cruise-action-step" v-if="m.actions.length > 1">{{ idx + 1 }}.</span>
+                          <span class="cruise-action-title">{{ cruiseActionTitle(card.tool) }}</span>
+                          <span class="cruise-action-cost">~{{ card.estimated_cost }} cr</span>
+                        </div>
+                        <div class="cruise-action-body">
+                          <div v-for="(line, i) in card.diff_lines" :key="i">{{ line }}</div>
+                        </div>
+                        <div v-if="card.status === 'running'" class="cruise-action-status running">
+                          <ul v-if="(card.expected_stages || []).length > 1" class="cruise-action-checklist">
+                            <li v-for="stage in card.expected_stages" :key="stage"
+                                :class="['cruise-checklist-item', (card.completed_stages || []).includes(stage) ? 'done' : 'pending']">
+                              <span class="cruise-checklist-icon">
+                                <span v-if="(card.completed_stages || []).includes(stage)">✓</span>
+                                <span v-else class="cruise-action-spinner"></span>
+                              </span>
+                              <span class="cruise-checklist-label">{{ cruiseStageLabel(stage, (card.completed_stages || []).includes(stage)) }}</span>
+                            </li>
+                          </ul>
+                          <template v-else>
+                            <span class="cruise-action-spinner"></span>
+                            <span class="cruise-action-running-text">{{ card.progress_text || 'Working…' }}<span class="cruise-action-dots"><span>.</span><span>.</span><span>.</span></span></span>
+                          </template>
+                        </div>
+                        <div v-else-if="card.status === 'applied'" class="cruise-action-status applied">
+                          ✓ {{ card.progress_text || 'Applied' }} · spent {{ card.credits || card.estimated_cost }} cr
+                        </div>
+                        <div v-else-if="card.status === 'failed'" class="cruise-action-status failed">
+                          ✕ {{ card.error || 'Apply failed' }}
+                        </div>
+                        <div v-else-if="card.status === 'skipped'" class="cruise-action-status skipped">
+                          ⏭ Skipped
+                        </div>
+                        <div v-else-if="cruiseUserBalance < (card.estimated_cost ?? 0)" class="cruise-action-foot">
+                          <span class="cruise-action-shortfall">Need {{ card.estimated_cost }} cr · you have {{ cruiseUserBalance }}</span>
+                          <button class="cruise-action-btn cruise-action-btn-primary" type="button" @click="router.push({ name: 'settings', query: { section: 'billing' } })">
+                            Top up →
+                          </button>
+                        </div>
+                        <div v-else class="cruise-action-foot">
+                          <button class="cruise-action-btn cruise-action-btn-ghost" @click="cruiseSkipAction(m, idx)">Skip</button>
+                          <button class="cruise-action-btn cruise-action-btn-primary" :disabled="cruiseApplying" @click="cruiseApplyAction(m, idx)">
+                            {{ cruiseApplying === `${m.id}:${idx}` ? 'Applying…' : 'Apply' }}
+                          </button>
+                        </div>
                       </div>
-                      <div v-if="m.action_status === 'running'" class="cruise-action-status running">
-                        <!-- Multi-stage checklist when the tool dispatches >1 job,
-                             single spinning line for the simple case. -->
-                        <ul v-if="(m.expected_stages || []).length > 1" class="cruise-action-checklist">
-                          <li v-for="stage in m.expected_stages" :key="stage"
-                              :class="['cruise-checklist-item', (m.completed_stages || []).includes(stage) ? 'done' : 'pending']">
-                            <span class="cruise-checklist-icon">
-                              <span v-if="(m.completed_stages || []).includes(stage)">✓</span>
-                              <span v-else class="cruise-action-spinner"></span>
-                            </span>
-                            <span class="cruise-checklist-label">{{ cruiseStageLabel(stage, (m.completed_stages || []).includes(stage)) }}</span>
-                          </li>
-                        </ul>
-                        <template v-else>
-                          <span class="cruise-action-spinner"></span>
-                          <span class="cruise-action-running-text">{{ m.progress_text || 'Working…' }}<span class="cruise-action-dots"><span>.</span><span>.</span><span>.</span></span></span>
-                        </template>
-                      </div>
-                      <div v-else-if="m.action_status === 'applied'" class="cruise-action-status applied">
-                        ✓ {{ m.progress_text || 'Applied' }} · spent {{ m.action_credits ?? m.action.estimated_cost }} cr
-                      </div>
-                      <div v-else-if="m.action_status === 'failed'" class="cruise-action-status failed">
-                        ✕ {{ m.action_error || 'Apply failed' }}
-                      </div>
-                      <div v-else-if="m.action_status === 'skipped'" class="cruise-action-status skipped">
-                        ⏭ Skipped
-                      </div>
-                      <div v-else-if="cruiseUserBalance < (m.action.estimated_cost ?? 0)" class="cruise-action-foot">
-                        <span class="cruise-action-shortfall">Need {{ m.action.estimated_cost }} cr · you have {{ cruiseUserBalance }}</span>
-                        <button class="cruise-action-btn cruise-action-btn-primary" type="button" @click="router.push({ name: 'settings', query: { section: 'billing' } })">
-                          Top up →
-                        </button>
-                      </div>
-                      <div v-else class="cruise-action-foot">
-                        <button class="cruise-action-btn cruise-action-btn-ghost" @click="cruiseSkipAction(m)">Skip</button>
-                        <button class="cruise-action-btn cruise-action-btn-primary" :disabled="cruiseApplying === m.id" @click="cruiseApplyAction(m)">
-                          {{ cruiseApplying === m.id ? 'Applying…' : 'Apply ⏎' }}
+                      <!-- Apply all master footer: only when >1 still-proposed -->
+                      <div v-if="cruiseProposedCount(m) > 1 && cruiseCanApplyAll(m)" class="cruise-actions-master-foot">
+                        <button class="cruise-action-btn cruise-action-btn-ghost" :disabled="cruiseApplying" @click="cruiseSkipAll(m)">Skip all</button>
+                        <button class="cruise-action-btn cruise-action-btn-primary" :disabled="cruiseApplying" @click="cruiseApplyAll(m)">
+                          Apply all ({{ cruiseProposedCount(m) }}) →
                         </button>
                       </div>
                     </div>
@@ -8485,6 +8581,16 @@ button {
 .cruise-msg-body { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.55; }
 .cruise-msg-text { color: var(--color-text-primary); }
 .cruise-msg-thinking { color: var(--color-text-muted); font-style: italic; }
+
+/* Multi-action stack — wraps the per-card cruise-action blocks plus
+   the Plan: header and the Apply-all master footer. */
+.cruise-actions-stack { display: flex; flex-direction: column; gap: 0; margin-top: 6px; }
+.cruise-actions-meta { font-size: 10.5px; color: var(--color-text-muted); padding: 4px 2px 2px; letter-spacing: 0.02em; }
+.cruise-action-step { font-weight: 700; color: var(--color-text-muted); font-size: 11px; font-family: "Space Mono", monospace; }
+.cruise-actions-master-foot {
+  display: flex; gap: 6px; justify-content: flex-end;
+  padding: 8px 0 2px; margin-top: 4px;
+}
 
 /* Action card */
 .cruise-action { margin-top: 8px; border: 1px solid var(--color-border); border-radius: 9px; overflow: hidden; background: var(--color-bg-card); }

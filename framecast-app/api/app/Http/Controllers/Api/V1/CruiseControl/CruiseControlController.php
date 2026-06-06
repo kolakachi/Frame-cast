@@ -91,28 +91,55 @@ class CruiseControlController extends Controller
             'text'       => $validated['intent'],
             'created_at' => now()->toIso8601String(),
         ];
+        // Persist actions[] (plural). Each entry carries its own status so
+        // multi-action turns can show per-card progress on refresh. action
+        // (singular) is kept on the message as a back-compat read for old
+        // clients but new clients should iterate actions[].
+        $actionsForPersist = [];
+        foreach (($result['actions'] ?? []) as $a) {
+            $actionsForPersist[] = $a + ['status' => 'proposed'];
+        }
         $assistantMsg = [
             'id'         => 'a-' . Str::uuid()->toString(),
             'role'       => 'assistant',
             'text'       => $result['reply_to_user'],
-            'action'     => $result['action'],
-            'action_status' => $result['action'] ? 'proposed' : null,
+            'action'     => $result['action'] ?? null,
+            'actions'    => $actionsForPersist,
+            'action_status' => !empty($actionsForPersist) ? 'proposed' : null,
             'created_at' => now()->toIso8601String(),
         ];
         $this->appendMessages($user, $project, [$userMsg, $assistantMsg]);
 
-        CruiseAuditLog::create([
-            'workspace_id'    => $user->workspace_id,
-            'user_id'         => $user->getKey(),
-            'project_id'      => $project->getKey(),
-            'scene_id'        => $scope?->getKey(),
-            'phase'           => 'resolve',
-            'intent_text'     => mb_substr($validated['intent'], 0, 1000),
-            'resolved_tool'   => $result['action']['tool'] ?? null,
-            'resolved_params' => $result['action']['params'] ?? null,
-            'applied'         => false,
-            'outcome'         => $result['action'] ? 'ok' : 'unresolved',
-        ]);
+        // One audit row per proposed action so forensics + fine-tuning data
+        // captures the whole plan, not just the first card.
+        $actionsForAudit = $result['actions'] ?? ($result['action'] ? [$result['action']] : []);
+        if (empty($actionsForAudit)) {
+            CruiseAuditLog::create([
+                'workspace_id'    => $user->workspace_id,
+                'user_id'         => $user->getKey(),
+                'project_id'      => $project->getKey(),
+                'scene_id'        => $scope?->getKey(),
+                'phase'           => 'resolve',
+                'intent_text'     => mb_substr($validated['intent'], 0, 1000),
+                'applied'         => false,
+                'outcome'         => 'unresolved',
+            ]);
+        } else {
+            foreach ($actionsForAudit as $a) {
+                CruiseAuditLog::create([
+                    'workspace_id'    => $user->workspace_id,
+                    'user_id'         => $user->getKey(),
+                    'project_id'      => $project->getKey(),
+                    'scene_id'        => $scope?->getKey(),
+                    'phase'           => 'resolve',
+                    'intent_text'     => mb_substr($validated['intent'], 0, 1000),
+                    'resolved_tool'   => $a['tool'] ?? null,
+                    'resolved_params' => $a['params'] ?? null,
+                    'applied'         => false,
+                    'outcome'         => 'ok',
+                ]);
+            }
+        }
 
         return response()->json([
             'data' => [
@@ -130,10 +157,14 @@ class CruiseControlController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'project_id' => ['required', 'integer'],
-            'tool'       => ['required', 'string'],
-            'params'     => ['required', 'array'],
-            'message_id' => ['nullable', 'string', 'max:64'],
+            'project_id'   => ['required', 'integer'],
+            'tool'         => ['required', 'string'],
+            'params'       => ['required', 'array'],
+            'message_id'   => ['nullable', 'string', 'max:64'],
+            // Index into the assistant message's actions[] array. When the
+            // message has multiple proposed actions, this tells us which one
+            // to stamp as applied.
+            'action_index' => ['nullable', 'integer', 'min:0', 'max:10'],
         ]);
 
         $tool = $this->registry->get($validated['tool']);
@@ -188,6 +219,8 @@ class CruiseControlController extends Controller
 
         // Stamp the message in the persisted conversation as applied so
         // the chat history shows ✓ on refresh, not the Apply button.
+        // For multi-action turns we stamp ONLY the indexed action, not
+        // the whole message — sibling actions stay in 'proposed'.
         if (! empty($validated['message_id'])) {
             $this->updateMessageStatus(
                 $user,
@@ -195,6 +228,7 @@ class CruiseControlController extends Controller
                 $validated['message_id'],
                 'applied',
                 (int) ($result['credits_spent'] ?? 0),
+                $validated['action_index'] ?? null,
             );
         }
 
@@ -237,8 +271,9 @@ class CruiseControlController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'project_id' => ['required', 'integer'],
-            'message_id' => ['required', 'string', 'max:64'],
+            'project_id'   => ['required', 'integer'],
+            'message_id'   => ['required', 'string', 'max:64'],
+            'action_index' => ['nullable', 'integer', 'min:0', 'max:10'],
         ]);
 
         $project = Project::query()
@@ -249,7 +284,7 @@ class CruiseControlController extends Controller
             return $this->error('not_found', 'Project not found.', 404);
         }
 
-        $this->updateMessageStatus($user, $project, $validated['message_id'], 'skipped');
+        $this->updateMessageStatus($user, $project, $validated['message_id'], 'skipped', 0, $validated['action_index'] ?? null);
 
         CruiseAuditLog::create([
             'workspace_id'  => $user->workspace_id,
@@ -358,12 +393,16 @@ class CruiseControlController extends Controller
     }
 
     /**
-     * Flip a message's action_status in place. Used by apply() so the
-     * chat-history view shows ✓ applied (or ✕ failed) on refresh.
+     * Flip a message's per-action status in place. Used by apply() and
+     * skip() so the chat-history view shows ✓ / ⏭ on refresh.
+     *
+     * When $actionIndex is provided we stamp ONLY that entry in actions[]
+     * (multi-action turns). When it's null we stamp the legacy singular
+     * action_status on the message itself (old single-action messages).
      */
-    private function updateMessageStatus(User $user, Project $project, string $messageId, string $status, int $creditsSpent = 0): void
+    private function updateMessageStatus(User $user, Project $project, string $messageId, string $status, int $creditsSpent = 0, ?int $actionIndex = null): void
     {
-        DB::transaction(function () use ($user, $project, $messageId, $status, $creditsSpent) {
+        DB::transaction(function () use ($user, $project, $messageId, $status, $creditsSpent, $actionIndex) {
             $conv = CruiseConversation::query()
                 ->where('workspace_id', $user->workspace_id)
                 ->where('project_id', $project->getKey())
@@ -373,11 +412,26 @@ class CruiseControlController extends Controller
 
             $messages = $conv->messages;
             foreach ($messages as $i => $m) {
-                if (($m['id'] ?? null) === $messageId) {
-                    $messages[$i]['action_status']  = $status;
+                if (($m['id'] ?? null) !== $messageId) continue;
+
+                // Multi-action path: update the indexed entry in actions[].
+                if ($actionIndex !== null && is_array($m['actions'] ?? null) && isset($m['actions'][$actionIndex])) {
+                    $messages[$i]['actions'][$actionIndex]['status'] = $status;
+                    if ($creditsSpent > 0) $messages[$i]['actions'][$actionIndex]['credits'] = $creditsSpent;
+
+                    // Aggregate action_status for legacy clients: if every
+                    // action is applied or skipped, mark the message done.
+                    $statuses = array_column($messages[$i]['actions'], 'status');
+                    $allTerminal = ! empty($statuses) && ! in_array('proposed', $statuses, true);
+                    if ($allTerminal) {
+                        $messages[$i]['action_status'] = in_array('failed', $statuses, true) ? 'failed' : 'applied';
+                    }
+                } else {
+                    // Legacy single-action path.
+                    $messages[$i]['action_status'] = $status;
                     if ($creditsSpent > 0) $messages[$i]['action_credits'] = $creditsSpent;
-                    break;
                 }
+                break;
             }
 
             $conv->forceFill(['messages' => $messages, 'last_activity_at' => now()])->save();

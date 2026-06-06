@@ -29,7 +29,7 @@ class CruiseControlService
      *                                (oldest first). Used so the LLM can resolve
      *                                pronouns like "it" across turns. Capped to
      *                                the last 6 entries before sending.
-     * @return array{reply_to_user:string, action:?array}
+     * @return array{reply_to_user:string, action:?array, actions:array<int,array>}
      */
     public function resolve(string $intent, Project $project, ?Scene $scope, array $history = []): array
     {
@@ -38,6 +38,7 @@ class CruiseControlService
             return [
                 'reply_to_user' => 'Assistant is not configured. Please ask Kolawole to set OPENAI_API_KEY.',
                 'action' => null,
+                'actions' => [],
             ];
         }
 
@@ -72,37 +73,42 @@ class CruiseControlService
                     'status' => $response->status(),
                     'body'   => mb_substr((string) $response->body(), 0, 500),
                 ]);
-                return ['reply_to_user' => "I couldn't understand that — try rephrasing.", 'action' => null];
+                return ['reply_to_user' => "I couldn't understand that — try rephrasing.", 'action' => null, 'actions' => []];
             }
 
             $content = (string) data_get($response->json(), 'choices.0.message.content', '');
             $parsed  = json_decode($content, true);
 
             if (! is_array($parsed)) {
-                return ['reply_to_user' => "I got a malformed answer — try rephrasing.", 'action' => null];
+                return ['reply_to_user' => "I got a malformed answer — try rephrasing.", 'action' => null, 'actions' => []];
             }
 
             $reply = trim((string) ($parsed['reply_to_user'] ?? "Okay."));
-            $action = $parsed['action'] ?? null;
 
-            // Validate the proposed tool. Whitelist enforced here — anything
-            // the LLM tries that's not in the registry gets dropped silently
-            // and we fall back to a clarifying reply.
-            if (is_array($action)) {
-                $toolName = (string) ($action['tool'] ?? '');
+            // Accept either: actions[] (preferred multi-action shape) or
+            // action (legacy single). Normalise into actions[] and keep
+            // action populated with the first entry for back-compat.
+            $rawActions = [];
+            if (isset($parsed['actions']) && is_array($parsed['actions'])) {
+                $rawActions = $parsed['actions'];
+            } elseif (is_array($parsed['action'] ?? null)) {
+                $rawActions = [$parsed['action']];
+            }
+
+            // Hard cap to keep the chat readable + cost predictable.
+            $rawActions = array_slice($rawActions, 0, 6);
+
+            $actions = [];
+            foreach ($rawActions as $raw) {
+                if (! is_array($raw)) continue;
+                $toolName = (string) ($raw['tool'] ?? '');
                 $tool = $this->registry->get($toolName);
                 if (! $tool) {
                     Log::info('CruiseControl LLM proposed unknown tool', ['tool' => $toolName]);
-                    return [
-                        'reply_to_user' => "I can't do that yet — try a voice swap, visual change, or music regen.",
-                        'action' => null,
-                    ];
+                    continue;
                 }
-
-                // Backfill display fields the LLM may omit. The tool owns
-                // the diff + cost; the LLM owns the conversational reply.
-                $params = is_array($action['params'] ?? null) ? $action['params'] : [];
-                $action = [
+                $params = is_array($raw['params'] ?? null) ? $raw['params'] : [];
+                $actions[] = [
                     'tool'               => $toolName,
                     'params'             => $params,
                     'diff_lines'         => $tool->diffLines($project, $params),
@@ -112,10 +118,25 @@ class CruiseControlService
                 ];
             }
 
-            return ['reply_to_user' => $reply, 'action' => $action];
+            // If the LLM tried to propose actions but ALL of them were
+            // invalid tools, fall back to the friendly catalogue reply
+            // instead of returning an empty array silently.
+            if (! empty($rawActions) && empty($actions)) {
+                return [
+                    'reply_to_user' => "I can't do that yet — try a voice swap, visual change, or music regen.",
+                    'action' => null,
+                    'actions' => [],
+                ];
+            }
+
+            return [
+                'reply_to_user' => $reply,
+                'action'  => $actions[0] ?? null,
+                'actions' => $actions,
+            ];
         } catch (\Throwable $e) {
             Log::error('CruiseControl resolve exception', ['message' => $e->getMessage()]);
-            return ['reply_to_user' => "Something went wrong on my end — try again.", 'action' => null];
+            return ['reply_to_user' => "Something went wrong on my end — try again.", 'action' => null, 'actions' => []];
         }
     }
 
@@ -253,28 +274,32 @@ CLARIFY ONLY IF YOU MUST
   briefly say what you CAN do (list 2-3 capabilities, not all 6).
 
 MULTIPLE ACTIONS IN ONE REQUEST
-- You can only return ONE action per turn. If the user asks for
-  several distinct actions ("change voice on scenes 1 and 5 and also
-  animate scene 5"), pick the FIRST one in the order they mentioned,
-  set action to that, and in reply_to_user list the remaining ones
-  with their scene numbers and say "send the same message back and
-  I'll do the next one" — DO NOT refuse the whole request.
-- The chain_animate_tier param on regenerate_image is the ONE
-  exception: image + animation in one apply when the user wants
-  both for the SAME scene.
-- Repeating the same action across multiple scenes (e.g. "rerecord
-  voice on scenes 1, 3, 5") also counts as multiple — pick scene 1
-  this turn, list the rest in reply_to_user.
+- You CAN propose multiple actions in one turn. Emit them in the
+  actions[] array in the order they should run. Hard cap: 6 per
+  turn. The user gets a stack of cards with an "Apply all" button.
+- "Change voice on scenes 1 and 5 and animate scene 5" → THREE
+  actions: rerecord_voice(scene 1), rerecord_voice(scene 5),
+  animate_scene(scene 5). Same scene in multiple actions is fine.
+- "Rerecord voice on scenes 1, 3, 5" → THREE rerecord_voice
+  actions, one per scene. Don't try to be clever and only do one.
+- chain_animate_tier on regenerate_image is still the one
+  in-action exception: image + animation for the SAME scene in
+  one apply (no need for a separate animate_scene).
+- reply_to_user should briefly summarise the plan when there's >1
+  action: "I'll rerecord scene 1 + 5 voices, then animate scene 5.
+  Tap Apply all when ready."
 
 - reply_to_user is one sentence, conversational, present-tense.
 
 RESPONSE — STRICT JSON, NO MARKDOWN:
 {
   "reply_to_user": "...",
-  "action": null OR {
-    "tool": "<one of the tool names above>",
-    "params": { ... }
-  }
+  "actions": [
+    { "tool": "<one of the tool names above>", "params": { ... } }
+    // 0 actions = clarifying question or unsupported
+    // 1 action  = single proposal
+    // 2-6 actions = multi-action plan, runs sequentially
+  ]
 }
 SYS;
     }
