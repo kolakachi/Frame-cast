@@ -310,6 +310,21 @@ const visualSwapError = ref("");
 // AI Image generation
 const aiImagePromptOverride = ref("");
 const aiImagePending = ref(false);
+// Image model picker for the editor's regen modal. Fetched from
+// /api/v1/image-models on mount; static fallback so the dropdown
+// still renders if the API call fails.
+const aiImageModelKey = ref('gpt-image-1');
+const availableImageModelsEditor = ref([
+  { key: 'gpt-image-1',    label: 'GPT Image 1',    sub: 'OpenAI photoreal',   cost: 15, render: '~20s', requires_reference: false },
+  { key: 'gpt-image-2',    label: 'GPT Image 2',    sub: 'character',           cost: 50, render: '~60s', requires_reference: true  },
+  { key: 'nano-banana',    label: 'Nano Banana',    sub: 'Google · cheap',      cost:  8, render: '~10s', requires_reference: false },
+  { key: 'flux-schnell',   label: 'Flux Schnell',   sub: 'cheapest',            cost:  1, render: '~5s',  requires_reference: false },
+  { key: 'sdxl-lightning', label: 'SDXL Lightning', sub: 'stylish',             cost:  1, render: '~5s',  requires_reference: false },
+]);
+const activeImageModelMeta = computed(
+  () => availableImageModelsEditor.value.find((m) => m.key === aiImageModelKey.value) ?? null,
+);
+const activeSceneHasCharacter = computed(() => Boolean(activeScene.value?.character_id));
 const aiImageError = ref("");
 
 // Animate (i2v rung 4) state.
@@ -332,10 +347,13 @@ const animateCost = computed(() =>
   // "Long" clip = the larger of the two valid durations (always 10 today).
   ANIMATE_TIER_COSTS_5S[animateTier.value] * (animateDuration.value === animateDurations.value[1] ? 2 : 1)
 );
+// Animation models. We expose the actual model names (Wan/Hailuo/Kling)
+// instead of generic tier labels so power users know what they're picking.
+// `key` still maps to the backend tier so the API doesn't need to change.
 const ANIMATE_TIER_META = {
-  quick:    { name: "Quick",    sub: "Fast · cheap",     quality: "Good",   render: "~30s" },
-  balanced: { name: "Balanced", sub: "Best for most",    quality: "Strong", render: "~90s" },
-  premium:  { name: "Premium",  sub: "Cinematic",        quality: "Top",    render: "~3 min" },
+  quick:    { name: "Wan 2.5",    sub: "Fast · cheap",     quality: "Good",   render: "~30s" },
+  balanced: { name: "Hailuo 2.3", sub: "Best for most",    quality: "Strong", render: "~90s" },
+  premium:  { name: "Kling 2.1",  sub: "Cinematic",        quality: "Top",    render: "~3 min" },
 };
 
 // When the user switches tier, snap the chosen duration to one the new tier
@@ -1996,6 +2014,14 @@ function preloadSceneAudio(scene) {
   audio.load();
 }
 
+async function loadImageModelCatalog() {
+  try {
+    const res = await api.get('/image-models');
+    const models = res?.data?.data?.models;
+    if (Array.isArray(models) && models.length) availableImageModelsEditor.value = models;
+  } catch { /* keep fallback list */ }
+}
+
 async function loadProject() {
   loading.value = true;
   error.value = "";
@@ -2004,6 +2030,7 @@ async function loadProject() {
     const response = await api.get(`/projects/${projectId.value}`);
     applyProjectPayload(response.data?.data, { preserveActiveScene: false });
     await loadExportJobs();
+    loadImageModelCatalog();   // fire-and-forget — falls back to static list
     subscribeProjectChannel();
   } catch (requestError) {
     error.value =
@@ -3706,6 +3733,7 @@ async function generateAIImage() {
     await api.post(`/scenes/${activeScene.value.id}/generate-image`, {
       style: visualStyleDraft.value ?? activeScene.value?.visual_style ?? activeScene.value?.image_generation_settings?.style ?? "cinematic",
       prompt_override: aiImagePromptOverride.value || undefined,
+      model_key: aiImageModelKey.value,
     });
     // Reverb fires the result — polling is a safety net if the socket drops
     pollSceneUntilVisual(activeScene.value.id)
@@ -5454,8 +5482,18 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
 
-                  <!-- Prompt override -->
+                  <!-- Image model picker -->
                   <div class="micro-label" style="margin-bottom:4px;">
+                    Model <span style="font-weight:400;opacity:.5;">— {{ activeImageModelMeta?.cost ?? 15 }} cr · {{ activeImageModelMeta?.render ?? '~20s' }}</span>
+                  </div>
+                  <select v-model="aiImageModelKey" class="ai-prompt-area" style="padding:6px 10px;">
+                    <option v-for="m in availableImageModelsEditor" :key="m.key" :value="m.key" :disabled="m.requires_reference && !activeSceneHasCharacter">
+                      {{ m.label }} — {{ m.sub }}{{ m.requires_reference && !activeSceneHasCharacter ? ' (needs character)' : '' }}
+                    </option>
+                  </select>
+
+                  <!-- Prompt override -->
+                  <div class="micro-label" style="margin-bottom:4px;margin-top:8px;">
                     Prompt override <span style="font-weight:400;opacity:.5;">(optional)</span>
                   </div>
                   <textarea

@@ -344,10 +344,20 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   videoFile.value = null
   revokeImagePreviewItems()
   selectedCharacterId.value = ''
+  // One-shot defaults reset on every open so a prior session's photo /
+  // character pick doesn't bleed into the new project.
+  oneShotPrompt.value = ''
+  oneShotAnimate.value = true
+  oneShotSourceMode.value = 'generate'
+  oneShotImageModelKey.value = 'gpt-image-1'
+  oneShotAnimateTier.value = 'quick'
+  clearOneShotUpload()
+  oneShotCharacterId.value = null
   show.value = true
   loadNiches()
   loadBrandKits()
   loadCharacters()
+  loadOneShotCatalogs()
 }
 
 // ── Credit estimate ───────────────────────────────────────
@@ -438,28 +448,131 @@ function pickOneShotPrompt() {
 // One-shot prompt state.
 const oneShotPrompt = ref('')
 const oneShotAnimate = ref(true)
+// Source: how does the image come into the scene? 'generate' = AI, 'upload'
+// = user-uploaded photo, 'character' = saved character's reference photo.
+const oneShotSourceMode = ref('generate')
+const oneShotImageModelKey = ref('gpt-image-1')
+const oneShotAnimateTier   = ref('quick')
+const oneShotUploadingPhoto = ref(false)
+const oneShotUploadedAssetId = ref(null)
+const oneShotUploadedPreview = ref(null)
+const oneShotUploadedTitle = ref(null)
+const oneShotUploadError = ref('')
+const oneShotCharacterId = ref(null)
+// Catalog filled from GET /image-models on first open. Falls back to a
+// static list so the picker still renders if the API call fails.
+const availableImageModels = ref([
+  { key: 'gpt-image-1',    label: 'GPT Image 1',    sub: 'OpenAI · photoreal',        cost: 15, render: '~20s', requires_reference: false },
+  { key: 'gpt-image-2',    label: 'GPT Image 2',    sub: 'OpenAI · character',         cost: 50, render: '~60s', requires_reference: true  },
+  { key: 'nano-banana',    label: 'Nano Banana',    sub: 'Google · cheap fast',        cost:  8, render: '~10s', requires_reference: false },
+  { key: 'flux-schnell',   label: 'Flux Schnell',   sub: 'BFL · cheapest',             cost:  1, render: '~5s',  requires_reference: false },
+  { key: 'sdxl-lightning', label: 'SDXL Lightning', sub: 'ByteDance · stylish',        cost:  1, render: '~5s',  requires_reference: false },
+])
+const availableCharacters = ref([])
+const ONE_SHOT_ANIM_TIERS = [
+  { key: 'quick',    label: 'Wan 2.5',    sub: 'Fast · cheap',     cost: 60,  render: '~30s' },
+  { key: 'balanced', label: 'Hailuo 2.3', sub: 'Best for most',    cost: 120, render: '~90s' },
+  { key: 'premium',  label: 'Kling 2.1',  sub: 'Cinematic',        cost: 240, render: '~3 min' },
+]
+
+async function loadOneShotCatalogs() {
+  try {
+    const [models, chars] = await Promise.all([
+      api.get('/image-models').catch(() => null),
+      api.get('/characters').catch(() => null),
+    ])
+    if (models?.data?.data?.models?.length) availableImageModels.value = models.data.data.models
+    availableCharacters.value = chars?.data?.data?.characters ?? []
+  } catch { /* keep fallbacks */ }
+}
+
+function setOneShotSourceMode(mode) {
+  oneShotSourceMode.value = mode
+  if (mode !== 'upload')    clearOneShotUpload()
+  if (mode !== 'character') oneShotCharacterId.value = null
+}
+
+function clearOneShotUpload() {
+  oneShotUploadedAssetId.value = null
+  oneShotUploadedPreview.value = null
+  oneShotUploadedTitle.value = null
+  oneShotUploadError.value = ''
+}
+
+async function onOneShotPhotoChange(event) {
+  const file = event.target?.files?.[0]
+  if (!file) return
+  if (file.size > 8 * 1024 * 1024) {
+    oneShotUploadError.value = 'Image is over 8 MB — try a smaller file.'
+    return
+  }
+  oneShotUploadingPhoto.value = true
+  oneShotUploadError.value = ''
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('asset_type', 'image')
+    fd.append('title', file.name.replace(/\.[^.]+$/, ''))
+    const res = await api.post('/assets', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    const asset = res.data?.data?.asset
+    if (asset?.id) {
+      oneShotUploadedAssetId.value = asset.id
+      oneShotUploadedPreview.value = asset.thumbnail_url || asset.storage_url || null
+      oneShotUploadedTitle.value = asset.title
+    } else {
+      oneShotUploadError.value = 'Upload returned no asset.'
+    }
+  } catch (e) {
+    oneShotUploadError.value = e.response?.data?.error?.message ?? 'Upload failed.'
+  } finally {
+    oneShotUploadingPhoto.value = false
+    event.target.value = ''   // allow re-picking the same file
+  }
+}
+
+// Submit gate: prompt required in all modes; upload requires an asset;
+// character requires a pick. Generate has no extra requirements.
+const canSubmitOneShot = computed(() => {
+  if (!oneShotPrompt.value.trim()) return false
+  if (oneShotSourceMode.value === 'upload'    && !oneShotUploadedAssetId.value) return false
+  if (oneShotSourceMode.value === 'character' && !oneShotCharacterId.value)    return false
+  return true
+})
+
 async function submitOneShot() {
-  if (!oneShotPrompt.value.trim() || wizardCreateState.value === 'loading') return
+  if (!canSubmitOneShot.value || wizardCreateState.value === 'loading') return
   wizardCreateState.value = 'loading'
   wizardCreateError.value = ''
   try {
-    const res = await api.post('/projects/one-shot', {
+    const payload = {
       prompt: oneShotPrompt.value.trim(),
       title: title.value || undefined,
       aspect_ratio: aspectRatio.value,
       animate: oneShotAnimate.value,
+      animation_tier: oneShotAnimateTier.value,
       channel_id: channelId.value ? Number(channelId.value) : undefined,
-    })
+    }
+    if (oneShotSourceMode.value === 'generate') {
+      payload.image_model_key = oneShotImageModelKey.value
+    } else if (oneShotSourceMode.value === 'upload') {
+      payload.source_image_asset_id = oneShotUploadedAssetId.value
+    } else if (oneShotSourceMode.value === 'character') {
+      payload.character_id = oneShotCharacterId.value
+    }
+    const res = await api.post('/projects/one-shot', payload)
     const projectId = res.data?.data?.project?.id
     if (projectId) {
       show.value = false
-      // animate flag travels in the URL so the progress view knows to
-      // include the "Animating scene" stage (or skip it). Survives
-      // refresh; storeOneShot doesn't persist this on the project.
       router.push({
         name: 'generation-progress',
         params: { projectId },
-        query: { animate: oneShotAnimate.value ? '1' : '0' },
+        query: {
+          animate: oneShotAnimate.value ? '1' : '0',
+          // skip_image=1 tells the progress view that the image stage is
+          // already done (we used a source asset), so it can render the
+          // pipeline accurately.
+          skip_image: oneShotSourceMode.value === 'generate' ? '0' : '1',
+        },
       })
     }
   } catch (err) {
@@ -637,6 +750,72 @@ defineExpose({ open })
           <div class="hint-box">This becomes the voice-over script AND the image/music descriptor. Be visual and specific — name the subject, mood, lighting, setting.</div>
         </label>
 
+        <!-- Source mode: generate AI image OR use a photo OR use a saved character -->
+        <label class="input-label-wrap" style="margin-top:14px;">
+          <span class="input-label">Image source</span>
+          <div class="format-chips">
+            <div :class="['format-chip', oneShotSourceMode === 'generate' ? 'active' : '']"  @click="setOneShotSourceMode('generate')">✦ Generate AI image</div>
+            <div :class="['format-chip', oneShotSourceMode === 'upload'   ? 'active' : '']"  @click="setOneShotSourceMode('upload')">📷 Upload photo</div>
+            <div :class="['format-chip', oneShotSourceMode === 'character'? 'active' : '']"  @click="setOneShotSourceMode('character')">👤 Use character</div>
+          </div>
+        </label>
+
+        <!-- Generate mode: image model picker -->
+        <label v-if="oneShotSourceMode === 'generate'" class="input-label-wrap" style="margin-top:14px;">
+          <span class="input-label">Image model</span>
+          <div class="model-grid">
+            <div
+              v-for="m in availableImageModels"
+              :key="m.key"
+              :class="['model-card', oneShotImageModelKey === m.key ? 'selected' : '', m.requires_reference ? 'disabled' : '']"
+              :title="m.requires_reference ? 'Needs a character reference — use the Character source mode' : ''"
+              @click="!m.requires_reference && (oneShotImageModelKey = m.key)"
+            >
+              <div class="model-card-name">{{ m.label }}</div>
+              <div class="model-card-sub">{{ m.sub }}</div>
+              <div class="model-card-foot">
+                <span class="model-card-cost">{{ m.cost }} cr</span>
+                <span class="model-card-render">{{ m.render }}</span>
+              </div>
+            </div>
+          </div>
+        </label>
+
+        <!-- Upload mode: file picker -->
+        <label v-if="oneShotSourceMode === 'upload'" class="input-label-wrap" style="margin-top:14px;">
+          <span class="input-label">Photo</span>
+          <div class="upload-zone">
+            <div v-if="!oneShotUploadedAssetId">
+              <label class="upload-zone-input">
+                <span v-if="!oneShotUploadingPhoto">📷 Click to choose an image · PNG / JPG · max 8 MB</span>
+                <span v-else>Uploading…</span>
+                <input class="hidden-file-input" type="file" accept="image/*" @change="onOneShotPhotoChange" :disabled="oneShotUploadingPhoto" />
+              </label>
+            </div>
+            <div v-else style="display:flex;align-items:center;gap:10px;">
+              <img v-if="oneShotUploadedPreview" :src="oneShotUploadedPreview" alt="" style="width:60px;height:60px;border-radius:6px;object-fit:cover;" />
+              <div style="flex:1;font-size:12px;">
+                <div style="color:var(--color-text-primary);font-weight:600;">{{ oneShotUploadedTitle || 'Uploaded photo' }}</div>
+                <div style="color:var(--color-text-muted);">Ready · we'll animate this directly</div>
+              </div>
+              <button class="btn btn-ghost" type="button" @click="clearOneShotUpload" style="padding:4px 10px;font-size:12px;">Remove</button>
+            </div>
+          </div>
+          <div v-if="oneShotUploadError" class="modal-error" style="margin-top:8px;">{{ oneShotUploadError }}</div>
+        </label>
+
+        <!-- Character mode: dropdown -->
+        <label v-if="oneShotSourceMode === 'character'" class="input-label-wrap" style="margin-top:14px;">
+          <span class="input-label">Character</span>
+          <div v-if="availableCharacters.length === 0" class="hint-box">
+            No saved characters yet. Create one from <strong>Characters</strong> in the sidebar — upload a reference photo, give them a name, and they'll appear here.
+          </div>
+          <select v-else v-model="oneShotCharacterId" class="field-input">
+            <option :value="null">— Pick a character —</option>
+            <option v-for="c in availableCharacters" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+        </label>
+
         <label class="input-label-wrap" style="margin-top:14px;">
           <span class="input-label">Aspect ratio</span>
           <div class="format-chips">
@@ -650,16 +829,36 @@ defineExpose({ open })
         <label class="toggle-row" style="margin-top:18px;">
           <div>
             <div class="label-main">Animate the image</div>
-            <div class="label-hint">Generates a 5s animated clip from the image. Costs 60 credits and adds ~60–90s to processing. Quick tier (Wan 2.5) — re-animate from the editor for higher tiers.</div>
+            <div class="label-hint">Generates an animated clip from the image. Re-animate from the editor with a different model anytime.</div>
           </div>
           <div :class="['toggle', oneShotAnimate ? 'on' : '']" @click="oneShotAnimate = !oneShotAnimate"></div>
+        </label>
+
+        <!-- Animation model picker (only when animate is on) -->
+        <label v-if="oneShotAnimate" class="input-label-wrap" style="margin-top:14px;">
+          <span class="input-label">Animation model</span>
+          <div class="model-grid">
+            <div
+              v-for="m in ONE_SHOT_ANIM_TIERS"
+              :key="m.key"
+              :class="['model-card', oneShotAnimateTier === m.key ? 'selected' : '']"
+              @click="oneShotAnimateTier = m.key"
+            >
+              <div class="model-card-name">{{ m.label }}</div>
+              <div class="model-card-sub">{{ m.sub }}</div>
+              <div class="model-card-foot">
+                <span class="model-card-cost">{{ m.cost }} cr</span>
+                <span class="model-card-render">{{ m.render }}</span>
+              </div>
+            </div>
+          </div>
         </label>
 
         <div v-if="wizardCreateError" class="modal-error" style="margin-top:14px;">{{ wizardCreateError }}</div>
 
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" @click="wizardStep = 0">← Back</button>
-          <button class="btn btn-primary" type="button" :disabled="!oneShotPrompt.trim() || wizardCreateState === 'loading'" @click="submitOneShot">
+          <button class="btn btn-primary" type="button" :disabled="!canSubmitOneShot || wizardCreateState === 'loading'" @click="submitOneShot">
             {{ wizardCreateState === 'loading' ? 'Generating…' : '⚡ Generate one-shot' }}
           </button>
         </div>
@@ -1247,6 +1446,18 @@ defineExpose({ open })
 .upload-zone-input { display: block; cursor: pointer; transition: 0.15s ease; }
 .upload-zone-input:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }
 .hidden-file-input { display: none; }
+
+/* Model picker grid — image-gen + animation tiers in one-shot. */
+.model-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.model-card { padding: 11px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; transition: 0.15s; }
+.model-card:hover:not(.disabled) { border-color: rgba(255,107,53,0.35); transform: translateY(-1px); }
+.model-card.selected { border-color: var(--color-accent); background: rgba(255,107,53,0.08); }
+.model-card.disabled { opacity: 0.45; cursor: not-allowed; }
+.model-card-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 2px; }
+.model-card-sub { font-size: 10.5px; color: var(--color-text-muted); line-height: 1.4; min-height: 28px; }
+.model-card-foot { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; font-family: "Space Mono", monospace; }
+.model-card-cost { color: var(--color-accent); font-weight: 600; }
+.model-card-render { color: var(--color-text-muted); }
 
 .image-mode-toggle { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
 .image-mode-btn { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.15s; }

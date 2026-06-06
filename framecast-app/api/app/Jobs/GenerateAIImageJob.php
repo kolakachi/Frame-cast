@@ -44,6 +44,10 @@ class GenerateAIImageJob implements ShouldQueue
         public readonly ?int $chainAnimateAfterSeconds = null,
         public readonly ?string $chainAnimateMotionPrompt = null,
         public readonly ?string $chainAnimateTier = null,
+        // Model picker key (see ImageAdapterFactory::AVAILABLE). When null,
+        // the DI-injected default (DalleImageAdapter / gpt-image-1) wins so
+        // existing callers without the picker keep working.
+        public readonly ?string $modelKey = null,
     ) {
         $this->onQueue('visual');
     }
@@ -121,7 +125,13 @@ class GenerateAIImageJob implements ShouldQueue
             }
 
             if (! isset($result)) {
-                $result = $adapter->generate($prompt, $this->style, $aspectRatio, $options);
+                // If the caller picked a specific model, override the DI default
+                // and resolve via the factory. Lets users hit nano-banana /
+                // flux-schnell / sdxl-lightning without changing the global bind.
+                $resolved = $this->modelKey
+                    ? app(\App\Services\Generation\Image\ImageAdapterFactory::class)->resolve($this->modelKey)
+                    : $adapter;
+                $result = $resolved->generate($prompt, $this->style, $aspectRatio, $options);
             }
 
             if (! $this->sceneStillMatchesGeneration($scene)) {

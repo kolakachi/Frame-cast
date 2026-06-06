@@ -82,6 +82,14 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/me', [VerificationController::class, 'deleteMe']);
         Route::get('/me/credit-history', [VerificationController::class, 'creditHistory']);
         Route::post('/verification/storage-smoke', [VerificationController::class, 'storageSmoke']);
+        // Public catalog of image-gen models the user can pick. Read by the
+        // editor's regen modal + wizard one-shot step's model picker.
+        Route::get('/image-models', function () {
+            return response()->json([
+                'data' => ['models' => \App\Services\Generation\Image\ImageAdapterFactory::publicCatalog()],
+                'meta' => [],
+            ]);
+        });
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
         Route::get('/voice-profiles', [VoiceProfileController::class, 'index']);

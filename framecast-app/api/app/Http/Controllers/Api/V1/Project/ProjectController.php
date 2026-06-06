@@ -756,15 +756,55 @@ class ProjectController extends Controller
             'aspect_ratio'  => ['nullable', 'string', 'in:9:16,1:1,16:9,4:5'],
             'animate'       => ['nullable', 'boolean'],
             'channel_id'    => ['nullable', 'integer', 'exists:channels,id'],
+            // Image source: optional. One of these short-circuits the
+            // AI image generation step — if the user gave us a photo or
+            // a saved character, we skip GenerateAIImageJob and animate
+            // off their asset directly. character_id wins if both passed.
+            'source_image_asset_id' => ['nullable', 'integer', 'exists:assets,id'],
+            'character_id'          => ['nullable', 'integer', 'exists:characters,id'],
+            // Image model picker for the generate-from-prompt path. Falls
+            // back to gpt-image-1 if absent. Ignored when source_image or
+            // character is provided.
+            'image_model_key'       => ['nullable', 'string', 'in:' . implode(',', array_keys(\App\Services\Generation\Image\ImageAdapterFactory::AVAILABLE))],
+            'animation_tier'        => ['nullable', 'string', 'in:quick,balanced,premium'],
         ]);
 
+        // Resolve image source: explicit asset, character's reference, or
+        // null (which means generate from prompt). Validate ownership now
+        // so the job doesn't have to.
+        $sourceAsset = null;
+        if (! empty($validated['character_id'])) {
+            $character = \App\Models\Character::query()
+                ->whereKey($validated['character_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->with('referenceAsset')
+                ->first();
+            $sourceAsset = $character?->referenceAsset;
+        } elseif (! empty($validated['source_image_asset_id'])) {
+            $sourceAsset = \App\Models\Asset::query()
+                ->whereKey($validated['source_image_asset_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->where('asset_type', 'image')
+                ->first();
+        }
+
         // Credit check up-front so we don't half-create a project the
-        // user can't afford to complete.
+        // user can't afford to complete. Image cost drops to 0 when we're
+        // using a user-provided source asset.
         $needsAnimation = (bool) ($validated['animate'] ?? true);
-        $estimatedCost  = CreditService::AI_MEDIUM
+        $animationTier  = $validated['animation_tier'] ?? 'quick';
+        $animationCost  = match ($animationTier) {
+            'premium'  => CreditService::VIDEO_PREMIUM,
+            'balanced' => CreditService::VIDEO_BALANCED,
+            default    => CreditService::VIDEO_QUICK,
+        };
+        $imageCost = $sourceAsset
+            ? 0
+            : app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor($validated['image_model_key'] ?? null);
+        $estimatedCost = $imageCost
             + CreditService::TTS
             + CreditService::AI_MUSIC
-            + ($needsAnimation ? CreditService::VIDEO_QUICK : 0);
+            + ($needsAnimation ? $animationCost : 0);
 
         $balance = (new CreditService())->balance((int) $user->workspace_id);
         if ($balance < $estimatedCost) {
@@ -830,34 +870,80 @@ class ProjectController extends Controller
             'status'        => 'draft',
         ]);
 
-        // Set in-progress + token so the editor's pending-state computed
-        // and the watchdog both see this scene as legitimately running.
-        $imageToken = (string) \Illuminate\Support\Str::uuid();
-        $scene->forceFill([
-            'image_generation_settings_json' => [
-                'in_progress'           => true,
-                'last_error'            => null,
-                'needs_visual'          => false,
-                'generation_token'      => $imageToken,
-                'generation_started_at' => now()->toIso8601String(),
-            ],
-        ])->save();
+        // Animation parameters — picked once so the two dispatch branches
+        // below (with-source-asset vs generate-from-prompt) stay in sync.
+        $animateDuration = $animationTier === 'balanced' ? 6 : 5;
 
-        // Fan out: image + TTS + music run in parallel. Each gets its
-        // own tailored input from the LLM split. Animation chains inside
-        // GenerateAIImageJob's success path (it needs the visual asset
-        // before i2v can run) — passed as constructor args below.
-        \App\Jobs\GenerateAIImageJob::dispatch(
-            $scene->getKey(),
-            $project->getKey(),
-            $parsed['style'],
-            null,
-            $parsed['style'],
-            $imageToken,
-            $needsAnimation ? 5 : null,            // 5s clip on Quick tier
-            $needsAnimation ? $parsed['motion'] : null,
-            $needsAnimation ? 'quick'    : null,
-        );
+        if ($sourceAsset) {
+            // User supplied a photo (upload or character reference) — wire
+            // it as the scene's visual asset, skip GenerateAIImageJob, and
+            // kick AnimateSceneJob directly. Saves the user the image-gen
+            // cost AND the wait.
+            $scene->forceFill([
+                'visual_asset_id'                => $sourceAsset->getKey(),
+                'image_generation_settings_json' => [
+                    'in_progress'   => false,
+                    'needs_visual'  => false,
+                    'last_error'    => null,
+                    'source'        => $validated['character_id'] ? 'character' : 'upload',
+                    'source_asset_id' => $sourceAsset->getKey(),
+                ],
+            ])->save();
+
+            // Stash motion prompt for the editor's animate modal pre-fill.
+            $scene->forceFill([
+                'image_generation_settings_json' => array_merge(
+                    $scene->image_generation_settings_json ?? [],
+                    ['suggested_motion_prompt' => $parsed['motion']],
+                ),
+            ])->save();
+
+            // Bind character if provided so subsequent edits keep the linkage.
+            if (! empty($validated['character_id'])) {
+                $scene->forceFill(['character_id' => $validated['character_id']])->save();
+            }
+
+            \App\Events\GenerationProgressed::dispatch($project->getKey(), 'ai_image', 'completed', null, [
+                'scene_id'  => $scene->getKey(),
+                'asset_id'  => $sourceAsset->getKey(),
+                'image_url' => app(\App\Services\Media\StorageService::class)->url($sourceAsset->storage_url),
+            ]);
+
+            if ($needsAnimation) {
+                \App\Jobs\AnimateSceneJob::dispatch(
+                    $scene->getKey(),
+                    $project->getKey(),
+                    $animationTier,
+                    $animateDuration,
+                    $parsed['motion'],
+                );
+            }
+        } else {
+            // Generate-from-prompt path — original flow.
+            $imageToken = (string) \Illuminate\Support\Str::uuid();
+            $scene->forceFill([
+                'image_generation_settings_json' => [
+                    'in_progress'           => true,
+                    'last_error'            => null,
+                    'needs_visual'          => false,
+                    'generation_token'      => $imageToken,
+                    'generation_started_at' => now()->toIso8601String(),
+                ],
+            ])->save();
+
+            \App\Jobs\GenerateAIImageJob::dispatch(
+                $scene->getKey(),
+                $project->getKey(),
+                $parsed['style'],
+                null,
+                $parsed['style'],
+                $imageToken,
+                $needsAnimation ? $animateDuration : null,
+                $needsAnimation ? $parsed['motion'] : null,
+                $needsAnimation ? $animationTier   : null,
+                $validated['image_model_key'] ?? null,
+            );
+        }
 
         \App\Jobs\GenerateTTSJob::dispatch($project->getKey());
 
@@ -872,22 +958,15 @@ class ProjectController extends Controller
             8,
         );
 
-        // Pre-stash the motion prompt for animation so the editor's
-        // auto-animate path (or the user's manual Animate click) has it
-        // ready. Lives in image_generation_settings_json so it ships
-        // with the scene state through the watchdog.
+        // Pre-stash the motion prompt for the editor's animate-modal
+        // pre-fill. Note: the source-asset path above already stashed
+        // this earlier; harmless to re-set here for the prompt path.
         if (! empty($parsed['motion'])) {
             $cfg = $scene->image_generation_settings_json ?? [];
             $cfg['suggested_motion_prompt'] = $parsed['motion'];
             $scene->forceFill(['image_generation_settings_json' => $cfg])->save();
         }
 
-        // If auto-animate is requested, the scene watcher in the existing
-        // GenerateAIImageJob success path doesn't auto-chain animation —
-        // we kick it from the frontend's generation-progress page once the
-        // image asset is ready, by calling the existing /scenes/{id}/animate
-        // endpoint. This keeps the chain visible to the user (image first,
-        // then animation badge appears).
         $project->refresh();
         return response()->json([
             'data' => [

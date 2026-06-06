@@ -828,10 +828,14 @@ class SceneController extends Controller
         $validated = $request->validate([
             'style'           => ['sometimes', 'string', 'in:cinematic,dark,anime,documentary,minimalist,realistic,vintage,neon,photorealistic,cyberpunk_80s,anime_80s,anime_90s,dark_fantasy,fantasy_retro,comic,film_noir,line_drawing,watercolor,paper_cutout,cartoon,3d_animated,custom'],
             'prompt_override' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            // Model picker: validate against ImageAdapterFactory's registry so
+            // additions there auto-propagate here without editing this list.
+            'model_key'       => ['sometimes', 'nullable', 'string', 'in:' . implode(',', array_keys(\App\Services\Generation\Image\ImageAdapterFactory::AVAILABLE))],
         ]);
 
         // Prefer request style, then scene-level visual_style, then default.
         $style = $validated['style'] ?? $scene->visual_style ?? 'cinematic';
+        $modelKey = $validated['model_key'] ?? null;
 
         $generationToken = (string) Str::uuid();
 
@@ -853,6 +857,8 @@ class SceneController extends Controller
             $validated['prompt_override'] ?? null,
             $style,
             $generationToken,
+            null, null, null, // no animate chain for editor-driven regens
+            $modelKey,
         );
 
         return response()->json([

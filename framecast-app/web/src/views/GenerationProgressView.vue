@@ -28,12 +28,15 @@ const baseStages = [
 // list keeps the progress page honest (no perpetually-skipped "Writing
 // script" / "Crafting hooks" steps).
 function oneShotStageDefinitions(project = null) {
-  // animate flag comes from the URL query param set by the wizard's
-  // submitOneShot (?animate=1|0). storeOneShot doesn't persist it on
-  // the project, so the URL is the source of truth across refresh.
-  const animate = route.query.animate !== '0'
+  // animate + skip_image flags come from the URL query set by the wizard's
+  // submitOneShot. storeOneShot doesn't persist them on the project, so
+  // the URL is the source of truth across refresh.
+  const animate   = route.query.animate !== '0'
+  const skipImage = route.query.skip_image === '1'
   return [
-    { key: 'ai_image',         label: 'Generating image' },
+    // When the user uploaded a photo or picked a character, image gen
+    // was skipped entirely on the backend. The stage shouldn't appear.
+    ...(skipImage ? [] : [{ key: 'ai_image', label: 'Generating image' }]),
     ...(animate ? [{ key: 'animation', label: 'Animating scene' }] : []),
     { key: 'tts',              label: 'Recording voice' },
     { key: 'ai_music',         label: 'Composing music' },
