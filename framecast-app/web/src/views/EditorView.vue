@@ -187,6 +187,8 @@ async function cruiseApplyAction(msg) {
     // work is fully synchronous (no job dispatched), mark applied now.
     msg.action_credits = out?.credits_spent ?? 0
     msg.progress_text = cruiseInitialProgressText(msg.action.tool)
+    msg.expected_stages = cruiseExpectedStages(msg.action.tool, msg.action.params)
+    msg.completed_stages = []
     msg.action_status = cruiseToolHasAsyncWork(msg.action.tool) ? 'running' : 'applied'
     // Stay on the Assistant tab so the user can watch progress in chat.
     // Pulse the affected section in case they switch to Config.
@@ -283,7 +285,6 @@ function cruiseStartPollingFallback(msg) {
   if (msg._pollTimer) return
   const sceneId = Number(msg.action?.params?.scene_id ?? 0)
   if (!sceneId) return
-  const tool = msg.action.tool
   const startedAt = Date.now()
   // Snapshot the scene's pre-apply state so we can detect a real change.
   const baselineScene = scenes.value?.find?.((s) => s.id === sceneId) || {}
@@ -302,23 +303,34 @@ function cruiseStartPollingFallback(msg) {
       const res = await api.get(`/scenes/${sceneId}/preview`)
       const fresh = res?.data?.data?.scene
       if (!fresh) return
-      let done = false
-      if (tool === 'regenerate_image' || tool === 'add_scene') {
-        done = fresh.visual_asset_id && fresh.visual_asset_id !== baseline.visual_asset_id
-      } else if (tool === 'animate_scene') {
-        done = fresh.video_asset_id && fresh.video_asset_id !== baseline.video_asset_id
-      } else if (tool === 'rerecord_voice') {
-        done = fresh.audio_asset_id && fresh.audio_asset_id !== baseline.audio_asset_id
-      } else if (tool === 'change_music') {
-        // Music lands on the project, not the scene. Skip — Reverb covers.
-        return
+      // Detect which expected stages have completed by sniffing the
+      // scene's assets. Only when ALL expected stages are done do we
+      // mark 'applied' and swap the scene in. Intermediate detections
+      // update the progress text but don't touch the editor — that's
+      // what was causing the flicker.
+      const expected = msg.expected_stages || []
+      const completed = msg.completed_stages || []
+      const newlyDone = []
+      const stageDoneByAsset = {
+        ai_image:  fresh.visual_asset_id && fresh.visual_asset_id !== baseline.visual_asset_id,
+        animation: fresh.video_asset_id && fresh.video_asset_id !== baseline.video_asset_id,
+        tts:       fresh.audio_asset_id && fresh.audio_asset_id !== baseline.audio_asset_id,
       }
-      if (done) {
+      for (const stage of expected) {
+        if (!completed.includes(stage) && stageDoneByAsset[stage]) newlyDone.push(stage)
+      }
+      if (!newlyDone.length) return
+      msg.completed_stages = [...completed, ...newlyDone]
+      const allDone = expected.every(s => msg.completed_stages.includes(s))
+      if (allDone) {
         msg.action_status = 'applied'
         msg.progress_text = cruiseSuccessText(msg.action.tool, null)
         try { replaceSceneInCollection(normalizeScenePayload(fresh)) } catch (_) {}
         cruiseStopPolling(msg)
         cruiseStopProgressLoop(msg)
+      } else {
+        // Partial — update chat text, DON'T touch the editor.
+        msg.progress_text = cruiseStagePendingText(msg.action.tool, expected, msg.completed_stages)
       }
     } catch (_) { /* keep polling */ }
   }, CRUISE_POLL_INTERVAL_MS)
@@ -338,6 +350,40 @@ function cruiseToolHasAsyncWork(tool) {
     'regenerate_image', 'animate_scene', 'rerecord_voice',
     'change_music', 'add_scene',
   ].includes(tool)
+}
+
+// Async stages we expect each tool to fire, so we know not to mark
+// 'applied' until ALL of them complete. add_scene dispatches both an
+// image and a voice job; chained regenerate_image fires ai_image AND
+// then animation. Without this, the chat said "Voice ready" while the
+// image was still cooking.
+function cruiseExpectedStages(tool, params) {
+  const isChained = !!params?.chain_animate_tier
+  switch (tool) {
+    case 'regenerate_image': return isChained ? ['ai_image', 'animation'] : ['ai_image']
+    case 'animate_scene':    return ['animation']
+    case 'rerecord_voice':   return ['tts']
+    case 'change_music':     return ['ai_music']
+    case 'add_scene':        return ['ai_image', 'tts']
+    default:                 return []
+  }
+}
+
+// Progress text for a partial-completion (one stage done, others
+// pending). "Voice ready · generating image…" reads better than
+// flipping to green ✓ before the work is done.
+function cruiseStagePendingText(tool, expected, completed) {
+  const pending = expected.filter(s => !completed.includes(s))
+  if (!pending.length) return cruiseSuccessText(tool, null)
+  const doneLabel = completed.map(s => ({
+    ai_image: 'Image ready', animation: 'Animation ready',
+    tts: 'Voice ready', ai_music: 'Music ready',
+  }[s] || s)).join(', ')
+  const pendingLabel = pending.map(s => ({
+    ai_image: 'generating image', animation: 'animating',
+    tts: 'recording voice', ai_music: 'composing music',
+  }[s] || s)).join(' + ')
+  return `${doneLabel} · ${pendingLabel}…`
 }
 
 // First line shown the instant Apply lands, before any event fires.
@@ -389,34 +435,59 @@ function cruiseFindMessageForProgress(payload) {
 // Drive the running action card's progress_text from the Reverb event.
 // Called from the existing project-channel listener so we don't open a
 // second subscription.
+//
+// Returns true when the event belongs to a cruise action that is NOT
+// yet fully complete — the caller should then skip its own scene
+// refresh so the editor doesn't flicker between intermediate states
+// (e.g. swap in the still image, then immediately swap to video).
+// Returns false for non-cruise events OR when the cruise action just
+// terminated (so the normal scene refresh can paint the final result).
 function cruiseHandleProgressEvent(payload) {
   const msg = cruiseFindMessageForProgress(payload)
-  if (!msg) return
+  if (!msg) return false
   const status = String(payload.status || '')
-  const isChained = !!msg.action?.params?.chain_animate_tier
   if (status === 'processing') {
-    if (payload.stage === 'animation' && msg.action.tool === 'regenerate_image' && isChained) {
-      msg.progress_text = 'Animating scene…'
+    // First time this stage starts — update text but keep all timers.
+    // Don't suppress the existing handler so the editor's own pending
+    // indicators (aiImagePending etc.) stay coherent.
+    if (msg.completed_stages?.length) {
+      msg.progress_text = cruiseStagePendingText(msg.action.tool, msg.expected_stages || [], msg.completed_stages)
     } else {
       msg.progress_text = cruiseInitialProgressText(msg.action.tool)
     }
-  } else if (status === 'completed') {
-    // Chained image+animate: image done, but animation still pending.
-    // Keep status='running' until the animation event lands.
-    if (payload.stage === 'ai_image' && msg.action.tool === 'regenerate_image' && isChained) {
-      msg.progress_text = 'Image ready · animating…'
-      return
+    // Mid-flight — tell the caller to hold off refreshing the scene.
+    return true
+  }
+  if (status === 'completed') {
+    const expected = msg.expected_stages || []
+    const completed = msg.completed_stages || []
+    if (!completed.includes(payload.stage)) completed.push(payload.stage)
+    msg.completed_stages = completed
+    const allDone = expected.length > 0 && expected.every(s => completed.includes(s))
+    if (allDone) {
+      msg.action_status = 'applied'
+      msg.progress_text = cruiseSuccessText(msg.action.tool, payload.stage)
+      cruiseStopProgressLoop(msg)
+      cruiseStopPolling(msg)
+      // Terminal — allow the normal handler to swap in the final scene.
+      return false
     }
-    msg.action_status = 'applied'
-    msg.progress_text = cruiseSuccessText(msg.action.tool, payload.stage)
-    cruiseStopProgressLoop(msg)
-    cruiseStopPolling(msg)
-  } else if (status === 'failed') {
+    // Partial completion: e.g. voice done, image still cooking. Update
+    // the chat text but suppress the scene refresh so the editor doesn't
+    // paint an intermediate state.
+    msg.progress_text = cruiseStagePendingText(msg.action.tool, expected, completed)
+    return true
+  }
+  if (status === 'failed') {
     msg.action_status = 'failed'
     msg.action_error = payload.message || 'Generation failed.'
     cruiseStopProgressLoop(msg)
     cruiseStopPolling(msg)
+    // Failure is terminal — let the normal handler surface whatever
+    // partial state landed.
+    return false
   }
+  return false
 }
 
 function cruiseSuccessText(tool, stage) {
@@ -4631,7 +4702,13 @@ function subscribeProjectChannel() {
   echo.private(projectChannelName).listen(".generation.progress", (payload) => {
     // Drive the Cruise chat's running action card from the same event
     // stream so the user sees "Generating image…" → "Image ready" inline.
-    try { cruiseHandleProgressEvent(payload); } catch (_) {}
+    // When a cruise action is partway through a multi-stage job, the
+    // handler returns true to tell us NOT to refresh the editor yet —
+    // otherwise we'd flicker the canvas between intermediate states
+    // (e.g. swap in the still then immediately swap to the video).
+    let cruiseSuppress = false;
+    try { cruiseSuppress = cruiseHandleProgressEvent(payload); } catch (_) {}
+    if (cruiseSuppress) return;
 
     if (payload.stage === "tts" && ["completed", "failed"].includes(String(payload.status || ""))) {
       refreshProjectPayload().catch(() => {});
