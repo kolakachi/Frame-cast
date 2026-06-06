@@ -8,7 +8,7 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 const STORAGE_KEY = "fc_wizard";
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 // ── State ────────────────────────────────────────────────
 const step = ref(1);
@@ -50,8 +50,12 @@ const stepMeta = [
       "Pick how you want to start — a topic, a script, a link, or a product.",
   },
   {
-    title: "Customize your style",
-    subtitle: "Set the look, format, and voice. You can change these later.",
+    title: "Pick your visual style",
+    subtitle: "Choose the look. We'll apply it across every scene.",
+  },
+  {
+    title: "Format and voice",
+    subtitle: "Pick the aspect ratio for your platform and a default voice.",
   },
   {
     title: "Ready to create",
@@ -697,6 +701,20 @@ onMounted(async () => {
             </div>
           </div>
 
+          <div class="ob-actions">
+            <button class="ob-btn ob-btn-ghost" type="button" @click="back">
+              Back
+            </button>
+            <div class="ob-actions-right">
+              <button class="ob-btn ob-btn-primary" type="button" @click="next">
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Step 4: Format + voice ── -->
+        <div v-else-if="step === 4">
           <div class="ob-field">
             <label class="ob-label">Aspect ratio</label>
             <div class="ob-ratio-grid">
@@ -777,8 +795,8 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- ── Step 4: Launch ── -->
-        <div v-else>
+        <!-- ── Step 5: Launch ── -->
+        <div v-else-if="step === 5">
           <div class="ob-summary">
             <div class="ob-summary-row">
               <span class="ob-summary-key">Niche</span>
@@ -1177,7 +1195,7 @@ onMounted(async () => {
   /* Cards grew from 28px to 130px (100px sample + label) so the previous
      320px cap was hiding most rows. Bumped to fit 3 rows; if there are
      more, the user scrolls within the grid like before. */
-  max-height: 520px;
+  max-height: 250px;
   overflow-y: auto;
   padding-right: 4px;
 }
