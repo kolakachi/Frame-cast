@@ -41,7 +41,7 @@ class AddSceneTool implements CruiseTool
             'visual_prompt' => [
                 'type' => 'string',
                 'required' => true,
-                'description' => 'What the image shows. Visual specifics: subject, setting, lighting.',
+                'description' => 'A DETAILED image-generation prompt (target 500–1000 chars, hard cap 1500). Expand the user\'s intent into a vivid scene: subject + pose, environment + setting, time of day + lighting, camera angle + framing, mood + emotion, style references, colour palette, and concrete textural details. Do NOT just echo the user\'s words — paint the picture the model will draw.',
             ],
             'position' => [
                 'type' => 'integer',

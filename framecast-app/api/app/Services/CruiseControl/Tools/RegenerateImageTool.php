@@ -49,7 +49,7 @@ class RegenerateImageTool implements CruiseTool
             'prompt_override' => [
                 'type' => 'string',
                 'required' => false,
-                'description' => 'Optional override (≤400 chars). Replaces the scene\'s default prompt for THIS regen only.',
+                'description' => 'A DETAILED image-generation prompt (target 500–1000 chars, hard cap 1500). Expand the user\'s short description into a vivid scene: subject + pose, environment + setting, time of day + lighting, camera angle + framing, mood + emotion, style references, colour palette, and small concrete details (fabric, weather, surface textures). Do NOT just echo the user\'s words — paint the picture the model will draw.',
             ],
             'model_key' => [
                 'type' => 'string',
