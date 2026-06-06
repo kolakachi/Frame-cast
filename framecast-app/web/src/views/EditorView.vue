@@ -2177,23 +2177,44 @@ function sortScenesByOrder(nextScenes) {
 }
 
 function replaceSceneInCollection(updatedScene) {
-  scenes.value = sortScenesByOrder(
-    scenes.value.map((scene) => {
-      if (scene.id !== updatedScene.id) return scene;
+  if (!updatedScene?.id) return;
 
-      const captionSettings = normalizeCaptionSettings(
-        updatedScene.caption_settings ?? updatedScene.caption_settings_json,
-        scene.caption_settings ?? scene.caption_settings_json
-      );
+  const idx = scenes.value.findIndex((s) => s.id === updatedScene.id);
+  if (idx === -1) {
+    // New scene we don't have yet — append, then sort.
+    scenes.value.push(updatedScene);
+    scenes.value = sortScenesByOrder(scenes.value);
+    return;
+  }
 
-      return {
-        ...scene,
-        ...updatedScene,
-        caption_settings: captionSettings,
-        caption_settings_json: captionSettings,
-      };
-    })
+  const existing = scenes.value[idx];
+  const captionSettings = normalizeCaptionSettings(
+    updatedScene.caption_settings ?? updatedScene.caption_settings_json,
+    existing.caption_settings ?? existing.caption_settings_json
   );
+
+  // Mutate the existing scene IN PLACE. Vue 3's fine-grained reactivity
+  // only re-renders the bindings whose specific keys changed, instead
+  // of remounting every component that touches this scene. Before this,
+  // every caption toggle / preview poll / generation event replaced the
+  // whole scenes array with new object references and the editor
+  // flickered on every API response.
+  Object.assign(existing, updatedScene, {
+    caption_settings: captionSettings,
+    caption_settings_json: captionSettings,
+  });
+
+  // Re-sort only when the array is actually out of order (scene_order
+  // changed). The common case — same scene updated with same order —
+  // skips the sort entirely so the array reference stays stable too.
+  let outOfOrder = false;
+  for (let i = 0; i < scenes.value.length - 1; i++) {
+    if ((scenes.value[i].scene_order ?? 0) > (scenes.value[i + 1].scene_order ?? 0)) {
+      outOfOrder = true;
+      break;
+    }
+  }
+  if (outOfOrder) scenes.value = sortScenesByOrder(scenes.value);
 }
 
 function patchSceneCaptionSettings(sceneId, captionSettings) {
@@ -2700,7 +2721,28 @@ function applyProjectPayload(data, { preserveActiveScene = true } = {}) {
   musicFadeInMs.value = ms.fade_in_ms ?? 500;
   musicLoop.value = ms.loop ?? true;
   musicDuckDuringVoice.value = ms.duck_during_voice ?? true;
-  scenes.value = (data?.scenes ?? []).map((scene) => normalizeScenePayload(scene));
+  // Merge each scene in place when we already have it — same-id scenes
+  // keep their object identity so Vue only re-evaluates the keys that
+  // actually changed (caption settings, asset ids). Without this, a TTS
+  // completion event triggered refreshProjectPayload() which rebuilt
+  // every scene from scratch and the editor flickered each time.
+  const freshScenes = (data?.scenes ?? []).map((scene) => normalizeScenePayload(scene));
+  if (!scenes.value?.length) {
+    scenes.value = freshScenes;
+  } else {
+    const byId = new Map(scenes.value.map((s) => [s.id, s]));
+    const merged = freshScenes.map((fresh) => {
+      const existing = byId.get(fresh.id);
+      if (!existing) return fresh;
+      Object.assign(existing, fresh);
+      return existing;
+    });
+    // Same length + same id order? Skip array reassignment to keep the
+    // ref stable. Otherwise (scene added / removed / reordered) replace.
+    const sameOrder = merged.length === scenes.value.length
+      && merged.every((s, i) => s.id === scenes.value[i].id);
+    if (!sameOrder) scenes.value = merged;
+  }
   hookOptions.value = data?.hook_options ?? [];
 
   if (preserveActiveScene && scenes.value.some((scene) => scene.id === previousActiveSceneId)) {
