@@ -846,7 +846,10 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  max-height: 320px;
+  /* Cards grew from 28px to 130px (100px sample + label) so the previous
+     320px cap was hiding most rows. Bumped to fit 3 rows; if there are
+     more, the user scrolls within the grid like before. */
+  max-height: 520px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -914,6 +917,18 @@ onMounted(async () => {
   padding: 4px;
   overflow: hidden;
 }
+/* Bars / mirror / minimal each wrap their bars in an inner div for the
+   v-if branch; make that inner div the flex container so the bars
+   actually line up at the bottom instead of stacking as block siblings. */
+.ob-ag-preview > div {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+}
+.ob-ag-preview > div:has(svg) { align-items: center; }
 .ob-ag-bar { width: 3px; background: var(--accent); border-radius: 1px; }
 .ob-ag-bar-mirror { width: 3px; background: var(--accent); border-radius: 1px; align-self: center; }
 .ob-ag-bar-min { width: 2px; background: var(--accent); border-radius: 1px; opacity: 0.85; }
