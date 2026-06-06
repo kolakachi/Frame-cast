@@ -435,7 +435,7 @@ onMounted(async () => {
               type="button"
               @click="selectedStyle = s.key"
             >
-              <span class="ob-style-swatch" :style="{ background: s.gradient }"></span>
+              <span class="ob-style-swatch" :style="s.sample_url ? { backgroundImage: `url(${s.sample_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: s.gradient }"></span>
               <span class="ob-style-name">{{ s.label }}</span>
             </button>
           </div>

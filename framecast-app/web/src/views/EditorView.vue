@@ -4839,7 +4839,8 @@ onBeforeUnmount(() => {
                       <div v-for="s in AI_IMAGE_STYLES" :key="`top-add-style-${s.key}`"
                         :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
                         @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key">
-                        <span class="style-opt-ico">{{ s.icon }}</span>
+                        <img v-if="imageStylesByKey.get(s.key)?.sample_url" :src="imageStylesByKey.get(s.key).sample_url" class="style-opt-thumb" :alt="s.label" />
+                        <span v-else class="style-opt-ico">{{ s.icon }}</span>
                         <div class="style-opt-name">{{ s.label }}</div>
                       </div>
                     </div>
@@ -5094,7 +5095,8 @@ onBeforeUnmount(() => {
                         <div v-for="s in AI_IMAGE_STYLES" :key="`add-style-${scene.id}-${s.key}`"
                           :class="['style-opt', addSceneVisualStyle === s.key ? 'selected' : '', s.key === 'custom' ? 'accent' : '']"
                           @click="addSceneVisualStyle = addSceneVisualStyle === s.key ? null : s.key">
-                          <span class="style-opt-ico">{{ s.icon }}</span>
+                          <img v-if="imageStylesByKey.get(s.key)?.sample_url" :src="imageStylesByKey.get(s.key).sample_url" class="style-opt-thumb" :alt="s.label" />
+                          <span v-else class="style-opt-ico">{{ s.icon }}</span>
                           <div class="style-opt-name">{{ s.label }}</div>
                         </div>
                       </div>
@@ -8035,7 +8037,27 @@ button {
   font-size: 11px;
   color: var(--text-muted);
   margin-bottom: 8px;
+  margin-top: 14px;
 }
+.micro-label:first-child { margin-top: 0; }
+
+/* Slightly taller picker trigger in panel so labels don't crowd the
+   caret / cost chip. Adds breathing room when stacked under labels. */
+.picker-wrap + .micro-label,
+.picker-wrap + .ai-image-actions { margin-top: 16px; }
+
+/* Style picker grid (used by "Add scene" inline) — slightly more
+   spacing so the small thumbnails breathe. */
+.style-picker-grid { row-gap: 8px; }
+.style-opt { padding: 8px 6px; }
+.style-opt-thumb {
+  width: 36px; height: 36px; border-radius: 6px;
+  object-fit: cover; display: block; margin: 0 auto 6px;
+}
+/* Custom-style descriptor panel — give it room above so it doesn't
+   touch the cards / hint text. */
+.custom-style-panel { margin-top: 12px; }
+.current-style-note { margin: 2px 0 12px; }
 
 .scene-type-chips,
 .chips {

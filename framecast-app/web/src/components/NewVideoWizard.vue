@@ -140,6 +140,22 @@ const aiBrollStyleOptions = [
   { key: 'custom',         label: '✦ Custom',       hint: 'Write your own style',         tone: 'rgba(255,107,53,0.22)' },
 ]
 
+// B2-hosted sample thumbnails keyed by style key, fetched from
+// /visual-styles on mount. Merged into the static aiBrollStyleOptions
+// at render time so each card shows a real preview instead of the
+// colored block. Falls back to the static gradient if the call fails
+// or a style doesn't yet have a rendered sample.
+const styleSampleByKey = ref({})
+async function loadStyleSamples() {
+  try {
+    const res = await api.get('/visual-styles')
+    const list = Array.isArray(res?.data?.data) ? res.data.data : []
+    const map = {}
+    for (const s of list) if (s.key && s.sample_url) map[s.key] = s.sample_url
+    styleSampleByKey.value = map
+  } catch { /* keep empty — cards fall back to .ai-broll-art tone */ }
+}
+
 watch(channelId, (next, prev) => {
   const channel = props.channels.find((c) => String(c.id) === String(next))
   if (!channel) return
@@ -362,6 +378,7 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   loadBrandKits()
   loadCharacters()
   loadOneShotCatalogs()
+  loadStyleSamples()
 }
 
 // ── Credit estimate ───────────────────────────────────────
@@ -1129,7 +1146,7 @@ defineExpose({ open })
                 type="button"
                 @click="aiBrollStyle = style.key"
               >
-                <span class="ai-broll-art"></span>
+                <span class="ai-broll-art" :style="styleSampleByKey[style.key] ? { backgroundImage: `url(${styleSampleByKey[style.key]})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}"></span>
                 <span class="ai-broll-label">{{ style.label }}</span>
                 <span class="ai-broll-hint">{{ style.hint }}</span>
               </button>
@@ -1212,7 +1229,7 @@ defineExpose({ open })
                 type="button"
                 @click="aiBrollStyle = style.key"
               >
-                <span class="ai-broll-art"></span>
+                <span class="ai-broll-art" :style="styleSampleByKey[style.key] ? { backgroundImage: `url(${styleSampleByKey[style.key]})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}"></span>
                 <span class="ai-broll-label">{{ style.label }}</span>
                 <span class="ai-broll-hint">{{ style.hint }}</span>
               </button>
