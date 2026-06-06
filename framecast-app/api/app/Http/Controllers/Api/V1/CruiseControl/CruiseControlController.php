@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\CruiseControl;
 
 use App\Http\Controllers\Controller;
 use App\Models\CruiseAuditLog;
+use App\Models\CruiseConversation;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Models\User;
@@ -15,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 
 /**
  * Two endpoints. resolve() takes user intent + scope, returns a structured
@@ -81,6 +83,24 @@ class CruiseControlController extends Controller
             $validated['history'] ?? [],
         );
 
+        // Persist both turns to the conversation so the editor can
+        // hydrate from history on refresh.
+        $userMsg = [
+            'id'         => 'u-' . Str::uuid()->toString(),
+            'role'       => 'user',
+            'text'       => $validated['intent'],
+            'created_at' => now()->toIso8601String(),
+        ];
+        $assistantMsg = [
+            'id'         => 'a-' . Str::uuid()->toString(),
+            'role'       => 'assistant',
+            'text'       => $result['reply_to_user'],
+            'action'     => $result['action'],
+            'action_status' => $result['action'] ? 'proposed' : null,
+            'created_at' => now()->toIso8601String(),
+        ];
+        $this->appendMessages($user, $project, [$userMsg, $assistantMsg]);
+
         CruiseAuditLog::create([
             'workspace_id'    => $user->workspace_id,
             'user_id'         => $user->getKey(),
@@ -94,7 +114,14 @@ class CruiseControlController extends Controller
             'outcome'         => $result['action'] ? 'ok' : 'unresolved',
         ]);
 
-        return response()->json(['data' => $result, 'meta' => []]);
+        return response()->json([
+            'data' => [
+                ...$result,
+                'user_message_id'      => $userMsg['id'],
+                'assistant_message_id' => $assistantMsg['id'],
+            ],
+            'meta' => [],
+        ]);
     }
 
     public function apply(Request $request): JsonResponse
@@ -106,6 +133,7 @@ class CruiseControlController extends Controller
             'project_id' => ['required', 'integer'],
             'tool'       => ['required', 'string'],
             'params'     => ['required', 'array'],
+            'message_id' => ['nullable', 'string', 'max:64'],
         ]);
 
         $tool = $this->registry->get($validated['tool']);
@@ -158,6 +186,18 @@ class CruiseControlController extends Controller
             return $this->error('apply_failed', $e->getMessage(), 422);
         }
 
+        // Stamp the message in the persisted conversation as applied so
+        // the chat history shows ✓ on refresh, not the Apply button.
+        if (! empty($validated['message_id'])) {
+            $this->updateMessageStatus(
+                $user,
+                $project,
+                $validated['message_id'],
+                'applied',
+                (int) ($result['credits_spent'] ?? 0),
+            );
+        }
+
         // Tools deduct credits themselves via the jobs they dispatch
         // (GenerateTTSJob etc.); we don't deduct here. Just stamp the
         // estimated spend for the audit so forensics shows what we
@@ -183,6 +223,105 @@ class CruiseControlController extends Controller
             ],
             'meta' => [],
         ]);
+    }
+
+    /**
+     * Hydrate the chat history for a project. Frontend loads this on
+     * editor mount so the conversation survives refresh / re-open.
+     */
+    public function conversation(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $conv = CruiseConversation::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where('project_id', $projectId)
+            ->first();
+
+        return response()->json([
+            'data' => [
+                'messages'         => $conv?->messages ?? [],
+                'message_count'    => $conv?->message_count ?? 0,
+                'last_activity_at' => $conv?->last_activity_at?->toIso8601String(),
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    /**
+     * Append turns to the conversation. Uses a row-level lock so two
+     * parallel resolves (user opens chat in two tabs and sends quickly)
+     * don't clobber each other's history.
+     */
+    private function appendMessages(User $user, Project $project, array $newMessages): void
+    {
+        DB::transaction(function () use ($user, $project, $newMessages) {
+            $conv = CruiseConversation::query()
+                ->where('workspace_id', $user->workspace_id)
+                ->where('project_id', $project->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            if (! $conv) {
+                $conv = new CruiseConversation([
+                    'workspace_id' => $user->workspace_id,
+                    'project_id'   => $project->getKey(),
+                    'user_id'      => $user->getKey(),
+                    'messages'     => [],
+                ]);
+            }
+
+            $messages = is_array($conv->messages) ? $conv->messages : [];
+            $messages = array_merge($messages, $newMessages);
+
+            // Cap at the last 200 entries so the JSON column doesn't grow
+            // unbounded. Older messages still live in cruise_audit_logs.
+            if (count($messages) > 200) {
+                $messages = array_slice($messages, -200);
+            }
+
+            $conv->forceFill([
+                'messages'         => $messages,
+                'message_count'    => count($messages),
+                'last_activity_at' => now(),
+            ])->save();
+        });
+    }
+
+    /**
+     * Flip a message's action_status in place. Used by apply() so the
+     * chat-history view shows ✓ applied (or ✕ failed) on refresh.
+     */
+    private function updateMessageStatus(User $user, Project $project, string $messageId, string $status, int $creditsSpent = 0): void
+    {
+        DB::transaction(function () use ($user, $project, $messageId, $status, $creditsSpent) {
+            $conv = CruiseConversation::query()
+                ->where('workspace_id', $user->workspace_id)
+                ->where('project_id', $project->getKey())
+                ->lockForUpdate()
+                ->first();
+            if (! $conv || ! is_array($conv->messages)) return;
+
+            $messages = $conv->messages;
+            foreach ($messages as $i => $m) {
+                if (($m['id'] ?? null) === $messageId) {
+                    $messages[$i]['action_status']  = $status;
+                    if ($creditsSpent > 0) $messages[$i]['action_credits'] = $creditsSpent;
+                    break;
+                }
+            }
+
+            $conv->forceFill(['messages' => $messages, 'last_activity_at' => now()])->save();
+        });
     }
 
 }

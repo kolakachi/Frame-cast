@@ -93,15 +93,14 @@ function cruiseActionTitle(tool) {
 async function cruiseSubmitIntent() {
   const text = cruiseInputText.value.trim()
   if (!text || cruiseResolving.value || !projectId.value) return
-  cruiseMessages.value.push({ id: `u-${Date.now()}`, role: 'user', text })
+  // Optimistic push with a temp id; we replace with backend's id once
+  // the response lands so apply() can reference the persisted message.
+  const tempUserId = `u-tmp-${Date.now()}`
+  cruiseMessages.value.push({ id: tempUserId, role: 'user', text })
   cruiseInputText.value = ''
   cruiseResolving.value = true
   await nextTick(); cruiseScrollChatToBottom()
   try {
-    // Pass the last 6 turns so the LLM can resolve pronouns ("it", "that")
-    // and the user doesn't have to repeat themselves. Filter out the
-    // user message we just pushed so we don't duplicate it as the
-    // current turn AND as history.
     const recent = cruiseMessages.value
       .slice(0, -1)
       .slice(-6)
@@ -112,16 +111,19 @@ async function cruiseSubmitIntent() {
       scope_scene_id: cruiseEffectiveSceneId(),
       history: recent,
     })
-    const reply = res?.data?.data?.reply_to_user ?? 'Okay.'
-    const action = res?.data?.data?.action ?? null
+    const data = res?.data?.data ?? {}
+    // Replace the temp user message with the persisted id from backend.
+    const tempIdx = cruiseMessages.value.findIndex((m) => m.id === tempUserId)
+    if (tempIdx >= 0 && data.user_message_id) {
+      cruiseMessages.value[tempIdx] = { ...cruiseMessages.value[tempIdx], id: data.user_message_id }
+    }
     cruiseMessages.value.push({
-      id: `a-${Date.now()}`,
+      id: data.assistant_message_id ?? `a-${Date.now()}`,
       role: 'assistant',
-      text: reply,
-      action,
+      text: data.reply_to_user ?? 'Okay.',
+      action: data.action ?? null,
       action_status: 'proposed',
     })
-    // If user has flipped to Config since asking, light the pending dot.
     if (cruiseTab.value !== 'assistant') cruiseAssistantPending.value = true
   } catch (e) {
     const msg = e?.response?.data?.error?.message ?? 'Assistant is unavailable. Try again.'
@@ -144,6 +146,7 @@ async function cruiseApplyAction(msg) {
       project_id: projectId.value,
       tool: msg.action.tool,
       params: msg.action.params,
+      message_id: msg.id,    // so backend can stamp action_status='applied' on the persisted msg
     })
     const out = res?.data?.data
     msg.action_status = 'applied'
@@ -174,6 +177,27 @@ function cruiseShowToast(text) {
 function cruiseScrollChatToBottom() {
   const el = cruiseChatScrollRef.value
   if (el) el.scrollTop = el.scrollHeight
+}
+
+// Load the persisted conversation for this project. Fires after the
+// editor knows its project_id (loadProject succeeds).
+async function loadCruiseConversation() {
+  if (!projectId.value) return
+  try {
+    const res = await api.get(`/cruise/conversation/${projectId.value}`)
+    const msgs = res?.data?.data?.messages
+    if (Array.isArray(msgs) && msgs.length) {
+      cruiseMessages.value = msgs.map((m) => ({
+        id: m.id,
+        role: m.role,
+        text: m.text,
+        action: m.action ?? null,
+        action_status: m.action_status ?? null,
+        action_credits: m.action_credits ?? null,
+      }))
+      await nextTick(); cruiseScrollChatToBottom()
+    }
+  } catch { /* silent — empty conversation is fine */ }
 }
 
 // Pulse a Config panel-section after an apply. The CSS class
@@ -2309,6 +2333,7 @@ async function loadProject() {
     await loadExportJobs();
     loadImageModelCatalog();   // fire-and-forget — falls back to static list
     loadImageStyleCatalog();   // fire-and-forget — falls back to icon list
+    loadCruiseConversation();  // fire-and-forget — hydrates Assistant chat history
     subscribeProjectChannel();
   } catch (requestError) {
     error.value =
