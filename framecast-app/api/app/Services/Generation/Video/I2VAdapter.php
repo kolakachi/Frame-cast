@@ -31,4 +31,11 @@ interface I2VAdapter
     ): array;
 
     public function providerKey(): string;
+
+    /**
+     * Resume by polling an EXISTING prediction id (the job that started it
+     * died mid-poll). Returns the video URL when ready, null if still
+     * processing (retry later), throws on failure/expiry.
+     */
+    public function pollExisting(string $predictionId): ?string;
 }

@@ -121,11 +121,43 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
         $stuck = Scene::query()
             ->whereRaw("(image_generation_settings_json->>'animation_in_progress')::text = 'true'")
             ->whereRaw("(image_generation_settings_json->>'animation_started_at')::timestamp < ?", [$cutoff->toIso8601String()])
-            ->get(['id', 'image_generation_settings_json']);
+            ->get(['id', 'project_id', 'image_generation_settings_json']);
 
         $cleared = 0;
         foreach ($stuck as $scene) {
             $cfg = $scene->image_generation_settings_json ?? [];
+
+            // RESUME instead of discard: if we kept the Replicate prediction
+            // id, the clip is still finishing (or done) in their cloud — the
+            // cutoff is past our job timeout, so the original worker is dead.
+            // Re-dispatch in resume mode to re-attach + finalize. No re-charge.
+            $predictionId = $cfg['animation_prediction_id'] ?? null;
+            if ($predictionId) {
+                AnimateSceneJob::dispatch(
+                    (int) $scene->id,
+                    (int) $scene->project_id,
+                    (string) ($cfg['animation_tier'] ?? 'quick'),
+                    (int) ($cfg['animation_duration'] ?? 6),
+                    null,
+                    (string) $predictionId,
+                );
+                // Bump started_at so we don't re-dispatch a duplicate before
+                // this resume attempt has had a full window to run.
+                $cfg['animation_started_at'] = now()->toIso8601String();
+                $cfg['animation_resumed_at'] = now()->toIso8601String();
+                $scene->forceFill(['image_generation_settings_json' => $cfg])->save();
+                DB::table('scenes')->where('id', $scene->id)->update([
+                    'image_generation_settings_json' => json_encode($cfg),
+                    'updated_at' => now(),
+                ]);
+                Log::info('ReapStuckGenerationsJob: resuming animation from prediction', [
+                    'scene_id'      => $scene->id,
+                    'prediction_id' => $predictionId,
+                ]);
+                $cleared++;
+                continue;
+            }
+
             $cfg['animation_in_progress'] = false;
             $cfg['animation_last_error']  = ($cfg['animation_last_error'] ?? '') !== ''
                 ? $cfg['animation_last_error']

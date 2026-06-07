@@ -117,6 +117,13 @@ class ReplicateI2VAdapter implements I2VAdapter
             throw new RuntimeException('Replicate i2v: prediction id missing from start response.');
         }
 
+        // Hand the prediction id back to the caller IMMEDIATELY (before the
+        // long poll) so a worker death mid-poll can resume by re-attaching to
+        // this same prediction — no re-charge. See ReapStuckGenerationsJob.
+        if (isset($options['on_prediction_created']) && is_callable($options['on_prediction_created'])) {
+            ($options['on_prediction_created'])((string) $predictionId, (string) $modelSlug);
+        }
+
         // 2. Poll until succeeded / failed / canceled.
         $videoUrl = null;
         $deadline = time() + self::POLL_TIMEOUT_SECONDS;
@@ -155,6 +162,53 @@ class ReplicateI2VAdapter implements I2VAdapter
             'width'            => null,
             'height'           => null,
         ];
+    }
+
+    /**
+     * Resume path: poll an existing prediction by id. By the time we resume
+     * (the reaper waits past the job timeout) it's usually already finished,
+     * so a short bounded poll is plenty. Returns the video URL, null if still
+     * processing (caller retries on the next sweep), throws on failure/expiry.
+     */
+    public function pollExisting(string $predictionId): ?string
+    {
+        $apiToken = config('services.replicate.api_token');
+        if (! $apiToken) {
+            throw new RuntimeException('Replicate API token is not configured (REPLICATE_API_TOKEN).');
+        }
+
+        $deadline = time() + 90;
+        while (time() < $deadline) {
+            $check = Http::withToken($apiToken)->acceptJson()
+                ->get("https://api.replicate.com/v1/predictions/{$predictionId}");
+
+            if ($check->status() === 404) {
+                throw new RuntimeException('Replicate prediction is no longer available (expired).');
+            }
+            if (! $check->successful()) {
+                sleep(self::POLL_INTERVAL_SECONDS);
+                continue;
+            }
+
+            $payload = $check->json();
+            $status  = $payload['status'] ?? 'unknown';
+
+            if ($status === 'succeeded') {
+                $output = $payload['output'] ?? null;
+                $videoUrl = is_array($output) ? ($output[0] ?? null) : $output;
+                if (! $videoUrl) {
+                    throw new RuntimeException('Replicate prediction succeeded but returned no video URL.');
+                }
+                return (string) $videoUrl;
+            }
+            if (in_array($status, ['failed', 'canceled'], true)) {
+                throw new RuntimeException("Replicate i2v {$status}: " . ($payload['error'] ?? 'unknown error'));
+            }
+
+            sleep(self::POLL_INTERVAL_SECONDS);
+        }
+
+        return null; // still processing — resume again on the next sweep
     }
 
     /**

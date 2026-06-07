@@ -37,6 +37,10 @@ class AnimateSceneJob implements ShouldQueue
         public readonly string $tier = 'quick',          // quick | balanced | premium | seedance_lite | seedance_pro
         public readonly int $durationSeconds = 6,        // 3–10
         public readonly ?string $motionPrompt = null,
+        // Set by ReapStuckGenerationsJob to RESUME a prediction whose original
+        // worker died mid-poll: skip creating a new prediction, re-attach to
+        // this one, and run the normal download/finalize. No re-charge.
+        public readonly ?string $resumePredictionId = null,
     ) {
         $this->onQueue('visual');
     }
@@ -64,6 +68,7 @@ class AnimateSceneJob implements ShouldQueue
             'animation_last_error'    => null,
             'animation_started_at'    => now()->toIso8601String(),
             'animation_tier'          => $this->tier,
+            'animation_duration'      => $this->durationSeconds,
             'animation_cost'          => $cost,
         ]);
 
@@ -75,15 +80,40 @@ class AnimateSceneJob implements ShouldQueue
                 throw new RuntimeException('Scene has no source image to animate.');
             }
 
-            $imageUrl = $this->publicUrlFor($sourceAsset);
+            if ($this->resumePredictionId) {
+                // Resume: re-attach to the prediction the dead worker started.
+                $videoUrl = $adapter->pollExisting($this->resumePredictionId);
+                if ($videoUrl === null) {
+                    // Still cooking at Replicate — leave it in_progress; the
+                    // next reaper sweep resumes again. Don't clear or fail.
+                    return;
+                }
+                $result = [
+                    'provider_key'     => $adapter->providerKey(),
+                    'model_slug'       => 'resumed',
+                    'video_url'        => $videoUrl,
+                    'duration_seconds' => $this->durationSeconds,
+                    'width'            => null,
+                    'height'           => null,
+                ];
+            } else {
+                $imageUrl = $this->publicUrlFor($sourceAsset);
 
-            $result = $adapter->animate(
-                $imageUrl,
-                (string) $this->motionPrompt,
-                $this->tier,
-                $this->durationSeconds,
-                ['aspect_ratio' => $scene->project->aspect_ratio ?? '9:16'],
-            );
+                $result = $adapter->animate(
+                    $imageUrl,
+                    (string) $this->motionPrompt,
+                    $this->tier,
+                    $this->durationSeconds,
+                    [
+                        'aspect_ratio' => $scene->project->aspect_ratio ?? '9:16',
+                        // Persist the prediction id the instant Replicate hands
+                        // it over, so a mid-poll worker death is resumable.
+                        'on_prediction_created' => function (string $pid) use ($scene): void {
+                            $this->stampAnimationState($scene, ['animation_prediction_id' => $pid]);
+                        },
+                    ],
+                );
+            }
 
             // The user may have cancelled while Replicate was running. Bail before
             // downloading or swapping the asset — credits were already refunded by
@@ -155,6 +185,7 @@ class AnimateSceneJob implements ShouldQueue
                 'animation_video_asset_id'          => $asset->getKey(),
                 'animation_original_image_asset_id' => $originalToStore,
                 'animation_history'                 => $history,
+                'animation_prediction_id'           => null, // done — nothing to resume
             ]);
 
             // Multi-scene aware: count scenes with completed animation. Emit
