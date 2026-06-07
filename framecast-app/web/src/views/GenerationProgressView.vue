@@ -291,7 +291,25 @@ async function loadProjectStatus() {
     isOneShot.value = project.source_type === 'prompt'
     const fetchedScenes = response.data?.data?.scenes
     if (Array.isArray(fetchedScenes)) {
-      scenes.value = [...fetchedScenes].sort((a, b) => (a.scene_order ?? 0) - (b.scene_order ?? 0))
+      const sorted = [...fetchedScenes].sort((a, b) => (a.scene_order ?? 0) - (b.scene_order ?? 0))
+      // Merge IN PLACE — every 4s poll used to replace the whole array with
+      // fresh objects, re-mounting each <video>/<img> and making generated
+      // scenes (animations especially) flicker + restart. Same-id scenes keep
+      // their object identity so Vue only patches changed keys; an unchanged
+      // video src is never touched.
+      if (!scenes.value.length) {
+        scenes.value = sorted
+      } else {
+        const byId = new Map(scenes.value.map((s) => [s.id, s]))
+        const merged = sorted.map((fresh) => {
+          const existing = byId.get(fresh.id)
+          if (existing) { Object.assign(existing, fresh); return existing }
+          return fresh
+        })
+        const sameOrder = merged.length === scenes.value.length
+          && merged.every((s, i) => s.id === scenes.value[i].id)
+        if (!sameOrder) scenes.value = merged
+      }
     }
     applyPipelineState(project)
   } catch { /* no-op */ }
@@ -329,9 +347,22 @@ function sceneAnimating(s) {
 // Title adapts to the flow: prompt → one-shot, otherwise the brief pipeline.
 const genTitle = computed(() => (isOneShot.value ? 'Generating your video…' : 'Building from your brief…'))
 
-// A scene's image (or finished video) has landed.
+// Whether this generation includes an animation pass (wizard's animate flag).
+const animatePlanned = computed(() => route.query.animate !== '0')
+
+function sceneAnimationDone(s) {
+  return sceneVisualKind(s) === 'video'
+    || !!(s?.image_generation_settings?.animation_video_asset_id
+       || s?.image_generation_settings_json?.animation_video_asset_id)
+}
+
+// A scene is "READY" only when its work is actually finished: the image
+// exists AND — when animation is part of the plan — the clip has landed too.
+// An image-done-but-still-animating scene is NOT ready yet.
 function sceneReady(s) {
-  return sceneVisualKind(s) !== 'none'
+  if (sceneVisualKind(s) === 'none') return false
+  if (animatePlanned.value) return sceneAnimationDone(s)
+  return true
 }
 
 // One conversational line tied to whatever stage is currently active, so the
@@ -425,7 +456,7 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
           <div
             v-for="s in scenes"
             :key="s.id"
-            :class="['gen-scene-card', { pending: !sceneReady(s) && !sceneAnimating(s) }]"
+            :class="['gen-scene-card', { pending: sceneVisualKind(s) === 'none' }]"
           >
             <span class="gen-scene-thumb" :class="{ ready: sceneReady(s) }">
               <video
