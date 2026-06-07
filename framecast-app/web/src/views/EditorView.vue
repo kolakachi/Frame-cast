@@ -64,6 +64,8 @@ const cruiseBrief = ref(null)        // { theme, topic, visual_style, tone, recu
 const cruiseBriefLocked = ref(false)
 const cruiseBriefOpen = ref(false)
 const cruiseBriefBusy = ref(false)   // saving or refreshing
+const cruiseResetConfirmOpen = ref(false)
+const cruiseResetting = ref(false)
 // Frequently-used prompts shown above the input.
 const CRUISE_QUICK_PROMPTS = [
   'change voice on this scene',
@@ -831,16 +833,23 @@ async function cruiseRefreshBrief() {
 }
 
 // Wipe the chat thread to start over. Project changes are untouched
-// (those are reverted per-action via Undo).
-async function cruiseResetConversation() {
+// (those are reverted per-action via Undo). Opens a confirm modal first.
+function cruiseResetConversation() {
   if (!projectId.value) return
-  if (!window.confirm('Start a new chat? This clears the conversation. Your video changes stay — use Undo on a card to revert one.')) return
+  cruiseResetConfirmOpen.value = true
+}
+
+async function cruiseConfirmReset() {
+  if (!projectId.value || cruiseResetting.value) return
+  cruiseResetting.value = true
   try {
     await api.post(`/cruise/conversation/${projectId.value}/reset`)
     cruiseMessages.value = []
     cruiseAssistantPending.value = false
+    cruiseResetConfirmOpen.value = false
     cruiseShowToast('Started a new chat')
   } catch (_) { cruiseShowToast('Could not reset the chat.') }
+  finally { cruiseResetting.value = false }
 }
 
 // Undoable = an applied card whose tool we can revert (all except
@@ -8027,6 +8036,25 @@ onBeforeUnmount(() => {
           </button>
           <button class="btn btn-primary danger-btn" type="button" :disabled="deleteScenePending" @click="confirmDeleteScene">
             {{ deleteScenePending ? "Deleting..." : "Delete Scene" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- New-chat confirmation (replaces the browser confirm) -->
+    <div v-if="cruiseResetConfirmOpen" class="modal-shell" role="dialog" aria-modal="true">
+      <div class="confirm-modal">
+        <div class="confirm-modal-title">Start a new chat?</div>
+        <div class="confirm-modal-copy">
+          This clears the assistant conversation. Your video changes stay —
+          use <strong>Undo</strong> on a card to revert one.
+        </div>
+        <div class="confirm-modal-actions">
+          <button class="btn btn-ghost" type="button" :disabled="cruiseResetting" @click="cruiseResetConfirmOpen = false">
+            Cancel
+          </button>
+          <button class="btn btn-primary" type="button" :disabled="cruiseResetting" @click="cruiseConfirmReset">
+            {{ cruiseResetting ? 'Clearing…' : 'New chat' }}
           </button>
         </div>
       </div>
