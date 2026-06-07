@@ -320,6 +320,10 @@ async function loadProjectStatus() {
 // video assets instead, and only after the animation is actually done (the
 // asset only flips to a video on completion).
 function sceneVisualKind(s) {
+  // Audiogram/waveform scenes have NO image asset — the bars are a render-time
+  // effect. Treating them as 'none' showed a forever-spinner ("waiting for an
+  // image") on stock/audiogram briefs. They're their own kind.
+  if (s?.visual_type === 'waveform') return 'waveform'
   const a = s?.visual_asset
   if (!a) return 'none'
   if (a.asset_type === 'video' || (a.mime_type || '').startsWith('video') || /\.mp4(\?|$)/i.test(a.storage_url || '')) {
@@ -347,8 +351,11 @@ function sceneAnimating(s) {
 // Title adapts to the flow: prompt → one-shot, otherwise the brief pipeline.
 const genTitle = computed(() => (isOneShot.value ? 'Generating your video…' : 'Building from your brief…'))
 
-// Whether this generation includes an animation pass (wizard's animate flag).
-const animatePlanned = computed(() => route.query.animate !== '0')
+// Whether this generation actually includes an animation pass. Drive this
+// off the real stage list (robust for BOTH flows) — NOT route.query, which
+// is only set by the one-shot wizard. The brief flow has no animation stage,
+// so its scenes must not wait on an animation that never runs.
+const animatePlanned = computed(() => stages.value.some((s) => s.key === 'animation'))
 
 function sceneAnimationDone(s) {
   return sceneVisualKind(s) === 'video'
@@ -356,11 +363,14 @@ function sceneAnimationDone(s) {
        || s?.image_generation_settings_json?.animation_video_asset_id)
 }
 
-// A scene is "READY" only when its work is actually finished: the image
-// exists AND — when animation is part of the plan — the clip has landed too.
-// An image-done-but-still-animating scene is NOT ready yet.
+// A scene is "READY" when its visual work is actually finished:
+//  - audiogram: ready as soon as it's set up (no image to wait for)
+//  - stock / AI image: ready once the visual asset is attached
+//  - AI image with animation planned: also wait for the clip
 function sceneReady(s) {
-  if (sceneVisualKind(s) === 'none') return false
+  const kind = sceneVisualKind(s)
+  if (kind === 'waveform') return true
+  if (kind === 'none') return false
   if (animatePlanned.value) return sceneAnimationDone(s)
   return true
 }
@@ -381,7 +391,7 @@ const narrationLine = computed(() => {
     case 'scene_breakdown':  return 'Splitting it into scenes…'
     case 'hooks':            return 'Drafting hook options…'
     case 'hooks_scoring':    return 'Ranking the hooks…'
-    case 'visual_match':     return 'Finding the right visuals…'
+    case 'visual_match':     return `${active.label}…`
     case 'ai_image':         return n ? `Painting the visuals for your ${n} scene${n === 1 ? '' : 's'}…` : 'Painting the visuals…'
     case 'animation':        return 'Bringing the scenes to life with motion…'
     case 'tts':              return 'Recording the voiceover…'
@@ -459,8 +469,10 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
             :class="['gen-scene-card', { pending: sceneVisualKind(s) === 'none' }]"
           >
             <span class="gen-scene-thumb" :class="{ ready: sceneReady(s) }">
+              <!-- Audiogram scenes have no image — show a waveform glyph, not a spinner. -->
+              <span v-if="sceneVisualKind(s) === 'waveform'" class="gen-scene-wave">🎵</span>
               <video
-                v-if="sceneVisualKind(s) === 'video' && !sceneAnimating(s)"
+                v-else-if="sceneVisualKind(s) === 'video' && !sceneAnimating(s)"
                 :src="sceneVideoUrl(s)"
                 muted loop autoplay playsinline preload="metadata"
               ></video>
@@ -536,6 +548,7 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 .gen-scene-thumb.ready { border: 0.5px solid rgba(34,197,94,0.25); }
 .gen-scene-thumb img, .gen-scene-thumb video { width: 100%; height: 100%; object-fit: cover; }
 .gen-scene-spin { font-size: 15px; }
+.gen-scene-wave { font-size: 16px; }
 .gen-scene-animating { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10,10,15,0.45); color: #fff; font-size: 13px; }
 .gen-scene-body { flex: 1; min-width: 0; }
 .gen-scene-label { font-family: "Space Mono", monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 2px; }
