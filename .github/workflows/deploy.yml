@@ -1,0 +1,48 @@
+name: Deploy to production
+
+# Auto-deploy on every push to master. Also runnable on demand from the
+# Actions tab (workflow_dispatch). Mirrors the server's post-receive hook,
+# so a manual `git push prod master` still works as a fallback.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# One deploy at a time. Don't cancel an in-flight deploy mid-build — queue
+# the next one behind it.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          # docker build + migrate can run several minutes; default 10m is tight.
+          command_timeout: 30m
+          # Fail the job if any command fails.
+          script_stop: true
+          script: |
+            set -e
+            echo '==> Pulling latest from GitHub...'
+            cd /opt/framecast/app
+            git pull origin master
+
+            echo '==> Building and restarting containers...'
+            cd /opt/framecast/app/framecast-app
+            docker compose -f docker-compose.prod.yml up --build -d --remove-orphans
+
+            echo '==> Running migrations...'
+            sleep 5
+            docker compose -f docker-compose.prod.yml exec -T api php artisan migrate --force --no-interaction
+            # Seeders are idempotent (updateOrCreate) but intentionally NOT run
+            # on every deploy. Run them by hand when seed data actually changes:
+            #   docker compose -f docker-compose.prod.yml exec api php artisan db:seed --class=NicheSeeder --force
+
+            echo "==> Done. Deployed at $(date)"
