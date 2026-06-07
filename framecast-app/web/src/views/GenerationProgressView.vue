@@ -297,8 +297,33 @@ async function loadProjectStatus() {
   } catch { /* no-op */ }
 }
 
-function sceneThumb(s) {
-  return s?.visual_asset?.thumbnail_url || s?.visual_asset?.storage_url || null
+// A scene's visual can be a still image OR (once animation finishes) a video.
+// Putting an mp4 in an <img> is the broken-image bug — render <video> for
+// video assets instead, and only after the animation is actually done (the
+// asset only flips to a video on completion).
+function sceneVisualKind(s) {
+  const a = s?.visual_asset
+  if (!a) return 'none'
+  if (a.asset_type === 'video' || (a.mime_type || '').startsWith('video') || /\.mp4(\?|$)/i.test(a.storage_url || '')) {
+    return 'video'
+  }
+  return 'image'
+}
+function sceneVideoUrl(s) {
+  return s?.visual_asset?.storage_url || null
+}
+function sceneImageUrl(s) {
+  const a = s?.visual_asset
+  if (!a) return null
+  // For a video asset, thumbnail_url is the source still (when present).
+  if (sceneVisualKind(s) === 'video') return a.thumbnail_url || null
+  return a.thumbnail_url || a.storage_url || null
+}
+// Animation still cooking for this scene → show the still + an overlay,
+// never the half-done/empty video.
+function sceneAnimating(s) {
+  return !!(s?.image_generation_settings?.animation_in_progress
+    || s?.image_generation_settings_json?.animation_in_progress)
 }
 
 // One conversational line tied to whatever stage is currently active, so
@@ -403,9 +428,18 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
         <div class="gen-narration-line"><span class="gen-narration-bot">🤖</span> {{ narrationLine }}</div>
         <div class="gen-scene-cards">
           <div v-for="s in scenes" :key="s.id" class="gen-scene-card">
-            <div class="gen-scene-thumb" :class="{ ready: !!sceneThumb(s) }">
-              <img v-if="sceneThumb(s)" :src="sceneThumb(s)" :alt="`Scene ${s.scene_order}`" />
+            <div class="gen-scene-thumb" :class="{ ready: sceneVisualKind(s) !== 'none' }">
+              <!-- Finished animation: show the actual clip, muted + looping. -->
+              <video
+                v-if="sceneVisualKind(s) === 'video' && !sceneAnimating(s)"
+                :src="sceneVideoUrl(s)"
+                muted loop autoplay playsinline preload="metadata"
+              ></video>
+              <!-- Otherwise the still; while the animation is cooking, the
+                   still stays put under a small spinner overlay. -->
+              <img v-else-if="sceneImageUrl(s)" :src="sceneImageUrl(s)" :alt="`Scene ${s.scene_order}`" />
               <span v-else class="spin">⟳</span>
+              <span v-if="sceneAnimating(s) && sceneImageUrl(s)" class="gen-scene-animating"><span class="spin">⟳</span></span>
             </div>
             <div class="gen-scene-body">
               <div class="gen-scene-label">Scene {{ s.scene_order }}</div>
@@ -467,9 +501,10 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 .gen-narration-bot { flex-shrink: 0; }
 .gen-scene-cards { display: flex; flex-direction: column; gap: 8px; max-height: 34vh; overflow-y: auto; padding-right: 4px; }
 .gen-scene-card { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-card); }
-.gen-scene-thumb { width: 44px; height: 60px; flex-shrink: 0; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 14px; }
+.gen-scene-thumb { position: relative; width: 44px; height: 60px; flex-shrink: 0; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 14px; }
 .gen-scene-thumb.ready { background: transparent; }
-.gen-scene-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.gen-scene-thumb img, .gen-scene-thumb video { width: 100%; height: 100%; object-fit: cover; }
+.gen-scene-animating { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10,10,15,0.45); color: #fff; font-size: 13px; }
 .gen-scene-body { flex: 1; min-width: 0; }
 .gen-scene-label { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 2px; }
 .gen-scene-script { font-size: 12px; color: var(--color-text-primary); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

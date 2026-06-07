@@ -1024,7 +1024,20 @@ defineExpose({ open })
               maxlength="1000"
               :placeholder="`What the voice says in scene ${i + 1}`"
             ></textarea>
-            <div class="plan-scene-visual" :title="s.visual">🎨 {{ s.visual }}</div>
+            <div class="plan-scene-visual-wrap">
+              <button type="button" class="plan-scene-toggle" @click="s._editVisuals = !s._editVisuals">
+                {{ s._editVisuals ? '▾' : '▸' }} 🎨 Image{{ oneShotAnimate ? ' & motion' : '' }} prompt
+              </button>
+              <div v-if="!s._editVisuals" class="plan-scene-visual" :title="s.visual">{{ s.visual }}</div>
+              <div v-else class="plan-scene-edit">
+                <label class="plan-scene-edit-label">Image prompt</label>
+                <textarea v-model="s.visual" class="plan-scene-edit-area" rows="4" maxlength="2000" placeholder="What the image shows — be vivid (subject, setting, lighting, mood, style)"></textarea>
+                <template v-if="oneShotAnimate">
+                  <label class="plan-scene-edit-label">Motion / animation prompt</label>
+                  <input type="text" v-model="s.motion" class="plan-scene-edit-input" maxlength="300" placeholder="e.g. slow camera push-in, subtle hair drift" />
+                </template>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1850,7 +1863,14 @@ defineExpose({ open })
 .plan-scene { border: 1px solid var(--color-border); border-radius: 12px; padding: 10px 12px; background: var(--color-surface, rgba(255,255,255,0.02)); }
 .plan-scene-num { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 6px; }
 .plan-scene-script { width: 100%; border: none; background: transparent; color: var(--color-text-primary); font-size: 14px; line-height: 1.5; resize: vertical; outline: none; font-family: inherit; }
-.plan-scene-visual { margin-top: 6px; font-size: 12px; color: var(--color-text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.plan-scene-visual-wrap { margin-top: 8px; }
+.plan-scene-toggle { background: none; border: none; padding: 0; font-size: 11px; font-weight: 600; color: var(--color-text-muted); cursor: pointer; }
+.plan-scene-toggle:hover { color: var(--color-text-primary); }
+.plan-scene-visual { margin-top: 4px; font-size: 12px; color: var(--color-text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.plan-scene-edit { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.plan-scene-edit-label { font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--color-text-muted); }
+.plan-scene-edit-area, .plan-scene-edit-input { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; font-size: 12px; line-height: 1.45; color: var(--color-text-primary); outline: none; font-family: inherit; resize: vertical; }
+.plan-scene-edit-area:focus, .plan-scene-edit-input:focus { border-color: var(--color-accent); }
 .plan-toggles { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; }
 .plan-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-primary); cursor: pointer; }
 .plan-toggle input { width: 16px; height: 16px; accent-color: var(--color-primary, #ff6b35); cursor: pointer; }
