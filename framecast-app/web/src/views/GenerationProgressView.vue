@@ -10,6 +10,11 @@ const projectId  = computed(() => route.params.projectId)
 const connected  = ref(false)
 const isTransitioningToEditor = ref(false)
 const subtitle   = ref(`Project #${projectId.value}`)
+// Narration: scenes are re-pulled on every poll/mount, so this is
+// refresh-safe by construction — the assistant's play-by-play is always
+// derived from persisted state, never from in-memory progress only.
+const scenes     = ref([])
+const isOneShot  = ref(false)
 let channelName  = null
 let pollTimer    = null
 
@@ -33,13 +38,17 @@ function oneShotStageDefinitions(project = null) {
   // the URL is the source of truth across refresh.
   const animate   = route.query.animate !== '0'
   const skipImage = route.query.skip_image === '1'
+  // no_music is set by the wizard when the user turned sounds off in the
+  // plan step. Drop the music stage entirely — otherwise it sits 'pending'
+  // forever (no job fires) and the editor never opens.
+  const noMusic   = route.query.no_music === '1'
   return [
     // When the user uploaded a photo or picked a character, image gen
     // was skipped entirely on the backend. The stage shouldn't appear.
     ...(skipImage ? [] : [{ key: 'ai_image', label: 'Generating image' }]),
     ...(animate ? [{ key: 'animation', label: 'Animating scene' }] : []),
     { key: 'tts',              label: 'Recording voice' },
-    { key: 'ai_music',         label: 'Composing music' },
+    ...(noMusic ? [] : [{ key: 'ai_music', label: 'Composing music' }]),
     { key: 'preview_assembly', label: 'Wrapping up' },
   ]
 }
@@ -279,9 +288,40 @@ async function loadProjectStatus() {
     const project  = response.data?.data?.project
     if (!project) return
     subtitle.value = `${project.title || `Project #${project.id}`} · ${project.primary_language?.toUpperCase?.() || 'EN'} · ${project.aspect_ratio || '9:16'}`
+    isOneShot.value = project.source_type === 'prompt'
+    const fetchedScenes = response.data?.data?.scenes
+    if (Array.isArray(fetchedScenes)) {
+      scenes.value = [...fetchedScenes].sort((a, b) => (a.scene_order ?? 0) - (b.scene_order ?? 0))
+    }
     applyPipelineState(project)
   } catch { /* no-op */ }
 }
+
+function sceneThumb(s) {
+  return s?.visual_asset?.thumbnail_url || s?.visual_asset?.storage_url || null
+}
+
+// One conversational line tied to whatever stage is currently active, so
+// the page reads like the assistant narrating its own work.
+const narrationLine = computed(() => {
+  if (!isOneShot.value) return ''
+  if (isTransitioningToEditor.value) return 'All set — opening the editor…'
+  const active = stages.value.find((s) => s.status === 'active')
+  if (!active) {
+    return stages.value.every((s) => s.status === 'complete')
+      ? 'All set — opening the editor…'
+      : 'Getting things ready…'
+  }
+  const n = scenes.value.length
+  switch (active.key) {
+    case 'ai_image':         return `Painting the visuals for your ${n} scene${n === 1 ? '' : 's'}…`
+    case 'animation':        return 'Bringing the scenes to life with motion…'
+    case 'tts':              return 'Recording the voiceover…'
+    case 'ai_music':         return 'Composing the soundtrack…'
+    case 'preview_assembly': return 'Wrapping everything up…'
+    default:                 return 'Working on your video…'
+  }
+})
 
 function subscribe() {
   const echo = getEcho()
@@ -356,6 +396,25 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
         </div>
       </div>
 
+      <!-- Assistant narration — one-shot only. Reveals each scene's line
+           and its visual as it lands, so the wait reads like the assistant
+           building the video rather than a black-box spinner. -->
+      <div v-if="isOneShot && scenes.length" class="gen-narration">
+        <div class="gen-narration-line"><span class="gen-narration-bot">🤖</span> {{ narrationLine }}</div>
+        <div class="gen-scene-cards">
+          <div v-for="s in scenes" :key="s.id" class="gen-scene-card">
+            <div class="gen-scene-thumb" :class="{ ready: !!sceneThumb(s) }">
+              <img v-if="sceneThumb(s)" :src="sceneThumb(s)" :alt="`Scene ${s.scene_order}`" />
+              <span v-else class="spin">⟳</span>
+            </div>
+            <div class="gen-scene-body">
+              <div class="gen-scene-label">Scene {{ s.scene_order }}</div>
+              <div class="gen-scene-script">{{ s.script_text }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="gen-actions">
         <button class="btn btn-ghost" type="button" @click="router.push({ name: 'dashboard' })">Back to Dashboard</button>
       </div>
@@ -401,6 +460,19 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 
 .spin { display: inline-block; animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Assistant narration */
+.gen-narration { margin-bottom: 28px; }
+.gen-narration-line { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--color-text-secondary); margin-bottom: 14px; line-height: 1.5; }
+.gen-narration-bot { flex-shrink: 0; }
+.gen-scene-cards { display: flex; flex-direction: column; gap: 8px; max-height: 34vh; overflow-y: auto; padding-right: 4px; }
+.gen-scene-card { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-card); }
+.gen-scene-thumb { width: 44px; height: 60px; flex-shrink: 0; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 14px; }
+.gen-scene-thumb.ready { background: transparent; }
+.gen-scene-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.gen-scene-body { flex: 1; min-width: 0; }
+.gen-scene-label { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 2px; }
+.gen-scene-script { font-size: 12px; color: var(--color-text-primary); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
 .gen-actions { display: flex; gap: 10px; justify-content: flex-end; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s ease; font-size: 13px; font-weight: 500; border: 1px solid transparent; }

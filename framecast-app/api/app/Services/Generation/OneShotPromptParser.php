@@ -46,9 +46,16 @@ You convert a single user prompt about a short video scene into four channels:
                 spoken in first or second person as the subject. NEVER
                 describe the scene; speak it. ~80-180 chars.
 
-  visual      — what the image generator should produce. Keep the user's
-                concrete details (subject, setting, lighting, mood) but
-                add visual specifics. ~80-200 chars. NO text-on-image.
+  visual      — a RICH image-generation prompt (target 500-1000 chars).
+                Be the prompt engineer the user isn't: expand their
+                request into a vivid scene. Cover SUBJECT (who/what,
+                pose, expression, clothing), SETTING (location, props,
+                environment), LIGHTING (golden hour / overcast / neon /
+                studio), CAMERA (wide / close-up / low angle / over-the-
+                shoulder), MOOD, STYLE CUES, and concrete TEXTURAL detail
+                (fabric, weather, surfaces, atmosphere). One flowing block
+                of comma-separated phrases — NOT a list. Do NOT just echo
+                the user's words. NO text-on-image.
 
   music_mood  — 3-7 word genre/mood seed for MusicGen. Pick from:
                 calm acoustic / cinematic ambient / upbeat indie pop /
@@ -150,7 +157,7 @@ SYS;
 
             return [
                 'script'     => $this->cleanString($parsed['script']     ?? $fallback['script'],     400),
-                'visual'     => $this->cleanString($parsed['visual']     ?? $fallback['visual'],     500),
+                'visual'     => $this->cleanString($parsed['visual']     ?? $fallback['visual'],     1500),
                 'music_mood' => $this->cleanString($parsed['music_mood'] ?? $fallback['music_mood'], 60),
                 'motion'     => $this->cleanString($parsed['motion']     ?? $fallback['motion'],     160),
                 'style'      => $this->validStyle($parsed['style']       ?? 'photorealistic'),
@@ -218,9 +225,13 @@ Per scene, return:
   script  — what the voice ACTUALLY SAYS. 1 sentence, first/second person.
             Never describe the scene; speak it. ~50-130 chars per scene.
             Across scenes the voice should feel continuous, not disjoint.
-  visual  — what the image generator should produce for this scene. Keep
-            visual continuity across scenes (same subject if applicable,
-            same lighting feel). ~80-180 chars.
+  visual  — a RICH image-generation prompt for THIS scene (target
+            500-1000 chars). Expand into a vivid scene: subject + pose +
+            expression + clothing, setting + props, lighting, camera
+            angle + framing, mood, style cues, and concrete textural
+            detail. One flowing block of comma-separated phrases, not a
+            list. Keep visual continuity across scenes (same subject /
+            lighting feel where applicable). Do NOT echo the user's words.
   motion  — 1 short clause for how the still image animates. ~30-80 chars.
 
 Shared:
@@ -275,7 +286,7 @@ SYS;
             foreach (array_slice($parsed['scenes'], 0, $sceneCount) as $s) {
                 $scenes[] = [
                     'script' => $this->cleanString($s['script'] ?? $singleFallback['script'], 400),
-                    'visual' => $this->cleanString($s['visual'] ?? $singleFallback['visual'], 500),
+                    'visual' => $this->cleanString($s['visual'] ?? $singleFallback['visual'], 1500),
                     'motion' => $this->cleanString($s['motion'] ?? $singleFallback['motion'], 160),
                 ];
             }

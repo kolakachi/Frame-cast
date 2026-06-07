@@ -402,6 +402,11 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   oneShotAnimMenuOpen.value = false
   oneShotScenesOpen.value = false
   oneShotShowCharacters.value = false
+  oneShotPlan.value = null
+  oneShotPlanEstimate.value = null
+  oneShotIncludeMusic.value = true
+  oneShotIncludeCaptions.value = true
+  oneShotPlanLoading.value = false
   show.value = true
   loadNiches()
   loadBrandKits()
@@ -519,6 +524,14 @@ const oneShotReferences = ref([])
 const oneShotUploadingPhoto = ref(false)
 const oneShotUploadError = ref('')
 
+// Plan-approval step (wizardStep 5). The composer now resolves the prompt
+// into a scene plan the user reviews/tweaks before we spend anything.
+const oneShotPlan = ref(null)            // { scenes:[{script,visual,motion}], style, music_mood, scenes_count }
+const oneShotPlanEstimate = ref(null)    // { with_music, without_music, balance }
+const oneShotIncludeMusic = ref(true)
+const oneShotIncludeCaptions = ref(true)
+const oneShotPlanLoading = ref(false)
+
 // Local UI flags for the composer's pop-overs / expandable sections.
 const oneShotAddMenuOpen     = ref(false)
 const oneShotAspectOpen      = ref(false)
@@ -621,13 +634,60 @@ async function onOneShotPhotoChange(event) {
 // optional hints to the model — empty is fine (text-to-image).
 const canSubmitOneShot = computed(() => !!oneShotPrompt.value.trim())
 
+// Helper — collect the reference ids from the unified references list.
+function oneShotReferenceIds() {
+  return {
+    sourceAssetIds: oneShotReferences.value.filter((r) => r.kind === 'upload').map((r) => r.asset_id),
+    characterIds:   oneShotReferences.value.filter((r) => r.kind === 'character').map((r) => r.character_id),
+  }
+}
+
+// Phase 1 — ask the assistant to draft a scene plan. No project is created
+// and nothing is spent yet; we just advance to the review step.
+async function requestOneShotPlan() {
+  if (!canSubmitOneShot.value || oneShotPlanLoading.value) return
+  oneShotPlanLoading.value = true
+  wizardCreateError.value = ''
+  try {
+    const { sourceAssetIds, characterIds } = oneShotReferenceIds()
+    const res = await api.post('/projects/one-shot/plan', {
+      prompt: oneShotPrompt.value.trim(),
+      aspect_ratio: aspectRatio.value,
+      animate: oneShotAnimate.value,
+      animation_tier: oneShotAnimateTier.value,
+      scenes_count: oneShotScenesCount.value,
+      ...(sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
+      ...(characterIds.length   ? { character_ids: characterIds }            : {}),
+    })
+    const data = res.data?.data ?? {}
+    oneShotPlan.value = data.plan ?? null
+    oneShotPlanEstimate.value = data.estimate ?? null
+    oneShotIncludeMusic.value = data.defaults?.include_music ?? true
+    oneShotIncludeCaptions.value = data.defaults?.include_captions ?? true
+    if (oneShotPlan.value) wizardStep.value = 5
+    else wizardCreateError.value = 'Could not build a plan — try rephrasing the prompt.'
+  } catch (err) {
+    wizardCreateError.value = err.response?.data?.error?.message ?? 'Could not build a plan. Try again.'
+  } finally {
+    oneShotPlanLoading.value = false
+  }
+}
+
+// Credits the current toggles imply — drives the estimate chip + balance gate.
+const oneShotPlanCost = computed(() => {
+  if (!oneShotPlanEstimate.value) return null
+  return oneShotIncludeMusic.value
+    ? oneShotPlanEstimate.value.with_music
+    : oneShotPlanEstimate.value.without_music
+})
+
+// Phase 2 — generate from the approved (possibly edited) plan + toggles.
 async function submitOneShot() {
   if (!canSubmitOneShot.value || wizardCreateState.value === 'loading') return
   wizardCreateState.value = 'loading'
   wizardCreateError.value = ''
   try {
-    const sourceAssetIds = oneShotReferences.value.filter((r) => r.kind === 'upload').map((r) => r.asset_id)
-    const characterIds   = oneShotReferences.value.filter((r) => r.kind === 'character').map((r) => r.character_id)
+    const { sourceAssetIds, characterIds } = oneShotReferenceIds()
     const payload = {
       prompt: oneShotPrompt.value.trim(),
       title: title.value || undefined,
@@ -635,9 +695,21 @@ async function submitOneShot() {
       animate: oneShotAnimate.value,
       animation_tier: oneShotAnimateTier.value,
       scenes_count: oneShotScenesCount.value,
+      include_music: oneShotIncludeMusic.value,
+      include_captions: oneShotIncludeCaptions.value,
       channel_id: channelId.value ? Number(channelId.value) : undefined,
       ...(sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
       ...(characterIds.length   ? { character_ids: characterIds }            : {}),
+      // Send the reviewed plan so the user's edits aren't re-parsed away.
+      ...(oneShotPlan.value ? {
+        plan: {
+          scenes: oneShotPlan.value.scenes.map((s) => ({
+            script: s.script, visual: s.visual, motion: s.motion,
+          })),
+          style: oneShotPlan.value.style,
+          music_mood: oneShotPlan.value.music_mood,
+        },
+      } : {}),
     }
     const res = await api.post('/projects/one-shot', payload)
     const projectId = res.data?.data?.project?.id
@@ -646,7 +718,12 @@ async function submitOneShot() {
       router.push({
         name: 'generation-progress',
         params: { projectId },
-        query: { animate: oneShotAnimate.value ? '1' : '0' },
+        // no_music drops the music stage from the progress pipeline so it
+        // doesn't wait on a job that was never dispatched.
+        query: {
+          animate: oneShotAnimate.value ? '1' : '0',
+          ...(oneShotIncludeMusic.value ? {} : { no_music: '1' }),
+        },
       })
     }
   } catch (err) {
@@ -828,8 +905,8 @@ defineExpose({ open })
             rows="4"
             maxlength="1000"
             placeholder="e.g. a calm founder explaining her morning ritual in a sunlit kitchen, warm tones, slow camera push-in"
-            @keydown.meta.enter="submitOneShot"
-            @keydown.ctrl.enter="submitOneShot"
+            @keydown.meta.enter="requestOneShotPlan"
+            @keydown.ctrl.enter="requestOneShotPlan"
           ></textarea>
 
           <!-- Toolbar: + Add (popover), aspect ratio chip, animate model chip, char count -->
@@ -925,8 +1002,54 @@ defineExpose({ open })
 
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" @click="wizardStep = 0">← Back</button>
-          <button class="btn btn-primary" type="button" :disabled="!canSubmitOneShot || wizardCreateState === 'loading'" @click="submitOneShot">
-            {{ wizardCreateState === 'loading' ? 'Generating…' : '⚡ Generate one-shot' }}
+          <button class="btn btn-primary" type="button" :disabled="!canSubmitOneShot || oneShotPlanLoading" @click="requestOneShotPlan">
+            {{ oneShotPlanLoading ? 'Drafting plan…' : 'Review plan →' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 5: One-shot plan review — assistant drafts the scenes; user
+           tweaks scripts + toggles captions/sounds before spending. -->
+      <div v-else-if="wizardStep === 5 && oneShotPlan">
+        <div class="section-title">🤖 Here's the plan</div>
+        <div class="section-subtitle">Tweak the lines, toggle captions or sounds, then generate. You can refine everything in the editor afterward.</div>
+
+        <div class="plan-scenes">
+          <div v-for="(s, i) in oneShotPlan.scenes" :key="i" class="plan-scene">
+            <div class="plan-scene-num">Scene {{ i + 1 }}</div>
+            <textarea
+              v-model="s.script"
+              class="plan-scene-script"
+              rows="2"
+              maxlength="1000"
+              :placeholder="`What the voice says in scene ${i + 1}`"
+            ></textarea>
+            <div class="plan-scene-visual" :title="s.visual">🎨 {{ s.visual }}</div>
+          </div>
+        </div>
+
+        <div class="plan-toggles">
+          <label class="plan-toggle">
+            <input type="checkbox" v-model="oneShotIncludeCaptions" />
+            <span>On-screen captions</span>
+          </label>
+          <label class="plan-toggle">
+            <input type="checkbox" v-model="oneShotIncludeMusic" />
+            <span>Background music<span v-if="oneShotIncludeMusic && oneShotPlan.music_mood" class="plan-toggle-mood"> · {{ oneShotPlan.music_mood }}</span></span>
+          </label>
+        </div>
+
+        <div class="plan-meta">
+          <span class="plan-meta-style">🎨 {{ oneShotPlan.style }}</span>
+          <span v-if="oneShotPlanCost !== null" class="plan-meta-cost">~{{ oneShotPlanCost }} cr</span>
+        </div>
+
+        <div v-if="wizardCreateError" class="modal-error" style="margin-top:14px;">{{ wizardCreateError }}</div>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" @click="wizardStep = 4">← Edit prompt</button>
+          <button class="btn btn-primary" type="button" :disabled="wizardCreateState === 'loading'" @click="submitOneShot">
+            {{ wizardCreateState === 'loading' ? 'Generating…' : '⚡ Generate' }}
           </button>
         </div>
       </div>
@@ -1721,4 +1844,17 @@ defineExpose({ open })
   .niche-preset-summary { grid-template-columns: repeat(2, 1fr); }
   .ai-broll-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* One-shot plan review (step 5) */
+.plan-scenes { display: flex; flex-direction: column; gap: 10px; max-height: 42vh; overflow-y: auto; padding-right: 4px; }
+.plan-scene { border: 1px solid var(--color-border); border-radius: 12px; padding: 10px 12px; background: var(--color-surface, rgba(255,255,255,0.02)); }
+.plan-scene-num { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 6px; }
+.plan-scene-script { width: 100%; border: none; background: transparent; color: var(--color-text-primary); font-size: 14px; line-height: 1.5; resize: vertical; outline: none; font-family: inherit; }
+.plan-scene-visual { margin-top: 6px; font-size: 12px; color: var(--color-text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.plan-toggles { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; }
+.plan-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-primary); cursor: pointer; }
+.plan-toggle input { width: 16px; height: 16px; accent-color: var(--color-primary, #ff6b35); cursor: pointer; }
+.plan-toggle-mood { color: var(--color-text-muted); }
+.plan-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; font-size: 12px; color: var(--color-text-muted); }
+.plan-meta-cost { font-weight: 700; color: var(--color-text-primary); }
 </style>

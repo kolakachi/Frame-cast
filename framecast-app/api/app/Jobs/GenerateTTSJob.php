@@ -83,6 +83,13 @@ class GenerateTTSJob implements ShouldQueue
         $scenes = $scenesQuery->get();
 
         if ($scenes->isEmpty()) {
+            // No voiceable scenes (e.g. a future voiceless one-shot, or a
+            // scene-scoped re-record whose scenes were deleted). Still
+            // finalize so the project doesn't strand at 'generating' on the
+            // progress view — the status flip used to live ONLY past the
+            // per-scene loop, which this early return skipped.
+            $this->finalizeIfNeeded($project, $notifications);
+            GenerationProgressed::dispatch($this->projectId, 'tts', 'completed', null, $this->progressMeta());
             return;
         }
 
@@ -172,25 +179,7 @@ class GenerateTTSJob implements ShouldQueue
             ]);
         }
 
-        if ($this->shouldFinalizeProject) {
-            DB::transaction(function () use ($project): void {
-                $project->forceFill([
-                    'status' => 'ready_for_review',
-                ])->save();
-            });
-
-            $notifications->create(
-                (int) $project->workspace_id,
-                'Generation complete',
-                'Project #'.$project->getKey().' is ready for review.',
-                'success',
-                $project->created_by_user_id ? (int) $project->created_by_user_id : null,
-                [
-                    'project_id' => $project->getKey(),
-                    'status' => 'ready_for_review',
-                ],
-            );
-        }
+        $this->finalizeIfNeeded($project, $notifications);
 
         GenerationProgressed::dispatch($this->projectId, 'tts', 'completed', null, $this->progressMeta());
         if ($sceneId = $this->singleSceneId()) {
@@ -200,6 +189,36 @@ class GenerateTTSJob implements ShouldQueue
         if ($this->shouldFinalizeProject && $project->series_id) {
             SummarizeEpisodeJob::dispatch($project->getKey());
         }
+    }
+
+    /**
+     * Flip the project to ready_for_review and notify — the single place
+     * that finalizes a one-shot/brief generation. Called both after the
+     * per-scene voice loop AND on the no-voiceable-scenes early return, so
+     * completion never depends on there being audio to generate. Idempotent:
+     * re-running just re-saves the same status.
+     */
+    private function finalizeIfNeeded(Project $project, NotificationService $notifications): void
+    {
+        if (! $this->shouldFinalizeProject) {
+            return;
+        }
+
+        DB::transaction(function () use ($project): void {
+            $project->forceFill(['status' => 'ready_for_review'])->save();
+        });
+
+        $notifications->create(
+            (int) $project->workspace_id,
+            'Generation complete',
+            'Project #'.$project->getKey().' is ready for review.',
+            'success',
+            $project->created_by_user_id ? (int) $project->created_by_user_id : null,
+            [
+                'project_id' => $project->getKey(),
+                'status' => 'ready_for_review',
+            ],
+        );
     }
 
     private function attachCaptionTiming(Asset $asset, MediaTranscriptionService $transcription): void

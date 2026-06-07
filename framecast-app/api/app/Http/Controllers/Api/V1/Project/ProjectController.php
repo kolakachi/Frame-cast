@@ -742,6 +742,81 @@ class ProjectController extends Controller
      *      -> music) instead of leaving the user to wire it up scene by
      *      scene.
      */
+    /**
+     * Phase 1 of the assisted one-shot: parse the prompt into a scene plan
+     * and return it WITHOUT creating a project or spending anything. The
+     * wizard shows this for approval/tweaks, then calls storeOneShot with
+     * the (possibly edited) plan + the captions/sounds toggles. Cheap — one
+     * parser call, no jobs.
+     */
+    public function planOneShot(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        if (! $user->workspace_id) {
+            return $this->error('workspace_required', 'User is not assigned to a workspace.', 422);
+        }
+
+        $validated = $request->validate([
+            'prompt'         => ['required', 'string', 'min:3', 'max:1000'],
+            'aspect_ratio'   => ['nullable', 'string', 'in:9:16,1:1,16:9,4:5'],
+            'animate'        => ['nullable', 'boolean'],
+            'animation_tier' => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro'],
+            'scenes_count'   => ['nullable', 'integer', 'min:1', 'max:8'],
+            // References only affect the cost estimate at this stage.
+            'source_image_asset_ids'   => ['nullable', 'array', 'max:4'],
+            'source_image_asset_ids.*' => ['integer'],
+            'character_ids'            => ['nullable', 'array', 'max:4'],
+            'character_ids.*'          => ['integer'],
+        ]);
+
+        $sceneCount     = max(1, min(8, (int) ($validated['scenes_count'] ?? 1)));
+        $hasReferences  = ! empty($validated['source_image_asset_ids']) || ! empty($validated['character_ids']);
+        $needsAnimation = (bool) ($validated['animate'] ?? true);
+        $animationTier  = $validated['animation_tier'] ?? 'quick';
+        $promptText     = trim($validated['prompt']);
+
+        $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
+            ->parseMultiScene($promptText, $sceneCount);
+
+        $perSceneImageCost = $hasReferences ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+        $perScene = $perSceneImageCost + CreditService::TTS
+            + ($needsAnimation ? $this->animationTierCost($animationTier) : 0);
+
+        return response()->json([
+            'data' => [
+                'plan' => [
+                    'scenes'       => $parsed['scenes'],
+                    'style'        => $parsed['style'],
+                    'music_mood'   => $parsed['music_mood'],
+                    'scenes_count' => $sceneCount,
+                ],
+                'defaults' => [
+                    'include_music'    => true,
+                    'include_captions' => true,
+                    'animate'          => $needsAnimation,
+                ],
+                'estimate' => [
+                    'with_music'    => ($perScene * $sceneCount) + CreditService::AI_MUSIC,
+                    'without_music' => $perScene * $sceneCount,
+                    'balance'       => (new CreditService())->balance((int) $user->workspace_id),
+                ],
+            ],
+            'meta' => [],
+        ]);
+    }
+
+    private function animationTierCost(string $tier): int
+    {
+        return match ($tier) {
+            'premium'       => CreditService::VIDEO_PREMIUM,
+            'balanced'      => CreditService::VIDEO_BALANCED,
+            'seedance_pro'  => CreditService::VIDEO_SEEDANCE_PRO,
+            'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
+            default         => CreditService::VIDEO_QUICK,
+        };
+    }
+
     public function storeOneShot(Request $request): JsonResponse
     {
         /** @var User $user */
@@ -771,7 +846,26 @@ class ProjectController extends Controller
             'animation_tier'           => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro'],
             // 1-8 scenes. 1 = instant demo, 3 = DTC ad shape, 8 = full Reel.
             'scenes_count'             => ['nullable', 'integer', 'min:1', 'max:8'],
+            // Assistant toggles from the plan-approval step. Default ON to
+            // preserve the legacy one-shot behaviour for callers that don't
+            // send them.
+            'include_music'            => ['nullable', 'boolean'],
+            'include_captions'         => ['nullable', 'boolean'],
+            // Approved (possibly user-edited) plan from planOneShot. When
+            // present we skip the parser and build scenes from it directly,
+            // so the user's tweaks aren't thrown away.
+            'plan'                     => ['nullable', 'array'],
+            'plan.scenes'              => ['nullable', 'array', 'min:1', 'max:8'],
+            'plan.scenes.*.script'     => ['required_with:plan.scenes', 'string', 'max:1000'],
+            'plan.scenes.*.visual'     => ['required_with:plan.scenes', 'string', 'max:2000'],
+            'plan.scenes.*.motion'     => ['nullable', 'string', 'max:300'],
+            'plan.style'               => ['nullable', 'string', 'max:40'],
+            'plan.music_mood'          => ['nullable', 'string', 'max:80'],
         ]);
+
+        $includeMusic    = (bool) ($validated['include_music'] ?? true);
+        $includeCaptions = (bool) ($validated['include_captions'] ?? true);
+        $providedScenes  = $validated['plan']['scenes'] ?? null;
 
         // Resolve references — flatten arrays + legacy singles into one
         // list of Asset rows scoped to this workspace. The list (possibly
@@ -818,20 +912,19 @@ class ProjectController extends Controller
         // /edits), AI_MEDIUM for text-to-image fallback.
         $needsAnimation = (bool) ($validated['animate'] ?? true);
         $animationTier  = $validated['animation_tier'] ?? 'quick';
-        $animationCost  = match ($animationTier) {
-            'premium'       => CreditService::VIDEO_PREMIUM,
-            'balanced'      => CreditService::VIDEO_BALANCED,
-            'seedance_pro'  => CreditService::VIDEO_SEEDANCE_PRO,
-            'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
-            default         => CreditService::VIDEO_QUICK,
-        };
+        $animationCost  = $this->animationTierCost($animationTier);
         $perSceneImageCost = $referenceAssets->isNotEmpty()
             ? CreditService::AI_CHARACTER
             : CreditService::AI_MEDIUM;
-        $sceneCount = (int) ($validated['scenes_count'] ?? 1);
+        // Scene count follows the approved plan when one was sent, so an
+        // edited plan (user added/removed a scene) costs the right amount.
+        $sceneCount = is_array($providedScenes) && count($providedScenes) > 0
+            ? count($providedScenes)
+            : (int) ($validated['scenes_count'] ?? 1);
         $sceneCount = max(1, min(8, $sceneCount));
         $perScene = $perSceneImageCost + CreditService::TTS + ($needsAnimation ? $animationCost : 0);
-        $estimatedCost = ($perScene * $sceneCount) + CreditService::AI_MUSIC;
+        // Music is a shared, optional bed — only billed when the user kept it.
+        $estimatedCost = ($perScene * $sceneCount) + ($includeMusic ? CreditService::AI_MUSIC : 0);
 
         $balance = (new CreditService())->balance((int) $user->workspace_id);
         if ($balance < $estimatedCost) {
@@ -847,12 +940,28 @@ class ProjectController extends Controller
         $title       = $validated['title']
             ?? \Illuminate\Support\Str::limit($promptText, 60, '');
 
-        // Split the user's prompt into N scenes via the multi-scene parser.
-        // For N=1 the parser short-circuits to the single-scene path. For
-        // N>1 we get one LLM call that returns an array of {script,visual,
-        // motion} per scene plus shared music_mood and style.
-        $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
-            ->parseMultiScene($promptText, $sceneCount);
+        // Use the approved plan verbatim when the wizard sent one (so the
+        // user's edits survive); otherwise split the prompt via the parser.
+        // For N=1 the parser short-circuits to the single-scene path.
+        if (is_array($providedScenes) && count($providedScenes) > 0) {
+            $planScenes = [];
+            foreach (array_slice($providedScenes, 0, $sceneCount) as $s) {
+                $planScenes[] = [
+                    'script' => trim((string) ($s['script'] ?? '')),
+                    'visual' => trim((string) ($s['visual'] ?? '')),
+                    'motion' => trim((string) ($s['motion'] ?? '')),
+                ];
+            }
+            $planStyle = trim((string) ($validated['plan']['style'] ?? ''));
+            $parsed = [
+                'scenes'     => $planScenes,
+                'style'      => $planStyle !== '' ? $planStyle : 'photorealistic',
+                'music_mood' => trim((string) ($validated['plan']['music_mood'] ?? '')) ?: 'calm cinematic ambient',
+            ];
+        } else {
+            $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
+                ->parseMultiScene($promptText, $sceneCount);
+        }
 
         $project = Project::query()->create([
             'workspace_id'        => $user->workspace_id,
@@ -898,14 +1007,17 @@ class ProjectController extends Controller
                     'speed'     => 1.0,
                     'stability' => 'medium',
                 ],
-                'caption_settings_json' => [
+                // Captions are a render-time overlay, not a generation stage —
+                // honouring the toggle is just flipping 'enabled'. The user
+                // can still turn them on per-scene later in the editor.
+                'caption_settings_json' => $includeCaptions ? [
                     'enabled'        => true,
                     'style_key'      => 'impact',
                     'highlight_mode' => 'keywords',
                     'position'       => 'bottom_third',
                     'font'           => 'Bebas Neue',
                     'highlight_color'=> '#ff6b35',
-                ],
+                ] : ['enabled' => false],
                 'visual_type'   => 'ai_image',
                 'visual_prompt' => $sceneDef['visual'],
                 'visual_style'  => $parsed['style'],
@@ -947,23 +1059,30 @@ class ProjectController extends Controller
 
         // Music dispatches once with the first scene id as anchor — the
         // job attaches it to project.music_asset_id which is video-wide.
-        \App\Jobs\GenerateAIMusicJob::dispatch(
-            $firstSceneId,
-            $project->getKey(),
-            $parsed['music_mood'],
-            $parsed['music_mood'],
-            8,
-        );
+        // Skipped entirely when the user turned sounds off; the progress
+        // view must also drop the ai_music stage (no_music flag) so it
+        // doesn't wait on a stage that will never fire.
+        if ($includeMusic) {
+            \App\Jobs\GenerateAIMusicJob::dispatch(
+                $firstSceneId,
+                $project->getKey(),
+                $parsed['music_mood'],
+                $parsed['music_mood'],
+                8,
+            );
+        }
 
         $project->refresh();
         return response()->json([
             'data' => [
                 'project'    => $this->serializeProject($project),
                 'one_shot'   => [
-                    'estimated_cost' => $estimatedCost,
-                    'auto_animate'   => $needsAnimation,
-                    'scene_id'       => $firstSceneId,
-                    'scenes_count'   => $sceneCount,
+                    'estimated_cost'   => $estimatedCost,
+                    'auto_animate'     => $needsAnimation,
+                    'scene_id'         => $firstSceneId,
+                    'scenes_count'     => $sceneCount,
+                    'include_music'    => $includeMusic,
+                    'include_captions' => $includeCaptions,
                 ],
             ],
             'meta' => [],
