@@ -56,7 +56,11 @@ services:
   worker-generation:
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=generation,tts,visual,translation --tries=1 --sleep=3
+    command: php artisan queue:work redis --queue=generation,tts,visual,translation --tries=2 --sleep=3
+    # On deploy (SIGTERM) let a busy worker finish its current job before
+    # SIGKILL, so short image/tts/voice jobs drain cleanly. --tries=2 means
+    # a job killed anyway (long video) auto-retries instead of just failing.
+    stop_grace_period: 90s
     env_file:
       - ./api/.env
     environment:
@@ -75,7 +79,9 @@ services:
   worker-exports:
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=exports,rendering --tries=1 --timeout=2700 --sleep=3
+    command: php artisan queue:work redis --queue=exports,rendering --tries=2 --timeout=2700 --sleep=3
+    # Renders are long; give a near-done export room to finish on deploy.
+    stop_grace_period: 120s
     env_file:
       - ./api/.env
     environment:
@@ -92,7 +98,8 @@ services:
   worker-default:
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=default --tries=1 --sleep=3
+    command: php artisan queue:work redis --queue=default --tries=2 --sleep=3
+    stop_grace_period: 30s
     env_file:
       - ./api/.env
     environment:
