@@ -880,6 +880,41 @@ async function cruiseUndoAction(msg, actionIndex = 0) {
   }
 }
 
+// Map a raw provider/exception string to a calm, user-facing line. The raw
+// text itself is only shown to admins (see the failed-card template), so
+// regular users never see "cURL error 28 …" and friends.
+function cruiseFriendlyError(raw) {
+  const s = String(raw || '').toLowerCase()
+  if (!s) return 'Something went wrong. Tap Retry to try again.'
+  if (s.includes('timed out') || s.includes('timeout') || s.includes('error 28')) {
+    return 'That took too long to generate — the provider was slow. Tap Retry.'
+  }
+  if (s.includes('rate') || s.includes('429') || s.includes('too many')) {
+    return "We're being rate-limited right now — wait a moment, then tap Retry."
+  }
+  if (s.includes('policy') || s.includes('safety') || s.includes('moderation') || s.includes('nsfw') || s.includes('content filter')) {
+    return 'That was blocked by the content filter — try rephrasing the prompt.'
+  }
+  if (s.includes('insufficient') || s.includes('credit') || s.includes('402')) {
+    return 'Not enough credits to finish this — top up and try again.'
+  }
+  return 'Something went wrong generating this. Tap Retry to try again.'
+}
+
+// Re-run a failed action: re-POST apply (re-dispatches the job); the card
+// flows back through running -> applied/failed like a fresh apply.
+async function cruiseRetryAction(msg, actionIndex = 0) {
+  const card = cruiseGetCard(msg, actionIndex)
+  if (!card || card._retrying || cruiseApplying.value) return
+  card._retrying = true
+  card.error = null
+  try {
+    await cruiseApplyAction(msg, actionIndex)
+  } finally {
+    card._retrying = false
+  }
+}
+
 // On hydrate, walk every applied card with an affected_scene_id and
 // verify the scene actually has the assets the action was supposed to
 // produce. If anything's still pending, flip the card back to 'running'
@@ -7818,7 +7853,14 @@ onBeforeUnmount(() => {
                           ↩ Undone
                         </div>
                         <div v-else-if="card.status === 'failed'" class="cruise-action-status failed">
-                          ✕ {{ card.error || 'Apply failed' }}
+                          <div class="cruise-action-fail-row">
+                            <span class="cruise-action-fail-msg">✕ {{ cruiseFriendlyError(card.error) }}</span>
+                            <button class="cruise-action-undo" type="button" :disabled="card._retrying || cruiseApplying" @click="cruiseRetryAction(m, idx)">
+                              {{ card._retrying ? 'Retrying…' : '↻ Retry' }}
+                            </button>
+                          </div>
+                          <!-- Raw provider error — admins only. -->
+                          <div v-if="isAdmin && card.error" class="cruise-action-fail-detail">{{ card.error }}</div>
                         </div>
                         <div v-else-if="card.status === 'skipped'" class="cruise-action-status skipped">
                           ⏭ Skipped
@@ -9119,7 +9161,10 @@ button {
 }
 .cruise-action-undo:hover:not(:disabled) { color: var(--color-text-primary); border-color: var(--color-border-active); }
 .cruise-action-undo:disabled { opacity: 0.5; cursor: default; }
-.cruise-action-status.failed { color: #f87171; background: rgba(248,113,113,0.06); }
+.cruise-action-status.failed { color: #f87171; background: rgba(248,113,113,0.06); flex-direction: column; align-items: stretch; gap: 6px; }
+.cruise-action-fail-row { display: flex; align-items: center; gap: 8px; }
+.cruise-action-fail-msg { flex: 1; }
+.cruise-action-fail-detail { font-family: "Space Mono", monospace; font-size: 10px; font-weight: 400; color: var(--color-text-muted); background: var(--color-bg-elevated); border-radius: 6px; padding: 6px 8px; word-break: break-word; white-space: pre-wrap; }
 .cruise-action-status.running { color: var(--color-accent, #ff6b35); background: rgba(255,107,53,0.06); }
 .cruise-action-status.skipped { color: var(--color-text-muted, #94a3b8); background: rgba(148,163,184,0.06); }
 .cruise-action-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,107,53,0.25); border-top-color: var(--color-accent, #ff6b35); border-radius: 50%; animation: cruise-spinner-rot 0.8s linear infinite; flex-shrink: 0; }

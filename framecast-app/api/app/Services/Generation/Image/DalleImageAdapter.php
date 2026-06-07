@@ -93,7 +93,9 @@ class DalleImageAdapter implements ImageGenerationAdapter
 
         try {
             $response = Http::withToken($apiKey)
-                ->timeout(60)
+                // gpt-image-1 can take 60-90s under load; 60s was timing out
+                // ("cURL error 28"). The job timeout is 300s, so there's room.
+                ->timeout(120)
                 ->post('https://api.openai.com/v1/images/generations', [
                     'model'   => $model,
                     'prompt'  => $fullPrompt,
