@@ -57,6 +57,13 @@ const cruiseAutoApply = ref(true)
 // "no bias" but is the explicit on-the-wire sentinel.
 const cruisePrefs = ref({ image_model: null, animation_tier: null, visual_source: 'auto' })
 const cruisePrefsOpen = ref(false)
+
+// Project brief — the synthesised creative direction the assistant follows.
+// Editable + lockable; refreshable from the current scenes.
+const cruiseBrief = ref(null)        // { theme, topic, visual_style, tone, recurring_subject }
+const cruiseBriefLocked = ref(false)
+const cruiseBriefOpen = ref(false)
+const cruiseBriefBusy = ref(false)   // saving or refreshing
 // Frequently-used prompts shown above the input.
 const CRUISE_QUICK_PROMPTS = [
   'change voice on this scene',
@@ -722,7 +729,10 @@ async function loadCruiseConversation() {
   if (!projectId.value) return
   try {
     const res = await api.get(`/cruise/conversation/${projectId.value}`)
-    const msgs = res?.data?.data?.messages
+    const data = res?.data?.data ?? {}
+    cruiseBrief.value = data.brief ?? null
+    cruiseBriefLocked.value = !!data.brief_locked
+    const msgs = data.messages
     if (Array.isArray(msgs) && msgs.length) {
       cruiseMessages.value = msgs.map((m) => {
         // Backwards compat: older messages stored a single action; new
@@ -755,6 +765,86 @@ async function loadCruiseConversation() {
       await cruiseResumeInflightAfterHydrate()
     }
   } catch { /* silent — empty conversation is fine */ }
+}
+
+// --- Project brief (creative direction the assistant follows) ---
+function cruiseToggleBrief() {
+  if (!cruiseBrief.value) {
+    cruiseBrief.value = { theme: null, topic: null, visual_style: null, tone: null, recurring_subject: null }
+  }
+  cruiseBriefOpen.value = !cruiseBriefOpen.value
+}
+
+async function cruiseSaveBrief() {
+  if (!projectId.value || cruiseBriefBusy.value) return
+  cruiseBriefBusy.value = true
+  try {
+    const b = cruiseBrief.value || {}
+    const res = await api.patch(`/cruise/brief/${projectId.value}`, {
+      theme: b.theme ?? null,
+      topic: b.topic ?? null,
+      visual_style: b.visual_style ?? null,
+      tone: b.tone ?? null,
+      recurring_subject: b.recurring_subject ?? null,
+      locked: true,
+    })
+    cruiseBrief.value = res?.data?.data?.brief ?? cruiseBrief.value
+    cruiseBriefLocked.value = !!res?.data?.data?.brief_locked
+    cruiseShowToast('Brief saved · the assistant will follow it')
+  } catch (_) { cruiseShowToast('Could not save the brief.') }
+  finally { cruiseBriefBusy.value = false }
+}
+
+async function cruiseRefreshBrief() {
+  if (!projectId.value || cruiseBriefBusy.value) return
+  cruiseBriefBusy.value = true
+  try {
+    const res = await api.post(`/cruise/brief/${projectId.value}/refresh`)
+    cruiseBrief.value = res?.data?.data?.brief ?? cruiseBrief.value
+    cruiseBriefLocked.value = !!res?.data?.data?.brief_locked
+  } catch (_) { cruiseShowToast('Could not refresh the brief.') }
+  finally { cruiseBriefBusy.value = false }
+}
+
+// Wipe the chat thread to start over. Project changes are untouched
+// (those are reverted per-action via Undo).
+async function cruiseResetConversation() {
+  if (!projectId.value) return
+  if (!window.confirm('Start a new chat? This clears the conversation. Your video changes stay — use Undo on a card to revert one.')) return
+  try {
+    await api.post(`/cruise/conversation/${projectId.value}/reset`)
+    cruiseMessages.value = []
+    cruiseAssistantPending.value = false
+    cruiseShowToast('Started a new chat')
+  } catch (_) { cruiseShowToast('Could not reset the chat.') }
+}
+
+// Undoable = an applied card whose tool we can revert (all except
+// apply_brand_kit). Undo restores prior state; it does NOT refund credits.
+function cruiseCanUndo(card) {
+  return card?.status === 'applied' && card.tool !== 'apply_brand_kit'
+}
+
+async function cruiseUndoAction(msg, actionIndex = 0) {
+  const card = cruiseGetCard(msg, actionIndex)
+  if (!card || card._undoing) return
+  card._undoing = true
+  try {
+    await api.post('/cruise/undo', {
+      project_id: projectId.value,
+      message_id: msg.id,
+      action_index: actionIndex,
+    })
+    card.status = 'undone'
+    cruiseRecomputeMessageStatus(msg)
+    cruiseShowToast('Undone')
+    try { await refreshProjectPayload() } catch (_) {}
+    loadMe?.()
+  } catch (e) {
+    cruiseShowToast(e?.response?.data?.error?.message ?? 'Could not undo that.')
+  } finally {
+    card._undoing = false
+  }
 }
 
 // On hydrate, walk every applied card with an affected_scene_id and
@@ -7627,6 +7717,31 @@ onBeforeUnmount(() => {
                 <span class="cruise-scope-pill">{{ cruiseScopeLabel }}</span>
                 <span v-if="cruiseScopeSceneId !== null" class="cruise-scope-flip" @click="cruiseScopeSceneId = null">↻ whole project</span>
                 <span v-else-if="activeScene" class="cruise-scope-flip" @click="cruiseScopeSceneId = activeScene.id">↻ Scene {{ activeScene.scene_order }}</span>
+                <span class="cruise-scope-spacer"></span>
+                <button class="cruise-scope-action" type="button" :class="{ active: cruiseBriefOpen }" @click="cruiseToggleBrief" title="The theme & style the assistant follows">
+                  🎯 Theme<span v-if="cruiseBriefLocked" class="cruise-brief-lock" title="Locked — you edited it">🔒</span>
+                </button>
+                <button v-if="cruiseMessages.length" class="cruise-scope-action" type="button" @click="cruiseResetConversation" title="Start a new chat (your video changes stay)">↺ New chat</button>
+              </div>
+
+              <!-- Project brief editor — the creative direction the assistant
+                   defaults to. Editing locks it; refresh re-derives it. -->
+              <div v-if="cruiseBriefOpen && cruiseBrief" class="cruise-brief-panel">
+                <div class="cruise-brief-sub">Keeps new scenes & regenerations on-theme unless you override it in a message.</div>
+                <label class="cruise-brief-field"><span>Theme</span>
+                  <input type="text" v-model="cruiseBrief.theme" placeholder="e.g. hand-drawn doodle explainer" maxlength="200" /></label>
+                <label class="cruise-brief-field"><span>Topic</span>
+                  <input type="text" v-model="cruiseBrief.topic" placeholder="what the video is about" maxlength="200" /></label>
+                <label class="cruise-brief-field"><span>Visual style</span>
+                  <input type="text" v-model="cruiseBrief.visual_style" placeholder="e.g. doodle / marker on whiteboard" maxlength="200" /></label>
+                <label class="cruise-brief-field"><span>Tone</span>
+                  <input type="text" v-model="cruiseBrief.tone" placeholder="e.g. friendly, educational" maxlength="200" /></label>
+                <label class="cruise-brief-field"><span>Recurring subject</span>
+                  <input type="text" v-model="cruiseBrief.recurring_subject" placeholder="e.g. a hand drawing on a whiteboard" maxlength="200" /></label>
+                <div class="cruise-brief-foot">
+                  <button class="cruise-action-btn cruise-action-btn-ghost" type="button" :disabled="cruiseBriefBusy" @click="cruiseRefreshBrief">↻ Refresh from scenes</button>
+                  <button class="cruise-action-btn cruise-action-btn-primary" type="button" :disabled="cruiseBriefBusy" @click="cruiseSaveBrief">Save &amp; lock</button>
+                </div>
               </div>
 
               <div class="cruise-assistant-body" ref="cruiseChatScrollRef">
@@ -7680,7 +7795,13 @@ onBeforeUnmount(() => {
                           </template>
                         </div>
                         <div v-else-if="card.status === 'applied'" class="cruise-action-status applied">
-                          ✓ {{ card.progress_text || 'Applied' }} · spent {{ card.credits || card.estimated_cost }} cr
+                          <span class="cruise-action-status-text">✓ {{ card.progress_text || 'Applied' }} · spent {{ card.credits || card.estimated_cost }} cr</span>
+                          <button v-if="cruiseCanUndo(card)" class="cruise-action-undo" type="button" :disabled="card._undoing" @click="cruiseUndoAction(m, idx)">
+                            {{ card._undoing ? 'Undoing…' : '↩ Undo' }}
+                          </button>
+                        </div>
+                        <div v-else-if="card.status === 'undone'" class="cruise-action-status undone">
+                          ↩ Undone
                         </div>
                         <div v-else-if="card.status === 'failed'" class="cruise-action-status failed">
                           ✕ {{ card.error || 'Apply failed' }}
@@ -8799,6 +8920,28 @@ button {
   cursor: pointer;
 }
 .cruise-scope-flip:hover { color: var(--color-text-primary); }
+.cruise-scope-spacer { flex: 1; }
+.cruise-scope-action {
+  background: none; border: 1px solid var(--color-border); color: var(--color-text-muted);
+  font-size: 11px; padding: 3px 9px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+}
+.cruise-scope-action:hover { color: var(--color-text-primary); border-color: var(--color-border-active); }
+.cruise-scope-action.active { color: var(--color-accent); border-color: var(--color-accent); }
+.cruise-brief-lock { margin-left: 3px; }
+
+.cruise-brief-panel {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px; border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+}
+.cruise-brief-sub { font-size: 11px; color: var(--color-text-muted); }
+.cruise-brief-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--color-text-muted); }
+.cruise-brief-field input {
+  background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 6px;
+  padding: 5px 8px; font-size: 12px; color: var(--color-text-primary); outline: none; font-family: inherit;
+}
+.cruise-brief-field input:focus { border-color: var(--color-accent); }
+.cruise-brief-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
 .cruise-assistant-body {
   flex: 1; overflow-y: auto;
@@ -8890,6 +9033,14 @@ button {
 .cruise-action-btn-ghost { color: var(--color-text-muted); }
 .cruise-action-status { padding: 8px 12px; border-top: 1px solid var(--color-border); font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .cruise-action-status.applied { color: #34d399; background: rgba(52,211,153,0.06); }
+.cruise-action-status.undone { color: var(--color-text-muted); background: var(--color-bg-elevated); }
+.cruise-action-status-text { flex: 1; }
+.cruise-action-undo {
+  background: none; border: 1px solid var(--color-border); color: var(--color-text-muted);
+  font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+}
+.cruise-action-undo:hover:not(:disabled) { color: var(--color-text-primary); border-color: var(--color-border-active); }
+.cruise-action-undo:disabled { opacity: 0.5; cursor: default; }
 .cruise-action-status.failed { color: #f87171; background: rgba(248,113,113,0.06); }
 .cruise-action-status.running { color: var(--color-accent, #ff6b35); background: rgba(255,107,53,0.06); }
 .cruise-action-status.skipped { color: var(--color-text-muted, #94a3b8); background: rgba(148,163,184,0.06); }

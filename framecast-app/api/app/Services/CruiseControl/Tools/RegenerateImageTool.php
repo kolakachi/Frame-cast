@@ -59,7 +59,12 @@ class RegenerateImageTool implements CruiseTool
             'character_id' => [
                 'type' => 'integer',
                 'required' => false,
-                'description' => 'Saved character id to use as the reference face. If user says "use my [character name]" or "with my [character]", look up the character in context and pass the id.',
+                'description' => 'Saved character id to use as the reference face. ONLY pass this when the user EXPLICITLY names a character ("use my Kay", "with my founder"). Do NOT add a character on your own — most scenes have none and should stay that way. When you do pass it, also set character_requested=true.',
+            ],
+            'character_requested' => [
+                'type' => 'boolean',
+                'required' => false,
+                'description' => 'Set true ONLY when the user explicitly asked to use/change the character. Without it, any character_id you pass is ignored and the scene keeps whatever character it already had (or none).',
             ],
             'custom_style_descriptor' => [
                 'type' => 'string',
@@ -147,7 +152,13 @@ class RegenerateImageTool implements CruiseTool
         // Resolve character reference — bind to scene + pass the reference
         // through to the image job (it auto-routes to CharacterImageAdapter
         // when a character with a referenceAsset is bound to the scene).
-        $characterId = $params['character_id'] ?? null;
+        //
+        // GUARDRAIL: never introduce / change a character unless the user
+        // explicitly asked (character_requested). Without that flag we drop
+        // any volunteered character_id and leave the scene's existing binding
+        // (or none) untouched — the model used to add faces unprompted.
+        $explicitCharacter = (bool) ($params['character_requested'] ?? false);
+        $characterId = $explicitCharacter ? ($params['character_id'] ?? null) : null;
         if ($characterId) {
             $character = Character::query()
                 ->whereKey($characterId)

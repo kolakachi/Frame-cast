@@ -21,12 +21,14 @@ class CruiseActionRun extends Model
         'actual_credits',
         'affected_scene_id',
         'error_message',
+        'revert_json',
     ];
 
     protected $casts = [
         'params_json' => 'array',
         'expected_stages' => 'array',
         'completed_stages' => 'array',
+        'revert_json' => 'array',
         'estimated_credits' => 'integer',
         'actual_credits' => 'integer',
         'affected_scene_id' => 'integer',

@@ -242,6 +242,10 @@ class CruiseControlService
         $workspace = \App\Models\Workspace::query()->whereKey($project->workspace_id)->first();
         $prefsBlock = $this->buildPrefsBlock($workspace);
 
+        // Synthesised creative brief — frames every decision so new work
+        // stays on-theme without the user repeating "keep the doodle style".
+        $briefBlock = app(ProjectBriefService::class)->promptBlock($project->assistant_brief_json);
+
         $tools = $this->registry->promptCatalog();
 
         return <<<SYS
@@ -251,6 +255,7 @@ one or more tool calls, OR — when they ask for feedback/ideas — give
 specific suggestions and propose the actions that implement them. You
 can also just answer a question with no action when that's what's asked.
 
+{$briefBlock}
 PROJECT
   id: {$project->getKey()}
   title: {$project->title}
@@ -329,6 +334,16 @@ SCENE TARGETING — be precise, never touch a scene the user didn't name
   re-recorded / restyled the way the user is asking, don't do it again.
 - When a request only concerns a new scene, return ONLY the add_scene
   action. Don't also touch earlier scenes.
+
+CHARACTERS — never add a face unless asked
+- Only pass character_id to regenerate_image when EITHER the scene you're
+  regenerating already has that character bound, OR the user explicitly
+  names a character to use ("use my Kay", "with my founder"). In the
+  explicit case also set character_requested=true.
+- NEVER introduce a workspace character on your own initiative. Most
+  scenes have no character and must stay that way unless the user asks.
+  The CHARACTERS list above is for resolving explicit requests only —
+  its presence is NOT a reason to use one.
 
 WRITING IMAGE PROMPTS — be the prompt engineer the user isn't
 - When a tool takes a prompt_override or visual_prompt, write a RICH

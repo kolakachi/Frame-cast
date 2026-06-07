@@ -22,6 +22,7 @@ class CruiseActionRunService
         int $estimatedCredits,
         ?int $affectedSceneId,
         bool $runsAsync,
+        ?array $revertSnapshot = null,
     ): CruiseActionRun {
         return DB::transaction(function () use (
             $workspace,
@@ -35,6 +36,7 @@ class CruiseActionRunService
             $estimatedCredits,
             $affectedSceneId,
             $runsAsync,
+            $revertSnapshot,
         ) {
             $run = CruiseActionRun::query()->firstOrNew([
                 'workspace_id' => (int) $workspace->getKey(),
@@ -54,10 +56,25 @@ class CruiseActionRunService
                 'actual_credits' => $runsAsync ? 0 : $estimatedCredits,
                 'affected_scene_id' => $affectedSceneId,
                 'error_message' => null,
+                'revert_json' => $revertSnapshot,
             ])->save();
 
             return $run->fresh();
         });
+    }
+
+    /**
+     * Flip a completed run to 'undone' after its revert snapshot has been
+     * restored. Returns the run so the caller can read its message linkage.
+     */
+    public function markUndone(int $workspaceId, int $projectId, string $messageId, int $actionIndex): void
+    {
+        CruiseActionRun::query()
+            ->where('workspace_id', $workspaceId)
+            ->where('project_id', $projectId)
+            ->where('message_id', $messageId)
+            ->where('action_index', $actionIndex)
+            ->update(['status' => 'undone', 'error_message' => null, 'updated_at' => now()]);
     }
 
     public function markSkipped(int $workspaceId, int $projectId, string $messageId, int $actionIndex): void
@@ -175,6 +192,7 @@ class CruiseActionRunService
             'completed' => 'applied',
             'failed' => 'failed',
             'skipped' => 'skipped',
+            'undone' => 'undone',
             default => 'running',
         };
     }

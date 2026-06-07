@@ -34,6 +34,7 @@ class CruiseControlController extends Controller
         private CruiseToolRegistry $registry,
         private CreditService $credits,
         private CruiseActionRunService $actionRuns,
+        private \App\Services\CruiseControl\ProjectBriefService $briefs,
     ) {
     }
 
@@ -203,6 +204,11 @@ class CruiseControlController extends Controller
             );
         }
 
+        // Snapshot the state this action is about to overwrite, BEFORE it
+        // runs, so the user can undo it later. add_scene's snapshot is
+        // finalised after execute (we need the created scene id).
+        $revert = $this->buildRevertSnapshot((string) $validated['tool'], $project, $validated['params']);
+
         try {
             $result = DB::transaction(function () use ($tool, $workspace, $project, $validated) {
                 return $tool->execute($workspace, $project, $validated['params']);
@@ -226,6 +232,16 @@ class CruiseControlController extends Controller
         // the chat history shows ✓ on refresh, not the Apply button.
         // For multi-action turns we stamp ONLY the indexed action, not
         // the whole message — sibling actions stay in 'proposed'.
+        // Finalise add_scene's revert now that we know the created scene id:
+        // undo = delete that scene and restore the pre-insert orders/labels.
+        if ($validated['tool'] === 'add_scene' && ! empty($result['affected_scene_id'])) {
+            $revert = [
+                'kind'         => 'delete_scene',
+                'scene_id'     => (int) $result['affected_scene_id'],
+                'scene_states' => $revert['scene_states'] ?? [],
+            ];
+        }
+
         if (! empty($validated['message_id'])) {
             $messageStatus = $this->toolRunsAsync($validated['tool']) ? 'running' : 'applied';
             $this->updateMessageStatus(
@@ -250,6 +266,7 @@ class CruiseControlController extends Controller
                 (int) ($result['credits_spent'] ?? 0),
                 isset($result['affected_scene_id']) ? (int) $result['affected_scene_id'] : null,
                 $this->toolRunsAsync((string) $validated['tool']),
+                $revert,
             );
         }
 
@@ -393,12 +410,94 @@ class CruiseControlController extends Controller
             (int) $projectId,
         );
 
+        // Lazily synthesise a brief the first time the assistant opens on a
+        // project that never got one (non-one-shot projects). Seeded one-shot
+        // projects already have one; we don't re-spend on them here.
+        if (! is_array($project->assistant_brief_json) || empty($project->assistant_brief_json)) {
+            $brief = $this->briefs->synthesize($project);
+            if (! empty($brief)) {
+                $project->forceFill(['assistant_brief_json' => $brief])->save();
+            }
+        }
+
         return response()->json([
             'data' => [
                 'messages'         => $messages,
                 'message_count'    => $conv?->message_count ?? 0,
                 'last_activity_at' => $conv?->last_activity_at?->toIso8601String(),
+                'brief'            => $project->assistant_brief_json,
+                'brief_locked'     => (bool) $project->assistant_brief_locked,
             ],
+            'meta' => [],
+        ]);
+    }
+
+    /**
+     * Update the brief from the editor. Any field the user touches locks the
+     * brief so auto-refresh won't overwrite their wording.
+     */
+    public function updateBrief(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $validated = $request->validate([
+            'theme'             => ['nullable', 'string', 'max:200'],
+            'topic'             => ['nullable', 'string', 'max:200'],
+            'visual_style'      => ['nullable', 'string', 'max:200'],
+            'tone'              => ['nullable', 'string', 'max:200'],
+            'recurring_subject' => ['nullable', 'string', 'max:200'],
+            'locked'            => ['nullable', 'boolean'],
+        ]);
+
+        $brief = is_array($project->assistant_brief_json) ? $project->assistant_brief_json : [];
+        foreach (\App\Services\CruiseControl\ProjectBriefService::FIELDS as $f) {
+            if (array_key_exists($f, $validated)) {
+                $brief[$f] = $validated[$f] !== null ? trim((string) $validated[$f]) : null;
+            }
+        }
+        $brief['source'] = 'user';
+
+        $project->forceFill([
+            'assistant_brief_json'   => $brief,
+            // Editing locks by default; an explicit locked=false unlocks.
+            'assistant_brief_locked' => $validated['locked'] ?? true,
+        ])->save();
+
+        return response()->json([
+            'data' => ['brief' => $project->assistant_brief_json, 'brief_locked' => (bool) $project->assistant_brief_locked],
+            'meta' => [],
+        ]);
+    }
+
+    /**
+     * Re-synthesise the brief from the current scenes. Manual + explicit, so
+     * it runs even if locked (the user asked for it); leaves the lock as-is.
+     */
+    public function refreshBrief(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $brief = $this->briefs->synthesize($project);
+        $project->forceFill(['assistant_brief_json' => $brief])->save();
+
+        return response()->json([
+            'data' => ['brief' => $project->assistant_brief_json, 'brief_locked' => (bool) $project->assistant_brief_locked],
             'meta' => [],
         ]);
     }
@@ -543,6 +642,206 @@ class CruiseControlController extends Controller
             'add_scene' => ! empty($params['animate_tier']) ? ['ai_image', 'tts', 'animation'] : ['ai_image', 'tts'],
             default => [],
         };
+    }
+
+    /**
+     * Wipe the conversation thread + its action runs so the user can start
+     * the chat over. Does NOT touch project content — applied changes stand
+     * (use undo for those).
+     */
+    public function resetConversation(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        DB::transaction(function () use ($user, $projectId): void {
+            CruiseConversation::query()
+                ->where('workspace_id', $user->workspace_id)
+                ->where('project_id', $projectId)
+                ->update(['messages' => [], 'message_count' => 0, 'last_activity_at' => now()]);
+            CruiseActionRun::query()
+                ->where('workspace_id', $user->workspace_id)
+                ->where('project_id', $projectId)
+                ->delete();
+        });
+
+        return response()->json(['data' => ['success' => true, 'messages' => []], 'meta' => []]);
+    }
+
+    /**
+     * Undo a previously-applied action by restoring the snapshot captured at
+     * apply time. Credits are NOT refunded — the compute was already spent;
+     * undo restores state, like an editor undo. Gated to completed actions.
+     */
+    public function undo(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $validated = $request->validate([
+            'project_id'   => ['required', 'integer'],
+            'message_id'   => ['required', 'string', 'max:64'],
+            'action_index' => ['nullable', 'integer', 'min:0', 'max:10'],
+        ]);
+
+        $project = Project::query()
+            ->whereKey($validated['project_id'])
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $actionIndex = (int) ($validated['action_index'] ?? 0);
+        $run = CruiseActionRun::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where('project_id', $project->getKey())
+            ->where('message_id', $validated['message_id'])
+            ->where('action_index', $actionIndex)
+            ->first();
+
+        if (! $run) {
+            return $this->error('not_found', 'Nothing to undo for that action.', 404);
+        }
+        if ($run->status === 'running') {
+            return $this->error('not_undoable', 'This action is still finishing — wait for it to complete, then undo.', 422);
+        }
+        if ($run->status === 'undone') {
+            return $this->error('already_undone', 'That action was already undone.', 422);
+        }
+        if (! is_array($run->revert_json) || empty($run->revert_json)) {
+            return $this->error('not_undoable', "This action can't be undone.", 422);
+        }
+
+        try {
+            $affectedSceneId = DB::transaction(fn () => $this->applyRevert($run->revert_json, $project));
+        } catch (\Throwable $e) {
+            return $this->error('undo_failed', $e->getMessage(), 422);
+        }
+
+        $this->actionRuns->markUndone((int) $user->workspace_id, (int) $project->getKey(), (string) $validated['message_id'], $actionIndex);
+        $this->updateMessageStatus($user, $project, (string) $validated['message_id'], 'undone', 0, $actionIndex);
+
+        CruiseAuditLog::create([
+            'workspace_id'  => $user->workspace_id,
+            'user_id'       => $user->getKey(),
+            'project_id'    => $project->getKey(),
+            'phase'         => 'apply',
+            'resolved_tool' => $run->tool,
+            'applied'       => false,
+            'outcome'       => 'undone',
+        ]);
+
+        return response()->json([
+            'data' => ['success' => true, 'affected_scene_id' => $affectedSceneId],
+            'meta' => [],
+        ]);
+    }
+
+    /**
+     * Restorable scene columns captured for undo. Covers every scene-scoped
+     * tool (visual swaps, regen, animate, voice, script, captions, sounds).
+     */
+    private const REVERTIBLE_SCENE_FIELDS = [
+        'visual_asset_id', 'visual_type', 'visual_prompt', 'visual_style',
+        'script_text', 'voice_settings_json', 'caption_settings_json',
+        'sound_asset_id', 'character_id', 'image_generation_settings_json',
+        'motion_settings_json', 'status',
+    ];
+
+    /**
+     * Capture the prior state an action will overwrite, BEFORE it runs.
+     * Returns null for tools we don't support undoing (e.g. apply_brand_kit).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function buildRevertSnapshot(string $tool, Project $project, array $params): ?array
+    {
+        // Project-level music.
+        if (in_array($tool, ['change_music', 'pick_library_music'], true)) {
+            return [
+                'kind'   => 'project_fields',
+                'fields' => [
+                    'music_asset_id'      => $project->music_asset_id,
+                    'music_settings_json' => $project->music_settings_json,
+                ],
+            ];
+        }
+
+        // Order-shuffling tools: snapshot every scene's order + label.
+        if (in_array($tool, ['reorder_scene', 'add_scene'], true)) {
+            $states = Scene::query()
+                ->where('project_id', $project->getKey())
+                ->get(['id', 'scene_order', 'label'])
+                ->map(fn ($s) => ['id' => (int) $s->id, 'scene_order' => (int) $s->scene_order, 'label' => $s->label])
+                ->all();
+            // reorder restores orders directly; add_scene's kind is finalised
+            // post-execute once we know the created scene id.
+            return ['kind' => $tool === 'reorder_scene' ? 'scene_orders' : 'pending_add', 'scene_states' => $states];
+        }
+
+        // Scene-field tools: snapshot the scene's restorable columns.
+        $sceneId = $params['scene_id'] ?? null;
+        if ($sceneId) {
+            $scene = Scene::query()->where('project_id', $project->getKey())->whereKey($sceneId)->first();
+            if ($scene) {
+                $fields = [];
+                foreach (self::REVERTIBLE_SCENE_FIELDS as $f) {
+                    $fields[$f] = $scene->{$f};
+                }
+                return ['kind' => 'scene_fields', 'scene_id' => (int) $scene->getKey(), 'fields' => $fields];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Restore a revert snapshot. Returns the affected scene id (or null for
+     * project-level reverts) so the frontend knows what to refresh.
+     */
+    private function applyRevert(array $revert, Project $project): ?int
+    {
+        $kind = $revert['kind'] ?? null;
+
+        if ($kind === 'project_fields') {
+            $project->forceFill($revert['fields'] ?? [])->save();
+            return null;
+        }
+
+        if ($kind === 'scene_orders' || $kind === 'delete_scene') {
+            if ($kind === 'delete_scene') {
+                Scene::query()
+                    ->where('project_id', $project->getKey())
+                    ->whereKey((int) ($revert['scene_id'] ?? 0))
+                    ->delete();
+            }
+            foreach ($revert['scene_states'] ?? [] as $st) {
+                Scene::query()
+                    ->where('project_id', $project->getKey())
+                    ->whereKey($st['id'] ?? 0)
+                    ->update(['scene_order' => $st['scene_order'] ?? 1, 'label' => $st['label'] ?? null]);
+            }
+            return $kind === 'delete_scene' ? (int) ($revert['scene_id'] ?? 0) : null;
+        }
+
+        if ($kind === 'scene_fields') {
+            $sceneId = (int) ($revert['scene_id'] ?? 0);
+            $scene = Scene::query()->where('project_id', $project->getKey())->whereKey($sceneId)->first();
+            if (! $scene) {
+                throw new \RuntimeException('The scene no longer exists.');
+            }
+            $scene->forceFill($revert['fields'] ?? [])->save();
+            return $sceneId;
+        }
+
+        throw new \RuntimeException("This action can't be undone.");
     }
 
 }

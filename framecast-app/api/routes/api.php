@@ -90,6 +90,10 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/cruise/skip',    [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'skip']);
         Route::get('/cruise/conversation/{projectId}', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'conversation'])->whereNumber('projectId');
         Route::patch('/cruise/settings', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'updateSettings']);
+        Route::patch('/cruise/brief/{projectId}', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'updateBrief'])->whereNumber('projectId');
+        Route::post('/cruise/brief/{projectId}/refresh', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'refreshBrief'])->whereNumber('projectId');
+        Route::post('/cruise/conversation/{projectId}/reset', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'resetConversation'])->whereNumber('projectId');
+        Route::post('/cruise/undo', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'undo']);
         Route::patch('/me', [VerificationController::class, 'updateMe']);
         Route::get('/me/export', [VerificationController::class, 'exportMe']);
         Route::delete('/me', [VerificationController::class, 'deleteMe']);

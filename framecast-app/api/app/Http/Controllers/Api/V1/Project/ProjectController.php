@@ -975,6 +975,10 @@ class ProjectController extends Controller
             'status'              => 'generating',
             'source_type'         => 'prompt',
             'source_content_raw'  => $promptText,
+            // Cheap, no-LLM seed so the assistant knows the theme/style from
+            // turn one. A refresh later can enrich it from the actual scenes.
+            'assistant_brief_json' => app(\App\Services\CruiseControl\ProjectBriefService::class)
+                ->seed($promptText, $parsed['style'], null),
         ]);
 
         // Animation parameters — Balanced (Hailuo) needs 6 or 10; the rest
