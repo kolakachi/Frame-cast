@@ -662,10 +662,16 @@ class CruiseControlController extends Controller
         }
 
         DB::transaction(function () use ($user, $projectId): void {
-            CruiseConversation::query()
+            // Use the model (not a raw query update) so the `messages` array
+            // cast encodes to JSON — query-builder update() writes the raw
+            // PHP array and throws on the json column (the 500 on reset).
+            $conv = CruiseConversation::query()
                 ->where('workspace_id', $user->workspace_id)
                 ->where('project_id', $projectId)
-                ->update(['messages' => [], 'message_count' => 0, 'last_activity_at' => now()]);
+                ->first();
+            if ($conv) {
+                $conv->forceFill(['messages' => [], 'message_count' => 0, 'last_activity_at' => now()])->save();
+            }
             CruiseActionRun::query()
                 ->where('workspace_id', $user->workspace_id)
                 ->where('project_id', $projectId)

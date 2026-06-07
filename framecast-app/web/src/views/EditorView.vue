@@ -790,6 +790,13 @@ function cruiseToggleBrief() {
     cruiseBrief.value = { theme: null, topic: null, visual_style: null, tone: null, recurring_subject: null }
   }
   cruiseBriefOpen.value = !cruiseBriefOpen.value
+  // Theme + Settings are mutually exclusive — opening one closes the other.
+  if (cruiseBriefOpen.value) cruisePrefsOpen.value = false
+}
+
+function cruiseTogglePrefs() {
+  cruisePrefsOpen.value = !cruisePrefsOpen.value
+  if (cruisePrefsOpen.value) cruiseBriefOpen.value = false
 }
 
 async function cruiseSaveBrief() {
@@ -7861,7 +7868,7 @@ onBeforeUnmount(() => {
                     <button class="cruise-input-icon" type="button" :class="{ active: cruiseBriefOpen }" @click="cruiseToggleBrief" title="Theme & creative brief">
                       🎯<span v-if="cruiseBriefLocked" class="cruise-icon-dot" title="Brief locked"></span>
                     </button>
-                    <button class="cruise-input-icon" type="button" :class="{ active: cruisePrefsOpen }" @click="cruisePrefsOpen = !cruisePrefsOpen" title="Assistant settings">⚙</button>
+                    <button class="cruise-input-icon" type="button" :class="{ active: cruisePrefsOpen }" @click="cruiseTogglePrefs" title="Assistant settings">⚙</button>
                     <button class="cruise-input-send" :disabled="!cruiseInputText.trim() || cruiseResolving" @click="cruiseSubmitIntent">Send ⌘⏎</button>
                   </div>
                 </div>
