@@ -59,7 +59,10 @@ class CruiseControlController extends Controller
             'scope_scene_id' => ['nullable', 'integer'],
             'history'    => ['nullable', 'array', 'max:12'],
             'history.*.role' => ['required_with:history', 'string', 'in:user,assistant'],
-            'history.*.text' => ['required_with:history', 'string', 'max:800'],
+            // Larger than the reply text alone: assistant turns now carry an
+            // "[actions already taken: …]" note so the resolver remembers
+            // what it did to which scene.
+            'history.*.text' => ['required_with:history', 'string', 'max:2000'],
         ]);
 
         $project = Project::query()

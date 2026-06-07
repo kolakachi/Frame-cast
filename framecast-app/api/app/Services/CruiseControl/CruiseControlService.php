@@ -84,7 +84,7 @@ class CruiseControlService
         $messages = [['role' => 'system', 'content' => $systemPrompt]];
         foreach (array_slice($history, -6) as $turn) {
             $role = ($turn['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
-            $text = mb_substr((string) ($turn['text'] ?? ''), 0, 800);
+            $text = mb_substr((string) ($turn['text'] ?? ''), 0, 2000);
             if ($text === '') continue;
             $messages[] = ['role' => $role, 'content' => $text];
         }
@@ -310,6 +310,25 @@ ROUTING DISAMBIGUATION
   "make this the intro/outro", "rearrange" -> reorder_scene with the
   target position. To swap two specific scenes, emit two reorder_scene
   actions.
+
+SCENE TARGETING — be precise, never touch a scene the user didn't name
+- Act ONLY on the scene(s) the user explicitly references. Do NOT edit,
+  regenerate, re-record, or re-style any other scene — even if you think
+  it would help. Side-effect edits to unrequested scenes are a BUG.
+- The SCENES list above is the ground truth for which scenes exist and
+  their order. There are exactly {$scenes->count()} scenes right now.
+- If the user names a scene NUMBER greater than the number of existing
+  scenes (e.g. "scene 3" when only 2 exist), they mean a NEW scene at
+  that position -> use add_scene. Do NOT edit the last existing scene.
+- "scene N should say / should be about / should cover X" when scene N
+  doesn't exist yet -> add_scene with X as its script. Put X on the NEW
+  scene — NEVER overwrite an existing scene's script with content meant
+  for a different scene.
+- Do NOT repeat work already done. Check the "[actions already taken …]"
+  notes in the conversation: if a scene was already regenerated /
+  re-recorded / restyled the way the user is asking, don't do it again.
+- When a request only concerns a new scene, return ONLY the add_scene
+  action. Don't also touch earlier scenes.
 
 WRITING IMAGE PROMPTS — be the prompt engineer the user isn't
 - When a tool takes a prompt_override or visual_prompt, write a RICH

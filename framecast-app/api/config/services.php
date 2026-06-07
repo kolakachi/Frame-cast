@@ -66,11 +66,12 @@ return [
         // ideogram-character path (better scene/style adherence, same vendor as our
         // text-only image path).
         'character_model' => env('OPENAI_CHARACTER_MODEL', 'gpt-image-2'),
-        // Cruise Control resolver temperature. Higher than the old 0.2 so the
-        // model writes richer image/script prompts instead of echoing the
-        // user's short wording. json_object mode + a clear tool catalog keeps
-        // routing reliable even at this temp.
-        'cruise_temperature' => (float) env('OPENAI_CRUISE_TEMPERATURE', 0.6),
+        // Cruise Control resolver temperature. Above the old 0.2 so the model
+        // writes richer image/script prompts (the length/detail instructions
+        // do most of that work), but kept moderate — 0.6 was loose enough to
+        // hurt scene-id routing precision (wrong-scene edits). 0.4 keeps the
+        // richness while tightening which scene each action targets.
+        'cruise_temperature' => (float) env('OPENAI_CRUISE_TEMPERATURE', 0.4),
     ],
 
     'pexels' => [

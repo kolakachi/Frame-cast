@@ -113,6 +113,30 @@ function cruiseActionTitle(tool) {
   }[tool] ?? tool
 }
 
+// Compact, model-facing note of what a prior assistant turn actually did,
+// keyed by scene, so the resolver doesn't repeat work or target the wrong
+// scene next turn. Uses raw tool names (the model knows them) + scene_order
+// AND id so it can match the SCENES list either way.
+function cruiseActionsSummary(msg) {
+  const cards = msg.actions || []
+  if (!cards.length) return ''
+  const parts = cards.map((c) => {
+    let target = 'project-level'
+    if (c.params?.scene_id) {
+      const s = scenes.value?.find?.((x) => x.id === c.params.scene_id)
+      target = s ? `scene ${s.scene_order} (id ${c.params.scene_id})` : `scene id ${c.params.scene_id}`
+    } else if (c.params?.position) {
+      target = `new scene at position ${c.params.position}`
+    }
+    const st = (c.status === 'applied' || c.status === 'running') ? 'done'
+      : c.status === 'skipped' ? 'skipped by user'
+      : c.status === 'failed' ? 'failed'
+      : 'proposed'
+    return `${c.tool} → ${target} [${st}]`
+  })
+  return ` [actions already taken: ${parts.join('; ')}]`
+}
+
 async function cruiseSubmitIntent() {
   const text = cruiseInputText.value.trim()
   if (!text || cruiseResolving.value || !projectId.value) return
@@ -124,10 +148,18 @@ async function cruiseSubmitIntent() {
   cruiseResolving.value = true
   await nextTick(); cruiseScrollChatToBottom()
   try {
+    // Replay PRIOR ACTIONS, not just reply text. Without this the model is
+    // amnesic about what it already did — it re-regenerated a scene it had
+    // just regenerated, and leaked new-scene content onto an existing scene.
+    // Appending a compact "[actions already taken …]" note per assistant
+    // turn lets the resolver see which scene each tool already hit.
     const recent = cruiseMessages.value
       .slice(0, -1)
       .slice(-6)
-      .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text }))
+      .map((m) => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        text: m.role === 'user' ? m.text : `${m.text}${cruiseActionsSummary(m)}`,
+      }))
     const res = await api.post('/cruise/resolve', {
       project_id: projectId.value,
       intent: text,
@@ -218,11 +250,13 @@ async function cruiseApplyAction(msg, actionIndex = 0) {
     // changes sibling orders + labels, add_scene shifts everything after the
     // insertion point. A single-scene fetch would leave siblings stale, so
     // re-pull the whole project (merges in place, keeps the active scene).
-    if (cruiseToolIsStructural(card.tool)) {
-      try {
-        const r = await api.get(`/projects/${projectId.value}`)
-        applyProjectPayload(r.data?.data, { preserveActiveScene: true })
-      } catch (_) {}
+    if (cruiseToolTouchesProject(card.tool)) {
+      // Re-pull the whole project (flicker-safe in-place merge) so swapped
+      // visuals, library music, sound effects and reorders show immediately
+      // — not just after a manual refresh. For async project tools
+      // (change_music) this is a no-op until the job lands; the completion
+      // handlers refresh again once it does.
+      try { await refreshProjectPayload() } catch (_) {}
     } else if (card.affected_scene_id) {
       // One-shot scene fetch so the editor picks up the in_progress flag
       // (regenerate_image / animate) or the new voice/script.
@@ -436,6 +470,7 @@ function cruiseStartPollingFallback(card) {
         card.status = 'applied'
         card.progress_text = cruiseSuccessText(card.tool, null)
         try { replaceSceneInCollection(normalizeScenePayload(fresh)) } catch (_) {}
+        if (cruiseToolTouchesProject(card.tool)) refreshProjectPayload().catch(() => {})
         cruiseStopPolling(card)
         cruiseStopProgressLoop(card)
       } else {
@@ -479,11 +514,21 @@ function cruiseToolHasAsyncWork(tool) {
   ].includes(tool)
 }
 
-// Tools that change MORE than one scene's row (order / labels), so the
-// post-apply refresh must re-pull the whole project instead of a single
-// scene. reorder shuffles siblings; add_scene shifts everything after it.
-function cruiseToolIsStructural(tool) {
-  return ['reorder_scene', 'add_scene'].includes(tool)
+// Tools whose effect the single-scene preview fetch can't reliably surface,
+// so the post-apply (and post-completion) refresh must re-pull the whole
+// project. Two reasons:
+//   - structural: reorder shuffles siblings, add_scene shifts everything after.
+//   - asset/project-level: music lives on the PROJECT (no scene_id), and
+//     swapped library/stock visuals + sound effects bind assets the scene
+//     preview's asset map doesn't always include yet. These were the changes
+//     that "only took effect after a manual refresh".
+function cruiseToolTouchesProject(tool) {
+  return [
+    'reorder_scene', 'add_scene',                          // structural
+    'swap_visual_from_library', 'find_stock_video', 'find_stock_image',
+    'pick_library_music', 'change_music', 'add_sound_effect',
+    'apply_brand_kit',                                      // asset / project-level
+  ].includes(tool)
 }
 
 // Async stages we expect each tool to fire, so we know not to mark
@@ -613,6 +658,9 @@ function cruiseHandleProgressEvent(payload) {
       cruiseStopProgressLoop(card)
       cruiseStopPolling(card)
       cruiseRecomputeMessageStatus(msg)
+      // Project-level results (e.g. change_music) aren't on any scene the
+      // poller watches, so nothing else would pull them in — refresh here.
+      if (cruiseToolTouchesProject(card.tool)) refreshProjectPayload().catch(() => {})
     } else {
       card.progress_text = cruiseStagePendingText(card.tool, expected, completed)
     }
