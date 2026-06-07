@@ -326,10 +326,17 @@ function sceneAnimating(s) {
     || s?.image_generation_settings_json?.animation_in_progress)
 }
 
-// One conversational line tied to whatever stage is currently active, so
-// the page reads like the assistant narrating its own work.
+// Title adapts to the flow: prompt → one-shot, otherwise the brief pipeline.
+const genTitle = computed(() => (isOneShot.value ? 'Generating your video…' : 'Building from your brief…'))
+
+// A scene's image (or finished video) has landed.
+function sceneReady(s) {
+  return sceneVisualKind(s) !== 'none'
+}
+
+// One conversational line tied to whatever stage is currently active, so the
+// page reads like the assistant narrating its own work — for BOTH flows.
 const narrationLine = computed(() => {
-  if (!isOneShot.value) return ''
   if (isTransitioningToEditor.value) return 'All set — opening the editor…'
   const active = stages.value.find((s) => s.status === 'active')
   if (!active) {
@@ -339,7 +346,12 @@ const narrationLine = computed(() => {
   }
   const n = scenes.value.length
   switch (active.key) {
-    case 'ai_image':         return `Painting the visuals for your ${n} scene${n === 1 ? '' : 's'}…`
+    case 'script':           return 'Writing the script…'
+    case 'scene_breakdown':  return 'Splitting it into scenes…'
+    case 'hooks':            return 'Drafting hook options…'
+    case 'hooks_scoring':    return 'Ranking the hooks…'
+    case 'visual_match':     return 'Finding the right visuals…'
+    case 'ai_image':         return n ? `Painting the visuals for your ${n} scene${n === 1 ? '' : 's'}…` : 'Painting the visuals…'
     case 'animation':        return 'Bringing the scenes to life with motion…'
     case 'tts':              return 'Recording the voiceover…'
     case 'ai_music':         return 'Composing the soundtrack…'
@@ -376,81 +388,67 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
     <div class="gen-panel">
 
       <div class="gen-header">
-        <div class="gen-title">Generating your video…</div>
+        <div class="gen-title">{{ genTitle }}</div>
         <div class="gen-subtitle">{{ subtitle }}</div>
       </div>
 
-      <!-- Overall progress bar -->
-      <div class="gen-progress">
-        <div class="gen-progress-fill" :style="{ width: `${progressPercent}%` }"></div>
+      <!-- Overall progress bar (inline % to the right) -->
+      <div class="gen-progress-row">
+        <div class="gen-progress"><div class="gen-progress-fill" :style="{ width: `${progressPercent}%` }"></div></div>
+        <span class="gen-progress-label">{{ progressPercent }}%</span>
       </div>
-      <div class="gen-progress-label">{{ progressPercent }}%</div>
 
-      <!-- Stages -->
-      <div class="gen-stages">
+      <!-- Stage timeline — connected dots -->
+      <div class="gen-timeline">
         <div
-          v-for="stage in stages"
+          v-for="(stage, i) in stages"
           :key="stage.key"
-          :class="['gen-stage', stage.status]"
+          :class="['gen-tl-row', stage.status, { last: i === stages.length - 1 }]"
         >
-          <div class="gen-stage-icon">
-            <span v-if="stage.status === 'complete'">✓</span>
-            <span v-else-if="stage.status === 'failed'">✕</span>
-            <span v-else-if="stage.status === 'active'" class="spin">⟳</span>
-            <span v-else>○</span>
-          </div>
-
-          <div class="gen-stage-info">
-            <div class="gen-stage-top">
-              <span class="gen-stage-name">{{ stage.label }}</span>
-              <span v-if="countLabel(stage)" class="gen-stage-count">{{ countLabel(stage) }}</span>
-            </div>
-            <div class="gen-stage-status">{{ stage.statusText }}</div>
-
-            <!-- Per-scene mini progress bar for counting stages -->
-            <div
-              v-if="stage.status === 'active' && stage.total && stage.done !== null"
-              class="gen-mini-bar"
-            >
-              <div
-                class="gen-mini-bar-fill"
-                :style="{ width: `${Math.round((stage.done / stage.total) * 100)}%` }"
-              ></div>
-            </div>
-          </div>
+          <span class="gen-tl-dot">
+            <span v-if="stage.status === 'complete'" class="gen-tl-glyph">✓</span>
+            <span v-else-if="stage.status === 'failed'" class="gen-tl-glyph">✕</span>
+            <span v-else-if="stage.status === 'active'" class="gen-tl-pulse"></span>
+          </span>
+          <span class="gen-tl-name">
+            {{ stage.label }}<span v-if="stage.status === 'active'" class="gen-tl-active"> · in progress</span>
+          </span>
+          <span v-if="countLabel(stage)" class="gen-tl-count">{{ countLabel(stage) }}</span>
         </div>
       </div>
 
-      <!-- Assistant narration — one-shot only. Reveals each scene's line
-           and its visual as it lands, so the wait reads like the assistant
-           building the video rather than a black-box spinner. -->
-      <div v-if="isOneShot && scenes.length" class="gen-narration">
-        <div class="gen-narration-line"><span class="gen-narration-bot">🤖</span> {{ narrationLine }}</div>
+      <!-- Assistant narration + scene reveal. Shows once scenes exist — for
+           one-shot that's immediately; for the brief flow, after breakdown. -->
+      <template v-if="scenes.length">
+        <div v-if="narrationLine" class="gen-narration-line"><span class="gen-narration-bot">🤖</span> {{ narrationLine }}</div>
         <div class="gen-scene-cards">
-          <div v-for="s in scenes" :key="s.id" class="gen-scene-card">
-            <div class="gen-scene-thumb" :class="{ ready: sceneVisualKind(s) !== 'none' }">
-              <!-- Finished animation: show the actual clip, muted + looping. -->
+          <div
+            v-for="s in scenes"
+            :key="s.id"
+            :class="['gen-scene-card', { pending: !sceneReady(s) && !sceneAnimating(s) }]"
+          >
+            <span class="gen-scene-thumb" :class="{ ready: sceneReady(s) }">
               <video
                 v-if="sceneVisualKind(s) === 'video' && !sceneAnimating(s)"
                 :src="sceneVideoUrl(s)"
                 muted loop autoplay playsinline preload="metadata"
               ></video>
-              <!-- Otherwise the still; while the animation is cooking, the
-                   still stays put under a small spinner overlay. -->
               <img v-else-if="sceneImageUrl(s)" :src="sceneImageUrl(s)" :alt="`Scene ${s.scene_order}`" />
-              <span v-else class="spin">⟳</span>
+              <span v-else class="spin gen-scene-spin">⟳</span>
               <span v-if="sceneAnimating(s) && sceneImageUrl(s)" class="gen-scene-animating"><span class="spin">⟳</span></span>
-            </div>
+            </span>
             <div class="gen-scene-body">
-              <div class="gen-scene-label">Scene {{ s.scene_order }}</div>
+              <div class="gen-scene-label">Scene {{ s.scene_order }}<span v-if="sceneReady(s)" class="gen-scene-ready"> · READY</span></div>
               <div class="gen-scene-script">{{ s.script_text }}</div>
             </div>
           </div>
         </div>
-      </div>
+      </template>
 
-      <div class="gen-actions">
-        <button class="btn btn-ghost" type="button" @click="router.push({ name: 'dashboard' })">Back to Dashboard</button>
+      <!-- Footer: reassurance + dashboard escape -->
+      <div class="gen-foot">
+        <span class="gen-foot-note">You can leave this page — generation continues in the background.</span>
+        <button class="gen-foot-btn" type="button" @click="router.push({ name: 'dashboard' })">← Back to Dashboard</button>
       </div>
     </div>
   </main>
@@ -463,54 +461,59 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 .gen-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: var(--color-text-primary); }
 .gen-subtitle { color: var(--color-text-muted); font-size: 13px; }
 
-.gen-progress { height: 4px; border-radius: 999px; background: var(--color-bg-elevated); overflow: hidden; }
-.gen-progress-fill { height: 100%; background: var(--color-accent); border-radius: 999px; transition: width 0.7s ease; }
-.gen-progress-label { font-size: 11px; color: var(--color-text-muted); text-align: right; margin-top: 4px; margin-bottom: 24px; }
-
-.gen-stages { display: grid; gap: 8px; margin-bottom: 32px; }
-.gen-stage { display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--color-border); background: var(--color-bg-card); transition: border-color 0.25s, background 0.25s; }
-.gen-stage.active   { border-color: rgba(255,107,53,0.4); background: rgba(255,107,53,0.05); }
-.gen-stage.complete { border-color: rgba(52,211,153,0.25); background: rgba(52,211,153,0.03); }
-.gen-stage.failed   { border-color: rgba(248,113,113,0.3); }
-
-.gen-stage-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; margin-top: 1px; }
-.gen-stage.pending  .gen-stage-icon { background: var(--color-bg-elevated); color: var(--color-text-muted); }
-.gen-stage.active   .gen-stage-icon { background: rgba(255,107,53,0.14); color: var(--color-accent); }
-.gen-stage.complete .gen-stage-icon { background: rgba(52,211,153,0.12); color: #34d399; }
-.gen-stage.failed   .gen-stage-icon { background: rgba(248,113,113,0.12); color: #f87171; }
-
-.gen-stage-info { flex: 1; min-width: 0; }
-.gen-stage-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.gen-stage-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
-.gen-stage-count { font-size: 12px; font-weight: 600; color: var(--color-accent); background: rgba(255,107,53,0.1); padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
-.gen-stage.complete .gen-stage-count { color: #34d399; background: rgba(52,211,153,0.1); }
-.gen-stage-status { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
-.gen-stage.active   .gen-stage-status { color: rgba(255,107,53,0.7); }
-.gen-stage.complete .gen-stage-status { color: rgba(52,211,153,0.7); }
-.gen-stage.failed   .gen-stage-status { color: #f87171; }
-
-.gen-mini-bar { height: 3px; border-radius: 999px; background: rgba(255,107,53,0.15); margin-top: 7px; overflow: hidden; }
-.gen-mini-bar-fill { height: 100%; background: var(--color-accent); border-radius: 999px; transition: width 0.5s ease; }
+.gen-progress-row { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+.gen-progress { flex: 1; height: 6px; border-radius: 999px; background: var(--color-bg-elevated); overflow: hidden; }
+.gen-progress-fill { height: 100%; background: linear-gradient(90deg, #f97316, #fb923c); border-radius: 999px; transition: width 0.7s ease; }
+.gen-progress-label { font-size: 13px; font-weight: 600; color: var(--color-accent); font-family: "Space Mono", monospace; }
 
 .spin { display: inline-block; animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Assistant narration */
-.gen-narration { margin-bottom: 28px; }
-.gen-narration-line { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--color-text-secondary); margin-bottom: 14px; line-height: 1.5; }
+/* Stage timeline — connected dots */
+.gen-timeline { position: relative; margin-bottom: 30px; padding-left: 2px; }
+.gen-tl-row { position: relative; display: flex; align-items: center; gap: 14px; padding: 9px 0; }
+/* connector line from each dot down to the next */
+.gen-tl-row:not(.last)::before {
+  content: ""; position: absolute; left: 10px; top: 26px; bottom: -9px; width: 1.5px; background: var(--color-border);
+}
+.gen-tl-row.complete:not(.last)::before { background: rgba(34,197,94,0.35); }
+.gen-tl-dot {
+  position: relative; z-index: 1; flex-shrink: 0; width: 21px; height: 21px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-bg-panel, #0a0a0b); border: 1.5px solid var(--color-border);
+}
+.gen-tl-row.complete .gen-tl-dot { background: #22c55e; border-color: #22c55e; }
+.gen-tl-row.active   .gen-tl-dot { border: 2px solid var(--color-accent); }
+.gen-tl-row.failed   .gen-tl-dot { background: #f87171; border-color: #f87171; }
+.gen-tl-glyph { font-size: 12px; color: #0a0a0b; font-weight: 700; }
+.gen-tl-pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); animation: gen-pulse 1.4s ease-in-out infinite; }
+@keyframes gen-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+.gen-tl-name { flex: 1; font-size: 14px; color: var(--color-text-muted); }
+.gen-tl-row.active .gen-tl-name { color: var(--color-text-primary); font-weight: 600; }
+.gen-tl-active { font-weight: 400; color: var(--color-accent); font-size: 13px; }
+.gen-tl-count { font-family: "Space Mono", monospace; font-size: 11px; color: var(--color-text-muted); }
+.gen-tl-row.active .gen-tl-count   { color: var(--color-accent); }
+.gen-tl-row.complete .gen-tl-count { color: #22c55e; }
+
+/* Narration + scene reveal */
+.gen-narration-line { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--color-text-secondary); margin-bottom: 14px; line-height: 1.5; }
 .gen-narration-bot { flex-shrink: 0; }
-.gen-scene-cards { display: flex; flex-direction: column; gap: 8px; max-height: 34vh; overflow-y: auto; padding-right: 4px; }
-.gen-scene-card { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-card); }
-.gen-scene-thumb { position: relative; width: 44px; height: 60px; flex-shrink: 0; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 14px; }
-.gen-scene-thumb.ready { background: transparent; }
+.gen-scene-cards { display: flex; flex-direction: column; gap: 6px; max-height: 34vh; overflow-y: auto; padding-right: 4px; margin-bottom: 20px; }
+.gen-scene-card { display: flex; align-items: center; gap: 12px; padding: 10px; border: 0.5px solid rgba(255,255,255,0.06); border-radius: 10px; background: var(--color-bg-card); transition: opacity 0.25s, border-color 0.25s; }
+.gen-scene-card.pending { opacity: 0.55; }
+.gen-scene-thumb { position: relative; width: 40px; height: 40px; flex-shrink: 0; border-radius: 7px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 14px; }
+.gen-scene-thumb.ready { border: 0.5px solid rgba(34,197,94,0.25); }
 .gen-scene-thumb img, .gen-scene-thumb video { width: 100%; height: 100%; object-fit: cover; }
+.gen-scene-spin { font-size: 15px; }
 .gen-scene-animating { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10,10,15,0.45); color: #fff; font-size: 13px; }
 .gen-scene-body { flex: 1; min-width: 0; }
-.gen-scene-label { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 2px; }
-.gen-scene-script { font-size: 12px; color: var(--color-text-primary); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.gen-scene-label { font-family: "Space Mono", monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 2px; }
+.gen-scene-ready { color: #22c55e; }
+.gen-scene-script { font-size: 13px; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.gen-actions { display: flex; gap: 10px; justify-content: flex-end; }
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s ease; font-size: 13px; font-weight: 500; border: 1px solid transparent; }
-.btn-ghost { color: var(--color-text-secondary); background: transparent; border-color: var(--color-border); }
-.btn-ghost:hover { color: var(--color-text-primary); border-color: var(--color-border-active); }
+/* Footer */
+.gen-foot { border-top: 0.5px solid rgba(255,255,255,0.08); padding-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gen-foot-note { font-size: 12px; color: var(--color-text-muted); }
+.gen-foot-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-text-secondary); background: transparent; border: 0.5px solid var(--color-border); padding: 8px 14px; border-radius: 8px; white-space: nowrap; flex-shrink: 0; cursor: pointer; }
+.gen-foot-btn:hover { color: var(--color-text-primary); border-color: var(--color-border-active); }
 </style>
