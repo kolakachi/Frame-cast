@@ -7,6 +7,7 @@ use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Models\User;
+use App\Services\CruiseControl\CruiseActionRunService;
 use App\Services\Notification\NotificationService;
 use App\Services\Generation\TTS\TTSAdapter;
 use App\Services\Media\MediaTranscriptionService;
@@ -27,13 +28,16 @@ class GenerateTTSJob implements ShouldQueue
 
     public function __construct(
         public readonly int $projectId,
+        /** @var array<int>|null */
+        public readonly ?array $sceneIds = null,
+        public readonly bool $shouldFinalizeProject = true,
     ) {
         $this->onQueue('generation');
     }
 
     public function handle(TTSAdapter $tts, NotificationService $notifications, MediaTranscriptionService $transcription, WorkspaceUsageService $usageService): void
     {
-        GenerationProgressed::dispatch($this->projectId, 'tts', 'processing');
+        GenerationProgressed::dispatch($this->projectId, 'tts', 'processing', null, $this->progressMeta());
 
         $project = Project::query()->find($this->projectId);
 
@@ -47,24 +51,36 @@ class GenerateTTSJob implements ShouldQueue
 
         if ($creator && $usageService->hasReachedVoiceLimit($creator)) {
             $ctx = $usageService->voiceLimitContext($creator);
-            $project->forceFill(['status' => 'failed'])->save();
-            $notifications->create(
-                (int) $project->workspace_id,
-                'Voice limit reached',
-                "Project #{$project->getKey()} could not generate voice audio — your workspace has used {$ctx['used']} of {$ctx['limit']} voice minutes on the {$ctx['plan']} plan.",
-                'error',
-                $creator ? (int) $creator->getKey() : null,
-                ['project_id' => $project->getKey(), 'limit_context' => $ctx],
+            if ($this->shouldFinalizeProject) {
+                $project->forceFill(['status' => 'failed'])->save();
+                $notifications->create(
+                    (int) $project->workspace_id,
+                    'Voice limit reached',
+                    "Project #{$project->getKey()} could not generate voice audio — your workspace has used {$ctx['used']} of {$ctx['limit']} voice minutes on the {$ctx['plan']} plan.",
+                    'error',
+                    $creator ? (int) $creator->getKey() : null,
+                    ['project_id' => $project->getKey(), 'limit_context' => $ctx],
+                );
+            }
+            $this->markVoiceError($project, "Voice limit reached for the current workspace plan.");
+            GenerationProgressed::dispatch($this->projectId, 'tts', 'failed', 'Voice limit reached for the current workspace plan.', $this->progressMeta());
+            app(CruiseActionRunService::class)->markStageFailed(
+                $this->projectId,
+                'tts',
+                'Voice limit reached for the current workspace plan.',
+                $this->singleSceneId(),
             );
-            GenerationProgressed::dispatch($this->projectId, 'tts', 'failed');
 
             return;
         }
 
-        $scenes = Scene::query()
+        $scenesQuery = Scene::query()
             ->where('project_id', $project->getKey())
-            ->orderBy('scene_order')
-            ->get();
+            ->orderBy('scene_order');
+        if (is_array($this->sceneIds) && $this->sceneIds !== []) {
+            $scenesQuery->whereIn('id', $this->sceneIds);
+        }
+        $scenes = $scenesQuery->get();
 
         if ($scenes->isEmpty()) {
             return;
@@ -125,10 +141,12 @@ class GenerateTTSJob implements ShouldQueue
                 $voiceSettings['language'] = $language;
                 $voiceSettings['audio_asset_id'] = $asset->getKey();
                 $voiceSettings['is_outdated'] = false;
+                $voiceSettings['last_error'] = null;
 
                 $scene->forceFill([
                     'duration_seconds' => $audio['duration_seconds'],
                     'voice_settings_json' => $voiceSettings,
+                    'status' => $this->shouldFinalizeProject ? $scene->status : 'edited',
                 ])->save();
             });
 
@@ -149,31 +167,37 @@ class GenerateTTSJob implements ShouldQueue
             ));
             $done++;
             GenerationProgressed::dispatch($this->projectId, 'tts', 'processing', null, [
+                ...$this->progressMeta((int) $scene->getKey()),
                 'done' => $done, 'total' => $total,
             ]);
         }
 
-        DB::transaction(function () use ($project): void {
-            $project->forceFill([
-                'status' => 'ready_for_review',
-            ])->save();
-        });
+        if ($this->shouldFinalizeProject) {
+            DB::transaction(function () use ($project): void {
+                $project->forceFill([
+                    'status' => 'ready_for_review',
+                ])->save();
+            });
 
-        $notifications->create(
-            (int) $project->workspace_id,
-            'Generation complete',
-            'Project #'.$project->getKey().' is ready for review.',
-            'success',
-            $project->created_by_user_id ? (int) $project->created_by_user_id : null,
-            [
-                'project_id' => $project->getKey(),
-                'status' => 'ready_for_review',
-            ],
-        );
+            $notifications->create(
+                (int) $project->workspace_id,
+                'Generation complete',
+                'Project #'.$project->getKey().' is ready for review.',
+                'success',
+                $project->created_by_user_id ? (int) $project->created_by_user_id : null,
+                [
+                    'project_id' => $project->getKey(),
+                    'status' => 'ready_for_review',
+                ],
+            );
+        }
 
-        GenerationProgressed::dispatch($this->projectId, 'tts', 'completed');
+        GenerationProgressed::dispatch($this->projectId, 'tts', 'completed', null, $this->progressMeta());
+        if ($sceneId = $this->singleSceneId()) {
+            app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'tts', $sceneId);
+        }
 
-        if ($project->series_id) {
+        if ($this->shouldFinalizeProject && $project->series_id) {
             SummarizeEpisodeJob::dispatch($project->getKey());
         }
     }
@@ -228,12 +252,59 @@ class GenerateTTSJob implements ShouldQueue
     {
         $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
 
-        Project::query()
-            ->whereKey($this->projectId)
-            ->update([
-                'status' => 'failed',
-            ]);
+        if ($this->shouldFinalizeProject) {
+            Project::query()
+                ->whereKey($this->projectId)
+                ->update([
+                    'status' => 'failed',
+                ]);
+        }
 
-        GenerationProgressed::dispatch($this->projectId, 'tts', 'failed', $exception->getMessage());
+        $project = Project::query()->find($this->projectId);
+        if ($project) {
+            $this->markVoiceError($project, mb_substr($exception->getMessage(), 0, 500));
+        }
+
+        GenerationProgressed::dispatch($this->projectId, 'tts', 'failed', $exception->getMessage(), $this->progressMeta());
+        app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'tts', $exception->getMessage(), $this->singleSceneId());
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function progressMeta(?int $sceneId = null): array
+    {
+        $meta = [];
+        $targetSceneId = $sceneId ?? $this->singleSceneId();
+        if ($targetSceneId !== null) {
+            $meta['scene_id'] = $targetSceneId;
+        }
+
+        return $meta;
+    }
+
+    private function singleSceneId(): ?int
+    {
+        if (! is_array($this->sceneIds) || count($this->sceneIds) !== 1) {
+            return null;
+        }
+
+        return (int) $this->sceneIds[0];
+    }
+
+    private function markVoiceError(Project $project, string $error): void
+    {
+        $query = Scene::query()->where('project_id', $project->getKey());
+        if (is_array($this->sceneIds) && $this->sceneIds !== []) {
+            $query->whereIn('id', $this->sceneIds);
+        }
+
+        $query->get()->each(function (Scene $scene) use ($error): void {
+            $voiceSettings = is_array($scene->voice_settings_json) ? $scene->voice_settings_json : [];
+            $voiceSettings['last_error'] = $error;
+            $scene->forceFill([
+                'voice_settings_json' => $voiceSettings,
+            ])->save();
+        });
     }
 }

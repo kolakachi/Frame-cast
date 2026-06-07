@@ -213,7 +213,7 @@ class RegenerateImageTool implements CruiseTool
             $modelKey,
             [],                            // no reference asset overrides — character path
                                             // auto-routes via scene.character_id
-        );
+        )->afterCommit();
 
         $summary = "Regenerating Scene {$scene->scene_order} image ({$style})";
         if ($chainTier) {

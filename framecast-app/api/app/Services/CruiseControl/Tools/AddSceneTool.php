@@ -163,6 +163,7 @@ class AddSceneTool implements CruiseTool
                     'voice_id' => $voiceId,
                     'speed'    => 1.0,
                     'is_outdated' => false,   // newly created — not outdated
+                    'last_error' => null,
                 ],
                 'caption_settings_json' => $project->default_caption_settings_json ?? null,
                 'visual_type'   => 'ai_image',
@@ -190,9 +191,9 @@ class AddSceneTool implements CruiseTool
                 $animateTier,
                 null,
                 [],
-            );
+            )->afterCommit();
 
-            GenerateTTSJob::dispatch($project->getKey());
+            GenerateTTSJob::dispatch($project->getKey(), [$scene->getKey()], false)->afterCommit();
 
             return [
                 'summary'       => "Added Scene {$position} (\"" . mb_substr($scriptText, 0, 30) . "\")",

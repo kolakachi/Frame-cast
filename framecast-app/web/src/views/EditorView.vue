@@ -398,6 +398,24 @@ function cruiseStartPollingFallback(card) {
         tts:       fresh.voice_settings?.audio_asset_id
                    && fresh.voice_settings.audio_asset_id !== baseline.audio_asset_id,
       }
+      const stageFailedByState = {
+        ai_image:  !!fresh.image_generation_settings?.last_error,
+        animation: !!fresh.image_generation_settings?.animation_last_error,
+        tts:       !!fresh.voice_settings?.last_error,
+      }
+      const failedStage = expected.find(stage => stageFailedByState[stage])
+      if (failedStage) {
+        card.status = 'failed'
+        card.error = failedStage === 'animation'
+          ? (fresh.image_generation_settings?.animation_last_error || 'Animation failed.')
+          : failedStage === 'tts'
+            ? (fresh.voice_settings?.last_error || 'Voice generation failed.')
+            : (fresh.image_generation_settings?.last_error || 'Generation failed.')
+        try { replaceSceneInCollection(normalizeScenePayload(fresh)) } catch (_) {}
+        cruiseStopPolling(card)
+        cruiseStopProgressLoop(card)
+        return
+      }
       for (const stage of expected) {
         if (!completed.includes(stage) && stageDoneByAsset[stage]) newlyDone.push(stage)
       }
@@ -447,7 +465,7 @@ function cruiseInitActionState(raw, status = 'proposed') {
 function cruiseToolHasAsyncWork(tool) {
   return [
     'regenerate_image', 'animate_scene', 'rerecord_voice',
-    'change_music', 'add_scene',
+    'update_scene_script', 'change_music', 'add_scene',
   ].includes(tool)
 }
 
@@ -462,6 +480,7 @@ function cruiseExpectedStages(tool, params) {
     case 'regenerate_image': return isChained ? ['ai_image', 'animation'] : ['ai_image']
     case 'animate_scene':    return ['animation']
     case 'rerecord_voice':   return ['tts']
+    case 'update_scene_script': return ['tts']
     case 'change_music':     return ['ai_music']
     case 'add_scene': {
       // animate_tier is the add_scene-specific param name (different from
@@ -499,6 +518,7 @@ function cruiseInitialProgressText(tool) {
     case 'regenerate_image':  return 'Generating image…'
     case 'animate_scene':     return 'Animating scene…'
     case 'rerecord_voice':    return 'Generating voice…'
+    case 'update_scene_script': return 'Generating voice…'
     case 'change_music':      return 'Composing music…'
     case 'add_scene':         return 'Adding scene…'
     default:                  return 'Working…'
@@ -526,7 +546,7 @@ function cruiseFindCardForProgress(payload) {
     // add_scene with animate_tier chains into AnimateSceneJob too, so an
     // 'animation' event can legitimately belong to an add_scene card.
     animation: ['animate_scene', 'regenerate_image', 'add_scene'],
-    tts:       ['rerecord_voice', 'add_scene'],
+    tts:       ['rerecord_voice', 'update_scene_script', 'add_scene'],
     ai_music:  ['change_music'],
   }[stage] || []
   if (!stageTools.length) return null
@@ -613,6 +633,7 @@ function cruiseSuccessText(tool, stage) {
     case 'regenerate_image': return 'Image ready'
     case 'animate_scene':    return 'Animation ready'
     case 'rerecord_voice':   return 'Voice ready'
+    case 'update_scene_script': return 'Voice ready'
     case 'change_music':     return 'Music ready'
     case 'add_scene':        return 'Scene added'
     default:                 return 'Done'
@@ -653,6 +674,9 @@ async function loadCruiseConversation() {
             // Restore the bits that drive hydrate verification.
             card.credits = a.credits ?? 0
             card.affected_scene_id = a.affected_scene_id ?? null
+            card.expected_stages = Array.isArray(a.expected_stages) ? a.expected_stages : []
+            card.completed_stages = Array.isArray(a.completed_stages) ? a.completed_stages : []
+            card.error = a.error ?? null
             return card
           }),
         }
@@ -679,7 +703,7 @@ async function cruiseResumeInflightAfterHydrate() {
   const toCheck = new Map()
   for (const m of cruiseMessages.value) {
     for (const card of (m.actions || [])) {
-      if (card.status !== 'applied') continue
+      if (!['running', 'applied'].includes(card.status)) continue
       if (!card.affected_scene_id) continue
       const expected = cruiseExpectedStages(card.tool, card.params)
       if (!expected.length) continue
@@ -697,14 +721,44 @@ async function cruiseResumeInflightAfterHydrate() {
       if (!sceneRaw) return
       const scene = normalizeScenePayload(sceneRaw)
       const stageDone = {
-        ai_image:  !!scene.visual_asset_id,
-        animation: !!scene.image_generation_settings?.animation_video_asset_id,
-        tts:       !!scene.voice_settings?.audio_asset_id,
+        ai_image:  !!scene.visual_asset_id && !scene.image_generation_settings?.in_progress,
+        animation: !!scene.image_generation_settings?.animation_video_asset_id
+                   && !scene.image_generation_settings?.animation_in_progress,
+        tts:       !!scene.voice_settings?.audio_asset_id
+                   && !scene.voice_settings?.is_outdated,
         ai_music:  true, // project-level, can't verify from scene
       }
+      const stageFailed = {
+        ai_image:  !!scene.image_generation_settings?.last_error,
+        animation: !!scene.image_generation_settings?.animation_last_error,
+        tts:       !!scene.voice_settings?.last_error,
+        ai_music:  false,
+      }
       for (const { msg, card, expected } of items) {
+        const failedStage = expected.find(s => stageFailed[s])
+        if (failedStage) {
+          card.status = 'failed'
+          card.error = failedStage === 'animation'
+            ? (scene.image_generation_settings?.animation_last_error || 'Animation failed.')
+            : failedStage === 'tts'
+              ? (scene.voice_settings?.last_error || 'Voice generation failed.')
+            : (scene.image_generation_settings?.last_error || 'Generation failed.')
+          cruiseStopProgressLoop(card)
+          cruiseStopPolling(card)
+          cruiseRecomputeMessageStatus(msg)
+          continue
+        }
+
         const allDone = expected.every(s => stageDone[s])
-        if (allDone) continue
+        if (allDone) {
+          card.status = 'applied'
+          card.completed_stages = [...expected]
+          card.progress_text = cruiseSuccessText(card.tool, expected[expected.length - 1] || null)
+          cruiseStopProgressLoop(card)
+          cruiseStopPolling(card)
+          cruiseRecomputeMessageStatus(msg)
+          continue
+        }
         // Still cooking. Flip back to running, record what's already
         // done, kick off progress loop + polling so the user sees it
         // resume even though Reverb missed the last event.
@@ -4955,6 +5009,12 @@ function subscribeProjectChannel() {
     try { cruiseHandleProgressEvent(payload); } catch (_) {}
 
     if (payload.stage === "tts" && ["completed", "failed"].includes(String(payload.status || ""))) {
+      if (payload.scene_id) {
+        api.get(`/scenes/${payload.scene_id}/preview`).then((res) => {
+          const refreshed = res.data?.data?.scene ?? null;
+          if (refreshed) replaceSceneInCollection(normalizeScenePayload(refreshed));
+        }).catch(() => {});
+      }
       refreshProjectPayload().catch(() => {});
       return;
     }
@@ -4962,7 +5022,7 @@ function subscribeProjectChannel() {
     // Animation events run on the same project channel — refresh the scene so the
     // editor swaps in the new video asset (or shows the persisted error).
     if (payload.stage === "animation") {
-      if (payload.scene_id && (payload.status === "completed" || payload.status === "failed")) {
+      if (payload.scene_id && ["processing", "completed", "failed"].includes(String(payload.status || ""))) {
         api.get(`/scenes/${payload.scene_id}/preview`).then((res) => {
           const refreshed = res.data?.data?.scene ?? null;
           if (refreshed) replaceSceneInCollection(normalizeScenePayload(refreshed));
@@ -4980,7 +5040,12 @@ function subscribeProjectChannel() {
 
     if (payload.stage !== "ai_image") return;
 
-    if (payload.status === "completed" && payload.scene_id) {
+    if (payload.status === "processing" && payload.scene_id) {
+      api.get(`/scenes/${payload.scene_id}/preview`).then((res) => {
+        const refreshed = res.data?.data?.scene ?? null;
+        if (refreshed) replaceSceneInCollection(normalizeScenePayload(refreshed));
+      }).catch(() => {});
+    } else if (payload.status === "completed" && payload.scene_id) {
       // Refresh the scene so the new visual_asset appears in the editor
       api.get(`/scenes/${payload.scene_id}/preview`).then((res) => {
         const refreshed = res.data?.data?.scene ?? null;

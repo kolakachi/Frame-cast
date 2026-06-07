@@ -94,11 +94,12 @@ class ChangeMusicTool implements CruiseTool
             $mood,
             $mood,
             $duration,
-        );
+        )->afterCommit();
 
         return [
             'summary'       => "Regenerating music with \"{$mood}\" mood",
             'credits_spent' => CreditService::AI_MUSIC,
+            'affected_scene_id' => (int) $firstScene->getKey(),
         ];
     }
 }

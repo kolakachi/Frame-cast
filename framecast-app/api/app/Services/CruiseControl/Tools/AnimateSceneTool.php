@@ -113,17 +113,31 @@ class AnimateSceneTool implements CruiseTool
             ?? data_get($scene->image_generation_settings_json, 'suggested_motion_prompt')
             ?? null;
 
+        $existing = is_array($scene->image_generation_settings_json)
+            ? $scene->image_generation_settings_json
+            : [];
+        $cost = $this->estimateCost($project, $params);
+        $scene->forceFill([
+            'image_generation_settings_json' => array_merge($existing, [
+                'animation_in_progress' => true,
+                'animation_last_error' => null,
+                'animation_started_at' => now()->toIso8601String(),
+                'animation_tier' => $tier,
+                'animation_cost' => $cost,
+            ]),
+        ])->save();
+
         AnimateSceneJob::dispatch(
             $scene->getKey(),
             $project->getKey(),
             $tier,
             $duration,
             $motion,
-        );
+        )->afterCommit();
 
         return [
             'summary'       => "Animating Scene {$scene->scene_order} ({$tier}, {$duration}s)",
-            'credits_spent' => $this->estimateCost($project, $params),
+            'credits_spent' => $cost,
             'affected_scene_id' => (int) $scene->getKey(),
         ];
     }

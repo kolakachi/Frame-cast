@@ -10,6 +10,7 @@ use App\Models\Scene;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\CreditService;
+use App\Services\CruiseControl\CruiseActionRunService;
 use App\Services\CruiseControl\CruiseControlService;
 use App\Services\CruiseControl\CruiseToolRegistry;
 use Illuminate\Http\JsonResponse;
@@ -32,6 +33,7 @@ class CruiseControlController extends Controller
         private CruiseControlService $service,
         private CruiseToolRegistry $registry,
         private CreditService $credits,
+        private CruiseActionRunService $actionRuns,
     ) {
     }
 
@@ -222,14 +224,29 @@ class CruiseControlController extends Controller
         // For multi-action turns we stamp ONLY the indexed action, not
         // the whole message — sibling actions stay in 'proposed'.
         if (! empty($validated['message_id'])) {
+            $messageStatus = $this->toolRunsAsync($validated['tool']) ? 'running' : 'applied';
             $this->updateMessageStatus(
                 $user,
                 $project,
                 $validated['message_id'],
-                'applied',
+                $messageStatus,
                 (int) ($result['credits_spent'] ?? 0),
                 $validated['action_index'] ?? null,
                 $result['affected_scene_id'] ?? null,
+            );
+
+            $this->actionRuns->startRun(
+                $workspace,
+                $user,
+                $project,
+                (string) $validated['message_id'],
+                (int) ($validated['action_index'] ?? 0),
+                (string) $validated['tool'],
+                $validated['params'],
+                $this->toolExpectedStages((string) $validated['tool'], $validated['params']),
+                (int) ($result['credits_spent'] ?? 0),
+                isset($result['affected_scene_id']) ? (int) $result['affected_scene_id'] : null,
+                $this->toolRunsAsync((string) $validated['tool']),
             );
         }
 
@@ -286,6 +303,12 @@ class CruiseControlController extends Controller
         }
 
         $this->updateMessageStatus($user, $project, $validated['message_id'], 'skipped', 0, $validated['action_index'] ?? null);
+        $this->actionRuns->markSkipped(
+            (int) $user->workspace_id,
+            (int) $project->getKey(),
+            (string) $validated['message_id'],
+            (int) ($validated['action_index'] ?? 0),
+        );
 
         CruiseAuditLog::create([
             'workspace_id'  => $user->workspace_id,
@@ -361,10 +384,15 @@ class CruiseControlController extends Controller
             ->where('workspace_id', $user->workspace_id)
             ->where('project_id', $projectId)
             ->first();
+        $messages = $this->actionRuns->mergeRunsIntoMessages(
+            $conv?->messages ?? [],
+            (int) $user->workspace_id,
+            (int) $projectId,
+        );
 
         return response()->json([
             'data' => [
-                'messages'         => $conv?->messages ?? [],
+                'messages'         => $messages,
                 'message_count'    => $conv?->message_count ?? 0,
                 'last_activity_at' => $conv?->last_activity_at?->toIso8601String(),
             ],
@@ -442,11 +470,7 @@ class CruiseControlController extends Controller
                     // in flight and resume polling if so.
                     if ($affectedSceneId) $messages[$i]['actions'][$actionIndex]['affected_scene_id'] = $affectedSceneId;
 
-                    $statuses = array_column($messages[$i]['actions'], 'status');
-                    $allTerminal = ! empty($statuses) && ! in_array('proposed', $statuses, true);
-                    if ($allTerminal) {
-                        $messages[$i]['action_status'] = in_array('failed', $statuses, true) ? 'failed' : 'applied';
-                    }
+                    $messages[$i]['action_status'] = $this->aggregateActionStatuses($messages[$i]['actions']);
                 } else {
                     $messages[$i]['action_status'] = $status;
                     if ($creditsSpent > 0) $messages[$i]['action_credits'] = $creditsSpent;
@@ -457,6 +481,65 @@ class CruiseControlController extends Controller
 
             $conv->forceFill(['messages' => $messages, 'last_activity_at' => now()])->save();
         });
+    }
+
+    /**
+     * Keep the persisted message-level state aligned with the frontend's
+     * card aggregator so refresh / second-client hydrate stays truthful.
+     *
+     * @param array<int, array<string, mixed>> $actions
+     */
+    private function aggregateActionStatuses(array $actions): ?string
+    {
+        $statuses = array_values(array_filter(array_map(
+            static fn (array $action): ?string => isset($action['status']) ? (string) $action['status'] : null,
+            $actions,
+        )));
+
+        if ($statuses === []) {
+            return null;
+        }
+
+        if (in_array('running', $statuses, true)) {
+            return 'running';
+        }
+
+        if (in_array('failed', $statuses, true)) {
+            return 'failed';
+        }
+
+        if (in_array('proposed', $statuses, true)) {
+            return 'proposed';
+        }
+
+        return 'applied';
+    }
+
+    private function toolRunsAsync(string $tool): bool
+    {
+        return in_array($tool, [
+            'regenerate_image',
+            'animate_scene',
+            'rerecord_voice',
+            'update_scene_script',
+            'change_music',
+            'add_scene',
+        ], true);
+    }
+
+    /**
+     * @return string[]
+     */
+    private function toolExpectedStages(string $tool, array $params): array
+    {
+        return match ($tool) {
+            'regenerate_image' => ! empty($params['chain_animate_tier']) ? ['ai_image', 'animation'] : ['ai_image'],
+            'animate_scene' => ['animation'],
+            'rerecord_voice', 'update_scene_script' => ['tts'],
+            'change_music' => ['ai_music'],
+            'add_scene' => ! empty($params['animate_tier']) ? ['ai_image', 'tts', 'animation'] : ['ai_image', 'tts'],
+            default => [],
+        };
     }
 
 }

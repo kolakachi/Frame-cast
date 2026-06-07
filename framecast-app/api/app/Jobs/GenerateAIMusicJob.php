@@ -6,6 +6,7 @@ use App\Events\GenerationProgressed;
 use App\Models\Asset;
 use App\Models\Scene;
 use App\Services\CreditService;
+use App\Services\CruiseControl\CruiseActionRunService;
 use App\Services\Generation\Music\ReplicateMusicAdapter;
 use App\Services\Media\StorageService;
 use Illuminate\Bus\Queueable;
@@ -124,6 +125,7 @@ class GenerateAIMusicJob implements ShouldQueue
                 'scene_id' => $this->sceneId,
                 'asset_id' => $asset->getKey(),
             ]);
+            app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'ai_music', $this->sceneId);
         } catch (\Throwable $e) {
             // ERROR not warning: this is the path that ate the prod 404
             // for ~a day without surfacing — silent swallow + no retry
@@ -139,6 +141,7 @@ class GenerateAIMusicJob implements ShouldQueue
             // The scene already has its image + animation + voice; missing
             // music is recoverable in the editor.
             GenerationProgressed::dispatch($this->projectId, 'ai_music', 'failed', $e->getMessage(), ['scene_id' => $this->sceneId]);
+            app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'ai_music', $e->getMessage(), $this->sceneId);
         }
     }
 }

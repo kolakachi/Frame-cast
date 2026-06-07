@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Events\GenerationProgressed;
 use App\Models\Asset;
 use App\Models\Scene;
+use App\Services\CruiseControl\CruiseActionRunService;
 use App\Services\Generation\Video\I2VAdapter;
 use App\Services\Media\StorageService;
 use App\Traits\TracksJobFailure;
@@ -171,6 +172,7 @@ class AnimateSceneJob implements ShouldQueue
                 'done'     => $aniDone,
                 'total'    => $aniTotal,
             ]);
+            app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'animation', $this->sceneId);
         } catch (\Throwable $e) {
             // Animation safety rejections from Replicate (Kling/Hailuo/Wan
             // each have their own content filters) get logged to
@@ -197,6 +199,7 @@ class AnimateSceneJob implements ShouldQueue
                 'animation_last_error'  => mb_substr($e->getMessage(), 0, 1000),
             ]);
             GenerationProgressed::dispatch($this->projectId, 'animation', 'failed', $e->getMessage(), ['scene_id' => $this->sceneId]);
+            app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'animation', $e->getMessage(), $this->sceneId);
             throw $e;
         }
     }

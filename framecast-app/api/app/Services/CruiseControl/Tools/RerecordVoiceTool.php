@@ -120,9 +120,10 @@ class RerecordVoiceTool implements CruiseTool
         if (isset($params['speed']))         $voiceSettings['speed']     = (float) $params['speed'];
         if (! empty($params['stability']))   $voiceSettings['stability'] = $params['stability'];
         $voiceSettings['is_outdated'] = true;
+        $voiceSettings['last_error'] = null;
         $scene->forceFill(['voice_settings_json' => $voiceSettings])->save();
 
-        GenerateTTSJob::dispatch($project->getKey());
+        GenerateTTSJob::dispatch($project->getKey(), [$scene->getKey()], false)->afterCommit();
 
         $summaryBits = [];
         if (! empty($params['voice_id']))  $summaryBits[] = $params['voice_id'];

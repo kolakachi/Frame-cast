@@ -93,6 +93,7 @@ class UpdateSceneScriptTool implements CruiseTool
 
         $voiceSettings = $scene->voice_settings_json ?? [];
         $voiceSettings['is_outdated'] = true;
+        $voiceSettings['last_error'] = null;
 
         $scene->forceFill([
             'script_text'         => $newText,
@@ -100,11 +101,12 @@ class UpdateSceneScriptTool implements CruiseTool
             'status'              => 'edited',
         ])->save();
 
-        GenerateTTSJob::dispatch($project->getKey());
+        GenerateTTSJob::dispatch($project->getKey(), [$scene->getKey()], false)->afterCommit();
 
         return [
             'summary'       => "Updated Scene {$scene->scene_order} script + re-recording voice",
             'credits_spent' => CreditService::TTS,
+            'affected_scene_id' => (int) $scene->getKey(),
         ];
     }
 

@@ -6,6 +6,7 @@ use App\Events\GenerationProgressed;
 use App\Services\CreditService;
 use App\Models\Asset;
 use App\Models\Scene;
+use App\Services\CruiseControl\CruiseActionRunService;
 use App\Services\Generation\Image\ImageGenerationAdapter;
 use App\Services\Media\StorageService;
 use App\Traits\TracksJobFailure;
@@ -65,7 +66,9 @@ class GenerateAIImageJob implements ShouldQueue
             return;
         }
 
-        GenerationProgressed::dispatch($this->projectId, 'ai_image', 'processing');
+        GenerationProgressed::dispatch($this->projectId, 'ai_image', 'processing', null, [
+            'scene_id' => $this->sceneId,
+        ]);
 
         try {
             // Character path: when the scene is bound to a character with a reference image,
@@ -302,6 +305,7 @@ class GenerateAIImageJob implements ShouldQueue
                 'done'      => $done,
                 'total'     => $total,
             ]);
+            app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'ai_image', $this->sceneId);
 
             // One-shot animate chain: image is ready, kick AnimateSceneJob so
             // the user actually gets the animated clip they toggled on. Quick
@@ -405,6 +409,7 @@ class GenerateAIImageJob implements ShouldQueue
                         'asset_id'  => $asset->getKey(),
                         'image_url' => app(StorageService::class)->url($storagePath),
                     ]);
+                    app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'ai_image', $this->sceneId);
 
                     return;
                 } catch (\Throwable $retryE) {
@@ -441,6 +446,7 @@ class GenerateAIImageJob implements ShouldQueue
             GenerationProgressed::dispatch($this->projectId, 'ai_image', 'failed', $e->getMessage(), [
                 'scene_id' => $this->sceneId,
             ]);
+            app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'ai_image', $e->getMessage(), $this->sceneId);
         }
     }
 
