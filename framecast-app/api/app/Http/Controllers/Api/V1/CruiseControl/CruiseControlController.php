@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\CruiseControl;
 
 use App\Http\Controllers\Controller;
+use App\Models\CruiseActionRun;
 use App\Models\CruiseAuditLog;
 use App\Models\CruiseConversation;
 use App\Models\Project;
