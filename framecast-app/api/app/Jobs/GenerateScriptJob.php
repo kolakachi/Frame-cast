@@ -32,16 +32,25 @@ class GenerateScriptJob implements ShouldQueue
 
     public function handle(AIGenerationAdapter $aiGeneration, MediaTranscriptionService $transcriptionService): void
     {
-        GenerationProgressed::dispatch($this->projectId, 'script', 'processing');
-
         $project = Project::query()->find($this->projectId);
 
         if (! $project) {
             return;
         }
 
+        // Audio/video uploads transcribe (inside sourceContentForGeneration)
+        // before the script is written. Surface that as its OWN stage instead
+        // of hiding it under "Writing script".
+        $isMedia = in_array($project->source_type, ['audio_upload', 'video_upload'], true);
+        GenerationProgressed::dispatch($this->projectId, $isMedia ? 'transcription' : 'script', 'processing');
+
         $promptTemplateKey = $this->promptTemplateKey((string) $project->source_type);
         $sourceContent = $this->sourceContentForGeneration($project, $transcriptionService);
+
+        if ($isMedia) {
+            GenerationProgressed::dispatch($this->projectId, 'transcription', 'completed');
+            GenerationProgressed::dispatch($this->projectId, 'script', 'processing');
+        }
         $options = $project->source_type === 'images'
             ? ['images' => $this->imageInputsForGeneration($project)]
             : [];

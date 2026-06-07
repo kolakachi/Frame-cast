@@ -18,15 +18,6 @@ const isOneShot  = ref(false)
 let channelName  = null
 let pollTimer    = null
 
-const baseStages = [
-  { key: 'script',          label: 'Writing script' },
-  { key: 'scene_breakdown', label: 'Breaking into scenes' },
-  { key: 'hooks',           label: 'Crafting hooks' },
-  { key: 'hooks_scoring',   label: 'Scoring hooks' },
-  { key: 'tts',             label: 'Recording voice' },
-  { key: 'preview_assembly',label: 'Wrapping up' },
-]
-
 // One-shot prompt projects skip the script/scene/hook pipeline — the
 // LLM parser splits the single prompt into voice/visual/music/motion
 // channels up-front, then 3-4 jobs fan out in parallel. Different stage
@@ -56,6 +47,9 @@ function oneShotStageDefinitions(project = null) {
 function stageDefinitions(project = null) {
   if (project?.source_type === 'prompt') return oneShotStageDefinitions(project)
 
+  const src = project?.source_type
+  const isMedia = src === 'audio_upload' || src === 'video_upload'
+
   const mode = project?.visual_generation_mode
   const visualStage =
     mode === 'ai_images'    ? { key: 'ai_image',     label: 'Generating AI visuals' }
@@ -63,7 +57,18 @@ function stageDefinitions(project = null) {
     : mode === 'waveform'     ? { key: 'visual_match', label: 'Preparing audiogram' }
     :                           { key: 'visual_match', label: 'Matching stock video' }
 
-  return [...baseStages.slice(0, 4), visualStage, ...baseStages.slice(4)]
+  return [
+    // Audio/video uploads transcribe before scripting — show that step.
+    ...(isMedia ? [{ key: 'transcription', label: src === 'video_upload' ? 'Transcribing your video' : 'Transcribing your audio' }] : []),
+    // A pasted script is reviewed, not written from scratch.
+    { key: 'script',          label: src === 'script' ? 'Reviewing your script' : 'Writing script' },
+    { key: 'scene_breakdown', label: 'Breaking into scenes' },
+    { key: 'hooks',           label: 'Crafting hooks' },
+    { key: 'hooks_scoring',   label: 'Scoring hooks' },
+    visualStage,
+    { key: 'tts',             label: 'Recording voice' },
+    { key: 'preview_assembly',label: 'Wrapping up' },
+  ]
 }
 
 function freshStages(project = null) {
@@ -219,6 +224,7 @@ function maybeOpenEditor() {
 
 function updateStageFromEvent(payload) {
   const stageMap = {
+    transcription: 'transcription',
     script: 'script', scene_breakdown: 'scene_breakdown',
     hooks: 'hooks', hooks_scoring: 'hooks_scoring',
     visual_match: 'visual_match', ai_image: 'ai_image', tts: 'tts',
@@ -387,6 +393,7 @@ const narrationLine = computed(() => {
   }
   const n = scenes.value.length
   switch (active.key) {
+    case 'transcription':    return 'Transcribing your upload…'
     case 'script':           return 'Writing the script…'
     case 'scene_breakdown':  return 'Splitting it into scenes…'
     case 'hooks':            return 'Drafting hook options…'
