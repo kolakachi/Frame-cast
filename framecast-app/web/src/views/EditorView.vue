@@ -106,6 +106,7 @@ function cruiseActionTitle(tool) {
     pick_library_music: 'Pick library music',
     set_audiogram_visual: 'Set audiogram',
     update_scene_script: 'Edit script',
+    reorder_scene: 'Reorder scene',
     update_captions: 'Update captions',
     apply_brand_kit: 'Apply brand kit',
     add_sound_effect: 'Add sound effect',
@@ -213,9 +214,18 @@ async function cruiseApplyAction(msg, actionIndex = 0) {
     window.setTimeout(() => { cruisePulseSection.value = null }, 1800)
     cruiseShowToast(`${out?.summary} · spent ${out?.credits_spent ?? 0} cr`)
     loadMe?.()
-    // One-shot scene fetch so the editor picks up the new scene
-    // (add_scene) or the in_progress flag (regenerate_image / animate).
-    if (card.affected_scene_id) {
+    // Structural tools shuffle MORE than the one affected scene — reorder
+    // changes sibling orders + labels, add_scene shifts everything after the
+    // insertion point. A single-scene fetch would leave siblings stale, so
+    // re-pull the whole project (merges in place, keeps the active scene).
+    if (cruiseToolIsStructural(card.tool)) {
+      try {
+        const r = await api.get(`/projects/${projectId.value}`)
+        applyProjectPayload(r.data?.data, { preserveActiveScene: true })
+      } catch (_) {}
+    } else if (card.affected_scene_id) {
+      // One-shot scene fetch so the editor picks up the in_progress flag
+      // (regenerate_image / animate) or the new voice/script.
       try {
         const r = await api.get(`/scenes/${card.affected_scene_id}/preview`)
         const fresh = r?.data?.data?.scene
@@ -467,6 +477,13 @@ function cruiseToolHasAsyncWork(tool) {
     'regenerate_image', 'animate_scene', 'rerecord_voice',
     'update_scene_script', 'change_music', 'add_scene',
   ].includes(tool)
+}
+
+// Tools that change MORE than one scene's row (order / labels), so the
+// post-apply refresh must re-pull the whole project instead of a single
+// scene. reorder shuffles siblings; add_scene shifts everything after it.
+function cruiseToolIsStructural(tool) {
+  return ['reorder_scene', 'add_scene'].includes(tool)
 }
 
 // Async stages we expect each tool to fire, so we know not to mark

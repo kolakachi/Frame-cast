@@ -12,6 +12,7 @@ use App\Services\CruiseControl\Tools\FindStockImageTool;
 use App\Services\CruiseControl\Tools\FindStockVideoTool;
 use App\Services\CruiseControl\Tools\PickLibraryMusicTool;
 use App\Services\CruiseControl\Tools\RegenerateImageTool;
+use App\Services\CruiseControl\Tools\ReorderSceneTool;
 use App\Services\CruiseControl\Tools\RerecordVoiceTool;
 use App\Services\CruiseControl\Tools\SetAudiogramVisualTool;
 use App\Services\CruiseControl\Tools\SwapVisualFromLibraryTool;
@@ -42,6 +43,7 @@ class CruiseToolRegistry
         ChangeMusicTool::class,
         // Property mutation
         UpdateSceneScriptTool::class,
+        ReorderSceneTool::class,
         RerecordVoiceTool::class,
         SetAudiogramVisualTool::class,
         UpdateCaptionsTool::class,

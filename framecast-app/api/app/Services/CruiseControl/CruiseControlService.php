@@ -95,7 +95,7 @@ class CruiseControlService
                 ->timeout(25)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model'           => config('services.openai.cheap_model', 'gpt-4o-mini'),
-                    'temperature'     => 0.2,
+                    'temperature'     => (float) config('services.openai.cruise_temperature', 0.6),
                     'response_format' => ['type' => 'json_object'],
                     'messages' => $messages,
                 ]);
@@ -181,13 +181,16 @@ class CruiseControlService
         $scenes = Scene::query()
             ->where('project_id', $project->getKey())
             ->orderBy('scene_order')
-            ->get(['id', 'scene_order', 'label', 'script_text',
+            ->get(['id', 'scene_order', 'label', 'script_text', 'visual_prompt',
                    'voice_settings_json', 'visual_style', 'character_id',
                    'visual_type']);
 
-        // Per-scene voice + style + character so the LLM can keep new
-        // scenes consistent with existing ones ("match the previous
-        // scene's voice"). Without this the LLM had to ask or guess.
+        // Per-scene voice + style + character + the ACTUAL script and visual
+        // prompt, so the LLM can (a) keep new scenes consistent, (b) resolve
+        // "match scene 1" / "make it like the others", and (c) give specific
+        // critique when the user asks how to improve a scene. The script and
+        // visual prompt used to be truncated to 70 chars — too short to reason
+        // about the content. Bumped so advisory + "match" intents actually work.
         $sceneList = $scenes->map(function ($s) {
             $voiceId = data_get($s->voice_settings_json, 'voice_id', '?');
             $bits = [
@@ -199,7 +202,10 @@ class CruiseControlService
             if ($s->character_id)  $bits[] = "character_id={$s->character_id}";
             if ($s->visual_type)   $bits[] = "visual={$s->visual_type}";
             $bits[] = 'label="' . mb_substr((string) $s->label, 0, 30) . '"';
-            $bits[] = 'script="' . mb_substr((string) $s->script_text, 0, 70) . '"';
+            $bits[] = 'script="' . mb_substr((string) $s->script_text, 0, 200) . '"';
+            if ($s->visual_prompt) {
+                $bits[] = 'visual_prompt="' . mb_substr((string) $s->visual_prompt, 0, 160) . '"';
+            }
             return '  - ' . implode(' ', $bits);
         })->implode("\n");
 
@@ -240,7 +246,10 @@ class CruiseControlService
 
         return <<<SYS
 You are the WyvStudio video editor assistant. The user is editing a
-short-form video. Resolve their intent to ONE tool call.
+short-form video. Act like a hands-on editor: resolve their intent into
+one or more tool calls, OR — when they ask for feedback/ideas — give
+specific suggestions and propose the actions that implement them. You
+can also just answer a question with no action when that's what's asked.
 
 PROJECT
   id: {$project->getKey()}
@@ -294,6 +303,13 @@ ROUTING DISAMBIGUATION
 - "add a [scene/cta/intro/outro]" -> add_scene. Write the script in
   first/second person speech. Visual prompt is a concrete image
   description.
+- "change / rewrite / fix / punch up what scene N says", "make the
+  script [tone]", "shorten this line" -> update_scene_script. Use
+  new_text for a verbatim replacement, or rewrite_tone for a tone hint.
+- "move / reorder / swap / put scene N [first/last/before M/after M]",
+  "make this the intro/outro", "rearrange" -> reorder_scene with the
+  target position. To swap two specific scenes, emit two reorder_scene
+  actions.
 
 WRITING IMAGE PROMPTS — be the prompt engineer the user isn't
 - When a tool takes a prompt_override or visual_prompt, write a RICH
@@ -332,6 +348,23 @@ CONSISTENCY WITH EXISTING SCENES
   location, brand).
 - When ADDING a scene right after a character-locked scene, copy the
   character_id forward unless the user names a different character.
+
+SUGGESTING IMPROVEMENTS (the user wants you to be an editor, not just a button)
+- When the user asks for feedback / ideas — "how can I make this
+  better?", "what would improve scene 2?", "any suggestions?", "make
+  this stronger" — DON'T just resolve one action silently. Read the
+  actual script + visual_prompt in the SCENES list and give 2-4
+  SPECIFIC, concrete suggestions in reply_to_user, each tied to what's
+  really there (quote the weak line, name the flat visual). Generic
+  advice is useless — be specific to THIS project.
+- Then ATTACH the actions that implement your suggestions in actions[]
+  so the user can apply them with one tap. e.g. propose an
+  update_scene_script with a punchier rewrite, a regenerate_image with a
+  richer prompt, a reorder_scene to fix pacing. The user applies the
+  ones they like and skips the rest.
+- If the user just wants to chat / asks a question with no clear action
+  (e.g. "is this scene too long?"), answer it in reply_to_user with
+  actions=[]. You're allowed to NOT propose an action.
 
 CLARIFY ONLY IF YOU MUST
 - If the user gave you enough to act, ACT. Don't ask for asset IDs
