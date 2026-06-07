@@ -80,16 +80,33 @@ const cruiseCreditsPayload = ref(null)
 const cruiseUserBalance = computed(() => cruiseCreditsPayload.value?.balance ?? 0)
 
 const cruiseScopeLabel = computed(() => {
-  // Default scope: the active scene if any, otherwise whole project.
-  // Manually flipped scope (via the ↻ link) overrides activeScene.
-  if (cruiseScopeSceneId.value === null) return 'whole project'
-  if (cruiseScopeSceneId.value === 'active') return activeScene.value ? `Scene ${activeScene.value.scene_order}` : 'whole project'
-  const s = scenes.value.find((x) => x.id === cruiseScopeSceneId.value)
+  // 'project' = explicit whole project; a scene id = that scene; null =
+  // auto (follow the active scene, else whole project).
+  if (cruiseScopeSceneId.value === 'project') return 'whole project'
+  const id = cruiseScopeSceneId.value && cruiseScopeSceneId.value !== 'active'
+    ? cruiseScopeSceneId.value
+    : activeScene.value?.id
+  const s = scenes.value.find((x) => x.id === id)
   return s ? `Scene ${s.scene_order}` : 'whole project'
+})
+
+// v-model for the scope dropdown. Reflects the EFFECTIVE scope (so when a
+// scene is active and scope is still auto, the dropdown truthfully shows
+// that scene). Writing 'project' pins whole project; a scene id pins it.
+const cruiseScopeValue = computed({
+  get() {
+    if (cruiseScopeSceneId.value === 'project') return 'project'
+    if (cruiseScopeSceneId.value && cruiseScopeSceneId.value !== 'active') return String(cruiseScopeSceneId.value)
+    return activeScene.value ? String(activeScene.value.id) : 'project'
+  },
+  set(val) {
+    cruiseScopeSceneId.value = val === 'project' ? 'project' : Number(val)
+  },
 })
 
 function cruiseEffectiveSceneId() {
   // What we actually send to the backend as scope_scene_id.
+  if (cruiseScopeSceneId.value === 'project') return null
   if (cruiseScopeSceneId.value && cruiseScopeSceneId.value !== 'active') return cruiseScopeSceneId.value
   return activeScene.value?.id ?? null
 }
@@ -7714,34 +7731,15 @@ onBeforeUnmount(() => {
             <div v-show="cruiseTab === 'assistant'" class="cruise-assistant-view">
               <div class="cruise-scope-bar">
                 <span class="cruise-scope-label">Editing</span>
-                <span class="cruise-scope-pill">{{ cruiseScopeLabel }}</span>
-                <span v-if="cruiseScopeSceneId !== null" class="cruise-scope-flip" @click="cruiseScopeSceneId = null">↻ whole project</span>
-                <span v-else-if="activeScene" class="cruise-scope-flip" @click="cruiseScopeSceneId = activeScene.id">↻ Scene {{ activeScene.scene_order }}</span>
-                <span class="cruise-scope-spacer"></span>
-                <button class="cruise-scope-action" type="button" :class="{ active: cruiseBriefOpen }" @click="cruiseToggleBrief" title="The theme & style the assistant follows">
-                  🎯 Theme<span v-if="cruiseBriefLocked" class="cruise-brief-lock" title="Locked — you edited it">🔒</span>
-                </button>
-                <button v-if="cruiseMessages.length" class="cruise-scope-action" type="button" @click="cruiseResetConversation" title="Start a new chat (your video changes stay)">↺ New chat</button>
-              </div>
-
-              <!-- Project brief editor — the creative direction the assistant
-                   defaults to. Editing locks it; refresh re-derives it. -->
-              <div v-if="cruiseBriefOpen && cruiseBrief" class="cruise-brief-panel">
-                <div class="cruise-brief-sub">Keeps new scenes & regenerations on-theme unless you override it in a message.</div>
-                <label class="cruise-brief-field"><span>Theme</span>
-                  <input type="text" v-model="cruiseBrief.theme" placeholder="e.g. hand-drawn doodle explainer" maxlength="200" /></label>
-                <label class="cruise-brief-field"><span>Topic</span>
-                  <input type="text" v-model="cruiseBrief.topic" placeholder="what the video is about" maxlength="200" /></label>
-                <label class="cruise-brief-field"><span>Visual style</span>
-                  <input type="text" v-model="cruiseBrief.visual_style" placeholder="e.g. doodle / marker on whiteboard" maxlength="200" /></label>
-                <label class="cruise-brief-field"><span>Tone</span>
-                  <input type="text" v-model="cruiseBrief.tone" placeholder="e.g. friendly, educational" maxlength="200" /></label>
-                <label class="cruise-brief-field"><span>Recurring subject</span>
-                  <input type="text" v-model="cruiseBrief.recurring_subject" placeholder="e.g. a hand drawing on a whiteboard" maxlength="200" /></label>
-                <div class="cruise-brief-foot">
-                  <button class="cruise-action-btn cruise-action-btn-ghost" type="button" :disabled="cruiseBriefBusy" @click="cruiseRefreshBrief">↻ Refresh from scenes</button>
-                  <button class="cruise-action-btn cruise-action-btn-primary" type="button" :disabled="cruiseBriefBusy" @click="cruiseSaveBrief">Save &amp; lock</button>
+                <div class="cruise-scope-select-wrap">
+                  <select class="cruise-scope-select" v-model="cruiseScopeValue">
+                    <option value="project">whole project</option>
+                    <option v-for="s in scenes" :key="s.id" :value="String(s.id)">Scene {{ s.scene_order }}</option>
+                  </select>
+                  <span class="cruise-scope-caret">▾</span>
                 </div>
+                <span class="cruise-scope-spacer"></span>
+                <button v-if="cruiseMessages.length" class="cruise-scope-action" type="button" @click="cruiseResetConversation" title="Start a new chat (your video changes stay)">↺ New chat</button>
               </div>
 
               <div class="cruise-assistant-body" ref="cruiseChatScrollRef">
@@ -7860,22 +7858,46 @@ onBeforeUnmount(() => {
                     @keydown.ctrl.enter.prevent="cruiseSubmitIntent"
                   ></textarea>
                   <div class="cruise-input-row">
-                    <span class="cruise-input-mode">{{ cruiseScopeLabel }}</span>
+                    <button class="cruise-input-icon" type="button" :class="{ active: cruiseBriefOpen }" @click="cruiseToggleBrief" title="Theme & creative brief">
+                      🎯<span v-if="cruiseBriefLocked" class="cruise-icon-dot" title="Brief locked"></span>
+                    </button>
+                    <button class="cruise-input-icon" type="button" :class="{ active: cruisePrefsOpen }" @click="cruisePrefsOpen = !cruisePrefsOpen" title="Assistant settings">⚙</button>
                     <button class="cruise-input-send" :disabled="!cruiseInputText.trim() || cruiseResolving" @click="cruiseSubmitIntent">Send ⌘⏎</button>
                   </div>
                 </div>
               </div>
 
-              <!-- Footer: auto-apply pref + gear + balance hint -->
+              <!-- Footer: auto-apply pref + balance hint -->
               <div class="cruise-assistant-foot">
                 <label class="cruise-auto-toggle" :title="cruiseAutoApply ? 'Cheap, reversible edits apply immediately. Paid/structural changes still prompt.' : 'Every action shows an Apply button before running.'">
                   <input type="checkbox" :checked="cruiseAutoApply" @change="setCruiseAutoApply($event.target.checked)" />
                   <span>Auto-apply low-risk</span>
                 </label>
-                <button class="cruise-prefs-trigger" type="button" :title="cruisePrefsOpen ? 'Hide assistant preferences' : 'Assistant preferences'" @click="cruisePrefsOpen = !cruisePrefsOpen">
-                  ⚙
-                </button>
-                <span class="cruise-balance-hint">Balance: {{ cruiseUserBalance }} cr</span>
+                <span class="cruise-balance-hint">{{ cruiseUserBalance }} cr</span>
+              </div>
+
+              <!-- Theme / creative-brief popover — opened by the 🎯 icon on
+                   the input row. Editing locks it; refresh re-derives it. -->
+              <div v-if="cruiseBriefOpen && cruiseBrief" class="cruise-prefs-panel">
+                <div class="cruise-prefs-head">
+                  <span>Theme &amp; brief<span v-if="cruiseBriefLocked" class="cruise-brief-lock" title="Locked — you edited it"> 🔒</span></span>
+                  <button class="cruise-prefs-close" type="button" @click="cruiseBriefOpen = false">✕</button>
+                </div>
+                <div class="cruise-brief-sub">Keeps new scenes &amp; regenerations on-theme unless you override it in a message.</div>
+                <label class="cruise-brief-field"><span>Theme</span>
+                  <input type="text" v-model="cruiseBrief.theme" placeholder="e.g. hand-drawn doodle explainer" maxlength="200" /></label>
+                <label class="cruise-brief-field"><span>Topic</span>
+                  <input type="text" v-model="cruiseBrief.topic" placeholder="what the video is about" maxlength="200" /></label>
+                <label class="cruise-brief-field"><span>Visual style</span>
+                  <input type="text" v-model="cruiseBrief.visual_style" placeholder="e.g. doodle / marker on whiteboard" maxlength="200" /></label>
+                <label class="cruise-brief-field"><span>Tone</span>
+                  <input type="text" v-model="cruiseBrief.tone" placeholder="e.g. friendly, educational" maxlength="200" /></label>
+                <label class="cruise-brief-field"><span>Recurring subject</span>
+                  <input type="text" v-model="cruiseBrief.recurring_subject" placeholder="e.g. a hand drawing on a whiteboard" maxlength="200" /></label>
+                <div class="cruise-brief-foot">
+                  <button class="cruise-action-btn cruise-action-btn-ghost" type="button" :disabled="cruiseBriefBusy" @click="cruiseRefreshBrief">↻ Refresh from scenes</button>
+                  <button class="cruise-action-btn cruise-action-btn-primary" type="button" :disabled="cruiseBriefBusy" @click="cruiseSaveBrief">Save &amp; lock</button>
+                </div>
               </div>
 
               <!-- Preferences popover — defaults the LLM biases towards
@@ -8929,6 +8951,18 @@ button {
 .cruise-scope-action.active { color: var(--color-accent); border-color: var(--color-accent); }
 .cruise-brief-lock { margin-left: 3px; }
 
+/* Context dropdown — replaces the old pill + flip link. */
+.cruise-scope-select-wrap { position: relative; display: inline-flex; align-items: center; }
+.cruise-scope-select {
+  appearance: none; -webkit-appearance: none;
+  background: rgba(255,107,53,0.10); color: var(--color-accent);
+  border: 1px solid rgba(255,107,53,0.25); border-radius: 8px;
+  padding: 5px 26px 5px 12px; font-size: 12px; font-weight: 600;
+  font-family: "Space Mono", monospace; cursor: pointer; outline: none;
+}
+.cruise-scope-select:hover { border-color: var(--color-accent); }
+.cruise-scope-caret { position: absolute; right: 9px; color: var(--color-accent); font-size: 10px; pointer-events: none; }
+
 .cruise-brief-panel {
   display: flex; flex-direction: column; gap: 8px;
   padding: 12px 14px; border-bottom: 1px solid var(--color-border);
@@ -8996,6 +9030,15 @@ button {
 .cruise-input::placeholder { color: var(--color-text-muted); }
 .cruise-input-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .cruise-input-mode { padding: 2px 8px; border-radius: 999px; background: rgba(255,107,53,0.12); color: var(--color-accent); font-size: 10.5px; font-weight: 600; font-family: "Space Mono", monospace; }
+/* Icon-only tools on the input row (theme + settings), tooltip on hover. */
+.cruise-input-icon {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: 1px solid var(--color-border); border-radius: 8px;
+  background: none; color: var(--color-text-muted); font-size: 14px; cursor: pointer;
+}
+.cruise-input-icon:hover { color: var(--color-text-primary); border-color: var(--color-border-active); }
+.cruise-input-icon.active { color: var(--color-accent); border-color: var(--color-accent); background: rgba(255,107,53,0.08); }
+.cruise-icon-dot { position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--color-accent); }
 .cruise-input-send { margin-left: auto; background: var(--color-accent); color: #fff; border: 0; border-radius: 6px; padding: 5px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
 .cruise-input-send:disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -9125,7 +9168,7 @@ button {
   cursor: pointer;
 }
 .cruise-auto-toggle input[type="checkbox"] { accent-color: var(--color-accent); cursor: pointer; }
-.cruise-balance-hint { white-space: nowrap; }
+.cruise-balance-hint { white-space: nowrap; margin-left: auto; font-family: "Space Mono", monospace; }
 
 /* Apply toast at top of Config view */
 .cruise-toast {
