@@ -231,6 +231,9 @@ class GenerateAIImageJob implements ShouldQueue
                     'last_error'     => null,
                     'style'          => $this->style,
                     'provider_key'   => $result['provider_key'],
+                    // Remember the model used so a retry / regenerate reuses it
+                    // instead of resetting to the default picker value.
+                    'model_key'      => $this->modelKey,
                     'revised_prompt' => $result['revised_prompt'],
                     'seed'           => $result['seed'],
                     'asset_id'       => $asset->getKey(),
@@ -544,12 +547,36 @@ class GenerateAIImageJob implements ShouldQueue
             return trim($this->promptOverride);
         }
 
+        // No explicit override: reuse the scene's ESTABLISHED prompt — the rich
+        // prompt that one-shot / Cruise / the last successful gen used (stored
+        // in visual_prompt). This is what makes a retry or a plain "Regenerate"
+        // (blank prompt box) reproduce the SAME plan, instead of a thin
+        // script-derived prompt that wasn't what the user set up.
+        $established = trim((string) ($scene->visual_prompt ?? ''));
+        if ($established !== '') {
+            return $established;
+        }
+
         $script = mb_substr(trim((string) $scene->script_text), 0, 200);
         $label  = $scene->label ?: 'scene';
         $tone   = $scene->project->tone ?? 'neutral';
 
         // visual_style on the scene takes precedence over the job-level style.
         $styleModifier = $this->visualStyle ?? $scene->visual_style ?? null;
+
+        // First-time, no-override build: make the image FIT the rest of the
+        // video. Pull the project's creative brief (theme + recurring subject
+        // + style) so a fresh scene is consistent with its siblings instead of
+        // being generated in isolation.
+        $assistantBrief = is_array($scene->project->assistant_brief_json) ? $scene->project->assistant_brief_json : [];
+        if (! $styleModifier && ! empty($assistantBrief['visual_style'])) {
+            $styleModifier = (string) $assistantBrief['visual_style'];
+        }
+        $briefBits = [];
+        if (! empty($assistantBrief['recurring_subject'])) $briefBits[] = (string) $assistantBrief['recurring_subject'];
+        if (! empty($assistantBrief['theme']))             $briefBits[] = (string) $assistantBrief['theme'];
+        $briefContext = $briefBits ? (implode(', ', $briefBits) . '. ') : '';
+
         $stylePart = $styleModifier ? ", {$styleModifier} visual style" : '';
 
         $brief = is_array($scene->project->visual_brief) ? $scene->project->visual_brief : [];
@@ -576,7 +603,7 @@ class GenerateAIImageJob implements ShouldQueue
             }
         }
 
-        return trim("{$prefix}{$characterChunk}{$label} for a {$tone} video{$stylePart}: {$script}");
+        return trim("{$prefix}{$briefContext}{$characterChunk}{$label} for a {$tone} video{$stylePart}: {$script}");
     }
 
     private function storeImage(string|null $url, Scene $scene, string|null $b64 = null): string

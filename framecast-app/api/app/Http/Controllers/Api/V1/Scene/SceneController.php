@@ -446,6 +446,10 @@ class SceneController extends Controller
                 'scene_type' => (string) ($scene->scene_type ?: 'narration'),
                 'scene_label' => (string) ($scene->label ?: ''),
                 'script_text' => (string) ($scene->script_text ?: ''),
+                // Project brief (theme/topic/tone/recurring subject) so the
+                // rewrite fits the whole video's direction, not just the
+                // neighbouring scenes' wording.
+                'project_brief' => $this->projectBriefLine($scene->project),
                 'previous_scene' => $context['previous'],
                 'next_scene' => $context['next'],
                 'scene_outline' => $context['outline'],
@@ -1408,6 +1412,22 @@ class SceneController extends Controller
     /**
      * @return array{previous:string,next:string,outline:string}
      */
+    /**
+     * One-line creative brief from the project's assistant_brief_json, fed to
+     * the rewrite LLM so edits stay on-theme. 'n/a' when no brief exists yet.
+     */
+    private function projectBriefLine(?\App\Models\Project $project): string
+    {
+        $brief = is_array($project?->assistant_brief_json) ? $project->assistant_brief_json : [];
+        $labels = ['theme' => 'Theme', 'topic' => 'Topic', 'tone' => 'Tone', 'recurring_subject' => 'Recurring subject'];
+        $parts = [];
+        foreach ($labels as $key => $label) {
+            $v = trim((string) ($brief[$key] ?? ''));
+            if ($v !== '') $parts[] = "{$label}: {$v}";
+        }
+        return $parts ? implode(' · ', $parts) : 'n/a';
+    }
+
     private function sceneContextForScene(Scene $scene): array
     {
         $scenes = Scene::query()

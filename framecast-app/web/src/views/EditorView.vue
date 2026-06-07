@@ -2165,6 +2165,10 @@ watch(
       motionEffectDraft.value = String(motionSettings.effect || "zoom_in");
       motionIntensityDraft.value = String(motionSettings.intensity || "moderate");
       visualStyleDraft.value = scene?.visual_style ?? scene?.image_generation_settings?.style ?? project.value?.ai_broll_style ?? null;
+      // Reuse the model the scene was last generated with, so a retry /
+      // regenerate stays in sync with the original plan instead of snapping
+      // back to the default. (prompt stays blank → backend reuses visual_prompt.)
+      aiImageModelKey.value = scene?.image_generation_settings?.model_key ?? 'gpt-image-1';
       visualStyleSaveState.value = "idle";
       customVisualStyleDraft.value = scene?.custom_visual_style ?? project.value?.custom_visual_style ?? "";
       customVisualStyleSaveState.value = "idle";
