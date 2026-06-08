@@ -130,7 +130,7 @@ section{padding:100px 24px}
 
 /* ── PRICING ── */
 .pricing{background:linear-gradient(180deg,var(--bg) 0%,rgba(255,107,53,.04) 50%,var(--bg) 100%)}
-.pricing-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:56px;align-items:start}
+.pricing-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:56px;align-items:start}
 .plan-card{padding:24px;border-radius:14px;border:1px solid var(--border);background:var(--surface)}
 .plan-card.featured{border-color:rgba(255,107,53,.4);background:rgba(255,107,53,.06);position:relative}
 .plan-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:11px;font-weight:600;padding:3px 12px;border-radius:999px;white-space:nowrap;font-family:"Space Mono",monospace}
@@ -463,7 +463,7 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
   <div class="container" style="text-align:center">
     <div class="section-label">Pricing</div>
     <h2 class="section-title">Simple, credit-based pricing.</h2>
-    <p class="section-sub" style="margin:0 auto">Pay for what you generate. Credits work across all visual modes — stock projects cost almost nothing, AI image projects use more.</p>
+    <p class="section-sub" style="margin:0 auto">You only pay for what you generate. The AI assistant, scripts, scene breakdowns, stock footage and exports are all included — credits go to AI images, video and voice. Stock projects cost almost nothing; cinematic AI video uses more.</p>
 
     <div class="pricing-grid">
 
@@ -488,10 +488,10 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
         <div class="plan-desc">Solo creator publishing consistently on one channel.</div>
         <div class="plan-divider"></div>
         <div class="plan-features">
-          <div class="plan-feature"><span class="plan-feature-check">✓</span>500 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>1,500 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span><span style="opacity:.7">≈ 4 animated ads or 90 AI images</span></div>
           <div class="plan-feature"><span class="plan-feature-check">✓</span>No watermark</div>
-          <div class="plan-feature"><span class="plan-feature-check">✓</span>1 channel</div>
-          <div class="plan-feature"><span class="plan-feature-check">✓</span>Social publishing</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>1 channel · social publishing</div>
           <div class="plan-feature"><span class="plan-feature-x">✕</span><span style="opacity:.5">Series mode</span></div>
         </div>
         <a href="https://app.wyvstudio.com/register" class="plan-btn">Start Starter</a>
@@ -504,8 +504,8 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
         <div class="plan-desc">Growing creator with multiple channels and daily publishing.</div>
         <div class="plan-divider"></div>
         <div class="plan-features">
-          <div class="plan-feature"><span class="plan-feature-check">✓</span>1,500 credits / month</div>
-          <div class="plan-feature"><span class="plan-feature-check">✓</span>No watermark</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>3,000 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span><span style="opacity:.7">≈ 8 animated ads or 180 AI images</span></div>
           <div class="plan-feature"><span class="plan-feature-check">✓</span>3 channels</div>
           <div class="plan-feature"><span class="plan-feature-check">✓</span>Full series mode</div>
           <div class="plan-feature"><span class="plan-feature-check">✓</span>AI high-quality images</div>
@@ -514,22 +514,37 @@ footer{border-top:1px solid var(--border);padding:40px 24px;display:flex;align-i
       </div>
 
       <div class="plan-card">
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">$79<span>/mo</span></div>
+        <div class="plan-desc">High-volume creators and small teams shipping daily across channels.</div>
+        <div class="plan-divider"></div>
+        <div class="plan-features">
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>6,500 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span><span style="opacity:.7">≈ 18 animated ads or 5 cinematic Kling ads</span></div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>10 channels</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Up to 50 characters</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Priority queue</div>
+        </div>
+        <a href="https://app.wyvstudio.com/register" class="plan-btn">Start Pro</a>
+      </div>
+
+      <div class="plan-card">
         <div class="plan-name">Agency</div>
         <div class="plan-price">$149<span>/mo</span></div>
         <div class="plan-desc">Content agencies and operators producing at volume.</div>
         <div class="plan-divider"></div>
         <div class="plan-features">
-          <div class="plan-feature"><span class="plan-feature-check">✓</span>10,000 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>13,000 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span><span style="opacity:.7">≈ 37 animated ads or 10 cinematic Kling ads</span></div>
           <div class="plan-feature"><span class="plan-feature-check">✓</span>Unlimited channels</div>
-          <div class="plan-feature"><span class="plan-feature-check">✓</span>Batch generation</div>
-          <div class="plan-feature"><span class="plan-feature-check">✓</span>Credit rollover</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Batch generation · credit rollover</div>
           <div class="plan-feature"><span class="plan-feature-check">✓</span>Top priority queue</div>
         </div>
         <a href="https://app.wyvstudio.com/register" class="plan-btn">Start Agency</a>
       </div>
 
     </div>
-    <p style="font-size:12px;color:var(--text-faint);margin-top:24px">1 credit = $0.01 · Stock video ~35 credits/project · AI images ~185 credits/project · Top-up credits available on all paid plans</p>
+    <p style="font-size:12px;color:var(--text-faint);margin-top:24px">1 credit = $0.01 · The AI assistant, scripts, scene breakdowns, stock footage &amp; exports are free — you only pay for AI images, video &amp; voice · Stock projects ~0 credits · AI image ~16 credits · 5s cinematic clip 60–240 credits · Top-up credits available on all paid plans</p>
   </div>
 </section>
 
