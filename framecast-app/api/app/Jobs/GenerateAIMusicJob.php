@@ -117,6 +117,7 @@ class GenerateAIMusicJob implements ShouldQueue
                     'project_id' => $this->projectId,
                     'scene_id'   => $this->sceneId,
                     'user_id'    => $scene->project->created_by_user_id,
+                    'upstream_cost_usd' => CreditService::cogsUsd('music'),
                     'metadata'   => ['provider_key' => $result['provider_key'], 'genre' => $this->genre],
                 ],
             ));

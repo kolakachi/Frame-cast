@@ -225,6 +225,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                 'project_id' => $project->getKey(),
                 'scene_id'   => $scene->getKey(),
                 'user_id'    => $project->created_by_user_id,
+                'upstream_cost_usd' => CreditService::cogsUsd($ranCharacterPath ? 'ai_image:character' : 'ai_image:gpt-image-1'),
                 'metadata'   => [
                     'provider_key' => $providerKey,
                     'style'        => $style,

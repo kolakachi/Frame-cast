@@ -84,7 +84,10 @@ class GenerateAIImageJob implements ShouldQueue
             // back to DALL-E (cheaper) we refund the difference after success.
             // A failure refunds the whole reservation (see catch()).
             $expectsCharacter = $useCharacterRef || ! empty($this->referenceAssetIds);
-            $reserved = $expectsCharacter ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+            // Single cost source of truth — the picked model's rate (or
+            // AI_CHARACTER for the reference path). Quote = charge.
+            $factory = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+            $reserved = $factory->generationCost($this->modelKey, $expectsCharacter);
             $charged = app(CreditService::class)->deduct(
                 (int) $scene->project->workspace_id,
                 $reserved,
@@ -93,7 +96,8 @@ class GenerateAIImageJob implements ShouldQueue
                     'project_id' => $this->projectId,
                     'scene_id'   => $this->sceneId,
                     'user_id'    => $scene->project->created_by_user_id,
-                    'metadata'   => ['style' => $this->style, 'reserved' => true],
+                    'upstream_cost_usd' => CreditService::cogsUsd($factory->cogsKey($this->modelKey, $expectsCharacter)),
+                    'metadata'   => ['style' => $this->style, 'reserved' => true, 'model_key' => $this->modelKey],
                 ],
             );
             if (! $charged) {
@@ -314,8 +318,14 @@ class GenerateAIImageJob implements ShouldQueue
             // DALL-E (cheaper), refund the difference. Actual can never exceed
             // the reservation, so this only ever refunds.
             $providerKey = (string) ($result['provider_key'] ?? 'dalle');
-            $ranCharacterPath = $providerKey === 'openai:gpt-image-2';
-            $actualCost = $ranCharacterPath ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+            // "Character path" only counts when we actually EXPECTED it. A
+            // deliberate gpt-image-2 *model pick* (non-character) must bill at
+            // its per-model rate (43), not AI_CHARACTER (50). Without the
+            // $expectsCharacter gate, every direct gpt-image-2 pick mis-charged.
+            $ranCharacterPath = $expectsCharacter && $providerKey === 'openai:gpt-image-2';
+            $actualCost = $ranCharacterPath
+                ? CreditService::AI_CHARACTER
+                : $factory->costFor($this->modelKey);
             if ($reserved > $actualCost) {
                 app(CreditService::class)->refund(
                     (int) $scene->project->workspace_id,

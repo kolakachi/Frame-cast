@@ -89,6 +89,12 @@ class AnimateSceneJob implements ShouldQueue
                     'project_id' => $this->projectId,
                     'scene_id'   => $this->sceneId,
                     'user_id'    => $scene->project->created_by_user_id,
+                    // COGS scales ×2 for 10s clips, mirroring the credit cost.
+                    'upstream_cost_usd' => (function () {
+                        $base = \App\Services\CreditService::cogsUsd('video:'.$this->tier)
+                            ?? \App\Services\CreditService::cogsUsd('video:quick');
+                        return $base === null ? null : $base * ($this->durationSeconds >= 10 ? 2 : 1);
+                    })(),
                     'metadata'   => ['tier' => $this->tier, 'duration_seconds' => $this->durationSeconds],
                 ],
             );

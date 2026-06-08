@@ -31,6 +31,33 @@ class CreditService
     public const VIDEO_SEEDANCE_PRO  = 200;  // ~$1.00 per 5s clip — ByteDance Seedance 1 Pro
     public const EXPORT     = 0;   // included
 
+    // Approximate upstream provider cost (COGS) in USD per operation. Stamped
+    // onto credit_ledger.upstream_cost_usd at deduction time so future
+    // recalibration runs on real spend data, not code comments
+    // (CREDIT_CALIBRATION.md §2). Best-estimate per-unit cost; animation scales
+    // ×2 for 10s clips (mirrors the credit cost).
+    public const COGS_USD = [
+        'ai_image:gpt-image-1'    => 0.063,
+        'ai_image:gpt-image-2'    => 0.17,
+        'ai_image:nano-banana'    => 0.039,
+        'ai_image:flux-schnell'   => 0.003,
+        'ai_image:sdxl-lightning' => 0.003,
+        'ai_image:character'      => 0.20,
+        'tts'                     => 0.001,
+        'music'                   => 0.01,
+        'video:quick'             => 0.30,
+        'video:seedance_lite'     => 0.50,
+        'video:balanced'          => 0.60,
+        'video:seedance_pro'      => 1.00,
+        'video:premium'           => 1.20,
+    ];
+
+    /** Best-estimate upstream USD cost for an op key (see COGS_USD). Null if unknown. */
+    public static function cogsUsd(string $key): ?float
+    {
+        return self::COGS_USD[$key] ?? null;
+    }
+
     // Monthly credit allocations per plan — sized for blended usage + breakage
     // (CREDIT_CALIBRATION.md §5). Clears ~50% margin even all-Kling worst case.
     public const PLAN_CREDITS = [

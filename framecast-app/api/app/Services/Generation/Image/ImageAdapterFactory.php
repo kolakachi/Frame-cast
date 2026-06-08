@@ -100,6 +100,40 @@ class ImageAdapterFactory
     }
 
     /**
+     * The credit cost to CHARGE for an image generation — the single source of
+     * truth shared by the controller pre-flight check and the job's deduction,
+     * so quote always equals charge (CREDIT_CALIBRATION.md §3).
+     *
+     * Precedence:
+     *   1. Character/reference path (gpt-image-2 /edits) → AI_CHARACTER.
+     *   2. An explicit non-default model pick → that model's per-model cost.
+     *   3. Default gpt-image-1 (or null) → honor the legacy high-quality flag
+     *      (AI_HIGH) else AI_MEDIUM.
+     */
+    public function generationCost(?string $modelKey, bool $expectsCharacter = false, ?string $aiQuality = null): int
+    {
+        if ($expectsCharacter) {
+            return \App\Services\CreditService::AI_CHARACTER;
+        }
+        if ($modelKey && $modelKey !== 'gpt-image-1' && isset(self::AVAILABLE[$modelKey])) {
+            return $this->costFor($modelKey);
+        }
+        return $aiQuality === 'high'
+            ? \App\Services\CreditService::AI_HIGH
+            : \App\Services\CreditService::AI_MEDIUM;
+    }
+
+    /** COGS key for the ledger's upstream_cost_usd (see CreditService::COGS_USD). */
+    public function cogsKey(?string $modelKey, bool $ranCharacter = false): string
+    {
+        if ($ranCharacter) {
+            return 'ai_image:character';
+        }
+        $key = $modelKey && isset(self::AVAILABLE[$modelKey]) ? $modelKey : 'gpt-image-1';
+        return 'ai_image:'.$key;
+    }
+
+    /**
      * For OpenAI-backed entries, return the specific model name to pass to
      * the /v1/images/generations call. Lets the picker pin a model name
      * (e.g. gpt-image-2) without touching the global config default.

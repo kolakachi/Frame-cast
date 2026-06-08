@@ -169,6 +169,7 @@ class GenerateTTSJob implements ShouldQueue
                     'project_id' => $project->getKey(),
                     'scene_id'   => $scene->getKey(),
                     'user_id'    => $project->created_by_user_id,
+                    'upstream_cost_usd' => CreditService::cogsUsd('tts'),
                     'metadata'   => ['voice_id' => $voiceId, 'language' => $language],
                 ],
             ));

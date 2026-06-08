@@ -802,9 +802,12 @@ class SceneController extends Controller
                 ->where('workspace_id', $user->workspace_id)
                 ->whereNotNull('reference_asset_id')
                 ->exists();
-        $cost = $usesCharacter
-            ? CreditService::AI_CHARACTER
-            : ($aiQuality === 'high' ? CreditService::AI_HIGH : CreditService::AI_MEDIUM);
+        // Cost = exactly what GenerateAIImageJob will charge (model-driven, or
+        // AI_CHARACTER for the reference path) so quote = charge. The job
+        // computes the same way (no quality flag — the per-scene picker has no
+        // medium/high split), so pass model + character only.
+        $cost = app(\App\Services\Generation\Image\ImageAdapterFactory::class)
+            ->generationCost($request->input('model_key'), $usesCharacter);
         $balance = $this->credits->balance((int) $user->workspace_id);
         if ($balance < $cost) {
             return response()->json([
