@@ -1144,9 +1144,11 @@ class SceneController extends Controller
         $scene->forceFill([
             'visual_asset_id' => $original->getKey(),
             'image_generation_settings_json' => array_merge($settings, [
-                'animation_video_asset_id'          => null,
-                'animation_original_image_asset_id' => null,
-                'animation_reverted_at'             => now()->toIso8601String(),
+                // Switch the active visual back to the still, but KEEP the
+                // original-still id + the clip history so the editor can show
+                // "still + every clip" as switchable cards. Nothing is deleted.
+                'animation_video_asset_id' => null,
+                'animation_reverted_at'    => now()->toIso8601String(),
             ]),
         ])->save();
 
@@ -1308,6 +1310,22 @@ class SceneController extends Controller
                 }
                 return $h;
             }, $settings['animation_history']);
+        }
+
+        // The preserved original still, enriched, so the editor renders it as
+        // the first switchable card alongside the animation clips.
+        $stillId = (int) ($settings['animation_original_image_asset_id'] ?? 0);
+        if ($stillId > 0) {
+            $still = Asset::query()->whereKey($stillId)->first();
+            if ($still) {
+                $settings['animation_original_image'] = [
+                    'asset_id'      => $still->getKey(),
+                    'thumbnail_url' => $still->thumbnail_url
+                        ? $this->assetUrlFromPath($still, (string) $still->thumbnail_url)
+                        : $this->assetUrl($still),
+                    'image_url'     => $this->assetUrl($still),
+                ];
+            }
         }
 
         return $settings;

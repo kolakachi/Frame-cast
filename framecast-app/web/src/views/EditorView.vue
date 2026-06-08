@@ -5007,6 +5007,31 @@ const activeSceneAnimationHistory = computed(() => {
   return Array.isArray(items) ? items : [];
 });
 
+// The preserved original still — shown as the first card in the version strip.
+const activeSceneAnimationOriginal = computed(() => {
+  return activeScene.value?.image_generation_settings?.animation_original_image ?? null;
+});
+
+// Switch the scene's visual back to the original still (a card click). Same
+// endpoint as the ↺ button, but no canRevert guard — clicking the still card
+// explicitly means "show the still".
+async function useOriginalStill() {
+  const scene = activeScene.value;
+  const original = activeSceneAnimationOriginal.value;
+  if (!scene || !original || scene.visual_asset_id === original.asset_id) return;
+  try {
+    const response = await api.post(`/scenes/${scene.id}/animate/revert`);
+    const updated = response.data?.data?.scene;
+    if (updated) replaceSceneInCollection(normalizeScenePayload(updated));
+  } catch (e) {
+    pushToast({
+      id: `still-fail-${scene.id}-${Date.now()}`,
+      title: 'Could not switch',
+      message: e?.response?.data?.error?.message ?? 'Try again.',
+    });
+  }
+}
+
 async function useHistoryAnimation(assetId) {
   const scene = activeScene.value;
   if (!scene) return;
@@ -6890,10 +6915,25 @@ onBeforeUnmount(() => {
                   </div>
                   <div v-if="activeSceneAnimationError" class="panel-error-copy">{{ activeSceneAnimationError }}</div>
 
-                  <!-- Animation history — last 3 clips, click to swap back -->
-                  <div v-if="activeSceneAnimationHistory.length > 1" class="anim-history-row">
-                    <div class="anim-history-label">Past animations</div>
+                  <!-- Versions — the original still + every animation, lined up.
+                       Click any to switch the scene's visual. Nothing is deleted. -->
+                  <div v-if="activeSceneAnimationOriginal && activeSceneAnimationHistory.length >= 1" class="anim-history-row">
+                    <div class="anim-history-label">Versions</div>
                     <div class="anim-history-strip">
+                      <!-- Original still -->
+                      <div
+                        :class="['anim-history-item', activeScene?.visual_asset_id === activeSceneAnimationOriginal.asset_id ? 'current' : '']"
+                        @click="useOriginalStill"
+                        title="Original still image"
+                      >
+                        <img
+                          v-if="activeSceneAnimationOriginal.thumbnail_url || activeSceneAnimationOriginal.image_url"
+                          :src="activeSceneAnimationOriginal.thumbnail_url || activeSceneAnimationOriginal.image_url"
+                          alt="Original still"
+                        />
+                        <span class="anim-history-tier">IMG</span>
+                      </div>
+                      <!-- Animation clips -->
                       <div
                         v-for="h in activeSceneAnimationHistory"
                         :key="h.asset_id"
@@ -12110,7 +12150,8 @@ select.control-value {
 }
 .anim-history-item:hover { border-color: rgba(255,255,255,0.3); }
 .anim-history-item.current { border-color: #ff6b35; box-shadow: 0 0 0 1px rgba(255,107,53,0.4); }
-.anim-history-item video {
+.anim-history-item video,
+.anim-history-item img {
   width: 100%; height: 100%; object-fit: cover; display: block;
 }
 .anim-history-tier {
