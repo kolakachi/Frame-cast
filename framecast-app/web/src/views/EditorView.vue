@@ -6915,13 +6915,15 @@ onBeforeUnmount(() => {
                   </div>
                   <div v-if="activeSceneAnimationError" class="panel-error-copy">{{ activeSceneAnimationError }}</div>
 
-                  <!-- Versions — the original still + every animation, lined up.
+                  <!-- Versions — every animation listed regardless of count,
+                       with the original still on top when it's available.
                        Click any to switch the scene's visual. Nothing is deleted. -->
-                  <div v-if="activeSceneAnimationOriginal && activeSceneAnimationHistory.length >= 1" class="anim-history-row">
+                  <div v-if="activeSceneAnimationHistory.length >= 1" class="anim-history-row">
                     <div class="anim-history-label">Versions</div>
                     <div class="anim-history-strip">
-                      <!-- Original still -->
+                      <!-- Original still (only when we have it preserved) -->
                       <div
+                        v-if="activeSceneAnimationOriginal"
                         :class="['anim-history-item', activeScene?.visual_asset_id === activeSceneAnimationOriginal.asset_id ? 'current' : '']"
                         @click="useOriginalStill"
                         title="Original still image"
