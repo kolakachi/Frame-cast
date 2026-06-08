@@ -78,6 +78,42 @@ class GenerateAIImageJob implements ShouldQueue
                 && $scene->character?->reference_asset_id
                 && $scene->character?->referenceAsset;
 
+            // Reserve credits UP-FRONT (atomic) so an image can't be generated
+            // for free when the balance has run out. Reserve the character rate
+            // when a character/reference path will be attempted; if it falls
+            // back to DALL-E (cheaper) we refund the difference after success.
+            // A failure refunds the whole reservation (see catch()).
+            $expectsCharacter = $useCharacterRef || ! empty($this->referenceAssetIds);
+            $reserved = $expectsCharacter ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+            $charged = app(CreditService::class)->deduct(
+                (int) $scene->project->workspace_id,
+                $reserved,
+                $expectsCharacter ? 'ai_image:character' : 'ai_image:manual',
+                [
+                    'project_id' => $this->projectId,
+                    'scene_id'   => $this->sceneId,
+                    'user_id'    => $scene->project->created_by_user_id,
+                    'metadata'   => ['style' => $this->style, 'reserved' => true],
+                ],
+            );
+            if (! $charged) {
+                $scene->forceFill([
+                    'image_generation_settings_json' => array_merge(
+                        $scene->image_generation_settings_json ?? [],
+                        [
+                            'in_progress'      => false,
+                            'needs_visual'     => true,
+                            'last_error'       => 'Not enough credits to generate this image.',
+                            'generation_token' => $this->generationToken,
+                        ],
+                    ),
+                ])->save();
+                GenerationProgressed::dispatch($this->projectId, 'ai_image', 'failed', 'Not enough credits to generate this image.', ['scene_id' => $this->sceneId]);
+                app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'ai_image', 'Not enough credits to generate this image.', $this->sceneId);
+
+                return;
+            }
+
             $prompt = $this->buildPrompt($scene, ! $useCharacterRef);
             $aspectRatio = $scene->project->aspect_ratio ?? '9:16';
 
@@ -273,24 +309,20 @@ class GenerateAIImageJob implements ShouldQueue
             // back to AI_MEDIUM otherwise. The SceneController guard already
             // requires AI_CHARACTER credits up-front so this aligns guard
             // and deduction.
+            // Reconcile the up-front reservation against what actually ran.
+            // We already charged $reserved; if the character path fell back to
+            // DALL-E (cheaper), refund the difference. Actual can never exceed
+            // the reservation, so this only ever refunds.
             $providerKey = (string) ($result['provider_key'] ?? 'dalle');
             $ranCharacterPath = $providerKey === 'openai:gpt-image-2';
-            $imageCost = $ranCharacterPath ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
-
-            rescue(fn () => app(CreditService::class)->deduct(
-                (int) $scene->project->workspace_id,
-                $imageCost,
-                $ranCharacterPath ? 'ai_image:character' : 'ai_image:manual',
-                [
-                    'project_id' => $this->projectId,
-                    'scene_id'   => $this->sceneId,
-                    'user_id'    => $scene->project->created_by_user_id,
-                    'metadata'   => [
-                        'provider_key' => $providerKey,
-                        'style'        => $this->style,
-                    ],
-                ],
-            ));
+            $actualCost = $ranCharacterPath ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+            if ($reserved > $actualCost) {
+                app(CreditService::class)->refund(
+                    (int) $scene->project->workspace_id,
+                    $reserved - $actualCost,
+                    'ai_image:reconcile',
+                );
+            }
             // Multi-scene aware progress: count scenes in this project that
             // already have a visual_asset_id. If we're not the last one to
             // finish, emit 'processing' with done/total so the progress view
@@ -324,6 +356,17 @@ class GenerateAIImageJob implements ShouldQueue
                 );
             }
         } catch (\Throwable $e) {
+            // Generation failed — refund the up-front reservation so a failed
+            // image costs nothing. This job doesn't retry (the catch handles
+            // the failure), so it's a single refund.
+            if (! empty($charged)) {
+                app(CreditService::class)->refund(
+                    (int) $scene->project->workspace_id,
+                    $reserved,
+                    'ai_image:manual',
+                );
+            }
+
             $isPolicyViolation = $this->isPolicyError($e->getMessage());
 
             // Record every provider rejection in moderation_events so the
