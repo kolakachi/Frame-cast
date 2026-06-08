@@ -534,8 +534,13 @@ function trackMoodLabel(track) {
                         :title="asset.title"
                         @click="selectItem(asset)"
                       >
+                        <video
+                          v-if="isVideo(asset)"
+                          :src="asset.storage_url"
+                          muted playsinline preload="metadata"
+                        ></video>
                         <img
-                          v-if="assetThumbUrl(asset)"
+                          v-else-if="assetThumbUrl(asset)"
                           :src="assetThumbUrl(asset)"
                           :alt="asset.title"
                           loading="lazy"
@@ -724,8 +729,13 @@ function trackMoodLabel(track) {
                         :title="asset.title"
                         @click="selectItem(asset)"
                       >
+                        <video
+                          v-if="isVideo(asset)"
+                          :src="asset.storage_url"
+                          muted playsinline preload="metadata"
+                        ></video>
                         <img
-                          v-if="assetThumbUrl(asset)"
+                          v-else-if="assetThumbUrl(asset)"
                           :src="assetThumbUrl(asset)"
                           :alt="asset.title"
                           loading="lazy"
@@ -789,8 +799,13 @@ function trackMoodLabel(track) {
               <!-- Visual preview -->
               <template v-else-if="!isAudioMode">
                 <div class="mp-preview-thumb">
+                  <video
+                    v-if="isVideo(selectedItem)"
+                    :src="selectedItem.storage_url"
+                    muted playsinline controls preload="metadata"
+                  ></video>
                   <img
-                    v-if="assetThumbUrl(selectedItem)"
+                    v-else-if="assetThumbUrl(selectedItem)"
                     :src="assetThumbUrl(selectedItem)"
                     :alt="selectedItem.title"
                   />
@@ -1097,7 +1112,7 @@ function trackMoodLabel(track) {
 }
 .mp-visual-card:hover { border-color: var(--color-border-active); transform: scale(1.02); }
 .mp-visual-card.selected { border-color: var(--color-accent); }
-.mp-visual-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mp-visual-card img, .mp-visual-card video { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .mp-visual-placeholder {
   width: 100%;
@@ -1356,7 +1371,7 @@ function trackMoodLabel(track) {
   overflow: hidden;
   margin-bottom: 12px;
 }
-.mp-preview-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mp-preview-thumb img, .mp-preview-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mp-preview-placeholder { width: 100%; height: 100%; background: var(--color-bg-card); }
 
 .mp-preview-name {
