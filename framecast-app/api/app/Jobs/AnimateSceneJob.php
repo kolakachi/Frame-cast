@@ -72,6 +72,38 @@ class AnimateSceneJob implements ShouldQueue
             'animation_cost'          => $cost,
         ]);
 
+        // Charge up-front (reserve) here — the SINGLE billing point for EVERY
+        // animation path (manual editor, Cruise, one-shot, chained). Animation
+        // used to be charged only on the manual path, so Cruise/one-shot clips
+        // — the priciest op, ~75% of spend — were generated for free. Resume
+        // re-dispatches were already paid on the first attempt, so skip them.
+        // Refunded in catch() on failure, so a failed clip is free and a retry
+        // (tries=2) nets to exactly one charge.
+        $charged = false;
+        if (! $this->resumePredictionId) {
+            $charged = app(\App\Services\CreditService::class)->deduct(
+                (int) $scene->project->workspace_id,
+                $cost,
+                "animate:{$this->tier}",
+                [
+                    'project_id' => $this->projectId,
+                    'scene_id'   => $this->sceneId,
+                    'user_id'    => $scene->project->created_by_user_id,
+                    'metadata'   => ['tier' => $this->tier, 'duration_seconds' => $this->durationSeconds],
+                ],
+            );
+            if (! $charged) {
+                $this->stampAnimationState($scene, [
+                    'animation_in_progress' => false,
+                    'animation_last_error'  => 'Not enough credits to animate this scene.',
+                ]);
+                GenerationProgressed::dispatch($this->projectId, 'animation', 'failed', 'Not enough credits to animate this scene.', ['scene_id' => $this->sceneId]);
+                app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'animation', 'Not enough credits to animate this scene.', $this->sceneId);
+
+                return;
+            }
+        }
+
         try {
             $sourceAsset = $scene->visual_asset_id
                 ? Asset::query()->find($scene->visual_asset_id)
@@ -205,6 +237,17 @@ class AnimateSceneJob implements ShouldQueue
             ]);
             app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'animation', $this->sceneId);
         } catch (\Throwable $e) {
+            // The clip failed — refund what we charged up-front so a failed
+            // animation costs nothing. (On a retry the next attempt re-charges;
+            // deduct + refund-on-fail nets to one charge on eventual success.)
+            if ($charged) {
+                app(\App\Services\CreditService::class)->refund(
+                    (int) $scene->project->workspace_id,
+                    $cost,
+                    "animate:{$this->tier}",
+                );
+            }
+
             // Animation safety rejections from Replicate (Kling/Hailuo/Wan
             // each have their own content filters) get logged to
             // moderation_events the same way image gen rejections do.

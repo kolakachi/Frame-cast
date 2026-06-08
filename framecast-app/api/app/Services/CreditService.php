@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CreditLedgerEntry;
 use App\Models\Workspace;
+use Illuminate\Support\Facades\DB;
 
 class CreditService
 {
@@ -115,23 +116,37 @@ class CreditService
      */
     public function deduct(int $workspaceId, int $amount, string $operation = '', array $context = []): bool
     {
-        $workspace = Workspace::find($workspaceId);
-        if (! $workspace || $workspace->creditsBalance() < $amount) {
-            return false;
+        if ($amount <= 0) {
+            return true; // nothing to charge
         }
 
-        $remaining = $amount;
+        // Atomic: lock the workspace row, re-check the balance UNDER the lock,
+        // then decrement. Without this, two concurrent deductions (e.g. Cruise
+        // "Apply all") both read the same balance, both pass the check, and
+        // overdraw — the credit leak. The lock serialises them.
+        $charged = DB::transaction(function () use ($workspaceId, $amount): bool {
+            $workspace = Workspace::query()->whereKey($workspaceId)->lockForUpdate()->first();
+            if (! $workspace || $workspace->creditsBalance() < $amount) {
+                return false;
+            }
 
-        // Spend monthly first
-        $fromMonthly = min($remaining, (int) $workspace->credits_monthly);
-        $remaining  -= $fromMonthly;
+            $remaining   = $amount;
+            $fromMonthly = min($remaining, (int) $workspace->credits_monthly);
+            $remaining  -= $fromMonthly;
+            $fromTopup   = min($remaining, (int) $workspace->credits_topup);
 
-        // Then top-up
-        $fromTopup = min($remaining, (int) $workspace->credits_topup);
+            if ($fromMonthly > 0) {
+                $workspace->decrement('credits_monthly', $fromMonthly);
+            }
+            if ($fromTopup > 0) {
+                $workspace->decrement('credits_topup', $fromTopup);
+            }
 
-        $workspace->decrement('credits_monthly', $fromMonthly);
-        if ($fromTopup > 0) {
-            $workspace->decrement('credits_topup', $fromTopup);
+            return true;
+        });
+
+        if (! $charged) {
+            return false;
         }
 
         // Best-effort ledger write — never let a logging failure mask a
@@ -176,6 +191,31 @@ class CreditService
                 'credits'       => -$amount, // negative = credit going INTO the workspace
                 'balance_after' => $this->balance($workspaceId),
                 'metadata'      => ['reason' => $reason],
+            ]);
+        }, null, false);
+    }
+
+    /**
+     * Refund credits for work that was charged up-front but then failed to
+     * deliver (a generation job that errored or was aborted). Goes back to
+     * credits_topup (like a grant) and lands a `refund:<op>` ledger row so it's
+     * queryable. No-op for zero/negative amounts.
+     */
+    public function refund(int $workspaceId, int $amount, string $operation = ''): void
+    {
+        if ($amount <= 0) {
+            return;
+        }
+
+        Workspace::where('id', $workspaceId)->increment('credits_topup', $amount);
+
+        rescue(function () use ($workspaceId, $amount, $operation) {
+            CreditLedgerEntry::query()->create([
+                'workspace_id'  => $workspaceId,
+                'operation'     => mb_substr('refund:'.($operation !== '' ? $operation : 'unspecified'), 0, 64),
+                'credits'       => -$amount, // negative = credit going back INTO the workspace
+                'balance_after' => $this->balance($workspaceId),
+                'metadata'      => ['refund_of' => $operation],
             ]);
         }, null, false);
     }

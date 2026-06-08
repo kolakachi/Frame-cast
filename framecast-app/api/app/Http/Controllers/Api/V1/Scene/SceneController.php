@@ -938,22 +938,11 @@ class SceneController extends Controller
             }
         }
 
-        if (! $this->credits->deduct(
-            (int) $user->workspace_id,
-            $cost,
-            "animate:{$validated['tier']}",
-            [
-                'project_id' => $scene->project_id,
-                'scene_id'   => $scene->getKey(),
-                'user_id'    => $user->getKey(),
-                'metadata'   => [
-                    'tier'             => $validated['tier'],
-                    'duration_seconds' => $durationSeconds,
-                ],
-            ],
-        )) {
-            return $this->error('insufficient_credits', 'Could not deduct credits for this animation.', 402);
-        }
+        // NOTE: credits are charged inside AnimateSceneJob now — the single
+        // billing point for every animation path (manual, Cruise, one-shot,
+        // chained). The balance check above gives the user instant feedback;
+        // the job does the atomic deduct + refund-on-failure. Charging here too
+        // would double-bill manual animations.
 
         // Lock the scene so the editor knows an animation is running.
         // Persist last-used settings too so the modal pre-fills on re-animate.
