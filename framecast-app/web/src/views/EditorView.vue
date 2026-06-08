@@ -4999,7 +4999,12 @@ function closeAnimateModal() {
 
 const canRevertAnimation = computed(() => {
   const settings = activeScene.value?.image_generation_settings ?? {};
-  return activeSceneAlreadyAnimated.value && Boolean(settings.animation_original_image_asset_id);
+  const originalId = settings.animation_original_image_asset_id;
+  if (!originalId) return false;
+  // Available whenever the current visual is NOT already the original still —
+  // i.e. any animation version is selected. Don't gate on the video-type
+  // check (it was hiding the button after switching versions); compare ids.
+  return Number(activeScene.value?.visual_asset_id) !== Number(originalId);
 });
 
 const activeSceneAnimationHistory = computed(() => {
