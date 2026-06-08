@@ -1310,6 +1310,7 @@ const aiImageError = ref("");
 
 // Animate (i2v rung 4) state.
 const animateModalOpen = ref(false);
+const animateModelOpen = ref(false);       // the model dropdown's open state
 const animateTier = ref("quick");          // quick | balanced | premium | seedance_lite | seedance_pro
 const animateDuration = ref(5);            // value depends on tier — see ANIMATE_TIER_DURATIONS
 const animateMotionPrompt = ref("");
@@ -1338,6 +1339,8 @@ const ANIMATE_TIER_META = {
   seedance_pro:  { name: "Seedance Pro",  sub: "ByteDance · sharp", quality: "Very high",  render: "~2 min" },
   premium:       { name: "Kling 2.1",     sub: "Cinematic",         quality: "Top",        render: "~3 min" },
 };
+// Dropdown order: cheapest/fastest → most cinematic.
+const ANIMATE_TIER_ORDER = ['quick', 'seedance_lite', 'balanced', 'seedance_pro', 'premium'];
 
 // When the user switches tier, snap the chosen duration to one the new tier
 // actually supports. Prevents the 422 ("duration must be one of: 6, 10") that
@@ -4985,11 +4988,13 @@ function openAnimateModal() {
     || "";
   animateError.value = "";
   animateModalOpen.value = true;
+  animateModelOpen.value = false;
 }
 
 function closeAnimateModal() {
   if (animateSubmitting.value) return;
   animateModalOpen.value = false;
+  animateModelOpen.value = false;
 }
 
 const canRevertAnimation = computed(() => {
@@ -8281,24 +8286,37 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="ap-field">
-            <label class="ap-label">Quality tier</label>
-            <div class="anim-tier-grid">
-              <button
-                v-for="key in ['quick','balanced','premium']"
-                :key="key"
-                type="button"
-                :class="['anim-tier', animateTier === key ? 'selected' : '']"
-                @click="animateTier = key"
-              >
-                <div class="anim-tier-head">
-                  <span class="anim-tier-name">{{ ANIMATE_TIER_META[key].name }}</span>
-                  <span v-if="key === 'balanced'" class="anim-tier-pill">RECOMMENDED</span>
-                </div>
-                <div class="anim-tier-sub">{{ ANIMATE_TIER_META[key].sub }}</div>
-                <div class="anim-tier-row"><span>Quality</span><span>{{ ANIMATE_TIER_META[key].quality }}</span></div>
-                <div class="anim-tier-row"><span>Render</span><span>{{ ANIMATE_TIER_META[key].render }}</span></div>
-                <div class="anim-tier-row"><span>Cost ({{ ANIMATE_TIER_DURATIONS[key][0] }} s)</span><span class="anim-tier-cost">{{ ANIMATE_TIER_COSTS_5S[key] }} credits</span></div>
+            <label class="ap-label">Model</label>
+            <div class="anim-model-dd">
+              <button type="button" class="anim-model-trigger" :class="{ open: animateModelOpen }" @click="animateModelOpen = !animateModelOpen">
+                <span class="anim-model-trigger-main">
+                  <span class="anim-model-trigger-name">{{ ANIMATE_TIER_META[animateTier].name }}</span>
+                  <span class="anim-model-trigger-sub">{{ ANIMATE_TIER_META[animateTier].sub }} · {{ ANIMATE_TIER_META[animateTier].quality }} · {{ ANIMATE_TIER_META[animateTier].render }}</span>
+                </span>
+                <span class="anim-model-trigger-cost">{{ ANIMATE_TIER_COSTS_5S[animateTier] }} cr</span>
+                <span class="anim-model-caret">▾</span>
               </button>
+              <div v-if="animateModelOpen" class="anim-model-menu">
+                <button
+                  v-for="key in ANIMATE_TIER_ORDER"
+                  :key="key"
+                  type="button"
+                  :class="['anim-model-option', animateTier === key ? 'selected' : '']"
+                  @click="animateTier = key; animateModelOpen = false"
+                >
+                  <span class="anim-model-opt-left">
+                    <span class="anim-model-opt-name">
+                      {{ ANIMATE_TIER_META[key].name }}
+                      <span v-if="key === 'balanced'" class="anim-tier-pill">RECOMMENDED</span>
+                    </span>
+                    <span class="anim-model-opt-sub">{{ ANIMATE_TIER_META[key].sub }} · {{ ANIMATE_TIER_META[key].quality }} · {{ ANIMATE_TIER_META[key].render }} · {{ ANIMATE_TIER_DURATIONS[key].join('/') }} s</span>
+                  </span>
+                  <span class="anim-model-opt-right">
+                    <span class="anim-model-opt-cost">{{ ANIMATE_TIER_COSTS_5S[key] }} cr</span>
+                    <span v-if="animateTier === key" class="anim-model-opt-check">✓</span>
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -12146,6 +12164,43 @@ select.control-value {
 }
 .anim-tier-row span:first-child { opacity: 0.55; }
 .anim-tier-cost { color: #ff6b35; font-weight: 700; }
+
+/* Model dropdown */
+.anim-model-dd { position: relative; }
+.anim-model-trigger {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--color-border); background: var(--color-bg-elevated);
+  color: var(--color-text-primary); cursor: pointer; text-align: left;
+  transition: border-color 0.15s;
+}
+.anim-model-trigger:hover, .anim-model-trigger.open { border-color: rgba(255,107,53,0.5); }
+.anim-model-trigger-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.anim-model-trigger-name { font-size: 13px; font-weight: 600; }
+.anim-model-trigger-sub { font-size: 10.5px; color: var(--color-text-muted); }
+.anim-model-trigger-cost { font-size: 12px; font-weight: 700; color: #ff6b35; white-space: nowrap; }
+.anim-model-caret { color: var(--color-text-muted); font-size: 11px; }
+.anim-model-trigger.open .anim-model-caret { color: #ff6b35; }
+
+.anim-model-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30;
+  background: var(--color-bg-card, #141416); border: 1px solid var(--color-border);
+  border-radius: 10px; padding: 4px; box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+  max-height: 300px; overflow-y: auto;
+}
+.anim-model-option {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border: none; background: none; border-radius: 8px;
+  color: var(--color-text-primary); cursor: pointer; text-align: left;
+}
+.anim-model-option:hover { background: var(--color-bg-elevated); }
+.anim-model-option.selected { background: rgba(255,107,53,0.1); }
+.anim-model-opt-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.anim-model-opt-name { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.anim-model-opt-sub { font-size: 10px; color: var(--color-text-muted); }
+.anim-model-opt-right { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.anim-model-opt-cost { font-size: 12px; font-weight: 700; color: #ff6b35; }
+.anim-model-opt-check { color: #ff6b35; font-size: 13px; }
 
 .anim-duration-row { display: flex; gap: 6px; }
 .anim-dpill {
