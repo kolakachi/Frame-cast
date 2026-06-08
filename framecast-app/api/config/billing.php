@@ -56,16 +56,19 @@ return [
         'topup_products' => [
             env('FASTSPRING_PRODUCT_TOPUP_SMALL',  'wyvstudio-topup-500')  => 500,
             env('FASTSPRING_PRODUCT_TOPUP_MEDIUM', 'wyvstudio-topup-1200') => 1200,
-            env('FASTSPRING_PRODUCT_TOPUP_LARGE',  'wyvstudio-topup-3000') => 3000,
-            env('FASTSPRING_PRODUCT_TOPUP_XL',     'wyvstudio-topup-8000') => 8000,
+            env('FASTSPRING_PRODUCT_TOPUP_LARGE',  'wyvstudio-topup-2500') => 2500,
+            env('FASTSPRING_PRODUCT_TOPUP_XL',     'wyvstudio-topup-5000') => 5000,
         ],
 
-        // Frontend metadata for the top-up pack picker.
+        // Frontend metadata for the top-up pack picker. Priced ABOVE the plan
+        // per-credit rate (~$0.0115–0.0130) so top-ups are a premium convenience,
+        // not a cheaper path than upgrading. ~$0.014–0.016/cr → ≥51% margin
+        // worst-case (CREDIT_CALIBRATION.md §10).
         'topup_packs' => [
-            ['key' => 'small',  'credits' => 500,  'price_usd' => 5,  'product_path' => env('FASTSPRING_PRODUCT_TOPUP_SMALL',  'wyvstudio-topup-500')],
-            ['key' => 'medium', 'credits' => 1200, 'price_usd' => 10, 'product_path' => env('FASTSPRING_PRODUCT_TOPUP_MEDIUM', 'wyvstudio-topup-1200')],
-            ['key' => 'large',  'credits' => 3000, 'price_usd' => 22, 'product_path' => env('FASTSPRING_PRODUCT_TOPUP_LARGE',  'wyvstudio-topup-3000')],
-            ['key' => 'xl',     'credits' => 8000, 'price_usd' => 55, 'product_path' => env('FASTSPRING_PRODUCT_TOPUP_XL',     'wyvstudio-topup-8000')],
+            ['key' => 'small',  'credits' => 500,  'price_usd' => 8,  'product_path' => env('FASTSPRING_PRODUCT_TOPUP_SMALL',  'wyvstudio-topup-500')],
+            ['key' => 'medium', 'credits' => 1200, 'price_usd' => 18, 'product_path' => env('FASTSPRING_PRODUCT_TOPUP_MEDIUM', 'wyvstudio-topup-1200')],
+            ['key' => 'large',  'credits' => 2500, 'price_usd' => 36, 'product_path' => env('FASTSPRING_PRODUCT_TOPUP_LARGE',  'wyvstudio-topup-2500')],
+            ['key' => 'xl',     'credits' => 5000, 'price_usd' => 70, 'product_path' => env('FASTSPRING_PRODUCT_TOPUP_XL',     'wyvstudio-topup-5000')],
         ],
     ],
 
@@ -110,18 +113,19 @@ return [
 
         // Paddle price IDs for credit top-up packs (price_id => credit amount)
         'topup_prices' => [
-            env('PADDLE_PRICE_TOPUP_SMALL', '')  => 500,    // $5
-            env('PADDLE_PRICE_TOPUP_MEDIUM', '') => 1200,   // $10
-            env('PADDLE_PRICE_TOPUP_LARGE', '')  => 3000,   // $22
-            env('PADDLE_PRICE_TOPUP_XL', '')     => 8000,   // $55
+            env('PADDLE_PRICE_TOPUP_SMALL', '')  => 500,    // $8
+            env('PADDLE_PRICE_TOPUP_MEDIUM', '') => 1200,   // $18
+            env('PADDLE_PRICE_TOPUP_LARGE', '')  => 2500,   // $36
+            env('PADDLE_PRICE_TOPUP_XL', '')     => 5000,   // $70
         ],
 
-        // Top-up packs metadata for the frontend (label, credits, price)
+        // Top-up packs metadata for the frontend (label, credits, price).
+        // Priced above plan per-credit rate — see fastspring.topup_packs note.
         'topup_packs' => [
-            ['key' => 'small',  'credits' => 500,  'price_usd' => 5,  'price_id' => env('PADDLE_PRICE_TOPUP_SMALL', '')],
-            ['key' => 'medium', 'credits' => 1200, 'price_usd' => 10, 'price_id' => env('PADDLE_PRICE_TOPUP_MEDIUM', '')],
-            ['key' => 'large',  'credits' => 3000, 'price_usd' => 22, 'price_id' => env('PADDLE_PRICE_TOPUP_LARGE', '')],
-            ['key' => 'xl',     'credits' => 8000, 'price_usd' => 55, 'price_id' => env('PADDLE_PRICE_TOPUP_XL', '')],
+            ['key' => 'small',  'credits' => 500,  'price_usd' => 8,  'price_id' => env('PADDLE_PRICE_TOPUP_SMALL', '')],
+            ['key' => 'medium', 'credits' => 1200, 'price_usd' => 18, 'price_id' => env('PADDLE_PRICE_TOPUP_MEDIUM', '')],
+            ['key' => 'large',  'credits' => 2500, 'price_usd' => 36, 'price_id' => env('PADDLE_PRICE_TOPUP_LARGE', '')],
+            ['key' => 'xl',     'credits' => 5000, 'price_usd' => 70, 'price_id' => env('PADDLE_PRICE_TOPUP_XL', '')],
         ],
 
         // Base URL differs between sandbox and production
