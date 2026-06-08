@@ -9,12 +9,14 @@ namespace App\Services\Generation\Image;
  * keep AVAILABLE in sync with the Vue editor's IMAGE_MODEL_OPTIONS and the
  * one-shot wizard.
  *
- * Pricing is approximate retail at 1cr = $0.005:
- *   gpt-image-1        ~$0.17 -> 35cr (mapped to AI_MEDIUM=15 for now)
- *   gpt-image-2 (char) ~$0.30 -> 60cr (mapped to AI_CHARACTER=50)
- *   nano-banana        ~$0.04 ->  8cr
- *   flux-schnell       ~$0.003 -> 1cr  (price-leader option)
- *   sdxl-lightning     ~$0.003 -> 1cr  (same tier as flux)
+ * Pricing LOCKED to spec/CREDIT_CALIBRATION.md (Option B): credits =
+ * round(COGS ÷ $0.004) → uniform ~60% margin; retail 1cr = $0.01.
+ *   gpt-image-1 medium ~$0.063 -> 16cr
+ *   gpt-image-2        ~$0.17  -> 43cr
+ *   gpt-image-2 (char) ~$0.20  -> 50cr (AI_CHARACTER, /edits path)
+ *   nano-banana        ~$0.039 -> 10cr
+ *   flux-schnell       ~$0.003 ->  1cr  (price-leader, 1cr floor)
+ *   sdxl-lightning     ~$0.003 ->  1cr  (same tier as flux)
  */
 class ImageAdapterFactory
 {
@@ -27,14 +29,14 @@ class ImageAdapterFactory
         'gpt-image-1' => [
             'label'   => 'GPT Image 1',
             'sub'     => 'OpenAI · photoreal default',
-            'cost'    => 15,
+            'cost'    => 16,
             'render'  => '~20s',
             'adapter' => DalleImageAdapter::class,
         ],
         'gpt-image-2' => [
             'label'   => 'GPT Image 2',
             'sub'     => 'OpenAI · newer, higher fidelity',
-            'cost'    => 35,
+            'cost'    => 43,
             'render'  => '~30s',
             // Routes through DalleImageAdapter (text-to-image /generations)
             // with the model overridden to gpt-image-2 via openai_model.
@@ -49,26 +51,23 @@ class ImageAdapterFactory
         'nano-banana' => [
             'label'   => 'Nano Banana',
             'sub'     => 'Google · cheap fast portraits',
-            // Was 8 (≈at-cost); bumped to 15 to keep ~2× margin on the
-            // ~$0.04 upstream price.
-            'cost'    => 15,
+            // ~$0.039 COGS → round(÷$0.004) = 10cr (uniform 60% margin).
+            'cost'    => 10,
             'render'  => '~10s',
             'adapter' => NanoBananaImageAdapter::class,
         ],
         'flux-schnell' => [
             'label'   => 'Flux Schnell',
             'sub'     => 'BFL · cheapest, ~3s render',
-            // Was 1 (at-cost); bumped to 3 for a minimal margin layer
-            // — upstream is ~$0.003 so even 3cr is a ~5× markup, which
-            // covers our own infra+ledger overhead.
-            'cost'    => 3,
+            // ~$0.003 COGS rounds below 1cr → held at the 1cr floor.
+            'cost'    => 1,
             'render'  => '~5s',
             'adapter' => FluxSchnellImageAdapter::class,
         ],
         'sdxl-lightning' => [
             'label'   => 'SDXL Lightning',
             'sub'     => 'ByteDance · cheap stylish',
-            'cost'    => 3,    // same logic as flux-schnell
+            'cost'    => 1,    // same tier as flux-schnell (1cr floor)
             'render'  => '~5s',
             'adapter' => SdxlLightningImageAdapter::class,
         ],
@@ -97,7 +96,7 @@ class ImageAdapterFactory
         $key = $modelKey && isset(self::AVAILABLE[$modelKey])
             ? $modelKey
             : 'gpt-image-1';
-        return (int) (self::AVAILABLE[$key]['cost'] ?? 15);
+        return (int) (self::AVAILABLE[$key]['cost'] ?? 16);
     }
 
     /**

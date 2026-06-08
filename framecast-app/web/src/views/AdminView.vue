@@ -497,10 +497,10 @@ const creditCosts = { SCRIPT: 2, BREAKDOWN: 1, STOCK: 1, TTS: 2, AI_MEDIUM: 15, 
 
 const plansData = [
   { key: 'free',       name: 'Free',       credits_monthly: 0,     channel_limit: 1,   render_limit: 10,    watermark: true,  ai_image_quality: ['medium'] },
-  { key: 'starter',    name: 'Starter',    credits_monthly: 500,   channel_limit: 1,   render_limit: 50,    watermark: false, ai_image_quality: ['medium'] },
-  { key: 'creator',    name: 'Creator',    credits_monthly: 1500,  channel_limit: 3,   render_limit: 200,   watermark: false, ai_image_quality: ['medium', 'high'] },
-  { key: 'pro',        name: 'Pro',        credits_monthly: 4000,  channel_limit: 10,  render_limit: 1000,  watermark: false, ai_image_quality: ['medium', 'high'] },
-  { key: 'agency',     name: 'Agency',     credits_monthly: 10000, channel_limit: 999, render_limit: 10000, watermark: false, ai_image_quality: ['medium', 'high'] },
+  { key: 'starter',    name: 'Starter',    credits_monthly: 1500,  channel_limit: 1,   render_limit: 50,    watermark: false, ai_image_quality: ['medium'] },
+  { key: 'creator',    name: 'Creator',    credits_monthly: 3000,  channel_limit: 3,   render_limit: 200,   watermark: false, ai_image_quality: ['medium', 'high'] },
+  { key: 'pro',        name: 'Pro',        credits_monthly: 6500,  channel_limit: 10,  render_limit: 1000,  watermark: false, ai_image_quality: ['medium', 'high'] },
+  { key: 'agency',     name: 'Agency',     credits_monthly: 13000, channel_limit: 999, render_limit: 10000, watermark: false, ai_image_quality: ['medium', 'high'] },
   { key: 'enterprise', name: 'Enterprise', credits_monthly: 50000, channel_limit: 9999,render_limit: 99999, watermark: false, ai_image_quality: ['medium', 'high'] },
 ]
 

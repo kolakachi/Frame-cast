@@ -1296,9 +1296,9 @@ const aiImagePending = ref(false);
 // still renders if the API call fails.
 const aiImageModelKey = ref('gpt-image-1');
 const availableImageModelsEditor = ref([
-  { key: 'gpt-image-1',    label: 'GPT Image 1',    sub: 'OpenAI photoreal',   cost: 15, render: '~20s', requires_reference: false },
-  { key: 'gpt-image-2',    label: 'GPT Image 2',    sub: 'OpenAI · newer',      cost: 35, render: '~30s', requires_reference: false },
-  { key: 'nano-banana',    label: 'Nano Banana',    sub: 'Google · cheap',      cost:  8, render: '~10s', requires_reference: false },
+  { key: 'gpt-image-1',    label: 'GPT Image 1',    sub: 'OpenAI photoreal',   cost: 16, render: '~20s', requires_reference: false },
+  { key: 'gpt-image-2',    label: 'GPT Image 2',    sub: 'OpenAI · newer',      cost: 43, render: '~30s', requires_reference: false },
+  { key: 'nano-banana',    label: 'Nano Banana',    sub: 'Google · cheap',      cost: 10, render: '~10s', requires_reference: false },
   { key: 'flux-schnell',   label: 'Flux Schnell',   sub: 'cheapest',            cost:  1, render: '~5s',  requires_reference: false },
   { key: 'sdxl-lightning', label: 'SDXL Lightning', sub: 'stylish',             cost:  1, render: '~5s',  requires_reference: false },
 ]);
@@ -7681,7 +7681,7 @@ onBeforeUnmount(() => {
                     placeholder="…or type your own: e.g. tense neon synth wave"
                   />
                   <div style="font-size:11px;color:var(--text-muted);margin:6px 0 10px;line-height:1.5;">
-                    Replaces the current background music. Costs 5 credits. Generation takes ~30s; you'll see it appear when ready.
+                    Replaces the current background music. Costs 3 credits. Generation takes ~30s; you'll see it appear when ready.
                   </div>
                   <button class="btn btn-primary btn-sm panel-full-btn" type="button"
                     :disabled="aiMusicPending || !aiMusicMood.trim()"

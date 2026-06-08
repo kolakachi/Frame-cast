@@ -962,7 +962,7 @@ onMounted(() => {
             <table class="table-clean">
               <thead><tr><th>Feature</th><th>Free</th><th>Creator</th><th>Pro</th></tr></thead>
               <tbody>
-                <tr><td>Credits / mo</td><td>200 (one-off)</td><td class="col-accent">1,500</td><td>4,000</td></tr>
+                <tr><td>Credits / mo</td><td>200 (one-off)</td><td class="col-accent">3,000</td><td>6,500</td></tr>
                 <tr><td>Renders / mo</td><td>10</td><td class="col-accent">200</td><td>1,000</td></tr>
                 <tr><td>Channels</td><td>1</td><td class="col-accent">3</td><td>10</td></tr>
                 <tr><td>AI image quality</td><td>Medium</td><td class="col-accent">Med + High</td><td>Med + High</td></tr>

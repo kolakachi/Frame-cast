@@ -8,36 +8,41 @@ use Illuminate\Support\Facades\DB;
 
 class CreditService
 {
-    // Credit costs — single source of truth
-    public const SCRIPT     = 2;
-    public const BREAKDOWN  = 1;
-    public const STOCK      = 1;   // per scene (stock video/image/audiogram)
-    public const TTS        = 2;   // per scene
-    public const AI_MEDIUM    = 15;  // per scene, gpt-image-1 medium
-    public const AI_HIGH      = 40;  // per scene, gpt-image-1 high
-    public const AI_CHARACTER = 50;  // per scene, OpenAI gpt-image-2 /edits (character + reference image, high quality)
-    public const AI_MUSIC     = 5;   // per scene, Replicate MusicGen (~$0.01 upstream, ~$0.05 retail at 1cr=$0.01)
+    // Credit costs — single source of truth.
+    // LOCKED to spec/CREDIT_CALIBRATION.md (Option B): peg 1 credit = $0.004 of
+    // COGS → round(COGS ÷ $0.004) = uniform ~60% margin on images/audio; VIDEO
+    // is the one deliberate exception, held at ~50% (round(COGS ÷ $0.005)).
+    // Everything non-AI (script/breakdown/stock/export) is included = 0.
+    public const SCRIPT     = 0;   // included
+    public const BREAKDOWN  = 0;   // included
+    public const STOCK      = 0;   // included — per scene (stock video/image/audiogram)
+    public const TTS        = 1;   // per scene (~$0.001 COGS, 1cr floor)
+    public const AI_MEDIUM    = 16;  // per scene, gpt-image-1 medium (~$0.063 COGS)
+    public const AI_HIGH      = 63;  // per scene, gpt-image-1 high (~$0.25 COGS)
+    public const AI_CHARACTER = 50;  // per scene, OpenAI gpt-image-2 /edits (~$0.20 COGS, character + reference image)
+    public const AI_MUSIC     = 3;   // per scene, Replicate MusicGen (~$0.01 COGS)
 
     // Image-to-video animation tiers — per 6-second clip; longer clips scale roughly proportionally.
-    // Wan 2.1 480p / Hailuo / Kling 2.1 mapping.
+    // Held at ~50% margin (the moat). Wan 2.1 480p / Hailuo / Kling 2.1 mapping.
     public const VIDEO_QUICK    = 60;   // ~$0.30 per 6s clip — Wan 2.1 i2v 480p
     public const VIDEO_BALANCED = 120;  // ~$0.60 per 6s clip — Hailuo MiniMax
     public const VIDEO_PREMIUM  = 240;  // ~$1.20 per 6s clip — Kling 2.1
     public const VIDEO_SEEDANCE_LITE = 100;  // ~$0.50 per 5s clip — ByteDance Seedance 1 Lite
     public const VIDEO_SEEDANCE_PRO  = 200;  // ~$1.00 per 5s clip — ByteDance Seedance 1 Pro
-    public const EXPORT     = 5;
+    public const EXPORT     = 0;   // included
 
-    // Monthly credit allocations per plan
+    // Monthly credit allocations per plan — sized for blended usage + breakage
+    // (CREDIT_CALIBRATION.md §5). Clears ~50% margin even all-Kling worst case.
     public const PLAN_CREDITS = [
         'free'       => 0,      // one-time 200 via grant, never resets
-        'starter'    => 500,
-        'creator'    => 1500,
-        'pro'        => 4000,
-        'agency'     => 10000,
+        'starter'    => 1500,
+        'creator'    => 3000,
+        'pro'        => 6500,
+        'agency'     => 13000,
         'enterprise' => 50000,
         // Legacy tier aliases
-        'studio'     => 1500,
-        'scale'      => 4000,
+        'studio'     => 3000,   // mirrors creator
+        'scale'      => 6500,   // mirrors pro
     ];
 
     // Per-plan resource caps + capability flags. Free-tier gates exist to
@@ -160,6 +165,9 @@ class CreditService
                 'operation'     => mb_substr($operation !== '' ? $operation : 'unknown', 0, 64),
                 'credits'       => $amount,
                 'balance_after' => $this->balance($workspaceId),
+                // Real upstream provider cost in USD, when the caller knows it.
+                // Unblocks data-driven recalibration (CREDIT_CALIBRATION.md §2).
+                'upstream_cost_usd' => isset($context['upstream_cost_usd']) ? (float) $context['upstream_cost_usd'] : null,
                 'metadata'      => is_array($context['metadata'] ?? null) ? $context['metadata'] : null,
             ]);
         }, null, false);
