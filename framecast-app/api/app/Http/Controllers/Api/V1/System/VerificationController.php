@@ -44,6 +44,15 @@ class VerificationController extends Controller
                     'animation_tier' => $workspace?->cruise_animation_tier,  // null = LLM picks
                     'visual_source'  => $workspace?->cruise_visual_source ?? 'auto',
                 ],
+                'referral' => [
+                    'code' => $workspace
+                        ? app(\App\Services\RewardService::class)->ensureReferralCode($workspace)
+                        : null,
+                    'link' => ($workspace && $workspace->referral_code)
+                        ? rtrim((string) config('app.frontend_url'), '/').'/?ref='.$workspace->referral_code
+                        : null,
+                    'reward_credits' => \App\Services\RewardService::AMOUNTS['referral_converted'],
+                ],
             ],
             'meta' => [],
         ]);

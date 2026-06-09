@@ -56,6 +56,10 @@ class AuthController extends Controller
             'email' => ['required', 'email:rfc,dns'],
             'name' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'min:8'],
+            // Referral code from a /?ref=<code> share link. Attributed to the
+            // new workspace; the referrer earns credits when this account
+            // first becomes paying. See RewardService.
+            'ref' => ['nullable', 'string', 'max:32'],
         ]);
 
         $email = strtolower($validated['email']);
@@ -453,10 +457,17 @@ class AuthController extends Controller
                     return $existingUser->fresh('workspace');
                 }
 
+                // Referral attribution — resolve the share code to the
+                // referrer workspace (self-referral is impossible; this
+                // workspace doesn't exist yet).
+                $referrerId = app(\App\Services\RewardService::class)
+                    ->referrerIdForCode($validated['ref'] ?? null);
+
                 $workspace = Workspace::query()->create([
                     'name'      => Str::of($validated['email'])->before('@')->headline().' Workspace',
                     'plan_tier' => 'free',
                     'status'    => 'active',
+                    'referred_by_workspace_id' => $referrerId,
                 ]);
 
                 $user = User::query()->create([
@@ -474,6 +485,9 @@ class AuthController extends Controller
                 ]);
 
                 $workspace->forceFill(['owner_user_id' => $user->getKey()])->save();
+
+                // Give the new workspace its own shareable referral code.
+                app(\App\Services\RewardService::class)->ensureReferralCode($workspace);
 
                 (new CreditService())->grant($workspace->getKey(), 200, 'registration');
 

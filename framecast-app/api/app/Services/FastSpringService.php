@@ -170,6 +170,13 @@ class FastSpringService
 
         $workspace->forceFill($update)->save();
 
+        // Referral conversion: if this is the workspace's first move from a
+        // non-paying tier to a paid one, reward whoever referred it. Idempotent
+        // in RewardService, so repeat charges can't re-pay. Best-effort.
+        if ($previousTier === 'free' && $newTier !== 'free') {
+            rescue(fn () => app(\App\Services\RewardService::class)->referralConversion($workspace->fresh()));
+        }
+
         Log::info('FastSpringService: subscription event applied', [
             'workspace_id'    => $workspace->getKey(),
             'type'            => $type,

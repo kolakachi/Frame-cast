@@ -92,6 +92,14 @@ class PublishVideoJob implements ShouldQueue
 
             $this->notify($post, 'success');
 
+            // First-publish reward — credits for reaching the distribution
+            // moment (the core loop). Idempotent (once per workspace) and
+            // best-effort so reward bookkeeping can't fail a publish.
+            $wsId = (int) ($post->project?->workspace_id ?? 0);
+            if ($wsId > 0) {
+                rescue(fn () => app(\App\Services\RewardService::class)->grant($wsId, 'first_publish'));
+            }
+
         } catch (\Throwable $e) {
             Log::error('PublishVideoJob failed', [
                 'post_id'  => $this->scheduledPostId,

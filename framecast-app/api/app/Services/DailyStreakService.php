@@ -19,17 +19,22 @@ class DailyStreakService
 {
     /**
      * Prize ladder per streak day. After day 7 the cycle resets to day 1.
-     * Keep totals modest until upstream_cost_usd telemetry lands and we can
-     * tune from real margins: ~110cr per full week ≈ $0.55 retail.
+     *
+     * Slashed 2026-06-09 from 5/10/15/25/40/70/150 (315 cr/week ≈ a whole
+     * Starter plan/month, farmable on free tier) down to 40 cr/week. The
+     * reward budget moved to ACTION rewards (publish + referrals) which grow
+     * the business instead of paying for idle logins — see
+     * RewardService + spec/ACTION_REWARDS.md. Streak credits are also now
+     * PAID-TIER ONLY (free keeps the counter/UI but earns 0; see claim()).
      */
     public const PRIZE_LADDER = [
-        1 => 5,
-        2 => 10,
-        3 => 15,
-        4 => 25,
-        5 => 40,
-        6 => 70,
-        7 => 150,
+        1 => 2,
+        2 => 3,
+        3 => 4,
+        4 => 5,
+        5 => 6,
+        6 => 8,
+        7 => 12,
     ];
 
     public const STREAK_LENGTH = 7;
@@ -66,7 +71,8 @@ class DailyStreakService
             'claimed_today'     => $claimedToday,
             'can_claim'         => ! $claimedToday,
             'prize_ladder'      => self::PRIZE_LADDER,
-            'today_prize'       => self::PRIZE_LADDER[$effectiveDay] ?? 0,
+            'today_prize'       => ($workspace->plan_tier === 'free') ? 0 : (self::PRIZE_LADDER[$effectiveDay] ?? 0),
+            'rewards_paid_only' => $workspace->plan_tier === 'free',
             'next_claim_at'     => $tomorrow->toIso8601String(),
             'streak_length'     => self::STREAK_LENGTH,
         ];
@@ -98,7 +104,10 @@ class DailyStreakService
             }
 
             $newDay = $this->effectiveDayFromLast($last, $now, (int) $fresh->daily_streak_count);
-            $prize = self::PRIZE_LADDER[$newDay] ?? 0;
+            // Streak credits are paid-tier only — free keeps the counter/UI
+            // but earns 0 (removes the free-farm loss). The streak number
+            // still advances for everyone so the habit mechanic is intact.
+            $prize = ($fresh->plan_tier === 'free') ? 0 : (self::PRIZE_LADDER[$newDay] ?? 0);
 
             $fresh->forceFill([
                 'daily_streak_count'         => $newDay,

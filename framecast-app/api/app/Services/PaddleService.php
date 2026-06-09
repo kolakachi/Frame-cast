@@ -114,6 +114,11 @@ class PaddleService
         }
 
         $workspace->forceFill($update)->save();
+
+        // Referral conversion reward on first free -> paid move (idempotent).
+        if ($previousTier === 'free' && $newTier !== 'free') {
+            rescue(fn () => app(\App\Services\RewardService::class)->referralConversion($workspace->fresh()));
+        }
     }
 
     /**

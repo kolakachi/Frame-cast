@@ -38,6 +38,8 @@ class Workspace extends Model
         'cruise_image_model',
         'cruise_animation_tier',
         'cruise_visual_source',
+        'referral_code',
+        'referred_by_workspace_id',
     ];
 
     protected $casts = [

@@ -12,6 +12,16 @@ const route = useRoute()
 const authStore = useAuthStore()
 
 const mePayload = ref(null)
+const referral = ref(null)
+const referralCopied = ref(false)
+async function copyReferral() {
+  if (!referral.value?.link) return
+  try {
+    await navigator.clipboard.writeText(referral.value.link)
+    referralCopied.value = true
+    setTimeout(() => { referralCopied.value = false }, 2000)
+  } catch { /* clipboard blocked — user can select manually */ }
+}
 const usage    = ref(null)
 const brandKits = ref([])
 const voices    = ref([])
@@ -465,6 +475,7 @@ async function loadSettings() {
     ])
     mePayload.value = meRes.data.data.user
     usage.value     = meRes.data.data.usage
+    referral.value  = meRes.data.data.referral || null
     brandKits.value = brandKitsRes.data.data.brand_kits || []
     voices.value    = voicesRes.data.data.voice_profiles || []
     accountForm.value = { name: mePayload.value?.name || '', timezone: mePayload.value?.timezone || 'UTC' }
@@ -970,6 +981,19 @@ onMounted(() => {
               </tbody>
             </table>
 
+            <!-- ── Refer a friend ──────────────────────────────────────── -->
+            <div v-if="referral?.link" class="section-title" style="margin-top:48px;">Refer a friend</div>
+            <div v-if="referral?.link" class="settings-section-desc">
+              Share your link. When someone you invite upgrades to a paid plan, you earn
+              <strong>{{ referral.reward_credits }} credits</strong>.
+            </div>
+            <div v-if="referral?.link" class="referral-row">
+              <input class="referral-link-input" type="text" :value="referral.link" readonly @focus="$event.target.select()" />
+              <button class="btn-copy-referral" type="button" @click="copyReferral">
+                {{ referralCopied ? 'Copied ✓' : 'Copy link' }}
+              </button>
+            </div>
+
             <!-- ── Credit history ──────────────────────────────────────── -->
             <div class="section-title" style="margin-top:48px;">Credit history</div>
             <div class="settings-section-desc">Every credit deducted or granted on this workspace.</div>
@@ -1431,6 +1455,10 @@ onMounted(() => {
 
 /* ── Plan table ── */
 .topup-section { margin: 22px 0; padding: 18px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 10px; }
+.referral-row { display: flex; gap: 10px; align-items: stretch; max-width: 560px; }
+.referral-link-input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-primary); font-family: "Space Mono", monospace; font-size: 13px; }
+.btn-copy-referral { flex-shrink: 0; padding: 10px 18px; border-radius: 8px; border: none; background: var(--color-accent); color: #fff; font-weight: 600; cursor: pointer; transition: transform .15s; }
+.btn-copy-referral:hover { transform: translateY(-1px); }
 .topup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .topup-pack { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 10px; padding: 16px 12px; cursor: pointer; transition: .15s; text-align: center; color: var(--color-text-primary); font-family: inherit; }
 .topup-pack:hover:not(:disabled) { border-color: var(--color-accent); transform: translateY(-1px); }
