@@ -4024,7 +4024,10 @@ async function setPreviewMode(mode) {
 
 function togglePreviewPlay() {
   unlockWaveformAudio();
-  isPreviewPlaying.value ? stopPreviewPlay() : startPreviewPlay();
+  // pendingScenePlay (spinner showing while assets load) counts as active, so
+  // a click cancels the queued play instead of re-queuing it.
+  if (isPreviewPlaying.value || pendingScenePlay.value) stopPreviewPlay();
+  else startPreviewPlay();
 }
 
 async function startPreviewPlay() {
@@ -6545,7 +6548,10 @@ onBeforeUnmount(() => {
               </div>
               <div class="playback-btns">
                 <button class="play-skip-btn" type="button" :disabled="activeSceneIndex <= 0" @click="skipToScene(-1)" title="Previous scene">⏮</button>
-                <button class="play-btn" type="button" @click="togglePreviewPlay">{{ isPreviewPlaying ? '⏸' : '▶' }}</button>
+                <button class="play-btn" type="button" @click="togglePreviewPlay" :title="pendingScenePlay ? 'Loading scene… click to cancel' : ''">
+                  <span v-if="pendingScenePlay" class="play-btn-spinner" aria-label="Loading scene"></span>
+                  <template v-else>{{ isPreviewPlaying ? '⏸' : '▶' }}</template>
+                </button>
                 <button class="play-skip-btn" type="button" :disabled="activeSceneIndex >= scenes.length - 1" @click="skipToScene(1)" title="Next scene">⏭</button>
               </div>
               <div class="play-time-row">
@@ -10660,6 +10666,16 @@ button {
   transform: scale(1.05);
   box-shadow: 0 0 24px var(--accent-glow);
 }
+.play-btn-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: play-btn-spin 0.7s linear infinite;
+}
+@keyframes play-btn-spin { to { transform: rotate(360deg); } }
 
 .time-display {
   font-family: "Space Mono", monospace;
