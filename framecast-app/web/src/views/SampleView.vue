@@ -109,28 +109,29 @@ const tickReady = computed(() => {
             controls
             playsinline
             preload="metadata"
-            crossorigin="anonymous"
           ></video>
         </div>
 
-        <h1 class="sample-title">{{ data.project.title || 'Untitled' }}</h1>
-        <div class="sample-meta">
-          {{ data.project.scene_count }} scene{{ data.project.scene_count === 1 ? '' : 's' }}
-          · {{ data.project.aspect_ratio }}
-        </div>
+        <div class="sample-info">
+          <h1 class="sample-title">{{ data.project.title || 'Untitled' }}</h1>
+          <div class="sample-meta">
+            {{ data.project.scene_count }} scene{{ data.project.scene_count === 1 ? '' : 's' }}
+            · {{ data.project.aspect_ratio }}
+          </div>
 
-        <div v-if="data.scenes?.length" class="sample-scenes">
-          <div class="sample-section-label">What's in this video</div>
-          <ol class="sample-scene-list">
-            <li v-for="s in data.scenes" :key="s.order" class="sample-scene-item">
-              <span class="sample-scene-num">{{ s.order }}</span>
-              <span class="sample-scene-text">{{ s.snippet || '(no caption)' }}</span>
-            </li>
-          </ol>
-        </div>
+          <div v-if="data.scenes?.length" class="sample-scenes">
+            <div class="sample-section-label">What's in this video</div>
+            <ol class="sample-scene-list">
+              <li v-for="s in data.scenes" :key="s.order" class="sample-scene-item">
+                <span class="sample-scene-num">{{ s.order }}</span>
+                <span class="sample-scene-text">{{ s.snippet || '(no caption)' }}</span>
+              </li>
+            </ol>
+          </div>
 
-        <div class="sample-cta-row">
-          <a href="/" class="sample-cta-btn">Make one like this →</a>
+          <div class="sample-cta-row">
+            <a href="/" class="sample-cta-btn">Make one like this →</a>
+          </div>
         </div>
       </div>
 
@@ -146,6 +147,8 @@ const tickReady = computed(() => {
 <style scoped>
 .sample-page { min-height: 100vh; background: #0a0a0f; color: #e8e6e1; display: flex; justify-content: center; align-items: flex-start; padding: 24px 16px; }
 .sample-frame { width: 100%; max-width: 560px; }
+.sample-content { display: flex; flex-direction: column; align-items: center; }
+.sample-info { width: 100%; }
 .sample-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
 .sample-brand { font-size: 14px; font-weight: 700; color: #e8e6e1; text-decoration: none; letter-spacing: -0.3px; }
 
@@ -155,12 +158,27 @@ const tickReady = computed(() => {
 .sample-cta { color: #ff6b35; text-decoration: none; font-weight: 600; }
 .sample-cta:hover { text-decoration: underline; }
 
-.sample-player-wrap { position: relative; background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 18px; box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
+/* Size the player by HEIGHT so a tall portrait clip can't overflow the
+   viewport (it was width:100% → ~996px tall on a 560px frame, burying the
+   CTA). Height is capped to the viewport; width derives from the aspect
+   ratio and is capped to 100% on narrow screens. */
+.sample-player-wrap { position: relative; background: #000; border-radius: 12px; overflow: hidden; margin: 0 auto 18px; box-shadow: 0 20px 50px rgba(0,0,0,0.4); height: min(68vh, 640px); width: auto; max-width: 100%; }
 .sample-player-wrap[data-ratio="9:16"]  { aspect-ratio: 9 / 16; }
 .sample-player-wrap[data-ratio="1:1"]   { aspect-ratio: 1 / 1; }
 .sample-player-wrap[data-ratio="4:5"]   { aspect-ratio: 4 / 5; }
-.sample-player-wrap[data-ratio="16:9"]  { aspect-ratio: 16 / 9; }
-.sample-player { width: 100%; height: 100%; display: block; }
+.sample-player-wrap[data-ratio="16:9"]  { aspect-ratio: 16 / 9; height: auto; width: min(100%, 560px); }
+.sample-player { width: 100%; height: 100%; display: block; object-fit: contain; }
+
+/* Desktop: video and details side-by-side so the CTA is visible without
+   scrolling. */
+@media (min-width: 880px) {
+  .sample-frame { max-width: 960px; }
+  .sample-content { flex-direction: row; align-items: flex-start; gap: 32px; justify-content: center; }
+  .sample-player-wrap { flex-shrink: 0; margin: 0; }
+  .sample-player-wrap[data-ratio="16:9"] { width: 560px; }
+  .sample-info { flex: 1; min-width: 0; max-width: 420px; text-align: left; }
+  .sample-cta-row { text-align: left; }
+}
 
 .sample-title { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; margin-bottom: 4px; }
 .sample-meta { color: #9ca3af; font-size: 12px; font-family: "Space Mono", monospace; margin-bottom: 20px; }
