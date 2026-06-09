@@ -10485,6 +10485,7 @@ button {
 .preview-loading {
   position: absolute;
   inset: 0;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -10505,6 +10506,9 @@ button {
   left: 16px;
   right: 16px;
   text-align: center;
+  /* Above the foreground video (.preview-video-contain is z-index:1) —
+     without this the captions render BEHIND the video on animated scenes. */
+  z-index: 3;
 }
 
 .caption-word {
@@ -10557,6 +10561,7 @@ button {
   position: absolute;
   top: 16px;
   left: 16px;
+  z-index: 2;
   font-family: "Space Mono", monospace;
   font-size: 10px;
   color: rgba(255, 255, 255, 0.3);
@@ -10566,6 +10571,7 @@ button {
   position: absolute;
   top: 16px;
   right: 16px;
+  z-index: 2;
   font-family: "Space Mono", monospace;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.5);
@@ -11699,6 +11705,7 @@ select.control-value {
   bottom: 16px;
   left: 16px;
   right: 16px;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 6px;
