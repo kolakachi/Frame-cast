@@ -43,6 +43,11 @@ Route::prefix('v1')->group(function (): void {
     // honoured if the matching provider sends one.
     Route::post('/webhooks/fastspring', \App\Http\Controllers\Api\V1\Billing\FastSpringWebhookController::class);
 
+    // Kelviq (MOR) webhook — live endpoint so Kelviq can configure it during
+    // review. Verifies the secret + acknowledges; full processing pending
+    // their docs (see KelviqWebhookController + spec/KELVIQ_INTEGRATION.md).
+    Route::post('/webhooks/kelviq', \App\Http\Controllers\Api\V1\Billing\KelviqWebhookController::class);
+
     // Public content-report endpoint (anyone can submit, no auth required).
     // Rate-limited per-IP inside the controller. Backs the form at /report.
     Route::post('/report-content', [\App\Http\Controllers\Api\V1\Public\ReportContentController::class, 'store']);

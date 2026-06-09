@@ -133,4 +133,38 @@ return [
             ? 'https://sandbox-api.paddle.com'
             : 'https://api.paddle.com',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Kelviq (Merchant of Record) — alternative to FastSpring
+    |--------------------------------------------------------------------------
+    |
+    | Scaffold for the Kelviq MOR option. The config home + webhook endpoint
+    | exist so Kelviq can be configured during their review; the exact
+    | signature scheme, webhook payload field names, and storefront/checkout
+    | URLs are filled in once Kelviq sends sandbox credentials + docs (see
+    | spec/KELVIQ_INTEGRATION.md). Same credit/plan model as FastSpring.
+    |
+    */
+    'kelviq' => [
+        'api_key'        => env('KELVIQ_API_KEY', ''),
+        'webhook_secret' => env('KELVIQ_WEBHOOK_SECRET', ''),
+        'storefront_url' => env('KELVIQ_STOREFRONT_URL', ''), // checkout base, set from Kelviq dashboard
+
+        // product/SKU id => plan tier (mirrors fastspring.product_paths).
+        'product_tiers' => [
+            env('KELVIQ_PRODUCT_STARTER', 'wyvstudio-starter') => 'starter',
+            env('KELVIQ_PRODUCT_CREATOR', 'wyvstudio-creator') => 'creator',
+            env('KELVIQ_PRODUCT_PRO',     'wyvstudio-pro')     => 'pro',
+            env('KELVIQ_PRODUCT_AGENCY',  'wyvstudio-agency')  => 'agency',
+        ],
+
+        // top-up product id => credit grant (same packs as fastspring).
+        'topup_products' => [
+            env('KELVIQ_PRODUCT_TOPUP_SMALL',  'wyvstudio-topup-500')  => 500,
+            env('KELVIQ_PRODUCT_TOPUP_MEDIUM', 'wyvstudio-topup-1200') => 1200,
+            env('KELVIQ_PRODUCT_TOPUP_LARGE',  'wyvstudio-topup-2500') => 2500,
+            env('KELVIQ_PRODUCT_TOPUP_XL',     'wyvstudio-topup-5000') => 5000,
+        ],
+    ],
 ];

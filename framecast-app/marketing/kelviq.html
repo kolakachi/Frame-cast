@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Kelviq MOR review variant of the landing. Not for public/SEO traffic. -->
+<meta name="robots" content="noindex, nofollow">
+<title>WyvStudio — Create short videos from whatever you have.</title>
+<meta name="description" content="Start with a script, podcast clip, product URL, or just an idea. WyvStudio turns it into a finished short with voice, visuals, captions, and platform-ready exports — built for creators, brands, and operators making short-form video without a shoot.">
+<meta property="og:title" content="Create short videos from whatever you have." />
+<meta property="og:description" content="Script, audio, URL, or idea — turned into a finished short with voice, visuals, captions, and one-click exports for every platform." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://wyvstudio.com/" />
+<meta property="og:image" content="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/og/og-default-v1.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Create short videos from whatever you have." />
+<meta name="twitter:description" content="Script, audio, URL, or idea — turned into a finished short for every platform you publish on." />
+<meta name="twitter:image" content="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/og/og-default-v1.jpg" />
+<link rel="canonical" href="https://wyvstudio.com/" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/favicon.svg" />
+<meta name="theme-color" content="#ff6b35" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;
+  --surface:#14141c;
+  --surface-2:#1a1a24;
+  --border:#25252f;
+  --text:#ececf3;
+  --text-dim:#8b8b9a;
+  --text-faint:#5a5a68;
+  --accent:#ff6b35;
+  --accent-soft:rgba(255,107,53,0.1);
+  --accent-glow:rgba(255,107,53,0.25);
+  --green:#34d399;
+}
+html{scroll-behavior:smooth}
+body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+
+/* ── NAV ── */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 32px;height:60px;display:flex;align-items:center;gap:16px;background:rgba(10,10,15,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;flex:1}
+.nav-logo-mark svg{display:block}
+.nav-logo-text{font-size:15px;font-weight:700;color:var(--text);letter-spacing:-.3px}
+.nav-logo-text span{color:var(--accent)}
+.nav-links{display:flex;gap:28px}
+.nav-links a{font-size:13px;color:var(--text-dim);text-decoration:none;transition:.15s}
+.nav-links a:hover{color:var(--text)}
+.nav-cta{display:flex;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;transition:.15s;text-decoration:none;font-family:inherit;border:1px solid var(--border);color:var(--text);background:transparent}
+.btn:hover{background:var(--surface-2);border-color:#34343f}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{background:#ff7a47;border-color:#ff7a47}
+.btn-lg{padding:14px 28px;font-size:15px;font-weight:600;border-radius:10px}
+
+/* ── HERO ── */
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:100px 24px 80px;position:relative;overflow:hidden}
+.hero-glow{position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:800px;height:800px;background:radial-gradient(circle,rgba(255,107,53,.12) 0%,transparent 65%);pointer-events:none}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;border:1px solid rgba(255,107,53,.3);background:rgba(255,107,53,.08);font-size:12px;font-weight:500;color:var(--accent);margin-bottom:28px;font-family:"Space Mono",monospace;letter-spacing:.05em}
+.hero-badge-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.hero h1{font-size:clamp(40px,7vw,76px);font-weight:700;line-height:1.05;letter-spacing:-2px;max-width:820px;margin-bottom:22px}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.hero-sub{font-size:clamp(16px,2vw,20px);color:var(--text-dim);max-width:560px;line-height:1.6;margin-bottom:40px}
+.hero-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:64px}
+.hero-social-proof{font-size:12px;color:var(--text-faint);display:flex;align-items:center;gap:8px}
+.hero-avatars{display:flex}
+.hero-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#ff6b35,#f59e0b);border:2px solid var(--bg);margin-left:-8px;font-size:11px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center}
+.hero-avatar:first-child{margin-left:0}
+.hero-trust{font-size:12px;color:var(--text-faint);max-width:480px;line-height:1.55;text-align:center;padding:14px 20px;border:1px solid var(--border);border-radius:999px;background:rgba(255,107,53,.02)}
+
+/* ── CHARACTER MOAT ── */
+.moat-section{padding:80px 24px;background:linear-gradient(180deg,var(--bg) 0%,rgba(255,107,53,.03) 50%,var(--bg) 100%)}
+.moat-section .container{text-align:center}
+.moat-grid{display:grid;grid-template-columns:240px auto 1fr;gap:32px;align-items:center;margin-top:48px;text-align:left}
+.moat-ref{aspect-ratio:1;border-radius:14px;background:linear-gradient(135deg,#2d1b4e,#1a0a2e);border:2px solid rgba(255,107,53,.35);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:48px;color:rgba(255,255,255,.5);overflow:hidden}
+.moat-ref-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+.moat-ref .moat-ref-tag,.moat-ref .moat-ref-label{z-index:1;position:absolute}
+.moat-ref .moat-ref-label{bottom:10px;left:10px;right:10px;text-align:center;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);padding:4px 8px;border-radius:6px}
+.moat-ref-tag{position:absolute;top:10px;left:10px;font-size:10px;font-weight:600;padding:4px 9px;border-radius:6px;background:rgba(0,0,0,.45);color:#fff;backdrop-filter:blur(6px);font-family:"Space Mono",monospace;letter-spacing:.05em}
+.moat-ref-label{font-size:11px;color:rgba(255,255,255,.75);font-family:"Space Mono",monospace;letter-spacing:.05em;margin-top:8px}
+.moat-arrow{font-size:32px;color:var(--accent);font-weight:200;text-align:center}
+.moat-scenes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.moat-scene{aspect-ratio:9/16;border-radius:10px;background:linear-gradient(135deg,#1a1a24,#0d0d1a);border:1px solid var(--border);position:relative;display:flex;align-items:center;justify-content:center;font-size:24px;color:rgba(255,255,255,.35);overflow:hidden}
+.moat-scene-label{position:absolute;bottom:8px;left:8px;right:8px;font-size:9px;color:rgba(255,255,255,.85);background:rgba(0,0,0,.55);backdrop-filter:blur(6px);padding:4px 6px;border-radius:4px;text-align:center;line-height:1.25;font-family:"Space Mono",monospace}
+
+/* ── CONTENT ROADS ── */
+.roads-section{padding:80px 24px}
+.roads-section .container{text-align:center}
+.roads-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:48px}
+.road-card{padding:24px 20px;border-radius:14px;border:1px solid var(--border);background:var(--surface);text-align:left;transition:.2s;position:relative}
+.road-card:hover{border-color:rgba(255,107,53,.35);transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,.45)}
+.road-icon{width:40px;height:40px;border-radius:10px;background:var(--accent-soft);border:1px solid rgba(255,107,53,.2);display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:16px;color:var(--accent)}
+.road-tag{font-family:"Space Mono",monospace;font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.road-title{font-size:15px;font-weight:600;margin-bottom:6px;line-height:1.3}
+.road-copy{font-size:12.5px;color:var(--text-dim);line-height:1.55}
+.roads-converge{margin-top:32px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.roads-converge-arrows{font-size:14px;color:var(--accent);letter-spacing:1.8em;opacity:.55;padding-left:1.8em;font-family:"Space Mono",monospace}
+.roads-converge-card{max-width:580px;padding:22px 28px;border-radius:14px;border:1px solid rgba(255,107,53,.3);background:rgba(255,107,53,.04);text-align:center}
+.roads-converge-label{font-family:"Space Mono",monospace;font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.roads-converge-title{font-size:17px;font-weight:600;line-height:1.4;margin-bottom:6px}
+.roads-converge-copy{font-size:12.5px;color:var(--text-dim);line-height:1.55}
+
+/* ── USE CASES ── */
+.uc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:48px}
+.uc-card{border-radius:14px;border:1px solid var(--border);background:var(--surface);overflow:hidden;transition:.2s;display:flex;flex-direction:column}
+.uc-card:hover{border-color:#34343f;transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,.45)}
+.uc-card.wedge{border-color:rgba(255,107,53,.35);background:rgba(255,107,53,.03)}
+.uc-media{aspect-ratio:9/16;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:linear-gradient(135deg,#1e3a2e,#0f1f1a)}
+.uc-media.has-video{background:#000}
+.uc-media-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.uc-media.has-video .uc-media-play{display:none}
+.uc-media-play{width:54px;height:54px;border-radius:50%;background:rgba(255,107,53,.92);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 8px 24px rgba(255,107,53,.35);transition:.2s;z-index:2}
+.uc-card:hover .uc-media-play{transform:scale(1.08);background:#ff6b35}
+.uc-media-badge{position:absolute;top:12px;left:12px;font-size:10px;font-weight:600;padding:4px 9px;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;backdrop-filter:blur(8px);font-family:"Space Mono",monospace;letter-spacing:.05em;z-index:2}
+.uc-media-caption{position:absolute;bottom:12px;left:12px;right:12px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.6);backdrop-filter:blur(8px);padding:6px 10px;border-radius:6px;line-height:1.35;z-index:2}
+.uc-body{padding:18px 20px 20px}
+.uc-wedge-tag{display:inline-block;font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 8px;border-radius:999px;margin-bottom:10px;font-family:"Space Mono",monospace;letter-spacing:.05em;text-transform:uppercase}
+.uc-title{font-size:15px;font-weight:600;margin-bottom:6px;line-height:1.3}
+.uc-hook{font-size:12.5px;color:var(--text-dim);line-height:1.55;margin-bottom:12px}
+.uc-ships{display:flex;flex-direction:column;gap:5px}
+.uc-ship{font-size:11.5px;color:var(--text-faint);line-height:1.45;display:flex;gap:7px;align-items:flex-start}
+.uc-ship::before{content:"";width:3px;height:3px;border-radius:50%;background:var(--accent);margin-top:7px;flex-shrink:0}
+
+/* ── APP PREVIEW ── */
+.preview-wrap{max-width:900px;margin:0 auto;position:relative;padding:0 24px}
+.preview-glow{position:absolute;bottom:-60px;left:50%;transform:translateX(-50%);width:600px;height:200px;background:radial-gradient(ellipse,rgba(255,107,53,.18),transparent 70%);pointer-events:none}
+.preview-frame{border-radius:16px;border:1px solid var(--border);background:var(--surface);overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.6);position:relative}
+.preview-bar{height:36px;background:var(--surface-2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:6px}
+.preview-dot{width:10px;height:10px;border-radius:50%}
+.preview-url{flex:1;margin:0 12px;height:20px;background:var(--border);border-radius:4px;max-width:280px}
+.preview-body{display:grid;grid-template-columns:200px 1fr 280px;height:380px}
+.preview-sidebar{background:var(--bg);border-right:1px solid var(--border);padding:14px}
+.preview-sidebar-logo{display:flex;align-items:center;gap:8px;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.preview-nav-item{height:28px;border-radius:6px;margin-bottom:4px;display:flex;align-items:center;gap:8px;padding:0 8px}
+.preview-nav-item.active{background:rgba(255,107,53,.1)}
+.preview-nav-dot{width:14px;height:14px;border-radius:3px;background:var(--border);flex-shrink:0}
+.preview-nav-dot.active{background:var(--accent);opacity:.7}
+.preview-nav-label{height:8px;border-radius:3px;background:var(--border);flex:1}
+.preview-nav-label.active{background:rgba(255,107,53,.35)}
+.preview-canvas{background:linear-gradient(160deg,#0d0d1a,#1a0a2e);display:flex;align-items:center;justify-content:center}
+.preview-phone{width:110px;height:196px;background:#111;border-radius:14px;border:2px solid #333;overflow:hidden;position:relative}
+.preview-phone-screen{width:100%;height:100%;background:linear-gradient(180deg,#28124b,#0d0d1a);position:relative}
+.preview-phone-title{position:absolute;top:12px;left:10px;right:10px;font-size:6px;font-weight:600;color:rgba(255,255,255,.85);line-height:1.4}
+.preview-phone-bars{position:absolute;bottom:24px;left:8px;right:8px;display:flex;align-items:flex-end;gap:2px;height:32px}
+.preview-phone-bar{flex:1;border-radius:1px;background:linear-gradient(180deg,rgba(255,107,53,.9),rgba(255,107,53,.3))}
+.preview-panel{background:var(--surface);border-left:1px solid var(--border);padding:14px}
+.preview-panel-section{margin-bottom:14px}
+.preview-panel-label{height:7px;width:60px;border-radius:3px;background:var(--border);margin-bottom:8px}
+.preview-panel-block{height:32px;border-radius:6px;background:var(--surface-2);margin-bottom:6px}
+.preview-panel-block.active{border:1px solid rgba(255,107,53,.35);background:rgba(255,107,53,.06)}
+
+/* ── SECTIONS ── */
+section{padding:100px 24px}
+.container{max-width:1080px;margin:0 auto}
+.section-label{font-family:"Space Mono",monospace;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);margin-bottom:14px}
+.section-title{font-size:clamp(28px,4vw,46px);font-weight:700;letter-spacing:-1px;line-height:1.1;margin-bottom:16px}
+.section-sub{font-size:17px;color:var(--text-dim);line-height:1.65;max-width:580px}
+
+/* ── PROBLEM ── */
+.problem{text-align:center}
+.problem .section-sub{margin:0 auto 56px}
+.pain-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.pain-card{padding:24px;border-radius:12px;border:1px solid var(--border);background:var(--surface);text-align:left}
+.pain-icon{font-size:24px;margin-bottom:12px}
+.pain-title{font-size:14px;font-weight:600;margin-bottom:6px}
+.pain-copy{font-size:13px;color:var(--text-dim);line-height:1.55}
+
+/* ── HOW IT WORKS ── */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:56px}
+.step{position:relative}
+.step-num{font-family:"Space Mono",monospace;font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid rgba(255,107,53,.25);border-radius:999px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+.step-connector{position:absolute;top:14px;left:28px;right:-12px;height:1px;background:linear-gradient(90deg,rgba(255,107,53,.3),transparent);pointer-events:none}
+.step:last-child .step-connector{display:none}
+.step-title{font-size:16px;font-weight:600;margin-bottom:8px}
+.step-copy{font-size:13px;color:var(--text-dim);line-height:1.55}
+
+/* ── FEATURES ── */
+.feature-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:56px}
+.feature-card{padding:28px;border-radius:14px;border:1px solid var(--border);background:var(--surface);position:relative;overflow:hidden;transition:.2s}
+.feature-card:hover{border-color:#34343f;background:var(--surface-2)}
+.feature-card.accent{border-color:rgba(255,107,53,.3);background:rgba(255,107,53,.04)}
+.feature-card-glow{position:absolute;top:-40px;right:-40px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(255,107,53,.12),transparent 70%);pointer-events:none}
+.feature-icon{width:40px;height:40px;border-radius:10px;background:var(--accent-soft);border:1px solid rgba(255,107,53,.2);display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:16px}
+.feature-title{font-size:15px;font-weight:600;margin-bottom:8px}
+.feature-copy{font-size:13px;color:var(--text-dim);line-height:1.55}
+.feature-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+.feature-tag{font-size:11px;font-weight:500;padding:3px 8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim)}
+
+/* ── VISUAL TYPES ── */
+.visual-types{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:48px}
+.vt-card{padding:20px;border-radius:12px;border:1px solid var(--border);background:var(--surface);text-align:center}
+.vt-preview{height:70px;border-radius:8px;margin-bottom:12px;display:flex;align-items:center;justify-content:center}
+.vt-label{font-size:13px;font-weight:600;margin-bottom:4px}
+.vt-copy{font-size:11px;color:var(--text-faint)}
+
+/* ── PRICING ── */
+.pricing{background:linear-gradient(180deg,var(--bg) 0%,rgba(255,107,53,.04) 50%,var(--bg) 100%)}
+.pricing-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:56px;align-items:start}
+@media (max-width:1100px){.pricing-grid{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:760px){.pricing-grid{grid-template-columns:1fr}}
+.plan-card{padding:24px;border-radius:14px;border:1px solid var(--border);background:var(--surface)}
+.plan-card.featured{border-color:rgba(255,107,53,.4);background:rgba(255,107,53,.06);position:relative}
+.plan-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:11px;font-weight:600;padding:3px 12px;border-radius:999px;white-space:nowrap;font-family:"Space Mono",monospace}
+.plan-name{font-size:13px;font-weight:700;font-family:"Space Mono",monospace;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;color:var(--text-dim)}
+.plan-card.featured .plan-name{color:var(--accent)}
+.plan-price{font-size:32px;font-weight:700;letter-spacing:-1px;margin-bottom:4px}
+.plan-price span{font-size:14px;font-weight:400;color:var(--text-dim)}
+.plan-desc{font-size:12px;color:var(--text-faint);margin-bottom:20px;line-height:1.45}
+.plan-divider{height:1px;background:var(--border);margin-bottom:16px}
+.plan-features{display:flex;flex-direction:column;gap:9px;margin-bottom:24px}
+.plan-feature{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-dim)}
+.plan-feature-check{color:var(--green);flex-shrink:0;font-size:13px;margin-top:1px}
+.plan-feature-x{color:var(--text-faint);flex-shrink:0;font-size:13px;margin-top:1px}
+.plan-btn{width:100%;padding:10px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;transition:.15s;text-align:center;display:block;text-decoration:none}
+.plan-btn:hover{background:var(--surface-2)}
+.plan-btn.featured{background:var(--accent);border-color:var(--accent);color:#fff}
+.plan-btn.featured:hover{background:#ff7a47}
+
+/* ── TESTIMONIALS / SOCIAL PROOF ── */
+.proof-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:56px}
+.proof-card{padding:24px;border-radius:12px;border:1px solid var(--border);background:var(--surface)}
+.proof-stars{color:#fbbf24;font-size:13px;margin-bottom:12px}
+.proof-quote{font-size:13px;color:var(--text-dim);line-height:1.6;margin-bottom:16px}
+.proof-author{display:flex;align-items:center;gap:10px}
+.proof-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0}
+.proof-name{font-size:12px;font-weight:600}
+.proof-role{font-size:11px;color:var(--text-faint)}
+
+/* ── CTA ── */
+.cta-section{text-align:center;padding:120px 24px}
+.cta-glow{position:relative;display:inline-block}
+.cta-glow::before{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;height:300px;background:radial-gradient(ellipse,rgba(255,107,53,.15),transparent 65%);pointer-events:none}
+.cta-section h2{font-size:clamp(32px,5vw,56px);font-weight:700;letter-spacing:-1.5px;line-height:1.05;margin-bottom:18px;position:relative}
+.cta-section p{font-size:17px;color:var(--text-dim);margin-bottom:36px;position:relative}
+.cta-fine{font-size:12px;color:var(--text-faint);margin-top:14px}
+
+/* ── FOOTER ── */
+footer{border-top:1px solid var(--border);max-width:1180px;margin:0 auto;padding:64px 24px 28px}
+.footer-top{display:grid;grid-template-columns:minmax(220px,1fr) 3fr;gap:56px;margin-bottom:44px}
+.footer-brand{display:flex;flex-direction:column;gap:16px}
+.footer-brand-logo{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:700;color:var(--text);text-decoration:none}
+.footer-tagline{font-size:13px;color:var(--text-dim);line-height:1.55;max-width:280px;margin:0}
+.footer-socials{display:flex;gap:8px}
+.footer-social{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;color:var(--text-faint);transition:.15s;text-decoration:none}
+.footer-social:hover{color:var(--text);border-color:#34343f;background:rgba(255,255,255,0.02)}
+.footer-social svg{width:14px;height:14px}
+.footer-cols{display:grid;grid-template-columns:repeat(4,1fr);gap:32px}
+.footer-col-title{font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px;font-family:"Space Mono",monospace}
+.footer-col a{display:block;font-size:13px;color:var(--text-faint);text-decoration:none;margin-bottom:9px;transition:.15s;line-height:1.4}
+.footer-col a:hover{color:var(--text-dim)}
+.footer-bottom{padding-top:24px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.footer-bottom-copy{font-size:12px;color:var(--text-faint)}
+.footer-back-top{font-size:12px;color:var(--text-faint);text-decoration:none;transition:.15s}
+.footer-back-top:hover{color:var(--text-dim)}
+@media(max-width:768px){
+  footer{padding:48px 20px 24px}
+  .footer-top{grid-template-columns:1fr;gap:36px;margin-bottom:32px}
+  .footer-cols{grid-template-columns:repeat(2,1fr);gap:28px 20px}
+  .footer-bottom{flex-direction:column;align-items:flex-start;gap:8px}
+}
+
+@media(max-width:900px){
+  .uc-grid{grid-template-columns:repeat(2,1fr)}
+  .moat-grid{grid-template-columns:1fr;gap:24px;text-align:center}
+  .moat-ref{max-width:200px;margin:0 auto}
+  .moat-arrow{transform:rotate(90deg);margin:8px auto}
+}
+@media(max-width:768px){
+  .pain-grid,.steps,.feature-grid,.visual-types,.pricing-grid,.proof-grid{grid-template-columns:1fr}
+  .preview-body{grid-template-columns:1fr}
+  .preview-sidebar,.preview-panel{display:none}
+  /* Mobile nav: hide the CTAs (sign-in / start-free), keep section
+     anchors so a visitor can jump to How it works + Use cases. The
+     hero CTAs cover sign-up; navbar CTAs are redundant + crowd the
+     small screen. Features + Pricing get hidden too to keep the row
+     uncluttered at narrow widths. */
+  nav{padding:0 16px;gap:10px}
+  nav .nav-cta{display:none}
+  nav .nav-links{display:flex;gap:18px}
+  nav .nav-links a[href="#features"],
+  nav .nav-links a[href="#pricing"]{display:none}
+  .uc-grid,.moat-scenes{grid-template-columns:repeat(2,1fr)}
+  .moat-scenes .moat-scene:nth-child(n+3){display:none}
+  .roads-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:480px){
+  .uc-grid{grid-template-columns:1fr}
+  .roads-grid{grid-template-columns:1fr}
+}
+</style>
+
+<!-- Paddle.js — required for Paddle's default payment link verification -->
+<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <a href="#" class="nav-logo">
+    <div class="nav-logo-mark">
+      <svg width="28" height="28" viewBox="0 0 64 64" fill="none">
+        <rect width="64" height="64" rx="14" fill="#ff6b35"/>
+        <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M27 37 Q32 28 37 37" stroke="rgba(255,255,255,0.35)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      </svg>
+    </div>
+    <span class="nav-logo-text"><span>Wyv</span>Studio</span>
+  </a>
+  <div class="nav-links">
+    <a href="#how-it-works">How it works</a>
+    <a href="#features">Features</a>
+    <a href="#use-cases">Use cases</a>
+    <a href="#pricing">Pricing</a>
+  </div>
+  <div class="nav-cta">
+    <a href="https://app.wyvstudio.com/login" class="btn">Sign in</a>
+    <a href="https://app.wyvstudio.com/register" class="btn btn-primary">Start free →</a>
+  </div>
+</nav>
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-badge"><span class="hero-badge-dot"></span> Scripts, audio, URLs, or ideas</div>
+  <h1>Create short videos from<br><em>whatever you have.</em></h1>
+  <p class="hero-sub">Start with a script, product page, podcast clip, or simple prompt. WyvStudio turns it into a finished short with voice, visuals, captions, and one-click exports for YouTube, Reels, TikTok, and LinkedIn — every aspect ratio in one go.</p>
+  <div class="hero-actions">
+    <a href="#start-your-way" class="btn btn-primary btn-lg">See how it works →</a>
+    <a href="https://app.wyvstudio.com/register" class="btn btn-lg">Try it free</a>
+  </div>
+  <div class="hero-trust">
+    No credit games. No surprise renewals. Cancel any month — we'll refund unused video credits.
+  </div>
+</section>
+
+<!-- ── APP PREVIEW ── -->
+<div class="preview-wrap">
+  <div class="preview-frame">
+    <div class="preview-bar">
+      <div class="preview-dot" style="background:#f87171"></div>
+      <div class="preview-dot" style="background:#fbbf24"></div>
+      <div class="preview-dot" style="background:#34d399"></div>
+      <div class="preview-url"></div>
+    </div>
+    <div class="preview-body">
+      <div class="preview-sidebar">
+        <div class="preview-sidebar-logo">
+          <svg width="20" height="20" viewBox="0 0 64 64" fill="none"><rect width="64" height="64" rx="14" fill="#ff6b35"/><path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          <div style="height:8px;width:70px;border-radius:3px;background:rgba(255,255,255,.1)"></div>
+        </div>
+        <div class="preview-nav-item active"><div class="preview-nav-dot active"></div><div class="preview-nav-label active"></div></div>
+        <div class="preview-nav-item"><div class="preview-nav-dot"></div><div class="preview-nav-label"></div></div>
+        <div class="preview-nav-item"><div class="preview-nav-dot"></div><div class="preview-nav-label"></div></div>
+        <div class="preview-nav-item"><div class="preview-nav-dot"></div><div class="preview-nav-label"></div></div>
+        <div class="preview-nav-item"><div class="preview-nav-dot"></div><div class="preview-nav-label"></div></div>
+      </div>
+      <div class="preview-canvas">
+        <div class="preview-phone">
+          <div class="preview-phone-screen">
+            <div class="preview-phone-title">30-second supplement ad from one product brief — script, voice, scenes, captions, export…</div>
+            <div class="preview-phone-bars">
+              <div class="preview-phone-bar" style="height:40%"></div>
+              <div class="preview-phone-bar" style="height:70%"></div>
+              <div class="preview-phone-bar" style="height:55%"></div>
+              <div class="preview-phone-bar" style="height:90%"></div>
+              <div class="preview-phone-bar" style="height:60%"></div>
+              <div class="preview-phone-bar" style="height:80%"></div>
+              <div class="preview-phone-bar" style="height:45%"></div>
+              <div class="preview-phone-bar" style="height:65%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="preview-panel">
+        <div class="preview-panel-section">
+          <div class="preview-panel-label"></div>
+          <div class="preview-panel-block active"></div>
+          <div class="preview-panel-block"></div>
+        </div>
+        <div class="preview-panel-section">
+          <div class="preview-panel-label"></div>
+          <div class="preview-panel-block"></div>
+          <div class="preview-panel-block"></div>
+          <div class="preview-panel-block"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="preview-glow"></div>
+</div>
+
+<!-- ── CONTENT ROADS ── -->
+<section id="start-your-way" class="roads-section">
+  <div class="container">
+    <div class="section-label">Start your way</div>
+    <h2 class="section-title">However your content starts,<br>we can build from it.</h2>
+    <p class="section-sub" style="margin:0 auto">Some videos start with a polished script. Some start with a product URL, a podcast episode, or just a rough idea. WyvStudio supports all of those paths — so you don't need to reshape your workflow to use it.</p>
+
+    <div class="roads-grid">
+      <div class="road-card">
+        <div class="road-icon">✎</div>
+        <div class="road-tag">Script</div>
+        <div class="road-title">Paste a script</div>
+        <div class="road-copy">Drop in your written script. We break it into scenes, time the voice, and generate visuals to match.</div>
+      </div>
+      <div class="road-card">
+        <div class="road-icon">🔗</div>
+        <div class="road-tag">URL</div>
+        <div class="road-title">Drop a URL</div>
+        <div class="road-copy">Article, blog post, or product page. We extract the story and turn it into a short.</div>
+      </div>
+      <div class="road-card">
+        <div class="road-icon">🎙</div>
+        <div class="road-tag">Audio</div>
+        <div class="road-title">Upload audio</div>
+        <div class="road-copy">Podcast episode or voice memo. We transcribe, find the moments, and clip them into shorts.</div>
+      </div>
+      <div class="road-card">
+        <div class="road-icon">💡</div>
+        <div class="road-tag">Idea</div>
+        <div class="road-title">Just a prompt</div>
+        <div class="road-copy">A topic, a hook, a product name. We write the script, build the scenes, render the video.</div>
+      </div>
+    </div>
+
+    <div class="roads-converge">
+      <div class="roads-converge-arrows">↓ ↓ ↓ ↓</div>
+      <div class="roads-converge-card">
+        <div class="roads-converge-label">Every road outputs</div>
+        <div class="roads-converge-title">A finished short: editable, captioned, voiced, and ready to export.</div>
+        <div class="roads-converge-copy">Pick the starting point that fits your workflow. WyvStudio handles the script, scenes, voice, visuals, and finishing steps from there.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── ONE BRIEF, EVERY FORMAT ── -->
+<section class="moat-section">
+  <div class="container">
+    <div class="section-label">What makes it different</div>
+    <h2 class="section-title">One brief.<br>Every format. Every platform.</h2>
+    <p class="section-sub" style="margin:0 auto">Most AI video tools hand you a clip you then have to re-edit for each platform. WyvStudio outputs publish-ready 9:16, 1:1, 4:5, and 16:9 from the same project — with captions, transitions, and music auto-matched to each format.</p>
+
+    <div class="moat-grid">
+      <div class="moat-ref">
+        <div class="moat-ref-tag">Brief</div>
+        <span>✦</span>
+        <div class="moat-ref-label">One project</div>
+      </div>
+      <div class="moat-arrow">→</div>
+      <div class="moat-scenes">
+        <div class="moat-scene" style="background:linear-gradient(135deg,#1e3a2e,#0f1f1a)">
+          <span>📱</span>
+          <div class="moat-scene-label">9:16 Reels / TikTok</div>
+        </div>
+        <div class="moat-scene" style="background:linear-gradient(135deg,#1a1a2e,#0d0d1a)">
+          <span>⬛</span>
+          <div class="moat-scene-label">1:1 Feed</div>
+        </div>
+        <div class="moat-scene" style="background:linear-gradient(135deg,#2d1b4e,#1a0a2e)">
+          <span>📐</span>
+          <div class="moat-scene-label">4:5 LinkedIn</div>
+        </div>
+        <div class="moat-scene" style="background:linear-gradient(135deg,#3a1e1a,#1f0f0a)">
+          <span>🖥</span>
+          <div class="moat-scene-label">16:9 YouTube</div>
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size:13px;color:var(--text-dim);margin-top:32px;line-height:1.65;max-width:700px;margin-left:auto;margin-right:auto">
+      Write the brief once. Export it for every channel. The script, voice, captions, and visuals carry across — you only pick the formats you want to publish on.
+    </p>
+
+    <p style="font-size:12px;color:var(--text-faint);margin-top:20px;font-family:'Space Mono',monospace;letter-spacing:.05em">
+      One project · Four aspect ratios · Direct publish to YouTube / Instagram / TikTok / LinkedIn
+    </p>
+  </div>
+</section>
+
+<!-- ── PROBLEM ── -->
+<section style="padding:100px 24px 80px">
+  <div class="container problem">
+    <div class="section-label">The problem</div>
+    <h2 class="section-title">Short-form video is a full-time job.<br>It shouldn't be.</h2>
+    <p class="section-sub">Writing scripts, sourcing visuals, recording voiceovers, editing captions, keeping a consistent brand face, uploading to three platforms — most teams burn out before they find their rhythm.</p>
+
+    <div class="pain-grid" style="margin-top:48px">
+      <div class="pain-card">
+        <div class="pain-icon">⏱</div>
+        <div class="pain-title">Hours per video</div>
+        <div class="pain-copy">A single 60-second video takes 3–5 hours from idea to upload. At that pace, weekly cadence is impossible.</div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">🎭</div>
+        <div class="pain-title">No on-screen face</div>
+        <div class="pain-copy">Stock avatars look stiff. Real shoots are slow and expensive. Your videos either lack a presenter or all look the same.</div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">🔧</div>
+        <div class="pain-title">Tool sprawl</div>
+        <div class="pain-copy">Script in Docs, voice in ElevenLabs, edit in CapCut, captions elsewhere, schedule with a third. One platform should do it.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── HOW IT WORKS ── -->
+<section id="how-it-works" style="padding:80px 24px">
+  <div class="container">
+    <div class="section-label">How it works</div>
+    <h2 class="section-title">From idea to posted.<br>In minutes.</h2>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-connector"></div>
+        <div class="step-num">1</div>
+        <div class="step-title">Drop in your idea</div>
+        <div class="step-copy">Paste a topic, article URL, full script, or product description. WyvStudio writes the script, breaks it into scenes, and builds a visual brief — automatically.</div>
+      </div>
+      <div class="step">
+        <div class="step-connector"></div>
+        <div class="step-num">2</div>
+        <div class="step-title">AI weaves it together</div>
+        <div class="step-copy">AI voice narrates every scene. Visuals are matched or generated. Captions are timed and styled. You get a complete, editable video — not a template.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-title">Edit, then publish</div>
+        <div class="step-copy">Swap a scene, change the voice, regenerate one image. When it's right, schedule straight to YouTube, TikTok, and Instagram — all from one place.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section id="features" style="padding:80px 24px">
+  <div class="container">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">Everything a content studio<br>needs. Nothing it doesn't.</h2>
+
+    <div class="feature-grid">
+      <div class="feature-card accent">
+        <div class="feature-card-glow"></div>
+        <div class="feature-icon">✦</div>
+        <div class="feature-title">AI Script + Scene Breakdown</div>
+        <div class="feature-copy">From a single prompt, WyvStudio writes a structured short-form script, breaks it into scenes with timing, and scores your hook options before you even start.</div>
+        <div class="feature-tags">
+          <span class="feature-tag">Prompt → Script</span>
+          <span class="feature-tag">URL → Video</span>
+          <span class="feature-tag">Product Review</span>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🎙</div>
+        <div class="feature-title">AI Voice Narration</div>
+        <div class="feature-copy">Choose from multiple voice profiles. Each scene is narrated automatically, timed to the script, and synced with captions. Regenerate any scene with one click.</div>
+        <div class="feature-tags">
+          <span class="feature-tag">Multiple voices</span>
+          <span class="feature-tag">Per-scene regen</span>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🖼</div>
+        <div class="feature-title">4 Visual Modes</div>
+        <div class="feature-copy">Stock video, stock images, AI-generated images, or audiogram waveforms — pick the visual style that fits your content. Switch per-scene in the editor.</div>
+        <div class="feature-tags">
+          <span class="feature-tag">Stock video</span>
+          <span class="feature-tag">AI images</span>
+          <span class="feature-tag">Audiogram</span>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📅</div>
+        <div class="feature-title">Publishing Calendar</div>
+        <div class="feature-copy">Connect YouTube and TikTok. Schedule posts from inside the editor. View your full publishing calendar by week or month. Never copy-paste a file again.</div>
+        <div class="feature-tags">
+          <span class="feature-tag">YouTube</span>
+          <span class="feature-tag">TikTok</span>
+          <span class="feature-tag">Calendar view</span>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📺</div>
+        <div class="feature-title">Channels + Brand Kits</div>
+        <div class="feature-copy">Manage multiple channels with their own voice, style, captions, and brand kit. Spin up a new episode with all defaults pre-filled in one click.</div>
+        <div class="feature-tags">
+          <span class="feature-tag">Brand kits</span>
+          <span class="feature-tag">Presets</span>
+          <span class="feature-tag">Series mode</span>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🎨</div>
+        <div class="feature-title">Brand-Aware Output</div>
+        <div class="feature-copy">Upload your logo, colours, and fonts once. WyvStudio uses them automatically across every scene — title cards, captions, lower-thirds, overlays, and end frames. Every video looks like it came from your brand, not an AI tool.</div>
+        <div class="feature-tags">
+          <span class="feature-tag">Brand kits</span>
+          <span class="feature-tag">Auto-styled captions</span>
+          <span class="feature-tag">Consistent visual identity</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── VISUAL TYPES ── -->
+<section style="padding:60px 24px 100px">
+  <div class="container" style="text-align:center">
+    <div class="section-label">Visual modes</div>
+    <h2 class="section-title" style="margin-bottom:8px">Every format. One platform.</h2>
+    <div class="visual-types">
+      <div class="vt-card">
+        <div class="vt-preview" style="background:linear-gradient(135deg,#101426,#4f46e5)">
+          <span style="font-size:28px">▶</span>
+        </div>
+        <div class="vt-label">Stock Video</div>
+        <div class="vt-copy">Real footage matched to your script, scene by scene</div>
+      </div>
+      <div class="vt-card">
+        <div class="vt-preview" style="background:linear-gradient(135deg,#10261d,#6ee7b7)">
+          <span style="font-size:28px">🖼</span>
+        </div>
+        <div class="vt-label">Stock Images</div>
+        <div class="vt-copy">Editorial stills sourced per scene for a clean editorial feel</div>
+      </div>
+      <div class="vt-card">
+        <div class="vt-preview" style="background:linear-gradient(135deg,#28124b,#f59e0b)">
+          <span style="font-size:28px">✦</span>
+        </div>
+        <div class="vt-label">AI Images</div>
+        <div class="vt-copy">Generated frames in your chosen visual style — consistent across all scenes</div>
+      </div>
+      <div class="vt-card">
+        <div class="vt-preview" style="background:linear-gradient(135deg,#091a3a,#22d3ee);display:flex;align-items:flex-end;justify-content:center;gap:3px;padding:12px">
+          <div style="width:5px;height:30%;background:#ff6b35;border-radius:2px"></div>
+          <div style="width:5px;height:55%;background:#ff6b35;border-radius:2px"></div>
+          <div style="width:5px;height:40%;background:#ff6b35;border-radius:2px"></div>
+          <div style="width:5px;height:75%;background:#ff6b35;border-radius:2px"></div>
+          <div style="width:5px;height:50%;background:#ff6b35;border-radius:2px"></div>
+          <div style="width:5px;height:65%;background:#ff6b35;border-radius:2px"></div>
+          <div style="width:5px;height:35%;background:#ff6b35;border-radius:2px"></div>
+        </div>
+        <div class="vt-label">Audiogram</div>
+        <div class="vt-copy">Audio-reactive waveform bars — perfect for podcast clips and voice-led content</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── USE CASES ── -->
+<section id="use-cases" style="padding:100px 24px">
+  <div class="container" style="text-align:center">
+    <div class="section-label">Use cases</div>
+    <h2 class="section-title">Every short video. One platform.</h2>
+    <p class="section-sub" style="margin:0 auto 16px">Ads, stories, episodes, podcast clips, explainers, listings — every short-form format, one pipeline, every aspect ratio in one export.</p>
+
+    <div class="uc-grid">
+      <!-- Card 1 — DTC ad creatives (wedge) -->
+      <div class="uc-card wedge">
+        <div class="uc-media has-video">
+          <video
+            class="uc-media-video"
+            src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-1-dtc-supplement.mp4?v=2"
+            autoplay muted loop playsinline preload="auto"
+            aria-label="30-second DTC supplement ad sample made entirely in WyvStudio">
+          </video>
+          <div class="uc-media-badge">30s · DTC ad · Made in WyvStudio</div>
+          <div class="uc-media-caption">30-second DTC ad — hook, problem, product reveal, CTA, captioned for sound-off</div>
+        </div>
+        <div class="uc-body">
+          <span class="uc-wedge-tag">Lead use case</span>
+          <div class="uc-title">30-second ads. Ten variants by Friday.</div>
+          <div class="uc-hook">For supplement and wellness brands that need fresh creative every week without an editor, an actor, or a studio booking.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Hook variants in one click — ten openings for the same offer</div>
+            <div class="uc-ship">Claim swap is a script change, not a reshoot</div>
+            <div class="uc-ship">9:16, 1:1, 4:5 — all aspects in one export</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 2 — Podcast promo shorts -->
+      <div class="uc-card">
+        <div class="uc-media has-video">
+          <video
+            class="uc-media-video"
+            src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-2-podcast.mp4"
+            autoplay muted loop playsinline preload="auto"
+            aria-label="Podcast promo sample with audiogram beats and episode-title captions, made in WyvStudio">
+          </video>
+          <div class="uc-media-badge">Podcast · Made in WyvStudio</div>
+          <div class="uc-media-caption">Audiogram beats and episode-title captions over the show's audio waveform</div>
+        </div>
+        <div class="uc-body">
+          <div class="uc-title">Turn one episode into a week's worth of shorts.</div>
+          <div class="uc-hook">For podcasters who keep meaning to clip their best moments but never have a designer on call.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Drop the audio — we transcribe, scene-break, and visualise</div>
+            <div class="uc-ship">Show-branded title cards and lower-thirds on every promo clip</div>
+            <div class="uc-ship">Audiograms, captions, platform-ready aspect ratios</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 3 — Short stories & narrative episodes -->
+      <div class="uc-card">
+        <div class="uc-media has-video">
+          <video
+            class="uc-media-video"
+            src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-3-story.mp4"
+            autoplay muted loop playsinline preload="auto"
+            aria-label="Short story sample across three intercut scene environments, made in WyvStudio">
+          </video>
+          <div class="uc-media-badge">Story · Made in WyvStudio</div>
+          <div class="uc-media-caption">Narrated short across three intercut scene environments</div>
+        </div>
+        <div class="uc-body">
+          <div class="uc-title">A different story every week.</div>
+          <div class="uc-hook">For storytellers, short-fiction creators, and episodic channels building a series, not one-off uploads.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Script → scenes → AI b-roll matched to every beat</div>
+            <div class="uc-ship">Voice narration in 75+ languages</div>
+            <div class="uc-ship">Episode-to-episode visual continuity via brand kit</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 4 — Educational & explainer videos -->
+      <div class="uc-card">
+        <div class="uc-media has-video">
+          <video
+            class="uc-media-video"
+            src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-4-explainer.mp4"
+            autoplay muted loop playsinline preload="auto"
+            aria-label="ML concept explainer sample, made in WyvStudio">
+          </video>
+          <div class="uc-media-badge">Explainer · Made in WyvStudio</div>
+          <div class="uc-media-caption">Single-concept tech explainer — drops straight into a course module or a TikTok lesson series</div>
+        </div>
+        <div class="uc-body">
+          <div class="uc-title">Explain anything in 60 seconds.</div>
+          <div class="uc-hook">For educators, course creators, and microlearning channels building a series, not one-off uploads.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Script-to-video for every concept in your syllabus</div>
+            <div class="uc-ship">Visual b-roll generated to match each scene</div>
+            <div class="uc-ship">Captions, chapter markers, multi-aspect exports</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 5 — Personal-brand shorts -->
+      <div class="uc-card">
+        <div class="uc-media has-video">
+          <video
+            class="uc-media-video"
+            src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-5-linkedin.mp4"
+            autoplay muted loop playsinline preload="auto"
+            aria-label="LinkedIn personal-brand sample, made in WyvStudio">
+          </video>
+          <div class="uc-media-badge">LinkedIn · Made in WyvStudio</div>
+          <div class="uc-media-caption">Captioned hot take over animated b-roll, sized for LinkedIn 4:5</div>
+        </div>
+        <div class="uc-body">
+          <div class="uc-title">Show up online every day — without filming every day.</div>
+          <div class="uc-hook">For coaches, consultants, and founder-led personal brands who know they should post daily but don't have a studio in the corner of the office.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Type your take — we script, voice, and visualise it</div>
+            <div class="uc-ship">Hot takes, frameworks, case studies all in the same pipeline</div>
+            <div class="uc-ship">1:1, 9:16, 16:9, 4:5 sized for LinkedIn, IG, TikTok, YT</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 6 — Local, listing & community videos -->
+      <div class="uc-card">
+        <div class="uc-media has-video">
+          <video
+            class="uc-media-video"
+            src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-6-listing.mp4"
+            autoplay muted loop playsinline preload="auto"
+            aria-label="Real-estate listing sample with property photo sequence and branded overlay, made in WyvStudio">
+          </video>
+          <div class="uc-media-badge">Listing · Made in WyvStudio</div>
+          <div class="uc-media-caption">Property photo sequence with branded overlay and price + location captions</div>
+        </div>
+        <div class="uc-body">
+          <div class="uc-title">Same-day videos for agents, owners, and small teams.</div>
+          <div class="uc-hook">For real estate agents, gyms, salons, restaurants, and local operators posting listings, offers, and updates every week.</div>
+          <div class="uc-ships">
+            <div class="uc-ship">Upload photos — we sequence them with branded b-roll and captions</div>
+            <div class="uc-ship">Brand kit overlay on every video — colours, fonts, logo</div>
+            <div class="uc-ship">One-click multi-platform export for Reels, TikTok, YouTube Shorts</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size:12px;color:var(--text-faint);margin-top:40px;font-family:'Space Mono',monospace;letter-spacing:.05em">
+      Sample videos arriving soon · <a href="https://app.wyvstudio.com/register" style="color:var(--accent);text-decoration:none">Start free →</a>
+    </p>
+  </div>
+</section>
+
+<!-- ── PRICING ── -->
+<section id="pricing" class="pricing">
+  <div class="container" style="text-align:center">
+    <div class="section-label">Pricing</div>
+    <h2 class="section-title">Simple, credit-based pricing.</h2>
+    <p class="section-sub" style="margin:0 auto">You only pay for what you generate. The AI assistant, scripts, scene breakdowns, stock footage and exports are all included — credits go to AI images, video and voice. Stock projects cost almost nothing; cinematic AI video uses more. No surprise renewals, unused credits refundable on cancel.</p>
+
+    <div class="pricing-grid">
+
+      <div class="plan-card">
+        <div class="plan-name">Free</div>
+        <div class="plan-price">$0</div>
+        <div class="plan-desc">200 one-time credits to explore the platform. No card required.</div>
+        <div class="plan-divider"></div>
+        <div class="plan-features">
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>200 starter credits</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>All visual modes</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>1 channel</div>
+          <div class="plan-feature"><span class="plan-feature-x">✕</span><span style="opacity:.5">Watermark on exports</span></div>
+          <div class="plan-feature"><span class="plan-feature-x">✕</span><span style="opacity:.5">Social publishing</span></div>
+        </div>
+        <a href="https://app.wyvstudio.com/register" class="plan-btn">Get started free</a>
+      </div>
+
+      <div class="plan-card">
+        <div class="plan-name">Starter</div>
+        <div class="plan-price">$19<span>/mo</span></div>
+        <div class="plan-desc">Solo creator publishing on one channel · ≈ 4 fully-animated ads or 90 AI images/mo.</div>
+        <div class="plan-divider"></div>
+        <div class="plan-features">
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>1,500 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>No watermark</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>1 channel</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Social publishing</div>
+          <div class="plan-feature"><span class="plan-feature-x">✕</span><span style="opacity:.5">Series mode</span></div>
+        </div>
+        <a href="https://app.wyvstudio.com/register" class="plan-btn">Start Starter</a>
+      </div>
+
+      <div class="plan-card featured">
+        <div class="plan-badge">Most popular</div>
+        <div class="plan-name">Creator</div>
+        <div class="plan-price">$39<span>/mo</span></div>
+        <div class="plan-desc">Brands + serial creators shipping weekly · ≈ 8 fully-animated ads or 180 AI images/mo.</div>
+        <div class="plan-divider"></div>
+        <div class="plan-features">
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>3,000 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>No watermark</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>3 channels</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Full series mode</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>AI high-quality images</div>
+        </div>
+        <a href="https://app.wyvstudio.com/register" class="plan-btn featured">Start Creator</a>
+      </div>
+
+      <div class="plan-card">
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">$79<span>/mo</span></div>
+        <div class="plan-desc">Brands, studios, channels publishing heavily · ≈ 18 animated ads or 5 cinematic Kling ads/mo.</div>
+        <div class="plan-divider"></div>
+        <div class="plan-features">
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>6,500 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>10 channels</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Batch generation</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>AI high-quality images</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Priority queue</div>
+        </div>
+        <a href="https://app.wyvstudio.com/register" class="plan-btn">Start Pro</a>
+      </div>
+
+      <div class="plan-card">
+        <div class="plan-name">Agency</div>
+        <div class="plan-price">$149<span>/mo</span></div>
+        <div class="plan-desc">Agencies + creator studios serving 5+ brands or channels · ≈ 37 animated ads or 10 cinematic Kling ads/mo.</div>
+        <div class="plan-divider"></div>
+        <div class="plan-features">
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>13,000 credits / month</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Unlimited channels</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Credit rollover</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>Top priority queue</div>
+          <div class="plan-feature"><span class="plan-feature-check">✓</span>All features unlocked</div>
+        </div>
+        <a href="https://app.wyvstudio.com/register" class="plan-btn">Start Agency</a>
+      </div>
+
+    </div>
+    <p style="font-size:12px;color:var(--text-faint);margin-top:24px">1 credit = $0.01 · The AI assistant, scripts, scene breakdowns, stock footage &amp; exports are free — you only pay for AI images, video &amp; voice · AI image ~16 credits · 5s cinematic clip 60–240 credits</p>
+    <p style="font-size:12px;color:var(--text-faint);margin-top:6px">Need more credits? Top-up packs from $8 (500 credits) to $70 (5,000 credits) — available on any paid plan, never expire while subscribed.</p>
+    <p style="font-size:12px;color:var(--text-faint);margin-top:6px">Payments and subscriptions are processed securely by <strong>Kelviq</strong>, our Merchant of Record. Refunds and billing support are handled per our <a href="/refund" style="color:var(--text-dim)">Refund Policy</a>.</p>
+  </div>
+</section>
+
+<!-- ── SOCIAL PROOF ── -->
+<section style="padding:100px 24px">
+  <div class="container" style="text-align:center">
+    <div class="section-label">Who it's for</div>
+    <h2 class="section-title">Built for brands shipping short-form at volume.</h2>
+
+    <div class="proof-grid">
+      <div class="proof-card">
+        <div class="proof-quote">Turn a product, script, or idea into a fully-produced short — AI visuals, voiceover, captions, and music — in minutes, without a shoot.</div>
+        <div class="proof-author">
+          <div>
+            <div class="proof-name">DTC &amp; e-commerce</div>
+            <div class="proof-role">Ad creatives, at volume</div>
+          </div>
+        </div>
+      </div>
+      <div class="proof-card">
+        <div class="proof-quote">Keep a recurring on-screen subject consistent across scenes, and apply each brand's colors, fonts, and voice automatically.</div>
+        <div class="proof-author">
+          <div>
+            <div class="proof-name">Agencies</div>
+            <div class="proof-role">Multiple brands, one workspace</div>
+          </div>
+        </div>
+      </div>
+      <div class="proof-card">
+        <div class="proof-quote">Generate from a brief or a one-line prompt, then schedule straight to TikTok, YouTube, and Instagram from one place.</div>
+        <div class="proof-author">
+          <div>
+            <div class="proof-name">Creators &amp; operators</div>
+            <div class="proof-role">Publishing daily</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section class="cta-section">
+  <div class="cta-glow">
+    <h2>One brief. Every format.<br><em style="color:var(--accent);font-style:normal">Start free in 2 minutes.</em></h2>
+    <p>200 free credits. No credit card. No surprise renewals — ever.</p>
+    <a href="https://app.wyvstudio.com/register" class="btn btn-primary btn-lg">Create your free account →</a>
+    <div class="cta-fine">Free plan includes all use cases · No watermark on paid plans · Refund unused credits on cancel</div>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<div style="border-top:1px solid var(--border)">
+  <footer>
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a href="#" class="footer-brand-logo">
+          <svg width="28" height="28" viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#ff6b35"/><path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          WyvStudio
+        </a>
+        <p class="footer-tagline">Short videos from whatever you have — script, podcast clip, product URL, or just an idea.</p>
+        <!-- Socials: hrefs are placeholders. Swap when handles are claimed.
+             X handle, LinkedIn page, and YouTube channel are F19/F20-adjacent
+             work, so they may land alongside the outbound launch. -->
+        <div class="footer-socials">
+          <a class="footer-social" href="https://x.com/wyvstudio" aria-label="WyvStudio on X" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z"/></svg>
+          </a>
+          <a class="footer-social" href="https://www.linkedin.com/company/wyvstudio" aria-label="WyvStudio on LinkedIn" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14zM8.27 18.5v-8.37H5.5v8.37h2.77zM6.88 8.56a1.68 1.68 0 1 0 0-3.37 1.68 1.68 0 0 0 0 3.37zm11.62 9.94v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79z"/></svg>
+          </a>
+          <a class="footer-social" href="https://youtube.com/@wyvstudio" aria-label="WyvStudio on YouTube" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23.5 6.2a3 3 0 0 0-2.12-2.13C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.52A3 3 0 0 0 .5 6.2C0 8.09 0 12 0 12s0 3.91.5 5.8a3 3 0 0 0 2.12 2.13c1.88.52 9.38.52 9.38.52s7.5 0 9.38-.52a3 3 0 0 0 2.12-2.13c.5-1.89.5-5.8.5-5.8s0-3.91-.5-5.8zM9.55 15.57V8.43L15.82 12 9.55 15.57z"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="footer-cols">
+        <div class="footer-col">
+          <div class="footer-col-title">Product</div>
+          <a href="#how-it-works">How it works</a>
+          <a href="#features">Features</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#use-cases">Use cases</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Resources</div>
+          <a href="/help.html">FAQ</a>
+          <a href="mailto:hello@wyvstudio.com">Contact</a>
+          <a href="/report">Report content</a>
+          <a href="https://app.wyvstudio.com/register">Start free</a>
+          <a href="https://app.wyvstudio.com/login">Sign in</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Legal</div>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/refund">Refund Policy</a>
+          <a href="/data-deletion">Data Deletion</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Trust &amp; Safety</div>
+          <a href="/ai-safety">AI Safety</a>
+          <a href="/acceptable-use">Acceptable Use</a>
+          <a href="/synthetic-media">Synthetic Media</a>
+          <a href="/copyright">Copyright / DMCA</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <div class="footer-bottom-copy">© 2026 Kollignton Kay Technologies Limited — Nigerian Limited Company. All rights reserved. · Payments are processed by <strong>Kelviq</strong>, our Merchant of Record.</div>
+      <a href="#" class="footer-back-top">Back to top ↑</a>
+    </div>
+  </footer>
+</div>
+
+<script src="/posthog-init.js" defer></script><script src="/cookie-notice.js" defer></script><script>window.5f6d22e6-97de-4660-8a8f-baf6d9b0deea="5f6d22e6-97de-4660-8a8f-baf6d9b0deea";</script><script src="/crisp-chat.js" defer></script></body>
+</html>
