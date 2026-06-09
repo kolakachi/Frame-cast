@@ -10,6 +10,7 @@ use App\Services\CruiseControl\Tools\ChangeMusicTool;
 use App\Services\CruiseControl\Tools\CruiseTool;
 use App\Services\CruiseControl\Tools\FindStockImageTool;
 use App\Services\CruiseControl\Tools\FindStockVideoTool;
+use App\Services\CruiseControl\Tools\LockSubjectTool;
 use App\Services\CruiseControl\Tools\PickLibraryMusicTool;
 use App\Services\CruiseControl\Tools\RegenerateImageTool;
 use App\Services\CruiseControl\Tools\ReorderSceneTool;
@@ -40,6 +41,7 @@ class CruiseToolRegistry
         RegenerateImageTool::class,
         AnimateSceneTool::class,
         AddSceneTool::class,
+        LockSubjectTool::class,
         ChangeMusicTool::class,
         // Property mutation
         UpdateSceneScriptTool::class,

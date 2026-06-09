@@ -17,6 +17,7 @@ class Character extends Model
         'consistency_method',
         'identity_strength',
         'status',
+        'is_auto',
         'created_by_user_id',
     ];
 
@@ -24,6 +25,7 @@ class Character extends Model
     {
         return [
             'reference_asset_ids' => 'array',
+            'is_auto' => 'boolean',
         ];
     }
 

@@ -27,6 +27,9 @@ class CharacterController extends Controller
             ->withCount('scenes')
             ->where('workspace_id', $user->workspace_id)
             ->where('status', 'active')
+            // Auto-subjects (Cruise "lock the look") are project-internal and
+            // shouldn't clutter the user's named-character library.
+            ->where('is_auto', false)
             ->orderBy('updated_at', 'desc')
             ->get()
             ->map(fn (Character $c) => $this->serialize($c))

@@ -127,6 +127,7 @@ function cruiseActionTitle(tool) {
     regenerate_image: 'Regenerate image',
     animate_scene: 'Animate scene',
     add_scene: 'Add a new scene',
+    lock_subject: 'Lock the look',
     find_stock_video: 'Find stock video',
     find_stock_image: 'Find stock image',
     pick_library_music: 'Pick library music',
@@ -554,6 +555,7 @@ function cruiseToolTouchesProject(tool) {
     'swap_visual_from_library', 'find_stock_video', 'find_stock_image',
     'pick_library_music', 'change_music', 'add_sound_effect',
     'apply_brand_kit',                                      // asset / project-level
+    'lock_subject',                                         // binds a character + regenerates several scenes
   ].includes(tool)
 }
 
