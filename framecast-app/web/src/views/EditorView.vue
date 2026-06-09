@@ -1063,6 +1063,12 @@ const soundAudioRef = ref(null);
 const musicAuditionRef = ref(null);
 const isAudioPlaying = ref(false);
 const isAudioLoading = ref(false);
+// Music has no preload cache (it's project-level, loaded by the live <audio>),
+// so we track its readiness here. true when no music or it can play.
+const musicReady = ref(true);
+// Set when the user hits play before the scene's assets finish loading — we
+// show the loading overlay and auto-start once everything's ready.
+const pendingScenePlay = ref(false);
 const auditionMusicTrackId = ref(null);
 const currentVisualUrl = ref(null);
 const visualLoadFailed = ref(false);
@@ -1697,6 +1703,45 @@ const activeSceneVisualLoaded = computed(() => {
 const isVisualLoading = computed(() => {
   if (!activeSceneVisualUrl.value) return false;
   return !activeSceneVisualLoaded.value && !visualLoadFailed.value;
+});
+
+// Per-scene asset readiness — a scene is playable only once ALL of its assets
+// (visual, voice, music) can play. A failed asset counts as "ready" so we
+// surface its error instead of blocking forever. Stops music from playing
+// over a visual/voice that hasn't loaded yet.
+const activeSceneVisualReady = computed(() => {
+  if (!activeSceneVisualUrl.value) return true;
+  return activeSceneVisualLoaded.value || visualLoadFailed.value;
+});
+const activeSceneVoiceReady = computed(() => {
+  const id = activeSceneId.value;
+  if (!id || !activeSceneAudioUrl.value) return true;
+  const cached = mediaCache.value.audio[id];
+  return Boolean(cached?.loaded || cached?.failed);
+});
+const activeSceneMusicReady = computed(() => {
+  if (!activeMusicTrackUrl.value) return true;
+  return musicReady.value;
+});
+const activeSceneAssetsReady = computed(
+  () => activeSceneVisualReady.value && activeSceneVoiceReady.value && activeSceneMusicReady.value
+);
+// Show the loading overlay (scene mode) while any asset is still loading.
+const isSceneLoading = computed(
+  () => previewMode.value === "scene"
+    && !activeSceneAssetsReady.value
+    && Boolean(activeSceneVisualUrl.value || activeSceneAudioUrl.value || activeMusicTrackUrl.value)
+);
+// Music readiness: false the moment a track is bound (needs loading), true
+// when there's none. The live music <audio> flips it true on canplay.
+watch(activeMusicTrackUrl, (url) => { musicReady.value = !url; }, { immediate: true });
+// If the user pressed play while assets were still loading, start the moment
+// everything is ready.
+watch(activeSceneAssetsReady, (ready) => {
+  if (ready && pendingScenePlay.value && previewMode.value === "scene") {
+    pendingScenePlay.value = false;
+    startPreviewPlay();
+  }
 });
 const showTextCardPreview = computed(
   () => !currentVisualUrl.value && activeSceneVisualType.value === "text_card"
@@ -3992,6 +4037,15 @@ async function startPreviewPlay() {
     syncFullPreviewScene();
   }
 
+  // Per-scene: don't start until EVERY asset (visual, voice, music) can play,
+  // so music can't run ahead of an unloaded visual/voice. The loading overlay
+  // shows meanwhile; the activeSceneAssetsReady watcher resumes us once ready.
+  if (previewMode.value === "scene" && !activeSceneAssetsReady.value) {
+    pendingScenePlay.value = true;
+    return;
+  }
+  pendingScenePlay.value = false;
+
   stopMusicAudition();
   isPreviewPlaying.value = true;
   nextTick(() => playActiveSceneAudio(currentSceneAudioOffset()));
@@ -4042,6 +4096,7 @@ async function startPreviewPlay() {
 
 function stopPreviewPlay() {
   isPreviewPlaying.value = false;
+  pendingScenePlay.value = false;
   if (previewPlayTimer) {
     window.clearInterval(previewPlayTimer);
     previewPlayTimer = null;
@@ -6437,8 +6492,8 @@ onBeforeUnmount(() => {
                 <div v-else-if="activeSceneVisualGenerationError" class="preview-loading error">
                   {{ activeSceneVisualGenerationError }}
                 </div>
-                <div v-else-if="isVisualLoading" class="preview-loading">
-                  Loading scene media...
+                <div v-else-if="isSceneLoading" class="preview-loading">
+                  Loading scene…
                 </div>
                 <div v-else-if="visualLoadFailed" class="preview-loading error">
                   Media unavailable
@@ -8182,6 +8237,9 @@ onBeforeUnmount(() => {
       preload="metadata"
       :loop="musicLoop"
       @loadedmetadata="syncPreviewMusicVolume"
+      @loadeddata="musicReady = true"
+      @canplay="musicReady = true"
+      @error="musicReady = true"
     ></audio>
     <audio
       v-if="activeSceneSoundUrl"
