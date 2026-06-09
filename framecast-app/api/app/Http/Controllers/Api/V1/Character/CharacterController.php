@@ -74,7 +74,23 @@ class CharacterController extends Controller
             'reference_asset_ids.*' => ['integer'],
             'consistency_method'    => ['sometimes', Rule::in(['quick', 'lora'])],
             'identity_strength'     => ['sometimes', Rule::in(['subtle', 'balanced', 'strong', 'locked'])],
+            // Likeness consent — required when a real reference photo is used.
+            'consent'               => ['sometimes', 'boolean'],
         ]);
+
+        // When a reference photo is attached, the user must attest they have
+        // the rights/consent to that likeness (MOR/IP requirement). Recorded
+        // for audit via consent_acknowledged_at below.
+        $hasReference = ! empty($validated['reference_asset_id']) || ! empty($validated['reference_asset_ids']);
+        if ($hasReference && empty($validated['consent'])) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'consent_required',
+                    'message' => 'Please confirm you have the rights and consent to use this person\'s likeness before creating a character from a reference photo.',
+                    'context' => ['field' => 'consent'],
+                ],
+            ], 422);
+        }
 
         // Validate every asset id belongs to the workspace.
         $allIds = array_filter(array_unique(array_merge(
@@ -113,6 +129,7 @@ class CharacterController extends Controller
             'consistency_method'  => $validated['consistency_method'] ?? 'quick',
             'identity_strength'   => $validated['identity_strength'] ?? 'balanced',
             'status'              => 'active',
+            'consent_acknowledged_at' => $hasReference ? now() : null,
             'created_by_user_id'  => $user->getKey(),
         ]);
 

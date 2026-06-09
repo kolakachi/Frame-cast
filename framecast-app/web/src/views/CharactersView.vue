@@ -20,6 +20,7 @@ const editingId = ref(null);              // when set, we're editing an existing
 const createName = ref("");
 const createDescription = ref("");
 const createIdentityStrength = ref("balanced"); // subtle | balanced | strong | locked
+const consentChecked = ref(false); // likeness consent — required when a reference photo is used
 const createFile = ref(null);             // newly-picked file (replaces existing — legacy single mode)
 const createPreviewUrl = ref("");         // object URL for the newly-picked file
 const existingThumbUrl = ref(null);       // existing primary reference image URL when editing
@@ -271,6 +272,7 @@ function openCreate() {
   removeExistingImage.value = false;
   existingReferences.value = [];
   clearNewFiles();
+  consentChecked.value = false;
   createError.value = "";
   createOpen.value = true;
 }
@@ -288,6 +290,9 @@ function openEdit(c) {
     ? [...c.reference_assets]
     : (c.reference_asset ? [c.reference_asset] : []);
   clearNewFiles();
+  // Editing a character that already has a reference → consent was given at
+  // create; default it checked so edits aren't blocked.
+  consentChecked.value = existingReferences.value.length > 0;
   createError.value = "";
   createOpen.value = true;
 }
@@ -354,6 +359,7 @@ function closeCreate() {
   editingId.value = null;
   createName.value = "";
   createDescription.value = "";
+  consentChecked.value = false;
   clearFile();
   existingThumbUrl.value = null;
   removeExistingImage.value = false;
@@ -421,6 +427,18 @@ async function saveCharacter() {
     } else if (removeExistingImage.value || !editingId.value) {
       payload.reference_asset_ids = [];
       payload.reference_asset_id  = null;
+    }
+
+    // Likeness consent — required whenever this character will carry a
+    // reference photo (real face). Backend enforces it too.
+    const willHaveReference = combined.length > 0
+      || (editingId.value && existingReferences.value.length > 0 && !removeExistingImage.value);
+    if (willHaveReference) {
+      if (!consentChecked.value) {
+        createError.value = "Please confirm you have the rights and consent to use this person's likeness.";
+        return;
+      }
+      payload.consent = true;
     }
 
     let saved;
@@ -613,6 +631,13 @@ async function confirmDelete() {
               </label>
             </div>
             <div class="cv-hint">First image is the primary reference used today. Extra photos improve future LoRA training. Max 8.</div>
+          </div>
+
+          <div v-if="existingReferences.length || createNewFilePreviews.length" class="cv-field">
+            <label class="cv-consent">
+              <input type="checkbox" v-model="consentChecked" />
+              <span>I confirm I have the rights and consent to use this person's likeness, and that I won't use it to create misleading, deceptive, or explicit content.</span>
+            </label>
           </div>
 
           <div class="cv-field">
@@ -991,6 +1016,8 @@ async function confirmDelete() {
 }
 .cv-input:focus { border-color: #ff6b35; }
 .cv-hint { font-size: 11px; opacity: 0.55; margin-top: 6px; }
+.cv-consent { display: flex; gap: 10px; align-items: flex-start; font-size: 12px; line-height: 1.45; cursor: pointer; padding: 10px 12px; border: 1px solid var(--color-border, #2a2a35); border-radius: 8px; }
+.cv-consent input { margin-top: 2px; flex-shrink: 0; }
 .cv-error { font-size: 12.5px; color: #ff6b6b; margin: 8px 0 12px; }
 .cv-foot {
   display: flex; justify-content: flex-end; gap: 8px; align-items: center;

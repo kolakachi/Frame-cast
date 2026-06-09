@@ -119,6 +119,33 @@ class GenerateAIImageJob implements ShouldQueue
             }
 
             $prompt = $this->buildPrompt($scene, ! $useCharacterRef);
+
+            // Content-safety catch-all: screen the final prompt before we call
+            // any generator. Covers every path (Cruise / one-shot / project /
+            // chained) — not just the editor's pre-flight check. On a block we
+            // refund the reservation and fail the scene cleanly (no spend).
+            $safetyBlock = app(\App\Services\Moderation\ContentSafetyService::class)->screenText($prompt, [
+                'workspace_id' => (int) $scene->project->workspace_id,
+                'project_id'   => $this->projectId,
+                'scene_id'     => $this->sceneId,
+                'operation'    => 'ai_image',
+            ]);
+            if ($safetyBlock) {
+                app(CreditService::class)->refund((int) $scene->project->workspace_id, $reserved, 'ai_image:blocked');
+                $scene->forceFill([
+                    'image_generation_settings_json' => array_merge($scene->image_generation_settings_json ?? [], [
+                        'in_progress'      => false,
+                        'needs_visual'     => true,
+                        'last_error'       => $safetyBlock,
+                        'generation_token' => $this->generationToken,
+                    ]),
+                ])->save();
+                GenerationProgressed::dispatch($this->projectId, 'ai_image', 'failed', $safetyBlock, ['scene_id' => $this->sceneId]);
+                app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'ai_image', $safetyBlock, $this->sceneId);
+
+                return;
+            }
+
             $aspectRatio = $scene->project->aspect_ratio ?? '9:16';
 
             $scene->loadMissing('project');

@@ -18,6 +18,7 @@ class Character extends Model
         'identity_strength',
         'status',
         'is_auto',
+        'consent_acknowledged_at',
         'created_by_user_id',
     ];
 
@@ -26,6 +27,7 @@ class Character extends Model
         return [
             'reference_asset_ids' => 'array',
             'is_auto' => 'boolean',
+            'consent_acknowledged_at' => 'datetime',
         ];
     }
 

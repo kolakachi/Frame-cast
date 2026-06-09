@@ -844,6 +844,18 @@ class SceneController extends Controller
         $style = $validated['style'] ?? $scene->visual_style ?? 'cinematic';
         $modelKey = $validated['model_key'] ?? null;
 
+        // Content-safety: screen the user's prompt up-front so prohibited
+        // requests are rejected before we spend anything (see ContentSafetyService).
+        if (! empty($validated['prompt_override'])) {
+            $block = app(\App\Services\Moderation\ContentSafetyService::class)->screenText(
+                (string) $validated['prompt_override'],
+                ['workspace_id' => (int) $user->workspace_id, 'user_id' => (int) $user->getKey(), 'scene_id' => (int) $scene->getKey(), 'project_id' => (int) $scene->project_id, 'operation' => 'regenerate_image'],
+            );
+            if ($block) {
+                return $this->error('content_blocked', $block, 422);
+            }
+        }
+
         $generationToken = (string) Str::uuid();
 
         // Lock the scene immediately so rapid re-clicks and pipeline overlap are rejected.
