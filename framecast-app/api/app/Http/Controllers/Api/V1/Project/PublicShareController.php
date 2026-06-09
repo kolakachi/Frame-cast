@@ -90,10 +90,14 @@ class PublicShareController extends Controller
             return $this->error('not_found', 'This share link is unavailable.', 404);
         }
 
-        // Latest succeeded export — what plays in the embedded video tag.
+        // Latest finished export — what plays in the embedded video tag.
+        // ConcatenateExportJob marks the ExportJob 'completed' on success (the
+        // 'succeeded' string is only used on the ApiUsage telemetry row), so
+        // querying 'succeeded' here matched nothing and the page was stuck on
+        // "still rendering" forever. Accept both to be safe against old rows.
         $export = ExportJob::query()
             ->where('project_id', $project->getKey())
-            ->where('status', 'succeeded')
+            ->whereIn('status', ['completed', 'succeeded'])
             ->whereNotNull('output_asset_id')
             ->orderByDesc('completed_at')
             ->first();
