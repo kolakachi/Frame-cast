@@ -134,7 +134,34 @@ class OneShotPromptParser
      *   style: string,           // 'photorealistic' | 'cinematic' | ... — picks the image style
      * }
      */
-    public function parse(string $userPrompt): array
+    /**
+     * Build the authoritative PRODUCT FACTS block appended to the SYSTEM
+     * prompt when the user's prompt contained a URL. In the system prompt
+     * (not the user message tail) on purpose: scene descriptions in the user
+     * prompt are detailed and dominant, and the model would otherwise follow
+     * a wrong product assumption over quietly-appended page content.
+     */
+    private function factsBlock(?array $urlContext): string
+    {
+        if (! $urlContext) {
+            return '';
+        }
+
+        return <<<FACTS
+
+
+PRODUCT FACTS — fetched live from {$urlContext['url']} (AUTHORITATIVE):
+{$urlContext['content']}
+
+Rules for using the facts: every claim about the product in any script line
+MUST come from the PRODUCT FACTS above — name, what it does, features,
+pricing, offers. If the user's scene descriptions assume features the facts
+do not support, KEEP their visual arc, mood and style but CORRECT the
+product claims to match the facts. Never invent features.
+FACTS;
+    }
+
+    public function parse(string $userPrompt, ?array $urlContext = null): array
     {
         $fallback = $this->fallback($userPrompt);
 
@@ -233,6 +260,7 @@ You convert a single user prompt about a short video scene into four channels:
 
 Return STRICT JSON with exactly these five keys. No prose, no markdown.
 SYS;
+        $systemPrompt .= $this->factsBlock($urlContext);
 
         try {
             $response = Http::withToken($apiKey)
@@ -323,15 +351,14 @@ SYS;
     {
         $sceneCount = max(1, min(8, $sceneCount));
 
-        // URL in the prompt? Ground the plan in the real page content. Hints
-        // still read the ORIGINAL prompt only (page copy could false-trigger
-        // source/animation cues like the word "footage").
+        // URL in the prompt? Ground the plan in the real page content —
+        // injected as an AUTHORITATIVE system-prompt block (factsBlock), not
+        // appended user text, so wrong product assumptions in the prompt get
+        // corrected instead of obeyed. Hints still read the ORIGINAL prompt
+        // only (page copy could false-trigger source/animation cues).
         $urlContext = $this->extractUrlContext($userPrompt);
-        $augmentedPrompt = $urlContext
-            ? $userPrompt."\n\nPRODUCT PAGE CONTENT (fetched from {$urlContext['url']} — ground the product name, benefits and claims in this, do not invent features):\n".$urlContext['content']
-            : $userPrompt;
 
-        $singleFallback = $this->parse($augmentedPrompt);
+        $singleFallback = $this->parse($userPrompt, $urlContext);
         $hints = $this->inferHints($userPrompt);
         $fallback = $this->fallbackMulti($singleFallback, $sceneCount);
         $fallback['hints'] = $hints;
@@ -406,6 +433,7 @@ Return STRICT JSON, no markdown:
 
 The scenes array MUST have exactly {$sceneCount} items.
 SYS;
+        $systemPrompt .= $this->factsBlock($urlContext);
 
         try {
             $response = Http::withToken($apiKey)
@@ -416,7 +444,7 @@ SYS;
                     'response_format' => ['type' => 'json_object'],
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user',   'content' => $augmentedPrompt],
+                        ['role' => 'user',   'content' => $userPrompt],
                     ],
                 ]);
 
