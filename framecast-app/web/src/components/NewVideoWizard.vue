@@ -993,18 +993,6 @@ defineExpose({ open })
           <!-- Toolbar: + Add (popover), aspect ratio chip, animate model chip, char count -->
           <div class="composer-toolbar">
             <div class="composer-tools-left">
-              <!-- Visual source dropdown — AI images / stock / audiogram -->
-              <div class="composer-pill-wrap">
-                <button type="button" class="composer-pill" @click="oneShotSourceMenuOpen = !oneShotSourceMenuOpen">
-                  <span>{{ oneShotSourceMeta.icon }} {{ oneShotSourceMeta.label }}</span><span class="composer-pill-caret">▾</span>
-                </button>
-                <div v-if="oneShotSourceMenuOpen" class="composer-pill-menu composer-pill-menu--wide">
-                  <button v-for="s in ONE_SHOT_VISUAL_SOURCES" :key="s.key" type="button" :class="['composer-pill-option', oneShotVisualSource === s.key ? 'selected' : '']" @click="oneShotVisualSource = s.key; oneShotSourceTouched = true; oneShotSourceMenuOpen = false">
-                    <span>{{ s.icon }} {{ s.label }}</span><span class="composer-pill-option-sub">{{ s.hint }}</span>
-                  </button>
-                </div>
-              </div>
-
               <!-- + Add references — popover menu (AI images only: references steer image generation) -->
               <div v-if="oneShotIsAiVisuals" class="composer-add">
                 <button type="button" class="composer-add-btn" @click="oneShotAddMenuOpen = !oneShotAddMenuOpen" :disabled="oneShotReferences.length >= 4" :title="oneShotReferences.length >= 4 ? 'Up to 4 references' : 'Add reference image or character'">+</button>
@@ -1019,6 +1007,18 @@ defineExpose({ open })
                   <div v-else class="composer-add-item composer-add-item--empty">
                     <span>👤</span><span>No characters saved yet</span>
                   </div>
+                </div>
+              </div>
+
+              <!-- Visual source dropdown — AI images / stock / audiogram -->
+              <div class="composer-pill-wrap">
+                <button type="button" class="composer-pill" @click="oneShotSourceMenuOpen = !oneShotSourceMenuOpen">
+                  <span>{{ oneShotSourceMeta.icon }} {{ oneShotSourceMeta.label }}</span><span class="composer-pill-caret">▾</span>
+                </button>
+                <div v-if="oneShotSourceMenuOpen" class="composer-pill-menu composer-pill-menu--wide">
+                  <button v-for="s in ONE_SHOT_VISUAL_SOURCES" :key="s.key" type="button" :class="['composer-pill-option', oneShotVisualSource === s.key ? 'selected' : '']" @click="oneShotVisualSource = s.key; oneShotSourceTouched = true; oneShotSourceMenuOpen = false">
+                    <span>{{ s.icon }} {{ s.label }}</span><span class="composer-pill-option-sub">{{ s.hint }}</span>
+                  </button>
                 </div>
               </div>
 
