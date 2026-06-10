@@ -58,23 +58,71 @@ class OneShotPromptParser
         return $contexts;
     }
 
+    /**
+     * SSRF guard: true only for an http(s) URL whose host resolves entirely to
+     * public IPs. Resolves BOTH A and AAAA records (gethostbyname is IPv4-only)
+     * and rejects if ANY resolved address is private/reserved/loopback/
+     * link-local (incl. the 169.254.169.254 cloud-metadata endpoint).
+     */
+    private function isPublicHttpUrl(string $url): bool
+    {
+        $parts = parse_url($url);
+        if (! in_array(strtolower($parts['scheme'] ?? ''), ['http', 'https'], true) || empty($parts['host'])) {
+            return false;
+        }
+        $host = $parts['host'];
+
+        // Literal IP host — validate directly.
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            $ips = [$host];
+        } else {
+            $records = @dns_get_record($host, DNS_A + DNS_AAAA) ?: [];
+            $ips = array_merge(
+                array_column($records, 'ip'),
+                array_column($records, 'ipv6'),
+            );
+            if (empty($ips)) {
+                return false; // unresolvable → fail closed
+            }
+        }
+
+        foreach ($ips as $ip) {
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                return false; // any private/reserved hop disqualifies the host
+            }
+        }
+
+        return true;
+    }
+
     /** Fetch one URL as a grounding context (raw fetch → renderer fallback). */
     private function fetchUrlContext(string $url): ?array
     {
-
-        // SSRF guard: only http(s), and never private/loopback targets.
-        $parts = parse_url($url);
-        if (! in_array(strtolower($parts['scheme'] ?? ''), ['http', 'https'], true) || empty($parts['host'])) {
-            return null;
-        }
-        $ip = gethostbyname($parts['host']);
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+        if (! $this->isPublicHttpUrl($url)) {
             return null;
         }
 
         try {
+            // SSRF hardening: do NOT follow redirects — a public URL could 302
+            // to 169.254.169.254 / localhost / a private host, and the initial
+            // host check would not see it. We re-validate every redirect Location
+            // and refuse private hops (defends redirect-to-internal); pairing
+            // with the per-hop check also shrinks the DNS-rebinding window.
             $response = Http::timeout(8)
                 ->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; WyvStudioBot/1.0; +https://wyvstudio.com)'])
+                ->withOptions([
+                    'allow_redirects' => [
+                        'max'             => 3,
+                        'strict'          => true,
+                        'referer'         => false,
+                        'protocols'       => ['http', 'https'],
+                        'on_redirect'     => function ($request, $response, $uri) {
+                            if (! $this->isPublicHttpUrl((string) $uri)) {
+                                throw new \RuntimeException('SSRF: redirect to non-public host blocked');
+                            }
+                        },
+                    ],
+                ])
                 ->get($url);
             if (! $response->ok()) {
                 return null;

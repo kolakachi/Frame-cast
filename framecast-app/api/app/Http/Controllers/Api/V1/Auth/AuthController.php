@@ -38,14 +38,31 @@ class AuthController extends Controller
 
         $email = strtolower($validated['email']);
 
+        // Brute-force / credential-stuffing guard — mirrors magicLink. Throttle
+        // by IP and by email; only FAILED attempts consume the budget.
+        $ip = (string) $request->ip();
+        $ipKey = 'login:ip:'.sha1($ip);
+        $emailKey = 'login:email:'.sha1($email);
+        foreach ([[$ipKey, 10], [$emailKey, 5]] as [$key, $max]) {
+            if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($key, $max)) {
+                $retry = \Illuminate\Support\Facades\RateLimiter::availableIn($key);
+                return $this->error('too_many_attempts', "Too many login attempts. Try again in {$retry}s.", 429);
+            }
+        }
+
         $user = User::query()
             ->with('workspace')
             ->where('email', $email)
             ->first();
 
         if (! $user || ! $user->password_hash || ! Hash::check($validated['password'], $user->password_hash)) {
+            \Illuminate\Support\Facades\RateLimiter::hit($ipKey, 900);    // 10 fails / 15 min per IP
+            \Illuminate\Support\Facades\RateLimiter::hit($emailKey, 900); // 5 fails / 15 min per email
             return $this->error('invalid_credentials', 'Invalid email or password.', 422);
         }
+
+        \Illuminate\Support\Facades\RateLimiter::clear($ipKey);
+        \Illuminate\Support\Facades\RateLimiter::clear($emailKey);
 
         return $this->issueSessionResponse($user, $request);
     }
