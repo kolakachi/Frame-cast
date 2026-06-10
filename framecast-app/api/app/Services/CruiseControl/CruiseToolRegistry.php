@@ -4,6 +4,8 @@ namespace App\Services\CruiseControl;
 
 use App\Services\CruiseControl\Tools\AddSceneTool;
 use App\Services\CruiseControl\Tools\AddSoundEffectTool;
+use App\Services\CruiseControl\Tools\ExportVideoTool;
+use App\Services\CruiseControl\Tools\SchedulePostTool;
 use App\Services\CruiseControl\Tools\AnimateSceneTool;
 use App\Services\CruiseControl\Tools\ApplyBrandKitTool;
 use App\Services\CruiseControl\Tools\ChangeMusicTool;
