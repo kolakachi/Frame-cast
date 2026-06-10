@@ -396,6 +396,7 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   oneShotAnimateTier.value = 'quick'
   oneShotScenesCount.value = 3
   oneShotReferences.value = []
+  oneShotUploadingCount.value = 0
   oneShotUploadError.value = ''
   oneShotAddMenuOpen.value = false
   oneShotAspectOpen.value = false
@@ -522,6 +523,7 @@ const oneShotScenesOpen = ref(false)
 // the same asset/character is added twice (we de-dupe before submit anyway).
 const oneShotReferences = ref([])
 const oneShotUploadingPhoto = ref(false)
+const oneShotUploadingCount = ref(0) // files still uploading — drives placeholder chips
 const oneShotUploadError = ref('')
 
 // Plan-approval step (wizardStep 5). The composer now resolves the prompt
@@ -595,6 +597,7 @@ async function onOneShotPhotoChange(event) {
   const files = Array.from(event.target?.files ?? [])
   if (!files.length) return
   oneShotUploadingPhoto.value = true
+  oneShotUploadingCount.value = Math.min(files.length, Math.max(0, 4 - oneShotReferences.value.length))
   oneShotUploadError.value = ''
   closeAddMenu()
   for (const file of files) {
@@ -624,9 +627,12 @@ async function onOneShotPhotoChange(event) {
       }
     } catch (e) {
       oneShotUploadError.value = e.response?.data?.error?.message ?? `Upload of ${file.name} failed.`
+    } finally {
+      oneShotUploadingCount.value = Math.max(0, oneShotUploadingCount.value - 1)
     }
   }
   oneShotUploadingPhoto.value = false
+  oneShotUploadingCount.value = 0
   event.target.value = ''   // allow re-picking the same file
 }
 
@@ -889,14 +895,21 @@ defineExpose({ open })
              Claude prompt-box pattern: one rounded container, chips at the
              top, prompt body, action row at the bottom. -->
         <div class="composer">
-          <!-- Reference chips (only when any present) -->
-          <div v-if="oneShotReferences.length" class="composer-chips">
+          <!-- Reference chips — also visible mid-upload so picking files gives
+               immediate feedback in the composer (placeholder chips + counter). -->
+          <div v-if="oneShotReferences.length || oneShotUploadingCount" class="composer-chips">
             <div v-for="ref in oneShotReferences" :key="ref.uid" class="ref-chip" :title="ref.label">
               <img v-if="ref.thumb" :src="ref.thumb" :alt="ref.label" class="ref-chip-thumb" />
               <span v-else class="ref-chip-glyph">{{ ref.kind === 'character' ? '👤' : '📷' }}</span>
               <span class="ref-chip-label">{{ ref.label }}</span>
               <button type="button" class="ref-chip-remove" @click="removeOneShotReference(ref.uid)" :title="`Remove ${ref.label}`">×</button>
             </div>
+            <!-- Placeholder chip per file still uploading -->
+            <div v-for="n in oneShotUploadingCount" :key="`up-${n}`" class="ref-chip ref-chip--uploading">
+              <span class="ref-chip-spinner"></span>
+              <span class="ref-chip-label">Uploading…</span>
+            </div>
+            <span class="ref-chip-count" :title="'Up to 4 reference images'">{{ oneShotReferences.length + oneShotUploadingCount }}/4</span>
           </div>
 
           <textarea
@@ -917,7 +930,7 @@ defineExpose({ open })
                 <button type="button" class="composer-add-btn" @click="oneShotAddMenuOpen = !oneShotAddMenuOpen" :disabled="oneShotReferences.length >= 4" :title="oneShotReferences.length >= 4 ? 'Up to 4 references' : 'Add reference image or character'">+</button>
                 <div v-if="oneShotAddMenuOpen" class="composer-add-menu">
                   <label class="composer-add-item">
-                    <span>📷</span><span>Upload image{{ oneShotUploadingPhoto ? '…' : '' }}</span>
+                    <span>📷</span><span>Upload image{{ oneShotUploadingPhoto ? '…' : '' }} <em class="composer-add-hint">up to 4</em></span>
                     <input type="file" accept="image/*" multiple class="hidden-file-input" @change="onOneShotPhotoChange" :disabled="oneShotUploadingPhoto" />
                   </label>
                   <button v-if="availableCharacters.length" type="button" class="composer-add-item" @click="oneShotShowCharacters = !oneShotShowCharacters">
@@ -1707,6 +1720,11 @@ defineExpose({ open })
 .ref-chip-label { color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ref-chip-remove { background: none; border: none; color: var(--color-text-muted); cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; }
 .ref-chip-remove:hover { color: var(--color-text-primary); }
+.ref-chip--uploading { opacity: 0.75; border-style: dashed; }
+.ref-chip-spinner { width: 12px; height: 12px; margin-left: 2px; border: 2px solid var(--color-border); border-top-color: var(--color-accent, #ff6b35); border-radius: 50%; flex-shrink: 0; animation: ref-chip-spin 0.7s linear infinite; }
+@keyframes ref-chip-spin { to { transform: rotate(360deg); } }
+.ref-chip-count { font-size: 10.5px; color: var(--color-text-muted); font-family: "Space Mono", monospace; align-self: center; padding: 0 2px; }
+.composer-add-hint { font-style: normal; font-size: 10.5px; color: var(--color-text-muted); margin-left: 4px; }
 
 .composer-textarea { width: 100%; border: none; background: transparent; color: var(--color-text-primary); font-size: 14px; line-height: 1.5; resize: none; outline: none; padding: 4px 2px; font-family: inherit; }
 .composer-textarea::placeholder { color: var(--color-text-muted); }
