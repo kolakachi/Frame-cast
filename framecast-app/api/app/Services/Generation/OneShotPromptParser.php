@@ -21,6 +21,51 @@ use Illuminate\Support\Facades\Log;
 class OneShotPromptParser
 {
     /**
+     * When the prompt contains a URL ("a 5-scene ad for https://acme.com"),
+     * fetch the page and return its text so the plan is grounded in the
+     * REAL product (name, benefits, copy) instead of whatever the LLM
+     * hallucinates from the domain name. Null when no URL / fetch fails —
+     * the parse proceeds on the prompt alone, never throws.
+     *
+     * @return array{url: string, content: string}|null
+     */
+    public function extractUrlContext(string $userPrompt): ?array
+    {
+        if (! preg_match('/https?:\/\/[^\s)\]>"\']+/i', $userPrompt, $m)) {
+            return null;
+        }
+        $url = rtrim($m[0], '.,;');
+
+        // SSRF guard: only http(s), and never private/loopback targets.
+        $parts = parse_url($url);
+        if (! in_array(strtolower($parts['scheme'] ?? ''), ['http', 'https'], true) || empty($parts['host'])) {
+            return null;
+        }
+        $ip = gethostbyname($parts['host']);
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            return null;
+        }
+
+        try {
+            $response = Http::timeout(8)
+                ->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; WyvStudioBot/1.0; +https://wyvstudio.com)'])
+                ->get($url);
+            if (! $response->ok()) {
+                return null;
+            }
+            $body = (string) $response->body();
+            // Drop script/style blocks before stripping tags so we keep copy,
+            // not JS bundles; collapse whitespace; cap to keep the parser lean.
+            $body = preg_replace('/<(script|style|noscript)\b[^>]*>.*?<\/\1>/is', ' ', $body) ?? $body;
+            $text = trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($body))) ?? '');
+
+            return $text !== '' ? ['url' => $url, 'content' => mb_substr($text, 0, 4000)] : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * @return array{
      *   script: string,          // What the voice actually says
      *   visual: string,          // What the image shows
@@ -217,7 +262,16 @@ SYS;
     public function parseMultiScene(string $userPrompt, int $sceneCount): array
     {
         $sceneCount = max(1, min(8, $sceneCount));
-        $singleFallback = $this->parse($userPrompt);
+
+        // URL in the prompt? Ground the plan in the real page content. Hints
+        // still read the ORIGINAL prompt only (page copy could false-trigger
+        // source/animation cues like the word "footage").
+        $urlContext = $this->extractUrlContext($userPrompt);
+        $augmentedPrompt = $urlContext
+            ? $userPrompt."\n\nPRODUCT PAGE CONTENT (fetched from {$urlContext['url']} — ground the product name, benefits and claims in this, do not invent features):\n".$urlContext['content']
+            : $userPrompt;
+
+        $singleFallback = $this->parse($augmentedPrompt);
         $hints = $this->inferHints($userPrompt);
         $fallback = $this->fallbackMulti($singleFallback, $sceneCount);
         $fallback['hints'] = $hints;
@@ -302,7 +356,7 @@ SYS;
                     'response_format' => ['type' => 'json_object'],
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user',   'content' => $userPrompt],
+                        ['role' => 'user',   'content' => $augmentedPrompt],
                     ],
                 ]);
 

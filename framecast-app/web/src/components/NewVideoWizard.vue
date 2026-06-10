@@ -982,7 +982,7 @@ defineExpose({ open })
             class="composer-textarea"
             rows="4"
             maxlength="1000"
-            placeholder="e.g. a calm founder explaining her morning ritual in a sunlit kitchen, warm tones, slow camera push-in"
+            placeholder="e.g. a calm founder explaining her morning ritual in a sunlit kitchen — or paste a product URL: '5-scene ad for https://yourproduct.com'"
             @keydown.meta.enter="requestOneShotPlan"
             @keydown.ctrl.enter="requestOneShotPlan"
           ></textarea>
