@@ -151,6 +151,34 @@ function openPaddleCheckout(priceId) {
   })
 }
 
+// Provider-aware checkout. selection = { plan: 'starter'|... } for a
+// subscription, or { topup: 'small'|... } for a one-time pack.
+const checkoutPending = ref(false)
+async function startCheckout(selection) {
+  if (billing.value?.provider === 'kelviq') {
+    if (checkoutPending.value) return
+    checkoutPending.value = true
+    billingError.value = ''
+    try {
+      const { data } = await api.post('/billing/kelviq/checkout', selection)
+      if (data?.data?.url) window.location.href = data.data.url
+      else billingError.value = 'Could not start checkout. Please try again.'
+    } catch (e) {
+      billingError.value = e.response?.data?.error?.message ?? 'Could not start checkout.'
+    } finally {
+      checkoutPending.value = false
+    }
+    return
+  }
+  // Paddle fallback.
+  if (selection.plan) {
+    openPaddleCheckout(billing.value?.price_ids?.[selection.plan])
+  } else if (selection.topup) {
+    const pack = billing.value?.topup_packs?.find((p) => p.key === selection.topup)
+    openPaddleCheckout(pack?.price_id)
+  }
+}
+
 const fontOptions = [
   'DM Sans',
   'Space Mono',
@@ -928,18 +956,26 @@ onMounted(() => {
             <div style="display:flex; gap:10px; margin:16px 0 22px; flex-wrap:wrap;">
               <!-- Upgrade buttons — one per paid plan -->
               <template v-if="isFreePlan && billing">
-                <button
-                  v-if="billing.price_ids?.studio"
-                  class="btn btn-primary"
-                  type="button"
-                  @click="openPaddleCheckout(billing.price_ids.studio)"
-                >Upgrade to Studio</button>
-                <button
-                  v-if="billing.price_ids?.scale"
-                  class="btn btn-ghost"
-                  type="button"
-                  @click="openPaddleCheckout(billing.price_ids.scale)"
-                >Upgrade to Scale</button>
+                <template v-if="billing.provider === 'kelviq'">
+                  <button class="btn btn-primary" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'starter' })">Upgrade — Starter $19</button>
+                  <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'creator' })">Creator $39</button>
+                  <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'pro' })">Pro $79</button>
+                  <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'agency' })">Agency $149</button>
+                </template>
+                <template v-else>
+                  <button
+                    v-if="billing.price_ids?.studio"
+                    class="btn btn-primary"
+                    type="button"
+                    @click="openPaddleCheckout(billing.price_ids.studio)"
+                  >Upgrade to Studio</button>
+                  <button
+                    v-if="billing.price_ids?.scale"
+                    class="btn btn-ghost"
+                    type="button"
+                    @click="openPaddleCheckout(billing.price_ids.scale)"
+                  >Upgrade to Scale</button>
+                </template>
               </template>
               <button
                 v-if="hasPaddleSubscription"
@@ -948,7 +984,7 @@ onMounted(() => {
                 :disabled="billingPortalPending"
                 @click="openBillingPortal"
               >{{ billingPortalPending ? 'Opening…' : 'Manage Billing' }}</button>
-              <button v-if="isFreePlan && !billing?.price_ids?.studio" class="btn btn-primary" type="button" @click="limitModalOpen = true">Upgrade</button>
+              <button v-if="isFreePlan && billing?.provider !== 'kelviq' && !billing?.price_ids?.studio" class="btn btn-primary" type="button" @click="limitModalOpen = true">Upgrade</button>
             </div>
 
             <!-- Credit top-up packs -->
@@ -959,8 +995,8 @@ onMounted(() => {
                 <button
                   v-for="pack in billing.topup_packs" :key="pack.key"
                   class="topup-pack"
-                  :disabled="!pack.price_id"
-                  @click="openPaddleCheckout(pack.price_id)"
+                  :disabled="checkoutPending || (billing.provider !== 'kelviq' && !pack.price_id)"
+                  @click="startCheckout({ topup: pack.key })"
                 >
                   <div class="topup-credits">{{ pack.credits.toLocaleString() }}</div>
                   <div class="topup-credits-label">credits</div>
