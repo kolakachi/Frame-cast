@@ -273,6 +273,13 @@ async function cruiseApplyAction(msg, actionIndex = 0) {
     window.setTimeout(() => { cruisePulseSection.value = null }, 1800)
     cruiseShowToast(`${out?.summary} · spent ${out?.credits_spent ?? 0} cr`)
     loadMe?.()
+    // Output tools hand off to a UI surface. schedule_post opens the composer
+    // (the user still picks account + date + now/later/draft = consent);
+    // export_video just kicked off a render — the export progress pill updates
+    // itself from ExportProgressed websocket events, so the toast is enough.
+    if (out?.navigate?.type === 'schedule') {
+      scheduleModalOpen.value = true
+    }
     // Structural tools shuffle MORE than the one affected scene — reorder
     // changes sibling orders + labels, add_scene shifts everything after the
     // insertion point. A single-scene fetch would leave siblings stale, so

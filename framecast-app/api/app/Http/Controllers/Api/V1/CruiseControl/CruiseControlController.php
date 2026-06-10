@@ -294,6 +294,9 @@ class CruiseControlController extends Controller
                 'credits_spent'     => $result['credits_spent'] ?? 0,
                 'affected_section'  => $tool->affectedSection(),
                 'affected_scene_id' => $result['affected_scene_id'] ?? null,
+                // Output tools (export/schedule) hand off to a UI surface —
+                // the editor opens export progress or the schedule composer.
+                'navigate'          => $result['navigate'] ?? null,
             ],
             'meta' => [],
         ]);

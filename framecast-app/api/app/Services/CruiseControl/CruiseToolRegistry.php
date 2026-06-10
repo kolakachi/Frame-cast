@@ -56,6 +56,9 @@ class CruiseToolRegistry
         PickLibraryMusicTool::class,
         SwapVisualFromLibraryTool::class,
         AddSoundEffectTool::class,
+        // Output (export + publish)
+        ExportVideoTool::class,
+        SchedulePostTool::class,
     ];
 
     /** @var array<string, CruiseTool> */
