@@ -123,13 +123,14 @@ class AddSceneTool implements CruiseTool
             $position = max(1, min($maxOrder + 1, $position));
 
             // Shift existing scenes at or after the position down by one.
-            // Done in a single UPDATE so we never violate (project_id,
-            // scene_order) ordering invariants mid-way.
+            // The (project_id, scene_order) unique constraint is DEFERRABLE
+            // INITIALLY DEFERRED, so this bulk +1 is checked at COMMIT — the
+            // transient duplicate mid-shift is fine. (Postgres ignores ORDER BY
+            // on UPDATE, so ordering the bump can't help; deferral is the fix.)
             if ($position <= $maxOrder) {
                 Scene::query()
                     ->where('project_id', $project->getKey())
                     ->where('scene_order', '>=', $position)
-                    ->orderByDesc('scene_order')   // bump from the back to avoid collisions
                     ->update(['scene_order' => DB::raw('scene_order + 1')]);
 
                 // Update labels that still reference the OLD scene_order
@@ -151,6 +152,13 @@ class AddSceneTool implements CruiseTool
                 }
             }
 
+            // Inherit the project's locked subject so the new scene's PERSON
+            // matches the rest — face via the character reference path, costume
+            // via the character board suffix (GenerateAIImageJob). Without this
+            // an inserted scene only got the prompt's "the same woman…" text,
+            // which drifts. Only AI-image scenes (this tool only adds those).
+            $characterId = $project->default_character_id ?: null;
+
             $imageToken = (string) Str::uuid();
             $scene = Scene::query()->create([
                 'project_id'        => $project->getKey(),
@@ -159,6 +167,7 @@ class AddSceneTool implements CruiseTool
                 'label'             => "Scene {$position}",
                 'script_text'       => $scriptText,
                 'duration_seconds'  => 8,
+                'character_id'      => $characterId,
                 'voice_settings_json' => [
                     'voice_id' => $voiceId,
                     'speed'    => 1.0,
