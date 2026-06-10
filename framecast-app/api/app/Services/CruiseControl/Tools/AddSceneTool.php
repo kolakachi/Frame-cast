@@ -4,6 +4,7 @@ namespace App\Services\CruiseControl\Tools;
 
 use App\Jobs\GenerateAIImageJob;
 use App\Jobs\GenerateTTSJob;
+use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Models\Workspace;
@@ -117,10 +118,24 @@ class AddSceneTool implements CruiseTool
         // Balanced (Hailuo) needs 6 or 10; the others use 5 or 10.
         $animateDuration = $animateTier === 'balanced' ? 6 : 5;
 
-        return DB::transaction(function () use ($project, $scriptText, $visualPrompt, $style, $voiceId, $animateTier, $animateDuration, $params) {
+        return DB::transaction(function () use ($project, $scriptText, $visualPrompt, $style, $voiceId, $animateTier, $animateDuration, $params): array {
             $maxOrder = (int) Scene::query()->where('project_id', $project->getKey())->max('scene_order');
             $position = (int) ($params['position'] ?? ($maxOrder + 1));
             $position = max(1, min($maxOrder + 1, $position));
+
+            // Face continuity when the project has NO locked character: if the
+            // new scene features a person, anchor it to the NEAREST already-
+            // generated scene image (preferring the scene just before the
+            // insert) so the person carries over instead of being reinvented.
+            // Computed BEFORE the shift, while scene_order still reflects the
+            // user's mental layout. Skipped for person-less b-roll.
+            $autoRefIds = [];
+            if (! $project->default_character_id && $this->mentionsPerson($scriptText.' '.$visualPrompt)) {
+                $anchorAssetId = $this->nearestGeneratedImageAsset($project, $position);
+                if ($anchorAssetId) {
+                    $autoRefIds = [$anchorAssetId];
+                }
+            }
 
             // Shift existing scenes at or after the position down by one.
             // The (project_id, scene_order) unique constraint is DEFERRABLE
@@ -199,7 +214,7 @@ class AddSceneTool implements CruiseTool
                 null,                  // motion prompt — let the user re-animate later if they want
                 $animateTier,
                 null,
-                [],
+                $autoRefIds,           // anchor to a prior generated image when no character is locked
             )->afterCommit();
 
             GenerateTTSJob::dispatch($project->getKey(), [$scene->getKey()], false)->afterCommit();
@@ -213,5 +228,59 @@ class AddSceneTool implements CruiseTool
                 'affected_scene_id' => (int) $scene->getKey(),
             ];
         });
+    }
+
+    /**
+     * Does this text describe a person? Used to decide whether a newly added
+     * scene should inherit face continuity — we never force a person reference
+     * into person-less b-roll ("a clean product shot on a white background").
+     */
+    private function mentionsPerson(string $text): bool
+    {
+        return (bool) preg_match(
+            '/\b(she|he|her|him|his|hers|woman|women|man|men|girl|guy|lady|person|people|narrator|founder|character|host|presenter|they|them|their|the same)\b/i',
+            $text,
+        );
+    }
+
+    /**
+     * The already-generated AI image in this project closest to $position —
+     * preferring the scene just BEFORE the insert (continuity flows forward),
+     * falling back to the nearest after. Only AI-generated images qualify
+     * (an uploaded/stock asset is not a face to match). Returns the asset id,
+     * or null if the project has no generated image yet.
+     */
+    private function nearestGeneratedImageAsset(Project $project, int $position): ?int
+    {
+        $scenes = Scene::query()
+            ->where('project_id', $project->getKey())
+            ->whereNotNull('visual_asset_id')
+            ->get(['id', 'scene_order', 'visual_asset_id']);
+        if ($scenes->isEmpty()) {
+            return null;
+        }
+
+        $generated = Asset::query()
+            ->whereIn('id', $scenes->pluck('visual_asset_id')->unique()->all())
+            ->where('asset_type', 'image')
+            ->where('source', 'ai_generated')
+            ->pluck('id')
+            ->flip();
+
+        $candidates = $scenes->filter(fn (Scene $s) => isset($generated[$s->visual_asset_id]));
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+
+        // Prefer the nearest PRECEDING scene ("from the previous scene"), then
+        // fall back to the nearest following one. Primary key puts all
+        // preceding scenes first; secondary key picks the closest within each
+        // group.
+        $best = $candidates->sortBy(fn (Scene $s) => [
+            $s->scene_order >= $position ? 1 : 0,
+            abs($s->scene_order - $position),
+        ])->first();
+
+        return (int) $best->visual_asset_id;
     }
 }
