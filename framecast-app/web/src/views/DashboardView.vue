@@ -24,9 +24,13 @@ let dashboardPollTimer = null
 // Daily streak — chip + modal. Auto-opens once per day on first dashboard
 // load when the user has an unclaimed bonus (gated by localStorage flag
 // keyed to the date so we don't nag).
+// Temporarily hidden (e.g. for demo recordings). Flip to true to restore the
+// streak card + daily auto-popup everywhere.
+const SHOW_STREAK = false
 const streakState = ref(null)
 const streakModalOpen = ref(false)
 async function loadDailyStreak() {
+  if (!SHOW_STREAK) return
   try {
     const res = await api.get('/daily-streak')
     streakState.value = res?.data?.data ?? null
@@ -572,8 +576,8 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <!-- Daily Streak card — clickable, opens the streak modal. Pulses
-               when there's an unclaimed bonus today. -->
-          <div :class="['stat-card', 'streak-card', streakState?.can_claim ? 'streak-pulse' : '']"
+               when there's an unclaimed bonus today. Hidden via SHOW_STREAK. -->
+          <div v-if="SHOW_STREAK" :class="['stat-card', 'streak-card', streakState?.can_claim ? 'streak-pulse' : '']"
                @click="streakModalOpen = true"
                role="button"
                tabindex="0"
