@@ -147,18 +147,22 @@ class OneShotPromptParser
             return '';
         }
 
-        return <<<FACTS
+        return <<<FACTS_BLOCK
 
+
+PRODUCT FACTS RULES (these override the user's product assumptions):
+1. Every product claim in every script line MUST come from the PRODUCT
+   FACTS below — name, what the product does, features, pricing, offers.
+2. If a user scene describes a capability that is NOT in the facts (e.g.
+   collaboration, syncing, file organization), do NOT voice that
+   capability. Rewrite that scene's script around a capability that IS in
+   the facts, while keeping the scene's visual arc, mood and style.
+3. Never invent features. When unsure whether a feature exists, leave it
+   out and use one that is explicitly stated.
 
 PRODUCT FACTS — fetched live from {$urlContext['url']} (AUTHORITATIVE):
 {$urlContext['content']}
-
-Rules for using the facts: every claim about the product in any script line
-MUST come from the PRODUCT FACTS above — name, what it does, features,
-pricing, offers. If the user's scene descriptions assume features the facts
-do not support, KEEP their visual arc, mood and style but CORRECT the
-product claims to match the facts. Never invent features.
-FACTS;
+FACTS_BLOCK;
     }
 
     public function parse(string $userPrompt, ?array $urlContext = null): array
