@@ -132,6 +132,9 @@ function markStage(key, status, statusText = '', done = null, total = null) {
   )
   if (done  !== null) target.done  = done
   if (total !== null) target.total = total
+  // A complete stage can't show a partial count — stale stored state could
+  // leave "Recording voice 4/5" in green when all 5 voices exist.
+  if (status === 'complete' && target.total !== null) target.done = target.total
 }
 
 function countLabel(stage) {
@@ -510,8 +513,8 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
                 muted loop autoplay playsinline preload="metadata"
               ></video>
               <img v-else-if="sceneImageUrl(s)" :src="sceneImageUrl(s)" :alt="`Scene ${s.scene_order}`" />
-              <span v-else class="spin gen-scene-spin">⟳</span>
-              <span v-if="sceneAnimating(s) && sceneImageUrl(s)" class="gen-scene-animating"><span class="spin">⟳</span></span>
+              <span v-else class="gen-ring-spinner"></span>
+              <span v-if="sceneAnimating(s) && sceneImageUrl(s)" class="gen-scene-animating"><span class="gen-ring-spinner gen-ring-spinner--overlay"></span></span>
             </span>
             <div class="gen-scene-body">
               <div class="gen-scene-label">Scene {{ s.scene_order }}<span v-if="sceneReady(s)" class="gen-scene-ready"> · READY</span></div>
@@ -544,6 +547,10 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 
 .spin { display: inline-block; animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Proper ring spinner — replaces the rotating ⟳ glyph, which wobbled
+   around the character's baseline instead of spinning on center. */
+.gen-ring-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.18); border-top-color: var(--accent, #ff6b35); border-radius: 50%; animation: spin 0.8s linear infinite; }
+.gen-ring-spinner--overlay { width: 14px; height: 14px; border-width: 2px; }
 
 /* Stage timeline — connected dots */
 .gen-timeline { position: relative; margin-bottom: 30px; padding-left: 2px; }

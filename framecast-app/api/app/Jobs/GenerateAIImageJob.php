@@ -494,6 +494,12 @@ class GenerateAIImageJob implements ShouldQueue
                     ]);
                     app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'ai_image', $this->sceneId);
 
+                    // Resume safety net (see PipelineStatusService) — only
+                    // relevant when no animation is chained behind this image.
+                    if (! $this->chainAnimateTier) {
+                        rescue(fn () => app(\App\Services\Generation\PipelineStatusService::class)->maybeMarkReady($this->projectId));
+                    }
+
                     return;
                 } catch (\Throwable $retryE) {
                     Log::error('GenerateAIImageJob: policy rewrite retry also failed', [

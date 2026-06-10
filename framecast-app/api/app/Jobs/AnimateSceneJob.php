@@ -242,6 +242,11 @@ class AnimateSceneJob implements ShouldQueue
                 'total'    => $aniTotal,
             ]);
             app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'animation', $this->sceneId);
+
+            // Resume safety net: resumed runs never re-run TTS (which is what
+            // normally flips status), so if this was the last in-flight piece,
+            // mark the project ready — otherwise it stays 'generating' forever.
+            rescue(fn () => app(\App\Services\Generation\PipelineStatusService::class)->maybeMarkReady($this->projectId));
         } catch (\Throwable $e) {
             // The clip failed — refund what we charged up-front so a failed
             // animation costs nothing. (On a retry the next attempt re-charges;

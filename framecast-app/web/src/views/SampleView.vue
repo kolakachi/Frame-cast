@@ -138,7 +138,7 @@ const tickReady = computed(() => {
       <div v-else-if="notReady || tickReady" class="sample-state">
         <h1 class="sample-state-title">Sample still rendering…</h1>
         <p class="sample-state-body">This shared video is finishing up. We'll refresh automatically when it's ready (about 1–2 minutes).</p>
-        <div class="sample-spinner">⟳</div>
+        <div class="sample-spinner"></div>
       </div>
     </div>
   </main>
@@ -193,6 +193,6 @@ const tickReady = computed(() => {
 .sample-cta-btn { display: inline-block; padding: 12px 22px; background: #ff6b35; color: #fff; text-decoration: none; font-weight: 600; border-radius: 8px; transition: transform 0.18s; }
 .sample-cta-btn:hover { transform: translateY(-1px); }
 
-.sample-spinner { margin-top: 16px; font-size: 24px; color: #ff6b35; animation: spin 1.2s linear infinite; }
+.sample-spinner { margin: 16px auto 0; width: 22px; height: 22px; border: 3px solid rgba(255,107,53,0.25); border-top-color: #ff6b35; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 </style>
