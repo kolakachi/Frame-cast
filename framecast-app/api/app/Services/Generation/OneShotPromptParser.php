@@ -54,12 +54,72 @@ class OneShotPromptParser
                 return null;
             }
             $body = (string) $response->body();
+
+            // Meta/OG tags first — SPAs usually ship these server-side even
+            // when the page body is an empty JS shell.
+            $meta = [];
+            if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $body, $m)) {
+                $meta[] = trim(html_entity_decode($m[1]));
+            }
+            foreach (['description', 'og:description', 'og:title'] as $key) {
+                if (preg_match('/<meta[^>]+(?:name|property)=["\']'.preg_quote($key, '/').'["\'][^>]+content=["\']([^"\']+)["\']/i', $body, $m)
+                    || preg_match('/<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:name|property)=["\']'.preg_quote($key, '/').'["\']/i', $body, $m)) {
+                    $meta[] = trim(html_entity_decode($m[1]));
+                }
+            }
+            $metaText = implode(' · ', array_unique(array_filter($meta)));
+
             // Drop script/style blocks before stripping tags so we keep copy,
             // not JS bundles; collapse whitespace; cap to keep the parser lean.
-            $body = preg_replace('/<(script|style|noscript)\b[^>]*>.*?<\/\1>/is', ' ', $body) ?? $body;
-            $text = trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($body))) ?? '');
+            $stripped = preg_replace('/<(script|style|noscript)\b[^>]*>.*?<\/\1>/is', ' ', $body) ?? $body;
+            $text = trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($stripped))) ?? '');
 
-            return $text !== '' ? ['url' => $url, 'content' => mb_substr($text, 0, 4000)] : null;
+            // Thin body = client-rendered SPA. Fall back to our in-house
+            // renderer service (headless Chromium in the compose stack) so
+            // SPA product pages ground the plan too. Fail-soft: meta + thin
+            // text still beat nothing.
+            if (mb_strlen($text) < 400) {
+                $rendered = $this->fetchRendered($url);
+                if ($rendered !== null && mb_strlen($rendered) > mb_strlen($text)) {
+                    $text = $rendered;
+                }
+            }
+
+            $content = trim($metaText !== '' ? $metaText.' — '.$text : $text);
+
+            return $content !== '' ? ['url' => $url, 'content' => mb_substr($content, 0, 4000)] : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Fetch a JS-rendered page as plain text via our own renderer service —
+     * headless Chromium running inside the compose stack (services.renderer,
+     * see framecast-app/renderer/). Self-hosted on purpose: no third-party
+     * dependency, no rate limits, page content never leaves our infra.
+     * Null on any failure.
+     */
+    private function fetchRendered(string $url): ?string
+    {
+        $base = rtrim((string) config('services.renderer.url', ''), '/');
+        if ($base === '') {
+            return null;
+        }
+
+        try {
+            $response = Http::timeout(25)->get($base.'/render', ['url' => $url]);
+            if (! $response->ok()) {
+                return null;
+            }
+            $text = trim((string) $response->json('text', ''));
+            $desc = trim((string) $response->json('description', ''));
+            $combined = ($desc !== '' && ! str_contains($text, $desc))
+                ? $desc.' — '.$text
+                : $text;
+            $combined = trim(preg_replace('/\s+/', ' ', $combined) ?? '');
+
+            return $combined !== '' ? $combined : null;
         } catch (\Throwable) {
             return null;
         }

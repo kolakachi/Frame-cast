@@ -117,4 +117,12 @@ return [
         'api_key' => env('PIXABAY_API_KEY'),
     ],
 
+    // In-house headless-browser renderer (framecast-app/renderer/) — fetches
+    // JS-rendered (SPA) pages as text for one-shot URL grounding. Internal
+    // compose service, never publicly exposed. Empty URL disables the
+    // fallback gracefully.
+    'renderer' => [
+        'url' => env('RENDERER_URL', 'http://renderer:3000'),
+    ],
+
 ];

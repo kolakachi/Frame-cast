@@ -171,6 +171,16 @@ services:
       start_period: 10s
 
   # ── Redis (AOF persistence) ────────────────────────────────────────────────
+  # Internal headless-browser renderer — fetches JS-rendered (SPA) pages as
+  # text for one-shot URL grounding (OneShotPromptParser::fetchRendered).
+  # Deliberately NO public port: it fetches arbitrary URLs on request and
+  # must only be reachable from inside the compose network.
+  renderer:
+    build:
+      context: ./renderer
+    restart: unless-stopped
+    shm_size: '512m'
+
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes --appendfsync everysec

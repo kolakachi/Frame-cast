@@ -1,0 +1,14 @@
+{
+  "name": "wyvstudio-renderer",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Internal headless-browser renderer: fetches JS-rendered (SPA) pages as text for URL grounding. Never exposed publicly.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "puppeteer-core": "^23.5.0"
+  }
+}

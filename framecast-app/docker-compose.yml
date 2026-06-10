@@ -113,6 +113,15 @@ services:
       redis:
         condition: service_healthy
 
+  # Internal headless-browser renderer — fetches JS-rendered (SPA) pages as
+  # text for one-shot URL grounding. No public port; reachable from the api/
+  # workers as http://renderer:3000 (services.renderer.url default).
+  renderer:
+    build:
+      context: ./renderer
+    restart: unless-stopped
+    shm_size: '512m'
+
   web:
     image: node:22-alpine
     working_dir: /app
