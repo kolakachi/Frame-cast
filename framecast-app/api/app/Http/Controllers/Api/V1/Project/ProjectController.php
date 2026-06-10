@@ -791,8 +791,41 @@ class ProjectController extends Controller
         $sceneCount     = max(1, min(8, (int) ($validated['scenes_count'] ?? 1)));
         $promptText     = trim($validated['prompt']);
 
+        // Resolve reference images (workspace-scoped) to signed URLs so the
+        // PLANNER can SEE them — scene visuals then describe what the images
+        // actually show (UI layout, the person's appearance) instead of
+        // planning blind and only using them at generation time.
+        $refUrls = [];
+        $refAssetIds = array_filter($validated['source_image_asset_ids'] ?? []);
+        $refCharIds  = array_filter($validated['character_ids'] ?? []);
+        if (! empty($refAssetIds) || ! empty($refCharIds)) {
+            $refAssets = collect();
+            if (! empty($refAssetIds)) {
+                $refAssets = $refAssets->merge(Asset::query()
+                    ->whereIn('id', $refAssetIds)
+                    ->where('workspace_id', $user->workspace_id)
+                    ->where('asset_type', 'image')
+                    ->get());
+            }
+            if (! empty($refCharIds)) {
+                $chars = \App\Models\Character::query()
+                    ->whereIn('id', $refCharIds)
+                    ->where('workspace_id', $user->workspace_id)
+                    ->with('referenceAsset')
+                    ->get();
+                foreach ($chars as $c) {
+                    if ($c->referenceAsset) {
+                        $refAssets->push($c->referenceAsset);
+                    }
+                }
+            }
+            $refUrls = $refAssets->unique('id')->take(4)
+                ->map(fn ($a) => $this->assetUrl($a))
+                ->filter()->values()->all();
+        }
+
         $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
-            ->parseMultiScene($promptText, $sceneCount);
+            ->parseMultiScene($promptText, $sceneCount, $refUrls);
         $hints = $parsed['hints'] ?? ['visual_source' => null, 'animate' => null];
 
         // Prompt-led inference with explicit overrides: a pill the user
@@ -1015,8 +1048,14 @@ class ProjectController extends Controller
                 'music_mood' => trim((string) ($validated['plan']['music_mood'] ?? '')) ?: 'calm cinematic ambient',
             ];
         } else {
+            // No approved plan sent — re-parse, letting the planner SEE the
+            // reference images (already resolved + workspace-scoped above).
             $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
-                ->parseMultiScene($promptText, $sceneCount);
+                ->parseMultiScene(
+                    $promptText,
+                    $sceneCount,
+                    $referenceAssets->map(fn ($a) => $this->assetUrl($a))->filter()->values()->all(),
+                );
         }
 
         // Scene/project typing per visual source. MatchVisualsJob reads

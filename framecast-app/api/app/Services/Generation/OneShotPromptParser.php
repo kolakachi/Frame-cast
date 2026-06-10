@@ -31,10 +31,36 @@ class OneShotPromptParser
      */
     public function extractUrlContext(string $userPrompt): ?array
     {
-        if (! preg_match('/https?:\/\/[^\s)\]>"\']+/i', $userPrompt, $m)) {
-            return null;
+        return $this->extractUrlContexts($userPrompt, 1)[0] ?? null;
+    }
+
+    /**
+     * All URLs in the prompt (deduped, capped) fetched as grounding contexts —
+     * a prompt can reference a product page AND a pricing/docs page, etc.
+     *
+     * @return list<array{url: string, content: string}>
+     */
+    public function extractUrlContexts(string $userPrompt, int $max = 3): array
+    {
+        if (! preg_match_all('/https?:\/\/[^\s)\]>"\']+/i', $userPrompt, $m)) {
+            return [];
         }
-        $url = rtrim($m[0], '.,;');
+        $urls = array_slice(array_unique(array_map(fn ($u) => rtrim($u, '.,;'), $m[0])), 0, $max);
+
+        $contexts = [];
+        foreach ($urls as $url) {
+            $ctx = $this->fetchUrlContext($url);
+            if ($ctx) {
+                $contexts[] = $ctx;
+            }
+        }
+
+        return $contexts;
+    }
+
+    /** Fetch one URL as a grounding context (raw fetch → renderer fallback). */
+    private function fetchUrlContext(string $url): ?array
+    {
 
         // SSRF guard: only http(s), and never private/loopback targets.
         $parts = parse_url($url);
@@ -141,10 +167,18 @@ class OneShotPromptParser
      * prompt are detailed and dominant, and the model would otherwise follow
      * a wrong product assumption over quietly-appended page content.
      */
-    private function factsBlock(?array $urlContext): string
+    private function factsBlock(array $urlContexts): string
     {
-        if (! $urlContext) {
+        if (empty($urlContexts)) {
             return '';
+        }
+
+        // Budget the total facts payload across however many URLs were given.
+        $perUrlCap = count($urlContexts) > 1 ? 2500 : 4000;
+        $sections = '';
+        foreach ($urlContexts as $ctx) {
+            $sections .= "\nPRODUCT FACTS — fetched live from {$ctx['url']} (AUTHORITATIVE):\n"
+                .mb_substr($ctx['content'], 0, $perUrlCap)."\n";
         }
 
         return <<<FACTS_BLOCK
@@ -160,12 +194,48 @@ PRODUCT FACTS RULES (these override the user's product assumptions):
 3. Never invent features. When unsure whether a feature exists, leave it
    out and use one that is explicitly stated.
 
-PRODUCT FACTS — fetched live from {$urlContext['url']} (AUTHORITATIVE):
-{$urlContext['content']}
+{$sections}
 FACTS_BLOCK;
     }
 
-    public function parse(string $userPrompt, ?array $urlContext = null): array
+    /**
+     * Appended to the system prompt when reference images ride along, so the
+     * PLAN reflects what the images actually show (not a blind guess).
+     */
+    private function imagesBlock(array $referenceImageUrls): string
+    {
+        if (empty($referenceImageUrls)) {
+            return '';
+        }
+
+        return "\n\nREFERENCE IMAGES are attached to this request. Look at them carefully: "
+            ."when the user's scenes mention 'the interface', 'this person', 'the product' "
+            ."or similar, describe what the attached images ACTUALLY show (layout, colors, "
+            ."on-screen text, the subject's appearance) in that scene's visual prompt, and "
+            ."keep subjects consistent with the images across all scenes.";
+    }
+
+    /**
+     * Build the user message for the chat call — plain text normally, a
+     * multimodal content array (text + image parts, low detail) when
+     * reference images are attached so the model can SEE them.
+     *
+     * @return string|array
+     */
+    private function userContent(string $prompt, array $referenceImageUrls)
+    {
+        if (empty($referenceImageUrls)) {
+            return $prompt;
+        }
+        $parts = [['type' => 'text', 'text' => $prompt]];
+        foreach (array_slice($referenceImageUrls, 0, 4) as $url) {
+            $parts[] = ['type' => 'image_url', 'image_url' => ['url' => $url, 'detail' => 'low']];
+        }
+
+        return $parts;
+    }
+
+    public function parse(string $userPrompt, array $urlContexts = [], array $referenceImageUrls = []): array
     {
         $fallback = $this->fallback($userPrompt);
 
@@ -264,7 +334,7 @@ You convert a single user prompt about a short video scene into four channels:
 
 Return STRICT JSON with exactly these five keys. No prose, no markdown.
 SYS;
-        $systemPrompt .= $this->factsBlock($urlContext);
+        $systemPrompt .= $this->factsBlock($urlContexts).$this->imagesBlock($referenceImageUrls);
 
         try {
             $response = Http::withToken($apiKey)
@@ -275,7 +345,7 @@ SYS;
                     'response_format' => ['type' => 'json_object'],
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user',   'content' => $userPrompt],
+                        ['role' => 'user',   'content' => $this->userContent($userPrompt, $referenceImageUrls)],
                     ],
                 ]);
 
@@ -351,7 +421,7 @@ SYS;
         return ['visual_source' => $source, 'animate' => $animate];
     }
 
-    public function parseMultiScene(string $userPrompt, int $sceneCount): array
+    public function parseMultiScene(string $userPrompt, int $sceneCount, array $referenceImageUrls = []): array
     {
         $sceneCount = max(1, min(8, $sceneCount));
 
@@ -360,9 +430,9 @@ SYS;
         // appended user text, so wrong product assumptions in the prompt get
         // corrected instead of obeyed. Hints still read the ORIGINAL prompt
         // only (page copy could false-trigger source/animation cues).
-        $urlContext = $this->extractUrlContext($userPrompt);
+        $urlContexts = $this->extractUrlContexts($userPrompt);
 
-        $singleFallback = $this->parse($userPrompt, $urlContext);
+        $singleFallback = $this->parse($userPrompt, $urlContexts, $referenceImageUrls);
         $hints = $this->inferHints($userPrompt);
         $fallback = $this->fallbackMulti($singleFallback, $sceneCount);
         $fallback['hints'] = $hints;
@@ -437,7 +507,7 @@ Return STRICT JSON, no markdown:
 
 The scenes array MUST have exactly {$sceneCount} items.
 SYS;
-        $systemPrompt .= $this->factsBlock($urlContext);
+        $systemPrompt .= $this->factsBlock($urlContexts).$this->imagesBlock($referenceImageUrls);
 
         try {
             $response = Http::withToken($apiKey)
@@ -448,7 +518,7 @@ SYS;
                     'response_format' => ['type' => 'json_object'],
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user',   'content' => $userPrompt],
+                        ['role' => 'user',   'content' => $this->userContent($userPrompt, $referenceImageUrls)],
                     ],
                 ]);
 
