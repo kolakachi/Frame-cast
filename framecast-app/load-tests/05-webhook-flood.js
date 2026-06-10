@@ -10,7 +10,7 @@ import { check } from 'k6'
 
 const BASE = __ENV.BASE_URL || 'https://app.wyvstudio.com'
 // Adjust if your webhook route differs.
-const WEBHOOK_PATH = __ENV.WEBHOOK_PATH || '/api/webhooks/kelviq'
+const WEBHOOK_PATH = __ENV.WEBHOOK_PATH || '/api/v1/webhooks/kelviq'
 
 export const options = {
   stages: [

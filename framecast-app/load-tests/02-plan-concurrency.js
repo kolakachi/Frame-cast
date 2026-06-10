@@ -48,7 +48,7 @@ export function planner() {
 }
 
 export function canary() {
-  const res = http.get(`${BASE}/api/health`, { timeout: '30s' })
+  const res = http.get(`${BASE}/api/v1/health`, { timeout: '30s' })
   healthDuringPlan.add(res.timings.duration)
   check(res, { 'health 200': (r) => r.status === 200 })
 }

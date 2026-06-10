@@ -54,6 +54,9 @@ RUN apt-get update \
 
 COPY uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
+# php-fpm pool tuning (real concurrency — replaces single-threaded artisan serve)
+COPY php-fpm-pool.conf /usr/local/etc/php-fpm.d/zz-pool.conf
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 RUN groupadd -g ${WWWGROUP} framecast \

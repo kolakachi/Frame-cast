@@ -36,7 +36,8 @@ services:
   api:
     build:
       context: ./api
-    command: php artisan serve --host=0.0.0.0 --port=8000
+    # No command override → image CMD ["php-fpm"]. nginx talks FastCGI to
+    # :9000 (see nginx/fastcgi-api.conf). Replaces single-threaded artisan serve.
     env_file:
       - ./api/.env
     environment:
