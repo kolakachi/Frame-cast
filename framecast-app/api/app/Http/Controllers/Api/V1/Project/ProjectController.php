@@ -73,12 +73,28 @@ class ProjectController extends Controller
 
         $projects = $paginator->getCollection();
 
+        // Per-scene generation can outlive project.status: GenerateTTSJob flips
+        // the project to ready_for_review when voice lands, while AI image /
+        // animation jobs are still running. Surface that as generation_pending
+        // so the frontend routes a click to the progress view, not the editor.
+        $pendingProjectIds = $projects->isEmpty() ? [] : DB::table('scenes')
+            ->whereIn('project_id', $projects->pluck('id'))
+            ->where(function ($q): void {
+                $q->whereRaw("image_generation_settings_json::jsonb->>'in_progress' = 'true'")
+                    ->orWhereRaw("image_generation_settings_json::jsonb->>'animation_in_progress' = 'true'");
+            })
+            ->distinct()
+            ->pluck('project_id')
+            ->all();
+
         return response()->json([
             'data' => [
                 'projects' => $projects->map(fn (Project $project): array => [
                     ...$this->serializeProject($project),
                     'scenes_count' => (int) ($project->scenes_count ?? 0),
                     'variants_count' => (int) ($project->variants_count ?? 0),
+                    'generation_pending' => $project->status === 'generating'
+                        || in_array($project->getKey(), $pendingProjectIds, true),
                 ])->all(),
             ],
             'meta' => [

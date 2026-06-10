@@ -396,7 +396,8 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   oneShotAnimateTier.value = 'quick'
   oneShotScenesCount.value = 3
   oneShotReferences.value = []
-  oneShotUploadingCount.value = 0
+  oneShotUploading.value.forEach((p) => p.url && URL.revokeObjectURL(p.url))
+  oneShotUploading.value = []
   oneShotUploadError.value = ''
   oneShotAddMenuOpen.value = false
   oneShotAspectOpen.value = false
@@ -523,7 +524,9 @@ const oneShotScenesOpen = ref(false)
 // the same asset/character is added twice (we de-dupe before submit anyway).
 const oneShotReferences = ref([])
 const oneShotUploadingPhoto = ref(false)
-const oneShotUploadingCount = ref(0) // files still uploading — drives placeholder chips
+// Local previews of files still uploading — [{uid, url}] with object URLs so
+// the picked images appear in the chip strip instantly, spinner overlaid.
+const oneShotUploading = ref([])
 const oneShotUploadError = ref('')
 
 // Plan-approval step (wizardStep 5). The composer now resolves the prompt
@@ -597,7 +600,13 @@ async function onOneShotPhotoChange(event) {
   const files = Array.from(event.target?.files ?? [])
   if (!files.length) return
   oneShotUploadingPhoto.value = true
-  oneShotUploadingCount.value = Math.min(files.length, Math.max(0, 4 - oneShotReferences.value.length))
+  // Instant local previews for the files that fit under the 4-cap (1:1 with
+  // the upload loop below, shifted off as each file completes).
+  const slots = files.slice(0, Math.max(0, 4 - oneShotReferences.value.length))
+  oneShotUploading.value = slots.map((f, i) => ({
+    uid: `pv-${Date.now()}-${i}`,
+    url: URL.createObjectURL(f),
+  }))
   oneShotUploadError.value = ''
   closeAddMenu()
   for (const file of files) {
@@ -607,6 +616,8 @@ async function onOneShotPhotoChange(event) {
     }
     if (file.size > 8 * 1024 * 1024) {
       oneShotUploadError.value = `${file.name} is over 8 MB — skipped.`
+      const skipped = oneShotUploading.value.shift() // drop its preview chip too
+      if (skipped?.url) URL.revokeObjectURL(skipped.url)
       continue
     }
     try {
@@ -628,11 +639,13 @@ async function onOneShotPhotoChange(event) {
     } catch (e) {
       oneShotUploadError.value = e.response?.data?.error?.message ?? `Upload of ${file.name} failed.`
     } finally {
-      oneShotUploadingCount.value = Math.max(0, oneShotUploadingCount.value - 1)
+      const done = oneShotUploading.value.shift()
+      if (done?.url) URL.revokeObjectURL(done.url)
     }
   }
   oneShotUploadingPhoto.value = false
-  oneShotUploadingCount.value = 0
+  oneShotUploading.value.forEach((p) => p.url && URL.revokeObjectURL(p.url))
+  oneShotUploading.value = []
   event.target.value = ''   // allow re-picking the same file
 }
 
@@ -897,19 +910,22 @@ defineExpose({ open })
         <div class="composer">
           <!-- Reference chips — also visible mid-upload so picking files gives
                immediate feedback in the composer (placeholder chips + counter). -->
-          <div v-if="oneShotReferences.length || oneShotUploadingCount" class="composer-chips">
+          <div v-if="oneShotReferences.length || oneShotUploading.length" class="composer-chips">
             <div v-for="ref in oneShotReferences" :key="ref.uid" class="ref-chip" :title="ref.label">
               <img v-if="ref.thumb" :src="ref.thumb" :alt="ref.label" class="ref-chip-thumb" />
               <span v-else class="ref-chip-glyph">{{ ref.kind === 'character' ? '👤' : '📷' }}</span>
               <span class="ref-chip-label">{{ ref.label }}</span>
               <button type="button" class="ref-chip-remove" @click="removeOneShotReference(ref.uid)" :title="`Remove ${ref.label}`">×</button>
             </div>
-            <!-- Placeholder chip per file still uploading -->
-            <div v-for="n in oneShotUploadingCount" :key="`up-${n}`" class="ref-chip ref-chip--uploading">
-              <span class="ref-chip-spinner"></span>
+            <!-- Files still uploading: local preview + spinner overlay -->
+            <div v-for="up in oneShotUploading" :key="up.uid" class="ref-chip ref-chip--uploading">
+              <span class="ref-chip-thumb-wrap">
+                <img :src="up.url" alt="" class="ref-chip-thumb" />
+                <span class="ref-chip-spinner ref-chip-spinner--overlay"></span>
+              </span>
               <span class="ref-chip-label">Uploading…</span>
             </div>
-            <span class="ref-chip-count" :title="'Up to 4 reference images'">{{ oneShotReferences.length + oneShotUploadingCount }}/4</span>
+            <span class="ref-chip-count" :title="'Up to 4 reference images'">{{ oneShotReferences.length + oneShotUploading.length }}/4</span>
           </div>
 
           <textarea
@@ -1720,8 +1736,11 @@ defineExpose({ open })
 .ref-chip-label { color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ref-chip-remove { background: none; border: none; color: var(--color-text-muted); cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; }
 .ref-chip-remove:hover { color: var(--color-text-primary); }
-.ref-chip--uploading { opacity: 0.75; border-style: dashed; }
+.ref-chip--uploading { opacity: 0.85; border-style: dashed; }
+.ref-chip-thumb-wrap { position: relative; width: 20px; height: 20px; flex-shrink: 0; }
+.ref-chip-thumb-wrap .ref-chip-thumb { width: 20px; height: 20px; opacity: 0.55; }
 .ref-chip-spinner { width: 12px; height: 12px; margin-left: 2px; border: 2px solid var(--color-border); border-top-color: var(--color-accent, #ff6b35); border-radius: 50%; flex-shrink: 0; animation: ref-chip-spin 0.7s linear infinite; }
+.ref-chip-spinner--overlay { position: absolute; inset: 0; margin: auto; width: 10px; height: 10px; border-width: 2px; }
 @keyframes ref-chip-spin { to { transform: rotate(360deg); } }
 .ref-chip-count { font-size: 10.5px; color: var(--color-text-muted); font-family: "Space Mono", monospace; align-self: center; padding: 0 2px; }
 .composer-add-hint { font-style: normal; font-size: 10.5px; color: var(--color-text-muted); margin-left: 4px; }

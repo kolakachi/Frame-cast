@@ -162,7 +162,9 @@ function cancelRename() {
 }
 
 function openProject(project) {
-  if (project.status === 'generating') {
+  // generation_pending covers scenes still rendering images/animations after
+  // project.status has already flipped to ready_for_review.
+  if (project.status === 'generating' || project.generation_pending) {
     router.push({ name: 'generation-progress', params: { projectId: project.id } })
   } else {
     router.push({ name: 'project-editor', params: { projectId: project.id } })
