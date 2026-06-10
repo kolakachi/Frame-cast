@@ -58,9 +58,12 @@ services:
       context: ./api
     command: php artisan queue:work redis --queue=generation,tts,visual,translation --tries=2 --sleep=3
     # On deploy (SIGTERM) let a busy worker finish its current job before
-    # SIGKILL, so short image/tts/voice jobs drain cleanly. --tries=2 means
-    # a job killed anyway (long video) auto-retries instead of just failing.
-    stop_grace_period: 90s
+    # SIGKILL. Must exceed the LONGEST job timeout on these queues —
+    # GenerateAIImageJob is 300s (gpt-image-2 character path runs 3-4 min),
+    # and the old 90s grace SIGKILLed it mid-run on every deploy: the job
+    # re-queued (delay) and its up-front credit reservation leaked (no catch
+    # runs on SIGKILL), double-charging on retry. 330s lets it finish.
+    stop_grace_period: 330s
     env_file:
       - ./api/.env
     environment:
