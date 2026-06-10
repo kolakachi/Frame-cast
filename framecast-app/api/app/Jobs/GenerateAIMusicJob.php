@@ -17,13 +17,14 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Generate background music for a scene via MusicGen on Replicate,
- * download the audio, store it in the workspace's asset library, and
- * attach it as the scene's sound_asset_id.
+ * Generate background music via MusicGen on Replicate, download the audio,
+ * store it in the workspace's asset library, and set it as the project's
+ * music bed (project.music_asset_id). Music is project-wide — it is NOT a
+ * per-scene sound effect, so it never touches scene.sound_asset_id.
  *
  * Used by the new one-shot prompt flow (see ProjectController::storeOneShot)
- * to give every generated scene a music bed without the user choosing one
- * from the stock library.
+ * to give the video a music bed without the user choosing one from the
+ * stock library.
  */
 class GenerateAIMusicJob implements ShouldQueue
 {
@@ -88,23 +89,16 @@ class GenerateAIMusicJob implements ShouldQueue
                 'created_by_user_id' => $scene->project->created_by_user_id,
             ]);
 
-            // The editor's music panel binds to project.music_asset_id
-            // (project-wide bed), not scene.sound_asset_id. Set both so
-            // the UI picks up the new track on its next project refresh
-            // AND the scene-level sound slot stays consistent for the
-            // legacy regen-by-scene flow.
+            // Music is the project-wide BED — it lives only on
+            // project.music_asset_id. Do NOT also write it to
+            // scene.sound_asset_id: that slot is per-scene SOUND EFFECTS
+            // (door opening, wind), the renderer mixes BOTH layers into
+            // every segment, and writing music there mixed it in twice
+            // (doubled volume) and made it show up under the scene's Sound.
             $scene->project->forceFill([
                 'music_asset_id'      => $asset->getKey(),
                 'music_settings_json' => array_merge(
                     $scene->project->music_settings_json ?? [],
-                    ['volume' => 0.3, 'fade_in_ms' => 500, 'fade_out_ms' => 800, 'source' => 'ai_generated'],
-                ),
-            ])->save();
-
-            $scene->forceFill([
-                'sound_asset_id' => $asset->getKey(),
-                'sound_settings_json' => array_merge(
-                    $scene->sound_settings_json ?? [],
                     ['volume' => 0.3, 'fade_in_ms' => 500, 'fade_out_ms' => 800, 'source' => 'ai_generated'],
                 ),
             ])->save();
