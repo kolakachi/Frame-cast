@@ -395,6 +395,9 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   oneShotAnimate.value = true
   oneShotVisualSource.value = 'ai_images'
   oneShotSourceMenuOpen.value = false
+  oneShotSourceTouched.value = false
+  oneShotAnimateTouched.value = false
+  oneShotInferredNote.value = ''
   oneShotAnimateTier.value = 'quick'
   oneShotScenesCount.value = 3
   oneShotReferences.value = []
@@ -519,6 +522,12 @@ const ONE_SHOT_VISUAL_SOURCES = [
   { key: 'waveform',     label: 'Audiogram',    icon: '🎧', hint: 'waveform over voice · free' },
 ]
 const oneShotSourceMenuOpen = ref(false)
+// Prompt-led inference: pills the user hasn't touched defer to what the
+// prompt implies ("make an audiogram…" → waveform; "no animation" → off).
+// Touched pills always win.
+const oneShotSourceTouched = ref(false)
+const oneShotAnimateTouched = ref(false)
+const oneShotInferredNote = ref('')
 const oneShotIsAiVisuals = computed(() => oneShotVisualSource.value === 'ai_images')
 const oneShotSourceMeta = computed(() =>
   ONE_SHOT_VISUAL_SOURCES.find((s) => s.key === oneShotVisualSource.value) ?? ONE_SHOT_VISUAL_SOURCES[0])
@@ -687,8 +696,10 @@ async function requestOneShotPlan() {
     const res = await api.post('/projects/one-shot/plan', {
       prompt: oneShotPrompt.value.trim(),
       aspect_ratio: aspectRatio.value,
-      visual_source: oneShotVisualSource.value,
-      animate: oneShotIsAiVisuals.value && oneShotAnimate.value,
+      // Only send what the user explicitly picked — untouched pills are
+      // omitted so the backend can infer them from the prompt's own cues.
+      ...(oneShotSourceTouched.value ? { visual_source: oneShotVisualSource.value } : {}),
+      ...(oneShotAnimateTouched.value ? { animate: oneShotIsAiVisuals.value && oneShotAnimate.value } : {}),
       animation_tier: oneShotAnimateTier.value,
       scenes_count: oneShotScenesCount.value,
       ...(oneShotIsAiVisuals.value && sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
@@ -699,6 +710,26 @@ async function requestOneShotPlan() {
     oneShotPlanEstimate.value = data.estimate ?? null
     oneShotIncludeMusic.value = data.defaults?.include_music ?? true
     oneShotIncludeCaptions.value = data.defaults?.include_captions ?? true
+    // Apply what the prompt implied to any untouched pill, and surface it
+    // on the plan step so the user can see (and change) what was decided.
+    const resolved = data.resolved ?? null
+    if (resolved) {
+      if (!oneShotSourceTouched.value && resolved.visual_source) {
+        oneShotVisualSource.value = resolved.visual_source
+      }
+      if (!oneShotAnimateTouched.value && typeof resolved.animate === 'boolean') {
+        oneShotAnimate.value = resolved.animate
+      }
+      const bits = []
+      const srcMeta = ONE_SHOT_VISUAL_SOURCES.find((s) => s.key === oneShotVisualSource.value)
+      if (srcMeta) bits.push(`${srcMeta.icon} ${srcMeta.label}${resolved.source_inferred ? ' (from your prompt)' : ''}`)
+      if (oneShotVisualSource.value === 'ai_images') {
+        bits.push(oneShotAnimate.value
+          ? `🎬 ${animateTierLabel(oneShotAnimateTier.value)}${resolved.animate_inferred ? ' (from your prompt)' : ''}`
+          : `🚫 No animation${resolved.animate_inferred ? ' (from your prompt)' : ''}`)
+      }
+      oneShotInferredNote.value = bits.join(' · ')
+    }
     if (oneShotPlan.value) wizardStep.value = 5
     else wizardCreateError.value = 'Could not build a plan — try rephrasing the prompt.'
   } catch (err) {
@@ -965,7 +996,7 @@ defineExpose({ open })
                   <span>{{ oneShotSourceMeta.icon }} {{ oneShotSourceMeta.label }}</span><span class="composer-pill-caret">▾</span>
                 </button>
                 <div v-if="oneShotSourceMenuOpen" class="composer-pill-menu composer-pill-menu--wide">
-                  <button v-for="s in ONE_SHOT_VISUAL_SOURCES" :key="s.key" type="button" :class="['composer-pill-option', oneShotVisualSource === s.key ? 'selected' : '']" @click="oneShotVisualSource = s.key; oneShotSourceMenuOpen = false">
+                  <button v-for="s in ONE_SHOT_VISUAL_SOURCES" :key="s.key" type="button" :class="['composer-pill-option', oneShotVisualSource === s.key ? 'selected' : '']" @click="oneShotVisualSource = s.key; oneShotSourceTouched = true; oneShotSourceMenuOpen = false">
                     <span>{{ s.icon }} {{ s.label }}</span><span class="composer-pill-option-sub">{{ s.hint }}</span>
                   </button>
                 </div>
@@ -1016,10 +1047,10 @@ defineExpose({ open })
                   <span>🎬 {{ oneShotAnimate ? animateTierLabel(oneShotAnimateTier) : 'No animation' }}</span><span class="composer-pill-caret">▾</span>
                 </button>
                 <div v-if="oneShotAnimMenuOpen" class="composer-pill-menu composer-pill-menu--wide">
-                  <button type="button" :class="['composer-pill-option', !oneShotAnimate ? 'selected' : '']" @click="oneShotAnimate = false; oneShotAnimMenuOpen = false">
+                  <button type="button" :class="['composer-pill-option', !oneShotAnimate ? 'selected' : '']" @click="oneShotAnimate = false; oneShotAnimateTouched = true; oneShotAnimMenuOpen = false">
                     <span>No animation</span><span class="composer-pill-option-sub">image only</span>
                   </button>
-                  <button v-for="m in ONE_SHOT_ANIM_TIERS" :key="m.key" type="button" :class="['composer-pill-option', oneShotAnimate && oneShotAnimateTier === m.key ? 'selected' : '']" @click="oneShotAnimate = true; oneShotAnimateTier = m.key; oneShotAnimMenuOpen = false">
+                  <button v-for="m in ONE_SHOT_ANIM_TIERS" :key="m.key" type="button" :class="['composer-pill-option', oneShotAnimate && oneShotAnimateTier === m.key ? 'selected' : '']" @click="oneShotAnimate = true; oneShotAnimateTier = m.key; oneShotAnimateTouched = true; oneShotAnimMenuOpen = false">
                     <span>{{ m.label }}</span><span class="composer-pill-option-sub">{{ m.cost }} cr · {{ m.render }}</span>
                   </button>
                 </div>
@@ -1072,6 +1103,7 @@ defineExpose({ open })
       <div v-else-if="wizardStep === 5 && oneShotPlan">
         <div class="section-title">🤖 Here's the plan</div>
         <div class="section-subtitle">Tweak the lines, toggle captions or sounds, then generate. You can refine everything in the editor afterward.</div>
+        <div v-if="oneShotInferredNote" class="plan-inferred-note">{{ oneShotInferredNote }} <button type="button" class="plan-inferred-back" @click="wizardStep = 4">change</button></div>
 
         <div class="plan-scenes">
           <div v-for="(s, i) in oneShotPlan.scenes" :key="i" class="plan-scene">
@@ -1926,6 +1958,9 @@ defineExpose({ open })
 }
 
 /* One-shot plan review (step 5) */
+.plan-inferred-note { display: inline-flex; align-items: center; gap: 8px; margin: -8px 0 14px; padding: 6px 12px; border: 1px solid var(--color-border); border-radius: 999px; font-size: 12px; color: var(--color-text-muted); background: var(--color-bg-card, rgba(255,255,255,0.02)); }
+.plan-inferred-back { background: none; border: none; color: var(--color-accent, #ff6b35); font-size: 12px; cursor: pointer; padding: 0; }
+.plan-inferred-back:hover { text-decoration: underline; }
 .plan-scenes { display: flex; flex-direction: column; gap: 10px; max-height: 42vh; overflow-y: auto; padding-right: 4px; }
 .plan-scene { border: 1px solid var(--color-border); border-radius: 12px; padding: 10px 12px; background: var(--color-surface, rgba(255,255,255,0.02)); }
 .plan-scene-num { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 6px; }

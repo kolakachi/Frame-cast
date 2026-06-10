@@ -181,11 +181,46 @@ SYS;
      *   style: string,
      * }
      */
+    /**
+     * Infer the user's INTENT for visual source + animation from explicit
+     * prompt cues. Deterministic keyword pass — the baseline for all scene
+     * counts and the fallback when the LLM omits the fields. Returns null
+     * for "no opinion" so the caller's defaults / the user's pills win.
+     *
+     * @return array{visual_source: ?string, animate: ?bool}
+     */
+    public function inferHints(string $userPrompt): array
+    {
+        $p = mb_strtolower($userPrompt);
+
+        $source = null;
+        if (preg_match('/audiogram|waveform|audio.?visualizer|podcast.?(clip|visual)/u', $p)) {
+            $source = 'waveform';
+        } elseif (preg_match('/stock\s+(photo|image|picture|still)/u', $p)) {
+            $source = 'stock_images';
+        } elseif (preg_match('/stock\s+(video|footage|clip)|real\s+footage|b.?roll\s+footage/u', $p)) {
+            $source = 'stock_video';
+        } elseif (preg_match('/ai\s+(image|visual|art)|generate\s+(the\s+)?(image|visual)/u', $p)) {
+            $source = 'ai_images';
+        }
+
+        $animate = null;
+        if (preg_match('/\b(no|without|skip|don.?t)\s+(animation|animating|motion)\b|image[s]?\s+only|still[s]?\s+only|static\s+image/u', $p)) {
+            $animate = false;
+        } elseif (preg_match('/\banimat(e|ed|ion)\b|make\s+(it|them)\s+move|moving\s+scene|cinematic\s+motion/u', $p)) {
+            $animate = true;
+        }
+
+        return ['visual_source' => $source, 'animate' => $animate];
+    }
+
     public function parseMultiScene(string $userPrompt, int $sceneCount): array
     {
         $sceneCount = max(1, min(8, $sceneCount));
         $singleFallback = $this->parse($userPrompt);
+        $hints = $this->inferHints($userPrompt);
         $fallback = $this->fallbackMulti($singleFallback, $sceneCount);
+        $fallback['hints'] = $hints;
 
         // For single-scene, no need for the extra LLM call — wrap the
         // existing parse() output to keep the shape consistent.
@@ -198,6 +233,7 @@ SYS;
                 ]],
                 'music_mood' => $singleFallback['music_mood'],
                 'style'      => $singleFallback['style'],
+                'hints'      => $hints,
             ];
         }
 
@@ -305,6 +341,7 @@ SYS;
                 'scenes'     => $scenes,
                 'music_mood' => $this->cleanString($parsed['music_mood'] ?? $singleFallback['music_mood'], 60),
                 'style'      => $this->validStyle($parsed['style'] ?? $singleFallback['style']),
+                'hints'      => $hints,
             ];
         } catch (\Throwable $e) {
             Log::warning('OneShotPromptParser: multi-scene exception', ['error' => $e->getMessage()]);

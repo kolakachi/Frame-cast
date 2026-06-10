@@ -789,16 +789,28 @@ class ProjectController extends Controller
         ]);
 
         $sceneCount     = max(1, min(8, (int) ($validated['scenes_count'] ?? 1)));
-        $visualSource   = $validated['visual_source'] ?? 'ai_images';
-        $isAiVisuals    = $visualSource === 'ai_images';
-        $hasReferences  = $isAiVisuals && (! empty($validated['source_image_asset_ids']) || ! empty($validated['character_ids']));
-        // Animation only applies to AI-image scenes (it animates the still).
-        $needsAnimation = $isAiVisuals && (bool) ($validated['animate'] ?? true);
-        $animationTier  = $validated['animation_tier'] ?? 'quick';
         $promptText     = trim($validated['prompt']);
 
         $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
             ->parseMultiScene($promptText, $sceneCount);
+        $hints = $parsed['hints'] ?? ['visual_source' => null, 'animate' => null];
+
+        // Prompt-led inference with explicit overrides: a pill the user
+        // touched (key present in the request) always wins; otherwise the
+        // prompt's own cues decide ("make an audiogram…", "use stock
+        // footage…", "no animation"), falling back to the defaults.
+        $sourceProvided  = array_key_exists('visual_source', $validated) && $validated['visual_source'] !== null;
+        $animateProvided = array_key_exists('animate', $validated) && $validated['animate'] !== null;
+        $visualSource = $sourceProvided
+            ? $validated['visual_source']
+            : ($hints['visual_source'] ?? 'ai_images');
+        $isAiVisuals    = $visualSource === 'ai_images';
+        $hasReferences  = $isAiVisuals && (! empty($validated['source_image_asset_ids']) || ! empty($validated['character_ids']));
+        // Animation only applies to AI-image scenes (it animates the still).
+        $needsAnimation = $isAiVisuals && ($animateProvided
+            ? (bool) $validated['animate']
+            : ($hints['animate'] ?? true));
+        $animationTier  = $validated['animation_tier'] ?? 'quick';
 
         // Stock matching + audiogram waveforms are included (0 cr) — only AI
         // image generation is billed per scene.
@@ -820,6 +832,15 @@ class ProjectController extends Controller
                     'include_music'    => true,
                     'include_captions' => true,
                     'animate'          => $needsAnimation,
+                ],
+                // What the prompt implied — the wizard applies these to any
+                // pill the user hasn't touched, so "make an audiogram of…"
+                // just works without clicking the source picker.
+                'resolved' => [
+                    'visual_source'   => $visualSource,
+                    'animate'         => $needsAnimation,
+                    'source_inferred' => ! $sourceProvided && $hints['visual_source'] !== null,
+                    'animate_inferred'=> ! $animateProvided && $hints['animate'] !== null,
                 ],
                 'estimate' => [
                     'with_music'    => ($perScene * $sceneCount) + CreditService::AI_MUSIC,
