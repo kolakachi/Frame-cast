@@ -14,7 +14,9 @@ return [
     | credentials. Hot-swappable via env without any code change.
     |
     */
-    'provider' => env('BILLING_PROVIDER', 'paddle'),
+    // NOTE: on the `kelviq` branch this defaults to 'kelviq' (env still wins).
+    // master defaults to 'paddle'/'fastspring'. Switch branches to switch MOR.
+    'provider' => env('BILLING_PROVIDER', 'kelviq'),
 
     /*
     |--------------------------------------------------------------------------
