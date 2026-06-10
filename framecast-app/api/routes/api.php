@@ -84,6 +84,8 @@ Route::prefix('v1')->group(function (): void {
     Route::middleware('auth.jwt')->group(function (): void {
         Route::get('/billing/status', [BillingController::class, 'status']);
         Route::post('/billing/portal', [BillingController::class, 'portal']);
+        // Kelviq (MOR) hosted checkout — returns a checkoutUrl to redirect to.
+        Route::post('/billing/kelviq/checkout', [BillingController::class, 'kelviqCheckout']);
         Route::get('/me', [VerificationController::class, 'me']);
         // Daily streak — Spin & Win retention gamification
         Route::get('/daily-streak', [\App\Http\Controllers\Api\V1\Workspace\DailyStreakController::class, 'show']);

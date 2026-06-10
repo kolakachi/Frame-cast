@@ -147,24 +147,26 @@ return [
     |
     */
     'kelviq' => [
-        'api_key'        => env('KELVIQ_API_KEY', ''),
-        'webhook_secret' => env('KELVIQ_WEBHOOK_SECRET', ''),
-        'storefront_url' => env('KELVIQ_STOREFRONT_URL', ''), // checkout base, set from Kelviq dashboard
+        'api_base'       => env('KELVIQ_API_BASE', 'https://api.kelviq.com/api/v1'),
+        'server_api_key' => env('KELVIQ_SERVER_API_KEY', ''),   // Bearer token (server key)
+        'webhook_secret' => env('KELVIQ_WEBHOOK_SECRET', ''),   // kq_whsec_... from Settings → Webhooks
 
-        // product/SKU id => plan tier (mirrors fastspring.product_paths).
-        'product_tiers' => [
-            env('KELVIQ_PRODUCT_STARTER', 'wyvstudio-starter') => 'starter',
-            env('KELVIQ_PRODUCT_CREATOR', 'wyvstudio-creator') => 'creator',
-            env('KELVIQ_PRODUCT_PRO',     'wyvstudio-pro')     => 'pro',
-            env('KELVIQ_PRODUCT_AGENCY',  'wyvstudio-agency')  => 'agency',
+        // Kelviq PLAN identifier (planIdentifier / data.object.plan.identifier)
+        // => our plan_tier. Set the env to whatever identifiers you give the
+        // plans in the Kelviq dashboard.
+        'plan_tiers' => [
+            env('KELVIQ_PLAN_STARTER', 'wyvstudio-starter') => 'starter',
+            env('KELVIQ_PLAN_CREATOR', 'wyvstudio-creator') => 'creator',
+            env('KELVIQ_PLAN_PRO',     'wyvstudio-pro')     => 'pro',
+            env('KELVIQ_PLAN_AGENCY',  'wyvstudio-agency')  => 'agency',
         ],
 
-        // top-up product id => credit grant (same packs as fastspring).
-        'topup_products' => [
-            env('KELVIQ_PRODUCT_TOPUP_SMALL',  'wyvstudio-topup-500')  => 500,
-            env('KELVIQ_PRODUCT_TOPUP_MEDIUM', 'wyvstudio-topup-1200') => 1200,
-            env('KELVIQ_PRODUCT_TOPUP_LARGE',  'wyvstudio-topup-2500') => 2500,
-            env('KELVIQ_PRODUCT_TOPUP_XL',     'wyvstudio-topup-5000') => 5000,
+        // Top-up PLAN identifier => credit grant (one-time checkout.completed).
+        'topup_plans' => [
+            env('KELVIQ_PLAN_TOPUP_SMALL',  'wyvstudio-topup-500')  => 500,
+            env('KELVIQ_PLAN_TOPUP_MEDIUM', 'wyvstudio-topup-1200') => 1200,
+            env('KELVIQ_PLAN_TOPUP_LARGE',  'wyvstudio-topup-2500') => 2500,
+            env('KELVIQ_PLAN_TOPUP_XL',     'wyvstudio-topup-5000') => 5000,
         ],
     ],
 ];

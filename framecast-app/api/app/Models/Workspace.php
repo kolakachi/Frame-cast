@@ -27,6 +27,8 @@ class Workspace extends Model
         'paddle_subscription_id',
         'fastspring_account_id',
         'fastspring_subscription_id',
+        'kelviq_account_id',
+        'kelviq_subscription_id',
         'status',
         'credits_monthly',
         'credits_topup',
