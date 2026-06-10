@@ -207,6 +207,21 @@ class DalleImageAdapter implements ImageGenerationAdapter
             return 'This image could not be generated because the prompt may violate the image safety policy. Please revise the prompt and try again.';
         }
 
+        // Provider account problems (billing hard limit, exhausted quota) are
+        // OUR outage, not the user's prompt. Say so, page the team via Sentry,
+        // and never blame the prompt — that misdirects users into rewriting
+        // perfectly good prompts while generation is actually down.
+        if (
+            str_contains($code, 'billing') ||
+            str_contains($code, 'insufficient_quota') ||
+            str_contains($message, 'billing hard limit') ||
+            str_contains($message, 'exceeded your current quota')
+        ) {
+            report(new \RuntimeException('OpenAI image billing/quota exhausted: '.$message));
+
+            return 'Image generation is temporarily unavailable on our side — the team has been notified. Your credits were not charged; please try again later.';
+        }
+
         if ($status === 401 || str_contains($code, 'invalid_api_key')) {
             return 'Image generation is not configured correctly. Please contact support.';
         }
