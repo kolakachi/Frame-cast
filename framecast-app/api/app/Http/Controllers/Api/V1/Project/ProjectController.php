@@ -1054,6 +1054,11 @@ class ProjectController extends Controller
                     'generation_started_at'   => now()->toIso8601String(),
                     'reference_asset_ids'     => $referenceIdsArr,
                     'suggested_motion_prompt' => $sceneDef['motion'],
+                    // Persist the generation plan: the progress view derives
+                    // its stage list from these when reached WITHOUT the
+                    // wizard's query params (dashboard re-entry).
+                    'auto_animate'            => $needsAnimation,
+                    'include_music'           => $includeMusic,
                 ],
             ])->save();
 

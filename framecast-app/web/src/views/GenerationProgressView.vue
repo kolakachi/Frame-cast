@@ -24,15 +24,27 @@ let pollTimer    = null
 // list keeps the progress page honest (no perpetually-skipped "Writing
 // script" / "Crafting hooks" steps).
 function oneShotStageDefinitions(project = null) {
-  // animate + skip_image flags come from the URL query set by the wizard's
-  // submitOneShot. storeOneShot doesn't persist them on the project, so
-  // the URL is the source of truth across refresh.
-  const animate   = route.query.animate !== '0'
+  // animate/skip_image come from the wizard's URL query when present. When
+  // the page is reached WITHOUT the query (dashboard -> click a generating
+  // project), fall back to the persisted per-scene plan — `animate !== '0'`
+  // alone defaulted to TRUE and showed a phantom "Animating scene" stage on
+  // image-only projects.
+  const animate = route.query.animate !== undefined
+    ? route.query.animate !== '0'
+    : scenes.value.some((s) => {
+        const igs = s.image_generation_settings || {}
+        return Boolean(igs.auto_animate || igs.animation_tier || igs.animation_in_progress || s.animation_video_asset_id)
+      })
   const skipImage = route.query.skip_image === '1'
   // no_music is set by the wizard when the user turned sounds off in the
   // plan step. Drop the music stage entirely — otherwise it sits 'pending'
-  // forever (no job fires) and the editor never opens.
-  const noMusic   = route.query.no_music === '1'
+  // forever (no job fires) and the editor never opens. Without the query,
+  // derive from the persisted per-scene plan (include_music); when neither
+  // exists (older projects) default to NO music stage — a missing stage
+  // self-heals, a phantom pending one blocks the editor.
+  const noMusic = route.query.no_music !== undefined
+    ? route.query.no_music === '1'
+    : !scenes.value.some((s) => Boolean((s.image_generation_settings || {}).include_music))
   return [
     // When the user uploaded a photo or picked a character, image gen
     // was skipped entirely on the backend. The stage shouldn't appear.
