@@ -17,13 +17,12 @@ class MagicLinkMail extends Mailable
     public function __construct(
         public readonly User $user,
         public readonly string $magicLink,
-    ) {
-    }
+    ) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your Framecast magic link',
+            subject: 'Your WyvStudio magic link',
         );
     }
 
