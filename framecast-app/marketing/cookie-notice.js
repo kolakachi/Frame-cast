@@ -2,7 +2,7 @@
  * WyvStudio cookie notice — minimal GDPR-friendly banner.
  *
  * Shown until the user clicks "Got it". Dismissal stored in localStorage for
- * 180 days. Cookie footprint today is genuinely tiny (essential login + Paddle
+ * 180 days. Cookie footprint today is genuinely tiny (essential login + Kelviq
  * billing + anonymized Sentry errors), so this is a notice + acknowledgement
  * rather than a full Accept/Reject management platform.
  *

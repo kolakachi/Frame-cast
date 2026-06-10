@@ -140,42 +140,23 @@ const planStatusColor = computed(() => {
 })
 
 const isFreePlan = computed(() => !billing.value?.plan_tier || billing.value.plan_tier === 'free')
-const hasPaddleSubscription = computed(() => Boolean(billing.value?.paddle_customer_id))
+const hasSubscription = computed(() => Boolean(billing.value?.has_subscription))
 
-function openPaddleCheckout(priceId) {
-  if (!priceId || !window.Paddle) return
-  const paddleCfg = billing.value?.paddle_sandbox ? { environment: 'sandbox' } : {}
-  window.Paddle.Setup({ ...paddleCfg, token: billing.value?.paddle_client_token })
-  window.Paddle.Checkout.open({
-    items: [{ priceId, quantity: 1 }],
-  })
-}
-
-// Provider-aware checkout. selection = { plan: 'starter'|... } for a
+// Kelviq hosted checkout. selection = { plan: 'starter'|... } for a
 // subscription, or { topup: 'small'|... } for a one-time pack.
 const checkoutPending = ref(false)
 async function startCheckout(selection) {
-  if (billing.value?.provider === 'kelviq') {
-    if (checkoutPending.value) return
-    checkoutPending.value = true
-    billingError.value = ''
-    try {
-      const { data } = await api.post('/billing/kelviq/checkout', selection)
-      if (data?.data?.url) window.location.href = data.data.url
-      else billingError.value = 'Could not start checkout. Please try again.'
-    } catch (e) {
-      billingError.value = e.response?.data?.error?.message ?? 'Could not start checkout.'
-    } finally {
-      checkoutPending.value = false
-    }
-    return
-  }
-  // Paddle fallback.
-  if (selection.plan) {
-    openPaddleCheckout(billing.value?.price_ids?.[selection.plan])
-  } else if (selection.topup) {
-    const pack = billing.value?.topup_packs?.find((p) => p.key === selection.topup)
-    openPaddleCheckout(pack?.price_id)
+  if (checkoutPending.value) return
+  checkoutPending.value = true
+  billingError.value = ''
+  try {
+    const { data } = await api.post('/billing/kelviq/checkout', selection)
+    if (data?.data?.url) window.location.href = data.data.url
+    else billingError.value = 'Could not start checkout. Please try again.'
+  } catch (e) {
+    billingError.value = e.response?.data?.error?.message ?? 'Could not start checkout.'
+  } finally {
+    checkoutPending.value = false
   }
 }
 
@@ -954,37 +935,20 @@ onMounted(() => {
             </div>
 
             <div style="display:flex; gap:10px; margin:16px 0 22px; flex-wrap:wrap;">
-              <!-- Upgrade buttons — one per paid plan -->
+              <!-- Upgrade buttons — one per paid plan (Kelviq hosted checkout) -->
               <template v-if="isFreePlan && billing">
-                <template v-if="billing.provider === 'kelviq'">
-                  <button class="btn btn-primary" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'starter' })">Upgrade — Starter $19</button>
-                  <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'creator' })">Creator $39</button>
-                  <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'pro' })">Pro $79</button>
-                  <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'agency' })">Agency $149</button>
-                </template>
-                <template v-else>
-                  <button
-                    v-if="billing.price_ids?.studio"
-                    class="btn btn-primary"
-                    type="button"
-                    @click="openPaddleCheckout(billing.price_ids.studio)"
-                  >Upgrade to Studio</button>
-                  <button
-                    v-if="billing.price_ids?.scale"
-                    class="btn btn-ghost"
-                    type="button"
-                    @click="openPaddleCheckout(billing.price_ids.scale)"
-                  >Upgrade to Scale</button>
-                </template>
+                <button class="btn btn-primary" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'starter' })">Upgrade — Starter $19</button>
+                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'creator' })">Creator $39</button>
+                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'pro' })">Pro $79</button>
+                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'agency' })">Agency $149</button>
               </template>
               <button
-                v-if="hasPaddleSubscription"
+                v-if="hasSubscription"
                 class="btn btn-ghost"
                 type="button"
                 :disabled="billingPortalPending"
                 @click="openBillingPortal"
               >{{ billingPortalPending ? 'Opening…' : 'Manage Billing' }}</button>
-              <button v-if="isFreePlan && billing?.provider !== 'kelviq' && !billing?.price_ids?.studio" class="btn btn-primary" type="button" @click="limitModalOpen = true">Upgrade</button>
             </div>
 
             <!-- Credit top-up packs -->
@@ -995,7 +959,7 @@ onMounted(() => {
                 <button
                   v-for="pack in billing.topup_packs" :key="pack.key"
                   class="topup-pack"
-                  :disabled="checkoutPending || (billing.provider !== 'kelviq' && !pack.price_id)"
+                  :disabled="checkoutPending"
                   @click="startCheckout({ topup: pack.key })"
                 >
                   <div class="topup-credits">{{ pack.credits.toLocaleString() }}</div>

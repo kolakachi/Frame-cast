@@ -3,7 +3,6 @@
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Admin\AdminController;
 use App\Http\Controllers\Api\V1\Billing\BillingController;
-use App\Http\Controllers\Api\V1\Billing\PaddleWebhookController;
 use App\Http\Controllers\Api\V1\Niche\NicheController;
 use App\Http\Controllers\Api\V1\Asset\AssetController;
 use App\Http\Controllers\Api\V1\Sfx\SfxController;
@@ -34,18 +33,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function (): void {
     Route::get('/health', HealthCheckController::class);
 
-    // Paddle webhooks — unauthenticated, HMAC-verified inside the controller
-    Route::post('/webhooks/paddle', PaddleWebhookController::class);
-
-    // FastSpring webhooks — same security model (HMAC inside the controller).
-    // Both routes can co-exist; the BILLING_PROVIDER env var decides which
-    // checkout flow the frontend kicks off, but either webhook will be
-    // honoured if the matching provider sends one.
-    Route::post('/webhooks/fastspring', \App\Http\Controllers\Api\V1\Billing\FastSpringWebhookController::class);
-
-    // Kelviq (MOR) webhook — live endpoint so Kelviq can configure it during
-    // review. Verifies the secret + acknowledges; full processing pending
-    // their docs (see KelviqWebhookController + spec/KELVIQ_INTEGRATION.md).
+    // Kelviq (Merchant of Record) webhook — unauthenticated, signature-verified
+    // (Svix scheme) inside the controller. Kelviq is our sole billing provider.
     Route::post('/webhooks/kelviq', \App\Http\Controllers\Api\V1\Billing\KelviqWebhookController::class);
 
     // Public content-report endpoint (anyone can submit, no auth required).

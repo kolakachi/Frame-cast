@@ -247,4 +247,40 @@ class KelviqService
             return null;
         }
     }
+
+    /**
+     * Create a Kelviq customer-portal session and return the signed URL the
+     * customer uses to manage/cancel their subscription, or null on failure.
+     */
+    public function createPortalSession(int $workspaceId, ?string $kelviqAccountId = null): ?string
+    {
+        $key = (string) config('billing.kelviq.server_api_key', '');
+        if ($key === '') {
+            return null;
+        }
+        $customerId = $kelviqAccountId ?: (string) $workspaceId;
+
+        try {
+            $resp = Http::withToken($key)
+                ->acceptJson()
+                ->timeout(15)
+                ->post(rtrim((string) config('billing.kelviq.api_base'), '/').'/portal/session/', [
+                    'customerId' => $customerId,
+                ]);
+
+            if (! $resp->successful()) {
+                Log::warning('KelviqService: portal session failed', ['status' => $resp->status()]);
+                return null;
+            }
+            $url   = $resp->json('customerPortalUrl');
+            $token = $resp->json('token');
+            if (! $url) {
+                return null;
+            }
+            return $token ? $url.(str_contains($url, '?') ? '&' : '?').'token='.$token : $url;
+        } catch (\Throwable $e) {
+            report($e);
+            return null;
+        }
+    }
 }
