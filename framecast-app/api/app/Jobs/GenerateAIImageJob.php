@@ -630,7 +630,7 @@ class GenerateAIImageJob implements ShouldQueue
     private function buildPrompt(Scene $scene, bool $includeCharacterDescription = true): string
     {
         if ($this->promptOverride) {
-            return trim($this->promptOverride);
+            return trim($this->promptOverride).$this->characterBoardSuffix($scene);
         }
 
         // No explicit override: reuse the scene's ESTABLISHED prompt — the rich
@@ -640,7 +640,7 @@ class GenerateAIImageJob implements ShouldQueue
         // script-derived prompt that wasn't what the user set up.
         $established = trim((string) ($scene->visual_prompt ?? ''));
         if ($established !== '') {
-            return $established;
+            return $established.$this->characterBoardSuffix($scene);
         }
 
         $script = mb_substr(trim((string) $scene->script_text), 0, 200);
@@ -689,7 +689,27 @@ class GenerateAIImageJob implements ShouldQueue
             }
         }
 
-        return trim("{$prefix}{$briefContext}{$characterChunk}{$label} for a {$tone} video{$stylePart}: {$script}");
+        return trim("{$prefix}{$briefContext}{$characterChunk}{$label} for a {$tone} video{$stylePart}: {$script}")
+            .$this->characterBoardSuffix($scene);
+    }
+
+    /**
+     * Per-project character board (projects.character_board_json) — the
+     * canonical appearance sheet for the recurring subject. Appended to EVERY
+     * image prompt so costume/hair stop drifting between scenes and across
+     * regenerations. Phrased conditionally ("if a person appears…") so
+     * person-less b-roll scenes don't grow a person.
+     */
+    private function characterBoardSuffix(Scene $scene): string
+    {
+        $board = $scene->project?->character_board_json;
+        $sheet = is_array($board) ? trim((string) ($board['sheet'] ?? '')) : '';
+        if ($sheet === '') {
+            return '';
+        }
+
+        return ' If a person appears in this scene, they must look EXACTLY like this'
+            .' — same outfit, hair and accessories, no variations: '.$sheet;
     }
 
     private function storeImage(string|null $url, Scene $scene, string|null $b64 = null): string

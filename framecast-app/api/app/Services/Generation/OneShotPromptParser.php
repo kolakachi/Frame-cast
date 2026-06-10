@@ -495,6 +495,14 @@ Shared:
                film_noir, vintage, minimalist, neon, cyberpunk_80s, anime,
                anime_80s, anime_90s, dark_fantasy, fantasy_retro, comic,
                line_drawing, watercolor, paper_cutout, cartoon, 3d_animated.
+  character_sheet — ONLY when the scenes feature a recurring person: define
+               their appearance ONCE — gender, approximate age, hair (color,
+               length, style), exact outfit (garments, colors), notable
+               accessories. 1-2 sentences. Then REUSE that exact wording in
+               every scene visual where the person appears, so clothing and
+               hair never drift between scenes. If there is a reference image
+               of the person, describe THAT appearance. No recurring person
+               -> null.
 
 Return STRICT JSON, no markdown:
 {
@@ -502,7 +510,8 @@ Return STRICT JSON, no markdown:
     { "script": "…", "visual": "…", "motion": "…" }
   ],
   "music_mood": "…",
-  "style": "…"
+  "style": "…",
+  "character_sheet": "… or null"
 }
 
 The scenes array MUST have exactly {$sceneCount} items.
@@ -558,6 +567,9 @@ SYS;
                 'music_mood' => $this->cleanString($parsed['music_mood'] ?? $singleFallback['music_mood'], 60),
                 'style'      => $this->validStyle($parsed['style'] ?? $singleFallback['style']),
                 'hints'      => $hints,
+                'character_sheet' => is_string($parsed['character_sheet'] ?? null) && trim($parsed['character_sheet']) !== '' && strtolower(trim($parsed['character_sheet'])) !== 'null'
+                    ? mb_substr(trim($parsed['character_sheet']), 0, 500)
+                    : null,
             ];
         } catch (\Throwable $e) {
             Log::warning('OneShotPromptParser: multi-scene exception', ['error' => $e->getMessage()]);

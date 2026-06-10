@@ -81,6 +81,26 @@ class LockSubjectTool implements CruiseTool
 
         $anchorAssetId = (int) $anchor->visual_asset_id;
 
+        // Character board: vision-describe the anchor's appearance (outfit,
+        // hair, accessories) and persist it BEFORE dispatching the regens —
+        // GenerateAIImageJob appends the sheet to every prompt, so the
+        // matched scenes keep the costume, not just the face. Best-effort.
+        rescue(function () use ($project, $anchorAssetId): void {
+            $asset = Asset::query()->find($anchorAssetId);
+            if (! $asset || ! $asset->storage_url) {
+                return;
+            }
+            $storage = app(\App\Services\Media\StorageService::class);
+            $url = $storage->extractPath((string) $asset->storage_url) !== null
+                ? $storage->url((string) $asset->storage_url)
+                : (string) $asset->storage_url;
+            $sheet = app(\App\Services\Generation\CharacterBoardService::class)->describeFromImage($url);
+            if ($sheet) {
+                app(\App\Services\Generation\CharacterBoardService::class)->set($project, $sheet, 'vision');
+                $project->refresh();
+            }
+        });
+
         // Reuse this project's auto-subject if it already has one; otherwise
         // create a fresh one. Never touch a user's named (non-auto) character.
         $autoChar = null;

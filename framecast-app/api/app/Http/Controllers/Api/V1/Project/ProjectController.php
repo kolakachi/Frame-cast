@@ -860,6 +860,7 @@ class ProjectController extends Controller
                     'style'        => $parsed['style'],
                     'music_mood'   => $parsed['music_mood'],
                     'scenes_count' => $sceneCount,
+                    'character_sheet' => $parsed['character_sheet'] ?? null,
                 ],
                 'defaults' => [
                     'include_music'    => true,
@@ -942,6 +943,7 @@ class ProjectController extends Controller
             'plan.scenes.*.motion'     => ['nullable', 'string', 'max:300'],
             'plan.style'               => ['nullable', 'string', 'max:40'],
             'plan.music_mood'          => ['nullable', 'string', 'max:80'],
+            'plan.character_sheet'     => ['nullable', 'string', 'max:500'],
         ]);
 
         $includeMusic    = (bool) ($validated['include_music'] ?? true);
@@ -1046,6 +1048,7 @@ class ProjectController extends Controller
                 'scenes'     => $planScenes,
                 'style'      => $planStyle !== '' ? $planStyle : 'photorealistic',
                 'music_mood' => trim((string) ($validated['plan']['music_mood'] ?? '')) ?: 'calm cinematic ambient',
+                'character_sheet' => trim((string) ($validated['plan']['character_sheet'] ?? '')) ?: null,
             ];
         } else {
             // No approved plan sent — re-parse, letting the planner SEE the
@@ -1084,6 +1087,12 @@ class ProjectController extends Controller
             // turn one. A refresh later can enrich it from the actual scenes.
             'assistant_brief_json' => app(\App\Services\CruiseControl\ProjectBriefService::class)
                 ->seed($promptText, $parsed['style'], null),
+            // Character board: canonical appearance for the recurring subject
+            // (outfit, hair, accessories) — injected into every image prompt
+            // so costume doesn't drift between scenes. Assistant/admin only.
+            'character_board_json' => ! empty($parsed['character_sheet'])
+                ? ['sheet' => $parsed['character_sheet'], 'source' => 'planner', 'updated_at' => now()->toIso8601String()]
+                : null,
         ]);
 
         // Animation parameters — Balanced (Hailuo) needs 6 or 10; the rest

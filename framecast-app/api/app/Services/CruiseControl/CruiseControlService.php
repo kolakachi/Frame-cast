@@ -246,6 +246,16 @@ class CruiseControlService
         // stays on-theme without the user repeating "keep the doodle style".
         $briefBlock = app(ProjectBriefService::class)->promptBlock($project->assistant_brief_json);
 
+        // Character board: the project's canonical subject appearance. The
+        // assistant must keep any person it generates consistent with this
+        // (it's auto-appended to image prompts too — see GenerateAIImageJob).
+        $boardSheet = is_array($project->character_board_json)
+            ? trim((string) ($project->character_board_json['sheet'] ?? ''))
+            : '';
+        if ($boardSheet !== '') {
+            $briefBlock .= "\nCHARACTER BOARD (canonical appearance — any person in generated images must match this exactly, same outfit/hair/accessories): {$boardSheet}";
+        }
+
         $tools = $this->registry->promptCatalog();
 
         return <<<SYS

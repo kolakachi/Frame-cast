@@ -775,6 +775,9 @@ async function submitOneShot() {
           })),
           style: oneShotPlan.value.style,
           music_mood: oneShotPlan.value.music_mood,
+          // Character board sheet — keeps costume/hair consistent across
+          // scenes; persisted on the project for the assistant + regens.
+          ...(oneShotPlan.value.character_sheet ? { character_sheet: oneShotPlan.value.character_sheet } : {}),
         },
       } : {}),
     }
