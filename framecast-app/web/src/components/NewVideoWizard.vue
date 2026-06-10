@@ -393,6 +393,8 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   // and menu state don't bleed into the new project.
   oneShotPrompt.value = ''
   oneShotAnimate.value = true
+  oneShotVisualSource.value = 'ai_images'
+  oneShotSourceMenuOpen.value = false
   oneShotAnimateTier.value = 'quick'
   oneShotScenesCount.value = 3
   oneShotReferences.value = []
@@ -507,6 +509,19 @@ function pickOneShotPrompt() {
 const oneShotPrompt = ref('')
 const oneShotAnimate = ref(true)
 const oneShotAnimateTier = ref('quick')
+// Visual source for the one-shot: AI images (default), stock, or audiogram.
+// Animation + reference images only apply to AI images.
+const oneShotVisualSource = ref('ai_images')
+const ONE_SHOT_VISUAL_SOURCES = [
+  { key: 'ai_images',    label: 'AI images',    icon: '🎨', hint: 'generated per scene' },
+  { key: 'stock_video',  label: 'Stock video',  icon: '🎞', hint: 'Pexels clips · free' },
+  { key: 'stock_images', label: 'Stock images', icon: '🏞', hint: 'Pexels stills · free' },
+  { key: 'waveform',     label: 'Audiogram',    icon: '🎧', hint: 'waveform over voice · free' },
+]
+const oneShotSourceMenuOpen = ref(false)
+const oneShotIsAiVisuals = computed(() => oneShotVisualSource.value === 'ai_images')
+const oneShotSourceMeta = computed(() =>
+  ONE_SHOT_VISUAL_SOURCES.find((s) => s.key === oneShotVisualSource.value) ?? ONE_SHOT_VISUAL_SOURCES[0])
 // Number of scenes. 1 = instant demo, 3 = DTC ad (default), 5 = narrative,
 // 8 = full Reel. Backend caps at 8 (parser quality + cost + concurrency).
 const oneShotScenesCount = ref(3)
@@ -672,11 +687,12 @@ async function requestOneShotPlan() {
     const res = await api.post('/projects/one-shot/plan', {
       prompt: oneShotPrompt.value.trim(),
       aspect_ratio: aspectRatio.value,
-      animate: oneShotAnimate.value,
+      visual_source: oneShotVisualSource.value,
+      animate: oneShotIsAiVisuals.value && oneShotAnimate.value,
       animation_tier: oneShotAnimateTier.value,
       scenes_count: oneShotScenesCount.value,
-      ...(sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
-      ...(characterIds.length   ? { character_ids: characterIds }            : {}),
+      ...(oneShotIsAiVisuals.value && sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
+      ...(oneShotIsAiVisuals.value && characterIds.length   ? { character_ids: characterIds }            : {}),
     })
     const data = res.data?.data ?? {}
     oneShotPlan.value = data.plan ?? null
@@ -711,14 +727,15 @@ async function submitOneShot() {
       prompt: oneShotPrompt.value.trim(),
       title: title.value || undefined,
       aspect_ratio: aspectRatio.value,
-      animate: oneShotAnimate.value,
+      visual_source: oneShotVisualSource.value,
+      animate: oneShotIsAiVisuals.value && oneShotAnimate.value,
       animation_tier: oneShotAnimateTier.value,
       scenes_count: oneShotScenesCount.value,
       include_music: oneShotIncludeMusic.value,
       include_captions: oneShotIncludeCaptions.value,
       channel_id: channelId.value ? Number(channelId.value) : undefined,
-      ...(sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
-      ...(characterIds.length   ? { character_ids: characterIds }            : {}),
+      ...(oneShotIsAiVisuals.value && sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
+      ...(oneShotIsAiVisuals.value && characterIds.length   ? { character_ids: characterIds }            : {}),
       // Send the reviewed plan so the user's edits aren't re-parsed away.
       ...(oneShotPlan.value ? {
         plan: {
@@ -740,7 +757,8 @@ async function submitOneShot() {
         // no_music drops the music stage from the progress pipeline so it
         // doesn't wait on a job that was never dispatched.
         query: {
-          animate: oneShotAnimate.value ? '1' : '0',
+          animate: (oneShotIsAiVisuals.value && oneShotAnimate.value) ? '1' : '0',
+          vs: oneShotVisualSource.value,
           ...(oneShotIncludeMusic.value ? {} : { no_music: '1' }),
         },
       })
@@ -910,7 +928,7 @@ defineExpose({ open })
         <div class="composer">
           <!-- Reference chips — also visible mid-upload so picking files gives
                immediate feedback in the composer (placeholder chips + counter). -->
-          <div v-if="oneShotReferences.length || oneShotUploading.length" class="composer-chips">
+          <div v-if="oneShotIsAiVisuals && (oneShotReferences.length || oneShotUploading.length)" class="composer-chips">
             <div v-for="ref in oneShotReferences" :key="ref.uid" class="ref-chip" :title="ref.label">
               <img v-if="ref.thumb" :src="ref.thumb" :alt="ref.label" class="ref-chip-thumb" />
               <span v-else class="ref-chip-glyph">{{ ref.kind === 'character' ? '👤' : '📷' }}</span>
@@ -941,8 +959,20 @@ defineExpose({ open })
           <!-- Toolbar: + Add (popover), aspect ratio chip, animate model chip, char count -->
           <div class="composer-toolbar">
             <div class="composer-tools-left">
-              <!-- + Add references — popover menu -->
-              <div class="composer-add">
+              <!-- Visual source dropdown — AI images / stock / audiogram -->
+              <div class="composer-pill-wrap">
+                <button type="button" class="composer-pill" @click="oneShotSourceMenuOpen = !oneShotSourceMenuOpen">
+                  <span>{{ oneShotSourceMeta.icon }} {{ oneShotSourceMeta.label }}</span><span class="composer-pill-caret">▾</span>
+                </button>
+                <div v-if="oneShotSourceMenuOpen" class="composer-pill-menu composer-pill-menu--wide">
+                  <button v-for="s in ONE_SHOT_VISUAL_SOURCES" :key="s.key" type="button" :class="['composer-pill-option', oneShotVisualSource === s.key ? 'selected' : '']" @click="oneShotVisualSource = s.key; oneShotSourceMenuOpen = false">
+                    <span>{{ s.icon }} {{ s.label }}</span><span class="composer-pill-option-sub">{{ s.hint }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- + Add references — popover menu (AI images only: references steer image generation) -->
+              <div v-if="oneShotIsAiVisuals" class="composer-add">
                 <button type="button" class="composer-add-btn" @click="oneShotAddMenuOpen = !oneShotAddMenuOpen" :disabled="oneShotReferences.length >= 4" :title="oneShotReferences.length >= 4 ? 'Up to 4 references' : 'Add reference image or character'">+</button>
                 <div v-if="oneShotAddMenuOpen" class="composer-add-menu">
                   <label class="composer-add-item">
@@ -980,8 +1010,8 @@ defineExpose({ open })
                 </div>
               </div>
 
-              <!-- Animate dropdown — model + on/off in one control -->
-              <div class="composer-pill-wrap">
+              <!-- Animate dropdown — model + on/off in one control (AI images only) -->
+              <div v-if="oneShotIsAiVisuals" class="composer-pill-wrap">
                 <button type="button" class="composer-pill" @click="oneShotAnimMenuOpen = !oneShotAnimMenuOpen">
                   <span>🎬 {{ oneShotAnimate ? animateTierLabel(oneShotAnimateTier) : 'No animation' }}</span><span class="composer-pill-caret">▾</span>
                 </button>
@@ -1007,7 +1037,7 @@ defineExpose({ open })
 
         <!-- Character picker — only when user expanded it from the + menu.
              Multi-select; clicking a card toggles it in/out of refs. -->
-        <div v-if="oneShotShowCharacters && availableCharacters.length" style="margin-top:14px;">
+        <div v-if="oneShotIsAiVisuals && oneShotShowCharacters && availableCharacters.length" style="margin-top:14px;">
           <div class="micro-section-label">Pick characters as references</div>
           <div class="character-pick-grid">
             <div

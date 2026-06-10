@@ -36,6 +36,16 @@ function oneShotStageDefinitions(project = null) {
         return Boolean(igs.auto_animate || igs.animation_tier || igs.animation_in_progress || s.animation_video_asset_id)
       })
   const skipImage = route.query.skip_image === '1'
+  // Visual source (ai_images | stock_video | stock_images | waveform): query
+  // param from the wizard, else derived from the scenes' visual_type.
+  const vs = route.query.vs || (() => {
+    const types = scenes.value.map((s) => s.visual_type)
+    if (types.includes('waveform')) return 'waveform'
+    if (types.some((t) => t === 'stock_clip' || t === 'stock_image' || t === 'image_montage')) return 'stock_video'
+    return 'ai_images'
+  })()
+  const isStock    = vs === 'stock_video' || vs === 'stock_images'
+  const isWaveform = vs === 'waveform'
   // no_music is set by the wizard when the user turned sounds off in the
   // plan step. Drop the music stage entirely — otherwise it sits 'pending'
   // forever (no job fires) and the editor never opens. Without the query,
@@ -46,10 +56,14 @@ function oneShotStageDefinitions(project = null) {
     ? route.query.no_music === '1'
     : !scenes.value.some((s) => Boolean((s.image_generation_settings || {}).include_music))
   return [
+    // Visual stage depends on source: AI generates per scene, stock matches
+    // footage project-wide (MatchVisualsJob → 'visual_match' events), and
+    // audiogram has no visual job at all (waveform renders from the voice).
+    ...(isStock ? [{ key: 'visual_match', label: 'Finding visuals' }] : []),
     // When the user uploaded a photo or picked a character, image gen
     // was skipped entirely on the backend. The stage shouldn't appear.
-    ...(skipImage ? [] : [{ key: 'ai_image', label: 'Generating image' }]),
-    ...(animate ? [{ key: 'animation', label: 'Animating scene' }] : []),
+    ...(!isStock && !isWaveform && !skipImage ? [{ key: 'ai_image', label: 'Generating image' }] : []),
+    ...(animate && !isStock && !isWaveform ? [{ key: 'animation', label: 'Animating scene' }] : []),
     { key: 'tts',              label: 'Recording voice' },
     ...(noMusic ? [] : [{ key: 'ai_music', label: 'Composing music' }]),
     { key: 'preview_assembly', label: 'Wrapping up' },

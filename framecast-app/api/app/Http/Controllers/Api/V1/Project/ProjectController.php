@@ -779,6 +779,8 @@ class ProjectController extends Controller
             'animate'        => ['nullable', 'boolean'],
             'animation_tier' => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro'],
             'scenes_count'   => ['nullable', 'integer', 'min:1', 'max:8'],
+            // Visual source: AI images (default), stock footage, or audiogram.
+            'visual_source'  => ['nullable', 'string', 'in:ai_images,stock_video,stock_images,waveform'],
             // References only affect the cost estimate at this stage.
             'source_image_asset_ids'   => ['nullable', 'array', 'max:4'],
             'source_image_asset_ids.*' => ['integer'],
@@ -787,15 +789,22 @@ class ProjectController extends Controller
         ]);
 
         $sceneCount     = max(1, min(8, (int) ($validated['scenes_count'] ?? 1)));
-        $hasReferences  = ! empty($validated['source_image_asset_ids']) || ! empty($validated['character_ids']);
-        $needsAnimation = (bool) ($validated['animate'] ?? true);
+        $visualSource   = $validated['visual_source'] ?? 'ai_images';
+        $isAiVisuals    = $visualSource === 'ai_images';
+        $hasReferences  = $isAiVisuals && (! empty($validated['source_image_asset_ids']) || ! empty($validated['character_ids']));
+        // Animation only applies to AI-image scenes (it animates the still).
+        $needsAnimation = $isAiVisuals && (bool) ($validated['animate'] ?? true);
         $animationTier  = $validated['animation_tier'] ?? 'quick';
         $promptText     = trim($validated['prompt']);
 
         $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
             ->parseMultiScene($promptText, $sceneCount);
 
-        $perSceneImageCost = $hasReferences ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+        // Stock matching + audiogram waveforms are included (0 cr) — only AI
+        // image generation is billed per scene.
+        $perSceneImageCost = $isAiVisuals
+            ? ($hasReferences ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM)
+            : 0;
         $perScene = $perSceneImageCost + CreditService::TTS
             + ($needsAnimation ? $this->animationTierCost($animationTier) : 0);
 
@@ -860,6 +869,8 @@ class ProjectController extends Controller
             'source_image_asset_id'    => ['nullable', 'integer', 'exists:assets,id'],
             'character_id'             => ['nullable', 'integer', 'exists:characters,id'],
             'animation_tier'           => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro'],
+            // Visual source: AI images (default), stock footage, or audiogram.
+            'visual_source'            => ['nullable', 'string', 'in:ai_images,stock_video,stock_images,waveform'],
             // 1-8 scenes. 1 = instant demo, 3 = DTC ad shape, 8 = full Reel.
             'scenes_count'             => ['nullable', 'integer', 'min:1', 'max:8'],
             // Assistant toggles from the plan-approval step. Default ON to
@@ -926,12 +937,20 @@ class ProjectController extends Controller
         // ONE music bed for the whole video (shared across scenes). Image
         // cost depends on path: AI_CHARACTER when refs present (gpt-image-2
         // /edits), AI_MEDIUM for text-to-image fallback.
-        $needsAnimation = (bool) ($validated['animate'] ?? true);
+        $visualSource = $validated['visual_source'] ?? 'ai_images';
+        $isAiVisuals  = $visualSource === 'ai_images';
+        // Animation animates a generated still — AI-image mode only. Same for
+        // references (they steer image generation).
+        $needsAnimation = $isAiVisuals && (bool) ($validated['animate'] ?? true);
+        if (! $isAiVisuals) {
+            $referenceAssets = collect();
+            $primaryCharacterId = null;
+        }
         $animationTier  = $validated['animation_tier'] ?? 'quick';
         $animationCost  = $this->animationTierCost($animationTier);
-        $perSceneImageCost = $referenceAssets->isNotEmpty()
-            ? CreditService::AI_CHARACTER
-            : CreditService::AI_MEDIUM;
+        $perSceneImageCost = $isAiVisuals
+            ? ($referenceAssets->isNotEmpty() ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM)
+            : 0; // stock matching + waveforms are included
         // Scene count follows the approved plan when one was sent, so an
         // edited plan (user added/removed a scene) costs the right amount.
         $sceneCount = is_array($providedScenes) && count($providedScenes) > 0
@@ -979,6 +998,15 @@ class ProjectController extends Controller
                 ->parseMultiScene($promptText, $sceneCount);
         }
 
+        // Scene/project typing per visual source. MatchVisualsJob reads
+        // visual_generation_mode ('stock_images' => image montage, else clips).
+        [$sceneVisualType, $generationMode] = match ($visualSource) {
+            'stock_video'  => ['stock_clip', 'stock'],
+            'stock_images' => ['stock_image', 'stock_images'],
+            'waveform'     => ['waveform', 'waveform'],
+            default        => ['ai_image', 'ai_images'],
+        };
+
         $project = Project::query()->create([
             'workspace_id'        => $user->workspace_id,
             'created_by_user_id'  => $user->getKey(),
@@ -986,7 +1014,8 @@ class ProjectController extends Controller
             'name'                => $title,
             'aspect_ratio'        => $aspectRatio,
             'duration_seconds'    => 8 * $sceneCount,
-            'visual_type'         => 'ai_image',
+            'visual_type'         => $sceneVisualType,
+            'visual_generation_mode' => $generationMode,
             'ai_broll_style'      => $parsed['style'],
             'status'              => 'generating',
             'source_type'         => 'prompt',
@@ -1038,7 +1067,7 @@ class ProjectController extends Controller
                     'font'           => 'Bebas Neue',
                     'highlight_color'=> '#ff6b35',
                 ] : ['enabled' => false],
-                'visual_type'   => 'ai_image',
+                'visual_type'   => $sceneVisualType,
                 'visual_prompt' => $sceneDef['visual'],
                 'visual_style'  => $parsed['style'],
                 'status'        => 'draft',
@@ -1046,37 +1075,54 @@ class ProjectController extends Controller
             ]);
 
             $scene->forceFill([
-                'image_generation_settings_json' => [
-                    'in_progress'             => true,
+                'image_generation_settings_json' => array_filter([
+                    // in_progress only when an image JOB will actually run —
+                    // a stale true on stock/waveform scenes would pin
+                    // generation_pending (dashboard routing) forever.
+                    'in_progress'             => $isAiVisuals,
                     'last_error'              => null,
                     'needs_visual'            => false,
-                    'generation_token'        => $imageToken,
-                    'generation_started_at'   => now()->toIso8601String(),
-                    'reference_asset_ids'     => $referenceIdsArr,
+                    'generation_token'        => $isAiVisuals ? $imageToken : null,
+                    'generation_started_at'   => $isAiVisuals ? now()->toIso8601String() : null,
+                    'reference_asset_ids'     => $isAiVisuals ? $referenceIdsArr : [],
                     'suggested_motion_prompt' => $sceneDef['motion'],
                     // Persist the generation plan: the progress view derives
                     // its stage list from these when reached WITHOUT the
                     // wizard's query params (dashboard re-entry).
                     'auto_animate'            => $needsAnimation,
                     'include_music'           => $includeMusic,
-                ],
+                    'visual_source'           => $visualSource,
+                    // Audiogram scenes render the waveform at preview/export —
+                    // seed the default look so the editor panel is populated.
+                    'audiogram_style'         => $visualSource === 'waveform' ? 'bars' : null,
+                    'audiogram_color'         => $visualSource === 'waveform' ? '#ff6b35' : null,
+                ], fn ($v) => $v !== null),
             ])->save();
 
-            \App\Jobs\GenerateAIImageJob::dispatch(
-                $scene->getKey(),
-                $project->getKey(),
-                $parsed['style'],
-                null,
-                $parsed['style'],
-                $imageToken,
-                $needsAnimation ? $animateDuration : null,
-                $needsAnimation ? $sceneDef['motion'] : null,
-                $needsAnimation ? $animationTier      : null,
-                null,
-                $referenceIdsArr,
-            )->delay(now()->addSeconds($idx * 3));
+            if ($isAiVisuals) {
+                \App\Jobs\GenerateAIImageJob::dispatch(
+                    $scene->getKey(),
+                    $project->getKey(),
+                    $parsed['style'],
+                    null,
+                    $parsed['style'],
+                    $imageToken,
+                    $needsAnimation ? $animateDuration : null,
+                    $needsAnimation ? $sceneDef['motion'] : null,
+                    $needsAnimation ? $animationTier      : null,
+                    null,
+                    $referenceIdsArr,
+                )->delay(now()->addSeconds($idx * 3));
+            }
 
             $firstSceneId = $firstSceneId ?? $scene->getKey();
+        }
+
+        // Stock modes: one project-wide matcher fills every scene's visual
+        // from Pexels (visual_generation_mode picks clips vs image montage).
+        // Waveform needs no visual job at all — it renders from the voice.
+        if (in_array($visualSource, ['stock_video', 'stock_images'], true)) {
+            \App\Jobs\MatchVisualsJob::dispatch($project->getKey());
         }
 
         // TTS walks every scene with script_text (existing behavior).
@@ -1199,14 +1245,21 @@ class ProjectController extends Controller
         }
 
         // Cost estimate — same constants as storeOneShot uses up-front.
-        // We can't know which animation tier the user originally picked
-        // without persisting it; default to quick (Wan), the cheapest.
-        // Users can re-animate manually at higher tiers from the editor.
+        // Animation on resume follows the PERSISTED per-scene plan
+        // (auto_animate, stamped at creation): resuming an image-only project
+        // used to hard-chain a quick animation onto every resumed scene —
+        // unplanned video spend + "why is it animating?" Scenes without the
+        // flag (older projects) resume WITHOUT animation; users can animate
+        // manually from the editor. Tier defaults to quick (cheapest).
         $animationTier = 'quick';
         $animationCost = CreditService::VIDEO_QUICK;
-        $perImageScene = CreditService::AI_MEDIUM + $animationCost; // image + chained animate
-        $perAnimateOnly = $animationCost;
-        $estimatedCost = count($needsImage) * $perImageScene + count($needsAnimate) * $perAnimateOnly;
+        $chainCount = count(array_filter(
+            $needsImage,
+            fn ($scene) => ! empty(($scene->image_generation_settings_json ?? [])['auto_animate']),
+        ));
+        $estimatedCost = count($needsImage) * CreditService::AI_MEDIUM
+            + $chainCount * $animationCost
+            + count($needsAnimate) * $animationCost;
 
         $balance = (new CreditService())->balance((int) $user->workspace_id);
         if ($balance < $estimatedCost) {
@@ -1226,6 +1279,8 @@ class ProjectController extends Controller
             $cfg = $scene->image_generation_settings_json ?? [];
             $referenceIds = $cfg['reference_asset_ids'] ?? [];
             $motionPrompt = $cfg['suggested_motion_prompt'] ?? null;
+            // Chain animation ONLY when the original plan included it.
+            $chainAnimate = ! empty($cfg['auto_animate']);
             $scene->forceFill([
                 'image_generation_settings_json' => array_merge($cfg, [
                     'in_progress'           => true,
@@ -1242,9 +1297,9 @@ class ProjectController extends Controller
                 null,
                 $scene->visual_style ?? $project->ai_broll_style ?? 'cinematic',
                 $imageToken,
-                5,                       // animate duration (Wan quick = 5 or 10)
-                $motionPrompt,
-                $animationTier,
+                $chainAnimate ? 5 : null,            // animate duration (Wan quick = 5 or 10)
+                $chainAnimate ? $motionPrompt : null,
+                $chainAnimate ? $animationTier : null,
                 null,
                 $referenceIds,
             )->delay(now()->addSeconds($delaySec));
