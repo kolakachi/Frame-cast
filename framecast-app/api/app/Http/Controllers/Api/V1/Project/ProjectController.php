@@ -820,7 +820,7 @@ class ProjectController extends Controller
                 }
             }
             $refUrls = $refAssets->unique('id')->take(4)
-                ->map(fn ($a) => $this->assetUrl($a))
+                ->map(fn ($a) => $this->plannerImageUrl($a))
                 ->filter()->values()->all();
         }
 
@@ -1054,7 +1054,7 @@ class ProjectController extends Controller
                 ->parseMultiScene(
                     $promptText,
                     $sceneCount,
-                    $referenceAssets->map(fn ($a) => $this->assetUrl($a))->filter()->values()->all(),
+                    $referenceAssets->map(fn ($a) => $this->plannerImageUrl($a))->filter()->values()->all(),
                 );
         }
 
@@ -1823,6 +1823,26 @@ class ProjectController extends Controller
         }
 
         return $settings;
+    }
+
+    /**
+     * URL an EXTERNAL fetcher (OpenAI vision) can download directly —
+     * presigned B2, never the app's /media/assets proxy route. The api
+     * container is single-threaded (artisan serve): while our request is
+     * blocked waiting on OpenAI, OpenAI fetching the image back through the
+     * app deadlocks and times out ("invalid_image_url").
+     */
+    private function plannerImageUrl(Asset $asset): ?string
+    {
+        $storageUrl = trim((string) $asset->storage_url);
+        if ($storageUrl === '') {
+            return null;
+        }
+        $storage = app(\App\Services\Media\StorageService::class);
+
+        return $storage->extractPath($storageUrl) !== null
+            ? $storage->url($storageUrl)
+            : $storageUrl;
     }
 
     private function assetUrl(Asset $asset): ?string
