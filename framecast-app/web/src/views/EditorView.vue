@@ -898,7 +898,12 @@ function cruiseFriendlyError(raw) {
   if (s.includes('timed out') || s.includes('timeout') || s.includes('error 28')) {
     return 'That took too long to generate — the provider was slow. Tap Retry.'
   }
-  if (s.includes('rate') || s.includes('429') || s.includes('too many')) {
+  // Match real rate-limit phrases only — NOT the bare substring "rate",
+  // which also matches "gene-rate"/"generation" and mislabeled ordinary
+  // generation errors as rate limits.
+  if (s.includes('rate limit') || s.includes('rate-limit') || s.includes('ratelimit')
+      || s.includes('rate_limited') || s.includes('429') || s.includes('too many')
+      || s.includes('quota') || s.includes('resource_exhausted') || s.includes('resource exhausted')) {
     return "We're being rate-limited right now — wait a moment, then tap Retry."
   }
   if (s.includes('policy') || s.includes('safety') || s.includes('moderation') || s.includes('nsfw') || s.includes('content filter')) {
