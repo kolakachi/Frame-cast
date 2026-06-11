@@ -99,7 +99,7 @@ class GenerateAIMusicJob implements ShouldQueue
                 'music_asset_id'      => $asset->getKey(),
                 'music_settings_json' => array_merge(
                     $scene->project->music_settings_json ?? [],
-                    ['volume' => 0.3, 'fade_in_ms' => 500, 'fade_out_ms' => 800, 'source' => 'ai_generated'],
+                    ['volume' => 30, 'fade_in_ms' => 500, 'fade_out_ms' => 800, 'source' => 'ai_generated'],
                 ),
             ])->save();
 

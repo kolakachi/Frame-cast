@@ -103,7 +103,7 @@ class PickLibraryMusicTool implements CruiseTool
         $project->forceFill([
             'music_asset_id'      => $best->getKey(),
             'music_settings_json' => array_merge($project->music_settings_json ?? [], [
-                'volume'      => 0.3,
+                'volume'      => 30,
                 'fade_in_ms'  => 500,
                 'fade_out_ms' => 800,
                 'source'      => 'library',

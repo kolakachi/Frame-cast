@@ -411,11 +411,12 @@ trait RendersExportScenes
         float $elapsedSeconds
     ): string {
         $musicSettings = is_array($project->music_settings_json) ? $project->music_settings_json : [];
-        $volume = max(0, (int) ($musicSettings['volume'] ?? 30));
+        // Accept 0-100 percentage OR 0-1 fraction (see applyMusicMix).
+        $volume = $musicSettings['volume'] ?? 30;
         $fadeInMs = max(0, (int) ($musicSettings['fade_in_ms'] ?? 500));
         $loop = (bool) ($musicSettings['loop'] ?? true);
         $duckDuringVoice = (bool) ($musicSettings['duck_during_voice'] ?? true);
-        $volumeFraction = $volume / 100.0;
+        $volumeFraction = $volume > 1 ? (float) $volume / 100.0 : (float) $volume;
         $fadeInSec = $fadeInMs / 1000.0;
         $analysisPath = sprintf('%s/audiogram-analysis-%03d.wav', $tempDir, $index + 1);
 
@@ -533,7 +534,10 @@ trait RendersExportScenes
     protected function applyMusicMix(Project $project, Asset $musicAsset, string $videoFile, string $outputFile, string $tempDir): void
     {
         $musicSettings = is_array($project->music_settings_json) ? $project->music_settings_json : [];
-        $volume = (int) ($musicSettings['volume'] ?? 30);
+        // Volume may be stored as a 0-100 percentage (editor convention) OR a
+        // 0-1 fraction (AI music / Cruise library-pick wrote 0.3). The old
+        // `(int) 0.3 = 0` silenced the music entirely. Accept both.
+        $volume = $musicSettings['volume'] ?? 30;
         $fadeInMs = (int) ($musicSettings['fade_in_ms'] ?? 500);
         $loop = (bool) ($musicSettings['loop'] ?? true);
         $duckDuringVoice = (bool) ($musicSettings['duck_during_voice'] ?? true);
@@ -545,7 +549,7 @@ trait RendersExportScenes
         }
 
         $videoDuration = $this->probeMediaDuration($videoFile) ?? 60.0;
-        $volumeFraction = $volume / 100.0;
+        $volumeFraction = $volume > 1 ? (float) $volume / 100.0 : (float) $volume;
         $fadeInSec = $fadeInMs / 1000.0;
         $loopFilter = $loop ? "aloop=loop=-1:size=2147483647," : '';
         $fadeFilter = $fadeInSec > 0 ? sprintf('afade=t=in:st=0:d=%.3f,', $fadeInSec) : '';
