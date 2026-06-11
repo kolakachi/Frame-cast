@@ -274,11 +274,16 @@ async function cruiseApplyAction(msg, actionIndex = 0) {
     cruiseShowToast(`${out?.summary} · spent ${out?.credits_spent ?? 0} cr`)
     loadMe?.()
     // Output tools hand off to a UI surface. schedule_post opens the composer
-    // (the user still picks account + date + now/later/draft = consent);
-    // export_video just kicked off a render — the export progress pill updates
-    // itself from ExportProgressed websocket events, so the toast is enough.
+    // (the user still picks account + date + now/later/draft = consent).
     if (out?.navigate?.type === 'schedule') {
       scheduleModalOpen.value = true
+    } else if (out?.navigate?.type === 'export') {
+      // Reflect the assistant-triggered export in the UI right away — the
+      // Export button flips to "Exporting…" and the progress pill appears
+      // without a page refresh (loadExportJobs picks up the new job; the
+      // queued-export watcher starts the progress poll + websocket updates).
+      queuedExportJobId.value = out.navigate.export_job_id ?? null
+      try { await loadExportJobs() } catch (_) {}
     }
     // Structural tools shuffle MORE than the one affected scene — reorder
     // changes sibling orders + labels, add_scene shifts everything after the
@@ -2583,6 +2588,13 @@ watch(
 // server-side retried jobs that weren't initiated from this UI session.
 const hasActiveExport = computed(() =>
   exportJobs.value.some((j) => ['queued', 'processing'].includes(j.status))
+)
+
+// True for the WHOLE export, not just the brief save POST — drives the
+// Export button's disabled + "Exporting…" state for both manual and
+// assistant-triggered exports.
+const exportInProgress = computed(() =>
+  exportPending.value || queuedExportJobId.value !== null || hasActiveExport.value
 )
 
 watch(
@@ -5911,10 +5923,10 @@ onBeforeUnmount(() => {
               <button
                 class="btn btn-primary"
                 type="button"
-                :disabled="exportPending || !!exportBlockerMessage"
+                :disabled="exportInProgress || !!exportBlockerMessage"
                 @click="queueExport"
               >
-                {{ exportPending ? "Exporting..." : "Export" }}
+                {{ exportInProgress ? "Exporting..." : "Export" }}
               </button>
             </div>
             <button class="btn btn-ghost btn-back" type="button" @click="router.push({ name: 'dashboard' })">
@@ -11130,6 +11142,24 @@ select.control-value {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b8b9e'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
+}
+
+/* Unify the remaining editor selects so none render with the native OS
+   control. ap-input / preset-select set `background:` (shorthand, which
+   wipes background-image) — `select.<class>` outranks the plain class so the
+   custom chevron sticks while their own background-color stays. The open
+   option list is still browser-native (a <select> limitation shared by all
+   the styled selects above). */
+select.ap-input,
+select.preset-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  padding-right: 26px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b8b9e'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
 }
 
 .query-input {
