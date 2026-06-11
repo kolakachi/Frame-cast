@@ -198,7 +198,7 @@ class LockSubjectTool implements CruiseTool
         $genImageIds = empty($assetIds) ? [] : Asset::query()
             ->whereIn('id', $assetIds)
             ->where('asset_type', 'image')
-            ->where('source', 'ai_generated')
+            ->whereJsonContains('tags', 'ai_generated')
             ->pluck('id')
             ->all();
         $genImageIds = array_flip($genImageIds);

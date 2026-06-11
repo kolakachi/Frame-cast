@@ -263,7 +263,7 @@ class AddSceneTool implements CruiseTool
         $generated = Asset::query()
             ->whereIn('id', $scenes->pluck('visual_asset_id')->unique()->all())
             ->where('asset_type', 'image')
-            ->where('source', 'ai_generated')
+            ->whereJsonContains('tags', 'ai_generated')
             ->pluck('id')
             ->flip();
 
