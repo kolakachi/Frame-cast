@@ -9,6 +9,7 @@ import AppSidebar from "../components/AppSidebar.vue";
 import EditorTimeline from "../components/EditorTimeline.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
 import SchedulePostModal from "../components/SchedulePostModal.vue";
+import UiSelect from "../components/UiSelect.vue";
 import NotifBell from "../components/NotifBell.vue";
 
 const route = useRoute();
@@ -1548,6 +1549,21 @@ const CAPTION_FONT_GROUPS = [
 ];
 const motionEffectDraft = ref("zoom_in");
 const motionIntensityDraft = ref("moderate");
+const MOTION_EFFECT_OPTIONS = [
+  { value: "zoom_in", label: "Zoom In" },
+  { value: "zoom_out", label: "Zoom Out" },
+  { value: "pan_left", label: "Pan Left" },
+  { value: "pan_right", label: "Pan Right" },
+  { value: "pan_up", label: "Pan Up" },
+  { value: "pan_down", label: "Pan Down" },
+  { value: "pan_zoom", label: "Pan + Zoom" },
+  { value: "static", label: "Static (no motion)" },
+];
+const MOTION_INTENSITY_OPTIONS = [
+  { value: "subtle", label: "Subtle" },
+  { value: "moderate", label: "Moderate" },
+  { value: "dramatic", label: "Dramatic" },
+];
 const motionSaveState = ref("idle");
 const motionSaveError = ref("");
 const visualStyleDraft = ref(null);
@@ -7199,24 +7215,11 @@ onBeforeUnmount(() => {
               <div class="panel-section-body">
                 <div class="control-row" style="margin-top:4px;">
                   <span class="control-name">Effect</span>
-                  <select v-model="motionEffectDraft" class="control-value">
-                    <option value="zoom_in">Zoom In</option>
-                    <option value="zoom_out">Zoom Out</option>
-                    <option value="pan_left">Pan Left</option>
-                    <option value="pan_right">Pan Right</option>
-                    <option value="pan_up">Pan Up</option>
-                    <option value="pan_down">Pan Down</option>
-                    <option value="pan_zoom">Pan + Zoom</option>
-                    <option value="static">Static (no motion)</option>
-                  </select>
+                  <UiSelect v-model="motionEffectDraft" :options="MOTION_EFFECT_OPTIONS" />
                 </div>
                 <div v-if="motionEffectDraft !== 'static'" class="control-row">
                   <span class="control-name">Intensity</span>
-                  <select v-model="motionIntensityDraft" class="control-value">
-                    <option value="subtle">Subtle</option>
-                    <option value="moderate">Moderate</option>
-                    <option value="dramatic">Dramatic</option>
-                  </select>
+                  <UiSelect v-model="motionIntensityDraft" :options="MOTION_INTENSITY_OPTIONS" />
                 </div>
                 <div v-if="motionSaveState === 'error'" class="panel-error-copy">{{ motionSaveError }}</div>
               </div>
