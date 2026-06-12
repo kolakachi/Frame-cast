@@ -256,6 +256,35 @@ class CruiseControlService
             $briefBlock .= "\nCHARACTER BOARD (canonical appearance — any person in generated images must match this exactly, same outfit/hair/accessories): {$boardSheet}";
         }
 
+        // Project CAST roster — the named characters this project's scenes use.
+        // Lets the assistant juggle them by name (e.g. "add a scene where Tom
+        // objects") and pass character_names to add_scene.
+        $castCharIds = \App\Models\Scene::query()
+            ->where('project_id', $project->getKey())
+            ->get(['character_id', 'character_ids'])
+            ->flatMap(fn ($s) => array_merge(
+                $s->character_id ? [(int) $s->character_id] : [],
+                is_array($s->character_ids) ? array_map('intval', $s->character_ids) : [],
+            ))
+            ->filter()->unique()->values()->all();
+        if (! empty($castCharIds)) {
+            $cast = \App\Models\Character::query()
+                ->whereIn('id', $castCharIds)
+                ->get(['name', 'description']);
+            $lines = [];
+            foreach ($cast as $c) {
+                $name = trim((string) $c->name);
+                if ($name === '') {
+                    continue;
+                }
+                $desc = trim((string) $c->description);
+                $lines[] = $desc !== '' ? "{$name} ({$desc})" : $name;
+            }
+            if (! empty($lines)) {
+                $briefBlock .= "\nPROJECT CAST (named characters in this project — when a scene features one, pass their exact name in add_scene's character_names so they stay consistent): ".implode('; ', $lines).'.';
+            }
+        }
+
         $tools = $this->registry->promptCatalog();
 
         return <<<SYS

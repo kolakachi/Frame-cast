@@ -67,6 +67,11 @@ class AddSceneTool implements CruiseTool
                 'enum' => ['quick', 'seedance_lite', 'balanced', 'seedance_pro', 'premium'],
                 'description' => 'If set, the image is animated after generation. Adds the tier\'s VIDEO_* cost.',
             ],
+            'character_names' => [
+                'type' => 'array',
+                'required' => false,
+                'description' => 'Names of the project CAST members who appear in this scene (e.g. ["Sarah"] or ["Sarah","Tom"]). Use the exact names from the project cast listed in your context. Each becomes that character\'s reference + appearance so they stay consistent. Omit for scenes with no named character (b-roll, product).',
+            ],
         ];
     }
 
@@ -118,7 +123,11 @@ class AddSceneTool implements CruiseTool
         // Balanced (Hailuo) needs 6 or 10; the others use 5 or 10.
         $animateDuration = $animateTier === 'balanced' ? 6 : 5;
 
-        return DB::transaction(function () use ($project, $scriptText, $visualPrompt, $style, $voiceId, $animateTier, $animateDuration, $params): array {
+        // Cast assignment: the assistant names which roster characters appear
+        // in this scene (character_names) — resolved against the project's cast.
+        $sceneCastIds = $this->resolveSceneCast($workspace, $project, (array) ($params['character_names'] ?? []));
+
+        return DB::transaction(function () use ($project, $scriptText, $visualPrompt, $style, $voiceId, $animateTier, $animateDuration, $params, $sceneCastIds): array {
             $maxOrder = (int) Scene::query()->where('project_id', $project->getKey())->max('scene_order');
             $position = (int) ($params['position'] ?? ($maxOrder + 1));
             $position = max(1, min($maxOrder + 1, $position));
@@ -129,8 +138,12 @@ class AddSceneTool implements CruiseTool
             // insert) so the person carries over instead of being reinvented.
             // Computed BEFORE the shift, while scene_order still reflects the
             // user's mental layout. Skipped for person-less b-roll.
+            // Auto-anchor only when NO explicit cast was named — a named cast
+            // brings its own characters (generation pulls their references +
+            // appearance), and anchoring to a prior scene could drag in the
+            // wrong face.
             $autoRefIds = [];
-            if (! $project->default_character_id && $this->mentionsPerson($scriptText.' '.$visualPrompt)) {
+            if (empty($sceneCastIds) && ! $project->default_character_id && $this->mentionsPerson($scriptText.' '.$visualPrompt)) {
                 $anchorAssetId = $this->nearestGeneratedImageAsset($project, $position);
                 if ($anchorAssetId) {
                     $autoRefIds = [$anchorAssetId];
@@ -167,12 +180,12 @@ class AddSceneTool implements CruiseTool
                 }
             }
 
-            // Inherit the project's locked subject so the new scene's PERSON
-            // matches the rest — face via the character reference path, costume
-            // via the character board suffix (GenerateAIImageJob). Without this
-            // an inserted scene only got the prompt's "the same woman…" text,
-            // which drifts. Only AI-image scenes (this tool only adds those).
-            $characterId = $project->default_character_id ?: null;
+            // Cast the scene: explicit named cast wins; else inherit the
+            // project's locked subject so the new scene's PERSON matches the
+            // rest (face via the character reference path, costume via the
+            // board suffix). character_ids carries the full cast for
+            // multi-character scenes (generation multi-paths when >1).
+            $characterId = $sceneCastIds[0] ?? ($project->default_character_id ?: null);
 
             $imageToken = (string) Str::uuid();
             $scene = Scene::query()->create([
@@ -183,6 +196,7 @@ class AddSceneTool implements CruiseTool
                 'script_text'       => $scriptText,
                 'duration_seconds'  => 8,
                 'character_id'      => $characterId,
+                'character_ids'     => ! empty($sceneCastIds) ? $sceneCastIds : null,
                 'voice_settings_json' => [
                     'voice_id' => $voiceId,
                     'speed'    => 1.0,
@@ -228,6 +242,64 @@ class AddSceneTool implements CruiseTool
                 'affected_scene_id' => (int) $scene->getKey(),
             ];
         });
+    }
+
+    /**
+     * Resolve the assistant's character_names to character ids, scoped to the
+     * project's cast (characters its scenes already use) plus any workspace
+     * character that matches by name. Unknown names are ignored — the scene
+     * still generates from its prompt. Returns deduped character ids.
+     *
+     * @param  string[]  $names
+     * @return int[]
+     */
+    private function resolveSceneCast(Workspace $workspace, Project $project, array $names): array
+    {
+        $names = array_values(array_filter(array_map(fn ($n) => trim((string) $n), $names)));
+        if (empty($names)) {
+            return [];
+        }
+
+        // Project cast: characters referenced by this project's scenes + default.
+        $castIds = Scene::query()
+            ->where('project_id', $project->getKey())
+            ->get(['character_id', 'character_ids'])
+            ->flatMap(fn (Scene $s) => array_merge(
+                $s->character_id ? [(int) $s->character_id] : [],
+                is_array($s->character_ids) ? array_map('intval', $s->character_ids) : [],
+            ))
+            ->push($project->default_character_id ? (int) $project->default_character_id : null)
+            ->filter()->unique()->values()->all();
+
+        // Match by name within the workspace (project cast OR any saved char).
+        $lowered = array_map('mb_strtolower', $names);
+        $chars = \App\Models\Character::query()
+            ->where('workspace_id', $workspace->getKey())
+            ->where(function ($q) use ($castIds, $lowered): void {
+                if (! empty($castIds)) {
+                    $q->whereIn('id', $castIds);
+                }
+                foreach ($lowered as $n) {
+                    $q->orWhereRaw('LOWER(name) = ?', [$n]);
+                }
+            })
+            ->get(['id', 'name']);
+
+        $byName = [];
+        foreach ($chars as $c) {
+            if ($c->name) {
+                $byName[mb_strtolower((string) $c->name)] = (int) $c->id;
+            }
+        }
+
+        $resolved = [];
+        foreach ($lowered as $n) {
+            if (isset($byName[$n])) {
+                $resolved[] = $byName[$n];
+            }
+        }
+
+        return array_values(array_unique($resolved));
     }
 
     /**
