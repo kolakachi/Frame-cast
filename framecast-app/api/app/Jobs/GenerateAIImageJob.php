@@ -320,6 +320,11 @@ class GenerateAIImageJob implements ShouldQueue
                     'seed'           => $result['seed'],
                     'asset_id'       => $asset->getKey(),
                     'generation_token' => $this->generationToken,
+                    // Preserve the one-shot lip-sync flag — maybeDispatchForScene()
+                    // below reads it to chain the talking-video job. A full
+                    // overwrite here would wipe it and silently skip the
+                    // spokesperson render (the bug behind project 47).
+                    'planned_spokesperson' => data_get($scene->image_generation_settings_json, 'planned_spokesperson'),
                 ],
             ])->save();
 
@@ -503,6 +508,8 @@ class GenerateAIImageJob implements ShouldQueue
                             'asset_id'       => $asset->getKey(),
                             'policy_rewritten' => true,
                             'generation_token' => $this->generationToken,
+                            // Preserve the one-shot lip-sync flag (see above).
+                            'planned_spokesperson' => data_get($scene->image_generation_settings_json, 'planned_spokesperson'),
                         ],
                     ])->save();
 
