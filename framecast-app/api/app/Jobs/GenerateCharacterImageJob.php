@@ -6,7 +6,6 @@ use App\Models\Asset;
 use App\Models\Character;
 use App\Models\CharacterImageGeneration;
 use App\Services\CreditService;
-use App\Services\Generation\Image\CharacterImageAdapter;
 use App\Services\Generation\Image\DalleImageAdapter;
 use App\Services\Media\StorageService;
 use Illuminate\Bus\Queueable;
@@ -25,7 +24,9 @@ use Throwable;
  * connection open (Cloudflare 502'd on the synchronous version).
  *
  * Two paths:
- *  - Character has a reference asset → CharacterImageAdapter (gpt-image-2 /edits)
+ *  - Character has a reference asset → ImageAdapterFactory::referenceAdapter
+ *    (nano-banana-pro by default; nano-banana / gpt-image-2 /edits when picked),
+ *    fed EVERY reference photo on the character (up to 4)
  *  - No reference → DalleImageAdapter (gpt-image-1 text-only)
  *
  * On success: stores result as an Asset, optionally promotes it to the
@@ -48,7 +49,6 @@ class GenerateCharacterImageJob implements ShouldQueue
     public function handle(
         CreditService $credits,
         StorageService $storage,
-        CharacterImageAdapter $characterAdapter,
         DalleImageAdapter $dalleAdapter,
         \App\Services\Generation\Image\ImageAdapterFactory $factory,
     ): void {
@@ -129,12 +129,13 @@ class GenerateCharacterImageJob implements ShouldQueue
                 $options['reference_image_urls'] = $urls;
                 $options['reference_image_url']  = $urls[0];
 
-                // Tell the model the references are ONE person, not separate
-                // elements to merge — otherwise multi-image inputs get composited
-                // and the identity drifts. This is what makes the 2nd reference
-                // sharpen the likeness instead of confusing it.
+                // Guide the model on how to USE multiple references without
+                // assuming what they are — they may be one person from several
+                // angles, OR a person plus a logo/product to feature. Stay
+                // role-agnostic: preserve any person's likeness, reproduce any
+                // logo/product exactly, and let the scene prompt place them.
                 $identityLead = count($urls) > 1
-                    ? 'All '.count($urls).' reference images show the SAME person from different angles — preserve that single identity: same face, bone structure, hair, and skin tone. '
+                    ? 'Use every reference image as ground truth: keep the exact likeness and identity of any person shown, and reproduce any logo, product, or object shown exactly as-is. Combine them naturally into the scene below. '
                     : "Preserve the reference person's exact identity: same face, bone structure, hair, and skin tone. ";
                 $promptForModel = $identityLead.trim((string) $gen->prompt);
 
