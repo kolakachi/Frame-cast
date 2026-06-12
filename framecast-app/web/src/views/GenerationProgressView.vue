@@ -46,6 +46,14 @@ function oneShotStageDefinitions(project = null) {
   })()
   const isStock    = vs === 'stock_video' || vs === 'stock_images'
   const isWaveform = vs === 'waveform'
+  // Spokesperson lip-sync uses the 'animation' stage but reads better as
+  // "Lip-syncing voice" than "Animating scene". Detect via the wizard query
+  // or the persisted per-scene plan.
+  const isSpokesperson = route.query.tier === 'spokesperson'
+    || scenes.value.some((s) => {
+      const igs = s.image_generation_settings || {}
+      return igs.animation_tier === 'spokesperson' || igs.planned_spokesperson
+    })
   // no_music is set by the wizard when the user turned sounds off in the
   // plan step. Drop the music stage entirely — otherwise it sits 'pending'
   // forever (no job fires) and the editor never opens. Without the query,
@@ -63,7 +71,7 @@ function oneShotStageDefinitions(project = null) {
     // When the user uploaded a photo or picked a character, image gen
     // was skipped entirely on the backend. The stage shouldn't appear.
     ...(!isStock && !isWaveform && !skipImage ? [{ key: 'ai_image', label: 'Generating image' }] : []),
-    ...(animate && !isStock && !isWaveform ? [{ key: 'animation', label: 'Animating scene' }] : []),
+    ...(animate && !isStock && !isWaveform ? [{ key: 'animation', label: isSpokesperson ? 'Lip-syncing voice' : 'Animating scene' }] : []),
     { key: 'tts',              label: 'Recording voice' },
     ...(noMusic ? [] : [{ key: 'ai_music', label: 'Composing music' }]),
     { key: 'preview_assembly', label: 'Wrapping up' },

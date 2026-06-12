@@ -799,6 +799,8 @@ async function submitOneShot() {
           animate: (oneShotIsAiVisuals.value && oneShotAnimate.value) ? '1' : '0',
           vs: oneShotVisualSource.value,
           ...(oneShotIncludeMusic.value ? {} : { no_music: '1' }),
+          // So the progress view can label the animation stage "Lip-syncing".
+          ...(oneShotAnimate.value && oneShotAnimateTier.value === 'spokesperson' ? { tier: 'spokesperson' } : {}),
         },
       })
     }

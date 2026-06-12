@@ -30,6 +30,14 @@ const removeExistingImage = ref(false);   // user clicked Remove on the primary 
 const createNewFiles = ref([]);           // array of File objects to upload
 const createNewFilePreviews = ref([]);    // matching object URLs
 const existingReferences = ref([]);       // [{id, storage_url, thumbnail_url}] preserved on save
+// True when this character will carry a reference photo (any source) — must
+// match the consent gate in submit so the checkbox is ALWAYS shown when
+// consent is required (legacy single-file uploads were missing it).
+const willHaveReference = computed(() =>
+  createNewFilePreviews.value.length > 0
+  || !!createFile.value
+  || (existingReferences.value.length > 0 && !removeExistingImage.value)
+);
 const IDENTITY_STRENGTH_OPTIONS = [
   { key: "subtle",   label: "Subtle",   sub: "Looser drift" },
   { key: "balanced", label: "Balanced", sub: "Recommended" },
@@ -430,12 +438,14 @@ async function saveCharacter() {
     }
 
     // Likeness consent — required whenever this character will carry a
-    // reference photo (real face). Backend enforces it too.
-    const willHaveReference = combined.length > 0
+    // reference photo (real face). Backend enforces it too. (combined is the
+    // authoritative post-upload list; the checkbox visibility uses the
+    // willHaveReference computed, which now covers the legacy single-file path.)
+    const hasReference = combined.length > 0
       || (editingId.value && existingReferences.value.length > 0 && !removeExistingImage.value);
-    if (willHaveReference) {
+    if (hasReference) {
       if (!consentChecked.value) {
-        createError.value = "Please confirm you have the rights and consent to use this person's likeness.";
+        createError.value = "Please confirm you have the rights and consent to use this person's likeness — tick the box below.";
         return;
       }
       payload.consent = true;
@@ -633,7 +643,7 @@ async function confirmDelete() {
             <div class="cv-hint">First image is the primary reference used today. Extra photos improve future LoRA training. Max 8.</div>
           </div>
 
-          <div v-if="existingReferences.length || createNewFilePreviews.length" class="cv-field">
+          <div v-if="willHaveReference" class="cv-field">
             <label class="cv-consent">
               <input type="checkbox" v-model="consentChecked" />
               <span>I confirm I have the rights and consent to use this person's likeness, and that I won't use it to create misleading, deceptive, or explicit content.</span>
