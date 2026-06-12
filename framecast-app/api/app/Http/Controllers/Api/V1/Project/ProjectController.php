@@ -777,7 +777,9 @@ class ProjectController extends Controller
             'prompt'         => ['required', 'string', 'min:3', 'max:1000'],
             'aspect_ratio'   => ['nullable', 'string', 'in:9:16,1:1,16:9,4:5'],
             'animate'        => ['nullable', 'boolean'],
-            'animation_tier' => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro'],
+            // Must match storeOneShot's tiers — spokesperson included, else the
+            // plan/estimate call 422s the moment the user picks Spokesperson.
+            'animation_tier' => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro,spokesperson'],
             'scenes_count'   => ['nullable', 'integer', 'min:1', 'max:8'],
             // Visual source: AI images (default), stock footage, or audiogram.
             'visual_source'  => ['nullable', 'string', 'in:ai_images,stock_video,stock_images,waveform'],
