@@ -1564,6 +1564,87 @@ const MOTION_INTENSITY_OPTIONS = [
   { value: "moderate", label: "Moderate" },
   { value: "dramatic", label: "Dramatic" },
 ];
+const VOICE_SPEED_OPTIONS = [
+  { value: "0.8", label: "0.8x" },
+  { value: "1.0", label: "1.0x" },
+  { value: "1.1", label: "1.1x" },
+  { value: "1.2", label: "1.2x" },
+];
+const VOICE_STABILITY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+];
+const voiceProfileOptions = computed(() =>
+  (voiceProfiles.value || []).map((p) => ({ value: p.provider_voice_key, label: p.name }))
+);
+const ADD_SCENE_STOCK_OPTIONS = [
+  { value: "stock_clip", label: "Clip" },
+  { value: "background_loop", label: "BG Loop" },
+  { value: "text_card", label: "Text Only" },
+];
+const STOCK_VIDEO_SUBTYPE_OPTIONS = [
+  { value: "stock_clip", label: "Clip" },
+  { value: "background_loop", label: "BG Loop" },
+];
+const CAPTION_HIGHLIGHT_OPTIONS = [
+  { value: "keywords", label: "Keywords" },
+  { value: "word_by_word", label: "Word-by-word" },
+  { value: "line_by_line", label: "Line-by-line" },
+  { value: "none", label: "None" },
+];
+const CAPTION_POSITION_OPTIONS = [
+  { value: "bottom_third", label: "Bottom third" },
+  { value: "center", label: "Center" },
+  { value: "top_third", label: "Top third" },
+];
+const CRUISE_IMAGE_MODEL_OPTIONS = [
+  { value: "", label: "Let me pick per turn" },
+  { value: "gpt-image-1", label: "gpt-image-1 · 15 cr · photoreal" },
+  { value: "gpt-image-2", label: "gpt-image-2 · 35 cr · newer OpenAI" },
+  { value: "nano-banana", label: "nano-banana · 15 cr · Google fast" },
+  { value: "flux-schnell", label: "flux-schnell · 3 cr · fastest" },
+  { value: "sdxl-lightning", label: "sdxl-lightning · 3 cr · stylish" },
+];
+const CRUISE_ANIMATION_TIER_OPTIONS = [
+  { value: "", label: "Let me pick per turn" },
+  { value: "quick", label: "quick · Wan 2.5 · 60 cr" },
+  { value: "seedance_lite", label: "seedance lite · 100 cr" },
+  { value: "balanced", label: "balanced · Hailuo · 120 cr" },
+  { value: "seedance_pro", label: "seedance pro · 200 cr" },
+  { value: "premium", label: "premium · Kling · 240 cr" },
+];
+const CRUISE_VISUAL_SOURCE_OPTIONS = [
+  { value: "auto", label: "Auto — assistant decides" },
+  { value: "ai_image", label: "AI image" },
+  { value: "stock_video", label: "Stock video" },
+  { value: "stock_image", label: "Stock image" },
+  { value: "audiogram", label: "Audiogram" },
+];
+const APPROVAL_EXPIRES_OPTIONS = [
+  { value: 3, label: "3 days" },
+  { value: 7, label: "7 days" },
+  { value: 14, label: "14 days" },
+  { value: 30, label: "30 days" },
+];
+const channelOptions = computed(() => [
+  { value: "", label: "No channel" },
+  ...(channels.value || []).map((c) => ({ value: String(c.id), label: c.name })),
+]);
+const brandKitOptions = computed(() => [
+  { value: "", label: "No brand kit" },
+  ...(brandKits.value || []).map((b) => ({ value: String(b.id), label: b.name })),
+]);
+const cruiseScopeOptions = computed(() => [
+  { value: "project", label: "whole project" },
+  ...(scenes.value || []).map((s) => ({ value: String(s.id), label: `Scene ${s.scene_order}` })),
+]);
+const captionPresetOptions = computed(() =>
+  (captionPresets.value || []).map((p) => ({ value: p.id, label: p.name }))
+);
+function onApplyCaptionPreset(id) {
+  applyCaptionPreset((captionPresets.value || []).find((p) => p.id === Number(id)) || {});
+}
 const motionSaveState = ref("idle");
 const motionSaveError = ref("");
 const visualStyleDraft = ref(null);
@@ -6025,11 +6106,7 @@ onBeforeUnmount(() => {
                   <template v-if="addSceneVisualMode === 'stock_video'">
                     <div class="control-row add-scene-control-row">
                       <span class="control-name">Type</span>
-                      <select v-model="addSceneStockSubType" class="control-value">
-                        <option value="stock_clip">Clip</option>
-                        <option value="background_loop">BG Loop</option>
-                        <option value="text_card">Text Only</option>
-                      </select>
+                      <UiSelect v-model="addSceneStockSubType" :options="ADD_SCENE_STOCK_OPTIONS" />
                     </div>
                     <div class="scene-query-label">Search query</div>
                     <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="e.g. 'abandoned mansion at night' — leave blank to use scene script"></textarea>
@@ -6297,11 +6374,7 @@ onBeforeUnmount(() => {
                     <template v-if="addSceneVisualMode === 'stock_video'">
                       <div class="control-row add-scene-control-row">
                         <span class="control-name">Type</span>
-                        <select v-model="addSceneStockSubType" class="control-value">
-                          <option value="stock_clip">Clip</option>
-                          <option value="background_loop">BG Loop</option>
-                          <option value="text_card">Text Only</option>
-                        </select>
+                        <UiSelect v-model="addSceneStockSubType" :options="ADD_SCENE_STOCK_OPTIONS" />
                       </div>
                       <div class="scene-query-label">Search query</div>
                       <textarea v-model="addSceneVisualQuery" class="scene-query-input" rows="2" placeholder="e.g. 'abandoned mansion at night' — leave blank to use scene script"></textarea>
@@ -6794,10 +6867,7 @@ onBeforeUnmount(() => {
                 <template v-if="selectedSwapVisualSource === 'Stock Video'">
                   <div class="control-row" style="margin-top:10px;">
                     <span class="control-name">Type</span>
-                    <select v-model="stockVideoSubType" class="control-value">
-                      <option value="stock_clip">Clip</option>
-                      <option value="background_loop">BG Loop</option>
-                    </select>
+                    <UiSelect v-model="stockVideoSubType" :options="STOCK_VIDEO_SUBTYPE_OPTIONS" />
                   </div>
                   <div class="scene-query-label" style="margin-top:10px;">Search query</div>
                   <textarea v-model="visualQueryDraft" class="scene-query-input" rows="2" placeholder="e.g. 'city skyline at sunset' — leave blank to use scene script"></textarea>
@@ -7281,28 +7351,15 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="control-row">
                   <span class="control-name">Speed</span>
-                  <select v-model="voiceSpeedDraft" class="control-value">
-                    <option value="0.8">0.8x</option>
-                    <option value="1.0">1.0x</option>
-                    <option value="1.1">1.1x</option>
-                    <option value="1.2">1.2x</option>
-                  </select>
+                  <UiSelect v-model="voiceSpeedDraft" :options="VOICE_SPEED_OPTIONS" />
                 </div>
                 <div class="control-row">
                   <span class="control-name">Stability</span>
-                  <select v-model="voiceStabilityDraft" class="control-value">
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
+                  <UiSelect v-model="voiceStabilityDraft" :options="VOICE_STABILITY_OPTIONS" />
                 </div>
                 <div class="control-row">
                   <span class="control-name">Voice</span>
-                  <select v-model="voiceProfileKey" class="control-value">
-                    <option v-for="profile in voiceProfiles" :key="profile.id" :value="profile.provider_voice_key">
-                      {{ profile.name }}
-                    </option>
-                  </select>
+                  <UiSelect v-model="voiceProfileKey" :options="voiceProfileOptions" />
                 </div>
                 <div :class="activeVoiceOutdated ? 'voice-warning-row' : 'voice-warning-row state-hidden'">
                   <span class="voice-warning-copy">Script changed — voice outdated</span>
@@ -7534,10 +7591,7 @@ onBeforeUnmount(() => {
               <div class="panel-section-body">
                 <!-- Preset selector -->
                 <div v-if="captionPresets.length > 0" class="preset-row">
-                  <select class="preset-select" @change="applyCaptionPreset(captionPresets.find(p => p.id === Number($event.target.value)) || {}); $event.target.value = ''">
-                    <option value="">Apply a preset…</option>
-                    <option v-for="p in captionPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
-                  </select>
+                  <UiSelect :modelValue="''" :options="captionPresetOptions" placeholder="Apply a preset…" @update:modelValue="onApplyCaptionPreset" />
                   <button
                     v-for="p in captionPresets"
                     :key="'del-'+p.id"
@@ -7614,20 +7668,11 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="control-row top-space">
                   <span class="control-name">Highlight</span>
-                  <select v-model="captionHighlightDraft" class="control-value">
-                    <option value="keywords">Keywords</option>
-                    <option value="word_by_word">Word-by-word</option>
-                    <option value="line_by_line">Line-by-line</option>
-                    <option value="none">None</option>
-                  </select>
+                  <UiSelect v-model="captionHighlightDraft" :options="CAPTION_HIGHLIGHT_OPTIONS" />
                 </div>
                 <div class="control-row">
                   <span class="control-name">Position</span>
-                  <select v-model="captionPositionDraft" class="control-value">
-                    <option value="bottom_third">Bottom third</option>
-                    <option value="center">Center</option>
-                    <option value="top_third">Top third</option>
-                  </select>
+                  <UiSelect v-model="captionPositionDraft" :options="CAPTION_POSITION_OPTIONS" />
                 </div>
                 <!-- Font picker -->
                 <div class="font-picker-block">
@@ -7877,21 +7922,11 @@ onBeforeUnmount(() => {
               <div class="panel-section-body">
                 <div class="control-row">
                   <span class="control-name">Channel</span>
-                  <select v-model="projectChannelId" class="control-value">
-                    <option value="">No channel</option>
-                    <option v-for="channel in channels" :key="channel.id" :value="String(channel.id)">
-                      {{ channel.name }}
-                    </option>
-                  </select>
+                  <UiSelect v-model="projectChannelId" :options="channelOptions" />
                 </div>
                 <div class="control-row">
                   <span class="control-name">Brand Kit</span>
-                  <select v-model="projectBrandKitId" class="control-value">
-                    <option value="">No brand kit</option>
-                    <option v-for="brandKit in brandKits" :key="brandKit.id" :value="String(brandKit.id)">
-                      {{ brandKit.name }}
-                    </option>
-                  </select>
+                  <UiSelect v-model="projectBrandKitId" :options="brandKitOptions" />
                 </div>
                 <div v-if="selectedProjectChannel" class="micro-copy">
                   Channel defaults can prefill brand kit for future changes. Existing scenes are not rewritten automatically.
@@ -7929,10 +7964,7 @@ onBeforeUnmount(() => {
               <div class="cruise-scope-bar">
                 <span class="cruise-scope-label">Editing</span>
                 <div class="cruise-scope-select-wrap">
-                  <select class="cruise-scope-select" v-model="cruiseScopeValue">
-                    <option value="project">whole project</option>
-                    <option v-for="s in scenes" :key="s.id" :value="String(s.id)">Scene {{ s.scene_order }}</option>
-                  </select>
+                  <UiSelect v-model="cruiseScopeValue" :options="cruiseScopeOptions" align="left" />
                   <span class="cruise-scope-caret">▾</span>
                 </div>
                 <span class="cruise-scope-spacer"></span>
@@ -8114,35 +8146,15 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="cruise-prefs-row">
                   <label>Image model</label>
-                  <select :value="cruisePrefs.image_model || ''" @change="setCruisePref('image_model', $event.target.value || null)">
-                    <option value="">Let me pick per turn</option>
-                    <option value="gpt-image-1">gpt-image-1 · 15 cr · photoreal</option>
-                    <option value="gpt-image-2">gpt-image-2 · 35 cr · newer OpenAI</option>
-                    <option value="nano-banana">nano-banana · 15 cr · Google fast</option>
-                    <option value="flux-schnell">flux-schnell · 3 cr · fastest</option>
-                    <option value="sdxl-lightning">sdxl-lightning · 3 cr · stylish</option>
-                  </select>
+                  <UiSelect :modelValue="cruisePrefs.image_model || ''" :options="CRUISE_IMAGE_MODEL_OPTIONS" @update:modelValue="v => setCruisePref('image_model', v || null)" />
                 </div>
                 <div class="cruise-prefs-row">
                   <label>Animation tier</label>
-                  <select :value="cruisePrefs.animation_tier || ''" @change="setCruisePref('animation_tier', $event.target.value || null)">
-                    <option value="">Let me pick per turn</option>
-                    <option value="quick">quick · Wan 2.5 · 60 cr</option>
-                    <option value="seedance_lite">seedance lite · 100 cr</option>
-                    <option value="balanced">balanced · Hailuo · 120 cr</option>
-                    <option value="seedance_pro">seedance pro · 200 cr</option>
-                    <option value="premium">premium · Kling · 240 cr</option>
-                  </select>
+                  <UiSelect :modelValue="cruisePrefs.animation_tier || ''" :options="CRUISE_ANIMATION_TIER_OPTIONS" @update:modelValue="v => setCruisePref('animation_tier', v || null)" />
                 </div>
                 <div class="cruise-prefs-row">
                   <label>Visual source</label>
-                  <select :value="cruisePrefs.visual_source || 'auto'" @change="setCruisePref('visual_source', $event.target.value)">
-                    <option value="auto">Auto — assistant decides</option>
-                    <option value="ai_image">AI image</option>
-                    <option value="stock_video">Stock video</option>
-                    <option value="stock_image">Stock image</option>
-                    <option value="audiogram">Audiogram</option>
-                  </select>
+                  <UiSelect :modelValue="cruisePrefs.visual_source || 'auto'" :options="CRUISE_VISUAL_SOURCE_OPTIONS" @update:modelValue="v => setCruisePref('visual_source', v)" />
                 </div>
                 <div class="cruise-prefs-hint">
                   These are hints — if you say "use Kling for this one" the assistant still does.
@@ -8333,12 +8345,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="ap-field">
               <label class="ap-label">Expires in</label>
-              <select v-model.number="approvalForm.expires_in_days" class="ap-input">
-                <option :value="3">3 days</option>
-                <option :value="7">7 days</option>
-                <option :value="14">14 days</option>
-                <option :value="30">30 days</option>
-              </select>
+              <UiSelect v-model="approvalForm.expires_in_days" :options="APPROVAL_EXPIRES_OPTIONS" align="left" />
             </div>
             <div v-if="approvalError" class="ap-error">{{ approvalError }}</div>
             <div class="ap-footer">
