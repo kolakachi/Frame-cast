@@ -9,18 +9,39 @@ const props = defineProps({
   options: { type: Array, default: () => [] }, // [{ value, label }]
   placeholder: { type: String, default: 'Select…' },
   align: { type: String, default: 'right' }, // menu edge to anchor to
+  drop: { type: String, default: 'auto' }, // 'auto' | 'up' | 'down'
 })
 const emit = defineEmits(['update:modelValue'])
 
 const open = ref(false)
+const dropUp = ref(false)
 const root = ref(null)
+
+const MENU_MAX_H = 280 // keep in sync with .ui-select-menu max-height + margin
 
 const selectedLabel = computed(() => {
   const found = props.options.find((o) => String(o.value) === String(props.modelValue))
   return found ? found.label : props.placeholder
 })
 
-function toggle() { open.value = !open.value }
+function toggle() {
+  if (!open.value) {
+    // Decide direction before showing: explicit prop wins; otherwise flip up
+    // when there isn't room below but there is above (bottom-of-screen selects).
+    if (props.drop === 'up') {
+      dropUp.value = true
+    } else if (props.drop === 'down') {
+      dropUp.value = false
+    } else {
+      const rect = root.value?.getBoundingClientRect()
+      if (rect) {
+        const below = window.innerHeight - rect.bottom
+        dropUp.value = below < MENU_MAX_H && rect.top > below
+      }
+    }
+  }
+  open.value = !open.value
+}
 function pick(value) { emit('update:modelValue', value); open.value = false }
 function onDocClick(e) { if (root.value && !root.value.contains(e.target)) open.value = false }
 function onKey(e) { if (e.key === 'Escape') open.value = false }
@@ -35,7 +56,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
       <span class="ui-select-value">{{ selectedLabel }}</span>
       <span class="ui-select-caret">▾</span>
     </button>
-    <div v-if="open" :class="['ui-select-menu', align === 'left' ? 'ui-select-menu--left' : '']">
+    <div v-if="open" :class="['ui-select-menu', align === 'left' ? 'ui-select-menu--left' : '', dropUp ? 'ui-select-menu--up' : '']">
       <button
         v-for="o in options"
         :key="o.value"
@@ -71,6 +92,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
   max-height: 260px; overflow-y: auto;
 }
 .ui-select-menu--left { right: auto; left: 0; }
+.ui-select-menu--up { top: auto; bottom: calc(100% + 6px); }
 .ui-select-option {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   width: 100%; padding: 8px 10px; border: none; background: transparent;

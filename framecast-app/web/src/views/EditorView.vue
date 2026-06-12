@@ -8154,7 +8154,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="cruise-prefs-row">
                   <label>Visual source</label>
-                  <UiSelect :modelValue="cruisePrefs.visual_source || 'auto'" :options="CRUISE_VISUAL_SOURCE_OPTIONS" @update:modelValue="v => setCruisePref('visual_source', v)" />
+                  <UiSelect :modelValue="cruisePrefs.visual_source || 'auto'" :options="CRUISE_VISUAL_SOURCE_OPTIONS" drop="up" @update:modelValue="v => setCruisePref('visual_source', v)" />
                 </div>
                 <div class="cruise-prefs-hint">
                   These are hints — if you say "use Kling for this one" the assistant still does.
