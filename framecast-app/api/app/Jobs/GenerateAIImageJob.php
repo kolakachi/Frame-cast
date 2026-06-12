@@ -84,10 +84,15 @@ class GenerateAIImageJob implements ShouldQueue
             // back to DALL-E (cheaper) we refund the difference after success.
             // A failure refunds the whole reservation (see catch()).
             $expectsCharacter = $useCharacterRef || ! empty($this->referenceAssetIds);
-            // Single cost source of truth — the picked model's rate (or
-            // AI_CHARACTER for the reference path). Quote = charge.
+            // Single cost source of truth. Reference work defaults to nano-banana
+            // (its cheaper rate) unless the user explicitly picked gpt-image-2.
             $factory = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
-            $reserved = $factory->generationCost($this->modelKey, $expectsCharacter);
+            $reserved = $expectsCharacter
+                ? $factory->referenceGenerationCost($this->modelKey)
+                : $factory->generationCost($this->modelKey, false);
+            $cogsKey  = $expectsCharacter
+                ? $factory->referenceCogsKey($this->modelKey)
+                : $factory->cogsKey($this->modelKey, false);
             $charged = app(CreditService::class)->deduct(
                 (int) $scene->project->workspace_id,
                 $reserved,
@@ -96,7 +101,7 @@ class GenerateAIImageJob implements ShouldQueue
                     'project_id' => $this->projectId,
                     'scene_id'   => $this->sceneId,
                     'user_id'    => $scene->project->created_by_user_id,
-                    'upstream_cost_usd' => CreditService::cogsUsd($factory->cogsKey($this->modelKey, $expectsCharacter)),
+                    'upstream_cost_usd' => CreditService::cogsUsd($cogsKey),
                     'metadata'   => ['style' => $this->style, 'reserved' => true, 'model_key' => $this->modelKey],
                 ],
             );
@@ -195,7 +200,7 @@ class GenerateAIImageJob implements ShouldQueue
                     $options['reference_image_urls'] = array_slice($urls, 0, 4);
                     $options['quality'] = 'high';
                     try {
-                        $result = app(\App\Services\Generation\Image\CharacterImageAdapter::class)
+                        $result = $this->referenceAdapter()
                             ->generate($prompt, $this->style, $aspectRatio, $options);
                     } catch (\Throwable $e) {
                         \Illuminate\Support\Facades\Log::warning('GenerateAIImageJob: multi-reference adapter failed, falling back to text-to-image', [
@@ -223,7 +228,7 @@ class GenerateAIImageJob implements ShouldQueue
                         default  => 'high', // balanced + strong → high
                     };
                     try {
-                        $result = app(\App\Services\Generation\Image\CharacterImageAdapter::class)
+                        $result = $this->referenceAdapter()
                             ->generate($prompt, $this->style, $aspectRatio, $options);
                     } catch (\Throwable $e) {
                         // Character adapter failed — log and fall through to DALL-E with the
@@ -718,6 +723,20 @@ class GenerateAIImageJob implements ShouldQueue
      * regenerations. Phrased conditionally ("if a person appears…") so
      * person-less b-roll scenes don't grow a person.
      */
+    /**
+     * Adapter for a reference/character generation: nano-banana by default
+     * (better identity + skin-tone fidelity under style changes), gpt-image-2
+     * only when the user explicitly picked it. Both read the references from
+     * $options (reference_image_urls / reference_image_url), so they swap
+     * transparently.
+     */
+    private function referenceAdapter(): object
+    {
+        return app(\App\Services\Generation\Image\ImageAdapterFactory::class)->referenceUsesGptImage2($this->modelKey)
+            ? app(\App\Services\Generation\Image\CharacterImageAdapter::class)
+            : app(\App\Services\Generation\Image\NanoBananaImageAdapter::class);
+    }
+
     private function characterBoardSuffix(Scene $scene): string
     {
         // Multi-character scene: describe each named character so every person

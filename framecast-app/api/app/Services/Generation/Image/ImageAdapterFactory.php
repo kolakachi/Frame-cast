@@ -123,6 +123,32 @@ class ImageAdapterFactory
             : \App\Services\CreditService::AI_MEDIUM;
     }
 
+    /**
+     * Whether a reference/character generation should run on gpt-image-2. We
+     * default reference work to nano-banana (better identity/skin-tone fidelity
+     * under style changes); gpt-image-2 only when the user explicitly picks it.
+     */
+    public function referenceUsesGptImage2(?string $modelKey): bool
+    {
+        return $modelKey === 'gpt-image-2';
+    }
+
+    /** Credit cost for a reference generation, given the picked model. */
+    public function referenceGenerationCost(?string $modelKey): int
+    {
+        return $this->referenceUsesGptImage2($modelKey)
+            ? \App\Services\CreditService::AI_CHARACTER  // gpt-image-2 /edits
+            : $this->costFor('nano-banana');             // nano-banana refs (default)
+    }
+
+    /** COGS key for a reference generation, given the picked model. */
+    public function referenceCogsKey(?string $modelKey): string
+    {
+        return $this->referenceUsesGptImage2($modelKey)
+            ? 'ai_image:character'
+            : 'ai_image:nano-banana';
+    }
+
     /** COGS key for the ledger's upstream_cost_usd (see CreditService::COGS_USD). */
     public function cogsKey(?string $modelKey, bool $ranCharacter = false): string
     {

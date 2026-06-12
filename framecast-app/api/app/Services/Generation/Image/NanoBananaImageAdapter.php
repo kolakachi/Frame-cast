@@ -44,13 +44,22 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
         $fullPrompt = trim($prompt) . $hint
             . ' No text, no watermarks, no captions.';
 
+        // Reference images (character/likeness). nano-banana (Gemini 2.5 Flash
+        // Image) accepts an image_input array and preserves identity / skin
+        // tone far better than gpt-image-2 under style changes.
+        $refs = $options['reference_image_urls']
+            ?? (isset($options['reference_image_url']) ? [$options['reference_image_url']] : []);
+        $refs = array_slice(array_values(array_filter((array) $refs)), 0, 4);
+
         $url = 'https://api.replicate.com/v1/models/google/nano-banana/predictions';
-        $body = [
-            'input' => [
-                'prompt'        => $fullPrompt,
-                'output_format' => 'png',
-            ],
+        $input = [
+            'prompt'        => $fullPrompt,
+            'output_format' => 'png',
         ];
+        if (! empty($refs)) {
+            $input['image_input'] = $refs;
+        }
+        $body = ['input' => $input];
 
         $start = Http::withToken($apiToken)
             ->withHeaders(['Prefer' => 'wait=10'])
