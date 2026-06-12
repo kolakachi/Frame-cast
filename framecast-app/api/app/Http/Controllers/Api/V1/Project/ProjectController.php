@@ -861,6 +861,7 @@ class ProjectController extends Controller
                     'music_mood'   => $parsed['music_mood'],
                     'scenes_count' => $sceneCount,
                     'character_sheet' => $parsed['character_sheet'] ?? null,
+                    'cast'         => $parsed['cast'] ?? [],
                 ],
                 'defaults' => [
                     'include_music'    => true,
@@ -941,9 +942,14 @@ class ProjectController extends Controller
             'plan.scenes.*.script'     => ['required_with:plan.scenes', 'string', 'max:1000'],
             'plan.scenes.*.visual'     => ['required_with:plan.scenes', 'string', 'max:2000'],
             'plan.scenes.*.motion'     => ['nullable', 'string', 'max:300'],
+            'plan.scenes.*.characters'   => ['nullable', 'array', 'max:6'],
+            'plan.scenes.*.characters.*' => ['string', 'max:60'],
             'plan.style'               => ['nullable', 'string', 'max:40'],
             'plan.music_mood'          => ['nullable', 'string', 'max:80'],
             'plan.character_sheet'     => ['nullable', 'string', 'max:500'],
+            'plan.cast'                => ['nullable', 'array', 'max:6'],
+            'plan.cast.*.name'         => ['required_with:plan.cast', 'string', 'max:60'],
+            'plan.cast.*.appearance'   => ['nullable', 'string', 'max:500'],
         ]);
 
         $includeMusic    = (bool) ($validated['include_music'] ?? true);
@@ -1041,6 +1047,10 @@ class ProjectController extends Controller
                     'script' => trim((string) ($s['script'] ?? '')),
                     'visual' => trim((string) ($s['visual'] ?? '')),
                     'motion' => trim((string) ($s['motion'] ?? '')),
+                    'characters' => array_values(array_filter(array_map(
+                        fn ($n) => trim((string) $n),
+                        (array) ($s['characters'] ?? []),
+                    ))),
                 ];
             }
             $planStyle = trim((string) ($validated['plan']['style'] ?? ''));
@@ -1049,6 +1059,7 @@ class ProjectController extends Controller
                 'style'      => $planStyle !== '' ? $planStyle : 'photorealistic',
                 'music_mood' => trim((string) ($validated['plan']['music_mood'] ?? '')) ?: 'calm cinematic ambient',
                 'character_sheet' => trim((string) ($validated['plan']['character_sheet'] ?? '')) ?: null,
+                'cast'       => $this->sanitizePlanCast($validated['plan']['cast'] ?? null),
             ];
         } else {
             // No approved plan sent — re-parse, letting the planner SEE the
@@ -1101,6 +1112,44 @@ class ProjectController extends Controller
         $referenceIdsArr = $referenceAssets->pluck('id')->all();
         $firstSceneId    = null;
 
+        // Planner-detected cast (2+ distinct named people). Create/reuse one
+        // auto-character per member (text appearance only — no reference face,
+        // so consistency comes from the appended per-character description;
+        // face-lock improves if a reference image is added later). Only for AI
+        // visuals — stock/waveform scenes never get characters. When the
+        // planner found no cast (b-roll, product, single subject) this is a
+        // no-op and scenes keep their existing single-character behaviour.
+        $castMap = []; // lowercase name => character_id
+        if ($isAiVisuals && ! empty($parsed['cast'])) {
+            foreach ($parsed['cast'] as $member) {
+                $name = trim((string) ($member['name'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+                $appearance = trim((string) ($member['appearance'] ?? ''));
+                $character = \App\Models\Character::query()
+                    ->where('workspace_id', $user->workspace_id)
+                    ->where('is_auto', true)
+                    ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+                    ->first();
+                if (! $character) {
+                    $character = \App\Models\Character::query()->create([
+                        'workspace_id'       => $user->workspace_id,
+                        'name'               => $name,
+                        'description'        => $appearance,
+                        'consistency_method' => 'reference_image',
+                        'identity_strength'  => 'balanced',
+                        'status'             => 'active',
+                        'is_auto'            => true,
+                        'created_by_user_id' => $user->getKey(),
+                    ]);
+                } elseif ($appearance !== '' && trim((string) $character->description) === '') {
+                    $character->forceFill(['description' => $appearance])->save();
+                }
+                $castMap[mb_strtolower($name)] = (int) $character->getKey();
+            }
+        }
+
         // Create N scenes + dispatch image/animate per scene. Music dispatches
         // ONCE for the whole project (one bed across all scenes). TTS dispatches
         // once per project — GenerateTTSJob walks every scene with script_text.
@@ -1112,6 +1161,16 @@ class ProjectController extends Controller
         foreach ($parsed['scenes'] as $idx => $sceneDef) {
             $sceneOrder = $idx + 1;
             $imageToken = (string) \Illuminate\Support\Str::uuid();
+
+            // Resolve this scene's named characters → character ids (cast map).
+            $sceneCastIds = [];
+            foreach ((array) ($sceneDef['characters'] ?? []) as $cn) {
+                $cid = $castMap[mb_strtolower((string) $cn)] ?? null;
+                if ($cid) {
+                    $sceneCastIds[] = $cid;
+                }
+            }
+            $sceneCastIds = array_values(array_unique($sceneCastIds));
 
             $scene = Scene::query()->create([
                 'project_id'        => $project->getKey(),
@@ -1140,7 +1199,11 @@ class ProjectController extends Controller
                 'visual_prompt' => $sceneDef['visual'],
                 'visual_style'  => $parsed['style'],
                 'status'        => 'draft',
-                'character_id'  => $primaryCharacterId,
+                // Primary = first named character in the scene, else the
+                // user-picked character. character_ids carries the full cast
+                // (generation multi-paths only when >1).
+                'character_id'  => $sceneCastIds[0] ?? $primaryCharacterId,
+                'character_ids' => ! empty($sceneCastIds) ? $sceneCastIds : null,
             ]);
 
             $scene->forceFill([
@@ -1852,6 +1915,39 @@ class ProjectController extends Controller
         return $storage->extractPath($storageUrl) !== null
             ? $storage->url($storageUrl)
             : $storageUrl;
+    }
+
+    /**
+     * Normalize a plan's cast (from the wizard) → list of {name, appearance}.
+     * Only a 2+ named cast is meaningful; fewer collapses to [] so the
+     * single-character / no-character paths stay unchanged.
+     *
+     * @return list<array{name: string, appearance: string}>
+     */
+    private function sanitizePlanCast(mixed $raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+        $cast = [];
+        $seen = [];
+        foreach ($raw as $member) {
+            if (! is_array($member)) {
+                continue;
+            }
+            $name = trim((string) ($member['name'] ?? ''));
+            $key = mb_strtolower($name);
+            if ($name === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $cast[] = [
+                'name'       => mb_substr($name, 0, 60),
+                'appearance' => mb_substr(trim((string) ($member['appearance'] ?? '')), 0, 500),
+            ];
+        }
+
+        return count($cast) >= 2 ? $cast : [];
     }
 
     private function assetUrl(Asset $asset): ?string

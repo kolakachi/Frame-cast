@@ -532,6 +532,10 @@ Per scene, return:
             list. Keep visual continuity across scenes (same subject /
             lighting feel where applicable). Do NOT echo the user's words.
   motion  — 1 short clause for how the still image animates. ~30-80 chars.
+  characters — ONLY when this scene shows one or more of the NAMED people in
+            the cast (below): an array of their names, e.g. ["Sarah"] or
+            ["Sarah","Tom"]. If the scene has no named person (b-roll,
+            product, scenery, an unnamed extra), return [].
 
 Shared:
   music_mood — 3-7 word genre/mood seed. Pick from:
@@ -543,23 +547,33 @@ Shared:
                film_noir, vintage, minimalist, neon, cyberpunk_80s, anime,
                anime_80s, anime_90s, dark_fantasy, fantasy_retro, comic,
                line_drawing, watercolor, paper_cutout, cartoon, 3d_animated.
-  character_sheet — ONLY when the scenes feature a recurring person: define
-               their appearance ONCE — gender, approximate age, hair (color,
-               length, style), exact outfit (garments, colors), notable
-               accessories. 1-2 sentences. Then REUSE that exact wording in
-               every scene visual where the person appears, so clothing and
-               hair never drift between scenes. If there is a reference image
-               of the person, describe THAT appearance. No recurring person
-               -> null.
+  character_sheet — ONLY when the scenes feature exactly ONE recurring person:
+               define their appearance ONCE — gender, approximate age, hair
+               (color, length, style), exact outfit (garments, colors),
+               notable accessories. 1-2 sentences. Reuse that exact wording in
+               every scene visual where the person appears. If there is a
+               reference image of the person, describe THAT appearance. No
+               recurring person, OR two-or-more named people -> null.
+  cast       — ONLY when the prompt features TWO OR MORE DISTINCT NAMED people
+               who recur (e.g. "Sarah" the founder and "Tom" the investor). An
+               array of {name, appearance}; appearance covers gender, age,
+               hair, exact outfit, accessories. Discernment rules:
+               * People only. Products, logos, objects, screenshots, scenery
+                 are NEVER cast members.
+               * Unnamed extras / crowds are NOT cast.
+               * 0 or 1 named person -> return [] and use character_sheet.
+               If a reference image clearly depicts one of these people,
+               describe THAT person's appearance.
 
 Return STRICT JSON, no markdown:
 {
   "scenes": [
-    { "script": "…", "visual": "…", "motion": "…" }
+    { "script": "…", "visual": "…", "motion": "…", "characters": [] }
   ],
   "music_mood": "…",
   "style": "…",
-  "character_sheet": "… or null"
+  "character_sheet": "… or null",
+  "cast": [ { "name": "…", "appearance": "…" } ]
 }
 
 The scenes array MUST have exactly {$sceneCount} items.
@@ -591,12 +605,25 @@ SYS;
                 return $fallback;
             }
 
+            // Cast: 2+ distinct named people only (the model returns [] otherwise).
+            $cast = $this->cleanCast($parsed['cast'] ?? null);
+            $castNames = array_map(fn ($c) => mb_strtolower($c['name']), $cast);
+
             $scenes = [];
             foreach (array_slice($parsed['scenes'], 0, $sceneCount) as $s) {
+                // Scene's named characters — keep only names that exist in the cast.
+                $sceneChars = [];
+                foreach ((array) ($s['characters'] ?? []) as $name) {
+                    $n = trim((string) $name);
+                    if ($n !== '' && in_array(mb_strtolower($n), $castNames, true)) {
+                        $sceneChars[] = $n;
+                    }
+                }
                 $scenes[] = [
-                    'script' => $this->cleanString($s['script'] ?? $singleFallback['script'], 400),
-                    'visual' => $this->cleanString($s['visual'] ?? $singleFallback['visual'], 1500),
-                    'motion' => $this->cleanString($s['motion'] ?? $singleFallback['motion'], 160),
+                    'script'     => $this->cleanString($s['script'] ?? $singleFallback['script'], 400),
+                    'visual'     => $this->cleanString($s['visual'] ?? $singleFallback['visual'], 1500),
+                    'motion'     => $this->cleanString($s['motion'] ?? $singleFallback['motion'], 160),
+                    'characters' => array_values(array_unique($sceneChars)),
                 ];
             }
             // Top up if the model returned fewer than requested (rare but
@@ -607,6 +634,7 @@ SYS;
                     'script' => $singleFallback['script'],
                     'visual' => $singleFallback['visual'],
                     'motion' => $singleFallback['motion'],
+                    'characters' => [],
                 ];
             }
 
@@ -615,9 +643,12 @@ SYS;
                 'music_mood' => $this->cleanString($parsed['music_mood'] ?? $singleFallback['music_mood'], 60),
                 'style'      => $this->validStyle($parsed['style'] ?? $singleFallback['style']),
                 'hints'      => $hints,
-                'character_sheet' => is_string($parsed['character_sheet'] ?? null) && trim($parsed['character_sheet']) !== '' && strtolower(trim($parsed['character_sheet'])) !== 'null'
+                // A single recurring subject keeps using character_sheet; a
+                // 2+ named cast uses `cast` (character_sheet forced null then).
+                'character_sheet' => empty($cast) && is_string($parsed['character_sheet'] ?? null) && trim($parsed['character_sheet']) !== '' && strtolower(trim($parsed['character_sheet'])) !== 'null'
                     ? mb_substr(trim($parsed['character_sheet']), 0, 500)
                     : null,
+                'cast'       => $cast,
             ];
         } catch (\Throwable $e) {
             Log::warning('OneShotPromptParser: multi-scene exception', ['error' => $e->getMessage()]);
@@ -662,6 +693,43 @@ SYS;
     {
         $s = is_string($v) ? trim($v) : '';
         return mb_substr($s, 0, $max);
+    }
+
+    /**
+     * Normalize the planner's cast. Only a list of 2+ distinct named people
+     * counts (the assistant must not invent a "cast" for a single subject or
+     * for products/scenery). Returns [] otherwise.
+     *
+     * @return list<array{name: string, appearance: string}>
+     */
+    private function cleanCast(mixed $raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+        $cast = [];
+        $seen = [];
+        foreach ($raw as $member) {
+            if (! is_array($member)) {
+                continue;
+            }
+            $name = $this->cleanString($member['name'] ?? '', 60);
+            if ($name === '' || isset($seen[mb_strtolower($name)])) {
+                continue;
+            }
+            $seen[mb_strtolower($name)] = true;
+            $cast[] = [
+                'name'       => $name,
+                'appearance' => $this->cleanString($member['appearance'] ?? '', 500),
+            ];
+            if (count($cast) >= 6) {
+                break; // sane cap on cast size
+            }
+        }
+
+        // A "cast" is only meaningful with 2+ named people — one person is the
+        // single-subject case (character_sheet), zero is b-roll/product.
+        return count($cast) >= 2 ? $cast : [];
     }
 
     private function validStyle(mixed $v): string

@@ -772,12 +772,16 @@ async function submitOneShot() {
         plan: {
           scenes: oneShotPlan.value.scenes.map((s) => ({
             script: s.script, visual: s.visual, motion: s.motion,
+            // Which named characters appear in this scene (multi-character).
+            ...(Array.isArray(s.characters) && s.characters.length ? { characters: s.characters } : {}),
           })),
           style: oneShotPlan.value.style,
           music_mood: oneShotPlan.value.music_mood,
           // Character board sheet — keeps costume/hair consistent across
           // scenes; persisted on the project for the assistant + regens.
           ...(oneShotPlan.value.character_sheet ? { character_sheet: oneShotPlan.value.character_sheet } : {}),
+          // Cast — 2+ named people; backend creates a character per member.
+          ...(Array.isArray(oneShotPlan.value.cast) && oneShotPlan.value.cast.length ? { cast: oneShotPlan.value.cast } : {}),
         },
       } : {}),
     }
