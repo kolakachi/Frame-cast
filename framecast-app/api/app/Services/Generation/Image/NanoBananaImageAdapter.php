@@ -29,6 +29,12 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
         '4:5'  => ' Vertical 4:5 portrait composition.',
     ];
 
+    /** Replicate model slug — overridden by the Pro variant. */
+    protected function modelSlug(): string
+    {
+        return 'google/nano-banana';
+    }
+
     public function generate(
         string $prompt,
         string $style,
@@ -51,7 +57,7 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
             ?? (isset($options['reference_image_url']) ? [$options['reference_image_url']] : []);
         $refs = array_slice(array_values(array_filter((array) $refs)), 0, 4);
 
-        $url = 'https://api.replicate.com/v1/models/google/nano-banana/predictions';
+        $url = 'https://api.replicate.com/v1/models/'.$this->modelSlug().'/predictions';
         $input = [
             'prompt'        => $fullPrompt,
             'output_format' => 'png',
@@ -82,7 +88,7 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
                     throw new RuntimeException('nano-banana succeeded but returned no image URL.');
                 }
                 return [
-                    'provider_key'   => 'replicate:google/nano-banana',
+                    'provider_key'   => 'replicate:'.$this->modelSlug(),
                     'image_url'      => (string) $imageUrl,
                     'image_b64'      => null,
                     // nano-banana doesn't expose post-gen dims; use the aspect-ratio defaults.
@@ -109,6 +115,6 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
 
     public function providerKey(): string
     {
-        return 'replicate:google/nano-banana';
+        return 'replicate:'.$this->modelSlug();
     }
 }

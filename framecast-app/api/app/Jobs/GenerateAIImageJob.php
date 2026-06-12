@@ -732,9 +732,11 @@ class GenerateAIImageJob implements ShouldQueue
      */
     private function referenceAdapter(): object
     {
-        return app(\App\Services\Generation\Image\ImageAdapterFactory::class)->referenceUsesGptImage2($this->modelKey)
-            ? app(\App\Services\Generation\Image\CharacterImageAdapter::class)
-            : app(\App\Services\Generation\Image\NanoBananaImageAdapter::class);
+        return match ($this->modelKey) {
+            'gpt-image-2' => app(\App\Services\Generation\Image\CharacterImageAdapter::class),
+            'nano-banana' => app(\App\Services\Generation\Image\NanoBananaImageAdapter::class),
+            default       => app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class), // default + explicit pro
+        };
     }
 
     private function characterBoardSuffix(Scene $scene): string

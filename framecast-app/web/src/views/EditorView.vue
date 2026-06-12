@@ -1325,6 +1325,7 @@ const availableImageModelsEditor = ref([
   { key: 'gpt-image-1',    label: 'GPT Image 1',    sub: 'OpenAI photoreal',   cost: 16, render: '~20s', requires_reference: false },
   { key: 'gpt-image-2',    label: 'GPT Image 2',    sub: 'OpenAI · newer',      cost: 43, render: '~30s', requires_reference: false },
   { key: 'nano-banana',    label: 'Nano Banana',    sub: 'Google · cheap',      cost: 10, render: '~10s', requires_reference: false },
+  { key: 'nano-banana-pro', label: 'Nano Banana Pro', sub: 'Google · best identity', cost: 35, render: '~30s', requires_reference: false },
   { key: 'flux-schnell',   label: 'Flux Schnell',   sub: 'cheapest',            cost:  1, render: '~5s',  requires_reference: false },
   { key: 'sdxl-lightning', label: 'SDXL Lightning', sub: 'stylish',             cost:  1, render: '~5s',  requires_reference: false },
 ]);
@@ -1611,11 +1612,12 @@ const CAPTION_POSITION_OPTIONS = [
 ];
 const CRUISE_IMAGE_MODEL_OPTIONS = [
   { value: "", label: "Let me pick per turn" },
-  { value: "gpt-image-1", label: "gpt-image-1 · 15 cr · photoreal" },
-  { value: "gpt-image-2", label: "gpt-image-2 · 35 cr · newer OpenAI" },
-  { value: "nano-banana", label: "nano-banana · 15 cr · Google fast" },
-  { value: "flux-schnell", label: "flux-schnell · 3 cr · fastest" },
-  { value: "sdxl-lightning", label: "sdxl-lightning · 3 cr · stylish" },
+  { value: "nano-banana-pro", label: "nano-banana-pro · 35 cr · best identity (default for refs)" },
+  { value: "nano-banana", label: "nano-banana · 10 cr · Google fast" },
+  { value: "gpt-image-1", label: "gpt-image-1 · 16 cr · photoreal" },
+  { value: "gpt-image-2", label: "gpt-image-2 · 43 cr · OpenAI refs" },
+  { value: "flux-schnell", label: "flux-schnell · 1 cr · fastest" },
+  { value: "sdxl-lightning", label: "sdxl-lightning · 1 cr · stylish" },
 ];
 const CRUISE_ANIMATION_TIER_OPTIONS = [
   { value: "", label: "Let me pick per turn" },

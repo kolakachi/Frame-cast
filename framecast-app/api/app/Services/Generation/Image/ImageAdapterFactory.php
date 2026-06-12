@@ -56,6 +56,14 @@ class ImageAdapterFactory
             'render'  => '~10s',
             'adapter' => NanoBananaImageAdapter::class,
         ],
+        'nano-banana-pro' => [
+            'label'   => 'Nano Banana Pro',
+            'sub'     => 'Google · best identity + reference fidelity',
+            // ~$0.134 COGS → round(÷$0.004) ≈ 35cr.
+            'cost'    => 35,
+            'render'  => '~30s',
+            'adapter' => NanoBananaProImageAdapter::class,
+        ],
         'flux-schnell' => [
             'label'   => 'Flux Schnell',
             'sub'     => 'BFL · cheapest, ~3s render',
@@ -133,20 +141,28 @@ class ImageAdapterFactory
         return $modelKey === 'gpt-image-2';
     }
 
-    /** Credit cost for a reference generation, given the picked model. */
+    /**
+     * Credit cost for a reference generation, given the picked model. The
+     * default (no/unsupported pick) is nano-banana-pro — best identity
+     * fidelity. Explicit picks (nano-banana, gpt-image-2) are honoured.
+     */
     public function referenceGenerationCost(?string $modelKey): int
     {
-        return $this->referenceUsesGptImage2($modelKey)
-            ? \App\Services\CreditService::AI_CHARACTER  // gpt-image-2 /edits
-            : $this->costFor('nano-banana');             // nano-banana refs (default)
+        return match ($modelKey) {
+            'gpt-image-2'     => \App\Services\CreditService::AI_CHARACTER, // gpt-image-2 /edits
+            'nano-banana'     => $this->costFor('nano-banana'),
+            default           => $this->costFor('nano-banana-pro'),        // default
+        };
     }
 
     /** COGS key for a reference generation, given the picked model. */
     public function referenceCogsKey(?string $modelKey): string
     {
-        return $this->referenceUsesGptImage2($modelKey)
-            ? 'ai_image:character'
-            : 'ai_image:nano-banana';
+        return match ($modelKey) {
+            'gpt-image-2'     => 'ai_image:character',
+            'nano-banana'     => 'ai_image:nano-banana',
+            default           => 'ai_image:nano-banana-pro',
+        };
     }
 
     /** COGS key for the ledger's upstream_cost_usd (see CreditService::COGS_USD). */

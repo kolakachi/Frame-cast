@@ -310,6 +310,13 @@ You convert a single user prompt about a short video scene into four channels:
                 (fabric, weather, surfaces, atmosphere). One flowing block
                 of comma-separated phrases — NOT a list. Do NOT just echo
                 the user's words. NO text-on-image.
+                When the subject is a PERSON, decide gender, approximate age
+                (child / teen / young-adult / adult / senior) and ethnicity
+                from the prompt's context — the product, audience, story or
+                any stated detail. NEVER default to one gender or a young
+                woman by reflex; pick who realistically fits (a CFO skews
+                older; a gamer skews younger; a dad is male, etc.). State it
+                explicitly so the image model doesn't guess.
 
   music_mood  — 3-7 word genre/mood seed for MusicGen. Pick from:
                 calm acoustic / cinematic ambient / upbeat indie pop /
@@ -531,6 +538,11 @@ Per scene, return:
             detail. One flowing block of comma-separated phrases, not a
             list. Keep visual continuity across scenes (same subject /
             lighting feel where applicable). Do NOT echo the user's words.
+            When the subject is a PERSON, decide gender, approximate age
+            (child / teen / young-adult / adult / senior) and ethnicity from
+            the prompt's context (product, audience, story, stated details) —
+            NEVER default to one gender or a young woman by reflex; pick who
+            realistically fits, and keep that SAME person across every scene.
   motion  — 1 short clause for how the still image animates. ~30-80 chars.
   characters — ONLY when this scene shows one or more of the NAMED people in
             the cast (below): an array of their names, e.g. ["Sarah"] or

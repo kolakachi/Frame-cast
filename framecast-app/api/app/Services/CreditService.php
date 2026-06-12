@@ -41,6 +41,7 @@ class CreditService
         'ai_image:gpt-image-1'    => 0.063,
         'ai_image:gpt-image-2'    => 0.17,
         'ai_image:nano-banana'    => 0.039,
+        'ai_image:nano-banana-pro' => 0.134,
         'ai_image:flux-schnell'   => 0.003,
         'ai_image:sdxl-lightning' => 0.003,
         'ai_image:character'      => 0.20,
