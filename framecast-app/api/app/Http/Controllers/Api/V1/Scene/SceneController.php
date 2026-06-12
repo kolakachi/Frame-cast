@@ -901,12 +901,16 @@ class SceneController extends Controller
         }
 
         $validated = $request->validate([
-            'tier'             => ['required', 'string', \Illuminate\Validation\Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro'])],
+            'tier'             => ['required', 'string', \Illuminate\Validation\Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro', 'spokesperson'])],
             // Accept any 3–10s from clients; the adapter clamps to 5 or 10 internally
             // (the Wan/Hailuo/Kling/Seedance models only render those two buckets).
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
+        // Talking spokesperson (Fabric lip-sync) is a separate path: image +
+        // the scene's voiceover -> lip-synced clip. Flat cost (the clip length
+        // follows the audio, not a 5/10s bucket).
+        $isSpokesperson = $validated['tier'] === 'spokesperson';
         // Normalize: anything ≤ 7 maps to a 5s render, ≥ 8 to a 10s render. Cost follows.
         $requested = (int) ($validated['duration_seconds'] ?? 5);
         $durationSeconds = $requested >= 8 ? 10 : 5;
@@ -918,17 +922,22 @@ class SceneController extends Controller
         if (! $sourceAsset || str_starts_with((string) $sourceAsset->mime_type, 'video/') || $sourceAsset->asset_type === 'video') {
             return $this->error('no_source_image', 'Generate a still image for this scene before animating.', 422);
         }
+        // Spokesperson lip-syncs to the scene's voiceover — require it.
+        if ($isSpokesperson && ! data_get($scene->voice_settings_json, 'audio_asset_id')) {
+            return $this->error('no_voice', 'Generate the voiceover first — the talking spokesperson lip-syncs to the audio.', 422);
+        }
 
         $base = match ($validated['tier']) {
+            'spokesperson'  => CreditService::VIDEO_SPOKESPERSON,
             'premium'       => CreditService::VIDEO_PREMIUM,
             'balanced'      => CreditService::VIDEO_BALANCED,
             'seedance_pro'  => CreditService::VIDEO_SEEDANCE_PRO,
             'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
             default         => CreditService::VIDEO_QUICK,
         };
-        // Constants are the 5-second baseline; 10s clips cost 2× (the upstream
-        // models render in 5s or 10s chunks at roughly proportional cost).
-        $cost = $durationSeconds === 10 ? $base * 2 : $base;
+        // Constants are the 5-second baseline; 10s i2v clips cost 2×. Spokesperson
+        // is flat (the clip length follows the audio).
+        $cost = (! $isSpokesperson && $durationSeconds === 10) ? $base * 2 : $base;
 
         $balance = $this->credits->balance((int) $user->workspace_id);
         if ($balance < $cost) {
@@ -961,6 +970,7 @@ class SceneController extends Controller
 
         // Lock the scene so the editor knows an animation is running.
         // Persist last-used settings too so the modal pre-fills on re-animate.
+        $token = (string) \Illuminate\Support\Str::uuid();
         $scene->forceFill([
             'image_generation_settings_json' => array_merge($existing, [
                 'animation_in_progress'      => true,
@@ -969,16 +979,21 @@ class SceneController extends Controller
                 'animation_duration'         => $durationSeconds,
                 'animation_motion_prompt'    => $validated['motion_prompt'] ?? null,
                 'animation_started_at'       => now()->toIso8601String(),
+                'generation_token'           => $token,
             ]),
         ])->save();
 
-        \App\Jobs\AnimateSceneJob::dispatch(
-            $scene->getKey(),
-            $scene->project_id,
-            $validated['tier'],
-            $durationSeconds,
-            $validated['motion_prompt'] ?? null,
-        );
+        if ($isSpokesperson) {
+            \App\Jobs\GenerateTalkingVideoJob::dispatch($scene->getKey(), $scene->project_id, $token);
+        } else {
+            \App\Jobs\AnimateSceneJob::dispatch(
+                $scene->getKey(),
+                $scene->project_id,
+                $validated['tier'],
+                $durationSeconds,
+                $validated['motion_prompt'] ?? null,
+            );
+        }
 
         return response()->json([
             'data' => [

@@ -1343,18 +1343,22 @@ const animateMotionPrompt = ref("");
 const animateSubmitting = ref(false);
 const animateError = ref("");
 // Credits per short clip; long clip doubles. Mirror the backend cost calc exactly.
-const ANIMATE_TIER_COSTS_5S = { quick: 60, balanced: 120, premium: 240, seedance_lite: 100, seedance_pro: 200 };
+const ANIMATE_TIER_COSTS_5S = { quick: 60, balanced: 120, premium: 240, seedance_lite: 100, seedance_pro: 200, spokesperson: 140 };
 // Valid durations per tier — each upstream model accepts only specific values.
 //   Wan 2.5 (quick)         → 5 or 10
 //   Hailuo 2.3-fast (balanced) → 6 or 10 (NOT 5; sending 5 returns Replicate 422)
 //   Kling 2.1 (premium)     → 5 or 10
-const ANIMATE_TIER_DURATIONS = { quick: [5, 10], balanced: [6, 10], premium: [5, 10], seedance_lite: [5, 10], seedance_pro: [5, 10] };
+const ANIMATE_TIER_DURATIONS = { quick: [5, 10], balanced: [6, 10], premium: [5, 10], seedance_lite: [5, 10], seedance_pro: [5, 10], spokesperson: [5] };
+// Spokesperson lip-syncs to the scene's voiceover — only offer it once voice exists.
+const activeSceneHasVoice = computed(() => !!activeScene.value?.voice_settings?.audio_asset_id);
 const animateDurations = computed(() => ANIMATE_TIER_DURATIONS[animateTier.value] || [5, 10]);
 const animateShortDuration = computed(() => animateDurations.value[0]);
-const animateCost = computed(() =>
+const animateCost = computed(() => {
+  // Spokesperson (lip-sync) is flat — its length follows the voiceover.
+  if (animateTier.value === 'spokesperson') return ANIMATE_TIER_COSTS_5S.spokesperson;
   // "Long" clip = the larger of the two valid durations (always 10 today).
-  ANIMATE_TIER_COSTS_5S[animateTier.value] * (animateDuration.value === animateDurations.value[1] ? 2 : 1)
-);
+  return ANIMATE_TIER_COSTS_5S[animateTier.value] * (animateDuration.value === animateDurations.value[1] ? 2 : 1);
+});
 // Animation models. We expose actual model names (Wan/Hailuo/Kling/Seedance)
 // instead of generic tier labels so power users know what they're picking.
 // `key` still maps to the backend tier so the API doesn't need to change.
@@ -1364,9 +1368,10 @@ const ANIMATE_TIER_META = {
   balanced:      { name: "Hailuo 2.3",    sub: "Best for most",     quality: "Strong",     render: "~90s" },
   seedance_pro:  { name: "Seedance Pro",  sub: "ByteDance · sharp", quality: "Very high",  render: "~2 min" },
   premium:       { name: "Kling 2.1",     sub: "Cinematic",         quality: "Top",        render: "~3 min" },
+  spokesperson:  { name: "Spokesperson",  sub: "Lip-sync · your voice", quality: "Talking", render: "~3 min" },
 };
-// Dropdown order: cheapest/fastest → most cinematic.
-const ANIMATE_TIER_ORDER = ['quick', 'seedance_lite', 'balanced', 'seedance_pro', 'premium'];
+// Dropdown order: cheapest/fastest → most cinematic, then the talking option.
+const ANIMATE_TIER_ORDER = ['quick', 'seedance_lite', 'balanced', 'seedance_pro', 'premium', 'spokesperson'];
 
 // When the user switches tier, snap the chosen duration to one the new tier
 // actually supports. Prevents the 422 ("duration must be one of: 6, 10") that
@@ -5144,7 +5149,7 @@ function openAnimateModal() {
   // Pre-fill with the scene's last animation settings if any — saves the
   // re-animate flow a tier/duration click.
   const lastSettings = activeScene.value?.image_generation_settings ?? {};
-  animateTier.value = ['quick','balanced','premium','seedance_lite','seedance_pro'].includes(lastSettings.animation_tier)
+  animateTier.value = ['quick','balanced','premium','seedance_lite','seedance_pro','spokesperson'].includes(lastSettings.animation_tier)
     ? lastSettings.animation_tier
     : 'quick';
   animateDuration.value = lastSettings.animation_duration === 10 ? 10 : 5;
@@ -8484,7 +8489,7 @@ onBeforeUnmount(() => {
                       {{ ANIMATE_TIER_META[key].name }}
                       <span v-if="key === 'balanced'" class="anim-tier-pill">RECOMMENDED</span>
                     </span>
-                    <span class="anim-model-opt-sub">{{ ANIMATE_TIER_META[key].sub }} · {{ ANIMATE_TIER_META[key].quality }} · {{ ANIMATE_TIER_META[key].render }} · {{ ANIMATE_TIER_DURATIONS[key].join('/') }} s</span>
+                    <span class="anim-model-opt-sub">{{ ANIMATE_TIER_META[key].sub }} · {{ ANIMATE_TIER_META[key].quality }} · {{ ANIMATE_TIER_META[key].render }}<template v-if="key !== 'spokesperson'"> · {{ ANIMATE_TIER_DURATIONS[key].join('/') }} s</template></span>
                   </span>
                   <span class="anim-model-opt-right">
                     <span class="anim-model-opt-cost">{{ ANIMATE_TIER_COSTS_5S[key] }} cr</span>
@@ -8495,7 +8500,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="ap-field">
+          <div v-if="animateTier !== 'spokesperson'" class="ap-field">
             <label class="ap-label">Duration</label>
             <div class="anim-duration-row">
               <button
@@ -8511,6 +8516,10 @@ onBeforeUnmount(() => {
               <strong>{{ ANIMATE_TIER_META[animateTier].name }}</strong>
               tier renders in {{ animateDurations.join(' s or ') }} s chunks.
             </div>
+          </div>
+          <div v-else class="ap-hint" style="margin-top:4px;">
+            The character lip-syncs to this scene's voiceover — length follows the audio.
+            <strong v-if="!activeSceneHasVoice"> Generate the voiceover first.</strong>
           </div>
 
           <div class="ap-field">
