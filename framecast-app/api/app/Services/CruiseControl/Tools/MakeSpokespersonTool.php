@@ -56,8 +56,8 @@ class MakeSpokespersonTool implements CruiseTool
 
     public function execute(Workspace $workspace, Project $project, array $params): array
     {
-        if (config('services.fal.api_key', '') === '') {
-            throw new RuntimeException('Talking spokesperson is not configured yet (missing fal.ai key).');
+        if (config('services.replicate.api_token', '') === '') {
+            throw new RuntimeException('Talking spokesperson is not configured yet (missing Replicate token).');
         }
 
         $scene = Scene::query()

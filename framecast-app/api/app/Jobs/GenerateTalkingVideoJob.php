@@ -7,7 +7,7 @@ use App\Models\Asset;
 use App\Models\Scene;
 use App\Services\CreditService;
 use App\Services\CruiseControl\CruiseActionRunService;
-use App\Services\Generation\Video\FalFabricAdapter;
+use App\Services\Generation\Video\ReplicateFabricAdapter;
 use App\Services\Media\StorageService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,7 +31,7 @@ class GenerateTalkingVideoJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 2;
-    public int $timeout = 330;
+    public int $timeout = 900; // Fabric renders are slow (a few s of audio → minutes)
 
     public function __construct(
         public readonly int $sceneId,
@@ -41,7 +41,7 @@ class GenerateTalkingVideoJob implements ShouldQueue
         $this->onQueue('visual');
     }
 
-    public function handle(FalFabricAdapter $adapter): void
+    public function handle(ReplicateFabricAdapter $adapter): void
     {
         $scene = Scene::query()->with(['project'])->find($this->sceneId);
         if (! $scene) {
@@ -90,10 +90,20 @@ class GenerateTalkingVideoJob implements ShouldQueue
                 throw new RuntimeException('Generate the voiceover first — lip-sync needs the audio.');
             }
 
-            $videoUrl = $adapter->generate(
+            // Submit, stash the prediction id for visibility/resume, then poll.
+            $predictionId = $adapter->start(
                 $this->publicUrl($imageAsset),
                 $this->publicUrl($audioAsset),
             );
+            $this->stamp($scene, ['animation_prediction_id' => $predictionId]);
+
+            $videoUrl = $adapter->pollUntilDone($predictionId);
+            if ($videoUrl === null) {
+                // Still rendering at Replicate after the poll window — leave it
+                // in-progress (prediction id stashed) and let a retry/reaper
+                // pick it up. Do NOT refund yet; the clip may still land.
+                return;
+            }
 
             // Respect a cancel requested mid-render.
             if (data_get($scene->fresh()->image_generation_settings_json, 'animation_cancel_requested')) {
