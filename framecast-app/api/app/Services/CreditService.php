@@ -29,6 +29,7 @@ class CreditService
     public const VIDEO_PREMIUM  = 240;  // ~$1.20 per 6s clip — Kling 2.1
     public const VIDEO_SEEDANCE_LITE = 100;  // ~$0.50 per 5s clip — ByteDance Seedance 1 Lite
     public const VIDEO_SEEDANCE_PRO  = 200;  // ~$1.00 per 5s clip — ByteDance Seedance 1 Pro
+    public const VIDEO_SPOKESPERSON  = 140;  // ~$0.64 per 8s clip — VEED Fabric 1.0 480p (image+audio lip-sync)
     public const EXPORT     = 0;   // included
 
     // Approximate upstream provider cost (COGS) in USD per operation. Stamped
@@ -50,6 +51,7 @@ class CreditService
         'video:balanced'          => 0.60,
         'video:seedance_pro'      => 1.00,
         'video:premium'           => 1.20,
+        'video:spokesperson'      => 0.64,
     ];
 
     /** Best-estimate upstream USD cost for an op key (see COGS_USD). Null if unknown. */

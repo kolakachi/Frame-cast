@@ -113,6 +113,14 @@ return [
         'musicgen_version' => env('REPLICATE_MUSICGEN_VERSION', '671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb'),
     ],
 
+    // fal.ai — hosts VEED Fabric 1.0 (image + audio -> lip-synced talking video)
+    // for the talking-spokesperson scene mode (GenerateTalkingVideoJob).
+    'fal' => [
+        'api_key'       => env('FAL_API_KEY'),
+        'fabric_model'  => env('FAL_FABRIC_MODEL', 'veed/fabric-1.0'),
+        'fabric_resolution' => env('FAL_FABRIC_RESOLUTION', '480p'), // 480p | 720p
+    ],
+
     'pixabay' => [
         'api_key' => env('PIXABAY_API_KEY'),
     ],

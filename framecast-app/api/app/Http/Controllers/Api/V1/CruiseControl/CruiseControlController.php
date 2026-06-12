@@ -626,6 +626,7 @@ class CruiseControlController extends Controller
         return in_array($tool, [
             'regenerate_image',
             'animate_scene',
+            'make_spokesperson',
             'rerecord_voice',
             'update_scene_script',
             'change_music',
@@ -641,6 +642,7 @@ class CruiseControlController extends Controller
         return match ($tool) {
             'regenerate_image' => ! empty($params['chain_animate_tier']) ? ['ai_image', 'animation'] : ['ai_image'],
             'animate_scene' => ['animation'],
+            'make_spokesperson' => ['animation'],
             'rerecord_voice', 'update_scene_script' => ['tts'],
             'change_music' => ['ai_music'],
             'add_scene' => ! empty($params['animate_tier']) ? ['ai_image', 'tts', 'animation'] : ['ai_image', 'tts'],

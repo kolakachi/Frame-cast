@@ -5,6 +5,7 @@ namespace App\Services\CruiseControl;
 use App\Services\CruiseControl\Tools\AddSceneTool;
 use App\Services\CruiseControl\Tools\AddSoundEffectTool;
 use App\Services\CruiseControl\Tools\ExportVideoTool;
+use App\Services\CruiseControl\Tools\MakeSpokespersonTool;
 use App\Services\CruiseControl\Tools\SchedulePostTool;
 use App\Services\CruiseControl\Tools\AnimateSceneTool;
 use App\Services\CruiseControl\Tools\ApplyBrandKitTool;
@@ -42,6 +43,7 @@ class CruiseToolRegistry
         // Generation (creates new content)
         RegenerateImageTool::class,
         AnimateSceneTool::class,
+        MakeSpokespersonTool::class,
         AddSceneTool::class,
         LockSubjectTool::class,
         ChangeMusicTool::class,
