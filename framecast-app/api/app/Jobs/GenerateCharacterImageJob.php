@@ -96,14 +96,51 @@ class GenerateCharacterImageJob implements ShouldQueue
 
         try {
             if ($hasReference) {
-                $referenceUrl = $this->signedAssetUrl($character->referenceAsset);
-                if (! $referenceUrl) {
+                // Send EVERY reference photo on this character (primary first),
+                // not just the primary — nano-banana(-pro) and gpt-image-2 /edits
+                // both accept up to 4 image inputs, and more angles of the same
+                // face = a stronger identity lock. Previously only the single
+                // primary was sent, so a 2nd reference image was ignored.
+                $refIds = is_array($character->reference_asset_ids) ? $character->reference_asset_ids : [];
+                $orderedIds = array_values(array_unique(array_filter(array_merge(
+                    [(int) $character->reference_asset_id],
+                    array_map('intval', $refIds),
+                ))));
+
+                $refAssets = Asset::query()
+                    ->whereIn('id', $orderedIds)
+                    ->where('asset_type', 'image')
+                    ->get()
+                    ->keyBy('id');
+
+                $urls = [];
+                foreach ($orderedIds as $id) {
+                    $signed = $this->signedAssetUrl($refAssets->get($id));
+                    if ($signed) {
+                        $urls[] = $signed;
+                    }
+                }
+                if (empty($urls)) {
                     throw new \RuntimeException('Character reference image is missing or unreadable.');
                 }
-                $options['reference_image_url'] = $referenceUrl;
+                $urls = array_slice($urls, 0, 4);
+
+                // Both array (preferred) and singular set for adapter compat.
+                $options['reference_image_urls'] = $urls;
+                $options['reference_image_url']  = $urls[0];
+
+                // Tell the model the references are ONE person, not separate
+                // elements to merge — otherwise multi-image inputs get composited
+                // and the identity drifts. This is what makes the 2nd reference
+                // sharpen the likeness instead of confusing it.
+                $identityLead = count($urls) > 1
+                    ? 'All '.count($urls).' reference images show the SAME person from different angles — preserve that single identity: same face, bone structure, hair, and skin tone. '
+                    : "Preserve the reference person's exact identity: same face, bone structure, hair, and skin tone. ";
+                $promptForModel = $identityLead.trim((string) $gen->prompt);
+
                 // nano-banana-pro by default; gpt-image-2 / nano-banana when picked.
                 $result = $factory->referenceAdapter($gen->model_key)->generate(
-                    (string) $gen->prompt,
+                    $promptForModel,
                     (string) ($gen->style ?? 'photorealistic'),
                     (string) ($gen->aspect_ratio ?? '9:16'),
                     $options
