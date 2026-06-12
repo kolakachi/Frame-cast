@@ -1121,7 +1121,7 @@ const addSceneCharacterId = ref(null);
 const addSceneCharPopoverOpen = ref(false);
 const selectedSwapVisualSource = ref("Stock Clip");
 const newSceneScript = ref("");
-const rewriteToolsVisible = ref(true);
+const rewriteToolsVisible = ref(false); // rewrite section collapsed by default
 const rewritePreviewVisible = ref(false);
 const rewritePreviewCopy = ref("");
 const rewriteCustomInstruction = ref("");
@@ -2247,28 +2247,19 @@ const visualTypeLabelMap = {
   text_card: "Text Only",
   waveform: "Audiogram",
 };
-const rewriteOptions = [
-  "Shorten",
-  "Expand",
-  "Stronger hook",
-  "More punchy",
-  "More educational",
-  "More dramatic",
-  "Scarier",
-  "More documentary",
-  "Simplify",
+const REWRITE_EDIT_OPTIONS = [
+  { label: "Shorten", mode: "shorten" },
+  { label: "Expand", mode: "expand" },
+  { label: "Simplify", mode: "simplify" },
+  { label: "Stronger hook", mode: "stronger_hook" },
 ];
-const rewriteModeMap = {
-  Shorten: "shorten",
-  Expand: "expand",
-  "Stronger hook": "stronger_hook",
-  "More punchy": "more_punchy",
-  "More educational": "more_educational",
-  "More dramatic": "more_dramatic",
-  Scarier: "scarier",
-  "More documentary": "more_documentary",
-  Simplify: "simplify",
-};
+const REWRITE_TONE_OPTIONS = [
+  { label: "Punchier", mode: "more_punchy" },
+  { label: "Dramatic", mode: "more_dramatic" },
+  { label: "Scarier", mode: "scarier" },
+  { label: "Documentary", mode: "more_documentary" },
+  { label: "Educational", mode: "more_educational" },
+];
 
 watch(
   activeScene,
@@ -2346,7 +2337,7 @@ watch(
       scriptSaveError.value = "";
       captionSaveState.value = "idle";
       captionSaveError.value = "";
-      rewriteToolsVisible.value = true;
+      rewriteToolsVisible.value = false; // collapse rewrite on scene switch
       rewritePreviewVisible.value = false;
       rewritePreviewCopy.value = "";
       rewriteCustomInstruction.value = "";
@@ -4645,11 +4636,8 @@ function toggleRewriteTools() {
   }
 }
 
-async function submitRewrite(modeLabel) {
-  if (!activeScene.value) return;
-
-  const mode = rewriteModeMap[modeLabel];
-  if (!mode) return;
+async function submitRewrite(mode) {
+  if (!activeScene.value || !mode) return;
 
   rewritePending.value = true;
   rewriteError.value = "";
@@ -6751,71 +6739,111 @@ onBeforeUnmount(() => {
                   v-model="sceneScriptDraft"
                   class="add-scene-textarea script-textarea"
                 ></textarea>
-                <div class="helper-copy">
-                  This text is spoken by the voice and rendered as captions.
+                <div class="ss-caption">
+                  Spoken by the voice and rendered as captions.
                 </div>
-                <div class="duration-row">
-                  <label class="duration-label">Duration (s)</label>
-                  <input
-                    v-model="sceneDurationDraft"
-                    class="duration-input"
-                    type="number"
-                    min="1"
-                    max="600"
-                    step="0.5"
-                    :placeholder="String(activeScene?.duration_seconds ?? 12)"
-                    @change="saveSceneDuration"
-                  />
-                  <span v-if="sceneDurationSaving" class="duration-saving">saving…</span>
-                  <span class="duration-hint">Fallback when no voice is generated</span>
+                <div class="ss-duration-row">
+                  <span class="ss-duration-label">Duration</span>
+                  <div class="ss-duration-field">
+                    <input
+                      v-model="sceneDurationDraft"
+                      type="number"
+                      min="1"
+                      max="600"
+                      step="0.5"
+                      :placeholder="String(activeScene?.duration_seconds ?? 12)"
+                      @change="saveSceneDuration"
+                    />
+                    <span class="ss-duration-unit">s</span>
+                  </div>
+                </div>
+                <div class="ss-duration-caption">
+                  <span v-if="sceneDurationSaving">saving…</span>
+                  <span v-else>Used when no voice is generated</span>
                 </div>
                 <div v-if="scriptSaveCopy()" :class="scriptSaveState === 'error' ? 'script-save-copy error' : 'script-save-copy'">
                   {{ scriptSaveCopy() }}
                 </div>
-                <div class="panel-inline-actions">
-                  <button
-                    class="btn btn-ghost btn-sm rewrite-trigger"
-                    type="button"
-                    @click.stop="toggleRewriteTools"
-                  >
-                    {{ rewriteToolsVisible ? "Hide rewrite tools" : "✦ Rewrite with AI" }}
-                  </button>
-                </div>
-                <div v-if="rewriteToolsVisible" class="rewrite-tools">
-                  <div class="chips chips-tight">
-                    <button
-                      v-for="option in rewriteOptions"
-                      :key="option"
-                      class="chip"
-                      :class="{ disabled: rewritePending }"
-                      type="button"
-                      @click="submitRewrite(option)"
-                    >
-                      {{ option }}
-                    </button>
+
+                <div class="ss-divider"></div>
+
+                <!-- Rewrite: collapsed trigger by default -->
+                <button
+                  v-if="!rewriteToolsVisible"
+                  class="ss-rewrite-trigger"
+                  type="button"
+                  @click.stop="toggleRewriteTools"
+                >
+                  <span class="ss-spark">✦</span>
+                  <span>Rewrite with AI</span>
+                  <span class="ss-chev">▾</span>
+                </button>
+
+                <!-- Rewrite: expanded -->
+                <template v-else>
+                  <div class="ss-rewrite-head" @click="toggleRewriteTools">
+                    <span class="ss-spark">✦</span>
+                    <span class="ss-rewrite-label">Rewrite with AI</span>
+                    <span class="ss-rule"></span>
+                    <span class="ss-chev ss-chev-open">▾</span>
                   </div>
-                  <div class="rewrite-custom">
-                    <input
-                      v-model="rewriteCustomInstruction"
-                      class="rewrite-custom-input"
-                      placeholder="Custom instruction..."
-                    />
-                    <button
-                      class="btn btn-ghost btn-sm"
-                      type="button"
-                      :disabled="rewritePending"
-                      @click="submitRewriteCustom"
-                    >
-                      Apply
-                    </button>
+                  <div class="ss-rewrite-body">
+                    <div class="ss-group">
+                      <div class="ss-group-label">Edit</div>
+                      <div class="ss-chips">
+                        <button
+                          v-for="o in REWRITE_EDIT_OPTIONS"
+                          :key="o.mode"
+                          class="ss-chip"
+                          :class="{ disabled: rewritePending }"
+                          type="button"
+                          @click="submitRewrite(o.mode)"
+                        >
+                          {{ o.label }}
+                        </button>
+                      </div>
+                    </div>
+                    <div class="ss-group">
+                      <div class="ss-group-label">Tone</div>
+                      <div class="ss-chips">
+                        <button
+                          v-for="o in REWRITE_TONE_OPTIONS"
+                          :key="o.mode"
+                          class="ss-chip"
+                          :class="{ disabled: rewritePending }"
+                          type="button"
+                          @click="submitRewrite(o.mode)"
+                        >
+                          {{ o.label }}
+                        </button>
+                      </div>
+                    </div>
+                    <div class="ss-custom-row">
+                      <span class="ss-custom-icon">✦</span>
+                      <input
+                        v-model="rewriteCustomInstruction"
+                        class="ss-custom-input"
+                        placeholder="Custom instruction…"
+                        @keyup.enter="submitRewriteCustom"
+                      />
+                      <button
+                        class="ss-apply-btn"
+                        type="button"
+                        :disabled="rewritePending"
+                        title="Apply"
+                        @click="submitRewriteCustom"
+                      >
+                        ✦
+                      </button>
+                    </div>
+                    <div class="ss-footnote">
+                      This scene only<span class="ss-dot">·</span>Locked facts preserved
+                    </div>
+                    <div v-if="rewriteError" class="rewrite-error">
+                      {{ rewriteError }}
+                    </div>
                   </div>
-                  <div class="rewrite-note">
-                    Applies to this scene only · Preserves locked facts
-                  </div>
-                  <div v-if="rewriteError" class="rewrite-error">
-                    {{ rewriteError }}
-                  </div>
-                </div>
+                </template>
                 <div v-if="rewritePreviewVisible" class="rewrite-preview">
                   <div class="rewrite-preview-title">AI Rewrite Candidate</div>
                   <div class="rewrite-preview-copy">
@@ -10080,6 +10108,100 @@ button {
   min-height: 72px;
   margin-bottom: 0;
 }
+
+/* ── Scene Script section restyle ─────────────────────────────────────── */
+.ss-caption {
+  font-size: 11.5px; line-height: 1.45; color: var(--color-text-muted); margin-top: 7px;
+}
+.ss-duration-row {
+  display: flex; align-items: center; justify-content: space-between; margin-top: 14px;
+}
+.ss-duration-label { font-size: 13px; color: var(--color-text-secondary); }
+.ss-duration-field {
+  display: flex; align-items: center; background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border); border-radius: 8px; padding: 0 10px 0 0;
+  transition: border-color 0.15s;
+}
+.ss-duration-field:focus-within { border-color: rgba(255, 107, 53, 0.45); }
+.ss-duration-field input {
+  width: 52px; background: transparent; border: none; outline: none;
+  color: var(--color-text-primary); font-family: "Space Mono", monospace; font-size: 13px;
+  padding: 7px 4px 7px 10px; text-align: right; -moz-appearance: textfield;
+}
+.ss-duration-field input::-webkit-outer-spin-button,
+.ss-duration-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ss-duration-field .ss-duration-unit {
+  font-family: "Space Mono", monospace; font-size: 11px; color: var(--color-text-muted);
+}
+.ss-duration-caption {
+  font-size: 11px; color: var(--color-text-muted); margin-top: 6px; text-align: right;
+}
+.ss-divider { height: 1px; background: var(--color-border); margin: 16px -16px; opacity: 0.6; }
+
+.ss-rewrite-trigger {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: var(--color-bg-elevated); border: 1px solid var(--color-border);
+  border-radius: 10px; padding: 9px 13px; color: var(--color-text-secondary);
+  font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.ss-rewrite-trigger:hover { border-color: rgba(255, 107, 53, 0.45); color: var(--color-text-primary); }
+.ss-rewrite-trigger .ss-spark { color: var(--color-accent); }
+.ss-rewrite-trigger .ss-chev { margin-left: auto; opacity: 0.7; }
+
+.ss-rewrite-head {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+}
+.ss-rewrite-head .ss-spark { color: var(--color-accent); }
+.ss-rewrite-label {
+  font-family: "Space Mono", monospace; font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-secondary);
+}
+.ss-rule { flex: 1; height: 1px; background: var(--color-border); opacity: 0.6; }
+.ss-chev-open { transform: rotate(180deg); }
+
+.ss-rewrite-body { margin-top: 14px; }
+.ss-group { margin-bottom: 13px; }
+.ss-group-label {
+  font-family: "Space Mono", monospace; font-size: 9.5px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 7px;
+}
+.ss-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ss-chip {
+  font-family: inherit; font-size: 12px; font-weight: 500; color: var(--color-text-secondary);
+  background: var(--color-bg-elevated); border: 1px solid var(--color-border);
+  border-radius: 999px; padding: 5px 12px; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.ss-chip:hover { border-color: rgba(255, 107, 53, 0.45); color: var(--color-text-primary); }
+.ss-chip:active { background: rgba(255, 107, 53, 0.12); border-color: rgba(255, 107, 53, 0.45); color: var(--color-accent); }
+.ss-chip.disabled { opacity: 0.5; pointer-events: none; }
+
+.ss-custom-row { position: relative; margin-top: 14px; }
+.ss-custom-input {
+  width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border);
+  border-radius: 10px; padding: 9px 42px 9px 32px; color: var(--color-text-primary);
+  font-family: inherit; font-size: 13px; outline: none; transition: border-color 0.15s;
+}
+.ss-custom-input::placeholder { color: var(--color-text-muted); }
+.ss-custom-input:focus { border-color: rgba(255, 107, 53, 0.45); }
+.ss-custom-icon {
+  position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+  color: var(--color-text-muted); font-size: 12px; pointer-events: none;
+}
+.ss-custom-input:focus ~ .ss-custom-icon { color: var(--color-accent); }
+.ss-apply-btn {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 8px;
+  color: var(--color-text-muted); cursor: pointer; transition: all 0.15s; font-size: 13px;
+}
+.ss-apply-btn:hover:not(:disabled) { background: var(--color-accent); border-color: var(--color-accent); color: #0a0a0b; }
+.ss-apply-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ss-footnote {
+  font-size: 10.5px; color: var(--color-text-muted); margin-top: 10px; text-align: center;
+}
+.ss-dot { margin: 0 5px; opacity: 0.6; }
 
 .add-scene-textarea:focus,
 .rewrite-custom-input:focus,
