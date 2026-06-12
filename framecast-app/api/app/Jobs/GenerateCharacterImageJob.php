@@ -50,6 +50,7 @@ class GenerateCharacterImageJob implements ShouldQueue
         StorageService $storage,
         CharacterImageAdapter $characterAdapter,
         DalleImageAdapter $dalleAdapter,
+        \App\Services\Generation\Image\ImageAdapterFactory $factory,
     ): void {
         $gen = CharacterImageGeneration::query()->find($this->generationId);
         if (! $gen) {
@@ -66,7 +67,9 @@ class GenerateCharacterImageJob implements ShouldQueue
         }
 
         $hasReference = (bool) $character->reference_asset_id;
-        $cost = $hasReference ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+        // Reference work defaults to nano-banana-pro (best identity); cost +
+        // adapter follow the picked model. No-reference stays gpt-image-1.
+        $cost = $hasReference ? $factory->referenceGenerationCost($gen->model_key) : CreditService::AI_MEDIUM;
 
         // Re-check balance before charging — user may have spent credits between
         // the request landing and the worker picking it up.
@@ -98,7 +101,8 @@ class GenerateCharacterImageJob implements ShouldQueue
                     throw new \RuntimeException('Character reference image is missing or unreadable.');
                 }
                 $options['reference_image_url'] = $referenceUrl;
-                $result = $characterAdapter->generate(
+                // nano-banana-pro by default; gpt-image-2 / nano-banana when picked.
+                $result = $factory->referenceAdapter($gen->model_key)->generate(
                     (string) $gen->prompt,
                     (string) ($gen->style ?? 'photorealistic'),
                     (string) ($gen->aspect_ratio ?? '9:16'),
@@ -143,16 +147,20 @@ class GenerateCharacterImageJob implements ShouldQueue
             return;
         }
 
-        // Charge on success.
+        // Charge on success. Record the upstream COGS for the engine that
+        // actually ran so margin tracking follows the picked model.
+        $cogsKey = $hasReference ? $factory->referenceCogsKey($gen->model_key) : 'ai_image:gpt-image-1';
         $credits->deduct(
             (int) $gen->workspace_id,
             $cost,
             $hasReference ? 'character_preview:ref' : 'character_preview:noref',
             [
                 'user_id'  => $gen->user_id,
+                'upstream_cost_usd' => CreditService::cogsUsd($cogsKey),
                 'metadata' => [
                     'character_id'   => $character->getKey(),
                     'character_name' => $character->name,
+                    'model_key'      => $gen->model_key,
                     'quality'        => $gen->quality,
                     'set_as_reference' => (bool) $gen->set_as_reference,
                 ],

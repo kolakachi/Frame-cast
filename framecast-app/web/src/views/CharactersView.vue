@@ -57,6 +57,17 @@ const deletePending = ref(false);
 // poll the status endpoint every 2s until succeeded|failed.
 const genTarget = ref(null);                     // character being previewed
 const genPrompt = ref("");
+// Reference-image engines, in default order. nano-banana-pro leads — best
+// identity/skin-tone fidelity; gpt-image-2 (/edits) is the legacy path.
+// Costs mirror ImageAdapterFactory::referenceGenerationCost (backend is
+// authoritative). Only shown for characters that already have a reference
+// photo; no-reference work stays on the gpt-image-1 text path.
+const REF_MODEL_OPTIONS = [
+  { key: "nano-banana-pro", label: "Nano Banana Pro", sub: "best identity · ~35 cr", cost: 35 },
+  { key: "nano-banana",     label: "Nano Banana",     sub: "fast & cheap · ~10 cr",  cost: 10 },
+  { key: "gpt-image-2",     label: "GPT Image 2",     sub: "OpenAI edits · ~50 cr",  cost: 50 },
+];
+const genModelKey = ref("nano-banana-pro");
 const genStyle = ref("photorealistic");
 const genAspectRatio = ref("9:16");
 const genQuality = ref("high");
@@ -69,8 +80,13 @@ const genPollTimer = ref(null);
 const genElapsedSec = ref(0);
 const genElapsedTimer = ref(null);
 
+const genModelLabel = computed(
+  () => REF_MODEL_OPTIONS.find((o) => o.key === genModelKey.value)?.label ?? "Nano Banana Pro",
+);
+
 function openGenerate(character) {
   genTarget.value = character;
+  genModelKey.value = "nano-banana-pro";
   genStyle.value = "photorealistic";
   genAspectRatio.value = "9:16";
   genQuality.value = character.reference_asset ? "high" : "medium";
@@ -185,6 +201,8 @@ async function submitGenerate() {
       aspect_ratio: genAspectRatio.value,
       quality: genQuality.value,
       set_as_reference: genSetAsReference.value,
+      // model_key only applies to reference work; no-reference uses gpt-image-1.
+      model_key: genTarget.value.reference_asset ? genModelKey.value : null,
     });
     genGenerationId.value = res.data?.data?.generation?.id ?? null;
     if (!genGenerationId.value) {
@@ -207,7 +225,8 @@ async function submitGenerate() {
 const genCostEstimate = computed(() => {
   // Frontend-only estimate — backend is authoritative.
   if (!genTarget.value) return 0;
-  return genTarget.value.reference_asset ? 50 : 15; // AI_CHARACTER vs AI_MEDIUM
+  if (!genTarget.value.reference_asset) return 15; // gpt-image-1 text path (AI_MEDIUM)
+  return REF_MODEL_OPTIONS.find((o) => o.key === genModelKey.value)?.cost ?? 35;
 });
 
 onMounted(async () => {
@@ -712,11 +731,20 @@ async function confirmDelete() {
 
           <div class="gen-mode-banner">
             <span v-if="genTarget.reference_asset">
-              <strong>Reference photo on file.</strong> The result will be generated to match this character's face and identity using gpt-image-2.
+              <strong>Reference photo on file.</strong> The result will be generated to match this character's face and identity using {{ genModelLabel }}.
             </span>
             <span v-else>
               <strong>No reference photo yet.</strong> The first image will be generated from scratch (text-only). Tick "Set as reference" and future generations of this character will preserve the same identity.
             </span>
+          </div>
+
+          <div v-if="genTarget.reference_asset" class="cv-field">
+            <label class="cv-label">Image model</label>
+            <select v-model="genModelKey" class="cv-input" :disabled="genState === 'loading'">
+              <option v-for="m in REF_MODEL_OPTIONS" :key="m.key" :value="m.key">
+                {{ m.label }} — {{ m.sub }}
+              </option>
+            </select>
           </div>
 
           <div class="cv-field">
@@ -783,7 +811,7 @@ async function confirmDelete() {
           <div v-if="genResult" class="gen-result">
             <img :src="genResult.storage_url" :alt="`${genTarget.name} preview`" />
             <div class="gen-result-meta">
-              <span>{{ genResult.with_reference ? 'gpt-image-2 (reference)' : 'gpt-image-1 (text-only)' }}</span>
+              <span>{{ genResult.with_reference ? `${genModelLabel} (reference)` : 'gpt-image-1 (text-only)' }}</span>
               <span v-if="genResult.set_as_reference">· Set as new reference ✓</span>
             </div>
           </div>

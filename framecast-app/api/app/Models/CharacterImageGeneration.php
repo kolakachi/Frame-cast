@@ -13,6 +13,7 @@ class CharacterImageGeneration extends Model
         'user_id',
         'prompt',
         'style',
+        'model_key',
         'aspect_ratio',
         'quality',
         'set_as_reference',

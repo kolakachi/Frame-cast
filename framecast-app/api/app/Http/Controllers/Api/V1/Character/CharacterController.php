@@ -253,13 +253,21 @@ class CharacterController extends Controller
         $validated = $request->validate([
             'prompt'        => ['required', 'string', 'max:2000'],
             'style'         => ['nullable', 'string', 'max:64'],
+            'model_key'     => ['nullable', 'string', Rule::in(['nano-banana-pro', 'nano-banana', 'gpt-image-2', 'gpt-image-1'])],
             'aspect_ratio'  => ['nullable', Rule::in(['9:16', '1:1', '16:9'])],
             'quality'       => ['nullable', Rule::in(['low', 'medium', 'high'])],
             'set_as_reference' => ['sometimes', 'boolean'],
         ]);
 
+        $modelKey = $validated['model_key'] ?? null;
         $hasReference = (bool) $character->reference_asset_id;
-        $cost = $hasReference ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+        // Reference generations default to nano-banana-pro (best identity); the
+        // cost follows the picked engine. The model pick applies to reference
+        // work; no-reference stays on the gpt-image-1 text path.
+        $factory = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+        $cost = $hasReference
+            ? $factory->referenceGenerationCost($modelKey)
+            : CreditService::AI_MEDIUM;
         $credits = app(CreditService::class);
 
         // Upfront check so the user sees insufficient_credits immediately rather
@@ -281,6 +289,7 @@ class CharacterController extends Controller
             'user_id'          => $user->getKey(),
             'prompt'           => $validated['prompt'],
             'style'            => $validated['style'] ?? 'photorealistic',
+            'model_key'        => $modelKey,
             'aspect_ratio'     => $validated['aspect_ratio'] ?? '9:16',
             'quality'          => $validated['quality'] ?? ($hasReference ? 'high' : 'medium'),
             'set_as_reference' => (bool) ($validated['set_as_reference'] ?? false),

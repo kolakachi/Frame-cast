@@ -133,12 +133,26 @@ class ImageAdapterFactory
 
     /**
      * Whether a reference/character generation should run on gpt-image-2. We
-     * default reference work to nano-banana (better identity/skin-tone fidelity
-     * under style changes); gpt-image-2 only when the user explicitly picks it.
+     * default reference work to nano-banana-pro (better identity/skin-tone
+     * fidelity); gpt-image-2 only when the user explicitly picks it.
      */
     public function referenceUsesGptImage2(?string $modelKey): bool
     {
         return $modelKey === 'gpt-image-2';
+    }
+
+    /**
+     * Adapter for a reference/character generation, given the picked model.
+     * nano-banana-pro is the default (best identity); explicit picks honoured.
+     * Shared by GenerateAIImageJob + GenerateCharacterImageJob.
+     */
+    public function referenceAdapter(?string $modelKey): object
+    {
+        return match ($modelKey) {
+            'gpt-image-2' => app(CharacterImageAdapter::class),
+            'nano-banana' => app(NanoBananaImageAdapter::class),
+            default       => app(NanoBananaProImageAdapter::class),
+        };
     }
 
     /**
