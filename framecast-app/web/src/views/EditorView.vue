@@ -8529,7 +8529,8 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div v-else class="ap-hint" style="margin-top:4px;">
-            The character lip-syncs to this scene's voiceover — length follows the audio.
+            The character lip-syncs to this scene's voiceover — length follows the audio,
+            and the synced talking video is what renders into your final export.
             <strong v-if="!activeSceneHasVoice"> Generate the voiceover first.</strong>
           </div>
 

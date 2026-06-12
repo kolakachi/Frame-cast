@@ -389,6 +389,10 @@ class GenerateAIImageJob implements ShouldQueue
             ]);
             app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'ai_image', $this->sceneId);
 
+            // One-shot spokesperson: image is ready — fire the talking-video job
+            // if the voice is also ready (no-op + idempotent otherwise).
+            rescue(fn () => \App\Jobs\GenerateTalkingVideoJob::maybeDispatchForScene($scene));
+
             // One-shot animate chain: image is ready, kick AnimateSceneJob so
             // the user actually gets the animated clip they toggled on. Quick
             // tier defaults to 5s (Wan 2.5 supports 5 or 10). Music + TTS were
@@ -503,6 +507,10 @@ class GenerateAIImageJob implements ShouldQueue
                         'image_url' => app(StorageService::class)->url($storagePath),
                     ]);
                     app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'ai_image', $this->sceneId);
+
+                    // One-shot spokesperson: fire the talking-video job if the
+                    // voice is also ready (idempotent guard inside).
+                    rescue(fn () => \App\Jobs\GenerateTalkingVideoJob::maybeDispatchForScene($scene));
 
                     // Resume safety net (see PipelineStatusService) — only
                     // relevant when no animation is chained behind this image.

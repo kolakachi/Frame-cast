@@ -41,6 +41,49 @@ class GenerateTalkingVideoJob implements ShouldQueue
         $this->onQueue('visual');
     }
 
+    /**
+     * Fire the talking-video job for a one-shot spokesperson scene once BOTH
+     * its image and voice are ready. Called from the image job (post-image)
+     * and the TTS job (post-voice) — whichever finishes last triggers it. The
+     * Cache::add is an atomic one-time guard so the two callers can't both
+     * dispatch.
+     */
+    public static function maybeDispatchForScene(Scene $scene): void
+    {
+        $s = $scene->fresh();
+        if (! $s) {
+            return;
+        }
+        $img = $s->image_generation_settings_json ?? [];
+        if (empty($img['planned_spokesperson'])) {
+            return;
+        }
+        if (! $s->visual_asset_id) {
+            return; // image not ready yet
+        }
+        if (! data_get($s->voice_settings_json, 'audio_asset_id')) {
+            return; // voice not ready yet
+        }
+        // Atomic one-time guard — only the first caller (image OR voice) wins.
+        if (! \Illuminate\Support\Facades\Cache::add('spokesperson-dispatch:'.$s->getKey(), 1, 3600)) {
+            return;
+        }
+
+        $token = (string) Str::uuid();
+        $s->forceFill([
+            'image_generation_settings_json' => array_merge($img, [
+                'animation_in_progress' => true,
+                'animation_last_error'  => null,
+                'animation_tier'        => 'spokesperson',
+                'animation_cost'        => CreditService::VIDEO_SPOKESPERSON,
+                'animation_started_at'  => now()->toIso8601String(),
+                'generation_token'      => $token,
+            ]),
+        ])->save();
+
+        self::dispatch($s->getKey(), (int) $s->project_id, $token);
+    }
+
     public function handle(ReplicateFabricAdapter $adapter): void
     {
         $scene = Scene::query()->with(['project'])->find($this->sceneId);

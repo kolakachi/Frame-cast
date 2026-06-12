@@ -890,6 +890,7 @@ class ProjectController extends Controller
     private function animationTierCost(string $tier): int
     {
         return match ($tier) {
+            'spokesperson'  => CreditService::VIDEO_SPOKESPERSON,
             'premium'       => CreditService::VIDEO_PREMIUM,
             'balanced'      => CreditService::VIDEO_BALANCED,
             'seedance_pro'  => CreditService::VIDEO_SEEDANCE_PRO,
@@ -924,7 +925,7 @@ class ProjectController extends Controller
             // haven't moved to the array form yet (older wizard build).
             'source_image_asset_id'    => ['nullable', 'integer', 'exists:assets,id'],
             'character_id'             => ['nullable', 'integer', 'exists:characters,id'],
-            'animation_tier'           => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro'],
+            'animation_tier'           => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro,spokesperson'],
             // Visual source: AI images (default), stock footage, or audiogram.
             'visual_source'            => ['nullable', 'string', 'in:ai_images,stock_video,stock_images,waveform'],
             // 1-8 scenes. 1 = instant demo, 3 = DTC ad shape, 8 = full Reel.
@@ -1009,6 +1010,7 @@ class ProjectController extends Controller
             $primaryCharacterId = null;
         }
         $animationTier  = $validated['animation_tier'] ?? 'quick';
+        $isSpokesperson = $animationTier === 'spokesperson';
         $animationCost  = $this->animationTierCost($animationTier);
         $perSceneImageCost = $isAiVisuals
             ? ($referenceAssets->isNotEmpty() ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM)
@@ -1222,6 +1224,11 @@ class ProjectController extends Controller
                     // its stage list from these when reached WITHOUT the
                     // wizard's query params (dashboard re-entry).
                     'auto_animate'            => $needsAnimation,
+                    // Spokesperson lip-sync needs BOTH the image and the voice,
+                    // so it can't chain off the image like i2v. Flag it; the
+                    // image + TTS jobs fire GenerateTalkingVideoJob once both
+                    // are ready (see GenerateTalkingVideoJob::maybeDispatchForScene).
+                    'planned_spokesperson'    => ($needsAnimation && $isSpokesperson) ? true : null,
                     'include_music'           => $includeMusic,
                     'visual_source'           => $visualSource,
                     // Audiogram scenes render the waveform at preview/export —
@@ -1232,6 +1239,9 @@ class ProjectController extends Controller
             ])->save();
 
             if ($isAiVisuals) {
+                // Chain i2v animation onto the image — but NOT for spokesperson
+                // (that path waits for the voice and fires separately).
+                $chainAnim = $needsAnimation && ! $isSpokesperson;
                 \App\Jobs\GenerateAIImageJob::dispatch(
                     $scene->getKey(),
                     $project->getKey(),
@@ -1239,9 +1249,9 @@ class ProjectController extends Controller
                     null,
                     $parsed['style'],
                     $imageToken,
-                    $needsAnimation ? $animateDuration : null,
-                    $needsAnimation ? $sceneDef['motion'] : null,
-                    $needsAnimation ? $animationTier      : null,
+                    $chainAnim ? $animateDuration  : null,
+                    $chainAnim ? $sceneDef['motion'] : null,
+                    $chainAnim ? $animationTier      : null,
                     null,
                     $referenceIdsArr,
                 )->delay(now()->addSeconds($idx * 3));

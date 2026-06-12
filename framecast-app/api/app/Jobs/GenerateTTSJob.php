@@ -175,6 +175,10 @@ class GenerateTTSJob implements ShouldQueue
                 $this->attachCaptionTiming($asset, $transcription);
             }
 
+            // One-shot spokesperson: voice is ready — fire the talking-video job
+            // if the image is also ready (idempotent guard inside).
+            rescue(fn () => \App\Jobs\GenerateTalkingVideoJob::maybeDispatchForScene($scene));
+
             rescue(fn () => app(CreditService::class)->deduct(
                 (int) $project->workspace_id,
                 CreditService::TTS,

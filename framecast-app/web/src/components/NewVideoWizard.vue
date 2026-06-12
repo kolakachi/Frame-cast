@@ -574,6 +574,7 @@ const ONE_SHOT_ANIM_TIERS = [
   { key: 'balanced',      label: 'Hailuo 2.3',    sub: 'Best for most',     cost: 120, render: '~90s' },
   { key: 'seedance_pro',  label: 'Seedance Pro',  sub: 'ByteDance · sharp', cost: 200, render: '~2 min' },
   { key: 'premium',       label: 'Kling 2.1',     sub: 'Cinematic',         cost: 240, render: '~3 min' },
+  { key: 'spokesperson',  label: 'Spokesperson',  sub: 'Lip-sync · talking', cost: 140, render: '~3 min' },
 ]
 
 function animateTierLabel(key) {
@@ -1072,6 +1073,11 @@ defineExpose({ open })
 
         <!-- Inline upload error (sits below composer) -->
         <div v-if="oneShotUploadError" class="modal-error" style="margin-top:10px;">{{ oneShotUploadError }}</div>
+
+        <!-- Spokesperson: reassure that lip-sync renders into the final export -->
+        <div v-if="oneShotIsAiVisuals && oneShotAnimate && oneShotAnimateTier === 'spokesperson'" class="spokesperson-note">
+          🎙 Each scene's character will speak its voiceover with synced lips — generated after the voice and baked into the final exported video.
+        </div>
 
         <!-- Character picker — only when user expanded it from the + menu.
              Multi-select; clicking a card toggles it in/out of refs. -->
@@ -1848,6 +1854,7 @@ defineExpose({ open })
 .composer-submit:disabled { opacity: 0.35; cursor: not-allowed; background: var(--color-bg-card); color: var(--color-text-muted); }
 
 .micro-section-label { font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; font-family: "Space Mono", monospace; }
+.spokesperson-note { margin-top: 10px; padding: 9px 12px; border-radius: 8px; background: rgba(255,107,53,0.08); border: 1px solid rgba(255,107,53,0.25); color: var(--color-text-secondary); font-size: 12px; line-height: 1.45; }
 
 /* Character thumbnail picker — one-shot character source mode. */
 /* Shared dropdown picker (character + voice). Mirrors the editor's
