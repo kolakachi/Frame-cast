@@ -150,9 +150,23 @@ class GenerateTTSJob implements ShouldQueue
                 $voiceSettings['is_outdated'] = false;
                 $voiceSettings['last_error'] = null;
 
+                // If this scene is a talking spokesperson, its clip was
+                // lip-synced to the OLD voice — the new audio no longer matches
+                // the lips. Flag it outdated so the editor prompts a re-render.
+                $imgSettings = $scene->image_generation_settings_json ?? [];
+                if (
+                    ($imgSettings['animation_tier'] ?? null) === 'spokesperson'
+                    && ! empty($imgSettings['animation_video_asset_id'])
+                    && (int) ($imgSettings['animation_source_audio_asset_id'] ?? 0) !== (int) $asset->getKey()
+                ) {
+                    $imgSettings['animation_outdated'] = true;
+                    $scene->image_generation_settings_json = $imgSettings;
+                }
+
                 $scene->forceFill([
                     'duration_seconds' => $audio['duration_seconds'],
                     'voice_settings_json' => $voiceSettings,
+                    'image_generation_settings_json' => $scene->image_generation_settings_json,
                     'status' => $this->shouldFinalizeProject ? $scene->status : 'edited',
                 ])->save();
             });

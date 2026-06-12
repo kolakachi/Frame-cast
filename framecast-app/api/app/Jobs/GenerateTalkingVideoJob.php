@@ -145,6 +145,11 @@ class GenerateTalkingVideoJob implements ShouldQueue
                 'animation_video_asset_id'          => $asset->getKey(),
                 'animation_original_image_asset_id' => $existingOriginal ?: $imageAsset->getKey(),
                 'animation_prediction_id'           => null,
+                // Record the voice this clip was lip-synced to. If the scene's
+                // voice later changes (new TTS), the lips no longer match —
+                // flagged via animation_outdated (see GenerateTTSJob).
+                'animation_source_audio_asset_id'   => $audioAssetId,
+                'animation_outdated'                => false,
             ]);
 
             $aniTotal = Scene::query()->where('project_id', $this->projectId)->count();

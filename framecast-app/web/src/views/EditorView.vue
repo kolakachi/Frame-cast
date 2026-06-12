@@ -1351,6 +1351,12 @@ const ANIMATE_TIER_COSTS_5S = { quick: 60, balanced: 120, premium: 240, seedance
 const ANIMATE_TIER_DURATIONS = { quick: [5, 10], balanced: [6, 10], premium: [5, 10], seedance_lite: [5, 10], seedance_pro: [5, 10], spokesperson: [5] };
 // Spokesperson lip-syncs to the scene's voiceover — only offer it once voice exists.
 const activeSceneHasVoice = computed(() => !!activeScene.value?.voice_settings?.audio_asset_id);
+// The talking video was synced to an earlier voice; the voice has since changed
+// (new TTS) so the lips no longer match — prompt a re-render.
+const spokespersonOutdated = computed(() =>
+  activeScene.value?.image_generation_settings?.animation_tier === 'spokesperson'
+  && !!activeScene.value?.image_generation_settings?.animation_outdated
+);
 const animateDurations = computed(() => ANIMATE_TIER_DURATIONS[animateTier.value] || [5, 10]);
 const animateShortDuration = computed(() => animateDurations.value[0]);
 const animateCost = computed(() => {
@@ -8465,6 +8471,11 @@ onBeforeUnmount(() => {
             <button class="ap-close" @click="closeAnimateModal">×</button>
           </div>
 
+          <div v-if="spokespersonOutdated" class="ap-spokesperson-warn">
+            ⚠ The voiceover changed — this talking video is still lip-synced to the old voice.
+            Re-render it with <strong>Spokesperson</strong> so the lips match the new audio.
+          </div>
+
           <div class="ap-field">
             <label class="ap-label">Model</label>
             <div class="anim-model-dd">
@@ -10417,6 +10428,7 @@ button {
 
 /* Hooks for the create-character modal — reuses .ap-* styles */
 .ap-hint { font-size: 11px; opacity: 0.55; margin-top: 4px; }
+.ap-spokesperson-warn { background: rgba(255,107,53,0.10); border: 1px solid rgba(255,107,53,0.3); color: var(--color-text-primary); border-radius: 8px; padding: 9px 11px; font-size: 12px; line-height: 1.4; margin: 4px 0 14px; }
 .ap-error { font-size: 12px; color: #ff6b6b; margin: 10px 0; }
 
 
