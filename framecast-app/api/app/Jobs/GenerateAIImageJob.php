@@ -167,13 +167,23 @@ class GenerateAIImageJob implements ShouldQueue
                     ?: null,
             ];
 
-            // Multi-reference path (one-shot wizard): when storeOneShot
-            // passes referenceAssetIds, route through CharacterImageAdapter
-            // with all references as image[] parts. Wins over the legacy
-            // scene.character_id auto-route below.
-            if (! empty($this->referenceAssetIds)) {
+            // Multi-reference path: explicit referenceAssetIds (one-shot wizard)
+            // OR, for a multi-character scene, every cast member's reference
+            // image — so two named people in one shot each bring their face.
+            $effectiveRefIds = $this->referenceAssetIds;
+            if (empty($effectiveRefIds)) {
+                $castIds = is_array($scene->character_ids) ? array_values(array_filter($scene->character_ids)) : [];
+                if (count($castIds) > 1) {
+                    $effectiveRefIds = \App\Models\Character::query()
+                        ->whereIn('id', $castIds)
+                        ->whereNotNull('reference_asset_id')
+                        ->pluck('reference_asset_id')
+                        ->map(fn ($i) => (int) $i)->filter()->values()->all();
+                }
+            }
+            if (! empty($effectiveRefIds)) {
                 $refAssets = \App\Models\Asset::query()
-                    ->whereIn('id', $this->referenceAssetIds)
+                    ->whereIn('id', $effectiveRefIds)
                     ->where('asset_type', 'image')
                     ->get();
                 $urls = [];
@@ -702,6 +712,24 @@ class GenerateAIImageJob implements ShouldQueue
      */
     private function characterBoardSuffix(Scene $scene): string
     {
+        // Multi-character scene: describe each named character so every person
+        // stays consistent. Only triggers when a scene has >1 character — a
+        // single-character scene keeps the existing project-board behaviour.
+        $castIds = is_array($scene->character_ids) ? array_values(array_filter($scene->character_ids)) : [];
+        if (count($castIds) > 1) {
+            $lines = [];
+            foreach (\App\Models\Character::query()->whereIn('id', $castIds)->get() as $c) {
+                $desc = trim((string) $c->description);
+                $lines[] = trim((string) $c->name).($desc !== '' ? ': '.$desc : '');
+            }
+            $lines = array_filter($lines);
+            if (! empty($lines)) {
+                return ' This scene features multiple named characters; each must look'
+                    .' EXACTLY as described, no variation in face, outfit or hair: '
+                    .implode('; ', $lines).'.';
+            }
+        }
+
         $board = $scene->project?->character_board_json;
         $sheet = is_array($board) ? trim((string) ($board['sheet'] ?? '')) : '';
         if ($sheet === '') {
