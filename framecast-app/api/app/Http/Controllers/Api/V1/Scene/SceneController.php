@@ -565,9 +565,11 @@ class SceneController extends Controller
             return $this->error('invalid_scene_scope', 'Scene is missing its project context.', 422);
         }
 
-        $voiceId = (string) data_get($scene->voice_settings_json, 'voice_id', 'alloy');
+        $voiceId = (string) data_get($scene->voice_settings_json, 'voice_id', \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE);
         $speed = (float) data_get($scene->voice_settings_json, 'speed', 1.0);
         $language = (string) data_get($scene->voice_settings_json, 'language', $project->primary_language ?: 'en');
+        $provider = data_get($scene->voice_settings_json, 'provider');
+        $voicePrompt = (string) data_get($scene->voice_settings_json, 'voice_prompt', '');
         $sceneText = trim((string) ($scene->script_text ?: ''));
 
         if ($sceneText === '') {
@@ -576,8 +578,10 @@ class SceneController extends Controller
 
         $asset = null;
 
-        DB::transaction(function () use ($scene, $project, $user, $tts, $voiceId, $speed, $language, $sceneText, &$asset): void {
+        DB::transaction(function () use ($scene, $project, $user, $tts, $voiceId, $speed, $language, $provider, $voicePrompt, $sceneText, &$asset): void {
             $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
+                'provider'     => $provider,
+                'voice_prompt' => $voicePrompt,
                 'usage_context' => [
                     'workspace_id' => $project->workspace_id,
                     'project_id' => $project->getKey(),
@@ -608,6 +612,7 @@ class SceneController extends Controller
 
             $voiceSettings = is_array($scene->voice_settings_json) ? $scene->voice_settings_json : [];
             $voiceSettings['provider_key'] = $audio['provider_key'];
+            $voiceSettings['provider'] = str_starts_with((string) $audio['provider_key'], 'replicate:') ? 'google' : 'openai';
             $voiceSettings['voice_id'] = $audio['provider_voice_id'];
             $voiceSettings['speed'] = $speed;
             $voiceSettings['language'] = $language;

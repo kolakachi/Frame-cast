@@ -1306,9 +1306,10 @@ const AUDIOGRAM_BACKGROUNDS = [
   { key: "purple", label: "Purple", css: "linear-gradient(135deg,#1a0a2e 0%,#0d0d2b 50%,#14102a 100%)" },
   { key: "ocean",  label: "Ocean",  css: "linear-gradient(135deg,#0a1628 0%,#0d1f3c 50%,#0a0e1a 100%)" },
 ];
-const voiceProfileKey = ref("alloy");
+const voiceProfileKey = ref("Kore");
 const voiceSpeedDraft = ref("1.0");
 const voiceStabilityDraft = ref("medium");
+const voiceDirectionDraft = ref("");
 const voiceSaveState = ref("idle");
 const voiceSaveError = ref("");
 const visualQueryDraft = ref("");
@@ -1588,8 +1589,22 @@ const VOICE_STABILITY_OPTIONS = [
   { value: "high", label: "High" },
 ];
 const voiceProfileOptions = computed(() =>
-  (voiceProfiles.value || []).map((p) => ({ value: p.provider_voice_key, label: p.name }))
+  (voiceProfiles.value || []).map((p) => ({
+    value: p.provider_voice_key,
+    // gender_label carries the Gemini delivery character (Firm/Warm/Bright…).
+    label: p.gender_label ? `${p.name} · ${p.gender_label}` : p.name,
+  }))
 );
+// Voice direction + inline [tags] only apply to Gemini voices. Detect by the
+// seeded profile's provider, falling back to "not one of OpenAI's 6 voices".
+const OPENAI_VOICE_KEYS = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+const activeVoiceIsGemini = computed(() => {
+  const p = (voiceProfiles.value || []).find(
+    (v) => v.provider_voice_key === voiceProfileKey.value
+  );
+  if (p) return p.provider === "google";
+  return !OPENAI_VOICE_KEYS.includes(String(voiceProfileKey.value).toLowerCase());
+});
 const ADD_SCENE_STOCK_OPTIONS = [
   { value: "stock_clip", label: "Clip" },
   { value: "background_loop", label: "BG Loop" },
@@ -2294,7 +2309,8 @@ watch(
         captionSaveTimer = null;
       }
       sceneScriptDraft.value = scene?.script_text || "";
-      voiceProfileKey.value = scene?.voice_settings?.voice_id || "alloy";
+      voiceProfileKey.value = scene?.voice_settings?.voice_id || "Kore";
+      voiceDirectionDraft.value = scene?.voice_settings?.voice_prompt || "";
       voiceSpeedDraft.value = String(scene?.voice_settings?.speed ?? 1.0);
       voiceStabilityDraft.value = String(scene?.voice_settings?.stability ?? "medium");
       visualQueryDraft.value = scene?.visual_prompt || "";
@@ -2441,7 +2457,7 @@ watch(previewMusicVolume, () => {
   syncPreviewMusicVolume();
 });
 
-watch([voiceProfileKey, voiceSpeedDraft, voiceStabilityDraft], () => {
+watch([voiceProfileKey, voiceSpeedDraft, voiceStabilityDraft, voiceDirectionDraft], () => {
   const scene = activeScene.value;
 
   if (!scene) return;
@@ -2451,12 +2467,15 @@ watch([voiceProfileKey, voiceSpeedDraft, voiceStabilityDraft], () => {
     voice_id: voiceProfileKey.value,
     speed: Number(voiceSpeedDraft.value || 1),
     stability: voiceStabilityDraft.value,
+    // Gemini delivery direction; ignored by OpenAI voices. Empty string clears it.
+    voice_prompt: activeVoiceIsGemini.value ? voiceDirectionDraft.value.trim() : "",
   };
 
   if (
-    String(savedVoice.voice_id || "alloy") === nextSettings.voice_id &&
+    String(savedVoice.voice_id || "Kore") === nextSettings.voice_id &&
     Number(savedVoice.speed ?? 1) === nextSettings.speed &&
-    String(savedVoice.stability || "medium") === nextSettings.stability
+    String(savedVoice.stability || "medium") === nextSettings.stability &&
+    String(savedVoice.voice_prompt || "") === nextSettings.voice_prompt
   ) {
     if (voiceSaveTimer) {
       window.clearTimeout(voiceSaveTimer);
@@ -4773,7 +4792,8 @@ async function regenerateVoice() {
     replaceSceneInCollection(updatedScene);
     activeSceneId.value = updatedScene.id;
     sceneScriptDraft.value = updatedScene.script_text || "";
-    voiceProfileKey.value = updatedScene.voice_settings?.voice_id || "alloy";
+    voiceProfileKey.value = updatedScene.voice_settings?.voice_id || "Kore";
+    voiceDirectionDraft.value = updatedScene.voice_settings?.voice_prompt || "";
     voiceSpeedDraft.value = String(updatedScene.voice_settings?.speed ?? 1.0);
     voiceStabilityDraft.value = String(updatedScene.voice_settings?.stability ?? "medium");
     voiceSaveState.value = "saved";
@@ -4845,11 +4865,16 @@ async function persistVoiceSettings(sceneId, nextSettings) {
 
   const currentScene = scenes.value.find((scene) => scene.id === sceneId);
   const currentVoice = currentScene?.voice_settings || {};
+  const isGemini = !OPENAI_VOICE_KEYS.includes(String(nextSettings.voice_id).toLowerCase());
   const mergedSettings = {
     ...currentVoice,
     voice_id: nextSettings.voice_id,
+    provider: isGemini ? "google" : "openai",
     speed: nextSettings.speed,
     stability: nextSettings.stability,
+    // Gemini delivery direction (empty for OpenAI voices); backend folds it
+    // into the prompt at synth time.
+    voice_prompt: nextSettings.voice_prompt ?? "",
     is_outdated: true,
   };
 
@@ -5804,13 +5829,15 @@ async function flushActiveSceneDrafts() {
       voice_id: voiceProfileKey.value,
       speed: Number(voiceSpeedDraft.value || 1),
       stability: voiceStabilityDraft.value,
+      voice_prompt: activeVoiceIsGemini.value ? voiceDirectionDraft.value.trim() : "",
     };
 
     if (
       voiceSaveTimer ||
-      String(savedVoice.voice_id || "alloy") !== nextVoice.voice_id ||
+      String(savedVoice.voice_id || "Kore") !== nextVoice.voice_id ||
       Number(savedVoice.speed ?? 1) !== nextVoice.speed ||
-      String(savedVoice.stability || "medium") !== nextVoice.stability
+      String(savedVoice.stability || "medium") !== nextVoice.stability ||
+      String(savedVoice.voice_prompt || "") !== nextVoice.voice_prompt
     ) {
       if (voiceSaveTimer) {
         window.clearTimeout(voiceSaveTimer);
@@ -7401,6 +7428,19 @@ onBeforeUnmount(() => {
                 <div class="control-row">
                   <span class="control-name">Voice</span>
                   <UiSelect v-model="voiceProfileKey" :options="voiceProfileOptions" />
+                </div>
+                <div v-if="activeVoiceIsGemini" class="voice-direction-block">
+                  <label class="voice-direction-label">Voice direction <span class="vd-opt">optional</span></label>
+                  <textarea
+                    v-model="voiceDirectionDraft"
+                    class="voice-direction-input"
+                    rows="2"
+                    placeholder="e.g. Warm and upbeat, like welcoming a friend"
+                  ></textarea>
+                  <div class="vd-hint">
+                    Add performance cues inline in the script too —
+                    <code>[laughs]</code>, <code>[whispering]</code>, <code>[excited]</code>, <code>[sighs]</code>.
+                  </div>
                 </div>
                 <div :class="activeVoiceOutdated ? 'voice-warning-row' : 'voice-warning-row state-hidden'">
                   <span class="voice-warning-copy">Script changed — voice outdated</span>
@@ -11288,6 +11328,48 @@ button {
 .control-name {
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.voice-direction-block {
+  margin-top: 10px;
+}
+.voice-direction-label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.vd-opt {
+  font-size: 11px;
+  color: var(--text-tertiary, #6b7280);
+}
+.voice-direction-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  color: var(--text-primary, #fff);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 8px 10px;
+}
+.voice-direction-input:focus {
+  outline: none;
+  border-color: rgba(255, 107, 53, 0.5);
+}
+.vd-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-tertiary, #6b7280);
+}
+.vd-hint code {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10.5px;
 }
 
 select.control-value {
