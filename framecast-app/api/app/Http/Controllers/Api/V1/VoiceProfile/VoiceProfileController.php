@@ -256,6 +256,69 @@ class VoiceProfileController extends Controller
         return response()->json(['data' => ['deleted' => true], 'meta' => []]);
     }
 
+    /**
+     * Return a playable preview URL for a voice. Generated lazily on first
+     * request and cached on the profile (stable storage path) — for the global
+     * Gemini voices that's effectively one-time-for-everyone, so no per-preview
+     * charge. Cloned voices preview the user's own uploaded sample (free).
+     */
+    public function preview(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate(['voice_profile_id' => ['required', 'integer']]);
+
+        $profile = VoiceProfile::query()
+            ->whereKey($validated['voice_profile_id'])
+            ->where(function ($q) use ($user): void {
+                $q->whereNull('workspace_id')->orWhere('workspace_id', $user->workspace_id);
+            })
+            ->first();
+        if (! $profile) {
+            return $this->error('not_found', 'Voice not found.', 404);
+        }
+
+        $storage = app(StorageService::class);
+        $resolve = fn (string $raw): string => $storage->extractPath($raw) !== null ? $storage->url($raw) : $raw;
+
+        // Cached (we store the stable storage path; resolve a fresh URL each time
+        // so presigned links don't go stale).
+        if ($profile->preview_url) {
+            return response()->json(['data' => ['preview_url' => $resolve($profile->preview_url)], 'meta' => []]);
+        }
+
+        // Cloned voice → preview the user's own sample (representative + free).
+        if ($profile->is_cloned && $profile->source_asset_id) {
+            $sample = Asset::query()->find($profile->source_asset_id);
+            if ($sample && $sample->storage_url) {
+                $profile->update(['preview_url' => $sample->storage_url]);
+                return response()->json(['data' => ['preview_url' => $resolve((string) $sample->storage_url)], 'meta' => []]);
+            }
+        }
+
+        // Built-in voice → synthesize a fixed sample once, cache globally.
+        try {
+            $audio = app(\App\Services\Generation\TTS\TTSAdapter::class)->synthesize(
+                "Hi — this is how I sound. Let's make something great together.",
+                'en',
+                (string) $profile->provider_voice_key,
+                1.0,
+                ['provider' => (string) $profile->provider],
+            );
+        } catch (\Throwable $e) {
+            return $this->error('preview_failed', 'Could not generate a preview for this voice.', 422);
+        }
+
+        $stable = (string) ($audio['audio_url'] ?? '');
+        if ($stable === '') {
+            return $this->error('preview_failed', 'Preview returned no audio.', 422);
+        }
+        $profile->update(['preview_url' => $stable]);
+
+        return response()->json(['data' => ['preview_url' => $resolve($stable)], 'meta' => []]);
+    }
+
     private function serialize(VoiceProfile $voice): array
     {
         return [

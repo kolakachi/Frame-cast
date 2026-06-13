@@ -21,6 +21,7 @@ class VoiceProfile extends Model
         'is_cloned',
         'source_asset_id',
         'provider_voice_key',
+        'preview_url',
         'status',
     ];
 

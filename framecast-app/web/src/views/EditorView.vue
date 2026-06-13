@@ -1612,6 +1612,93 @@ const activeVoiceIsGemini = computed(() => {
   if (p) return p.provider === "google";
   return !OPENAI_VOICE_KEYS.includes(String(voiceProfileKey.value).toLowerCase());
 });
+
+// ── Voice picker modal: descriptions, personas, preview ──────────────
+// What-to-expect blurbs for the built-in Gemini voices (keyed by name).
+// Voices without an entry fall back to their character word (gender_label).
+const VOICE_DESCRIPTIONS = {
+  Kore: "Firm, clear — a confident default narrator.",
+  Charon: "Informative and steady — great for explainers.",
+  Puck: "Upbeat and punchy — reads young and energetic.",
+  Zephyr: "Bright and lively.",
+  Leda: "Youthful and bright — reads like a young woman / teen.",
+  Fenrir: "Excitable, high-energy — good for hype.",
+  Aoede: "Breezy and easy — relaxed and friendly.",
+  Sulafat: "Warm and gentle — soothing.",
+  Gacrux: "Mature and warm — reads older.",
+  Algenib: "Gravelly and textured — reads as an older man.",
+  Vindemiatrix: "Gentle and soft — a kind, mature woman.",
+  Achernar: "Soft and calm.",
+  Orus: "Firm and grounded.",
+  Achird: "Friendly and approachable.",
+  Enceladus: "Breathy and intimate.",
+  Schedar: "Even and measured.",
+};
+// One-click personalities — set the best-matching Gemini voice + a delivery
+// direction (voice_prompt). Best-effort: shifts age/character feel, not pitch.
+const VOICE_PERSONAS = [
+  { key: "narrator",  emoji: "🧑", label: "Narrator",  voice: "Charon",       prompt: "",                                                                                  desc: "Clear, steady" },
+  { key: "teen_girl", emoji: "👧", label: "Teen girl", voice: "Leda",         prompt: "Speak like an upbeat teenage girl — youthful, bright, and energetic.",              desc: "Young, bright" },
+  { key: "teen_boy",  emoji: "👦", label: "Teen boy",  voice: "Puck",         prompt: "Speak like an energetic teenage boy — casual and upbeat.",                           desc: "Young, casual" },
+  { key: "child",     emoji: "🧒", label: "Child",     voice: "Leda",         prompt: "Speak like a cheerful young child — small, playful, and excited.",                    desc: "Small, playful" },
+  { key: "old_man",   emoji: "👴", label: "Old man",   voice: "Gacrux",       prompt: "Speak slowly like a wise elderly man — warm, measured, a little gravelly.",          desc: "Older, warm" },
+  { key: "old_woman", emoji: "👵", label: "Old woman", voice: "Vindemiatrix", prompt: "Speak gently like a kind elderly woman — soft, warm, and unhurried.",                desc: "Older, gentle" },
+  { key: "hype",      emoji: "📢", label: "Hype",      voice: "Fenrir",       prompt: "High-energy, hyped delivery like an excited announcer — fast and punchy.",           desc: "Loud, fast" },
+  { key: "calm",      emoji: "😌", label: "Calm",      voice: "Sulafat",      prompt: "Calm, soothing, and relaxed — gentle and reassuring.",                               desc: "Soft, soothing" },
+];
+
+const showVoiceModal = ref(false);
+const previewLoadingKey = ref("");
+const previewPlayingKey = ref("");
+let previewAudioEl = null;
+
+const clonedVoices = computed(() => (voiceProfiles.value || []).filter((v) => v.is_cloned));
+const geminiVoices = computed(() => (voiceProfiles.value || []).filter((v) => !v.is_cloned && v.provider === "google"));
+const otherVoices = computed(() => (voiceProfiles.value || []).filter((v) => !v.is_cloned && v.provider !== "google"));
+
+function voiceDescription(p) {
+  return VOICE_DESCRIPTIONS[p.provider_voice_key] || (p.gender_label ? `${p.gender_label} voice` : "Voice");
+}
+
+function openVoiceModal() { showVoiceModal.value = true; }
+function closeVoiceModal() {
+  stopPreview();
+  showVoiceModal.value = false;
+}
+function stopPreview() {
+  try { previewAudioEl?.pause(); } catch {}
+  previewPlayingKey.value = "";
+}
+async function previewVoice(p) {
+  if (previewPlayingKey.value === p.provider_voice_key) { stopPreview(); return; }
+  stopPreview();
+  previewLoadingKey.value = p.provider_voice_key;
+  try {
+    const res = await api.post("/voice-profiles/preview", { voice_profile_id: p.id });
+    const url = res.data?.data?.preview_url;
+    if (!url) throw new Error("no preview url");
+    if (!previewAudioEl) previewAudioEl = new Audio();
+    previewAudioEl.src = url;
+    previewAudioEl.onended = () => { previewPlayingKey.value = ""; };
+    await previewAudioEl.play();
+    previewPlayingKey.value = p.provider_voice_key;
+  } catch (e) {
+    /* preview is best-effort; ignore */
+  } finally {
+    previewLoadingKey.value = "";
+  }
+}
+function selectVoice(p) {
+  voiceProfileKey.value = p.provider_voice_key;
+  if (p.provider !== "google") voiceDirectionDraft.value = ""; // direction is Gemini-only
+  closeVoiceModal();
+}
+function applyPersona(persona) {
+  voiceProfileKey.value = persona.voice;
+  voiceDirectionDraft.value = persona.prompt;
+  closeVoiceModal();
+}
+onBeforeUnmount(() => stopPreview());
 const ADD_SCENE_STOCK_OPTIONS = [
   { value: "stock_clip", label: "Clip" },
   { value: "background_loop", label: "BG Loop" },
@@ -7442,7 +7529,10 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="control-row">
                   <span class="control-name">Voice</span>
-                  <UiSelect v-model="voiceProfileKey" :options="voiceProfileOptions" />
+                  <button type="button" class="voice-select-btn" @click="openVoiceModal">
+                    <span class="vsb-name">{{ activeVoiceName }}</span>
+                    <span class="vsb-change">Change ▾</span>
+                  </button>
                 </div>
                 <div v-if="activeVoiceIsGemini" class="voice-direction-block">
                   <label class="voice-direction-label">Voice direction <span class="vd-opt">optional</span></label>
@@ -8619,6 +8709,93 @@ onBeforeUnmount(() => {
                 {{ animateSubmitting ? 'Starting…' : '⚡ Animate' }}
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Voice picker modal -->
+    <Teleport to="body">
+      <div v-if="showVoiceModal" class="vp-backdrop" @click.self="closeVoiceModal">
+        <div class="vp-modal">
+          <div class="vp-head">
+            <div class="vp-title">Select a voice</div>
+            <button class="vp-close" type="button" @click="closeVoiceModal">×</button>
+          </div>
+
+          <div class="vp-scroll">
+            <!-- Personas (Gemini delivery presets) -->
+            <div class="vp-section-label">Personalities</div>
+            <div class="vp-persona-grid">
+              <button v-for="persona in VOICE_PERSONAS" :key="persona.key" type="button" class="vp-persona" @click="applyPersona(persona)">
+                <span class="vp-persona-emoji">{{ persona.emoji }}</span>
+                <span class="vp-persona-label">{{ persona.label }}</span>
+                <span class="vp-persona-desc">{{ persona.desc }}</span>
+              </button>
+            </div>
+
+            <!-- Your cloned voices -->
+            <template v-if="clonedVoices.length">
+              <div class="vp-section-label">Your voices</div>
+              <div
+                v-for="v in clonedVoices"
+                :key="v.id"
+                :class="['vp-voice', voiceProfileKey === v.provider_voice_key ? 'active' : '']"
+              >
+                <button class="vp-preview" type="button" :title="previewPlayingKey === v.provider_voice_key ? 'Stop' : 'Preview'" @click="previewVoice(v)">
+                  <span v-if="previewLoadingKey === v.provider_voice_key">…</span>
+                  <span v-else>{{ previewPlayingKey === v.provider_voice_key ? '⏸' : '▶' }}</span>
+                </button>
+                <div class="vp-voice-info" @click="selectVoice(v)">
+                  <div class="vp-voice-name">{{ v.name }} <span class="vp-cloned-tag">Cloned</span></div>
+                  <div class="vp-voice-desc">Your cloned voice</div>
+                </div>
+                <button class="vp-pick" type="button" @click="selectVoice(v)">{{ voiceProfileKey === v.provider_voice_key ? '✓' : 'Use' }}</button>
+              </div>
+            </template>
+
+            <!-- Expressive (Gemini) -->
+            <div class="vp-section-label">Expressive voices</div>
+            <div
+              v-for="v in geminiVoices"
+              :key="v.id"
+              :class="['vp-voice', voiceProfileKey === v.provider_voice_key ? 'active' : '']"
+            >
+              <button class="vp-preview" type="button" :title="previewPlayingKey === v.provider_voice_key ? 'Stop' : 'Preview'" @click="previewVoice(v)">
+                <span v-if="previewLoadingKey === v.provider_voice_key">…</span>
+                <span v-else>{{ previewPlayingKey === v.provider_voice_key ? '⏸' : '▶' }}</span>
+              </button>
+              <div class="vp-voice-info" @click="selectVoice(v)">
+                <div class="vp-voice-name">{{ v.name }}</div>
+                <div class="vp-voice-desc">{{ voiceDescription(v) }}</div>
+              </div>
+              <button class="vp-pick" type="button" @click="selectVoice(v)">{{ voiceProfileKey === v.provider_voice_key ? '✓' : 'Use' }}</button>
+            </div>
+
+            <!-- Standard (OpenAI), only if present in the catalog -->
+            <template v-if="otherVoices.length">
+              <div class="vp-section-label">Standard voices</div>
+              <div
+                v-for="v in otherVoices"
+                :key="v.id"
+                :class="['vp-voice', voiceProfileKey === v.provider_voice_key ? 'active' : '']"
+              >
+                <button class="vp-preview" type="button" @click="previewVoice(v)">
+                  <span v-if="previewLoadingKey === v.provider_voice_key">…</span>
+                  <span v-else>{{ previewPlayingKey === v.provider_voice_key ? '⏸' : '▶' }}</span>
+                </button>
+                <div class="vp-voice-info" @click="selectVoice(v)">
+                  <div class="vp-voice-name">{{ v.name }}</div>
+                  <div class="vp-voice-desc">{{ voiceDescription(v) }}</div>
+                </div>
+                <button class="vp-pick" type="button" @click="selectVoice(v)">{{ voiceProfileKey === v.provider_voice_key ? '✓' : 'Use' }}</button>
+              </div>
+            </template>
+          </div>
+
+          <div class="vp-foot">
+            <span class="vp-foot-hint">Personalities are best-effort delivery on Gemini's fixed voices. Cloned voices come from the Voices page.</span>
+            <button class="btn btn-ghost btn-sm" type="button" @click="closeVoiceModal">Done</button>
           </div>
         </div>
       </div>
@@ -11386,6 +11563,47 @@ button {
   padding: 1px 5px;
   font-size: 10.5px;
 }
+
+/* Voice select button (replaces the old dropdown) */
+.voice-select-btn {
+  display: flex; align-items: center; gap: 8px; justify-content: space-between;
+  min-width: 150px; padding: 7px 11px; border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(255,255,255,0.14));
+  background: var(--bg-card, #14141c); color: var(--text-primary, #fff);
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.voice-select-btn:hover { border-color: rgba(255,107,53,0.5); }
+.vsb-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vsb-change { font-size: 11px; color: var(--text-secondary, #9a9aab); flex-shrink: 0; }
+
+/* Voice picker modal */
+.vp-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.62); display: flex; align-items: center; justify-content: center; z-index: 1100; padding: 20px; }
+.vp-modal { width: 100%; max-width: 520px; max-height: 82vh; display: flex; flex-direction: column; background: #14141c; border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; overflow: hidden; }
+.vp-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.vp-title { font-size: 16px; font-weight: 700; color: #fff; }
+.vp-close { background: transparent; border: none; color: #8a8a9a; font-size: 22px; line-height: 1; cursor: pointer; }
+.vp-scroll { overflow-y: auto; padding: 14px 18px; }
+.vp-section-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #7a7a8a; margin: 14px 0 8px; }
+.vp-section-label:first-child { margin-top: 0; }
+.vp-persona-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.vp-persona { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; color: #e8e8ee; font: inherit; }
+.vp-persona:hover { border-color: rgba(255,107,53,0.5); background: rgba(255,107,53,0.06); }
+.vp-persona-emoji { font-size: 20px; }
+.vp-persona-label { font-size: 12px; font-weight: 600; }
+.vp-persona-desc { font-size: 10px; color: #8a8a9a; text-align: center; }
+.vp-voice { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; border: 1px solid transparent; }
+.vp-voice:hover { background: rgba(255,255,255,0.04); }
+.vp-voice.active { border-color: rgba(255,107,53,0.45); background: rgba(255,107,53,0.07); }
+.vp-preview { width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); color: #e8e8ee; cursor: pointer; font-size: 12px; }
+.vp-preview:hover { border-color: rgba(255,107,53,0.5); color: #ff8055; }
+.vp-voice-info { flex: 1; min-width: 0; cursor: pointer; }
+.vp-voice-name { font-size: 13.5px; font-weight: 600; color: #fff; }
+.vp-cloned-tag { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; background: rgba(255,107,53,0.18); color: #ff8055; border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
+.vp-voice-desc { font-size: 11.5px; color: #8a8a9a; margin-top: 1px; }
+.vp-pick { flex-shrink: 0; padding: 5px 12px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); color: #e8e8ee; font: inherit; font-size: 12px; cursor: pointer; }
+.vp-pick:hover { background: rgba(255,107,53,0.15); border-color: rgba(255,107,53,0.5); }
+.vp-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid rgba(255,255,255,0.08); }
+.vp-foot-hint { font-size: 10.5px; color: #6b6b7a; line-height: 1.4; }
 
 select.control-value {
   appearance: none;
