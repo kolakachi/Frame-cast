@@ -7,6 +7,7 @@ use App\Services\Generation\AI\OpenAIGenerationAdapter;
 use App\Services\Generation\Image\DalleImageAdapter;
 use App\Services\Generation\Image\ImageGenerationAdapter;
 use App\Services\Generation\TTS\OpenAITTSAdapter;
+use App\Services\Generation\TTS\RoutingTTSAdapter;
 use App\Services\Generation\TTS\TTSAdapter;
 use App\Services\Generation\Translation\OpenAITranslationAdapter;
 use App\Services\Generation\Translation\TranslationAdapter;
@@ -24,7 +25,8 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(AIGenerationAdapter::class, OpenAIGenerationAdapter::class);
         $this->app->bind(VisualProviderAdapter::class, PexelsVisualProviderAdapter::class);
-        $this->app->bind(TTSAdapter::class, OpenAITTSAdapter::class);
+        // Routes per request: Gemini 3.1 Flash (default, expressive) vs OpenAI tts-1.
+        $this->app->bind(TTSAdapter::class, RoutingTTSAdapter::class);
         $this->app->bind(TranslationAdapter::class, OpenAITranslationAdapter::class);
         // Default image generation provider — swap to ReplicateImageAdapter for cost tier
         $this->app->bind(ImageGenerationAdapter::class, DalleImageAdapter::class);

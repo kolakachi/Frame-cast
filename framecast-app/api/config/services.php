@@ -121,6 +121,15 @@ return [
         'resolution' => env('FABRIC_RESOLUTION', '480p'), // 480p | 720p
     ],
 
+    // Gemini 3.1 Flash TTS (rich, expressive voices with a free-text voice
+    // direction + inline [tags]) — the default voice engine. Runs on
+    // Replicate, reuses the existing replicate.api_token (no new key).
+    'gemini_tts' => [
+        'model'         => env('REPLICATE_GEMINI_TTS_MODEL', 'google/gemini-3.1-flash-tts'),
+        'version'       => env('REPLICATE_GEMINI_TTS_VERSION', ''),
+        'default_voice' => env('GEMINI_TTS_DEFAULT_VOICE', 'Kore'),
+    ],
+
     'pixabay' => [
         'api_key' => env('PIXABAY_API_KEY'),
     ],

@@ -16,7 +16,12 @@ class CreditService
     public const SCRIPT     = 0;   // included
     public const BREAKDOWN  = 0;   // included
     public const STOCK      = 0;   // included — per scene (stock video/image/audiogram)
-    public const TTS        = 1;   // per scene (~$0.001 COGS, 1cr floor)
+    public const TTS        = 1;   // per scene, OpenAI tts-1 (~$0.001 COGS, 1cr floor)
+    // Gemini 3.1 Flash TTS — the default expressive engine. Token-priced
+    // upstream ($2/1M input, $0.04/1K output); a typical short-form scene
+    // (~8-12s) lands near ~$0.012 COGS → 3cr (~75% margin, 1cr=$0.01 retail).
+    // Actual per-call COGS is recorded via ApiUsageService for recalibration.
+    public const TTS_GEMINI = 3;   // per scene, Gemini 3.1 Flash TTS (~$0.012 COGS)
     public const AI_MEDIUM    = 16;  // per scene, gpt-image-1 medium (~$0.063 COGS)
     public const AI_HIGH      = 63;  // per scene, gpt-image-1 high (~$0.25 COGS)
     public const AI_CHARACTER = 50;  // per scene, OpenAI gpt-image-2 /edits (~$0.20 COGS, character + reference image)
@@ -46,6 +51,7 @@ class CreditService
         'ai_image:sdxl-lightning' => 0.003,
         'ai_image:character'      => 0.20,
         'tts'                     => 0.001,
+        'tts:gemini'              => 0.012,
         'music'                   => 0.01,
         'video:quick'             => 0.30,
         'video:seedance_lite'     => 0.50,

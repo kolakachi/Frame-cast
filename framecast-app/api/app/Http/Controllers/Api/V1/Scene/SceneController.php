@@ -112,7 +112,8 @@ class SceneController extends Controller
                 'duration_seconds' => $validated['duration_seconds'] ?? 3.0,
                 'voice_profile_id' => null,
                 'voice_settings_json' => [
-                    'voice_id' => 'alloy',
+                    'voice_id' => \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE,
+                    'provider' => 'google',
                     'speed' => 1.0,
                     'stability' => 'medium',
                     'language' => (string) ($project->primary_language ?: 'en'),

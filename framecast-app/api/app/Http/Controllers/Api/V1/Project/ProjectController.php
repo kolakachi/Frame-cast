@@ -1184,7 +1184,8 @@ class ProjectController extends Controller
                 'script_text'       => $sceneDef['script'],
                 'duration_seconds'  => 8,
                 'voice_settings_json' => [
-                    'voice_id'  => 'alloy',
+                    'voice_id'  => \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE,
+                    'provider'  => 'google',
                     'speed'     => 1.0,
                     'stability' => 'medium',
                 ],

@@ -105,12 +105,19 @@ class GenerateTTSJob implements ShouldQueue
                 continue;
             }
 
-            $voiceId = (string) data_get($scene->voice_settings_json, 'voice_id', 'alloy');
+            // Gemini 3.1 Flash is the default engine — fall back to its default
+            // voice when a scene has none set.
+            $voiceId = (string) data_get($scene->voice_settings_json, 'voice_id', \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE);
             $speed = (float) data_get($scene->voice_settings_json, 'speed', 1.0);
             $language = $project->primary_language ?: 'en';
             $sceneText = (string) ($scene->script_text ?: '');
 
             $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
+                // Engine routing + voice direction (Gemini). The router falls
+                // back to inferring the engine from the voice id when provider
+                // is absent; voice_prompt is the free-text delivery direction.
+                'provider'     => data_get($scene->voice_settings_json, 'provider'),
+                'voice_prompt' => (string) data_get($scene->voice_settings_json, 'voice_prompt', ''),
                 'usage_context' => [
                     'workspace_id' => $project->workspace_id,
                     'project_id' => $project->getKey(),
@@ -118,6 +125,13 @@ class GenerateTTSJob implements ShouldQueue
                     'scene_id' => $scene->getKey(),
                 ],
             ]);
+
+            // Credit cost + COGS follow the engine that actually ran (the
+            // adapter reports it via provider_key: replicate:* = Gemini).
+            $ranGemini = str_starts_with((string) ($audio['provider_key'] ?? ''), 'replicate:');
+            $ttsCost   = $ranGemini ? CreditService::TTS_GEMINI : CreditService::TTS;
+            $ttsOp     = $ranGemini ? 'tts:gemini' : 'tts';
+            $ttsCogs   = CreditService::cogsUsd($ranGemini ? 'tts:gemini' : 'tts');
 
             $asset = null;
 
@@ -143,6 +157,7 @@ class GenerateTTSJob implements ShouldQueue
 
                 $voiceSettings = $scene->voice_settings_json ?? [];
                 $voiceSettings['provider_key'] = $audio['provider_key'];
+                $voiceSettings['provider'] = $ranGemini ? 'google' : 'openai';
                 $voiceSettings['voice_id'] = $audio['provider_voice_id'];
                 $voiceSettings['speed'] = $speed;
                 $voiceSettings['language'] = $language;
@@ -181,14 +196,14 @@ class GenerateTTSJob implements ShouldQueue
 
             rescue(fn () => app(CreditService::class)->deduct(
                 (int) $project->workspace_id,
-                CreditService::TTS,
-                'tts',
+                $ttsCost,
+                $ttsOp,
                 [
                     'project_id' => $project->getKey(),
                     'scene_id'   => $scene->getKey(),
                     'user_id'    => $project->created_by_user_id,
-                    'upstream_cost_usd' => CreditService::cogsUsd('tts'),
-                    'metadata'   => ['voice_id' => $voiceId, 'language' => $language],
+                    'upstream_cost_usd' => $ttsCogs,
+                    'metadata'   => ['voice_id' => $voiceId, 'language' => $language, 'engine' => $ranGemini ? 'gemini' : 'openai'],
                 ],
             ));
             $done++;
