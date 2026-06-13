@@ -1698,6 +1698,10 @@ function applyPersona(persona) {
   voiceDirectionDraft.value = persona.prompt;
   closeVoiceModal();
 }
+function goToVoices() {
+  stopPreview();
+  router.push({ name: "voices" });
+}
 onBeforeUnmount(() => stopPreview());
 const ADD_SCENE_STOCK_OPTIONS = [
   { value: "stock_clip", label: "Clip" },
@@ -8734,25 +8738,26 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
-            <!-- Your cloned voices -->
-            <template v-if="clonedVoices.length">
-              <div class="vp-section-label">Your voices</div>
-              <div
-                v-for="v in clonedVoices"
-                :key="v.id"
-                :class="['vp-voice', voiceProfileKey === v.provider_voice_key ? 'active' : '']"
-              >
-                <button class="vp-preview" type="button" :title="previewPlayingKey === v.provider_voice_key ? 'Stop' : 'Preview'" @click="previewVoice(v)">
-                  <span v-if="previewLoadingKey === v.provider_voice_key">…</span>
-                  <span v-else>{{ previewPlayingKey === v.provider_voice_key ? '⏸' : '▶' }}</span>
-                </button>
-                <div class="vp-voice-info" @click="selectVoice(v)">
-                  <div class="vp-voice-name">{{ v.name }} <span class="vp-cloned-tag">Cloned</span></div>
-                  <div class="vp-voice-desc">Your cloned voice</div>
-                </div>
-                <button class="vp-pick" type="button" @click="selectVoice(v)">{{ voiceProfileKey === v.provider_voice_key ? '✓' : 'Use' }}</button>
+            <!-- Your cloned voices (always shown so the path is discoverable) -->
+            <div class="vp-section-label">Your voices</div>
+            <div
+              v-for="v in clonedVoices"
+              :key="v.id"
+              :class="['vp-voice', voiceProfileKey === v.provider_voice_key ? 'active' : '']"
+            >
+              <button class="vp-preview" type="button" :title="previewPlayingKey === v.provider_voice_key ? 'Stop' : 'Preview'" @click="previewVoice(v)">
+                <span v-if="previewLoadingKey === v.provider_voice_key">…</span>
+                <span v-else>{{ previewPlayingKey === v.provider_voice_key ? '⏸' : '▶' }}</span>
+              </button>
+              <div class="vp-voice-info" @click="selectVoice(v)">
+                <div class="vp-voice-name">{{ v.name }} <span class="vp-cloned-tag">Cloned</span></div>
+                <div class="vp-voice-desc">Your cloned voice</div>
               </div>
-            </template>
+              <button class="vp-pick" type="button" @click="selectVoice(v)">{{ voiceProfileKey === v.provider_voice_key ? '✓' : 'Use' }}</button>
+            </div>
+            <button v-if="!clonedVoices.length" type="button" class="vp-clone-cta" @click="goToVoices">
+              ＋ Clone your own voice — record or upload a sample on the Voices page
+            </button>
 
             <!-- Expressive (Gemini) -->
             <div class="vp-section-label">Expressive voices</div>
@@ -11602,6 +11607,8 @@ button {
 .vp-voice-desc { font-size: 11.5px; color: #8a8a9a; margin-top: 1px; }
 .vp-pick { flex-shrink: 0; padding: 5px 12px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); color: #e8e8ee; font: inherit; font-size: 12px; cursor: pointer; }
 .vp-pick:hover { background: rgba(255,107,53,0.15); border-color: rgba(255,107,53,0.5); }
+.vp-clone-cta { display: block; width: 100%; text-align: left; padding: 11px 12px; border-radius: 10px; border: 1px dashed rgba(255,107,53,0.4); background: rgba(255,107,53,0.05); color: #ff8055; font: inherit; font-size: 12.5px; cursor: pointer; }
+.vp-clone-cta:hover { background: rgba(255,107,53,0.1); border-color: rgba(255,107,53,0.6); }
 .vp-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid rgba(255,255,255,0.08); }
 .vp-foot-hint { font-size: 10.5px; color: #6b6b7a; line-height: 1.4; }
 
