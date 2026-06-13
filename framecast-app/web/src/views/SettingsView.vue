@@ -923,6 +923,15 @@ onMounted(() => {
             <div v-if="billingError" class="banner error" style="margin-bottom:12px;">{{ billingError }}</div>
 
             <div v-if="usage">
+              <div v-if="(usage.credits_balance ?? 0) <= 0" class="credits-out-note">
+                You're out of credits — top up below. The bars below are your monthly plan caps, not spendable credits; generating anything draws down credits.
+              </div>
+              <div class="usage-bar-container credits-balance-row">
+                <div class="usage-label-row">
+                  <span class="usage-label">Credits balance</span>
+                  <span class="usage-count credits-balance-num" :class="{ zero: (usage.credits_balance ?? 0) <= 0 }">{{ (usage.credits_balance ?? 0).toLocaleString() }}</span>
+                </div>
+              </div>
               <div v-for="row in usageProgress" :key="row.label" class="usage-bar-container">
                 <div class="usage-label-row">
                   <span class="usage-label">{{ row.label }}</span>
@@ -1413,6 +1422,14 @@ onMounted(() => {
 
 /* ── Usage bars ── */
 .usage-bar-container { margin-bottom: 14px; }
+.credits-balance-row { padding-bottom: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--color-border); }
+.credits-balance-num { font-size: 15px; font-weight: 700; color: var(--color-accent); }
+.credits-balance-num.zero { color: #f87171; }
+.credits-out-note {
+  margin-bottom: 14px; padding: 10px 12px; border-radius: 8px;
+  background: rgba(248, 113, 113, 0.08); border: 1px solid rgba(248, 113, 113, 0.3);
+  color: var(--color-text-primary); font-size: 12px; line-height: 1.45;
+}
 .usage-label-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
 .usage-label { color: #a1a1b5; }
 .usage-count { font-family: "Space Mono", monospace; font-size: 11px; }

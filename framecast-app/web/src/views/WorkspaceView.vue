@@ -139,7 +139,22 @@ onMounted(async () => {
         <template v-else-if="usage">
           <section class="section">
             <h2 class="section-title">Usage</h2>
+            <div v-if="(usage.credits_balance ?? 0) <= 0" class="credits-banner">
+              <span>You're out of credits. The monthly figures below are plan caps — generating anything still spends credits.</span>
+              <RouterLink class="credits-banner-cta" :to="{ name: 'settings' }">Top up →</RouterLink>
+            </div>
             <div class="usage-grid">
+              <div class="usage-card credits-card" :class="{ 'usage-over': (usage.credits_balance ?? 0) <= 0 }">
+                <div class="usage-label">
+                  <span>Credits</span>
+                  <span class="usage-count">{{ (usage.credits_balance ?? 0).toLocaleString() }}</span>
+                </div>
+                <div :class="['usage-sub', (usage.credits_balance ?? 0) <= 0 ? 'sub-over' : '']">
+                  <template v-if="(usage.credits_balance ?? 0) <= 0">Top up to keep generating</template>
+                  <template v-else>Spent on every generation — the real limit</template>
+                </div>
+              </div>
+
               <div class="usage-card" :class="{ 'usage-over': usage.renders_used > usage.render_limit }">
                 <div class="usage-label">
                   <span>Exports</span>
@@ -321,6 +336,22 @@ onMounted(async () => {
 .usage-sub { font-size: 11px; color: var(--color-text-muted); }
 .sub-over { color: #f87171; font-weight: 600; }
 .usage-over { border-color: rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.04); }
+
+/* Credits is the binding constraint — give it a subtle accent so it reads as
+   primary among the plan-limit cards. */
+.credits-card { border-color: var(--color-accent, #ff6b35); background: rgba(255, 107, 53, 0.05); }
+.credits-card .usage-count { color: var(--color-text-primary); }
+.credits-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 10px 14px; border-radius: 10px;
+  background: rgba(248, 113, 113, 0.08); border: 1px solid rgba(248, 113, 113, 0.3);
+  color: var(--color-text-primary); font-size: 13px; line-height: 1.4;
+}
+.credits-banner-cta {
+  flex-shrink: 0; font-weight: 600; color: var(--color-accent, #ff6b35); text-decoration: none;
+  white-space: nowrap;
+}
+.credits-banner-cta:hover { text-decoration: underline; }
 
 .stats-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .stat-card {

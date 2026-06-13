@@ -39,11 +39,13 @@ return [
         ],
 
         // Top-up PLAN identifier => credit grant (one-time checkout.completed).
+        // These live under the separate Kelviq product "wyvstudio-top-up", whose
+        // plan identifiers carry the "new-" prefix.
         'topup_plans' => [
-            env('KELVIQ_PLAN_TOPUP_SMALL',  'wyvstudio-topup-500')  => 500,
-            env('KELVIQ_PLAN_TOPUP_MEDIUM', 'wyvstudio-topup-1200') => 1200,
-            env('KELVIQ_PLAN_TOPUP_LARGE',  'wyvstudio-topup-2500') => 2500,
-            env('KELVIQ_PLAN_TOPUP_XL',     'wyvstudio-topup-5000') => 5000,
+            env('KELVIQ_PLAN_TOPUP_SMALL',  'wyvstudio-new-topup-500')  => 500,
+            env('KELVIQ_PLAN_TOPUP_MEDIUM', 'wyvstudio-new-topup-1200') => 1200,
+            env('KELVIQ_PLAN_TOPUP_LARGE',  'wyvstudio-new-topup-2500') => 2500,
+            env('KELVIQ_PLAN_TOPUP_XL',     'wyvstudio-new-topup-5000') => 5000,
         ],
 
         // Top-up pack display metadata for the Settings grid (key drives the

@@ -180,9 +180,18 @@ class WorkspaceUsageService
             ->distinct('primary_language')
             ->count('primary_language');
 
+        $workspace = Workspace::find($workspaceId);
+
         return [
             'plan' => $plan['name'],
             'plan_tier' => $planTier,
+            // Credits are the binding constraint on every generation — surfaced
+            // here so the billing/usage UI can show an out-of-credits state.
+            // Plan limits (renders/voice/dub) are secondary caps; a workspace
+            // with limit headroom but zero credits still can't generate.
+            'credits_balance' => $workspace ? (int) $workspace->creditsBalance() : 0,
+            'credits_monthly' => $workspace ? (int) $workspace->credits_monthly : 0,
+            'credits_topup'   => $workspace ? (int) $workspace->credits_topup : 0,
             'renders_used' => ExportJob::query()
                 ->whereHas('project', fn ($query) => $query->where('workspace_id', $workspaceId))
                 ->where('status', 'completed')
