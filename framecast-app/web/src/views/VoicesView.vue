@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../services/api";
@@ -23,6 +23,79 @@ const cloneState = ref("idle"); // idle | uploading | creating | error
 const cloneError = ref("");
 
 const clonedCount = computed(() => voices.value.length);
+const busy = computed(() => cloneState.value === "uploading" || cloneState.value === "creating");
+
+// ── In-browser recording (MediaRecorder) ──────────────────────────
+const recording = ref(false);
+const recordSeconds = ref(0);
+let mediaRecorder = null;
+let recordChunks = [];
+let recordTimer = null;
+let recordStream = null;
+const MAX_RECORD_SECONDS = 60;
+
+async function toggleRecord() {
+  if (recording.value) {
+    stopRecord();
+    return;
+  }
+  try {
+    recordStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordChunks = [];
+    mediaRecorder = new MediaRecorder(recordStream);
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size) recordChunks.push(e.data);
+    };
+    mediaRecorder.onstop = () => {
+      const type = mediaRecorder?.mimeType || "audio/webm";
+      const blob = new Blob(recordChunks, { type });
+      const ext = type.includes("ogg") ? "ogg" : "webm";
+      // A recording is just another sample — backend transcodes to WAV.
+      cloneFile.value = new File([blob], `recording.${ext}`, { type });
+      cloneFileName.value = `Recording (${recordSeconds.value}s)`;
+      releaseStream();
+    };
+    mediaRecorder.start();
+    recording.value = true;
+    recordSeconds.value = 0;
+    cloneError.value = "";
+    recordTimer = window.setInterval(() => {
+      recordSeconds.value += 1;
+      if (recordSeconds.value >= MAX_RECORD_SECONDS) stopRecord();
+    }, 1000);
+  } catch (e) {
+    cloneError.value = "Microphone access was denied or is unavailable.";
+  }
+}
+
+function stopRecord() {
+  if (recordTimer) {
+    window.clearInterval(recordTimer);
+    recordTimer = null;
+  }
+  recording.value = false;
+  try {
+    mediaRecorder?.stop();
+  } catch {}
+}
+
+function releaseStream() {
+  try {
+    recordStream?.getTracks().forEach((t) => t.stop());
+  } catch {}
+  recordStream = null;
+}
+
+function closeClone() {
+  stopRecord();
+  releaseStream();
+  showClone.value = false;
+}
+
+onBeforeUnmount(() => {
+  stopRecord();
+  releaseStream();
+});
 
 async function loadVoices() {
   loading.value = true;
@@ -39,11 +112,14 @@ async function loadVoices() {
 }
 
 function openClone() {
+  stopRecord();
+  releaseStream();
   cloneName.value = "";
   cloneFile.value = null;
   cloneFileName.value = "";
   cloneState.value = "idle";
   cloneError.value = "";
+  recordSeconds.value = 0;
   showClone.value = true;
 }
 
@@ -84,7 +160,7 @@ async function submitClone() {
       source_asset_id: assetId,
     });
 
-    showClone.value = false;
+    closeClone();
     await loadVoices();
   } catch (e) {
     cloneState.value = "error";
@@ -181,36 +257,49 @@ onMounted(async () => {
 
     <!-- Clone modal -->
     <Teleport to="body">
-      <div v-if="showClone" class="v-backdrop" @click.self="showClone = false">
+      <div v-if="showClone" class="v-backdrop" @click.self="closeClone">
         <div class="v-modal">
           <div class="v-head">
             <div class="v-title">✦ Clone a voice</div>
-            <button class="v-close" @click="showClone = false">×</button>
+            <button class="v-close" @click="closeClone">×</button>
           </div>
 
           <div class="v-field">
             <label class="v-label">Voice name</label>
-            <input v-model="cloneName" class="v-input" placeholder="e.g. My narrator" :disabled="cloneState === 'uploading' || cloneState === 'creating'" />
+            <input v-model="cloneName" class="v-input" placeholder="e.g. My narrator" :disabled="busy" />
           </div>
 
           <div class="v-field">
             <label class="v-label">Voice sample</label>
-            <label class="v-drop">
-              <input type="file" accept="audio/*" hidden @change="onCloneFile" :disabled="cloneState === 'uploading' || cloneState === 'creating'" />
-              <span v-if="cloneFileName" class="v-drop-name">{{ cloneFileName }}</span>
-              <span v-else class="v-drop-copy">Drop or click to upload audio</span>
-            </label>
-            <div class="v-hint">A clean, single-speaker clip of ~10–20s works best — no music or background noise.</div>
+            <div class="v-sample-actions">
+              <label class="v-sample-btn" :class="{ disabled: busy || recording }">
+                <input type="file" accept="audio/*" hidden @change="onCloneFile" :disabled="busy || recording" />
+                ⬆ Upload file
+              </label>
+              <button
+                type="button"
+                class="v-sample-btn"
+                :class="{ rec: recording, disabled: busy }"
+                :disabled="busy"
+                @click="toggleRecord"
+              >
+                <span v-if="recording">⏹ Stop · {{ recordSeconds }}s</span>
+                <span v-else>● Record</span>
+              </button>
+            </div>
+            <div v-if="recording" class="v-rec-live">Recording… speak naturally for ~10–20s.</div>
+            <div v-else-if="cloneFileName" class="v-sample-current">✓ {{ cloneFileName }}</div>
+            <div class="v-hint">A clean, single-speaker clip of ~10–20s works best — no music or background noise. mp3, wav, m4a or a recording all work.</div>
           </div>
 
           <div v-if="cloneError" class="banner error" style="margin-top:10px">{{ cloneError }}</div>
 
           <div class="v-foot">
-            <button class="btn btn-ghost btn-sm" type="button" @click="showClone = false">Cancel</button>
+            <button class="btn btn-ghost btn-sm" type="button" @click="closeClone">Cancel</button>
             <button
               class="btn btn-primary btn-sm"
               type="button"
-              :disabled="cloneState === 'uploading' || cloneState === 'creating'"
+              :disabled="busy || recording"
               @click="submitClone"
             >
               {{ cloneState === 'uploading' ? 'Uploading…' : cloneState === 'creating' ? 'Cloning…' : 'Create voice' }}
@@ -238,7 +327,9 @@ onMounted(async () => {
 
 <style scoped>
 .voices-shell { display: flex; min-height: 100vh; background: #0a0a0f; color: #e8e8ee; }
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+/* The sidebar is position:fixed (220px); offset main like the other views so
+   left-aligned content isn't clipped under it. */
+.main { margin-left: var(--sidebar-width, 220px); flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); }
 .topbar-left { font-size: 13px; color: #8a8a9a; }
 .bc-sep { margin: 0 8px; opacity: 0.5; }
@@ -288,10 +379,13 @@ onMounted(async () => {
 .v-label { display: block; font-size: 12px; color: #9a9aab; margin-bottom: 6px; }
 .v-input { width: 100%; box-sizing: border-box; background: #0e0e15; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #e8e8ee; font: inherit; font-size: 13px; padding: 9px 11px; }
 .v-input:focus { outline: none; border-color: rgba(255,107,53,0.5); }
-.v-drop { display: flex; align-items: center; justify-content: center; min-height: 64px; border: 1px dashed rgba(255,255,255,0.16); border-radius: 10px; cursor: pointer; text-align: center; padding: 10px; }
-.v-drop:hover { border-color: rgba(255,107,53,0.4); }
-.v-drop-copy { color: #8a8a9a; font-size: 13px; }
-.v-drop-name { color: #e8e8ee; font-size: 13px; word-break: break-all; }
+.v-sample-actions { display: flex; gap: 10px; }
+.v-sample-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 46px; border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; background: rgba(255,255,255,0.04); color: #e8e8ee; font: inherit; font-size: 13px; cursor: pointer; }
+.v-sample-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,107,53,0.4); }
+.v-sample-btn.rec { background: rgba(248,113,113,0.14); border-color: rgba(248,113,113,0.5); color: #fca5a5; }
+.v-sample-btn.disabled { opacity: 0.5; cursor: not-allowed; }
+.v-sample-current { margin-top: 8px; font-size: 12.5px; color: #5ed39a; word-break: break-all; }
+.v-rec-live { margin-top: 8px; font-size: 12.5px; color: #fca5a5; }
 .v-hint { font-size: 11px; color: #7a7a8a; margin-top: 6px; line-height: 1.4; }
 .v-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .v-confirm-body { font-size: 13px; color: #9a9aab; line-height: 1.5; margin: 10px 0 4px; }
