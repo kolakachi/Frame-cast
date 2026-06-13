@@ -21,6 +21,7 @@ class RoutingTTSAdapter implements TTSAdapter
     public function __construct(
         private readonly GeminiTTSAdapter $gemini,
         private readonly OpenAITTSAdapter $openai,
+        private readonly ChatterboxTTSAdapter $chatterbox,
     ) {
     }
 
@@ -35,6 +36,10 @@ class RoutingTTSAdapter implements TTSAdapter
         $provider = strtolower(trim((string) ($options['provider'] ?? '')));
         if ($provider === 'openai') {
             return $this->openai;
+        }
+        // Cloned voices carry a replicate:chatterbox provider (or a clone_audio_url).
+        if (str_contains($provider, 'chatterbox') || $provider === 'clone' || ! empty($options['clone_audio_url'])) {
+            return $this->chatterbox;
         }
         if ($provider === 'google' || $provider === 'gemini') {
             return $this->gemini;

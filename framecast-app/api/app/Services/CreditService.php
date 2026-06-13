@@ -22,6 +22,9 @@ class CreditService
     // (~8-12s) lands near ~$0.012 COGS → 3cr (~75% margin, 1cr=$0.01 retail).
     // Actual per-call COGS is recorded via ApiUsageService for recalibration.
     public const TTS_GEMINI = 3;   // per scene, Gemini 3.1 Flash TTS (~$0.012 COGS)
+    // Chatterbox (Resemble) cloned-voice synthesis — flat ~$0.009/run on
+    // Replicate regardless of length → 2cr (~78% margin, 1cr=$0.01 retail).
+    public const TTS_CLONE  = 2;   // per scene, Chatterbox cloned voice (~$0.009 COGS)
     public const AI_MEDIUM    = 16;  // per scene, gpt-image-1 medium (~$0.063 COGS)
     public const AI_HIGH      = 63;  // per scene, gpt-image-1 high (~$0.25 COGS)
     public const AI_CHARACTER = 50;  // per scene, OpenAI gpt-image-2 /edits (~$0.20 COGS, character + reference image)
@@ -52,6 +55,7 @@ class CreditService
         'ai_image:character'      => 0.20,
         'tts'                     => 0.001,
         'tts:gemini'              => 0.012,
+        'tts:chatterbox'          => 0.009,
         'music'                   => 0.01,
         'video:quick'             => 0.30,
         'video:seedance_lite'     => 0.50,

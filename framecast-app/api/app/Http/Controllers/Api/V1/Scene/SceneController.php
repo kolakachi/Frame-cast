@@ -568,8 +568,9 @@ class SceneController extends Controller
         $voiceId = (string) data_get($scene->voice_settings_json, 'voice_id', \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE);
         $speed = (float) data_get($scene->voice_settings_json, 'speed', 1.0);
         $language = (string) data_get($scene->voice_settings_json, 'language', $project->primary_language ?: 'en');
-        $provider = data_get($scene->voice_settings_json, 'provider');
+        $provider = (string) data_get($scene->voice_settings_json, 'provider', '');
         $voicePrompt = (string) data_get($scene->voice_settings_json, 'voice_prompt', '');
+        $cloneUrl = $this->cloneAudioUrl((int) $project->workspace_id, $voiceId, $provider);
         $sceneText = trim((string) ($scene->script_text ?: ''));
 
         if ($sceneText === '') {
@@ -578,10 +579,11 @@ class SceneController extends Controller
 
         $asset = null;
 
-        DB::transaction(function () use ($scene, $project, $user, $tts, $voiceId, $speed, $language, $provider, $voicePrompt, $sceneText, &$asset): void {
+        DB::transaction(function () use ($scene, $project, $user, $tts, $voiceId, $speed, $language, $provider, $voicePrompt, $cloneUrl, $sceneText, &$asset): void {
             $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
-                'provider'     => $provider,
-                'voice_prompt' => $voicePrompt,
+                'provider'        => $provider,
+                'voice_prompt'    => $voicePrompt,
+                'clone_audio_url' => $cloneUrl,
                 'usage_context' => [
                     'workspace_id' => $project->workspace_id,
                     'project_id' => $project->getKey(),
@@ -643,6 +645,36 @@ class SceneController extends Controller
             ],
             'meta' => [],
         ]);
+    }
+
+    /**
+     * Cloned-voice reference sample → a Replicate-fetchable URL (Chatterbox is
+     * zero-shot, so synthesis needs the sample every call). Null for non-clones.
+     */
+    private function cloneAudioUrl(int $workspaceId, string $voiceId, string $provider): ?string
+    {
+        if (! str_contains($provider, 'chatterbox') && ! str_starts_with($voiceId, 'clone-')) {
+            return null;
+        }
+
+        $profile = \App\Models\VoiceProfile::query()
+            ->where('workspace_id', $workspaceId)
+            ->where('provider_voice_key', $voiceId)
+            ->where('is_cloned', true)
+            ->first();
+        if (! $profile || ! $profile->source_asset_id) {
+            return null;
+        }
+
+        $sample = Asset::query()->find($profile->source_asset_id);
+        if (! $sample || ! $sample->storage_url) {
+            return null;
+        }
+
+        $storage = app(\App\Services\Media\StorageService::class);
+        $raw = (string) $sample->storage_url;
+
+        return $storage->extractPath($raw) !== null ? $storage->url($raw) : $raw;
     }
 
     public function swapVisual(Request $request, int $sceneId, VisualProviderAdapter $visualProvider): JsonResponse

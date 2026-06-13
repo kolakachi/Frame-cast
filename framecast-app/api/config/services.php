@@ -130,6 +130,16 @@ return [
         'default_voice' => env('GEMINI_TTS_DEFAULT_VOICE', 'Kore'),
     ],
 
+    // Chatterbox (Resemble AI) — zero-shot voice cloning. Synthesis passes the
+    // user's reference sample as `audio_prompt` on every call (no trained
+    // voice id). Runs on Replicate, reuses replicate.api_token. ~$0.009/run.
+    'chatterbox' => [
+        'model'       => env('REPLICATE_CHATTERBOX_MODEL', 'resemble-ai/chatterbox'),
+        'version'     => env('REPLICATE_CHATTERBOX_VERSION', ''),
+        'exaggeration' => (float) env('CHATTERBOX_EXAGGERATION', 0.5),
+        'cfg_weight'   => (float) env('CHATTERBOX_CFG_WEIGHT', 0.5),
+    ],
+
     'pixabay' => [
         'api_key' => env('PIXABAY_API_KEY'),
     ],

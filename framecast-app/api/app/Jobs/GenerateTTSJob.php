@@ -109,15 +109,18 @@ class GenerateTTSJob implements ShouldQueue
             // voice when a scene has none set.
             $voiceId = (string) data_get($scene->voice_settings_json, 'voice_id', \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE);
             $speed = (float) data_get($scene->voice_settings_json, 'speed', 1.0);
+            $provider = (string) data_get($scene->voice_settings_json, 'provider', '');
             $language = $project->primary_language ?: 'en';
             $sceneText = (string) ($scene->script_text ?: '');
 
             $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
-                // Engine routing + voice direction (Gemini). The router falls
-                // back to inferring the engine from the voice id when provider
-                // is absent; voice_prompt is the free-text delivery direction.
-                'provider'     => data_get($scene->voice_settings_json, 'provider'),
-                'voice_prompt' => (string) data_get($scene->voice_settings_json, 'voice_prompt', ''),
+                // Engine routing + voice direction. The router falls back to
+                // inferring the engine from the voice id when provider is absent;
+                // voice_prompt is the Gemini delivery direction; clone_audio_url
+                // is the Chatterbox reference sample (zero-shot cloning).
+                'provider'        => $provider,
+                'voice_prompt'    => (string) data_get($scene->voice_settings_json, 'voice_prompt', ''),
+                'clone_audio_url' => $this->cloneAudioUrl((int) $project->workspace_id, $voiceId, $provider),
                 'usage_context' => [
                     'workspace_id' => $project->workspace_id,
                     'project_id' => $project->getKey(),
@@ -126,12 +129,10 @@ class GenerateTTSJob implements ShouldQueue
                 ],
             ]);
 
-            // Credit cost + COGS follow the engine that actually ran (the
-            // adapter reports it via provider_key: replicate:* = Gemini).
-            $ranGemini = str_starts_with((string) ($audio['provider_key'] ?? ''), 'replicate:');
-            $ttsCost   = $ranGemini ? CreditService::TTS_GEMINI : CreditService::TTS;
-            $ttsOp     = $ranGemini ? 'tts:gemini' : 'tts';
-            $ttsCogs   = CreditService::cogsUsd($ranGemini ? 'tts:gemini' : 'tts');
+            // Credit cost + COGS follow the engine that actually ran, reported
+            // via provider_key (replicate:*chatterbox* = clone, replicate:*gemini*
+            // = Gemini, else OpenAI).
+            [$ttsCost, $ttsOp, $ttsCogs] = $this->ttsBilling((string) ($audio['provider_key'] ?? ''));
 
             $asset = null;
 
@@ -156,8 +157,11 @@ class GenerateTTSJob implements ShouldQueue
                 ]);
 
                 $voiceSettings = $scene->voice_settings_json ?? [];
-                $voiceSettings['provider_key'] = $audio['provider_key'];
-                $voiceSettings['provider'] = $ranGemini ? 'google' : 'openai';
+                $pk = (string) $audio['provider_key'];
+                $voiceSettings['provider_key'] = $pk;
+                $voiceSettings['provider'] = str_contains($pk, 'chatterbox')
+                    ? 'replicate:chatterbox'
+                    : (str_contains($pk, 'gemini') ? 'google' : 'openai');
                 $voiceSettings['voice_id'] = $audio['provider_voice_id'];
                 $voiceSettings['speed'] = $speed;
                 $voiceSettings['language'] = $language;
@@ -320,6 +324,57 @@ class GenerateTTSJob implements ShouldQueue
 
         GenerationProgressed::dispatch($this->projectId, 'tts', 'failed', $exception->getMessage(), $this->progressMeta());
         app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'tts', $exception->getMessage(), $this->singleSceneId());
+    }
+
+    /**
+     * Resolve a cloned voice's reference sample to a Replicate-fetchable URL.
+     * Chatterbox is zero-shot, so synthesis needs the sample every call. Returns
+     * null for non-cloned voices (Gemini/OpenAI ignore it).
+     *
+     * @return string|null
+     */
+    private function cloneAudioUrl(int $workspaceId, string $voiceId, string $provider): ?string
+    {
+        if (! str_contains($provider, 'chatterbox') && ! str_starts_with($voiceId, 'clone-')) {
+            return null;
+        }
+
+        $profile = \App\Models\VoiceProfile::query()
+            ->where('workspace_id', $workspaceId)
+            ->where('provider_voice_key', $voiceId)
+            ->where('is_cloned', true)
+            ->first();
+        if (! $profile || ! $profile->source_asset_id) {
+            return null;
+        }
+
+        $sample = Asset::query()->find($profile->source_asset_id);
+        if (! $sample || ! $sample->storage_url) {
+            return null;
+        }
+
+        $storage = app(\App\Services\Media\StorageService::class);
+        $raw = (string) $sample->storage_url;
+
+        return $storage->extractPath($raw) !== null ? $storage->url($raw) : $raw;
+    }
+
+    /**
+     * [credit cost, ledger op, COGS usd] for the engine that ran, keyed off the
+     * adapter's provider_key.
+     *
+     * @return array{0:int,1:string,2:?float}
+     */
+    private function ttsBilling(string $providerKey): array
+    {
+        if (str_contains($providerKey, 'chatterbox')) {
+            return [CreditService::TTS_CLONE, 'tts:clone', CreditService::cogsUsd('tts:chatterbox')];
+        }
+        if (str_contains($providerKey, 'gemini')) {
+            return [CreditService::TTS_GEMINI, 'tts:gemini', CreditService::cogsUsd('tts:gemini')];
+        }
+
+        return [CreditService::TTS, 'tts', CreditService::cogsUsd('tts')];
     }
 
     /**

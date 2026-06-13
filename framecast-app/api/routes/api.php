@@ -126,6 +126,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
         Route::get('/voice-profiles', [VoiceProfileController::class, 'index']);
         Route::post('/voice-profiles', [VoiceProfileController::class, 'store']);
+        Route::post('/voice-profiles/clone', [VoiceProfileController::class, 'clone']);
+        Route::delete('/voice-profiles/{voiceProfileId}', [VoiceProfileController::class, 'destroy'])->whereNumber('voiceProfileId');
         Route::get('/caption-presets', [CaptionPresetController::class, 'index']);
         Route::post('/caption-presets', [CaptionPresetController::class, 'store']);
         Route::delete('/caption-presets/{presetId}', [CaptionPresetController::class, 'destroy'])->whereNumber('presetId');

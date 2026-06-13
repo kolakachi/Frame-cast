@@ -383,6 +383,27 @@ onBeforeUnmount(() => {
         Characters
       </button>
       <button
+        :class="['nav-item', activePage === 'voices' ? 'active' : '']"
+        data-tooltip="Voices"
+        type="button"
+        @click="nav('voices')"
+      >
+        <svg
+          class="nav-icon"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+          <path d="M5 11a7 7 0 0 0 14 0"></path>
+          <path d="M12 18v3"></path>
+        </svg>
+        Voices
+      </button>
+      <button
         :class="['nav-item', activePage === 'asset-library' ? 'active' : '']"
         data-tooltip="Assets"
         type="button"

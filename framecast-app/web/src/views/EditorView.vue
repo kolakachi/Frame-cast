@@ -1588,13 +1588,20 @@ const VOICE_STABILITY_OPTIONS = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
 ];
-const voiceProfileOptions = computed(() =>
-  (voiceProfiles.value || []).map((p) => ({
+const voiceProfileOptions = computed(() => {
+  const list = voiceProfiles.value || [];
+  // Cloned voices first (the user's own), then the built-in catalog. gender_label
+  // carries the Gemini delivery character (Firm/Warm/Bright…); clones show as
+  // "Your voice" so they're easy to spot.
+  const cloned = list.filter((p) => p.is_cloned);
+  const builtin = list.filter((p) => !p.is_cloned);
+  return [...cloned, ...builtin].map((p) => ({
     value: p.provider_voice_key,
-    // gender_label carries the Gemini delivery character (Firm/Warm/Bright…).
-    label: p.gender_label ? `${p.name} · ${p.gender_label}` : p.name,
-  }))
-);
+    label: p.is_cloned
+      ? `${p.name} · Your voice`
+      : (p.gender_label ? `${p.name} · ${p.gender_label}` : p.name),
+  }));
+});
 // Voice direction + inline [tags] only apply to Gemini voices. Detect by the
 // seeded profile's provider, falling back to "not one of OpenAI's 6 voices".
 const OPENAI_VOICE_KEYS = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
@@ -4865,15 +4872,23 @@ async function persistVoiceSettings(sceneId, nextSettings) {
 
   const currentScene = scenes.value.find((scene) => scene.id === sceneId);
   const currentVoice = currentScene?.voice_settings || {};
-  const isGemini = !OPENAI_VOICE_KEYS.includes(String(nextSettings.voice_id).toLowerCase());
+  // Provider comes from the selected profile (authoritative): 'google' for
+  // Gemini, 'openai', or 'replicate:chatterbox' for a cloned voice. Falling
+  // back to voice-id inference only when the profile isn't loaded.
+  const selectedProfile = (voiceProfiles.value || []).find(
+    (p) => p.provider_voice_key === nextSettings.voice_id
+  );
+  const provider =
+    selectedProfile?.provider ||
+    (OPENAI_VOICE_KEYS.includes(String(nextSettings.voice_id).toLowerCase()) ? "openai" : "google");
   const mergedSettings = {
     ...currentVoice,
     voice_id: nextSettings.voice_id,
-    provider: isGemini ? "google" : "openai",
+    provider,
     speed: nextSettings.speed,
     stability: nextSettings.stability,
-    // Gemini delivery direction (empty for OpenAI voices); backend folds it
-    // into the prompt at synth time.
+    // Gemini delivery direction (empty for OpenAI/clone voices); backend folds
+    // it into the prompt at synth time.
     voice_prompt: nextSettings.voice_prompt ?? "",
     is_outdated: true,
   };
