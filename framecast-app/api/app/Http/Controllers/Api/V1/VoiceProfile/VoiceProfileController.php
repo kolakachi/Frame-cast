@@ -6,9 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Asset;
 use App\Models\User;
 use App\Models\VoiceProfile;
+use App\Services\Media\StorageService;
 use App\Services\WorkspaceUsageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 class VoiceProfileController extends Controller
 {
@@ -145,18 +149,26 @@ class VoiceProfileController extends Controller
             return $this->error('invalid_sample', 'The voice sample must be an audio file.', 422);
         }
 
+        // Chatterbox requires a WAV reference — convert non-WAV uploads (mp3/m4a)
+        // once here so synthesis always passes a valid audio_prompt.
+        try {
+            $sampleId = $this->ensureWavSampleId($sample, (int) $user->workspace_id, (int) $user->getKey());
+        } catch (RuntimeException $e) {
+            return $this->error('sample_convert_failed', $e->getMessage(), 422);
+        }
+
         $profile = VoiceProfile::query()->create([
             'workspace_id'       => $user->workspace_id,
             'name'               => $validated['name'],
             'provider'           => 'replicate:chatterbox',
             // Zero-shot: no real voice id. A stable per-sample key so the TTS
-            // job can resolve this profile (and its sample) from the scene.
-            'provider_voice_key' => 'clone-'.$sample->getKey(),
+            // job can resolve this profile (and its WAV sample) from the scene.
+            'provider_voice_key' => 'clone-'.$sampleId,
             'language'           => 'en',
             'gender_label'       => 'Cloned',
             'voice_type'         => 'cloned',
             'is_cloned'          => true,
-            'source_asset_id'    => $sample->getKey(),
+            'source_asset_id'    => $sampleId,
             'status'             => 'active',
         ]);
 
@@ -164,6 +176,64 @@ class VoiceProfileController extends Controller
             'data' => ['voice_profile' => $this->serialize($profile)],
             'meta' => [],
         ], 201);
+    }
+
+    /**
+     * Ensure the clone reference sample is WAV (Chatterbox requirement). WAV
+     * uploads pass through; mp3/m4a/etc. are transcoded once to a clean
+     * mono 24kHz WAV and stored as a new asset. Returns the asset id to use.
+     */
+    private function ensureWavSampleId(Asset $sample, int $workspaceId, int $userId): int
+    {
+        $isWav = str_contains(strtolower((string) $sample->mime_type), 'wav')
+            || str_ends_with(strtolower((string) $sample->storage_url), '.wav');
+        if ($isWav) {
+            return $sample->getKey();
+        }
+
+        $storage = app(StorageService::class);
+        $bytes = $storage->get((string) $sample->storage_url);
+        if ($bytes === null) {
+            $url = $storage->extractPath((string) $sample->storage_url) !== null
+                ? $storage->url((string) $sample->storage_url)
+                : (string) $sample->storage_url;
+            $bytes = @file_get_contents($url) ?: null;
+        }
+        if (! $bytes) {
+            throw new RuntimeException('Could not read the uploaded voice sample.');
+        }
+
+        $tmpIn = sys_get_temp_dir().'/clone-in-'.Str::uuid();
+        $tmpOut = sys_get_temp_dir().'/clone-out-'.Str::uuid().'.wav';
+        file_put_contents($tmpIn, $bytes);
+
+        $result = Process::timeout(120)->run([
+            'ffmpeg', '-y', '-i', $tmpIn,
+            '-vn', '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1',
+            $tmpOut,
+        ]);
+        $wav = file_exists($tmpOut) ? file_get_contents($tmpOut) : false;
+        @unlink($tmpIn);
+        @unlink($tmpOut);
+
+        if (! $result->successful() || ! $wav) {
+            throw new RuntimeException('Could not convert the voice sample to WAV. Try a clean audio file.');
+        }
+
+        $storageUrl = $storage->put('audio/clones/'.Str::uuid().'.wav', $wav, ['ContentType' => 'audio/wav']);
+
+        $asset = Asset::query()->create([
+            'workspace_id'       => $workspaceId,
+            'asset_type'         => 'audio',
+            'title'              => 'Voice clone sample (WAV)',
+            'storage_url'        => $storageUrl,
+            'mime_type'          => 'audio/wav',
+            'file_size_bytes'    => strlen($wav),
+            'status'             => 'active',
+            'created_by_user_id' => $userId,
+        ]);
+
+        return $asset->getKey();
     }
 
     /** Delete a cloned voice (workspace-scoped, cloned voices only). */
