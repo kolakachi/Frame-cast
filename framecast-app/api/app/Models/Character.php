@@ -12,6 +12,7 @@ class Character extends Model
         'workspace_id',
         'name',
         'description',
+        'style',
         'reference_asset_id',
         'reference_asset_ids',
         'consistency_method',

@@ -946,6 +946,7 @@ class ProjectController extends Controller
             'plan.scenes.*.visual'     => ['required_with:plan.scenes', 'string', 'max:2000'],
             'plan.scenes.*.motion'     => ['nullable', 'string', 'max:300'],
             'plan.scenes.*.voice_gender' => ['nullable', 'string', 'max:16'],
+            'plan.style_explicit'      => ['nullable', 'boolean'],
             'plan.scenes.*.characters'   => ['nullable', 'array', 'max:6'],
             'plan.scenes.*.characters.*' => ['string', 'max:60'],
             'plan.style'               => ['nullable', 'string', 'max:40'],
@@ -1063,6 +1064,7 @@ class ProjectController extends Controller
             $parsed = [
                 'scenes'     => $planScenes,
                 'style'      => $planStyle !== '' ? $planStyle : 'photorealistic',
+                'style_explicit' => (bool) ($validated['plan']['style_explicit'] ?? false),
                 'music_mood' => trim((string) ($validated['plan']['music_mood'] ?? '')) ?: 'calm cinematic ambient',
                 'character_sheet' => trim((string) ($validated['plan']['character_sheet'] ?? '')) ?: null,
                 'cast'       => $this->sanitizePlanCast($validated['plan']['cast'] ?? null),
@@ -1076,6 +1078,20 @@ class ProjectController extends Controller
                     $sceneCount,
                     $referenceAssets->map(fn ($a) => $this->plannerImageUrl($a))->filter()->values()->all(),
                 );
+        }
+
+        // Inherit a referenced character's dominant style (e.g. a 3D character
+        // → 3D video) when the user didn't explicitly name a style — so the
+        // generated video matches the character instead of defaulting realistic.
+        if (! empty($characterIds) && empty($parsed['style_explicit'])) {
+            $charStyle = \App\Models\Character::query()
+                ->whereIn('id', $characterIds)
+                ->where('workspace_id', $user->workspace_id)
+                ->whereNotNull('style')
+                ->value('style');
+            if ($charStyle) {
+                $parsed['style'] = $charStyle;
+            }
         }
 
         // Scene/project typing per visual source. MatchVisualsJob reads

@@ -217,15 +217,22 @@ class GenerateCharacterImageJob implements ShouldQueue
             // prepend (primary) vs append (just join the list).
             $existingIds = array_values(array_filter($existingIds, fn ($id) => (int) $id !== $asset->getKey()));
 
+            // The character's dominant style follows its PRIMARY reference (or
+            // the first style it's ever generated in). One-shot/assistant inherit
+            // it so a 3D character yields 3D video unless the user overrides.
+            $styleUpdate = ($gen->set_as_reference || empty($character->style)) && ! empty($gen->style)
+                ? ['style' => $gen->style]
+                : [];
+
             if ($gen->set_as_reference) {
-                $character->update([
+                $character->update(array_merge($styleUpdate, [
                     'reference_asset_id'  => $asset->getKey(),
                     'reference_asset_ids' => array_values(array_merge([$asset->getKey()], $existingIds)),
-                ]);
+                ]));
             } else {
-                $character->update([
+                $character->update(array_merge($styleUpdate, [
                     'reference_asset_ids' => array_values(array_merge($existingIds, [$asset->getKey()])),
-                ]);
+                ]));
             }
         } catch (Throwable $e) {
             Log::warning('GenerateCharacterImageJob reference-list append failed', [

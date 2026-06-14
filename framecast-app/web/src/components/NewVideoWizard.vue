@@ -777,6 +777,7 @@ async function submitOneShot() {
             ...(Array.isArray(s.characters) && s.characters.length ? { characters: s.characters } : {}),
           })),
           style: oneShotPlan.value.style,
+          style_explicit: oneShotPlan.value.style_explicit,
           music_mood: oneShotPlan.value.music_mood,
           // Character board sheet — keeps costume/hair consistent across
           // scenes; persisted on the project for the assistant + regens.

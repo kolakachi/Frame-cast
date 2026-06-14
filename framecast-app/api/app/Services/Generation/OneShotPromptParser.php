@@ -392,7 +392,11 @@ You convert a single user prompt about a short video scene into four channels:
                                  the user says "3D" or "Pixar" or
                                  "Disney" or "animated".
 
-Return STRICT JSON with exactly these six keys (script, visual, music_mood, motion, voice_gender, style). No prose, no markdown.
+  style_explicit — true ONLY if the user's prompt explicitly named a visual
+                style (e.g. "anime", "3D", "pixar", "realistic", "watercolor");
+                false if you inferred it.
+
+Return STRICT JSON with exactly these seven keys (script, visual, music_mood, motion, voice_gender, style, style_explicit). No prose, no markdown.
 SYS;
         $systemPrompt .= $this->factsBlock($urlContexts).$this->imagesBlock($referenceImageUrls);
 
@@ -429,6 +433,7 @@ SYS;
                 'motion'       => $this->cleanString($parsed['motion']     ?? $fallback['motion'],     160),
                 'voice_gender' => $this->cleanGender($parsed['voice_gender'] ?? null),
                 'style'        => $this->validStyle($parsed['style']       ?? 'photorealistic'),
+                'style_explicit' => (bool) ($parsed['style_explicit'] ?? false),
             ];
         } catch (\Throwable $e) {
             Log::warning('OneShotPromptParser: exception — using fallback', ['error' => $e->getMessage()]);
@@ -570,6 +575,9 @@ Shared:
                film_noir, vintage, minimalist, neon, cyberpunk_80s, anime,
                anime_80s, anime_90s, dark_fantasy, fantasy_retro, comic,
                line_drawing, watercolor, paper_cutout, cartoon, 3d_animated.
+  style_explicit — true ONLY if the user's prompt explicitly named/requested a
+               visual style (e.g. "anime", "3D", "pixar", "realistic",
+               "watercolor", "cinematic look"). false if you inferred it.
   character_sheet — ONLY when the scenes feature exactly ONE recurring person:
                define their appearance ONCE — gender, approximate age, hair
                (color, length, style), exact outfit (garments, colors),
@@ -595,6 +603,7 @@ Return STRICT JSON, no markdown:
   ],
   "music_mood": "…",
   "style": "…",
+  "style_explicit": true,
   "character_sheet": "… or null",
   "cast": [ { "name": "…", "appearance": "…" } ]
 }
@@ -667,6 +676,7 @@ SYS;
                 'scenes'     => $scenes,
                 'music_mood' => $this->cleanString($parsed['music_mood'] ?? $singleFallback['music_mood'], 60),
                 'style'      => $this->validStyle($parsed['style'] ?? $singleFallback['style']),
+                'style_explicit' => (bool) ($parsed['style_explicit'] ?? ($singleFallback['style_explicit'] ?? false)),
                 'hints'      => $hints,
                 // A single recurring subject keeps using character_sheet; a
                 // 2+ named cast uses `cast` (character_sheet forced null then).
@@ -696,6 +706,7 @@ SYS;
             'scenes'     => $scenes,
             'music_mood' => $single['music_mood'],
             'style'      => $single['style'],
+            'style_explicit' => $single['style_explicit'] ?? false,
         ];
     }
 
@@ -713,6 +724,7 @@ SYS;
             'motion'       => 'subtle natural motion, slow camera drift',
             'voice_gender' => 'neutral',
             'style'        => 'photorealistic',
+            'style_explicit' => false,
         ];
     }
 
