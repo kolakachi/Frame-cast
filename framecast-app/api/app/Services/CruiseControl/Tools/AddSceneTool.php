@@ -58,8 +58,12 @@ class AddSceneTool implements CruiseTool
             'voice_id' => [
                 'type' => 'string',
                 'required' => false,
-                'enum' => ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'ash', 'coral', 'sage', 'ballad', 'verse'],
-                'description' => 'Defaults to the project\'s default voice or alloy.',
+                'description' => VoiceCatalog::describe().' Defaults to the project\'s default voice.',
+            ],
+            'voice_prompt' => [
+                'type' => 'string',
+                'required' => false,
+                'description' => 'Delivery direction for an expressive (Gemini) voice — e.g. "like an excited teenager", "calm and warm". Ignored for classic/cloned voices.',
             ],
             'animate_tier' => [
                 'type' => 'string',
@@ -118,7 +122,14 @@ class AddSceneTool implements CruiseTool
         }
 
         $style = $params['style'] ?? ($project->ai_broll_style ?? 'photorealistic');
-        $voiceId = $params['voice_id'] ?? data_get($project->default_voice_settings_json, 'voice_id', 'alloy');
+        // Resolve the voice name (Gemini / OpenAI / cloned) → voice_id + provider.
+        // Falls back to the project default, then the Gemini default voice.
+        $voiceName = $params['voice_id'] ?? data_get($project->default_voice_settings_json, 'voice_id', \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE);
+        $resolvedVoice = VoiceCatalog::resolve((int) $workspace->getKey(), (string) $voiceName)
+            ?? ['voice_id' => \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE, 'provider' => 'google'];
+        $voicePrompt = isset($params['voice_prompt'])
+            ? trim((string) $params['voice_prompt'])
+            : (string) data_get($project->default_voice_settings_json, 'voice_prompt', '');
         $animateTier = $params['animate_tier'] ?? null;
         // Balanced (Hailuo) needs 6 or 10; the others use 5 or 10.
         $animateDuration = $animateTier === 'balanced' ? 6 : 5;
@@ -127,7 +138,7 @@ class AddSceneTool implements CruiseTool
         // in this scene (character_names) — resolved against the project's cast.
         $sceneCastIds = $this->resolveSceneCast($workspace, $project, (array) ($params['character_names'] ?? []));
 
-        return DB::transaction(function () use ($project, $scriptText, $visualPrompt, $style, $voiceId, $animateTier, $animateDuration, $params, $sceneCastIds): array {
+        return DB::transaction(function () use ($project, $scriptText, $visualPrompt, $style, $resolvedVoice, $voicePrompt, $animateTier, $animateDuration, $params, $sceneCastIds): array {
             $maxOrder = (int) Scene::query()->where('project_id', $project->getKey())->max('scene_order');
             $position = (int) ($params['position'] ?? ($maxOrder + 1));
             $position = max(1, min($maxOrder + 1, $position));
@@ -198,7 +209,9 @@ class AddSceneTool implements CruiseTool
                 'character_id'      => $characterId,
                 'character_ids'     => ! empty($sceneCastIds) ? $sceneCastIds : null,
                 'voice_settings_json' => [
-                    'voice_id' => $voiceId,
+                    'voice_id' => $resolvedVoice['voice_id'],
+                    'provider' => $resolvedVoice['provider'],
+                    'voice_prompt' => $voicePrompt,
                     'speed'    => 1.0,
                     'is_outdated' => false,   // newly created — not outdated
                     'last_error' => null,
