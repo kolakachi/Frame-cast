@@ -30,13 +30,14 @@ class CreditService
     public const AI_CHARACTER = 50;  // per scene, OpenAI gpt-image-2 /edits (~$0.20 COGS, character + reference image)
     public const AI_MUSIC     = 3;   // per scene, Replicate MusicGen (~$0.01 COGS)
 
-    // Image-to-video animation tiers — per 6-second clip; longer clips scale roughly proportionally.
-    // Held at ~50% margin (the moat). Wan 2.1 480p / Hailuo / Kling 2.1 mapping.
-    public const VIDEO_QUICK    = 60;   // ~$0.30 per 6s clip — Wan 2.1 i2v 480p
-    public const VIDEO_BALANCED = 120;  // ~$0.60 per 6s clip — Hailuo MiniMax
-    public const VIDEO_PREMIUM  = 240;  // ~$1.20 per 6s clip — Kling 2.1
-    public const VIDEO_SEEDANCE_LITE = 100;  // ~$0.50 per 5s clip — ByteDance Seedance 1 Lite
-    public const VIDEO_SEEDANCE_PRO  = 200;  // ~$1.00 per 5s clip — ByteDance Seedance 1 Pro
+    // Image-to-video animation tiers — base clip; 10s = 2×. Recalibrated to
+    // real per-second COGS at the PINNED resolution (CREDIT_CALIBRATION.md §12,
+    // 2026-06-14). Resolutions pinned in ReplicateI2VAdapter so cost is fixed.
+    public const VIDEO_QUICK    = 60;   // Wan 2.5 i2v @480p, 5s (~$0.25) — 58%
+    public const VIDEO_BALANCED = 60;   // Hailuo 2.3-fast @768p, 6s (~$0.19) — 68%
+    public const VIDEO_PREMIUM  = 180;  // Kling 2.1 pro mode, 5s (~$0.45) — 75%
+    public const VIDEO_SEEDANCE_LITE = 50;   // Seedance 1 Lite @720p, 5s (~$0.18) — 64%
+    public const VIDEO_SEEDANCE_PRO  = 150;  // Seedance 1 Pro @1080p, 5s (~$0.75) — 50%
     // Spokesperson (VEED Fabric) is LENGTH-BASED — Fabric bills per second
     // ($0.08/s @ 480p), so a flat charge loses money on long clips. Buckets
     // hold ~50% margin across lengths (see spokespersonCost). The constant is
@@ -61,12 +62,12 @@ class CreditService
         'tts:gemini'              => 0.012,
         'tts:chatterbox'          => 0.009,
         'music'                   => 0.01,
-        'video:quick'             => 0.30,
-        'video:seedance_lite'     => 0.50,
-        'video:balanced'          => 0.60,
-        'video:seedance_pro'      => 1.00,
-        'video:premium'           => 1.20,
-        'video:spokesperson'      => 0.64,
+        'video:quick'             => 0.25,  // Wan 2.5 @480p, 5s ($0.05/s)
+        'video:seedance_lite'     => 0.18,  // Seedance Lite @720p, 5s ($0.036/s)
+        'video:balanced'          => 0.19,  // Hailuo 2.3-fast @768p, 6s
+        'video:seedance_pro'      => 0.75,  // Seedance Pro @1080p, 5s ($0.15/s)
+        'video:premium'           => 0.45,  // Kling 2.1 pro, 5s ($0.09/s)
+        'video:spokesperson'      => 0.64,  // Fabric 480p ~8s; actual scales per-second
     ];
 
     /** Best-estimate upstream USD cost for an op key (see COGS_USD). Null if unknown. */

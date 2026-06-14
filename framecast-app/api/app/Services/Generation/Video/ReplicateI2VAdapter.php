@@ -244,6 +244,10 @@ class ReplicateI2VAdapter implements I2VAdapter
         $duration = $durationSeconds <= 7 ? $validDurations[0] : $validDurations[1];
 
         return match ($tier) {
+            // Resolution/mode are PINNED per tier so COGS is predictable and
+            // matches CREDIT_CALIBRATION.md §12 — without an explicit value the
+            // model picks its own default (Wan 720p, Seedance Pro 1080p, …),
+            // which silently shifts our cost.
             'premium' => [
                 config('services.replicate.i2v_premium_model'),
                 config('services.replicate.i2v_premium_version'),
@@ -251,7 +255,7 @@ class ReplicateI2VAdapter implements I2VAdapter
                     'start_image' => $imageUrl,
                     'prompt'      => $prompt !== '' ? $prompt : 'subtle natural motion, gentle camera drift',
                     'duration'    => $duration,
-                    'mode'        => $options['kling_mode'] ?? 'standard',
+                    'mode'        => $options['kling_mode'] ?? 'pro', // premium = Kling pro
                 ],
             ],
             'balanced' => [
@@ -261,6 +265,7 @@ class ReplicateI2VAdapter implements I2VAdapter
                     'first_frame_image' => $imageUrl,
                     'prompt'            => $prompt !== '' ? $prompt : 'cinematic gentle motion',
                     'duration'          => $duration,
+                    'resolution'        => '768p',
                     'prompt_optimizer'  => true,
                 ],
             ],
@@ -271,27 +276,30 @@ class ReplicateI2VAdapter implements I2VAdapter
                 config('services.replicate.i2v_seedance_lite_model'),
                 config('services.replicate.i2v_seedance_lite_version'),
                 [
-                    'image'    => $imageUrl,
-                    'prompt'   => $prompt !== '' ? $prompt : 'subtle natural motion',
-                    'duration' => $duration,
+                    'image'      => $imageUrl,
+                    'prompt'     => $prompt !== '' ? $prompt : 'subtle natural motion',
+                    'duration'   => $duration,
+                    'resolution' => '720p',
                 ],
             ],
             'seedance_pro' => [
                 config('services.replicate.i2v_seedance_pro_model'),
                 config('services.replicate.i2v_seedance_pro_version'),
                 [
-                    'image'    => $imageUrl,
-                    'prompt'   => $prompt !== '' ? $prompt : 'cinematic motion, gentle camera move',
-                    'duration' => $duration,
+                    'image'      => $imageUrl,
+                    'prompt'     => $prompt !== '' ? $prompt : 'cinematic motion, gentle camera move',
+                    'duration'   => $duration,
+                    'resolution' => '1080p',
                 ],
             ],
             default => [
                 config('services.replicate.i2v_quick_model'),
                 config('services.replicate.i2v_quick_version'),
                 [
-                    'image'    => $imageUrl,
-                    'prompt'   => $prompt !== '' ? $prompt : 'subtle natural motion',
-                    'duration' => $duration,
+                    'image'      => $imageUrl,
+                    'prompt'     => $prompt !== '' ? $prompt : 'subtle natural motion',
+                    'duration'   => $duration,
+                    'resolution' => '480p', // quick = cheap/draft tier
                 ],
             ],
         };
