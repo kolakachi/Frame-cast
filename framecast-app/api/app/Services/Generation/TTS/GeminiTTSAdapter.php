@@ -137,7 +137,7 @@ class GeminiTTSAdapter implements TTSAdapter
             'model' => $model,
             'status' => 'succeeded',
             'units' => mb_strlen($text),
-            'estimated_cost_usd' => $this->estimateCost($prompt),
+            'estimated_cost_usd' => $this->estimateCost(trim($script.' '.$direction)),
             'metadata_json' => [
                 ...($usageContext['metadata_json'] ?? []),
                 'voice_id' => $voice,
