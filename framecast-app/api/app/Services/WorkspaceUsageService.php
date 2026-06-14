@@ -41,7 +41,7 @@ class WorkspaceUsageService
             ],
             'starter' => [
                 'name'                => 'Starter',
-                'credits_monthly'     => 500,
+                'credits_monthly'     => 1500,  // matches landing/help page ($19/mo)
                 'render_limit'        => 50,
                 'voice_minutes_limit' => 100,
                 'dub_languages_limit' => 2,
@@ -53,7 +53,7 @@ class WorkspaceUsageService
             ],
             'creator' => [
                 'name'                => 'Creator',
-                'credits_monthly'     => 1500,
+                'credits_monthly'     => 3000,  // matches landing/help page ($39/mo)
                 'render_limit'        => self::RENDER_LIMIT,
                 'voice_minutes_limit' => self::VOICE_MINUTES_LIMIT,
                 'dub_languages_limit' => self::DUB_LANGUAGES_LIMIT,
@@ -65,7 +65,7 @@ class WorkspaceUsageService
             ],
             'pro' => [
                 'name'                => 'Pro',
-                'credits_monthly'     => 4000,
+                'credits_monthly'     => 6500,  // matches landing/help page ($79/mo)
                 'render_limit'        => 1000,
                 'voice_minutes_limit' => 600,
                 'dub_languages_limit' => 12,
@@ -77,7 +77,7 @@ class WorkspaceUsageService
             ],
             'agency' => [
                 'name'                => 'Agency',
-                'credits_monthly'     => 10000,
+                'credits_monthly'     => 13000,  // matches landing/help page ($149/mo)
                 'render_limit'        => 10000,
                 'voice_minutes_limit' => 5000,
                 'dub_languages_limit' => 50,
@@ -102,7 +102,7 @@ class WorkspaceUsageService
             // Legacy tier aliases (backwards-compatible)
             'studio' => [
                 'name'                => 'Creator',
-                'credits_monthly'     => 1500,
+                'credits_monthly'     => 3000,  // alias of Creator
                 'render_limit'        => self::RENDER_LIMIT,
                 'voice_minutes_limit' => self::VOICE_MINUTES_LIMIT,
                 'dub_languages_limit' => self::DUB_LANGUAGES_LIMIT,
@@ -114,7 +114,7 @@ class WorkspaceUsageService
             ],
             'scale' => [
                 'name'                => 'Pro',
-                'credits_monthly'     => 4000,
+                'credits_monthly'     => 6500,  // alias of Pro
                 'render_limit'        => 1000,
                 'voice_minutes_limit' => 600,
                 'dub_languages_limit' => 12,
