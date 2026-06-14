@@ -93,7 +93,14 @@ class GenerateTalkingVideoJob implements ShouldQueue
 
         GenerationProgressed::dispatch($this->projectId, 'animation', 'processing', null, ['scene_id' => $this->sceneId]);
 
-        $cost = CreditService::VIDEO_SPOKESPERSON;
+        // Length-based: cost + COGS follow the voiceover length (Fabric bills
+        // per second). Mirror SceneController::animate so charge == quote.
+        $audioId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
+        $audioAsset = $audioId ? Asset::query()->find($audioId) : null;
+        $voiceoverSeconds = (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 8);
+        $resolution = (string) config('services.fabric.resolution', '480p');
+
+        $cost = CreditService::spokespersonCost($voiceoverSeconds);
         $this->stamp($scene, [
             'animation_in_progress' => true,
             'animation_last_error'  => null,
@@ -110,8 +117,8 @@ class GenerateTalkingVideoJob implements ShouldQueue
                 'project_id'        => $this->projectId,
                 'scene_id'          => $this->sceneId,
                 'user_id'           => $scene->project->created_by_user_id,
-                'upstream_cost_usd' => CreditService::cogsUsd('video:spokesperson'),
-                'metadata'          => ['tier' => 'spokesperson'],
+                'upstream_cost_usd' => CreditService::spokespersonCogsUsd($voiceoverSeconds, $resolution),
+                'metadata'          => ['tier' => 'spokesperson', 'seconds' => round($voiceoverSeconds, 1)],
             ],
         );
         if (! $charged) {

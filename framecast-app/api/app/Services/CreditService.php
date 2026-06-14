@@ -37,7 +37,11 @@ class CreditService
     public const VIDEO_PREMIUM  = 240;  // ~$1.20 per 6s clip — Kling 2.1
     public const VIDEO_SEEDANCE_LITE = 100;  // ~$0.50 per 5s clip — ByteDance Seedance 1 Lite
     public const VIDEO_SEEDANCE_PRO  = 200;  // ~$1.00 per 5s clip — ByteDance Seedance 1 Pro
-    public const VIDEO_SPOKESPERSON  = 140;  // ~$0.64 per 8s clip — VEED Fabric 1.0 480p (image+audio lip-sync)
+    // Spokesperson (VEED Fabric) is LENGTH-BASED — Fabric bills per second
+    // ($0.08/s @ 480p), so a flat charge loses money on long clips. Buckets
+    // hold ~50% margin across lengths (see spokespersonCost). The constant is
+    // the ≤8s base, used as the pre-flight/estimate default.
+    public const VIDEO_SPOKESPERSON  = 130;  // ≤8s base — VEED Fabric 1.0 480p (image+audio lip-sync)
     public const EXPORT     = 0;   // included
 
     // Approximate upstream provider cost (COGS) in USD per operation. Stamped
@@ -69,6 +73,32 @@ class CreditService
     public static function cogsUsd(string $key): ?float
     {
         return self::COGS_USD[$key] ?? null;
+    }
+
+    /**
+     * Length-based credit cost for a spokesperson (Fabric lip-sync) clip — its
+     * length follows the voiceover, and Fabric bills per second, so a flat
+     * charge loses money on long clips. Buckets hold ~50% margin
+     * (CREDIT_CALIBRATION.md §11): ≤8s → 130, ≤15s → 240, longer → 320.
+     */
+    public static function spokespersonCost(float $seconds): int
+    {
+        if ($seconds <= 8.0) {
+            return 130;
+        }
+        if ($seconds <= 15.0) {
+            return 240;
+        }
+
+        return 320;
+    }
+
+    /** Upstream COGS (USD) for a spokesperson clip — Fabric per-second rate × length. */
+    public static function spokespersonCogsUsd(float $seconds, string $resolution = '480p'): float
+    {
+        $perSecond = $resolution === '720p' ? 0.15 : 0.08;
+
+        return round(max(1.0, $seconds) * $perSecond, 4);
     }
 
     // Monthly credit allocations per plan — sized for blended usage + breakage

@@ -962,8 +962,8 @@ class SceneController extends Controller
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
         // Talking spokesperson (Fabric lip-sync) is a separate path: image +
-        // the scene's voiceover -> lip-synced clip. Flat cost (the clip length
-        // follows the audio, not a 5/10s bucket).
+        // the scene's voiceover -> lip-synced clip. Cost is LENGTH-BASED on the
+        // voiceover (Fabric bills per second), not a 5/10s i2v bucket.
         $isSpokesperson = $validated['tier'] === 'spokesperson';
         // Normalize: anything ≤ 7 maps to a 5s render, ≥ 8 to a 10s render. Cost follows.
         $requested = (int) ($validated['duration_seconds'] ?? 5);
@@ -977,21 +977,30 @@ class SceneController extends Controller
             return $this->error('no_source_image', 'Generate a still image for this scene before animating.', 422);
         }
         // Spokesperson lip-syncs to the scene's voiceover — require it.
-        if ($isSpokesperson && ! data_get($scene->voice_settings_json, 'audio_asset_id')) {
-            return $this->error('no_voice', 'Generate the voiceover first — the talking spokesperson lip-syncs to the audio.', 422);
+        $voiceoverSeconds = 0.0;
+        if ($isSpokesperson) {
+            $audioId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
+            if (! $audioId) {
+                return $this->error('no_voice', 'Generate the voiceover first — the talking spokesperson lip-syncs to the audio.', 422);
+            }
+            $audioAsset = \App\Models\Asset::query()->find($audioId);
+            $voiceoverSeconds = (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 8);
         }
 
-        $base = match ($validated['tier']) {
-            'spokesperson'  => CreditService::VIDEO_SPOKESPERSON,
-            'premium'       => CreditService::VIDEO_PREMIUM,
-            'balanced'      => CreditService::VIDEO_BALANCED,
-            'seedance_pro'  => CreditService::VIDEO_SEEDANCE_PRO,
-            'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
-            default         => CreditService::VIDEO_QUICK,
-        };
-        // Constants are the 5-second baseline; 10s i2v clips cost 2×. Spokesperson
-        // is flat (the clip length follows the audio).
-        $cost = (! $isSpokesperson && $durationSeconds === 10) ? $base * 2 : $base;
+        if ($isSpokesperson) {
+            // Length-based: Fabric bills per second of voiceover.
+            $cost = CreditService::spokespersonCost($voiceoverSeconds);
+        } else {
+            $base = match ($validated['tier']) {
+                'premium'       => CreditService::VIDEO_PREMIUM,
+                'balanced'      => CreditService::VIDEO_BALANCED,
+                'seedance_pro'  => CreditService::VIDEO_SEEDANCE_PRO,
+                'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
+                default         => CreditService::VIDEO_QUICK,
+            };
+            // Constants are the 5-second baseline; 10s i2v clips cost 2×.
+            $cost = $durationSeconds === 10 ? $base * 2 : $base;
+        }
 
         $balance = $this->credits->balance((int) $user->workspace_id);
         if ($balance < $cost) {

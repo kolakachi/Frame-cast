@@ -1346,7 +1346,15 @@ const animateMotionPrompt = ref("");
 const animateSubmitting = ref(false);
 const animateError = ref("");
 // Credits per short clip; long clip doubles. Mirror the backend cost calc exactly.
-const ANIMATE_TIER_COSTS_5S = { quick: 60, balanced: 120, premium: 240, seedance_lite: 100, seedance_pro: 200, spokesperson: 140 };
+const ANIMATE_TIER_COSTS_5S = { quick: 60, balanced: 120, premium: 240, seedance_lite: 100, seedance_pro: 200, spokesperson: 130 };
+// Spokesperson is length-based (Fabric bills per second): ≤8s → 130, ≤15s → 240, longer → 320.
+// Mirror CreditService::spokespersonCost exactly.
+function spokespersonCost(seconds) {
+  const s = Number(seconds) || 8;
+  if (s <= 8) return 130;
+  if (s <= 15) return 240;
+  return 320;
+}
 // Valid durations per tier — each upstream model accepts only specific values.
 //   Wan 2.5 (quick)         → 5 or 10
 //   Hailuo 2.3-fast (balanced) → 6 or 10 (NOT 5; sending 5 returns Replicate 422)
@@ -1363,8 +1371,11 @@ const spokespersonOutdated = computed(() =>
 const animateDurations = computed(() => ANIMATE_TIER_DURATIONS[animateTier.value] || [5, 10]);
 const animateShortDuration = computed(() => animateDurations.value[0]);
 const animateCost = computed(() => {
-  // Spokesperson (lip-sync) is flat — its length follows the voiceover.
-  if (animateTier.value === 'spokesperson') return ANIMATE_TIER_COSTS_5S.spokesperson;
+  // Spokesperson (lip-sync) length follows the voiceover — price by the scene's
+  // audio duration (scene.duration_seconds tracks the voiceover after TTS).
+  if (animateTier.value === 'spokesperson') {
+    return spokespersonCost(activeScene.value?.duration_seconds);
+  }
   // "Long" clip = the larger of the two valid durations (always 10 today).
   return ANIMATE_TIER_COSTS_5S[animateTier.value] * (animateDuration.value === animateDurations.value[1] ? 2 : 1);
 });
