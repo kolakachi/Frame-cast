@@ -47,7 +47,10 @@ See QA gate: `PRODUCT_MVP_CORE_QA.md`
 - [x] Bundle editor caption fonts into the export worker image so selected fonts render in MP4 exports
 - [~] Caption/music/export preview parity — selected font works; remaining caption preset and audio parity still needs QA
 
-### Paddle Billing
+### Kelviq Billing
+
+> Paddle removed 2026-06-14 — migrated to `KelviqService` with Kelviq as the sole Merchant of Record. The rows below describe the original Paddle build that was ported to Kelviq (mirrored method surface + webhook pattern).
+
 - [x] Install and configure Paddle SDK in Laravel — `config/billing.php` + `PaddleService`; uses Http facade (no SDK needed)
 - [x] Define Free / Studio / Scale / Enterprise plan IDs in config — `billing.paddle.price_ids` maps tier → Paddle price
 - [x] Workspace model: add `plan_status`, `paddle_customer_id`, `paddle_subscription_id`, `plan_renews_at` — migration 2026_04_26_000001

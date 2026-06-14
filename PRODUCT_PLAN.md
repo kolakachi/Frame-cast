@@ -206,7 +206,7 @@ Use `family_id` already on `Project`, plus a `Series` table:
 | Studio — $79/mo | Active creator / small team | 100 exports, 10 channels, 5 social accounts, batch export, localization |
 | Agency — $199/mo | Agencies and brands | Unlimited exports, team roles, 20+ channels, white-label, client approval, analytics |
 
-**Billing provider: Paddle** (handles VAT, global tax compliance, merchant of record).
+**Billing provider: Kelviq** (handles VAT, global tax compliance, merchant of record).
 
 ---
 
