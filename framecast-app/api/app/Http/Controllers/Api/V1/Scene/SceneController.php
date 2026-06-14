@@ -972,10 +972,16 @@ class SceneController extends Controller
         $requested = (int) ($validated['duration_seconds'] ?? 5);
         $durationSeconds = $requested >= 8 ? 10 : 5;
 
-        // Must have a source visual asset (image) to animate.
-        $sourceAsset = $scene->visual_asset_id
-            ? \App\Models\Asset::query()->find($scene->visual_asset_id)
-            : null;
+        // Must have a source still image to animate. On a RE-render the scene's
+        // visual is already the animated/talking video, so fall back to the
+        // preserved original still (animation_original_image_asset_id).
+        $sourceAssetId = (int) ($scene->visual_asset_id ?? 0);
+        $origStillId = (int) (data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id') ?? 0);
+        $sourceAsset = $sourceAssetId ? \App\Models\Asset::query()->find($sourceAssetId) : null;
+        if (! $sourceAsset || str_starts_with((string) $sourceAsset->mime_type, 'video/') || $sourceAsset->asset_type === 'video') {
+            // Current visual is a video (re-animate) — use the original still.
+            $sourceAsset = $origStillId ? \App\Models\Asset::query()->find($origStillId) : null;
+        }
         if (! $sourceAsset || str_starts_with((string) $sourceAsset->mime_type, 'video/') || $sourceAsset->asset_type === 'video') {
             return $this->error('no_source_image', 'Generate a still image for this scene before animating.', 422);
         }

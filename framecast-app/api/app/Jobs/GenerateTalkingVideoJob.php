@@ -127,7 +127,13 @@ class GenerateTalkingVideoJob implements ShouldQueue
         }
 
         try {
+            // On a RE-render the scene's visual is already the talking video, so
+            // lip-sync from the preserved original still instead.
+            $origStillId = (int) (data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id') ?? 0);
             $imageAsset = $scene->visual_asset_id ? Asset::query()->find($scene->visual_asset_id) : null;
+            if (! $imageAsset || $imageAsset->asset_type !== 'image') {
+                $imageAsset = $origStillId ? Asset::query()->find($origStillId) : $imageAsset;
+            }
             if (! $imageAsset || ! $imageAsset->storage_url) {
                 throw new RuntimeException('Generate the scene image first, then lip-sync it.');
             }
