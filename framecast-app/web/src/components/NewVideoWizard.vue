@@ -569,11 +569,11 @@ const oneShotShowCharacters  = ref(false)
 
 const availableCharacters = ref([])
 const ONE_SHOT_ANIM_TIERS = [
-  { key: 'quick',         label: 'Wan 2.5',       sub: 'Fast · cheap',      cost: 60,  render: '~30s' },
-  { key: 'seedance_lite', label: 'Seedance Lite', sub: 'ByteDance · cheap', cost: 50,  render: '~45s' },
-  { key: 'balanced',      label: 'Hailuo 2.3',    sub: 'Best for most',     cost: 60,  render: '~90s' },
-  { key: 'seedance_pro',  label: 'Seedance Pro',  sub: 'ByteDance · sharp', cost: 150, render: '~2 min' },
-  { key: 'premium',       label: 'Kling 2.1',     sub: 'Cinematic · pro',   cost: 180, render: '~3 min' },
+  { key: 'quick',         label: 'Wan 2.5',       sub: 'Fast · cheap',      cost: 50,  render: '~30s' },
+  { key: 'seedance_lite', label: 'Seedance Lite', sub: 'ByteDance · cheap', cost: 30,  render: '~45s' },
+  { key: 'balanced',      label: 'Hailuo 2.3',    sub: 'Best for most',     cost: 35,  render: '~90s' },
+  { key: 'seedance_pro',  label: 'Seedance Pro',  sub: 'ByteDance · sharp', cost: 125, render: '~2 min' },
+  { key: 'premium',       label: 'Kling 2.1',     sub: 'Cinematic · pro',   cost: 100, render: '~3 min' },
   { key: 'spokesperson',  label: 'Spokesperson',  sub: 'Lip-sync · talking', cost: 130, render: '~3 min' },
 ]
 

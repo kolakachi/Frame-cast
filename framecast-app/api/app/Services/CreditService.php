@@ -28,16 +28,16 @@ class CreditService
     public const AI_MEDIUM    = 16;  // per scene, gpt-image-1 medium (~$0.063 COGS)
     public const AI_HIGH      = 63;  // per scene, gpt-image-1 high (~$0.25 COGS)
     public const AI_CHARACTER = 50;  // per scene, OpenAI gpt-image-2 /edits (~$0.20 COGS, character + reference image)
-    public const AI_MUSIC     = 3;   // per scene, Replicate MusicGen (~$0.01 COGS)
+    public const AI_MUSIC     = 2;   // per scene, Replicate MusicGen (~$0.01 COGS) — 50%
 
     // Image-to-video animation tiers — base clip; 10s = 2×. Recalibrated to
     // real per-second COGS at the PINNED resolution (CREDIT_CALIBRATION.md §12,
     // 2026-06-14). Resolutions pinned in ReplicateI2VAdapter so cost is fixed.
-    public const VIDEO_QUICK    = 60;   // Wan 2.5 i2v @480p, 5s (~$0.25) — 58%
-    public const VIDEO_BALANCED = 60;   // Hailuo 2.3-fast @768p, 6s (~$0.19) — 68%
-    public const VIDEO_PREMIUM  = 180;  // Kling 2.1 pro mode, 5s (~$0.45) — 75%
-    public const VIDEO_SEEDANCE_LITE = 50;   // Seedance 1 Lite @720p, 5s (~$0.18) — 64%
-    public const VIDEO_SEEDANCE_PRO  = 150;  // Seedance 1 Pro @1080p, 5s (~$0.75) — 50%
+    public const VIDEO_QUICK    = 50;   // Wan 2.5 i2v @480p, 5s (~$0.25) — 50%
+    public const VIDEO_BALANCED = 35;   // Hailuo 2.3-fast @768p, 6s (~$0.19) — 46%
+    public const VIDEO_PREMIUM  = 100;  // Kling 2.1 pro mode, 5s (~$0.45) — 55%
+    public const VIDEO_SEEDANCE_LITE = 30;   // Seedance 1 Lite @720p, 5s (~$0.18) — 40%
+    public const VIDEO_SEEDANCE_PRO  = 125;  // Seedance 1 Pro @1080p, 5s (~$0.75) — 40%
     // Spokesperson (VEED Fabric) is LENGTH-BASED — Fabric bills per second
     // ($0.08/s @ 480p), so a flat charge loses money on long clips. Buckets
     // hold ~50% margin across lengths (see spokespersonCost). The constant is

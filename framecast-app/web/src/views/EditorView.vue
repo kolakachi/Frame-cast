@@ -1346,7 +1346,7 @@ const animateMotionPrompt = ref("");
 const animateSubmitting = ref(false);
 const animateError = ref("");
 // Credits per short clip; long clip doubles. Mirror the backend cost calc exactly.
-const ANIMATE_TIER_COSTS_5S = { quick: 60, balanced: 60, premium: 180, seedance_lite: 50, seedance_pro: 150, spokesperson: 130 };
+const ANIMATE_TIER_COSTS_5S = { quick: 50, balanced: 35, premium: 100, seedance_lite: 30, seedance_pro: 125, spokesperson: 130 };
 // Spokesperson is length-based (Fabric bills per second): ≤8s → 130, ≤15s → 240, longer → 320.
 // Mirror CreditService::spokespersonCost exactly.
 function spokespersonCost(seconds) {
