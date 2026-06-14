@@ -960,6 +960,9 @@ class SceneController extends Controller
             // (the Wan/Hailuo/Kling/Seedance models only render those two buckets).
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:1000'],
+            // User-chosen quality (resolution for i2v / mode for Kling). Resolved
+            // against the tier's catalog; an unknown value falls back to default.
+            'quality'          => ['sometimes', 'nullable', 'string', 'max:16'],
         ]);
         // Talking spokesperson (Fabric lip-sync) is a separate path: image +
         // the scene's voiceover -> lip-synced clip. Cost is LENGTH-BASED on the
@@ -987,19 +990,14 @@ class SceneController extends Controller
             $voiceoverSeconds = (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 8);
         }
 
+        $quality = null;
         if ($isSpokesperson) {
             // Length-based: Fabric bills per second of voiceover.
             $cost = CreditService::spokespersonCost($voiceoverSeconds);
         } else {
-            $base = match ($validated['tier']) {
-                'premium'       => CreditService::VIDEO_PREMIUM,
-                'balanced'      => CreditService::VIDEO_BALANCED,
-                'seedance_pro'  => CreditService::VIDEO_SEEDANCE_PRO,
-                'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
-                default         => CreditService::VIDEO_QUICK,
-            };
-            // Constants are the 5-second baseline; 10s i2v clips cost 2×.
-            $cost = $durationSeconds === 10 ? $base * 2 : $base;
+            // Tier × chosen quality (resolution/mode) × duration (10s = 2×).
+            $quality = CreditService::videoQuality($validated['tier'], $validated['quality'] ?? null);
+            $cost = CreditService::animationCost($validated['tier'], $quality, $durationSeconds);
         }
 
         $balance = $this->credits->balance((int) $user->workspace_id);
@@ -1040,6 +1038,7 @@ class SceneController extends Controller
                 'animation_last_error'       => null,
                 'animation_tier'             => $validated['tier'],
                 'animation_duration'         => $durationSeconds,
+                'animation_quality'          => $quality,
                 'animation_motion_prompt'    => $validated['motion_prompt'] ?? null,
                 'animation_started_at'       => now()->toIso8601String(),
                 'generation_token'           => $token,
@@ -1055,6 +1054,7 @@ class SceneController extends Controller
                 $validated['tier'],
                 $durationSeconds,
                 $validated['motion_prompt'] ?? null,
+                quality: $quality,
             );
         }
 

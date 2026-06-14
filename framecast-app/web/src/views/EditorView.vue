@@ -1347,6 +1347,17 @@ const animateSubmitting = ref(false);
 const animateError = ref("");
 // Credits per short clip; long clip doubles. Mirror the backend cost calc exactly.
 const ANIMATE_TIER_COSTS_5S = { quick: 50, balanced: 35, premium: 100, seedance_lite: 30, seedance_pro: 125, spokesperson: 130 };
+// User-selectable quality per tier — mirrors CreditService::VIDEO_PRICING.
+// Each option: { value (sent as `quality`), label, cr (base-clip credits) }.
+const ANIMATE_QUALITY_OPTIONS = {
+  quick:         [{ value: "480p", label: "480p", cr: 50 }, { value: "720p", label: "720p", cr: 100 }, { value: "1080p", label: "1080p", cr: 150 }],
+  seedance_lite: [{ value: "480p", label: "480p", cr: 15 }, { value: "720p", label: "720p", cr: 30 }, { value: "1080p", label: "1080p", cr: 60 }],
+  balanced:      [{ value: "768p", label: "768p", cr: 35 }, { value: "1080p", label: "1080p", cr: 60 }],
+  seedance_pro:  [{ value: "480p", label: "480p", cr: 25 }, { value: "720p", label: "720p", cr: 50 }, { value: "1080p", label: "1080p", cr: 125 }],
+  premium:       [{ value: "standard", label: "Standard", cr: 55 }, { value: "pro", label: "Pro", cr: 100 }],
+};
+const ANIMATE_QUALITY_DEFAULT = { quick: "480p", seedance_lite: "720p", balanced: "768p", seedance_pro: "1080p", premium: "pro" };
+const animateQuality = ref("480p");
 // Spokesperson is length-based (Fabric bills per second): ≤8s → 130, ≤15s → 240, longer → 320.
 // Mirror CreditService::spokespersonCost exactly.
 function spokespersonCost(seconds) {
@@ -1370,14 +1381,23 @@ const spokespersonOutdated = computed(() =>
 );
 const animateDurations = computed(() => ANIMATE_TIER_DURATIONS[animateTier.value] || [5, 10]);
 const animateShortDuration = computed(() => animateDurations.value[0]);
+// Quality options for the current tier (empty for spokesperson, which has no picker).
+const animateQualityOptions = computed(() => ANIMATE_QUALITY_OPTIONS[animateTier.value] || []);
+// Reset quality to the tier's default whenever the model/tier changes.
+watch(animateTier, (tier) => {
+  if (ANIMATE_QUALITY_DEFAULT[tier]) animateQuality.value = ANIMATE_QUALITY_DEFAULT[tier];
+}, { immediate: true });
 const animateCost = computed(() => {
   // Spokesperson (lip-sync) length follows the voiceover — price by the scene's
   // audio duration (scene.duration_seconds tracks the voiceover after TTS).
   if (animateTier.value === 'spokesperson') {
     return spokespersonCost(activeScene.value?.duration_seconds);
   }
-  // "Long" clip = the larger of the two valid durations (always 10 today).
-  return ANIMATE_TIER_COSTS_5S[animateTier.value] * (animateDuration.value === animateDurations.value[1] ? 2 : 1);
+  // i2v: cost = chosen-quality base credits × (10s = 2×).
+  const opt = animateQualityOptions.value.find((o) => o.value === animateQuality.value)
+    || animateQualityOptions.value[0];
+  const base = opt ? opt.cr : ANIMATE_TIER_COSTS_5S[animateTier.value];
+  return base * (animateDuration.value === animateDurations.value[1] ? 2 : 1);
 });
 // Animation models. We expose actual model names (Wan/Hailuo/Kling/Seedance)
 // instead of generic tier labels so power users know what they're picking.
@@ -5449,6 +5469,7 @@ async function submitAnimate() {
       tier: animateTier.value,
       duration_seconds: animateDuration.value,
       motion_prompt: animateMotionPrompt.value.trim() || null,
+      quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
     });
     const updated = response.data?.data?.scene;
     if (updated) {
@@ -8690,6 +8711,19 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <div v-if="animateTier !== 'spokesperson' && animateQualityOptions.length" class="ap-field">
+            <label class="ap-label">Quality</label>
+            <div class="anim-duration-row">
+              <button
+                v-for="q in animateQualityOptions"
+                :key="q.value"
+                type="button"
+                :class="['anim-dpill', animateQuality === q.value ? 'active' : '']"
+                @click="animateQuality = q.value"
+              >{{ q.label }} · {{ q.cr }} cr</button>
+            </div>
+            <div class="ap-hint">Higher resolution = sharper video for more credits. Drives the price below.</div>
+          </div>
           <div v-if="animateTier !== 'spokesperson'" class="ap-field">
             <label class="ap-label">Duration</label>
             <div class="anim-duration-row">

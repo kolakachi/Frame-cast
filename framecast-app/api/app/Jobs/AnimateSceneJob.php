@@ -41,6 +41,10 @@ class AnimateSceneJob implements ShouldQueue
         // worker died mid-poll: skip creating a new prediction, re-attach to
         // this one, and run the normal download/finalize. No re-charge.
         public readonly ?string $resumePredictionId = null,
+        // User-chosen quality (resolution for i2v / mode for Kling). Null =
+        // the tier's default. Drives both the credit cost and the model input.
+        // Kept LAST so existing positional callers (resume) are unaffected.
+        public readonly ?string $quality = null,
     ) {
         $this->onQueue('visual');
     }
@@ -55,20 +59,17 @@ class AnimateSceneJob implements ShouldQueue
         GenerationProgressed::dispatch($this->projectId, 'animation', 'processing', null, ['scene_id' => $this->sceneId]);
 
         // Mark animation as in-progress so the editor can show distinct loading state.
-        // animation_cost is what we'd refund if the user cancels.
-        $cost = match ($this->tier) {
-            'premium'       => \App\Services\CreditService::VIDEO_PREMIUM,
-            'balanced'      => \App\Services\CreditService::VIDEO_BALANCED,
-            'seedance_pro'  => \App\Services\CreditService::VIDEO_SEEDANCE_PRO,
-            'seedance_lite' => \App\Services\CreditService::VIDEO_SEEDANCE_LITE,
-            default         => \App\Services\CreditService::VIDEO_QUICK,
-        } * ($this->durationSeconds >= 10 ? 2 : 1);
+        // Cost is length- AND quality-based (resolution/mode); animation_cost is
+        // what we'd refund if the user cancels.
+        $quality = \App\Services\CreditService::videoQuality($this->tier, $this->quality);
+        $cost = \App\Services\CreditService::animationCost($this->tier, $quality, $this->durationSeconds);
         $this->stampAnimationState($scene, [
             'animation_in_progress'   => true,
             'animation_last_error'    => null,
             'animation_started_at'    => now()->toIso8601String(),
             'animation_tier'          => $this->tier,
             'animation_duration'      => $this->durationSeconds,
+            'animation_quality'       => $quality,
             'animation_cost'          => $cost,
         ]);
 
@@ -89,13 +90,9 @@ class AnimateSceneJob implements ShouldQueue
                     'project_id' => $this->projectId,
                     'scene_id'   => $this->sceneId,
                     'user_id'    => $scene->project->created_by_user_id,
-                    // COGS scales ×2 for 10s clips, mirroring the credit cost.
-                    'upstream_cost_usd' => (function () {
-                        $base = \App\Services\CreditService::cogsUsd('video:'.$this->tier)
-                            ?? \App\Services\CreditService::cogsUsd('video:quick');
-                        return $base === null ? null : $base * ($this->durationSeconds >= 10 ? 2 : 1);
-                    })(),
-                    'metadata'   => ['tier' => $this->tier, 'duration_seconds' => $this->durationSeconds],
+                    // COGS by tier × quality × duration (10s = 2×).
+                    'upstream_cost_usd' => \App\Services\CreditService::animationCogsUsd($this->tier, $quality, $this->durationSeconds),
+                    'metadata'   => ['tier' => $this->tier, 'duration_seconds' => $this->durationSeconds, 'quality' => $quality],
                 ],
             );
             if (! $charged) {
@@ -137,6 +134,9 @@ class AnimateSceneJob implements ShouldQueue
             } else {
                 $imageUrl = $this->publicUrlFor($sourceAsset);
 
+                // Send the chosen quality under the model's input name
+                // ('resolution' for i2v, 'kling_mode' for premium/Kling).
+                $qualityParam = \App\Services\CreditService::videoQualityParam($this->tier);
                 $result = $adapter->animate(
                     $imageUrl,
                     (string) $this->motionPrompt,
@@ -144,6 +144,7 @@ class AnimateSceneJob implements ShouldQueue
                     $this->durationSeconds,
                     [
                         'aspect_ratio' => $scene->project->aspect_ratio ?? '9:16',
+                        $qualityParam  => $quality,
                         // Persist the prediction id the instant Replicate hands
                         // it over, so a mid-poll worker death is resumable.
                         'on_prediction_created' => function (string $pid) use ($scene): void {

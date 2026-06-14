@@ -265,7 +265,7 @@ class ReplicateI2VAdapter implements I2VAdapter
                     'first_frame_image' => $imageUrl,
                     'prompt'            => $prompt !== '' ? $prompt : 'cinematic gentle motion',
                     'duration'          => $duration,
-                    'resolution'        => '768p',
+                    'resolution'        => $options['resolution'] ?? '768p',
                     'prompt_optimizer'  => true,
                 ],
             ],
@@ -279,7 +279,7 @@ class ReplicateI2VAdapter implements I2VAdapter
                     'image'      => $imageUrl,
                     'prompt'     => $prompt !== '' ? $prompt : 'subtle natural motion',
                     'duration'   => $duration,
-                    'resolution' => '720p',
+                    'resolution' => $options['resolution'] ?? '720p',
                 ],
             ],
             'seedance_pro' => [
@@ -289,7 +289,7 @@ class ReplicateI2VAdapter implements I2VAdapter
                     'image'      => $imageUrl,
                     'prompt'     => $prompt !== '' ? $prompt : 'cinematic motion, gentle camera move',
                     'duration'   => $duration,
-                    'resolution' => '1080p',
+                    'resolution' => $options['resolution'] ?? '1080p',
                 ],
             ],
             default => [
@@ -299,7 +299,7 @@ class ReplicateI2VAdapter implements I2VAdapter
                     'image'      => $imageUrl,
                     'prompt'     => $prompt !== '' ? $prompt : 'subtle natural motion',
                     'duration'   => $duration,
-                    'resolution' => '480p', // quick = cheap/draft tier
+                    'resolution' => $options['resolution'] ?? '480p', // quick default = 480p
                 ],
             ],
         };

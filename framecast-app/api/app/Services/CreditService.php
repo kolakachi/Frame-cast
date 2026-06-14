@@ -43,6 +43,51 @@ class CreditService
     // hold ~50% margin across lengths (see spokespersonCost). The constant is
     // the ≤8s base, used as the pre-flight/estimate default.
     public const VIDEO_SPOKESPERSON  = 130;  // ≤8s base — VEED Fabric 1.0 480p (image+audio lip-sync)
+
+    // User-selectable quality per video tier. Each option = credits (~40–55%
+    // margin) + base-clip COGS at that resolution/mode (CREDIT_CALIBRATION.md
+    // §12/§13). `param` is the model input the resolved value is sent as. 10s
+    // clips cost 2×. The VIDEO_* constants above mirror each tier's default.
+    public const VIDEO_PRICING = [
+        'quick' => [
+            'label' => 'Wan 2.5', 'param' => 'resolution', 'default' => '480p',
+            'options' => [
+                '480p'  => ['cr' => 50,  'cogs' => 0.25],
+                '720p'  => ['cr' => 100, 'cogs' => 0.50],
+                '1080p' => ['cr' => 150, 'cogs' => 0.75],
+            ],
+        ],
+        'seedance_lite' => [
+            'label' => 'Seedance Lite', 'param' => 'resolution', 'default' => '720p',
+            'options' => [
+                '480p'  => ['cr' => 15, 'cogs' => 0.09],
+                '720p'  => ['cr' => 30, 'cogs' => 0.18],
+                '1080p' => ['cr' => 60, 'cogs' => 0.36],
+            ],
+        ],
+        'balanced' => [
+            'label' => 'Hailuo 2.3', 'param' => 'resolution', 'default' => '768p',
+            'options' => [
+                '768p'  => ['cr' => 35, 'cogs' => 0.19],
+                '1080p' => ['cr' => 60, 'cogs' => 0.33],
+            ],
+        ],
+        'seedance_pro' => [
+            'label' => 'Seedance Pro', 'param' => 'resolution', 'default' => '1080p',
+            'options' => [
+                '480p'  => ['cr' => 25,  'cogs' => 0.15],
+                '720p'  => ['cr' => 50,  'cogs' => 0.30],
+                '1080p' => ['cr' => 125, 'cogs' => 0.75],
+            ],
+        ],
+        'premium' => [
+            'label' => 'Kling 2.1', 'param' => 'mode', 'default' => 'pro',
+            'options' => [
+                'standard' => ['cr' => 55,  'cogs' => 0.25],
+                'pro'      => ['cr' => 100, 'cogs' => 0.45],
+            ],
+        ],
+    ];
     public const EXPORT     = 0;   // included
 
     // Approximate upstream provider cost (COGS) in USD per operation. Stamped
@@ -100,6 +145,51 @@ class CreditService
         $perSecond = $resolution === '720p' ? 0.15 : 0.08;
 
         return round(max(1.0, $seconds) * $perSecond, 4);
+    }
+
+    /** Resolve a requested video quality to a valid option for the tier (its default if unknown/absent). */
+    public static function videoQuality(string $tier, ?string $quality): string
+    {
+        $cfg = self::VIDEO_PRICING[$tier] ?? null;
+        if (! $cfg) {
+            return (string) ($quality ?? '');
+        }
+
+        return isset($cfg['options'][$quality]) ? (string) $quality : (string) $cfg['default'];
+    }
+
+    /** The model input name a tier's quality is sent as: 'resolution' or, for Kling, 'kling_mode'. */
+    public static function videoQualityParam(string $tier): string
+    {
+        return (self::VIDEO_PRICING[$tier]['param'] ?? 'resolution') === 'mode' ? 'kling_mode' : 'resolution';
+    }
+
+    /** Credit cost for a video tier at a given quality + duration (10s = 2×). */
+    public static function animationCost(string $tier, ?string $quality, int $seconds): int
+    {
+        $cfg = self::VIDEO_PRICING[$tier] ?? null;
+        $mult = $seconds >= 10 ? 2 : 1;
+        if (! $cfg) {
+            return self::VIDEO_QUICK * $mult;
+        }
+        $q = self::videoQuality($tier, $quality);
+
+        return (int) ($cfg['options'][$q]['cr'] ?? self::VIDEO_QUICK) * $mult;
+    }
+
+    /** Upstream COGS (USD) for a video tier at a given quality + duration (10s = 2×). */
+    public static function animationCogsUsd(string $tier, ?string $quality, int $seconds): ?float
+    {
+        $cfg = self::VIDEO_PRICING[$tier] ?? null;
+        $mult = $seconds >= 10 ? 2 : 1;
+        if (! $cfg) {
+            $base = self::cogsUsd('video:'.$tier) ?? self::cogsUsd('video:quick');
+            return $base === null ? null : round($base * $mult, 4);
+        }
+        $q = self::videoQuality($tier, $quality);
+        $cogs = $cfg['options'][$q]['cogs'] ?? null;
+
+        return $cogs === null ? null : round($cogs * $mult, 4);
     }
 
     // Monthly credit allocations per plan — sized for blended usage + breakage
