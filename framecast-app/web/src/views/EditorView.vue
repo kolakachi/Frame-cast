@@ -10,6 +10,7 @@ import EditorTimeline from "../components/EditorTimeline.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
 import SchedulePostModal from "../components/SchedulePostModal.vue";
 import UiSelect from "../components/UiSelect.vue";
+import VoiceCloneModal from "../components/VoiceCloneModal.vue";
 import NotifBell from "../components/NotifBell.vue";
 
 const route = useRoute();
@@ -1701,6 +1702,22 @@ function applyPersona(persona) {
 function goToVoices() {
   stopPreview();
   router.push({ name: "voices" });
+}
+
+// Clone a voice without leaving the editor (shared VoiceCloneModal).
+const showCloneModal = ref(false);
+function openCloneInEditor() {
+  stopPreview();
+  showCloneModal.value = true;
+}
+async function onVoiceCloned(profile) {
+  showCloneModal.value = false;
+  await loadVoiceProfiles();
+  if (profile?.provider_voice_key) {
+    voiceProfileKey.value = profile.provider_voice_key;
+    voiceDirectionDraft.value = ""; // clones don't use Gemini direction
+    closeVoiceModal();
+  }
 }
 onBeforeUnmount(() => stopPreview());
 const ADD_SCENE_STOCK_OPTIONS = [
@@ -8755,8 +8772,8 @@ onBeforeUnmount(() => {
               </div>
               <button class="vp-pick" type="button" @click="selectVoice(v)">{{ voiceProfileKey === v.provider_voice_key ? '✓' : 'Use' }}</button>
             </div>
-            <button v-if="!clonedVoices.length" type="button" class="vp-clone-cta" @click="goToVoices">
-              ＋ Clone your own voice — record or upload a sample on the Voices page
+            <button type="button" class="vp-clone-cta" @click="openCloneInEditor">
+              ＋ Clone a voice — record (with a 3-2-1 countdown) or upload a sample
             </button>
 
             <!-- Expressive (Gemini) -->
@@ -8799,12 +8816,15 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="vp-foot">
-            <span class="vp-foot-hint">Personalities are best-effort delivery on Gemini's fixed voices. Cloned voices come from the Voices page.</span>
+            <span class="vp-foot-hint">Personalities are a best-effort delivery shift on Gemini's fixed voices, not a re-pitch.</span>
             <button class="btn btn-ghost btn-sm" type="button" @click="closeVoiceModal">Done</button>
           </div>
         </div>
       </div>
     </Teleport>
+
+    <!-- Clone a voice without leaving the editor -->
+    <VoiceCloneModal v-if="showCloneModal" @close="showCloneModal = false" @created="onVoiceCloned" />
   </main>
 </template>
 

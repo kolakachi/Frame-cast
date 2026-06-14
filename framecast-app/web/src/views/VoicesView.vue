@@ -1,10 +1,11 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../services/api";
 import AppSidebar from "../components/AppSidebar.vue";
 import NotifBell from "../components/NotifBell.vue";
+import VoiceCloneModal from "../components/VoiceCloneModal.vue";
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -14,88 +15,9 @@ const loading = ref(true);
 const error = ref("");
 const voices = ref([]); // cloned voices only
 
-// Clone-create modal
 const showClone = ref(false);
-const cloneName = ref("");
-const cloneFile = ref(null);
-const cloneFileName = ref("");
-const cloneState = ref("idle"); // idle | uploading | creating | error
-const cloneError = ref("");
-
-const clonedCount = computed(() => voices.value.length);
-const busy = computed(() => cloneState.value === "uploading" || cloneState.value === "creating");
-
-// ── In-browser recording (MediaRecorder) ──────────────────────────
-const recording = ref(false);
-const recordSeconds = ref(0);
-let mediaRecorder = null;
-let recordChunks = [];
-let recordTimer = null;
-let recordStream = null;
-const MAX_RECORD_SECONDS = 60;
-
-async function toggleRecord() {
-  if (recording.value) {
-    stopRecord();
-    return;
-  }
-  try {
-    recordStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    recordChunks = [];
-    mediaRecorder = new MediaRecorder(recordStream);
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data && e.data.size) recordChunks.push(e.data);
-    };
-    mediaRecorder.onstop = () => {
-      const type = mediaRecorder?.mimeType || "audio/webm";
-      const blob = new Blob(recordChunks, { type });
-      const ext = type.includes("ogg") ? "ogg" : "webm";
-      // A recording is just another sample — backend transcodes to WAV.
-      cloneFile.value = new File([blob], `recording.${ext}`, { type });
-      cloneFileName.value = `Recording (${recordSeconds.value}s)`;
-      releaseStream();
-    };
-    mediaRecorder.start();
-    recording.value = true;
-    recordSeconds.value = 0;
-    cloneError.value = "";
-    recordTimer = window.setInterval(() => {
-      recordSeconds.value += 1;
-      if (recordSeconds.value >= MAX_RECORD_SECONDS) stopRecord();
-    }, 1000);
-  } catch (e) {
-    cloneError.value = "Microphone access was denied or is unavailable.";
-  }
-}
-
-function stopRecord() {
-  if (recordTimer) {
-    window.clearInterval(recordTimer);
-    recordTimer = null;
-  }
-  recording.value = false;
-  try {
-    mediaRecorder?.stop();
-  } catch {}
-}
-
-function releaseStream() {
-  try {
-    recordStream?.getTracks().forEach((t) => t.stop());
-  } catch {}
-  recordStream = null;
-}
-
-function closeClone() {
-  stopRecord();
-  releaseStream();
-  showClone.value = false;
-}
-
-onBeforeUnmount(() => {
-  stopRecord();
-  releaseStream();
-});
+function openClone() { showClone.value = true; }
+function onCloned() { loadVoices(); }
 
 async function loadVoices() {
   loading.value = true;
@@ -108,63 +30,6 @@ async function loadVoices() {
     error.value = e?.response?.data?.error?.message ?? "Could not load voices.";
   } finally {
     loading.value = false;
-  }
-}
-
-function openClone() {
-  stopRecord();
-  releaseStream();
-  cloneName.value = "";
-  cloneFile.value = null;
-  cloneFileName.value = "";
-  cloneState.value = "idle";
-  cloneError.value = "";
-  recordSeconds.value = 0;
-  showClone.value = true;
-}
-
-function onCloneFile(event) {
-  const file = event.target.files?.[0] ?? null;
-  cloneFile.value = file;
-  cloneFileName.value = file?.name ?? "";
-}
-
-async function submitClone() {
-  if (!cloneName.value.trim()) {
-    cloneError.value = "Give the voice a name.";
-    return;
-  }
-  if (!cloneFile.value) {
-    cloneError.value = "Upload a voice sample.";
-    return;
-  }
-
-  cloneError.value = "";
-  try {
-    // 1) Upload the sample to the generic asset store.
-    cloneState.value = "uploading";
-    const fd = new FormData();
-    fd.append("title", `Voice sample — ${cloneName.value.trim()}`);
-    fd.append("asset_type", "audio");
-    fd.append("asset_file", cloneFile.value);
-    const up = await api.post("/assets", fd, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    const assetId = up.data?.data?.asset?.id;
-    if (!assetId) throw new Error("Upload returned no asset id.");
-
-    // 2) Register the cloned voice from that sample.
-    cloneState.value = "creating";
-    await api.post("/voice-profiles/clone", {
-      name: cloneName.value.trim(),
-      source_asset_id: assetId,
-    });
-
-    closeClone();
-    await loadVoices();
-  } catch (e) {
-    cloneState.value = "error";
-    cloneError.value = e?.response?.data?.error?.message ?? "Could not create the cloned voice.";
   }
 }
 
@@ -255,59 +120,8 @@ onMounted(async () => {
       </div>
     </main>
 
-    <!-- Clone modal -->
-    <Teleport to="body">
-      <div v-if="showClone" class="v-backdrop" @click.self="closeClone">
-        <div class="v-modal">
-          <div class="v-head">
-            <div class="v-title">✦ Clone a voice</div>
-            <button class="v-close" @click="closeClone">×</button>
-          </div>
-
-          <div class="v-field">
-            <label class="v-label">Voice name</label>
-            <input v-model="cloneName" class="v-input" placeholder="e.g. My narrator" :disabled="busy" />
-          </div>
-
-          <div class="v-field">
-            <label class="v-label">Voice sample</label>
-            <div class="v-sample-actions">
-              <label class="v-sample-btn" :class="{ disabled: busy || recording }">
-                <input type="file" accept="audio/*" hidden @change="onCloneFile" :disabled="busy || recording" />
-                ⬆ Upload file
-              </label>
-              <button
-                type="button"
-                class="v-sample-btn"
-                :class="{ rec: recording, disabled: busy }"
-                :disabled="busy"
-                @click="toggleRecord"
-              >
-                <span v-if="recording">⏹ Stop · {{ recordSeconds }}s</span>
-                <span v-else>● Record</span>
-              </button>
-            </div>
-            <div v-if="recording" class="v-rec-live">Recording… speak naturally for ~10–20s.</div>
-            <div v-else-if="cloneFileName" class="v-sample-current">✓ {{ cloneFileName }}</div>
-            <div class="v-hint">A clean, single-speaker clip of ~10–20s works best — no music or background noise. mp3, wav, m4a or a recording all work.</div>
-          </div>
-
-          <div v-if="cloneError" class="banner error" style="margin-top:10px">{{ cloneError }}</div>
-
-          <div class="v-foot">
-            <button class="btn btn-ghost btn-sm" type="button" @click="closeClone">Cancel</button>
-            <button
-              class="btn btn-primary btn-sm"
-              type="button"
-              :disabled="busy || recording"
-              @click="submitClone"
-            >
-              {{ cloneState === 'uploading' ? 'Uploading…' : cloneState === 'creating' ? 'Cloning…' : 'Create voice' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <!-- Clone modal (shared component: name + record-with-countdown / upload, preview, retake) -->
+    <VoiceCloneModal v-if="showClone" @close="showClone = false" @created="onCloned" />
 
     <!-- Delete confirm -->
     <Teleport to="body">
