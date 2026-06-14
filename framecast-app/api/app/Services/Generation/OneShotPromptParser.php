@@ -329,6 +329,11 @@ You convert a single user prompt about a short video scene into four channels:
                 drift, slow camera push-in" or "ambient steam rising,
                 static frame". ~30-80 chars.
 
+  voice_gender — the gender of the on-screen speaker so the voiceover MATCHES
+                the person in `visual`: "male", "female", or "neutral" (neutral
+                only for no-person / product / b-roll). A male subject MUST be
+                "male", a female subject "female" — a mismatch breaks lip-sync.
+
   style       — pick ONE of the 21 styles below that best fits the
                 prompt's vibe. Do NOT default — read the prompt and
                 let the subject + tone drive the choice. If the user
@@ -387,7 +392,7 @@ You convert a single user prompt about a short video scene into four channels:
                                  the user says "3D" or "Pixar" or
                                  "Disney" or "animated".
 
-Return STRICT JSON with exactly these five keys. No prose, no markdown.
+Return STRICT JSON with exactly these six keys (script, visual, music_mood, motion, voice_gender, style). No prose, no markdown.
 SYS;
         $systemPrompt .= $this->factsBlock($urlContexts).$this->imagesBlock($referenceImageUrls);
 
@@ -418,11 +423,12 @@ SYS;
             }
 
             return [
-                'script'     => $this->cleanString($parsed['script']     ?? $fallback['script'],     400),
-                'visual'     => $this->cleanString($parsed['visual']     ?? $fallback['visual'],     1500),
-                'music_mood' => $this->cleanString($parsed['music_mood'] ?? $fallback['music_mood'], 60),
-                'motion'     => $this->cleanString($parsed['motion']     ?? $fallback['motion'],     160),
-                'style'      => $this->validStyle($parsed['style']       ?? 'photorealistic'),
+                'script'       => $this->cleanString($parsed['script']     ?? $fallback['script'],     400),
+                'visual'       => $this->cleanString($parsed['visual']     ?? $fallback['visual'],     1500),
+                'music_mood'   => $this->cleanString($parsed['music_mood'] ?? $fallback['music_mood'], 60),
+                'motion'       => $this->cleanString($parsed['motion']     ?? $fallback['motion'],     160),
+                'voice_gender' => $this->cleanGender($parsed['voice_gender'] ?? null),
+                'style'        => $this->validStyle($parsed['style']       ?? 'photorealistic'),
             ];
         } catch (\Throwable $e) {
             Log::warning('OneShotPromptParser: exception — using fallback', ['error' => $e->getMessage()]);
@@ -544,6 +550,11 @@ Per scene, return:
             NEVER default to one gender or a young woman by reflex; pick who
             realistically fits, and keep that SAME person across every scene.
   motion  — 1 short clause for how the still image animates. ~30-80 chars.
+  voice_gender — the gender of the on-screen speaker for THIS scene so the
+            voiceover MATCHES the person you described in `visual`: "male",
+            "female", or "neutral" (use neutral only for b-roll / product /
+            no-person scenes). A male subject MUST get "male", a female subject
+            "female" — never mismatch, it breaks the lip-sync.
   characters — ONLY when this scene shows one or more of the NAMED people in
             the cast (below): an array of their names, e.g. ["Sarah"] or
             ["Sarah","Tom"]. If the scene has no named person (b-roll,
@@ -580,7 +591,7 @@ Shared:
 Return STRICT JSON, no markdown:
 {
   "scenes": [
-    { "script": "…", "visual": "…", "motion": "…", "characters": [] }
+    { "script": "…", "visual": "…", "motion": "…", "voice_gender": "male|female|neutral", "characters": [] }
   ],
   "music_mood": "…",
   "style": "…",
@@ -632,10 +643,11 @@ SYS;
                     }
                 }
                 $scenes[] = [
-                    'script'     => $this->cleanString($s['script'] ?? $singleFallback['script'], 400),
-                    'visual'     => $this->cleanString($s['visual'] ?? $singleFallback['visual'], 1500),
-                    'motion'     => $this->cleanString($s['motion'] ?? $singleFallback['motion'], 160),
-                    'characters' => array_values(array_unique($sceneChars)),
+                    'script'       => $this->cleanString($s['script'] ?? $singleFallback['script'], 400),
+                    'visual'       => $this->cleanString($s['visual'] ?? $singleFallback['visual'], 1500),
+                    'motion'       => $this->cleanString($s['motion'] ?? $singleFallback['motion'], 160),
+                    'voice_gender' => $this->cleanGender($s['voice_gender'] ?? null),
+                    'characters'   => array_values(array_unique($sceneChars)),
                 ];
             }
             // Top up if the model returned fewer than requested (rare but
@@ -646,6 +658,7 @@ SYS;
                     'script' => $singleFallback['script'],
                     'visual' => $singleFallback['visual'],
                     'motion' => $singleFallback['motion'],
+                    'voice_gender' => 'neutral',
                     'characters' => [],
                 ];
             }
@@ -676,6 +689,7 @@ SYS;
                 'script' => $single['script'],
                 'visual' => $single['visual'],
                 'motion' => $single['motion'],
+                'voice_gender' => $single['voice_gender'] ?? 'neutral',
             ];
         }
         return [
@@ -693,12 +707,27 @@ SYS;
     private function fallback(string $userPrompt): array
     {
         return [
-            'script'     => $userPrompt,
-            'visual'     => $userPrompt,
-            'music_mood' => 'calm cinematic ambient',
-            'motion'     => 'subtle natural motion, slow camera drift',
-            'style'      => 'photorealistic',
+            'script'       => $userPrompt,
+            'visual'       => $userPrompt,
+            'music_mood'   => 'calm cinematic ambient',
+            'motion'       => 'subtle natural motion, slow camera drift',
+            'voice_gender' => 'neutral',
+            'style'        => 'photorealistic',
         ];
+    }
+
+    /** Normalize an inferred speaker gender to male | female | neutral. */
+    private function cleanGender(mixed $v): string
+    {
+        $g = mb_strtolower(trim((string) $v));
+        if (str_starts_with($g, 'm')) {
+            return 'male';
+        }
+        if (str_starts_with($g, 'f') || str_starts_with($g, 'w')) {
+            return 'female';
+        }
+
+        return 'neutral';
     }
 
     private function cleanString(mixed $v, int $max): string

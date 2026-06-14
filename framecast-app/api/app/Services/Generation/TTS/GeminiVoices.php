@@ -97,6 +97,19 @@ final class GeminiVoices
         return self::GENDER[$name] ?? 'Neutral';
     }
 
+    /**
+     * Default voice for an inferred speaker gender, so auto-assigned voices
+     * (one-shot) match the on-screen person — a male subject gets a male voice,
+     * not the female default (which breaks lip-sync). Accepts male/female/neutral.
+     */
+    public static function defaultForGender(?string $gender): string
+    {
+        return match (mb_strtolower((string) $gender)) {
+            'male' => 'Charon',   // clear, neutral male narrator
+            default => self::DEFAULT_VOICE, // Kore (female) for female + neutral
+        };
+    }
+
     /** True if $voiceId is one of the Gemini prebuilt voices (case-sensitive). */
     public static function isGeminiVoice(?string $voiceId): bool
     {

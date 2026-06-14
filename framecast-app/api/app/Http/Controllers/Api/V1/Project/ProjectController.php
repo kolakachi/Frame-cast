@@ -945,6 +945,7 @@ class ProjectController extends Controller
             'plan.scenes.*.script'     => ['required_with:plan.scenes', 'string', 'max:1000'],
             'plan.scenes.*.visual'     => ['required_with:plan.scenes', 'string', 'max:2000'],
             'plan.scenes.*.motion'     => ['nullable', 'string', 'max:300'],
+            'plan.scenes.*.voice_gender' => ['nullable', 'string', 'max:16'],
             'plan.scenes.*.characters'   => ['nullable', 'array', 'max:6'],
             'plan.scenes.*.characters.*' => ['string', 'max:60'],
             'plan.style'               => ['nullable', 'string', 'max:40'],
@@ -1051,6 +1052,7 @@ class ProjectController extends Controller
                     'script' => trim((string) ($s['script'] ?? '')),
                     'visual' => trim((string) ($s['visual'] ?? '')),
                     'motion' => trim((string) ($s['motion'] ?? '')),
+                    'voice_gender' => trim((string) ($s['voice_gender'] ?? 'neutral')),
                     'characters' => array_values(array_filter(array_map(
                         fn ($n) => trim((string) $n),
                         (array) ($s['characters'] ?? []),
@@ -1183,8 +1185,11 @@ class ProjectController extends Controller
                 'label'             => "Scene {$sceneOrder}",
                 'script_text'       => $sceneDef['script'],
                 'duration_seconds'  => 8,
+                // Match the voice gender to the on-screen speaker the parser
+                // inferred, so a male character doesn't get a female voice
+                // (which makes lip-sync look wrong).
                 'voice_settings_json' => [
-                    'voice_id'  => \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE,
+                    'voice_id'  => \App\Services\Generation\TTS\GeminiVoices::defaultForGender($sceneDef['voice_gender'] ?? null),
                     'provider'  => 'google',
                     'speed'     => 1.0,
                     'stability' => 'medium',

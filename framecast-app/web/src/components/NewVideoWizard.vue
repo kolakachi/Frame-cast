@@ -772,7 +772,7 @@ async function submitOneShot() {
       ...(oneShotPlan.value ? {
         plan: {
           scenes: oneShotPlan.value.scenes.map((s) => ({
-            script: s.script, visual: s.visual, motion: s.motion,
+            script: s.script, visual: s.visual, motion: s.motion, voice_gender: s.voice_gender,
             // Which named characters appear in this scene (multi-character).
             ...(Array.isArray(s.characters) && s.characters.length ? { characters: s.characters } : {}),
           })),
