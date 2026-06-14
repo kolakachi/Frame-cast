@@ -35,14 +35,11 @@ class GeminiTTSAdapter implements TTSAdapter
         $usageContext = $this->usage->contextFromOptions($options);
         $model = (string) config('services.gemini_tts.model', 'google/gemini-3.1-flash-tts');
 
-        // Voice direction ("Speak slowly, with a calm, reassuring tone") is
-        // folded into the prompt — that's how Gemini TTS takes style. Inline
-        // [tags] stay where the user put them in the script.
+        // Voice direction goes in the model's DEDICATED `prompt` (style)
+        // input — NOT mixed into `text`, or the model speaks the direction
+        // aloud. Inline [tags] stay in the script text.
         $direction = trim((string) ($options['voice_prompt'] ?? ''));
         $script = trim($text) !== '' ? $text : ' ';
-        $prompt = $direction !== ''
-            ? rtrim($direction, ':').': '.$script
-            : $script;
 
         if ($apiToken === '') {
             // No key configured (local/dev) — return a deterministic stub so the
@@ -57,7 +54,10 @@ class GeminiTTSAdapter implements TTSAdapter
         }
 
         $url = 'https://api.replicate.com/v1/models/'.$model.'/predictions';
-        $input = ['text' => $prompt, 'voice' => $voice];
+        $input = ['text' => $script, 'voice' => $voice];
+        if ($direction !== '') {
+            $input['prompt'] = $direction; // style instructions, separate from spoken text
+        }
         if (($ver = (string) config('services.gemini_tts.version', '')) !== '') {
             $url = 'https://api.replicate.com/v1/predictions';
             $body = ['version' => $ver, 'input' => $input];
@@ -122,7 +122,7 @@ class GeminiTTSAdapter implements TTSAdapter
                 'model' => $model,
                 'status' => 'failed',
                 'units' => mb_strlen($text),
-                'estimated_cost_usd' => $this->estimateCost($prompt),
+                'estimated_cost_usd' => $this->estimateCost(trim($script.' '.$direction)),
                 'error_code' => 'gemini_tts_error',
                 'error_message' => $exception->getMessage(),
             ]);
