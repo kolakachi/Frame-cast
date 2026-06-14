@@ -613,17 +613,33 @@ class SceneController extends Controller
             ]);
 
             $voiceSettings = is_array($scene->voice_settings_json) ? $scene->voice_settings_json : [];
-            $voiceSettings['provider_key'] = $audio['provider_key'];
-            $voiceSettings['provider'] = str_starts_with((string) $audio['provider_key'], 'replicate:') ? 'google' : 'openai';
+            $pk = (string) $audio['provider_key'];
+            $voiceSettings['provider_key'] = $pk;
+            $voiceSettings['provider'] = str_contains($pk, 'chatterbox')
+                ? 'replicate:chatterbox'
+                : (str_contains($pk, 'gemini') ? 'google' : 'openai');
             $voiceSettings['voice_id'] = $audio['provider_voice_id'];
             $voiceSettings['speed'] = $speed;
             $voiceSettings['language'] = $language;
             $voiceSettings['audio_asset_id'] = $asset->getKey();
             $voiceSettings['is_outdated'] = false;
 
+            // Talking-spokesperson clip was lip-synced to the OLD audio — the new
+            // voice no longer matches the lips. Flag it so the editor prompts a
+            // re-render (mirrors GenerateTTSJob).
+            $imgSettings = is_array($scene->image_generation_settings_json) ? $scene->image_generation_settings_json : [];
+            if (
+                ($imgSettings['animation_tier'] ?? null) === 'spokesperson'
+                && ! empty($imgSettings['animation_video_asset_id'])
+                && (int) ($imgSettings['animation_source_audio_asset_id'] ?? 0) !== (int) $asset->getKey()
+            ) {
+                $imgSettings['animation_outdated'] = true;
+            }
+
             $scene->forceFill([
                 'duration_seconds' => $audio['duration_seconds'],
                 'voice_settings_json' => $voiceSettings,
+                'image_generation_settings_json' => $imgSettings,
                 'status' => 'edited',
             ])->save();
         });
