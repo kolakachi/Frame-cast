@@ -1689,7 +1689,11 @@ const geminiVoices = computed(() => (voiceProfiles.value || []).filter((v) => !v
 const otherVoices = computed(() => (voiceProfiles.value || []).filter((v) => !v.is_cloned && v.provider !== "google"));
 
 function voiceDescription(p) {
-  return VOICE_DESCRIPTIONS[p.provider_voice_key] || (p.gender_label ? `${p.gender_label} voice` : "Voice");
+  // Lead with gender (Male/Female), then the character blurb (accent) or our
+  // static description. Cloned/Neutral skip the gender prefix.
+  const blurb = VOICE_DESCRIPTIONS[p.provider_voice_key] || p.accent || "";
+  const g = p.gender_label && !["Neutral", "Cloned"].includes(p.gender_label) ? p.gender_label : "";
+  return [g, blurb].filter(Boolean).join(" · ") || "Voice";
 }
 
 function openVoiceModal() { showVoiceModal.value = true; }
@@ -5485,6 +5489,26 @@ async function submitAnimate() {
   }
 }
 
+// Re-render a spokesperson clip's lip-sync after the voice changed — straight
+// from the Visual tab, no need to open the animate modal.
+const lipSyncRegenerating = ref(false);
+async function regenerateLipSync() {
+  const scene = activeScene.value;
+  if (!scene) return;
+  lipSyncRegenerating.value = true;
+  animateError.value = "";
+  try {
+    const response = await api.post(`/scenes/${scene.id}/animate`, { tier: "spokesperson" });
+    const updated = response.data?.data?.scene;
+    if (updated) scenes.value = scenes.value.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
+    pollSceneUntilVisual(scene.id);
+  } catch (err) {
+    animateError.value = err.response?.data?.error?.message ?? "Could not regenerate lip-sync.";
+  } finally {
+    lipSyncRegenerating.value = false;
+  }
+}
+
 // Max attempts × ~5s/attempt sets the polling ceiling. Replicate i2v on
 // premium tier (Kling 2.1) routinely takes 3–5 min; image gen with character
 // (gpt-image-2) takes 30–90s. 80 attempts (~6–7 min) covers the slowest path
@@ -7315,6 +7339,15 @@ onBeforeUnmount(() => {
                     <button v-if="canRevertAnimation && !activeSceneAnimationPending" class="btn btn-ghost btn-sm" type="button" :disabled="aiImagePending" @click="revertAnimation" title="Restore original still">↺</button>
                   </div>
                   <div v-if="activeSceneAnimationError" class="panel-error-copy">{{ activeSceneAnimationError }}</div>
+
+                  <!-- Lip-sync went stale (voice changed) — regenerate right here,
+                       no need to open the animate modal. -->
+                  <div v-if="spokespersonOutdated && !activeSceneAnimationPending" class="lipsync-stale-row">
+                    <span class="lipsync-stale-copy">⚠ Voice changed — the talking lip-sync no longer matches the audio.</span>
+                    <button class="btn btn-primary btn-sm" type="button" :disabled="lipSyncRegenerating || aiImagePending" @click="regenerateLipSync">
+                      {{ lipSyncRegenerating ? 'Regenerating…' : '⟳ Regenerate lip-sync' }}
+                    </button>
+                  </div>
 
                   <!-- Versions — every animation listed regardless of count,
                        with the original still on top when it's available.
@@ -10734,6 +10767,8 @@ button {
 /* Hooks for the create-character modal — reuses .ap-* styles */
 .ap-hint { font-size: 11px; opacity: 0.55; margin-top: 4px; }
 .ap-spokesperson-warn { background: rgba(255,107,53,0.10); border: 1px solid rgba(255,107,53,0.3); color: var(--color-text-primary); border-radius: 8px; padding: 9px 11px; font-size: 12px; line-height: 1.4; margin: 4px 0 14px; }
+.lipsync-stale-row { display: flex; flex-direction: column; gap: 8px; background: rgba(255,107,53,0.10); border: 1px solid rgba(255,107,53,0.35); border-radius: 8px; padding: 10px 11px; margin: 8px 0; }
+.lipsync-stale-copy { font-size: 12px; line-height: 1.4; color: var(--color-text-primary); }
 .ap-error { font-size: 12px; color: #ff6b6b; margin: 10px 0; }
 
 

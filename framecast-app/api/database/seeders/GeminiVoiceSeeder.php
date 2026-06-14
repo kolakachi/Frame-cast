@@ -28,8 +28,8 @@ class GeminiVoiceSeeder extends Seeder
                 [
                     'name'         => $name,
                     'language'     => 'en',
-                    'accent'       => null,
-                    'gender_label' => $character, // delivery character shown as the picker tag
+                    'accent'       => $character,             // delivery character (Firm/Warm/Bright…)
+                    'gender_label' => GeminiVoices::gender($name), // Male/Female for the picker
                     'voice_type'   => 'synthetic',
                     'is_cloned'    => false,
                     'status'       => 'active',

@@ -53,6 +53,50 @@ final class GeminiVoices
         'Sulafat'       => 'Warm',
     ];
 
+    /**
+     * Perceived gender per voice (best-effort — Google doesn't publish a strict
+     * mapping; tweak individual entries if a voice reads differently). Used as
+     * the VoiceProfile gender_label so the picker can show/filter male vs female.
+     */
+    public const GENDER = [
+        'Zephyr'        => 'Female',
+        'Puck'          => 'Male',
+        'Charon'        => 'Male',
+        'Kore'          => 'Female',
+        'Fenrir'        => 'Male',
+        'Leda'          => 'Female',
+        'Orus'          => 'Male',
+        'Aoede'         => 'Female',
+        'Callirrhoe'    => 'Female',
+        'Autonoe'       => 'Female',
+        'Enceladus'     => 'Male',
+        'Iapetus'       => 'Male',
+        'Umbriel'       => 'Male',
+        'Algieba'       => 'Male',
+        'Despina'       => 'Female',
+        'Erinome'       => 'Female',
+        'Algenib'       => 'Male',
+        'Rasalgethi'    => 'Male',
+        'Laomedeia'     => 'Female',
+        'Achernar'      => 'Female',
+        'Alnilam'       => 'Male',
+        'Schedar'       => 'Male',
+        'Gacrux'        => 'Female',
+        'Pulcherrima'   => 'Female',
+        'Achird'        => 'Male',
+        'Zubenelgenubi' => 'Male',
+        'Vindemiatrix'  => 'Female',
+        'Sadachbia'     => 'Female',
+        'Sadaltager'    => 'Male',
+        'Sulafat'       => 'Female',
+    ];
+
+    /** Perceived gender for a voice (Male/Female), or Neutral if unknown. */
+    public static function gender(string $name): string
+    {
+        return self::GENDER[$name] ?? 'Neutral';
+    }
+
     /** True if $voiceId is one of the Gemini prebuilt voices (case-sensitive). */
     public static function isGeminiVoice(?string $voiceId): bool
     {

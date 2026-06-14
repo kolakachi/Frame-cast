@@ -35,6 +35,18 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
         return 'google/nano-banana';
     }
 
+    /**
+     * Map our aspect string to the model's aspect_ratio enum, defaulting to
+     * 9:16 (NOT the model's `match_input_image` default, which would copy a
+     * reference image's aspect instead of the project's).
+     */
+    protected function aspectRatioInput(string $aspectRatio): string
+    {
+        $valid = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+
+        return in_array($aspectRatio, $valid, true) ? $aspectRatio : '9:16';
+    }
+
     public function generate(
         string $prompt,
         string $style,
@@ -61,6 +73,11 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
         $input = [
             'prompt'        => $fullPrompt,
             'output_format' => 'png',
+            // CRITICAL: the model defaults to `match_input_image`, so with a
+            // reference it copies the reference's aspect (e.g. a 16:9 character)
+            // and ignores the text hint. Pin the requested aspect explicitly so
+            // generation always matches the project, not the reference.
+            'aspect_ratio'  => $this->aspectRatioInput($aspectRatio),
         ];
         if (! empty($refs)) {
             $input['image_input'] = $refs;
