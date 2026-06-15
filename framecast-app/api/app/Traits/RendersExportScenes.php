@@ -30,6 +30,7 @@ trait RendersExportScenes
         return match ($aspectRatio) {
             '16:9' => ['width' => 1920, 'height' => 1080],
             '1:1'  => ['width' => 1080, 'height' => 1080],
+            '4:5'  => ['width' => 1080, 'height' => 1350],
             default => ['width' => 1080, 'height' => 1920],
         };
     }

@@ -1507,6 +1507,28 @@ const perSceneAddStyleOpenId = ref(null);
 
 const exportPending = ref(false);
 
+// C10 — batch export: pick one or more aspect ratios; each queues a render that
+// re-composites the same generated assets (no AI re-gen, 0 extra credits).
+const exportMenuOpen = ref(false);
+const exportAspectRatios = ref([]);
+const ASPECT_RATIO_OPTIONS = [
+  { value: "9:16", label: "9:16", sub: "Reels · TikTok · Shorts" },
+  { value: "1:1", label: "1:1", sub: "Feed" },
+  { value: "4:5", label: "4:5", sub: "IG portrait" },
+  { value: "16:9", label: "16:9", sub: "YouTube" },
+];
+function openExportMenu() {
+  if (!exportAspectRatios.value.length) {
+    exportAspectRatios.value = [project.value?.aspect_ratio || "9:16"];
+  }
+  exportMenuOpen.value = !exportMenuOpen.value;
+}
+function toggleExportRatio(r) {
+  const i = exportAspectRatios.value.indexOf(r);
+  if (i >= 0) exportAspectRatios.value.splice(i, 1);
+  else exportAspectRatios.value.push(r);
+}
+
 // Public share state for the export header's "🔗 Share publicly" button.
 // project.is_shared + project.share_url come from the project serializer.
 // First click enables share + copies; subsequent clicks just re-copy.
@@ -2210,6 +2232,45 @@ const sortedHookOptions = computed(() =>
     return sb - sa;
   })
 );
+
+// C9 — on-demand hook generation: re-roll + re-score the project's hook options
+// from its script (LLM text, no credit charge). Poll for the scored results.
+const hooksGenerating = ref(false);
+const hasScriptForHooks = computed(() => !!String(project.value?.script_text || "").trim());
+async function regenerateHooks() {
+  if (!project.value || hooksGenerating.value) return;
+  hooksGenerating.value = true;
+  try {
+    await api.post(`/projects/${project.value.id}/hooks/generate`);
+    pushToast({
+      id: `hooks-${Date.now()}`,
+      title: "Generating hooks",
+      message: "Fresh hook options are being written and scored…",
+      created_at: new Date().toISOString(),
+    });
+    // GenerateHooksJob → ScoreHooksJob run async; poll the payload until scores land.
+    const startCount = hookOptions.value.length;
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 2500));
+      try {
+        await refreshProjectPayload();
+      } catch {
+        /* transient — keep polling */
+      }
+      const scored = hookOptions.value.some((h) => h.hook_score != null);
+      if (hookOptions.value.length !== startCount && scored) break;
+    }
+  } catch (e) {
+    pushToast({
+      id: `hooks-err-${Date.now()}`,
+      title: "Hook generation failed",
+      message: e.response?.data?.error?.message || "Could not generate hooks.",
+      created_at: new Date().toISOString(),
+    });
+  } finally {
+    hooksGenerating.value = false;
+  }
+}
 // True when the active scene's visual is a still image (not video, text card, or waveform).
 // Ken Burns motion controls only appear in this state.
 const activeSceneIsStillImage = computed(() => {
@@ -5597,25 +5658,35 @@ async function queueExport() {
   exportState.value = "saving";
 
   try {
+    exportMenuOpen.value = false;
+    const ratios = exportAspectRatios.value.length
+      ? [...new Set(exportAspectRatios.value)]
+      : [project.value.aspect_ratio || "9:16"];
+
     const response = await api.post(`/projects/${project.value.id}/export`, {
-      aspect_ratio: project.value.aspect_ratio || "9:16",
+      aspect_ratios: ratios,
       language: project.value.primary_language || "en",
       watermark_enabled: false,
     });
 
-    const exportJob = response.data?.data?.export_job ?? null;
-    queuedExportJobId.value = exportJob?.id ?? null;
-    if (exportJob) {
-      exportJobs.value = [
-        exportJob,
-        ...exportJobs.value.filter((job) => job.id !== exportJob.id),
-      ];
+    const data = response.data?.data ?? {};
+    const jobs = data.export_jobs ?? (data.export_job ? [data.export_job] : []);
+    const first = jobs[0] ?? null;
+    queuedExportJobId.value = first?.id ?? null;
+    if (jobs.length) {
+      const ids = new Set(jobs.map((j) => j.id));
+      exportJobs.value = [...jobs, ...exportJobs.value.filter((job) => !ids.has(job.id))];
     }
+    const skipped = data.skipped_aspect_ratios ?? [];
     exportState.value = "saved";
     pushToast({
-      id: `export-${exportJob?.id || Date.now()}`,
-      title: "Export queued",
-      message: exportJob?.file_name || "Your export job has been queued.",
+      id: `export-${first?.id || Date.now()}`,
+      title: jobs.length > 1 ? `${jobs.length} exports queued` : "Export queued",
+      message: skipped.length
+        ? `Queued ${jobs.length} · skipped ${skipped.join(", ")} (export limit reached)`
+        : jobs.length > 1
+          ? ratios.join(", ")
+          : first?.file_name || "Your export job has been queued.",
       created_at: new Date().toISOString(),
     });
     window.setTimeout(() => {
@@ -6223,15 +6294,27 @@ onBeforeUnmount(() => {
               Variants
             </button>
 
-            <div class="export-btn-wrap">
+            <div class="export-btn-wrap" style="position:relative">
               <button
                 class="btn btn-primary"
                 type="button"
                 :disabled="exportInProgress || !!exportBlockerMessage"
-                @click="queueExport"
+                @click="openExportMenu"
               >
                 {{ exportInProgress ? "Exporting..." : "Export" }}
               </button>
+              <div v-if="exportMenuOpen" class="export-format-menu" style="position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:264px;background:var(--surface,#15151b);border:1px solid var(--border,#2a2a33);border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.55);padding:14px;text-align:left">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim,#9a9aa5);margin-bottom:10px">Export formats</div>
+                <label v-for="opt in ASPECT_RATIO_OPTIONS" :key="opt.value" style="display:flex;align-items:center;gap:10px;padding:7px 2px;cursor:pointer;font-size:14px">
+                  <input type="checkbox" :checked="exportAspectRatios.includes(opt.value)" @change="toggleExportRatio(opt.value)" style="accent-color:var(--accent,#ff6b35);width:15px;height:15px" />
+                  <span style="font-weight:600;min-width:38px">{{ opt.label }}</span>
+                  <span style="color:var(--text-dim,#9a9aa5);font-size:12px">{{ opt.sub }}</span>
+                </label>
+                <div style="font-size:11.5px;color:var(--text-faint,#6b6b75);margin:8px 2px 10px;line-height:1.4">Each format is a separate render of the same video — no extra credits.</div>
+                <button class="btn btn-primary btn-full" type="button" :disabled="!exportAspectRatios.length || exportInProgress" @click="queueExport">
+                  Export {{ exportAspectRatios.length }} format{{ exportAspectRatios.length === 1 ? '' : 's' }}
+                </button>
+              </div>
             </div>
             <button class="btn btn-ghost btn-back" type="button" @click="router.push({ name: 'dashboard' })">
               Back to Dashboard
@@ -8207,8 +8290,16 @@ onBeforeUnmount(() => {
                 <button class="btn btn-ghost btn-full" type="button" @click="saveProjectDefaults">
                   {{ projectDefaultsSaveState === "saving" ? "Saving…" : projectDefaultsSaveState === "saved" ? "Saved" : "Save Defaults" }}
                 </button>
-                <div v-if="sortedHookOptions.length" class="hooks-block">
-                  <div class="micro-label hooks-title">Hook options — sorted by score</div>
+                <div v-if="hasScriptForHooks" class="hooks-block">
+                  <div class="hooks-title-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                    <span class="micro-label hooks-title">Hook options{{ sortedHookOptions.length ? ' — sorted by score' : '' }}</span>
+                    <button class="btn btn-ghost btn-sm" type="button" :disabled="hooksGenerating" @click="regenerateHooks" :title="'Write and score fresh hooks from your script — no credits'">
+                      {{ hooksGenerating ? "Generating…" : sortedHookOptions.length ? "↻ Regenerate" : "✨ Generate hooks" }}
+                    </button>
+                  </div>
+                  <div v-if="!sortedHookOptions.length && !hooksGenerating" class="hook-card-reason" style="margin-top:6px">
+                    Generate 3–10 ranked hook options, then spin the best into variants.
+                  </div>
                   <div
                     v-for="option in sortedHookOptions"
                     :key="option.id"

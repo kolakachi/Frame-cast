@@ -279,6 +279,23 @@ class WorkspaceUsageService
     /**
      * @return array{plan:string,used:int,limit:int}
      */
+    /** Remaining exports this period, or null if unlimited (admin/unbounded plan). */
+    public function exportsRemaining(User $user): ?int
+    {
+        if (self::isAdmin($user)) {
+            return null;
+        }
+
+        $planTier = (string) ($user->workspace?->plan_tier ?: 'studio');
+        $plan = self::plans()[$planTier] ?? self::plans()['studio'];
+        $used = ExportJob::query()
+            ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id))
+            ->where('status', 'completed')
+            ->count();
+
+        return max(0, (int) $plan['render_limit'] - $used);
+    }
+
     public function exportLimitContext(User $user): array
     {
         $planTier = (string) ($user->workspace?->plan_tier ?: 'studio');

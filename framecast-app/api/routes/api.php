@@ -237,6 +237,8 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{projectId}/localizations', [LocalizationController::class, 'index'])->whereNumber('projectId');
             Route::post('/{projectId}/localizations', [LocalizationController::class, 'store'])->whereNumber('projectId');
             Route::post('/{projectId}/export', [ProjectController::class, 'export'])->whereNumber('projectId');
+            // On-demand hook generation + scoring (C9) — re-roll ranked hook options
+            Route::post('/{projectId}/hooks/generate', [ProjectController::class, 'generateHooks'])->whereNumber('projectId');
             // Toggle public share link for the /sample/<token> page
             Route::post('/{projectId}/share', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'toggle'])->whereNumber('projectId');
             Route::post('/{projectId}/resume-failed', [ProjectController::class, 'resumeFailed'])->whereNumber('projectId');

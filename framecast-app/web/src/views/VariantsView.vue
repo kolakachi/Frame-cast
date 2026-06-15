@@ -1048,7 +1048,7 @@ onBeforeUnmount(() => {
             </label>
             <div v-if="varyFormat" class="chip-wrap">
               <button
-                v-for="format in ['9:16', '1:1', '16:9']"
+                v-for="format in ['9:16', '1:1', '4:5', '16:9']"
                 :key="format"
                 :class="['chip', selectedFormats.includes(format) ? 'selected' : '']"
                 type="button"

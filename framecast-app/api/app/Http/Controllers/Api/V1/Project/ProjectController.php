@@ -1530,7 +1530,9 @@ class ProjectController extends Controller
         $this->reconcileStaleExports((int) $project->getKey());
 
         $validated = $request->validate([
-            'aspect_ratio' => ['nullable', Rule::in(['9:16', '1:1', '16:9'])],
+            'aspect_ratio' => ['nullable', Rule::in(['9:16', '1:1', '4:5', '16:9'])],
+            'aspect_ratios' => ['nullable', 'array', 'max:4'],
+            'aspect_ratios.*' => [Rule::in(['9:16', '1:1', '4:5', '16:9'])],
             'language' => ['nullable', 'string', 'max:16'],
             'watermark_enabled' => ['nullable', 'boolean'],
         ]);
@@ -1569,61 +1571,130 @@ class ProjectController extends Controller
             }
         }
 
-        $aspectRatio = (string) ($validated['aspect_ratio'] ?? $project->aspect_ratio ?? '9:16');
         $language = (string) ($validated['language'] ?? $project->primary_language ?? 'en');
         $titleSlug = Str::slug((string) ($project->title ?: 'framecast-project'));
+        $watermark = $this->shouldWatermark($project->workspace_id, (bool) ($validated['watermark_enabled'] ?? false));
 
-        $exportJob = ExportJob::query()->create([
-            'workspace_id' => $project->workspace_id,
-            'project_id' => $project->getKey(),
-            'variant_id' => null,
-            'aspect_ratio' => $aspectRatio,
-            'language' => $language,
-            'file_name' => "{$titleSlug}-{$aspectRatio}-{$language}.mp4",
-            'watermark_enabled' => $this->shouldWatermark($project->workspace_id, (bool) ($validated['watermark_enabled'] ?? false)),
-            'status' => 'queued',
-            'progress_percent' => 0,
-            'priority' => 0,
-            'queued_at' => now(),
-        ]);
+        // C10 — batch export: accept aspect_ratios[] (one render per ratio), fall
+        // back to the singular aspect_ratio, then the project default. Each ratio
+        // re-composites the SAME generated assets at new dimensions (no AI re-gen).
+        $requested = $validated['aspect_ratios'] ?? null;
+        if (empty($requested)) {
+            $requested = [(string) ($validated['aspect_ratio'] ?? $project->aspect_ratio ?? '9:16')];
+        }
+        $requested = array_values(array_unique(array_map('strval', $requested)));
 
-        rescue(static function () use ($project, $exportJob): void {
-            ExportProgressed::dispatch(
-                (int) $project->getKey(),
-                (int) $exportJob->getKey(),
-                'queued',
-                0,
-                'Export queued.',
-                (string) $exportJob->file_name,
-                $exportJob->failure_reason
+        // Cap the batch to the workspace's remaining export quota (null = unlimited).
+        // Surface anything dropped rather than silently truncating.
+        $remaining = $this->usageService->exportsRemaining($user);
+        $skipped = [];
+        if ($remaining !== null && count($requested) > $remaining) {
+            $skipped = array_values(array_slice($requested, max(0, $remaining)));
+            $requested = array_values(array_slice($requested, 0, max(0, $remaining)));
+        }
+        if (empty($requested)) {
+            $ctx = $this->usageService->exportLimitContext($user);
+            return $this->limitError(
+                'export_limit_reached',
+                "You've used {$ctx['used']} of {$ctx['limit']} exports on the {$ctx['plan']} plan this month.",
+                $ctx,
             );
-        }, false);
+        }
 
-        ProcessExportJob::dispatch((int) $exportJob->getKey());
+        $jobs = [];
+        foreach ($requested as $aspectRatio) {
+            $exportJob = ExportJob::query()->create([
+                'workspace_id' => $project->workspace_id,
+                'project_id' => $project->getKey(),
+                'variant_id' => null,
+                'aspect_ratio' => $aspectRatio,
+                'language' => $language,
+                'file_name' => "{$titleSlug}-{$aspectRatio}-{$language}.mp4",
+                'watermark_enabled' => $watermark,
+                'status' => 'queued',
+                'progress_percent' => 0,
+                'priority' => 0,
+                'queued_at' => now(),
+            ]);
+
+            rescue(static function () use ($project, $exportJob): void {
+                ExportProgressed::dispatch(
+                    (int) $project->getKey(),
+                    (int) $exportJob->getKey(),
+                    'queued',
+                    0,
+                    'Export queued.',
+                    (string) $exportJob->file_name,
+                    $exportJob->failure_reason
+                );
+            }, false);
+
+            ProcessExportJob::dispatch((int) $exportJob->getKey());
+            $jobs[] = $this->exportJobPayload($exportJob);
+        }
 
         return response()->json([
             'data' => [
-                'export_job' => [
-                    'id' => $exportJob->getKey(),
-                    'workspace_id' => $exportJob->workspace_id,
-                    'project_id' => $exportJob->project_id,
-                    'variant_id' => $exportJob->variant_id,
-                    'aspect_ratio' => $exportJob->aspect_ratio,
-                    'language' => $exportJob->language,
-                    'file_name' => $exportJob->file_name,
-                    'watermark_enabled' => $exportJob->watermark_enabled,
-                    'status' => $exportJob->status,
-                    'progress_percent' => $exportJob->progress_percent,
-                    'failure_reason' => $exportJob->failure_reason,
-                    'output_asset_id' => $exportJob->output_asset_id,
-                    'priority' => $exportJob->priority,
-                    'queued_at' => $exportJob->queued_at?->toIso8601String(),
-                    'started_at' => $exportJob->started_at?->toIso8601String(),
-                    'completed_at' => $exportJob->completed_at?->toIso8601String(),
-                ],
+                'export_job' => $jobs[0],          // back-compat: single-job callers
+                'export_jobs' => $jobs,
+                'skipped_aspect_ratios' => $skipped,
             ],
             'meta' => [],
         ], 201);
+    }
+
+    /** @return array<string,mixed> */
+    private function exportJobPayload(ExportJob $exportJob): array
+    {
+        return [
+            'id' => $exportJob->getKey(),
+            'workspace_id' => $exportJob->workspace_id,
+            'project_id' => $exportJob->project_id,
+            'variant_id' => $exportJob->variant_id,
+            'aspect_ratio' => $exportJob->aspect_ratio,
+            'language' => $exportJob->language,
+            'file_name' => $exportJob->file_name,
+            'watermark_enabled' => $exportJob->watermark_enabled,
+            'status' => $exportJob->status,
+            'progress_percent' => $exportJob->progress_percent,
+            'failure_reason' => $exportJob->failure_reason,
+            'output_asset_id' => $exportJob->output_asset_id,
+            'priority' => $exportJob->priority,
+            'queued_at' => $exportJob->queued_at?->toIso8601String(),
+            'started_at' => $exportJob->started_at?->toIso8601String(),
+            'completed_at' => $exportJob->completed_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * On-demand hook generation (C9). Re-rolls the project's ranked hook options
+     * from its script. GenerateHooksJob replaces the existing options and chains
+     * ScoreHooksJob to rank them — LLM text (included tier), no credit charge.
+     */
+    public function generateHooks(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $project = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $project) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        if (trim((string) $project->script_text) === '') {
+            return $this->error('script_required', 'Generate or write a script before generating hook options.', 422);
+        }
+
+        \App\Jobs\GenerateHooksJob::dispatch((int) $project->getKey());
+
+        return response()->json([
+            'data' => ['status' => 'queued'],
+            'meta' => [],
+        ], 202);
     }
 
     public function update(Request $request, int $projectId): JsonResponse

@@ -119,7 +119,7 @@ class VariantController extends Controller
             'generation_dimensions.visual.enabled' => ['sometimes', 'boolean'],
             'generation_dimensions.format' => ['sometimes', 'array'],
             'generation_dimensions.format.aspect_ratios' => ['sometimes', 'array', 'min:1'],
-            'generation_dimensions.format.aspect_ratios.*' => ['string', Rule::in(['9:16', '1:1', '16:9'])],
+            'generation_dimensions.format.aspect_ratios.*' => ['string', Rule::in(['9:16', '1:1', '4:5', '16:9'])],
             'generation_dimensions.language' => ['sometimes', 'array'],
             'lock_rules_json' => ['sometimes', 'array'],
         ]);
