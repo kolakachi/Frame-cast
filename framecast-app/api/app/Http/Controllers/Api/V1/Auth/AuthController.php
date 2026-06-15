@@ -140,6 +140,17 @@ class AuthController extends Controller
                 (int) \Illuminate\Support\Facades\Cache::get($signupKey, 0) + 1,
                 now()->addDay(),
             );
+
+            // Seed the brand-new workspace with the onboarding sample project
+            // (B7) — a finished, remix-able starter. Queued + guarded so it
+            // never blocks or breaks signup; no-op unless ONBOARDING_SAMPLE_
+            // PROJECT_ID is configured. Dispatched after commit (findOrCreate
+            // User's transaction has returned).
+            try {
+                \App\Jobs\CloneSampleProjectJob::dispatch($user->workspace_id, $user->getKey());
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         // Expire any previous unused tokens for this user
