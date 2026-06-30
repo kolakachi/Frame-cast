@@ -97,6 +97,8 @@ services:
       - ./api/.env
     environment:
       REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
       REDIS_QUEUE_RETRY_AFTER: 3000
     working_dir: /var/www/html
     restart: unless-stopped
