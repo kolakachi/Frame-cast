@@ -133,6 +133,9 @@ class GenerateTTSJob implements ShouldQueue
             // via provider_key (replicate:*chatterbox* = clone, replicate:*gemini*
             // = Gemini, else OpenAI).
             [$ttsCost, $ttsOp, $ttsCogs] = $this->ttsBilling((string) ($audio['provider_key'] ?? ''));
+            // Engine label for the ledger metadata — mirrors ttsBilling's classification.
+            $ttsEngine = str_contains((string) ($audio['provider_key'] ?? ''), 'chatterbox') ? 'chatterbox'
+                : (str_contains((string) ($audio['provider_key'] ?? ''), 'gemini') ? 'gemini' : 'openai');
 
             $asset = null;
 
@@ -207,7 +210,7 @@ class GenerateTTSJob implements ShouldQueue
                     'scene_id'   => $scene->getKey(),
                     'user_id'    => $project->created_by_user_id,
                     'upstream_cost_usd' => $ttsCogs,
-                    'metadata'   => ['voice_id' => $voiceId, 'language' => $language, 'engine' => $ranGemini ? 'gemini' : 'openai'],
+                    'metadata'   => ['voice_id' => $voiceId, 'language' => $language, 'engine' => $ttsEngine],
                 ],
             ));
             $done++;
