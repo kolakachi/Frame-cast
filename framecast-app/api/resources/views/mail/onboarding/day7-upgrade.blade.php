@@ -18,4 +18,4 @@
 
 <p>If $19 feels steep for where you are, hit reply and tell me what's holding you back. I'd rather know than have you quietly churn.</p>
 
-<p>— Kola</p>
+<p>— Amara</p>

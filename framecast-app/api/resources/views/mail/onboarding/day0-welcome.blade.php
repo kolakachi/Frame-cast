@@ -1,6 +1,6 @@
 <p>Hey {{ $user->name ?: 'there' }},</p>
 
-<p>Thanks for signing up to WyvStudio. I'm Kola, the founder.</p>
+<p>Thanks for signing up to WyvStudio. I'm Amara, the Co-founder.</p>
 
 <p>Quick orientation so you're not staring at a blank canvas:</p>
 
@@ -16,4 +16,4 @@
 
 <p>Reply to this email if anything breaks or feels weird. It lands in my inbox directly.</p>
 
-<p>— Kola<br>Founder, WyvStudio</p>
+<p>— Amara<br>Co-founder, WyvStudio</p>

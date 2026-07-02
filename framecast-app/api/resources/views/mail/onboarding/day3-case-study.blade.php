@@ -23,4 +23,4 @@
 
 <p><a href="https://app.wyvstudio.com">→ Start a project from that prompt</a></p>
 
-<p>— Kola</p>
+<p>— Amara</p>

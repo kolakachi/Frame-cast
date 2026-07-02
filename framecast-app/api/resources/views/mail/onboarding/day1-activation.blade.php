@@ -20,4 +20,4 @@
 
 <p>If you tried and something broke or felt clunky, reply and tell me where. I read every reply.</p>
 
-<p>— Kola</p>
+<p>— Amara</p>

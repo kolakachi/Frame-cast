@@ -17,6 +17,6 @@
 
 <p>And if WyvStudio is working — tell me what made it click. I'll use it on the landing page (with permission).</p>
 
-<p>— Kola<br>Founder, WyvStudio</p>
+<p>— Amara<br>Co-founder, WyvStudio</p>
 
 <p style="font-size:12px;color:#888;margin-top:24px;">This is the last email in the welcome sequence. You'll only hear from me again if you reply, or if there's a real product update.</p>
