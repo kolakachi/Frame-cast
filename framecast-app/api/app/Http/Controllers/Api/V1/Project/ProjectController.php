@@ -774,7 +774,7 @@ class ProjectController extends Controller
         }
 
         $validated = $request->validate([
-            'prompt'         => ['required', 'string', 'min:3', 'max:1000'],
+            'prompt'         => ['required', 'string', 'min:3', 'max:8000'],
             'aspect_ratio'   => ['nullable', 'string', 'in:9:16,1:1,16:9,4:5'],
             'animate'        => ['nullable', 'boolean'],
             // Must match storeOneShot's tiers — spokesperson included, else the
@@ -910,7 +910,7 @@ class ProjectController extends Controller
         }
 
         $validated = $request->validate([
-            'prompt'        => ['required', 'string', 'min:3', 'max:1000'],
+            'prompt'        => ['required', 'string', 'min:3', 'max:8000'],
             'title'         => ['nullable', 'string', 'max:200'],
             'aspect_ratio'  => ['nullable', 'string', 'in:9:16,1:1,16:9,4:5'],
             'animate'       => ['nullable', 'boolean'],

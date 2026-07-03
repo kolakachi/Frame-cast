@@ -992,7 +992,7 @@ defineExpose({ open })
             v-model="oneShotPrompt"
             class="composer-textarea"
             rows="4"
-            maxlength="1000"
+            maxlength="8000"
             placeholder="e.g. a calm founder explaining her morning ritual in a sunlit kitchen — or paste a product URL: '5-scene ad for https://yourproduct.com'"
             @keydown.meta.enter="requestOneShotPlan"
             @keydown.ctrl.enter="requestOneShotPlan"
@@ -1069,7 +1069,7 @@ defineExpose({ open })
             </div>
 
             <div class="composer-tools-right">
-              <span class="composer-count">{{ oneShotPrompt.length }}/1000</span>
+              <span class="composer-count">{{ oneShotPrompt.length }}/8000</span>
             </div>
           </div>
         </div>
