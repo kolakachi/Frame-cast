@@ -2438,7 +2438,7 @@ const captionPositionStyle = computed(() => {
   if (captionPositionDraft.value === "center")
     return { top: "50%", transform: "translateY(-50%)", bottom: "auto" };
   if (captionPositionDraft.value === "top_third")
-    return { top: "80px", bottom: "auto" };
+    return { top: "5%", bottom: "auto" };
   return {};
 });
 const flattenedCaptionFonts = computed(() =>
@@ -5155,6 +5155,44 @@ async function persistCaptionSettings(sceneId, nextSettings) {
     captionSaveState.value = "error";
     captionSaveError.value =
       requestError.response?.data?.error?.message ?? "Caption save failed";
+  }
+}
+
+// Apply the current caption settings to EVERY scene at once. Patches all scenes
+// in parallel, then merges the returned scenes back into the collection in one
+// pass (avoids per-call races on scenes.value).
+const applyAllState = ref("idle"); // idle | applying | done | error
+async function applyCaptionsToAllScenes() {
+  const targets = (scenes.value || []).filter((s) => s && s.id);
+  if (!targets.length || applyAllState.value === "applying") return;
+
+  const settings = {
+    enabled: captionEnabledDraft.value,
+    style_key: captionStyleDraft.value,
+    highlight_mode: captionHighlightDraft.value,
+    position: captionPositionDraft.value,
+    font: captionFontDraft.value,
+    highlight_color: captionHighlightColorDraft.value,
+    color: captionColorDraft.value,
+    size: captionSizeDraft.value,
+    preset_id: activeCaptionSettings.value?.preset_id || null,
+  };
+
+  applyAllState.value = "applying";
+  try {
+    const updated = await Promise.all(
+      targets.map(async (s) => {
+        const resp = await api.patch(`/scenes/${s.id}`, { caption_settings_json: settings });
+        return normalizeScenePayload(resp.data?.data?.scene);
+      })
+    );
+    const byId = new Map(updated.filter(Boolean).map((s) => [s.id, s]));
+    scenes.value = scenes.value.map((s) => byId.get(s.id) || s);
+    applyAllState.value = "done";
+    window.setTimeout(() => { if (applyAllState.value === "done") applyAllState.value = "idle"; }, 1800);
+  } catch (e) {
+    applyAllState.value = "error";
+    window.setTimeout(() => { if (applyAllState.value === "error") applyAllState.value = "idle"; }, 2500);
   }
 }
 
@@ -8113,6 +8151,14 @@ onBeforeUnmount(() => {
                     @click="captionSizeDraft = sz[0]"
                   >{{ sz[1] }}</button>
                 </div>
+
+                <!-- Apply the current caption settings to every scene at once -->
+                <button
+                  type="button"
+                  class="caption-apply-all"
+                  :disabled="applyAllState === 'applying'"
+                  @click="applyCaptionsToAllScenes"
+                >{{ applyAllState === 'applying' ? 'Applying…' : applyAllState === 'done' ? '✓ Applied to all scenes' : applyAllState === 'error' ? 'Failed — retry' : 'Apply to all scenes' }}</button>
 
               </div>
             </div>
@@ -11174,7 +11220,9 @@ button {
 
 .preview-caption {
   position: absolute;
-  bottom: 100px;
+  /* % of the preview box height so the position holds across aspect ratios
+     (fixed px landed wrong on 16:9/1:1/4:5). Mirrors the export's ~20% margin. */
+  bottom: 20%;
   left: 16px;
   right: 16px;
   text-align: center;
@@ -11184,7 +11232,10 @@ button {
 }
 
 .caption-word {
-  font-size: 22px;
+  /* Inherit the parent .preview-caption font-size so the live size control
+     (captionFontStyle → captionSizeDraft) actually changes the preview. A
+     hard-coded size here silently overrode it. */
+  font-size: inherit;
   font-weight: 700;
   display: inline;
   line-height: 1.4;
@@ -12866,6 +12917,15 @@ select.preset-select {
 }
 .size-opt:hover { border-color: rgba(167,139,250,.4); }
 .size-opt.active { border-color: #a78bfa; background: rgba(167,139,250,.1); color: #a78bfa; }
+
+.caption-apply-all {
+  width: 100%; margin-top: 12px; height: 32px; border-radius: 6px;
+  border: 1px solid var(--color-border); background: var(--color-bg-elevated);
+  color: var(--color-text); font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: 0.12s;
+}
+.caption-apply-all:hover:not(:disabled) { border-color: #a78bfa; color: #a78bfa; }
+.caption-apply-all:disabled { opacity: 0.6; cursor: default; }
 
 /* AI image result preview */
 .ai-image-result {
