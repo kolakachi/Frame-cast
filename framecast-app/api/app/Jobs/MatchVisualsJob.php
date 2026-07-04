@@ -56,6 +56,11 @@ class MatchVisualsJob implements ShouldQueue
         $useImages   = $project->visual_generation_mode === 'stock_images';
         $matchType   = $useImages ? 'image_montage' : 'stock_clip';
 
+        // Track stock ids used this run so the provider avoids repeating a clip/
+        // photo across scenes (their prompts share the same visual-brief prefix,
+        // so without this they collide on the same top result).
+        $usedProviderIds = [];
+
         foreach ($scenes as $scene) {
             if ($scene->visual_asset_id) {
                 $done++;
@@ -63,7 +68,11 @@ class MatchVisualsJob implements ShouldQueue
             }
 
             $prompt = $this->buildPrompt($scene, $project);
-            $match  = $visualProvider->match($prompt, $orientation, $matchType);
+            $match  = $visualProvider->match($prompt, $orientation, $matchType, $usedProviderIds);
+
+            if (! empty($match['provider_asset_id'])) {
+                $usedProviderIds[] = (string) $match['provider_asset_id'];
+            }
 
             DB::transaction(function () use ($project, $scene, $prompt, $match, $matchType): void {
                 $asset = Asset::query()->create([

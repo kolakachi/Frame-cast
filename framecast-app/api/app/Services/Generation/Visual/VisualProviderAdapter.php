@@ -16,6 +16,9 @@ interface VisualProviderAdapter
      *   width:int|null,
      *   height:int|null
      * }
+     *
+     * @param array<int, string> $excludeIds provider_asset_ids already used in this
+     *        run — the adapter avoids returning them so scenes don't repeat visuals.
      */
-    public function match(string $query, string $orientation = 'portrait', string $visualType = 'image_montage'): array;
+    public function match(string $query, string $orientation = 'portrait', string $visualType = 'image_montage', array $excludeIds = []): array;
 }

@@ -35,6 +35,17 @@ const languageSelections = ref(['en'])
 const platformTarget = ref('tiktok')
 const aspectRatio = ref('9:16')
 const channelId = ref('')
+
+// Proportional rectangle for an aspect ratio, centered in an 18×18 viewBox —
+// lets the picker show what each screen shape looks like, not just the label.
+function aspectIcon(ratio) {
+  const [rw, rh] = String(ratio || '9:16').split(':').map(Number)
+  const box = 15
+  const scale = box / Math.max(rw || 9, rh || 16)
+  const w = (rw || 9) * scale
+  const h = (rh || 16) * scale
+  return { w, h, x: (18 - w) / 2, y: (18 - h) / 2 }
+}
 const brandKitId = ref('')
 const title = ref('')
 const durationTargetSeconds = ref('60')
@@ -1033,10 +1044,10 @@ defineExpose({ open })
               <!-- Aspect ratio dropdown — compact -->
               <div class="composer-pill-wrap">
                 <button type="button" class="composer-pill" @click="oneShotAspectOpen = !oneShotAspectOpen">
-                  <span>📐 {{ aspectRatio }}</span><span class="composer-pill-caret">▾</span>
+                  <span><svg width="13" height="13" viewBox="0 0 18 18" class="aspect-ico" aria-hidden="true"><rect :x="aspectIcon(aspectRatio).x" :y="aspectIcon(aspectRatio).y" :width="aspectIcon(aspectRatio).w" :height="aspectIcon(aspectRatio).h" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>{{ aspectRatio }}</span><span class="composer-pill-caret">▾</span>
                 </button>
                 <div v-if="oneShotAspectOpen" class="composer-pill-menu">
-                  <button v-for="r in ['9:16','1:1','4:5','16:9']" :key="r" type="button" :class="['composer-pill-option', aspectRatio === r ? 'selected' : '']" @click="aspectRatio = r; oneShotAspectOpen = false">{{ r }}</button>
+                  <button v-for="r in ['9:16','1:1','4:5','16:9']" :key="r" type="button" :class="['composer-pill-option', aspectRatio === r ? 'selected' : '']" @click="aspectRatio = r; oneShotAspectOpen = false"><svg width="13" height="13" viewBox="0 0 18 18" class="aspect-ico" aria-hidden="true"><rect :x="aspectIcon(r).x" :y="aspectIcon(r).y" :width="aspectIcon(r).w" :height="aspectIcon(r).h" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>{{ r }}</button>
                 </div>
               </div>
 
@@ -1585,9 +1596,7 @@ defineExpose({ open })
         <div class="mt">
           <div class="input-label" style="margin-bottom:8px;">Format</div>
           <div class="format-chips">
-            <div :class="['format-chip', aspectRatio === '9:16' ? 'active' : '']" @click="aspectRatio = '9:16'">9:16</div>
-            <div :class="['format-chip', aspectRatio === '1:1'  ? 'active' : '']" @click="aspectRatio = '1:1'">1:1</div>
-            <div :class="['format-chip', aspectRatio === '16:9' ? 'active' : '']" @click="aspectRatio = '16:9'">16:9</div>
+            <div v-for="r in ['9:16','1:1','16:9']" :key="r" :class="['format-chip', aspectRatio === r ? 'active' : '']" @click="aspectRatio = r"><svg width="13" height="13" viewBox="0 0 18 18" class="aspect-ico" aria-hidden="true"><rect :x="aspectIcon(r).x" :y="aspectIcon(r).y" :width="aspectIcon(r).w" :height="aspectIcon(r).h" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>{{ r }}</div>
           </div>
         </div>
 
@@ -1768,6 +1777,7 @@ defineExpose({ open })
 .hint-box { margin-top: 8px; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }
 .mt { margin-top: 14px; }
 
+.aspect-ico { display: inline-block; vertical-align: -2px; margin-right: 5px; opacity: 0.85; }
 .format-chips { display: flex; gap: 8px; }
 .format-chip { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.15s; }
 .format-chip:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }

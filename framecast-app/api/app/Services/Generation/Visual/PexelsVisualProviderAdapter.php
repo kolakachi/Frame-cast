@@ -10,10 +10,11 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
 {
     private const VIDEO_TYPES = ['stock_clip', 'background_loop'];
 
-    public function match(string $query, string $orientation = 'portrait', string $visualType = 'image_montage'): array
+    public function match(string $query, string $orientation = 'portrait', string $visualType = 'image_montage', array $excludeIds = []): array
     {
         $apiKey = (string) config('services.pexels.api_key');
         $normalizedQuery = $this->queryForVisualType($query, $visualType);
+        $excludeIds = array_map('strval', $excludeIds);
 
         if ($apiKey === '') {
             return $this->fallback($normalizedQuery, $orientation);
@@ -21,17 +22,17 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
 
         try {
             if (in_array($visualType, self::VIDEO_TYPES, true)) {
-                return $this->matchVideo($normalizedQuery, $orientation, $apiKey, $visualType);
+                return $this->matchVideo($normalizedQuery, $orientation, $apiKey, $visualType, $excludeIds);
             }
 
-            return $this->matchPhoto($normalizedQuery, $orientation, $apiKey);
+            return $this->matchPhoto($normalizedQuery, $orientation, $apiKey, $excludeIds);
         } catch (\Throwable $exception) {
             report($exception);
             return $this->fallback($normalizedQuery, $orientation);
         }
     }
 
-    private function matchPhoto(string $query, string $orientation, string $apiKey): array
+    private function matchPhoto(string $query, string $orientation, string $apiKey, array $excludeIds = []): array
     {
         $pexelsOrientation = match ($orientation) {
             'landscape' => 'landscape',
@@ -44,7 +45,7 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
             ->get('https://api.pexels.com/v1/search', [
                 'query' => $query ?: 'nature',
                 'orientation' => $pexelsOrientation,
-                'per_page' => 15,
+                'per_page' => 30,
                 'page' => 1,
             ]);
 
@@ -58,7 +59,8 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
             return $this->fallback($query, $orientation);
         }
 
-        $photo = $photos[array_rand($photos)];
+        $pool = $this->preferUnused($photos, $excludeIds);
+        $photo = $pool[array_rand($pool)];
         $src = $photo['src'] ?? [];
         $assetUrl = $src['large2x'] ?? $src['large'] ?? $src['original'] ?? '';
 
@@ -79,7 +81,7 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
         ];
     }
 
-    private function matchVideo(string $query, string $orientation, string $apiKey, string $visualType): array
+    private function matchVideo(string $query, string $orientation, string $apiKey, string $visualType, array $excludeIds = []): array
     {
         $pexelsOrientation = match ($orientation) {
             'landscape' => 'landscape',
@@ -92,7 +94,7 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
             ->get('https://api.pexels.com/videos/search', [
                 'query' => $query ?: 'nature',
                 'orientation' => $pexelsOrientation,
-                'per_page' => 10,
+                'per_page' => 25,
                 'page' => 1,
             ]);
 
@@ -106,6 +108,9 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
             return $this->fallback($query, $orientation);
         }
 
+        // Drop clips already used elsewhere in this project so scenes don't repeat.
+        $videos = $this->preferUnused($videos, $excludeIds);
+
         if ($visualType === 'background_loop') {
             usort($videos, static function (array $a, array $b): int {
                 $aDuration = (float) ($a['duration'] ?? 999);
@@ -114,7 +119,7 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
             });
         }
 
-        $candidateVideos = array_slice($videos, 0, min(5, count($videos)));
+        $candidateVideos = array_slice($videos, 0, min(6, count($videos)));
         $video = $candidateVideos[array_rand($candidateVideos)] ?? $videos[0];
         $videoFiles = $video['video_files'] ?? [];
 
@@ -184,5 +189,28 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
             'ai_image' => trim($base.' concept art illustration'),
             default => $base,
         };
+    }
+
+    /**
+     * Prefer candidates whose provider id isn't already used this run. Falls back
+     * to the full list if every candidate is used (a repeat beats no result).
+     * Re-indexed so array_rand keys line up.
+     *
+     * @param  array<int, array<string, mixed>> $items
+     * @param  array<int, string>               $excludeIds
+     * @return array<int, array<string, mixed>>
+     */
+    private function preferUnused(array $items, array $excludeIds): array
+    {
+        if ($excludeIds === []) {
+            return array_values($items);
+        }
+
+        $unused = array_values(array_filter(
+            $items,
+            static fn (array $item): bool => ! in_array((string) ($item['id'] ?? ''), $excludeIds, true),
+        ));
+
+        return $unused !== [] ? $unused : array_values($items);
     }
 }
