@@ -108,6 +108,7 @@ const selectedCharacterId = ref('')
 const selectedCharacter = computed(() => characters.value.find((c) => String(c.id) === String(selectedCharacterId.value)) ?? null)
 
 const selectedNiche = computed(() => niches.value.find((n) => n.id === selectedNicheId.value) ?? null)
+const openNicheDropdown = ref('') // which custom-niche multi-select dropdown is open: '' | visual | voice | music
 // Custom-niche preset chips (multi-select; all optional/blank-able). Selections
 // are stored comma-joined in the existing string refs, so the prompt block +
 // summary consumers stay unchanged.
@@ -1325,29 +1326,65 @@ defineExpose({ open })
               <input v-model="customNicheName" class="field-input" type="text" placeholder="e.g. Luxury real estate tips" />
             </label>
             <div class="input-label-wrap">
-              <span class="input-label">Visual style <span class="input-optional">· optional, pick any</span></span>
-              <div class="niche-chip-row">
-                <button v-for="opt in VISUAL_STYLE_OPTS" :key="opt" type="button"
-                  :class="['niche-chip', nicheChipActive(customNicheVisualStyle, opt) ? 'active' : '']"
-                  @click="customNicheVisualStyle = toggleNicheChip(customNicheVisualStyle, opt)">{{ opt }}</button>
+              <span class="input-label">Visual style <span class="input-optional">· optional</span></span>
+              <div class="niche-select">
+                <button type="button" class="niche-select-trigger" @click="openNicheDropdown = openNicheDropdown === 'visual' ? '' : 'visual'">
+                  <span class="niche-select-value" :class="customNicheVisualStyle ? '' : 'niche-select-placeholder'">{{ customNicheVisualStyle || 'Select visual styles…' }}</span>
+                  <span class="composer-pill-caret">▾</span>
+                </button>
+                <template v-if="openNicheDropdown === 'visual'">
+                  <div class="niche-select-backdrop" @click="openNicheDropdown = ''"></div>
+                  <div class="niche-select-menu">
+                    <button v-for="opt in VISUAL_STYLE_OPTS" :key="opt" type="button"
+                      :class="['niche-select-option', nicheChipActive(customNicheVisualStyle, opt) ? 'selected' : '']"
+                      @click.stop="customNicheVisualStyle = toggleNicheChip(customNicheVisualStyle, opt)">
+                      <span>{{ opt }}</span>
+                      <span v-if="nicheChipActive(customNicheVisualStyle, opt)" class="niche-select-check">✓</span>
+                    </button>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
           <div class="settings-2col mt">
             <div class="input-label-wrap">
-              <span class="input-label">Voice tone <span class="input-optional">· optional, pick any</span></span>
-              <div class="niche-chip-row">
-                <button v-for="opt in VOICE_TONE_OPTS" :key="opt" type="button"
-                  :class="['niche-chip', nicheChipActive(customNicheVoiceTone, opt) ? 'active' : '']"
-                  @click="customNicheVoiceTone = toggleNicheChip(customNicheVoiceTone, opt)">{{ opt }}</button>
+              <span class="input-label">Voice tone <span class="input-optional">· optional</span></span>
+              <div class="niche-select">
+                <button type="button" class="niche-select-trigger" @click="openNicheDropdown = openNicheDropdown === 'voice' ? '' : 'voice'">
+                  <span class="niche-select-value" :class="customNicheVoiceTone ? '' : 'niche-select-placeholder'">{{ customNicheVoiceTone || 'Select voice tones…' }}</span>
+                  <span class="composer-pill-caret">▾</span>
+                </button>
+                <template v-if="openNicheDropdown === 'voice'">
+                  <div class="niche-select-backdrop" @click="openNicheDropdown = ''"></div>
+                  <div class="niche-select-menu">
+                    <button v-for="opt in VOICE_TONE_OPTS" :key="opt" type="button"
+                      :class="['niche-select-option', nicheChipActive(customNicheVoiceTone, opt) ? 'selected' : '']"
+                      @click.stop="customNicheVoiceTone = toggleNicheChip(customNicheVoiceTone, opt)">
+                      <span>{{ opt }}</span>
+                      <span v-if="nicheChipActive(customNicheVoiceTone, opt)" class="niche-select-check">✓</span>
+                    </button>
+                  </div>
+                </template>
               </div>
             </div>
             <div class="input-label-wrap">
-              <span class="input-label">Music mood <span class="input-optional">· optional, pick any</span></span>
-              <div class="niche-chip-row">
-                <button v-for="opt in MUSIC_MOOD_OPTS" :key="opt" type="button"
-                  :class="['niche-chip', nicheChipActive(customNicheMusicMood, opt) ? 'active' : '']"
-                  @click="customNicheMusicMood = toggleNicheChip(customNicheMusicMood, opt)">{{ opt }}</button>
+              <span class="input-label">Music mood <span class="input-optional">· optional</span></span>
+              <div class="niche-select">
+                <button type="button" class="niche-select-trigger" @click="openNicheDropdown = openNicheDropdown === 'music' ? '' : 'music'">
+                  <span class="niche-select-value" :class="customNicheMusicMood ? '' : 'niche-select-placeholder'">{{ customNicheMusicMood || 'Select music moods…' }}</span>
+                  <span class="composer-pill-caret">▾</span>
+                </button>
+                <template v-if="openNicheDropdown === 'music'">
+                  <div class="niche-select-backdrop" @click="openNicheDropdown = ''"></div>
+                  <div class="niche-select-menu">
+                    <button v-for="opt in MUSIC_MOOD_OPTS" :key="opt" type="button"
+                      :class="['niche-select-option', nicheChipActive(customNicheMusicMood, opt) ? 'selected' : '']"
+                      @click.stop="customNicheMusicMood = toggleNicheChip(customNicheMusicMood, opt)">
+                      <span>{{ opt }}</span>
+                      <span v-if="nicheChipActive(customNicheMusicMood, opt)" class="niche-select-check">✓</span>
+                    </button>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
@@ -1813,10 +1850,17 @@ defineExpose({ open })
 .format-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
 
 .input-optional { color: var(--color-text-muted); font-weight: 400; }
-.niche-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.niche-chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.15s; }
-.niche-chip:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }
-.niche-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
+.niche-select { position: relative; }
+.niche-select-trigger { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-primary); padding: 9px 12px; font-size: 13px; cursor: pointer; font-family: inherit; text-align: left; }
+.niche-select-trigger:hover { border-color: rgba(255,107,53,0.35); }
+.niche-select-value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.niche-select-placeholder { color: var(--color-text-muted); }
+.niche-select-backdrop { position: fixed; inset: 0; z-index: 20; }
+.niche-select-menu { position: absolute; top: calc(100% + 6px); left: 0; right: 0; max-height: 240px; overflow-y: auto; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 30; }
+.niche-select-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: none; background: transparent; color: var(--color-text-primary); font-size: 12.5px; cursor: pointer; border-radius: 6px; width: 100%; text-align: left; font-family: inherit; }
+.niche-select-option:hover { background: var(--color-bg-elevated); }
+.niche-select-option.selected { color: var(--color-accent); }
+.niche-select-check { color: var(--color-accent); }
 
 /* Toggle row used in step-4 one-shot form (animate switch). Label left, pill right. */
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; }
