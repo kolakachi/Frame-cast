@@ -457,7 +457,7 @@ class CharacterController extends Controller
         }
         return URL::temporarySignedRoute(
             'media.assets.content',
-            now()->addMinutes(30),
+            now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)),
             ['assetId' => $asset->getKey()],
         );
     }

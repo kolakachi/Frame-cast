@@ -1436,7 +1436,7 @@ class SceneController extends Controller
         $isStored = $storage->extractPath($path) !== null;
         if (! $isStored) return $path;
         return \Illuminate\Support\Facades\URL::temporarySignedRoute(
-            'media.assets.content', now()->addMinutes(30), ['assetId' => $asset->getKey()]
+            'media.assets.content', now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)), ['assetId' => $asset->getKey()]
         );
     }
 
@@ -1451,7 +1451,7 @@ class SceneController extends Controller
         if ($this->isB2Url($storageUrl) || $this->shouldProxyAudio($asset)) {
             return URL::temporarySignedRoute(
                 'media.assets.content',
-                now()->addHours(6),
+                now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)),
                 ['assetId' => $asset->getKey()]
             );
         }

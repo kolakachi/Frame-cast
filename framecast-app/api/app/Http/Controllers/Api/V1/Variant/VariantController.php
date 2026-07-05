@@ -579,7 +579,7 @@ class VariantController extends Controller
         if ($this->isB2Url($storageUrl) || $this->shouldProxyAudio($asset)) {
             return URL::temporarySignedRoute(
                 'media.assets.content',
-                now()->addHours(6),
+                now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)),
                 ['assetId' => $asset->getKey()],
             );
         }
