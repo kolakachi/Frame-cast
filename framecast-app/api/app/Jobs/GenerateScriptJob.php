@@ -73,6 +73,9 @@ class GenerateScriptJob implements ShouldQueue
             'content_goal' => $project->content_goal ?: 'educational',
             'language' => $project->primary_language ?: 'en',
             'niche' => $nicheLabel !== '' ? $nicheLabel : 'general',
+            'niche_guidance' => $niche ? $niche->guidance() : Niche::guidanceForSlug(null),
+            'platform' => $project->platform_target ?: 'general short-form',
+            'duration' => (int) ($project->duration_target_seconds ?: 60),
             'source_content' => $sourceContent,
         ], 1400, 0.35, $options);
 

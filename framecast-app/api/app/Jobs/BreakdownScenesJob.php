@@ -34,8 +34,12 @@ class BreakdownScenesJob implements ShouldQueue
             return;
         }
 
+        $niche = $project->niche_id ? \App\Models\Niche::query()->find($project->niche_id) : null;
+
         $result = $aiGeneration->generate('scene_breakdown', [
             'script_text' => $project->script_text,
+            'niche_guidance' => $niche ? $niche->guidance() : \App\Models\Niche::guidanceForSlug(null),
+            'duration' => (int) ($project->duration_target_seconds ?: 60),
             'language' => $project->primary_language ?: 'en',
         ], 1100, 0.2, [
             'usage_context' => [

@@ -14,39 +14,39 @@ class PromptTemplateRegistry
         return match ($key) {
             'script_from_prompt' => [
                 'system' => 'You are a short-form video script writer. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines, no character cues. Write only the words the narrator will speak aloud.',
-                'user' => "Create a concise social video script.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nSource: {{source_content}}",
+                'user' => "Create a concise social video script.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nSource: {{source_content}}",
             ],
             'script_from_url' => [
                 'system' => 'You are a short-form video script writer. Rewrite source material into plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines, no character cues. Write only the words the narrator will speak aloud. Preserve factual claims, do not invent statistics.',
-                'user' => "Rewrite this URL/article-derived content into a short-form video script.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: preserve factual claims from the source, do not invent statistics, use short caption-friendly lines.\nSource:\n{{source_content}}",
+                'user' => "Rewrite this URL/article-derived content into a short-form video script.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nRules: preserve factual claims from the source, do not invent statistics, use short caption-friendly lines.\nSource:\n{{source_content}}",
             ],
             'script_from_images' => [
                 'system' => 'You write short-form narration from uploaded image references. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
-                'user' => "Create a short-form video script from these uploaded image references.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: write one concise narration beat per image in the same order, separate each beat with a blank line, do not invent exact dates or identities unless provided.\nImage references and user context:\n{{source_content}}",
+                'user' => "Create a short-form video script from these uploaded image references.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nRules: write one concise narration beat per image in the same order, separate each beat with a blank line, do not invent exact dates or identities unless provided.\nImage references and user context:\n{{source_content}}",
             ],
             'script_from_product' => [
                 'system' => 'You write short-form product explainer and UGC-style ad scripts. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
-                'user' => "Create a short-form product video script.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nRules: use only product details provided, do not invent testimonials/pricing/guarantees, include a clear CTA.\nProduct source:\n{{source_content}}",
+                'user' => "Create a short-form product video script.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nRules: use only product details provided, do not invent testimonials/pricing/guarantees, include a clear CTA.\nProduct source:\n{{source_content}}",
             ],
             'script_from_csv' => [
                 'system' => 'You turn CSV topic rows into short-form video scripts. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
-                'user' => "Create one short-form video script from this CSV. Use the first topic row as the primary video unless the source clearly asks for a batch. Preserve fields like topic, angle, audience, and CTA.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nCSV:\n{{source_content}}",
+                'user' => "Create one short-form video script from this CSV. Use the first topic row as the primary video unless the source clearly asks for a batch. Preserve fields like topic, angle, audience, and CTA.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nCSV:\n{{source_content}}",
             ],
             'script_from_audio_reference' => [
                 'system' => 'You prepare a short-form repurposing draft from an existing audio reference. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
-                'user' => "Create a short-form repurposing draft for this existing audio source.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, note this is a draft based on the provided reference.\nAudio reference:\n{{source_content}}",
+                'user' => "Create a short-form repurposing draft for this existing audio source.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nImportant: if a transcript is not present, note this is a draft based on the provided reference.\nAudio reference:\n{{source_content}}",
             ],
             'script_from_video_reference' => [
                 'system' => 'You prepare a short-form repurposing draft from an existing video reference. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
-                'user' => "Create a short-form repurposing draft for this existing video source.\nNiche: {{niche}}\nTone: {{tone}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nImportant: if a transcript is not present, note this is a draft based on the provided reference.\nVideo reference:\n{{source_content}}",
+                'user' => "Create a short-form repurposing draft for this existing video source.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nImportant: if a transcript is not present, note this is a draft based on the provided reference.\nVideo reference:\n{{source_content}}",
             ],
             'scene_breakdown' => [
                 'system' => 'You split scripts into scenes. Return JSON only in this shape: {"scenes":[{"scene_type":"hook|narration|transition|text_card|quote","label":"...","script_text":"...","duration_seconds":number}]}. The script_text for every scene must be clean spoken narration only — the exact words a narrator will read aloud. Never include stage directions, scene transitions, [CUT TO:], [INT/EXT], FADE IN/OUT, parenthetical actions, or any screenplay formatting.',
-                'user' => "Break this script into 1-20 scenes for short-form video.\nLanguage: {{language}}\nScript:\n{{script_text}}",
+                'user' => "Break this script into 1-20 scenes for short-form video.\nNiche playbook (shape the scene structure and pacing to this): {{niche_guidance}}\nTarget total length: about {{duration}} seconds — size the number of scenes and each scene's duration_seconds to fit that total.\nLanguage: {{language}}\nScript:\n{{script_text}}",
             ],
             'hook_options' => [
                 'system' => 'Generate hook options for a short-form video. Return JSON only in this shape: {"hooks":[{"text":"..."}]} with 3 to 10 options.',
-                'user' => "Generate 3-10 hook options from this script.\nLanguage: {{language}}\nScript:\n{{script_text}}",
+                'user' => "Generate 3-10 scroll-stopping hook options from this script, matching the niche and goal.\nNiche playbook (match this hook style): {{niche_guidance}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nScript:\n{{script_text}}",
             ],
             'score_hooks' => [
                 'system' => 'You score short-form video hooks for engagement potential. Return JSON only in this exact shape: {"scores":[{"id":number,"score":0-100,"reason":"one short sentence"}]}. Score each hook on four criteria: pattern interrupt (stops the scroll), specificity (concrete claim vs vague promise), curiosity gap (creates desire to keep watching), emotional pull (fear, curiosity, aspiration, or urgency). 80–100 = strong hook that would perform well. 60–79 = decent but improvable. Below 60 = weak, unlikely to retain viewers past the first second.',
@@ -90,6 +90,10 @@ class PromptTemplateRegistry
         foreach ($variables as $key => $value) {
             $rendered = str_replace('{{'.$key.'}}', (string) $value, $rendered);
         }
+
+        // Drop any placeholder a caller didn't supply so a literal {{var}} never
+        // leaks into the prompt the model sees.
+        $rendered = (string) preg_replace('/\{\{[a-zA-Z0-9_]+\}\}/', '', $rendered);
 
         return $rendered;
     }

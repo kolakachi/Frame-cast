@@ -32,8 +32,12 @@ class GenerateHooksJob implements ShouldQueue
             return;
         }
 
+        $niche = $project->niche_id ? \App\Models\Niche::query()->find($project->niche_id) : null;
+
         $result = $aiGeneration->generate('hook_options', [
             'script_text' => $project->script_text,
+            'niche_guidance' => $niche ? $niche->guidance() : \App\Models\Niche::guidanceForSlug(null),
+            'content_goal' => $project->content_goal ?: 'educational',
             'language' => $project->primary_language ?: 'en',
         ], 500, 0.7, [
             'usage_context' => [
