@@ -28,14 +28,12 @@ class Niche extends Model
      * no-niche projects.
      */
     public const PLAYBOOK = [
-        'horror' => 'Cold-open on an unsettling hook, escalate the dread beat by beat, land a twist or gut-punch at the end. Ominous, sensory, patient pacing. Viewers want tension and payoff.',
-        'finance' => 'Open with a myth or bold money claim, bust it, then give 2-3 concrete tips with specific numbers, and close with one clear next action. Authoritative, zero fluff. Viewers want an actionable edge.',
+        'product' => 'Hook on the buyer\'s question or a blunt verdict, walk through 2-3 concrete features with honest pros and cons, give a balanced recommendation, end with a clear "is it worth it?" CTA. Specific and credible — no hype, no invented specs or pricing.',
+        'product-launch' => 'Open with the big "what\'s new" hook, demo 2-3 standout features and the outcome each unlocks (benefit before feature), end on a strong sign-up / try-it CTA. Confident and clean.',
+        'ad-creative' => 'Scroll-stopping hook in the first 2 seconds, name the problem, present the product as the fix with one proof point, close with a direct CTA. Punchy, high-contrast, sound-off captions, built for paid traffic. Never invent testimonials, pricing, or guarantees.',
+        'explainer' => 'Hook with the question or payoff ("how to X in 60 seconds"), teach in clear numbered steps or one strong analogy, resolve with the key takeaway and a soft CTA. Simple and precise — no jargon dumps.',
+        'brand-story' => 'Open on a relatable moment or turning point, tell the origin / mission / transformation arc, land on what it means for the viewer. Warm, authentic, first-person — build trust before selling.',
         'motivation' => 'Hook with a hard truth or reframe, build momentum in short punchy lines, end on an empowering call to act now. High energy, rhythmic, quotable.',
-        'history' => 'Hook with a surprising fact, tell it as a tight narrative with one turning point, end on why it still matters. Stay accurate — never invent facts or dates.',
-        'science' => 'Hook with a curiosity gap ("why does X happen?"), explain with one clear everyday analogy, then resolve the question. Precise and simple, no jargon dumps.',
-        'product' => 'Hook on the customer\'s problem, present the product as the fix, give one proof point, end with a specific CTA. Benefit-led. Never invent testimonials, pricing, or guarantees.',
-        'true-crime' => 'Cold-open on the most intriguing detail of the case, build suspense chronologically, withhold the reveal until late. Somber, factual — no invented facts.',
-        'self-improvement' => 'Hook with a relatable struggle, offer a simple mindset shift or 1-2 practical steps, close by encouraging the viewer to start today. Calm, warm, practical.',
         '_default' => 'Open with a strong scroll-stopping hook, deliver the core value in tight caption-friendly lines, and end with a clear takeaway or CTA. Follow the stated tone and goal.',
     ];
 
