@@ -83,6 +83,27 @@ class GenerateScriptJob implements ShouldQueue
             'script_text' => $result['content'],
         ])->save();
 
+        // Infer a title from the finished script when the user didn't set one —
+        // reflects what they're actually making, not a truncated prompt. Guarded
+        // so a title miss never blocks the pipeline.
+        if (trim((string) $project->title) === '') {
+            rescue(function () use ($aiGeneration, $project, $nicheLabel): void {
+                $titleResult = $aiGeneration->generate('video_title', [
+                    'niche' => $nicheLabel !== '' ? $nicheLabel : 'general',
+                    'content_goal' => $project->content_goal ?: 'educational',
+                    'script_text' => \Illuminate\Support\Str::limit((string) $project->script_text, 1200, ''),
+                ], 40, 0.6, ['usage_context' => $this->usageContext($project, ['template' => 'video_title'])]);
+
+                $title = trim((string) ($titleResult['content'] ?? ''));
+                $title = trim($title, "\"' \t\n");
+                $title = \Illuminate\Support\Str::limit($title, 80, '');
+
+                if ($title !== '') {
+                    $project->forceFill(['title' => $title])->save();
+                }
+            });
+        }
+
         GenerationProgressed::dispatch($this->projectId, 'script', 'completed');
         rescue(fn () => app(CreditService::class)->deduct(
             (int) $project->workspace_id,

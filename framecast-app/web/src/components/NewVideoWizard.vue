@@ -108,6 +108,23 @@ const selectedCharacterId = ref('')
 const selectedCharacter = computed(() => characters.value.find((c) => String(c.id) === String(selectedCharacterId.value)) ?? null)
 
 const selectedNiche = computed(() => niches.value.find((n) => n.id === selectedNicheId.value) ?? null)
+// Custom-niche preset chips (multi-select; all optional/blank-able). Selections
+// are stored comma-joined in the existing string refs, so the prompt block +
+// summary consumers stay unchanged.
+const VISUAL_STYLE_OPTS = ['Cinematic', 'Clean', 'Premium', 'Minimalist', 'Documentary', 'Dark & moody', 'Vibrant', 'Retro', 'Luxury', 'Bold', 'Natural']
+const VOICE_TONE_OPTS = ['Confident', 'Warm', 'Expert', 'Energetic', 'Calm', 'Authoritative', 'Friendly', 'Dramatic', 'Playful', 'Serious', 'Inspirational', 'Conversational']
+const MUSIC_MOOD_OPTS = ['Calm luxury', 'Upbeat', 'Dark', 'Inspiring', 'Chill', 'Dramatic', 'Energetic', 'Ambient', 'Corporate', 'Cinematic', 'Uplifting']
+function nicheChipActive(current, label) {
+  return String(current || '').split(',').map((s) => s.trim().toLowerCase()).includes(label.toLowerCase())
+}
+function toggleNicheChip(current, label) {
+  const parts = String(current || '').split(',').map((s) => s.trim()).filter(Boolean)
+  const i = parts.findIndex((p) => p.toLowerCase() === label.toLowerCase())
+  if (i >= 0) parts.splice(i, 1)
+  else parts.push(label)
+  return parts.join(', ')
+}
+
 const customNicheSummary = computed(() => {
   return [
     customNicheName.value.trim(),
@@ -1307,20 +1324,32 @@ defineExpose({ open })
               <span class="input-label">Niche name</span>
               <input v-model="customNicheName" class="field-input" type="text" placeholder="e.g. Luxury real estate tips" />
             </label>
-            <label class="input-label-wrap">
-              <span class="input-label">Visual style</span>
-              <input v-model="customNicheVisualStyle" class="field-input" type="text" placeholder="e.g. cinematic, clean, premium" />
-            </label>
+            <div class="input-label-wrap">
+              <span class="input-label">Visual style <span class="input-optional">· optional, pick any</span></span>
+              <div class="niche-chip-row">
+                <button v-for="opt in VISUAL_STYLE_OPTS" :key="opt" type="button"
+                  :class="['niche-chip', nicheChipActive(customNicheVisualStyle, opt) ? 'active' : '']"
+                  @click="customNicheVisualStyle = toggleNicheChip(customNicheVisualStyle, opt)">{{ opt }}</button>
+              </div>
+            </div>
           </div>
           <div class="settings-2col mt">
-            <label class="input-label-wrap">
-              <span class="input-label">Voice tone</span>
-              <input v-model="customNicheVoiceTone" class="field-input" type="text" placeholder="e.g. confident, warm, expert" />
-            </label>
-            <label class="input-label-wrap">
-              <span class="input-label">Music mood</span>
-              <input v-model="customNicheMusicMood" class="field-input" type="text" placeholder="e.g. calm luxury, upbeat, dark" />
-            </label>
+            <div class="input-label-wrap">
+              <span class="input-label">Voice tone <span class="input-optional">· optional, pick any</span></span>
+              <div class="niche-chip-row">
+                <button v-for="opt in VOICE_TONE_OPTS" :key="opt" type="button"
+                  :class="['niche-chip', nicheChipActive(customNicheVoiceTone, opt) ? 'active' : '']"
+                  @click="customNicheVoiceTone = toggleNicheChip(customNicheVoiceTone, opt)">{{ opt }}</button>
+              </div>
+            </div>
+            <div class="input-label-wrap">
+              <span class="input-label">Music mood <span class="input-optional">· optional, pick any</span></span>
+              <div class="niche-chip-row">
+                <button v-for="opt in MUSIC_MOOD_OPTS" :key="opt" type="button"
+                  :class="['niche-chip', nicheChipActive(customNicheMusicMood, opt) ? 'active' : '']"
+                  @click="customNicheMusicMood = toggleNicheChip(customNicheMusicMood, opt)">{{ opt }}</button>
+              </div>
+            </div>
           </div>
           <label class="input-label-wrap mt">
             <span class="input-label">Describe your niche</span>
@@ -1782,6 +1811,12 @@ defineExpose({ open })
 .format-chip { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.15s; }
 .format-chip:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }
 .format-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
+
+.input-optional { color: var(--color-text-muted); font-weight: 400; }
+.niche-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.niche-chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.15s; }
+.niche-chip:hover { border-color: rgba(255,107,53,0.35); color: var(--color-text-secondary); }
+.niche-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
 
 /* Toggle row used in step-4 one-shot form (animate switch). Label left, pill right. */
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; }

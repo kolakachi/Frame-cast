@@ -48,6 +48,10 @@ class PromptTemplateRegistry
                 'system' => 'Generate hook options for a short-form video. Return JSON only in this shape: {"hooks":[{"text":"..."}]} with 3 to 10 options.',
                 'user' => "Generate 3-10 scroll-stopping hook options from this script, matching the niche and goal.\nNiche playbook (match this hook style): {{niche_guidance}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nScript:\n{{script_text}}",
             ],
+            'video_title' => [
+                'system' => 'You write a short, specific title for a short-form video. Return the title text ONLY — no quotes, no emoji, no label, no trailing punctuation, under 60 characters. Make it concrete and scroll-worthy, reflecting the actual content and the creator\'s goal.',
+                'user' => "Write a title for this short-form video.\nNiche: {{niche}}\nGoal: {{content_goal}}\nScript:\n{{script_text}}",
+            ],
             'score_hooks' => [
                 'system' => 'You score short-form video hooks for engagement potential. Return JSON only in this exact shape: {"scores":[{"id":number,"score":0-100,"reason":"one short sentence"}]}. Score each hook on four criteria: pattern interrupt (stops the scroll), specificity (concrete claim vs vague promise), curiosity gap (creates desire to keep watching), emotional pull (fear, curiosity, aspiration, or urgency). 80–100 = strong hook that would perform well. 60–79 = decent but improvable. Below 60 = weak, unlikely to retain viewers past the first second.',
                 'user' => "Score these short-form video hooks for engagement.\nHooks (JSON array with id and text):\n{{hooks_json}}",
