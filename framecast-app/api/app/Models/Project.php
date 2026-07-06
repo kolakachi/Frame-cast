@@ -51,6 +51,7 @@ class Project extends Model
         'series_episode_summary',
         'share_token',
         'is_shared',
+        'allow_script_edit',
     ];
 
     protected function casts(): array
@@ -74,6 +75,7 @@ class Project extends Model
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
             'is_shared' => 'boolean',
+            'allow_script_edit' => 'boolean',
         ];
     }
 

@@ -47,6 +47,15 @@ class GenerateScriptJob implements ShouldQueue
         $promptTemplateKey = $this->promptTemplateKey((string) $project->source_type);
         $sourceContent = $this->sourceContentForGeneration($project, $transcriptionService);
 
+        // Intent lock: a user-pasted script is kept verbatim by default. Only
+        // when they tick "polish my script" does the model touch it — and then
+        // it's a light edit (script_polish), never a from-scratch rewrite.
+        $isUserScript = $project->source_type === 'script';
+        $verbatimScript = $isUserScript && ! (bool) $project->allow_script_edit;
+        if ($isUserScript && ! $verbatimScript) {
+            $promptTemplateKey = 'script_polish';
+        }
+
         if ($isMedia) {
             GenerationProgressed::dispatch($this->projectId, 'transcription', 'completed');
             GenerationProgressed::dispatch($this->projectId, 'script', 'processing');
@@ -67,21 +76,24 @@ class GenerateScriptJob implements ShouldQueue
         $nicheLabel = $niche ? trim((string) $niche->name) : '';
         $nicheTone = $niche ? trim((string) ($niche->default_voice_tone ?: '')) : '';
 
-        $result = $aiGeneration->generate($promptTemplateKey, [
-            'source_type' => $project->source_type ?: 'prompt',
-            'tone' => $project->tone ?: ($nicheTone ?: 'neutral'),
-            'content_goal' => $project->content_goal ?: 'educational',
-            'language' => $project->primary_language ?: 'en',
-            'niche' => $nicheLabel !== '' ? $nicheLabel : 'general',
-            'niche_guidance' => $niche ? $niche->guidance() : Niche::guidanceForSlug(null),
-            'platform' => $project->platform_target ?: 'general short-form',
-            'duration' => (int) ($project->duration_target_seconds ?: 60),
-            'source_content' => $sourceContent,
-        ], 1400, 0.35, $options);
+        if ($verbatimScript) {
+            // Kept exactly as the user wrote it — only the scene breakdown splits it.
+            $project->forceFill(['script_text' => trim((string) $sourceContent)])->save();
+        } else {
+            $result = $aiGeneration->generate($promptTemplateKey, [
+                'source_type' => $project->source_type ?: 'prompt',
+                'tone' => $project->tone ?: ($nicheTone ?: 'neutral'),
+                'content_goal' => $project->content_goal ?: 'educational',
+                'language' => $project->primary_language ?: 'en',
+                'niche' => $nicheLabel !== '' ? $nicheLabel : 'general',
+                'niche_guidance' => $niche ? $niche->guidance() : Niche::guidanceForSlug(null),
+                'platform' => $project->platform_target ?: 'general short-form',
+                'duration' => (int) ($project->duration_target_seconds ?: 60),
+                'source_content' => $sourceContent,
+            ], 1400, 0.35, $options);
 
-        $project->forceFill([
-            'script_text' => $result['content'],
-        ])->save();
+            $project->forceFill(['script_text' => $result['content']])->save();
+        }
 
         // Infer a title from the finished script when the user didn't set one —
         // reflects what they're actually making, not a truncated prompt. Guarded

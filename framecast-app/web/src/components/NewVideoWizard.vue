@@ -52,6 +52,7 @@ const durationTargetSeconds = ref('60')
 const contentGoal = ref('')
 const promptText = ref('')
 const scriptText = ref('')
+const allowScriptEdit = ref(false) // off by default → pasted script kept verbatim
 const urlText = ref('')
 const csvText = ref('')
 const productName = ref('')
@@ -413,6 +414,7 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   title.value = ''
   promptText.value = ''
   scriptText.value = ''
+  allowScriptEdit.value = false
   urlText.value = ''
   audioFile.value = null
   videoFile.value = null
@@ -861,6 +863,7 @@ async function submitWizardProject() {
     const res = await api.post('/projects', {
       source_type: sourceType,
       source_content_raw: resolvedSource,
+      allow_script_edit: sourceType === 'script' ? allowScriptEdit.value : false,
       languages: languageSelections.value,
       platform_target: platformTarget.value,
       aspect_ratio: aspectRatio.value,
@@ -1478,6 +1481,10 @@ defineExpose({ open })
         <div v-else-if="wizardSourceType === 'script'" class="input-group">
           <label class="input-label">Paste your script</label>
           <textarea v-model="scriptText" class="field-input textarea" rows="6" placeholder="Each paragraph will become a scene…"></textarea>
+          <label class="script-edit-toggle">
+            <input type="checkbox" v-model="allowScriptEdit" />
+            <span>Let AI polish my script <span class="script-edit-hint">— off keeps your exact words; on lightly improves flow &amp; hook</span></span>
+          </label>
         </div>
         <div v-else-if="wizardSourceType === 'url'" class="input-group">
           <label class="input-label">Article or page URL</label>
@@ -1850,6 +1857,9 @@ defineExpose({ open })
 .format-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
 
 .input-optional { color: var(--color-text-muted); font-weight: 400; }
+.script-edit-toggle { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--color-text-secondary); cursor: pointer; }
+.script-edit-toggle input { margin-top: 2px; accent-color: var(--color-accent); }
+.script-edit-hint { color: var(--color-text-muted); }
 .niche-select { position: relative; }
 .niche-select-trigger { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-primary); padding: 9px 12px; font-size: 13px; cursor: pointer; font-family: inherit; text-align: left; }
 .niche-select-trigger:hover { border-color: rgba(255,107,53,0.35); }

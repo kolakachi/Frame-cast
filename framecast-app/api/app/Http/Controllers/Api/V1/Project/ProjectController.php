@@ -271,6 +271,7 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'source_type' => ['required', Rule::in($this->allowedSourceTypes())],
             'source_content_raw' => ['nullable', 'string'],
+            'allow_script_edit' => ['nullable', 'boolean'],
             'source_image_asset_ids' => ['nullable', 'array', 'max:15'],
             'source_image_asset_ids.*' => ['integer'],
             'visual_type' => ['nullable', Rule::in(['stock_clip', 'stock_image', 'ai_image', 'waveform'])],
@@ -581,6 +582,7 @@ class ProjectController extends Controller
             'source_type' => $validated['source_type'],
             'source_content_raw' => $validated['source_content_raw'] ?? null,
             'source_content_normalized' => $this->normalizeSource($validated['source_content_raw'] ?? ''),
+            'allow_script_edit' => (bool) ($validated['allow_script_edit'] ?? false),
             'source_image_asset_ids' => $sourceImageAssetIds,
             'visual_generation_mode' => $validated['visual_generation_mode'] ?? null,
             'ai_broll_style' => $validated['ai_broll_style'] ?? null,
