@@ -12,6 +12,8 @@ use App\Services\Generation\TTS\TTSAdapter;
 use App\Services\Generation\Translation\OpenAITranslationAdapter;
 use App\Services\Generation\Translation\TranslationAdapter;
 use App\Services\Generation\Visual\PexelsVisualProviderAdapter;
+use App\Services\Generation\Visual\PixabayVisualProviderAdapter;
+use App\Services\Generation\Visual\RoundRobinVisualProviderAdapter;
 use App\Services\Generation\Visual\VisualProviderAdapter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
@@ -24,7 +26,17 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(AIGenerationAdapter::class, OpenAIGenerationAdapter::class);
-        $this->app->bind(VisualProviderAdapter::class, PexelsVisualProviderAdapter::class);
+        // Round-robin stock across every provider that has a key configured
+        // (Pexels primary; Pixabay joins when PIXABAY_API_KEY is set) for more
+        // B-roll variety. Degrades to Pexels-only when no other key is present.
+        $this->app->bind(VisualProviderAdapter::class, function ($app): VisualProviderAdapter {
+            $providers = [$app->make(PexelsVisualProviderAdapter::class)];
+            if ((string) config('services.pixabay.api_key') !== '') {
+                $providers[] = $app->make(PixabayVisualProviderAdapter::class);
+            }
+
+            return new RoundRobinVisualProviderAdapter(...$providers);
+        });
         // Routes per request: Gemini 3.1 Flash (default, expressive) vs OpenAI tts-1.
         $this->app->bind(TTSAdapter::class, RoutingTTSAdapter::class);
         $this->app->bind(TranslationAdapter::class, OpenAITranslationAdapter::class);
