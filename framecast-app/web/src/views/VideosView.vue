@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
+import GridSkeleton from '../components/skeletons/GridSkeleton.vue'
 import NotifBell from '../components/NotifBell.vue'
 import NewVideoWizard from '../components/NewVideoWizard.vue'
 
@@ -266,7 +267,7 @@ onMounted(async () => {
       <div class="content">
         <div v-if="error" class="banner error">{{ error }}</div>
 
-        <div v-if="loading" class="page-state">Loading videos…</div>
+        <GridSkeleton v-if="loading" :count="8" :min="220" :thumb-h="154" :lines="2" />
 
         <template v-else>
           <div v-if="projects.length === 0" class="empty-hero">

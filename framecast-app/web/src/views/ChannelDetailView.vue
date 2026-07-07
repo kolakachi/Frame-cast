@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
+import GridSkeleton from '../components/skeletons/GridSkeleton.vue'
 import NotifBell from '../components/NotifBell.vue'
 
 const route = useRoute()
@@ -269,7 +270,7 @@ onMounted(loadData)
       </div>
 
       <div v-if="error" class="banner error" style="margin: 20px 28px 0;">{{ error }}</div>
-      <div v-if="loading" class="page-state">Loading channel…</div>
+      <GridSkeleton v-if="loading" header :count="6" :min="220" :thumb-h="154" :lines="2" />
 
       <template v-else-if="channel">
         <!-- Hero -->

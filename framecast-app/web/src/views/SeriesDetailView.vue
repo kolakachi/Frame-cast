@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
+import GridSkeleton from '../components/skeletons/GridSkeleton.vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 
@@ -145,9 +146,7 @@ onMounted(load)
         <span class="breadcrumb-current">{{ series?.name || '…' }}</span>
       </div>
 
-      <div v-if="loading" class="empty-state">
-        <div class="spinner"></div>
-      </div>
+      <GridSkeleton v-if="loading" header :count="5" :min="220" :thumb-h="154" :lines="2" />
 
       <template v-else-if="series">
         <div class="series-hero">

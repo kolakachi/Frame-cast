@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../services/api";
 import AppSidebar from "../components/AppSidebar.vue";
+import GridSkeleton from "../components/skeletons/GridSkeleton.vue";
 import NotifBell from "../components/NotifBell.vue";
 import VoiceCloneModal from "../components/VoiceCloneModal.vue";
 
@@ -86,7 +87,7 @@ onMounted(async () => {
 
       <div class="content">
         <div v-if="error" class="banner error">{{ error }}</div>
-        <div v-if="loading" class="page-state">Loading voices…</div>
+        <GridSkeleton v-if="loading" layout="row" :count="6" :min="260" :row-thumb="40" :lines="2" />
 
         <template v-else>
           <div class="intro">

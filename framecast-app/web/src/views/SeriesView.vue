@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
+import GridSkeleton from '../components/skeletons/GridSkeleton.vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 
@@ -44,10 +45,7 @@ onMounted(loadSeries)
         <button class="btn-primary" type="button" @click="router.push({ name: 'series-create' })">+ New Series</button>
       </div>
 
-      <div v-if="loading" class="empty-state">
-        <div class="spinner"></div>
-        <p>Loading series…</p>
-      </div>
+      <GridSkeleton v-if="loading" layout="row" :count="6" :min="300" :row-thumb="64" :lines="2" />
 
       <div v-else-if="seriesList.length === 0" class="empty-state">
         <div class="empty-icon">

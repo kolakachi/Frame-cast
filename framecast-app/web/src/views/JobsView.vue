@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
+import ListSkeleton from '../components/skeletons/ListSkeleton.vue'
 import NotifBell from '../components/NotifBell.vue'
 
 const router = useRouter()
@@ -470,9 +471,7 @@ onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer) })
               {{ hasActiveFilters ? 'Try clearing your filters.' : 'Start generating a video to see jobs appear here.' }}
             </div>
           </div>
-          <div v-else class="empty-state">
-            <div class="empty-title">Loading…</div>
-          </div>
+          <ListSkeleton v-else :count="7" />
 
           <!-- Table footer: count + pagination -->
           <div class="table-footer">

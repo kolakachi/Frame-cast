@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import AppSidebar from '../components/AppSidebar.vue'
+import ListSkeleton from '../components/skeletons/ListSkeleton.vue'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import NotifBell from '../components/NotifBell.vue'
@@ -441,7 +442,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
           </button>
         </div>
 
-        <div v-if="loading" class="list-empty">Loading…</div>
+        <ListSkeleton v-if="loading" :count="5" :thumb="false" />
         <div v-else-if="!filteredPosts.length" class="list-empty">No posts{{ listFilter !== 'all' ? ` with status "${listFilter}"` : '' }}.</div>
 
         <div v-else class="list-table">

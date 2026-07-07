@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import AppSidebar from '../components/AppSidebar.vue'
+import GridSkeleton from '../components/skeletons/GridSkeleton.vue'
 import NotifBell from '../components/NotifBell.vue'
 
 const route = useRoute()
@@ -763,7 +764,7 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <div v-if="loading" class="page-state">Loading variants…</div>
+      <GridSkeleton v-if="loading" header :count="6" :min="214" :thumb-h="150" :lines="2" />
       <div v-else-if="loadError" class="page-state error">{{ loadError }}</div>
       <div v-else class="variants-page">
         <div class="page-grid">

@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import GridSkeleton from '../components/skeletons/GridSkeleton.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -445,7 +446,7 @@ watch([currentPage, perPage], () => {
     <div class="main">
       <div v-if="error" class="banner error">{{ error }}</div>
 
-      <div v-if="loading" class="page-state">Loading asset library...</div>
+      <GridSkeleton v-if="loading" :count="12" :min="150" ratio="1 / 1" :lines="1" />
 
       <div v-else>
         <div class="asset-overview">
