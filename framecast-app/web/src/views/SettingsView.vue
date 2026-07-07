@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import SettingsSkeleton from '../components/skeletons/SettingsSkeleton.vue'
 import LimitModal from '../components/LimitModal.vue'
 
 const router = useRouter()
@@ -601,7 +602,7 @@ onMounted(() => {
     <div class="main">
       <div v-if="saveError" class="banner error">{{ saveError }}</div>
       <div v-if="saveState === 'saved'" class="banner success">Saved.</div>
-      <div v-if="loading" class="page-state">Loading settings…</div>
+      <SettingsSkeleton v-if="loading" />
 
       <div v-else class="settings-shell">
 
