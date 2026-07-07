@@ -6,6 +6,7 @@ import { getEcho } from "../services/echo";
 import { useAuthStore } from "../stores/auth";
 import { useSidebarStore } from "../stores/sidebar";
 import AppSidebar from "../components/AppSidebar.vue";
+import EditorSkeleton from "../components/skeletons/EditorSkeleton.vue";
 import EditorTimeline from "../components/EditorTimeline.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
 import SchedulePostModal from "../components/SchedulePostModal.vue";
@@ -6273,7 +6274,7 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="editor-page">
-    <section v-if="loading" class="state-card">Loading project...</section>
+    <EditorSkeleton v-if="loading" />
     <section v-else-if="error" class="state-card error">{{ error }}</section>
 
     <div v-else class="editor-shell">

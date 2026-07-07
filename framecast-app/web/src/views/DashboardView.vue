@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import { getEcho } from '../services/echo'
 import AppSidebar from '../components/AppSidebar.vue'
+import DashboardSkeleton from '../components/skeletons/DashboardSkeleton.vue'
 import NotifBell from '../components/NotifBell.vue'
 import NewVideoWizard from '../components/NewVideoWizard.vue'
 import DailyStreakModal from '../components/DailyStreakModal.vue'
@@ -49,6 +50,7 @@ function onStreakClaimed({ granted }) {
   if (granted > 0) loadMe()
 }
 
+const loading = ref(true) // gates the dashboard body skeleton until first load
 const projects = ref([])
 const queueRows = ref([])
 const channels = ref([])
@@ -469,9 +471,13 @@ watch(
 )
 
 onMounted(async () => {
-  await loadMe()
-  maybeOpenWizardFromRoute()
-  loadDailyStreak()   // fire-and-forget, won't block first paint
+  try {
+    await loadMe()
+    maybeOpenWizardFromRoute()
+    loadDailyStreak()   // fire-and-forget, won't block first paint
+  } finally {
+    loading.value = false // drop the skeleton once core data is in (or on error)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -500,7 +506,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="dashboard">
+      <DashboardSkeleton v-if="loading" />
+      <div v-else class="dashboard">
 
         <!-- Credit warning banner -->
         <div
