@@ -3053,6 +3053,7 @@ function replaceSceneInCollection(updatedScene) {
   }
 
   const existing = scenes.value[idx];
+  const prevVisualUrl = existing.visual_asset?.storage_url ?? null;
   const captionSettings = normalizeCaptionSettings(
     updatedScene.caption_settings ?? updatedScene.caption_settings_json,
     existing.caption_settings ?? existing.caption_settings_json
@@ -3068,6 +3069,23 @@ function replaceSceneInCollection(updatedScene) {
     caption_settings: captionSettings,
     caption_settings_json: captionSettings,
   });
+
+  // Keep the live preview in sync when the ACTIVE scene's visual changed.
+  // The <img>/<video> binds to the currentVisualUrl ref, which is only
+  // refreshed by preloadSceneVisual(). Every swap funnels through here, but
+  // only some call sites remembered to re-preload — so Cruise applies (and
+  // any future path) left the preview showing the old visual until a page
+  // refresh re-ran the scene-select flow. Unchanged URLs (caption toggles,
+  // poll heartbeats) no-op inside preloadSceneVisual, so there's no flicker;
+  // the old visual stays put until the new one decodes.
+  const nextVisualUrl = existing.visual_asset?.storage_url ?? null;
+  if (existing.id === activeSceneId.value && nextVisualUrl !== prevVisualUrl) {
+    if (nextVisualUrl) {
+      preloadSceneVisual(existing);
+    } else {
+      currentVisualUrl.value = null;
+    }
+  }
 
   // Re-sort only when the array is actually out of order (scene_order
   // changed). The common case — same scene updated with same order —
