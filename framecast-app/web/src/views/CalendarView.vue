@@ -138,8 +138,18 @@ function postsForDate(date) {
   })
 }
 
+// Week view only renders slots for HOURS (6am–9pm). Clamp each post's hour into
+// that range so posts timed outside working hours land in the nearest edge slot
+// instead of vanishing — published_at is often an off-hours moment, and
+// getHours() is browser-local, so a UTC time can fall before 6am / after 9pm.
+// The card shows the real time, so a clamped post still reads correctly.
 function postsForDateHour(date, hour) {
-  return postsForDate(date).filter(p => new Date(postDate(p)).getHours() === hour)
+  const minH = HOURS[0]
+  const maxH = HOURS[HOURS.length - 1]
+  return postsForDate(date).filter(p => {
+    const h = new Date(postDate(p)).getHours()
+    return Math.min(maxH, Math.max(minH, h)) === hour
+  })
 }
 
 // ── List view ─────────────────────────────────────────────
@@ -421,6 +431,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
                 @click.stop="selectPost(post, $event)"
               >
                 {{ postPlatformIcon(post.platform) }} {{ post.project_title || 'Post' }}
+                <span class="cal-post-time"> · {{ formatTime(postDate(post)) }}</span>
               </button>
             </div>
           </div>
