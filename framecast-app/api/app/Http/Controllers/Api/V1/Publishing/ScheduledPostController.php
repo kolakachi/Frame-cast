@@ -28,14 +28,21 @@ class ScheduledPostController extends Controller
             'status'   => ['nullable', 'string'],
         ]);
 
+        // A post's calendar date is scheduled_at when set, otherwise the time
+        // it actually published (published-now / legacy posts have no
+        // scheduled_at), otherwise when it was created. Filter and sort on that
+        // same effective date the calendar UI uses, so published posts with a
+        // null scheduled_at aren't silently dropped from the range.
+        $effectiveDate = 'COALESCE(scheduled_at, published_at, created_at)';
+
         $posts = ScheduledPost::query()
             ->where('workspace_id', $user->workspace_id)
             ->with(['project:id,title,series_id', 'project.series:id,name', 'socialAccount:id,platform,platform_display_name,platform_username'])
-            ->when($validated['from'] ?? null, fn ($q, $v) => $q->where('scheduled_at', '>=', $v))
-            ->when($validated['to'] ?? null, fn ($q, $v) => $q->where('scheduled_at', '<=', $v))
+            ->when($validated['from'] ?? null, fn ($q, $v) => $q->whereRaw("{$effectiveDate} >= ?", [$v]))
+            ->when($validated['to'] ?? null, fn ($q, $v) => $q->whereRaw("{$effectiveDate} <= ?", [$v]))
             ->when($validated['platform'] ?? null, fn ($q, $v) => $q->where('platform', $v))
             ->when($validated['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
-            ->orderBy('scheduled_at')
+            ->orderByRaw($effectiveDate)
             ->get();
 
         return response()->json(['data' => ['posts' => $posts->map(fn (ScheduledPost $p) => $this->serialize($p))->all()]]);
