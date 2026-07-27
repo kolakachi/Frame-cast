@@ -38,6 +38,12 @@ jobs:
             cd /opt/framecast/app/framecast-app
             docker compose -f docker-compose.prod.yml up --build -d --remove-orphans
 
+            # marketing + docs use a stock nginx image with bind-mounted config,
+            # so `up` never recreates them and config/content changes (e.g. the
+            # 404 page) don't reload on their own. Restart them explicitly.
+            echo '==> Reloading marketing + docs nginx (bind-mounted config)...'
+            docker compose -f docker-compose.prod.yml restart marketing docs
+
             echo '==> Running migrations...'
             sleep 5
             docker compose -f docker-compose.prod.yml exec -T api php artisan migrate --force --no-interaction

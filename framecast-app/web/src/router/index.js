@@ -25,6 +25,7 @@ import CharactersView from '../views/CharactersView.vue'
 import VoicesView from '../views/VoicesView.vue'
 import ApprovalReviewView from '../views/ApprovalReviewView.vue'
 import SampleView from '../views/SampleView.vue'
+import NotFoundView from '../views/NotFoundView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -56,6 +57,9 @@ const routes = [
   { path: '/projects/:projectId/generation', name: 'generation-progress', component: GenerationProgressView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/editor', name: 'project-editor', component: EditorView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/variants', name: 'project-variants', component: VariantsView, meta: { requiresAuth: true } },
+  // Catch-all 404. public:true so a mistyped URL shows the 404 instead of
+  // bouncing through the auth / onboarding guards.
+  { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView, meta: { public: true } },
 ]
 
 const router = createRouter({
