@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import api, { refreshApi } from '../services/api'
+import { useWorkspaceStore } from './workspace'
 
 const STORAGE_KEY = 'framecast.auth'
 
@@ -51,6 +52,10 @@ export const useAuthStore = defineStore('auth', {
       this.accessToken = null
       this.user = null
       window.localStorage.removeItem(STORAGE_KEY)
+      // Drop workspace-scoped state too, so logging in as a different user
+      // doesn't inherit the previous workspace's name/plan/usage in the
+      // sidebar until something forces a refetch.
+      useWorkspaceStore().clear()
     },
 
     async requestMagicLink(email, name = null, password = null) {

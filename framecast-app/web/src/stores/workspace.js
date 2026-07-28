@@ -10,7 +10,12 @@ export const useWorkspaceStore = defineStore('workspace', {
 
   getters: {
     planLabel: (state) => {
-      const labels = { free: 'Free', studio: 'Studio', scale: 'Scale', enterprise: 'Enterprise' }
+      const labels = {
+        free: 'Free', starter: 'Starter', creator: 'Creator', pro: 'Pro',
+        agency: 'Agency', enterprise: 'Enterprise',
+        // legacy tier aliases
+        studio: 'Studio', scale: 'Scale',
+      }
       return labels[state.workspace?.plan_tier] ?? 'Free'
     },
     planTier: (state) => state.workspace?.plan_tier ?? 'free',

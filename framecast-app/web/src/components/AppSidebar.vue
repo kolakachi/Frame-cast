@@ -25,9 +25,14 @@ const isAdmin = computed(() =>
 
 const planColors = {
   free: "#6b7280",
+  starter: "#34d399",
+  creator: "#60a5fa",
+  pro: "#a78bfa",
+  agency: "#f59e0b",
+  enterprise: "#f43f5e",
+  // legacy tier aliases
   studio: "#7c3aed",
   scale: "#0ea5e9",
-  enterprise: "#f59e0b",
 };
 const planColor = computed(
   () => planColors[workspaceStore.planTier] ?? "#6b7280"
@@ -72,8 +77,11 @@ function handleOutsideClick(e) {
 onMounted(() => {
   sidebarStore.applyStored();
   document.addEventListener("click", handleOutsideClick);
+  // Load when we have no workspace OR the loaded one belongs to a different
+  // user (e.g. after logging out and back in as someone else) — comparing the
+  // id avoids showing the previous account's workspace name/plan.
   const wsId = props.user?.workspace_id;
-  if (wsId && !workspaceStore.workspace && !workspaceStore.loading) {
+  if (wsId && Number(workspaceStore.workspace?.id) !== Number(wsId) && !workspaceStore.loading) {
     workspaceStore.load(wsId);
   }
 });
