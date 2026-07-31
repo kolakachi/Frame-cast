@@ -26,6 +26,7 @@ import VoicesView from '../views/VoicesView.vue'
 import ApprovalReviewView from '../views/ApprovalReviewView.vue'
 import SampleView from '../views/SampleView.vue'
 import NotFoundView from '../views/NotFoundView.vue'
+import AppSumoActivateView from '../views/AppSumoActivateView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -34,6 +35,9 @@ const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
   { path: '/register', name: 'register', component: RegisterView, meta: { guestOnly: true } },
   { path: '/auth/magic', name: 'magic-link', component: MagicLinkView },
+  // AppSumo LTD activation — public (buyer may be logged out or in); not
+  // guestOnly so an existing user can attach a license without being bounced.
+  { path: '/appsumo/activate', name: 'appsumo-activate', component: AppSumoActivateView, meta: { public: true } },
   { path: '/auth/forgot', name: 'forgot-password', component: ForgotPasswordView, meta: { guestOnly: true } },
   { path: '/auth/reset', name: 'reset-password', component: ResetPasswordView, meta: { guestOnly: true } },
   { path: '/approve/:token', name: 'approval-review', component: ApprovalReviewView, meta: { public: true } },
