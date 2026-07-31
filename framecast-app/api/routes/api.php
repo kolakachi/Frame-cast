@@ -37,6 +37,13 @@ Route::prefix('v1')->group(function (): void {
     // (Svix scheme) inside the controller. Kelviq is our sole billing provider.
     Route::post('/webhooks/kelviq', \App\Http\Controllers\Api\V1\Billing\KelviqWebhookController::class);
 
+    // AppSumo lifetime-deal (LTD) — all unauthenticated, verified inside the
+    // controllers. Webhook is HMAC-signed; OAuth callback + activate finish
+    // account creation for a purchased license.
+    Route::post('/webhooks/appsumo', \App\Http\Controllers\Api\V1\Billing\AppSumoWebhookController::class);
+    Route::get('/appsumo/oauth/callback', [\App\Http\Controllers\Api\V1\Billing\AppSumoOAuthController::class, 'callback']);
+    Route::post('/appsumo/activate', [\App\Http\Controllers\Api\V1\Billing\AppSumoOAuthController::class, 'activate']);
+
     // Public content-report endpoint (anyone can submit, no auth required).
     // Rate-limited per-IP inside the controller. Backs the form at /report.
     Route::post('/report-content', [\App\Http\Controllers\Api\V1\Public\ReportContentController::class, 'store']);

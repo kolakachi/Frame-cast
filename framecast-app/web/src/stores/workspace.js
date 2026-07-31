@@ -13,6 +13,8 @@ export const useWorkspaceStore = defineStore('workspace', {
       const labels = {
         free: 'Free', starter: 'Starter', creator: 'Creator', pro: 'Pro',
         agency: 'Agency', enterprise: 'Enterprise',
+        // AppSumo lifetime-deal tiers
+        appsumo_starter: 'Starter (Lifetime)', appsumo_creator: 'Creator (Lifetime)', appsumo_agency: 'Agency (Lifetime)',
         // legacy tier aliases
         studio: 'Studio', scale: 'Scale',
       }

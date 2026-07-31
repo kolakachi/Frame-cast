@@ -30,6 +30,10 @@ const planColors = {
   pro: "#a78bfa",
   agency: "#f59e0b",
   enterprise: "#f43f5e",
+  // AppSumo lifetime-deal tiers (mirror their subscription-tier colors)
+  appsumo_starter: "#34d399",
+  appsumo_creator: "#60a5fa",
+  appsumo_agency: "#f59e0b",
   // legacy tier aliases
   studio: "#7c3aed",
   scale: "#0ea5e9",
