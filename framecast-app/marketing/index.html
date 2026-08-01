@@ -123,7 +123,7 @@
             right: 0;
             z-index: 100;
             padding: 0 32px;
-            height: 60px;
+            height: 72px;
             display: flex;
             align-items: center;
             gap: 16px;
@@ -147,7 +147,7 @@
         }
 
         .nav-logo-text {
-            font-size: 15px;
+            font-size: 18px;
             font-weight: 700;
             color: var(--text);
             letter-spacing: -.3px
@@ -159,11 +159,11 @@
 
         .nav-links {
             display: flex;
-            gap: 28px
+            gap: 32px
         }
 
         .nav-links a {
-            font-size: 13px;
+            font-size: 15px;
             color: var(--text-dim);
             text-decoration: none;
             transition: .15s
@@ -176,6 +176,11 @@
         .nav-cta {
             display: flex;
             gap: 8px
+        }
+
+        .nav-cta .btn {
+            font-size: 14.5px;
+            padding: 9px 20px;
         }
 
         .mobile-menu-btn {
@@ -823,6 +828,43 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
+        }
+
+        .uc-audio-toggle {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(10, 10, 15, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .uc-stack-card[data-pos="active"] .uc-audio-toggle {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .uc-audio-toggle:hover {
+            background: rgba(10, 10, 15, 0.9);
+            transform: scale(1.05);
+            border-color: var(--accent);
+        }
+
+        .uc-audio-toggle svg {
+            display: block;
         }
 
         .uc-stack-controls {
@@ -2952,7 +2994,7 @@
     <nav>
         <a href="#" class="nav-logo">
             <div class="nav-logo-mark">
-                <svg width="28" height="28" viewBox="0 0 64 64" fill="none">
+                <svg width="32" height="32" viewBox="0 0 64 64" fill="none">
                     <rect width="64" height="64" rx="14" fill="#ff6b35" />
                     <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="white" stroke-width="4.5"
                         stroke-linecap="round" stroke-linejoin="round" fill="none" />
@@ -2970,7 +3012,7 @@
         </div>
         <div class="nav-cta">
             <a href="https://app.wyvstudio.com/login" class="btn">Sign in</a>
-            <a href="https://app.wyvstudio.com/register" class="btn btn-primary">Start free</a>
+            <a href="https://app.wyvstudio.com/register" class="btn btn-primary">Get started</a>
         </div>
         <button class="mobile-menu-btn" aria-label="Toggle menu" id="mobileMenuBtn">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -3052,7 +3094,7 @@
     <section id="problem" class="bg-white" style="padding:150px 24px 100px">
         <div class="container" style="text-align:center">
             <div class="section-label">The real problem</div>
-            <h2 class="section-title">You're not bad at content.<br><em>You're Doing it the wrong way.</em></h2>
+            <h2 class="section-title">You're not bad at content.<br><em>You're Just Doing it the wrong way.</em></h2>
             <p class="section-sub" style="margin:0 auto">Every creator is trapped in the same loop — and none of the
                 tools they use were built to break it.</p>
 
@@ -3325,8 +3367,8 @@
                         </div>
                         <div class="step-title">Edit, then post.</div>
                         <p class="step-body">Open the editor. Swap a scene. Change the voice. Regenerate one image. Or
-                            type an instruction: <em style="color:var(--text)">“Make scene 2 shorter”</em> or <em
-                                style="color:var(--text)">“Add a CTA at the end.”</em><br><br><strong>When it's right,
+                            type an instruction: <em style="color:#1a1a24">“Make scene 2 shorter”</em> or <em
+                                style="color:#1a1a24">“Add a CTA at the end.”</em><br><br><strong>When it's right,
                                 schedule straight to YouTube, TikTok, and Instagram</strong> — all from the same screen.
                             No file downloads. No manual uploads.</p>
                     </div>
@@ -4048,11 +4090,7 @@
                 </div>
             </div>
 
-            <p
-                style="font-size:12px;color:var(--text-faint);margin-top:40px;font-family:'Space Mono',monospace;letter-spacing:.05em">
-                Sample videos arriving soon · <a href="https://app.wyvstudio.com/register"
-                    style="color:var(--accent);text-decoration:none">Start free</a>
-            </p>
+
         </div>
     </section>
 
@@ -4060,7 +4098,7 @@
     <section id="pricing" style="padding:100px 24px">
         <div class="container" style="text-align:center; max-width:1100px">
             <div class="section-label">Pricing</div>
-            <h2 class="section-title">Simple pricing.<br><em>You only pay for what you generate.</em></h2>
+            <h2 class="section-title">Simple pricing.</h2>
             <p class="section-sub" style="margin:0 auto">Scripts, scene breakdowns, stock footage, the AI assistant,
                 captions and exports are included in every plan. Credits go to AI generation. No surprise overages. No
                 per-seat fees.</p>
@@ -4245,62 +4283,9 @@
                 </div>
             </div>
 
-            <div class="free-tier-box"
-                style="display: flex; flex-wrap: wrap; gap: 40px; margin-top: 40px; padding: 40px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.05); background: rgba(20, 20, 28, 0.4); backdrop-filter: blur(16px); align-items: center; text-align: left; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);">
-                <div class="free-tier-left"
-                    style="flex: 1 1 280px; max-width: 300px; padding-right: 40px; border-right: 1px solid rgba(255, 255, 255, 0.05);">
 
-                    <div
-                        style="font-size:50px;font-weight:800;color:var(--accent);line-height:1;margin-bottom:12px;letter-spacing:-1px;display:flex;align-items:baseline;gap:8px;">
-                        $1 <span style="font-size:24px;font-weight:700;color:var(--text);letter-spacing:0">Trial</span>
-                    </div>
-                    <p style="font-size:14px;color:var(--text-dim);line-height:1.5">200 one-time credits<br>No card
-                        required</p>
-                    <button class="btn btn-primary" style="margin-top:16px;width:100%">Get started free</button>
-                </div>
-                <div class="free-tier-right" style="flex: 2 1 400px;">
-                    <ul class="plan-feat"
-                        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 0;">
-                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <polyline points="20 6 9 17 4 12" />
-                            </svg> 200 starter credits</li>
-                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <polyline points="20 6 9 17 4 12" />
-                            </svg> All 4 visual modes</li>
-                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <polyline points="20 6 9 17 4 12" />
-                            </svg> 1 channel</li>
-                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <polyline points="20 6 9 17 4 12" />
-                            </svg> AI script included</li>
-                        <li class="na"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg> Watermark on exports</li>
-                        <li class="na"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg> No social publishing</li>
-                        <li class="na"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg> No Series Mode</li>
-                    </ul>
-                </div>
-            </div>
 
-            <div style="margin-top:32px;font-size:13px;color:var(--text-faint);text-align:center">14-day full refund.
+            <div style="margin-top:32px;font-size:13px;color:var(--text-dim);text-align:center">14-day full refund.
                 After 14 days, unused credits refunded pro-rata on cancellation. Payments via Kelviq.</div>
         </div>
     </section>
@@ -4399,8 +4384,9 @@
                             <polyline points="6 9 12 15 18 9" />
                         </svg>
                     </div>
-                    <div class="faq-a">14-day full refund window on all paid plans. After 14 days, any unused video
-                        credits are refunded pro-rata on cancellation. You’ll never pay for output you didn’t use.</div>
+                    <div class="faq-a">Backed by a 14-day money-back guarantee. If WyvStudio isn't right for you, get a
+                        full refund — no conditions. After 14 days, any unused video credits are refunded pro-rata on
+                        cancellation. You’ll never pay for output you didn’t use.</div>
                 </div>
             </div>
         </div>
@@ -4419,20 +4405,19 @@
                                 points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
                             </polygon>
                         </svg>
-                        No credit card required
+                        Ready When You Are
                     </div>
-                    <div class="pricing-free-title">Try the full pipeline. <em>Free.</em></div>
-                    <p class="pricing-free-desc">200 credits on signup. All 4 visual modes. AI script engine. One
-                        channel. Build your first video in under 30 minutes — no commitment, no card.</p>
+                    <div class="pricing-free-title">Your Next Video Is One Click Away</div>
                     <div class="pricing-free-checks">
-                        <span class="pricing-free-check">200 starter credits</span>
-                        <span class="pricing-free-check">All visual modes</span>
-                        <span class="pricing-free-check">AI script included</span>
-                        <span class="pricing-free-check">No card required</span>
+                        <span class="pricing-free-check">No watermark on paid plans</span>
+                        <span class="pricing-free-check">Export 4 aspect ratios from 1 project</span>
+                        <span class="pricing-free-check">Publish directly to YouTube, TikTok & Instagram</span>
                     </div>
-                    <button class="pricing-free-cta">Start free — no card</button>
-                    <p class="pricing-free-refund">14-day full refund window. After 14 days, unused credits are refunded
-                        pro-rata on cancellation. No questions. No friction. No fine print.</p>
+                    <a href="https://app.wyvstudio.com/register" style="text-decoration: none;">
+                        <button class="pricing-free-cta">Get Started Today</button>
+                    </a>
+                    <p class="pricing-free-refund">Backed by a 14-day money-back guarantee. If WyvStudio isn't right for
+                        you, get a full refund — no conditions.</p>
                 </div>
             </div>
         </div>
@@ -4453,32 +4438,7 @@
                     </a>
                     <p class="footer-tagline">Short videos from whatever you have — script, podcast clip, product URL,
                         or just an idea.</p>
-                    <!-- Socials: hrefs are placeholders. Swap when handles are claimed.
-             X handle, LinkedIn page, and YouTube channel are F19/F20-adjacent
-             work, so they may land alongside the outbound launch. -->
-                    <div class="footer-socials">
-                        <a class="footer-social" href="https://x.com/wyvstudio" aria-label="WyvStudio on X"
-                            target="_blank" rel="noopener">
-                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path
-                                    d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z" />
-                            </svg>
-                        </a>
-                        <a class="footer-social" href="https://www.linkedin.com/company/wyvstudio"
-                            aria-label="WyvStudio on LinkedIn" target="_blank" rel="noopener">
-                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path
-                                    d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14zM8.27 18.5v-8.37H5.5v8.37h2.77zM6.88 8.56a1.68 1.68 0 1 0 0-3.37 1.68 1.68 0 0 0 0 3.37zm11.62 9.94v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79z" />
-                            </svg>
-                        </a>
-                        <a class="footer-social" href="https://youtube.com/@wyvstudio" aria-label="WyvStudio on YouTube"
-                            target="_blank" rel="noopener">
-                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path
-                                    d="M23.5 6.2a3 3 0 0 0-2.12-2.13C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.52A3 3 0 0 0 .5 6.2C0 8.09 0 12 0 12s0 3.91.5 5.8a3 3 0 0 0 2.12 2.13c1.88.52 9.38.52 9.38.52s7.5 0 9.38-.52a3 3 0 0 0 2.12-2.13c.5-1.89.5-5.8.5-5.8s0-3.91-.5-5.8zM9.55 15.57V8.43L15.82 12 9.55 15.57z" />
-                            </svg>
-                        </a>
-                    </div>
+
                 </div>
 
                 <div class="footer-cols">
@@ -4541,6 +4501,29 @@
         let ucCurrentIndex = 0;
         const totalUcCards = ucCards.length;
         let autoplayInterval;
+        let isUseCasesSectionInViewport = false;
+        let lastActiveIndex = -1;
+
+        function manageUcVideosAudio(activeChanged) {
+            ucCards.forEach((card) => {
+                const video = card.querySelector('.uc-stack-video');
+                if (!video) return;
+
+                const pos = card.getAttribute('data-pos');
+                if (pos === 'active' && isUseCasesSectionInViewport) {
+                    if (activeChanged) {
+                        video.currentTime = 0;
+                    }
+                    video.muted = false;
+                    video.play().catch(() => {
+                        video.muted = true;
+                        video.play().catch(() => { });
+                    });
+                } else {
+                    video.muted = true;
+                }
+            });
+        }
 
         function updateUcCards() {
             ucCards.forEach((card, index) => {
@@ -4557,6 +4540,10 @@
                     card.setAttribute('data-pos', 'hidden');
                 }
             });
+
+            const activeChanged = (ucCurrentIndex !== lastActiveIndex);
+            lastActiveIndex = ucCurrentIndex;
+            manageUcVideosAudio(activeChanged);
         }
 
         function ucNextCard() {
@@ -4576,10 +4563,91 @@
             autoplayInterval = setInterval(ucNextCard, 12000); // 12s per card for comfortable reading
         }
 
+        // Setup audio toggle buttons and card click handlers
+        ucCards.forEach((card, index) => {
+            // Card click behavior to switch to it
+            card.addEventListener('click', () => {
+                const pos = card.getAttribute('data-pos');
+                if (pos === 'next1') {
+                    ucNextCard();
+                } else if (pos === 'next2') {
+                    ucCurrentIndex = (ucCurrentIndex + 2) % totalUcCards;
+                    updateUcCards();
+                    resetAutoplay();
+                }
+            });
+
+            // Dynamic volume button setup
+            const rightContainer = card.querySelector('.uc-stack-right');
+            const video = card.querySelector('.uc-stack-video');
+            if (rightContainer && video) {
+                const toggleBtn = document.createElement('button');
+                toggleBtn.className = 'uc-audio-toggle';
+                toggleBtn.setAttribute('aria-label', 'Toggle sound');
+                toggleBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-mute">
+                        <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                        <line x1="22" y1="9" x2="16" y2="15"></line>
+                        <line x1="16" y1="9" x2="22" y2="15"></line>
+                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-unmute" style="display:none;">
+                        <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                    </svg>
+                `;
+                rightContainer.appendChild(toggleBtn);
+
+                const muteIcon = toggleBtn.querySelector('.icon-mute');
+                const unmuteIcon = toggleBtn.querySelector('.icon-unmute');
+
+                video.addEventListener('volumechange', () => {
+                    if (video.muted) {
+                        muteIcon.style.display = 'block';
+                        unmuteIcon.style.display = 'none';
+                    } else {
+                        muteIcon.style.display = 'none';
+                        unmuteIcon.style.display = 'block';
+                    }
+                });
+
+                toggleBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const wasMuted = video.muted;
+
+                    // Mute all other videos
+                    ucCards.forEach(c => {
+                        const v = c.querySelector('.uc-stack-video');
+                        if (v && v !== video) v.muted = true;
+                    });
+
+                    video.muted = !wasMuted;
+                    if (!video.muted) {
+                        video.play().catch(() => { });
+                    }
+                });
+            }
+        });
+
+        // Viewport detection
+        const useCasesSection = document.getElementById('use-cases');
+        if (useCasesSection && 'IntersectionObserver' in window) {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    isUseCasesSectionInViewport = entry.isIntersecting;
+                    manageUcVideosAudio(false);
+                });
+            }, {
+                threshold: 0.25
+            });
+            observer.observe(useCasesSection);
+        } else {
+            isUseCasesSectionInViewport = true;
+        }
+
         if (nextBtn && prevBtn && totalUcCards > 0) {
             nextBtn.addEventListener('click', ucNextCard);
             prevBtn.addEventListener('click', ucPrevCard);
-            // Initialize positions
             updateUcCards();
             resetAutoplay();
         }
