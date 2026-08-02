@@ -1,5 +1,5 @@
 ---
-sidebar_position: 1
+sidebar_position: 5
 title: Start from a product URL
 description: Turn any product or article page into a finished short.
 ---
