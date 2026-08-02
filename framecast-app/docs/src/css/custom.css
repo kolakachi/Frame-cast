@@ -1,30 +1,147 @@
-/**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
- */
+/* ── WyvStudio docs theme ────────────────────────────────────────────────────
+   Brand-forward, friendly, easy on the eyes. DM Sans everywhere, WyvStudio
+   orange accent, deep brand background in dark mode. */
 
-/* You can override the default Infima variables here. */
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Space+Mono:wght@400;700&display=swap");
+
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  /* Brand accent — orange, deepened slightly for legible links on white. */
+  --ifm-color-primary: #e35617;
+  --ifm-color-primary-dark: #cc4d14;
+  --ifm-color-primary-darker: #c14813;
+  --ifm-color-primary-darkest: #9f3b0f;
+  --ifm-color-primary-light: #ef6528;
+  --ifm-color-primary-lighter: #f06f35;
+  --ifm-color-primary-lightest: #f38b5c;
+
+  /* Typography — the WyvStudio font. */
+  --ifm-font-family-base: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ifm-heading-font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+  --ifm-font-family-monospace: "Space Mono", ui-monospace, SFMono-Regular, monospace;
+  --ifm-font-size-base: 17px;
+  --ifm-line-height-base: 1.72;
+  --ifm-code-font-size: 88%;
+
+  /* Softer, rounder, roomier. */
+  --ifm-global-radius: 12px;
+  --ifm-heading-font-weight: 700;
+  --ifm-h1-font-size: 2.4rem;
+  --ifm-heading-line-height: 1.2;
+  --ifm-navbar-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+
+  /* Warm neutrals so it doesn't read like a spec sheet. */
+  --ifm-background-color: #ffffff;
+  --ifm-background-surface-color: #faf8f6;
+  --ifm-color-emphasis-200: #efe9e4;
+  --ifm-color-emphasis-300: #e6ded7;
+  --ifm-toc-border-color: #efe9e4;
+  --ifm-heading-color: #1c1a19;
+  --docusaurus-highlighted-code-line-bg: rgba(255, 107, 53, 0.1);
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
-[data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+[data-theme="dark"] {
+  /* Bright orange reads better on the deep background. */
+  --ifm-color-primary: #ff875a;
+  --ifm-color-primary-dark: #ff6d38;
+  --ifm-color-primary-darker: #ff602a;
+  --ifm-color-primary-darkest: #fb4708;
+  --ifm-color-primary-light: #ffa17c;
+  --ifm-color-primary-lighter: #ffae8d;
+  --ifm-color-primary-lightest: #ffcebc;
+
+  /* WyvStudio deep background. */
+  --ifm-background-color: #0a0a0f;
+  --ifm-background-surface-color: #14141c;
+  --ifm-navbar-background-color: rgba(10, 10, 15, 0.85);
+  --ifm-footer-background-color: #0a0a0f;
+  --ifm-color-emphasis-200: #23232e;
+  --ifm-color-emphasis-300: #2a2a36;
+  --ifm-toc-border-color: #23232e;
+  --ifm-heading-color: #f4f2f7;
+  --ifm-font-color-base: #d7d5df;
+  --docusaurus-highlighted-code-line-bg: rgba(255, 107, 53, 0.16);
+}
+
+/* ── Navbar ─────────────────────────────────────────────────────────────── */
+.navbar {
+  backdrop-filter: saturate(140%) blur(8px);
+}
+.navbar__brand:hover { opacity: 0.85; }
+.navbar__title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* ── Headings: a touch of character, less "manual page" ─────────────────── */
+.markdown h1 {
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.markdown h2 {
+  letter-spacing: -0.01em;
+  margin-top: 2.4rem;
+}
+article {
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+/* ── Sidebar: warm, calm, brand-highlighted active item ─────────────────── */
+.menu {
+  font-size: 0.94rem;
+  padding: 1rem 0.6rem;
+}
+.menu__link {
+  border-radius: 10px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.menu__link--active:not(.menu__link--sublist) {
+  background: rgba(255, 107, 53, 0.12);
+  font-weight: 600;
+}
+.menu__link:hover {
+  background: rgba(255, 107, 53, 0.08);
+}
+
+/* ── Friendly buttons & links ───────────────────────────────────────────── */
+.button--primary {
+  --ifm-button-background-color: #ff6b35;
+  --ifm-button-border-color: #ff6b35;
+  border-radius: 12px;
+  font-weight: 600;
+}
+.markdown a {
+  font-weight: 500;
+  text-underline-offset: 2px;
+}
+
+/* ── Admonitions (incl. the 📸 Screenshot notes): soft, rounded, on-brand ── */
+.theme-admonition {
+  border-radius: 14px;
+  border-width: 1px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.theme-admonition code {
+  font-size: 0.82em;
+}
+
+/* ── Code & cards: rounder, softer ──────────────────────────────────────── */
+.theme-code-block,
+pre {
+  border-radius: 14px !important;
+}
+table {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* ── Comfortable reading rhythm ─────────────────────────────────────────── */
+.markdown > p,
+.markdown li {
+  line-height: 1.72;
+}
+.markdown blockquote {
+  border-left: 3px solid var(--ifm-color-primary);
+  background: rgba(255, 107, 53, 0.05);
+  border-radius: 0 12px 12px 0;
 }

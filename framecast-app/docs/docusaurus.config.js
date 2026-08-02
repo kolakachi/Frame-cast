@@ -8,7 +8,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 const config = {
   title: 'WyvStudio Help',
   tagline: 'Branded short-form video without a shoot — guides & how-tos',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/favicon.svg',
 
   url: 'https://docs.wyvstudio.com',
   baseUrl: '/',
