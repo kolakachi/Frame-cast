@@ -8,7 +8,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 const config = {
   title: 'WyvStudio Help',
   tagline: 'Branded short-form video without a shoot — guides & how-tos',
-  favicon: 'img/favicon.svg',
+  favicon: 'img/wyv-favicon.svg',
 
   url: 'https://docs.wyvstudio.com',
   baseUrl: '/',
@@ -44,7 +44,7 @@ const config = {
       colorMode: {defaultMode: 'dark', respectPrefersColorScheme: true},
       navbar: {
         title: 'WyvStudio Help',
-        logo: {alt: 'WyvStudio', src: 'img/logo.svg'},
+        logo: {alt: 'WyvStudio', src: 'img/wyv-logo.svg'},
         items: [
           {type: 'docSidebar', sidebarId: 'guides', position: 'left', label: 'Guides'},
           {href: 'https://app.wyvstudio.com', label: 'Open the app', position: 'right'},
