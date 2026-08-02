@@ -18,9 +18,7 @@ Go to **Channels** (or Settings → connected accounts) and connect **YouTube**,
 
 From a finished export, choose **Publish** (or **Schedule** for later). WyvStudio can auto-generate a caption for the destination platform.
 
-:::info 📸 Screenshot
-`img/howto/publish-modal.png` — the publish/schedule dialog with platform + caption.
-:::
+![the publish/schedule dialog with platform + caption](/img/howto/publish-modal.png)
 
 :::note Plan note
 Social publishing is available on paid plans. Channel counts vary by plan.
