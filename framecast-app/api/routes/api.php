@@ -250,6 +250,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{projectId}/share', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'toggle'])->whereNumber('projectId');
             Route::post('/{projectId}/resume-failed', [ProjectController::class, 'resumeFailed'])->whereNumber('projectId');
             Route::post('/{projectId}/retry-generation', [ProjectController::class, 'retryGeneration'])->whereNumber('projectId');
+            Route::post('/{projectId}/duplicate', [ProjectController::class, 'duplicate'])->whereNumber('projectId');
             Route::delete('/{projectId}', [ProjectController::class, 'destroy'])->whereNumber('projectId');
         });
 

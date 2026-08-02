@@ -1354,6 +1354,68 @@ class ProjectController extends Controller
     }
 
     /**
+     * Duplicate a project within the same workspace. Reuses the workspace's
+     * existing assets/characters (no file copy, no credit charge) — clones the
+     * project row + its scenes only. A series episode's copy stays in the
+     * series with the next episode number; its episode summary is cleared (a
+     * fresh copy hasn't earned any memory yet).
+     */
+    public function duplicate(Request $request, int $projectId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $source = Project::query()
+            ->whereKey($projectId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $source) {
+            return $this->error('not_found', 'Project not found.', 404);
+        }
+
+        $scenes = Scene::query()
+            ->where('project_id', $source->getKey())
+            ->orderBy('scene_order')
+            ->get();
+
+        $clone = DB::transaction(function () use ($source, $scenes, $user): Project {
+            $project = $source->replicate([
+                'current_revision_id', 'family_id', 'share_token', 'is_shared',
+            ]);
+            $project->created_by_user_id = $user->getKey();
+            $project->current_revision_id = null;
+            $project->family_id = null;
+            $project->share_token = null;
+            $project->is_shared = false;
+            $project->series_episode_summary = null;
+            $project->status = 'ready_for_review';
+            $project->title = mb_substr(trim(((string) ($source->title ?: 'Untitled')).' (copy)'), 0, 255);
+
+            // Series episodes keep their series but take the next episode number.
+            if ($source->series_id) {
+                $project->series_episode_number = (int) (Project::query()
+                    ->where('series_id', $source->series_id)
+                    ->max('series_episode_number') ?? 0) + 1;
+            }
+            $project->save();
+
+            foreach ($scenes as $scene) {
+                $copy = $scene->replicate();
+                $copy->project_id = $project->getKey();
+                $copy->save();
+            }
+
+            return $project;
+        });
+
+        return response()->json([
+            'data' => ['project' => $this->serializeProject($clone)],
+            'meta' => [],
+        ], 201);
+    }
+
+    /**
      * Re-dispatch jobs for scenes whose image-gen or animation failed
      * mid-pipeline. Common case: user submitted a multi-scene one-shot
      * just past their credit ceiling, X scenes succeeded, Y failed

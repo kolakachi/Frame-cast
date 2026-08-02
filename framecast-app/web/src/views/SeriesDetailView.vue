@@ -127,6 +127,77 @@ function openNewEpisode() {
   showNewEpisode.value = true
 }
 
+// ── Episode actions: rename / duplicate / delete ──────────────
+const showEditEpisode = ref(false)
+const editEpisodeForm = ref({ id: null, title: '' })
+const savingEpisode = ref(false)
+const busyEpId = ref(null)        // clone/delete in flight for a row
+const confirmDeleteEp = ref(null) // the episode pending delete
+const deletingEp = ref(false)
+
+function openEditEpisode(ep) {
+  editEpisodeForm.value = { id: ep.id, title: ep.title || '' }
+  showEditEpisode.value = true
+}
+
+async function saveEpisodeTitle() {
+  savingEpisode.value = true
+  try {
+    const title = editEpisodeForm.value.title.trim()
+    await api.patch(`/projects/${editEpisodeForm.value.id}`, { title: title || null })
+    episodes.value = episodes.value.map(e =>
+      e.id === editEpisodeForm.value.id ? { ...e, title } : e,
+    )
+    showEditEpisode.value = false
+  } catch (e) {
+    console.error(e)
+  } finally {
+    savingEpisode.value = false
+  }
+}
+
+async function cloneEpisode(ep) {
+  if (busyEpId.value) return
+  busyEpId.value = ep.id
+  try {
+    await api.post(`/projects/${ep.id}/duplicate`)
+    await load()
+  } catch (e) {
+    console.error(e)
+  } finally {
+    busyEpId.value = null
+  }
+}
+
+async function confirmDeleteEpisode() {
+  if (!confirmDeleteEp.value) return
+  deletingEp.value = true
+  try {
+    await api.delete(`/projects/${confirmDeleteEp.value.id}`)
+    episodes.value = episodes.value.filter(e => e.id !== confirmDeleteEp.value.id)
+    confirmDeleteEp.value = null
+  } catch (e) {
+    console.error(e)
+  } finally {
+    deletingEp.value = false
+  }
+}
+
+// ── Delete (archive) the whole series ─────────────────────────
+const showDeleteSeries = ref(false)
+const deletingSeries = ref(false)
+
+async function deleteSeries() {
+  deletingSeries.value = true
+  try {
+    await api.delete(`/series/${seriesId}`)
+    router.push({ name: 'series' })
+  } catch (e) {
+    console.error(e)
+    deletingSeries.value = false
+  }
+}
+
 function logout() {
   authStore.logout()
   router.push({ name: 'login' })
@@ -196,6 +267,11 @@ onMounted(load)
                 <div v-if="ep.has_summary" class="ep-summary-badge">Summary ready</div>
               </div>
               <span :class="['status-badge', statusClass(ep.status)]">{{ STEP_LABELS[ep.status] || ep.status }}</span>
+              <div class="ep-actions" @click.stop>
+                <button class="ep-action-btn" type="button" title="Rename" @click="openEditEpisode(ep)">✎</button>
+                <button class="ep-action-btn" type="button" title="Duplicate" :disabled="busyEpId === ep.id" @click="cloneEpisode(ep)">{{ busyEpId === ep.id ? '…' : '⧉' }}</button>
+                <button class="ep-action-btn ep-action-danger" type="button" title="Delete" @click="confirmDeleteEp = ep">✕</button>
+              </div>
             </div>
           </div>
         </div>
@@ -239,6 +315,14 @@ onMounted(load)
               <div class="bible-label">Episode Memory Window</div>
               <div class="bible-text">Last {{ series.memory_window }} episodes injected as context</div>
             </div>
+          </div>
+
+          <div class="danger-zone">
+            <div class="danger-info">
+              <div class="danger-title">Delete this series</div>
+              <div class="danger-sub">Removes the series from your list. Existing episodes stay in All Videos.</div>
+            </div>
+            <button class="btn-danger" type="button" @click="showDeleteSeries = true">Delete series</button>
           </div>
         </div>
 
@@ -325,6 +409,57 @@ onMounted(load)
             <button class="btn-primary" type="button" :disabled="creatingEpisode || !episodeForm.prompt.trim()" @click="createEpisode">
               {{ creatingEpisode ? 'Creating…' : 'Generate Episode' }}
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="showEditEpisode" class="modal-overlay" @click.self="showEditEpisode = false">
+        <div class="modal modal-sm">
+          <div class="modal-header">
+            <h2 class="modal-title">Rename episode</h2>
+            <button class="modal-close" type="button" @click="showEditEpisode = false">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="field">
+              <label class="field-label">Episode title</label>
+              <input v-model="editEpisodeForm.title" class="field-input" type="text" placeholder="Untitled episode" @keyup.enter="saveEpisodeTitle" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" type="button" @click="showEditEpisode = false">Cancel</button>
+            <button class="btn-primary" type="button" :disabled="savingEpisode" @click="saveEpisodeTitle">{{ savingEpisode ? 'Saving…' : 'Save' }}</button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="confirmDeleteEp" class="modal-overlay" @click.self="confirmDeleteEp = null">
+        <div class="modal modal-sm">
+          <div class="modal-header">
+            <h2 class="modal-title">Delete episode?</h2>
+            <button class="modal-close" type="button" @click="confirmDeleteEp = null">✕</button>
+          </div>
+          <div class="modal-body">
+            <p class="confirm-text">Delete <strong>{{ confirmDeleteEp.title || 'Untitled episode' }}</strong>? This can't be undone.</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" type="button" @click="confirmDeleteEp = null">Cancel</button>
+            <button class="btn-danger" type="button" :disabled="deletingEp" @click="confirmDeleteEpisode">{{ deletingEp ? 'Deleting…' : 'Delete episode' }}</button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="showDeleteSeries" class="modal-overlay" @click.self="showDeleteSeries = false">
+        <div class="modal modal-sm">
+          <div class="modal-header">
+            <h2 class="modal-title">Delete series?</h2>
+            <button class="modal-close" type="button" @click="showDeleteSeries = false">✕</button>
+          </div>
+          <div class="modal-body">
+            <p class="confirm-text">Delete <strong>{{ series?.name }}</strong>? It's removed from your series list. Existing episodes stay in All Videos.</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" type="button" @click="showDeleteSeries = false">Cancel</button>
+            <button class="btn-danger" type="button" :disabled="deletingSeries" @click="deleteSeries">{{ deletingSeries ? 'Deleting…' : 'Delete series' }}</button>
           </div>
         </div>
       </div>
@@ -451,4 +586,24 @@ onMounted(load)
 .episode-meta-note { font-size: 11px; color: var(--color-text-muted); background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 7px; padding: 9px 12px; }
 .episode-error { font-size: 12px; color: #f87171; background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.25); border-radius: 7px; padding: 9px 12px; }
 .field-hint { font-size: 10px; color: var(--color-text-muted); opacity: 0.7; font-weight: 400; }
+
+/* Episode row actions */
+.ep-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.ep-action-btn { width: 28px; height: 28px; display: grid; place-items: center; background: transparent; border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-muted); font-size: 13px; cursor: pointer; transition: 0.12s; }
+.ep-action-btn:hover:not(:disabled) { border-color: var(--color-border-active); color: var(--color-text-primary); }
+.ep-action-btn:disabled { opacity: 0.5; cursor: default; }
+.ep-action-danger:hover:not(:disabled) { border-color: rgba(248,113,113,0.4); color: #f87171; }
+
+/* Danger zone */
+.danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 28px; padding: 16px 18px; border: 1px solid rgba(248,113,113,0.2); border-radius: 12px; background: rgba(248,113,113,0.05); }
+.danger-title { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.danger-sub { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+.btn-danger { background: #f87171; color: #fff; border: none; border-radius: 8px; padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.15s; flex-shrink: 0; }
+.btn-danger:hover:not(:disabled) { background: #ef4444; }
+.btn-danger:disabled { opacity: 0.6; cursor: default; }
+
+/* Confirm modal */
+.modal-sm { max-width: 420px; }
+.confirm-text { font-size: 14px; color: var(--color-text-secondary); line-height: 1.6; margin: 0; }
+.confirm-text strong { color: var(--color-text-primary); }
 </style>
