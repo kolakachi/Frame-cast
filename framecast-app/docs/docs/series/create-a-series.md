@@ -12,9 +12,7 @@ A **series** is a recurring show. Every episode is a normal video, but it automa
 
 From **Series**, click **+ New Series**. The setup runs in five steps.
 
-:::info 📸 Screenshot
-`img/howto/series-create.png` — the New Series wizard on the Basics step.
-:::
+![the New Series wizard on the Basics step](/img/howto/series-create.png)
 
 ### 1. Basics
 

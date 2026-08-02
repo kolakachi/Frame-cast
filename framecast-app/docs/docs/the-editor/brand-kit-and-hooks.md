@@ -25,9 +25,7 @@ When your video has a script, the **Hook options** block can generate ranked ope
 
 A strong hook is the single biggest lever on short-form retention, so it's worth trying a few. For a deeper workflow, see [Generate hook variants](/variants-and-hooks/generate-hook-variants).
 
-:::info 📸 Screenshot
-`img/howto/editor-hooks.png` — the Hook options block with ranked hook cards.
-:::
+![the Hook options block with ranked hook cards](/img/howto/editor-hooks.png)
 
 ## What's next
 

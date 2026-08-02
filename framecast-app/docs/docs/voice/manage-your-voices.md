@@ -12,9 +12,7 @@ The **Voices** page is your library of **cloned voices** — voices you've creat
 
 Click **＋ Clone a voice** to record or upload a sample. A clean, single-speaker clip of about 10–20 seconds — no music or background noise — works best. Full steps are in [Clone your voice](/voice/clone-your-voice).
 
-:::info 📸 Screenshot
-`img/howto/voices-library.png` — the Voices page listing cloned voices.
-:::
+![the Voices page listing cloned voices](/img/howto/voices-library.png)
 
 ## Where your voices are used
 

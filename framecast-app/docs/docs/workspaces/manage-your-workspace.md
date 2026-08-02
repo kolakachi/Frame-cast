@@ -23,9 +23,7 @@ The Workspace page shows how you're tracking against your plan:
 
 An **Overview** row summarizes totals — Projects, Assets, Completed Exports, and Brand Kits.
 
-:::info 📸 Screenshot
-`img/howto/workspace-usage.png` — the workspace usage cards and overview.
-:::
+![the workspace usage cards and overview](/img/howto/workspace-usage.png)
 
 :::info Credits are the limit
 Credits are only spent on AI generation (images, video/animation, voice, music). Writing scripts, breaking scenes, stock matching, and exporting are included. When you run low, [top up](/workspaces/account-and-billing) — top-up credits don't expire while your plan is active.

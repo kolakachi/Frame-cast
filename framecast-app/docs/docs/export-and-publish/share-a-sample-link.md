@@ -12,9 +12,7 @@ Every project can have a public link that plays the finished video (and its scen
 
 In the editor's top bar, click **Share publicly** (it becomes **Copy share link** once on).
 
-:::info 📸 Screenshot
-`img/howto/share-toggle.png` — the editor top bar with the "Share publicly" / "Copy share link" control.
-:::
+![the editor top bar with the 'Share publicly' / 'Copy share link' control](/img/howto/share-toggle.png)
 
 ## 2. Copy and send
 

@@ -44,9 +44,7 @@ Click **📝 Send for approval** to email a reviewer a private link — no WyvSt
 2. Set **Expires in** — 3, 7, 14, or 30 days.
 3. Click **Send link**. You'll get a copyable **review link** as well.
 
-:::info 📸 Screenshot
-`img/howto/editor-approval.png` — the Send for approval modal with the reviewer fields.
-:::
+![the Send for approval modal with the reviewer fields](/img/howto/editor-approval.png)
 
 ## What's next
 

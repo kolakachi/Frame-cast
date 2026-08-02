@@ -34,9 +34,7 @@ The **Music** section sets one background track across all scenes. Three tabs:
 - **Loop track** — repeat the track to fill the video (on by default).
 - **Duck voice** — automatically lower music when the voice speaks (on by default).
 
-:::info 📸 Screenshot
-`img/howto/editor-music.png` — the Music section with the mood filter and controls.
-:::
+![the Music section with the mood filter and controls](/img/howto/editor-music.png)
 
 ## What's next
 

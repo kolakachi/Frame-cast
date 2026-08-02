@@ -23,9 +23,7 @@ Brand kits live in **Settings → Brand Kits**:
 2. Set the name, colors, fonts, and default voice.
 3. Click **Save Brand Kit** (or **Create Brand Kit** for a new one).
 
-:::info 📸 Screenshot
-`img/howto/brand-kit.png` — the Brand Kits section with color, font, and voice controls.
-:::
+![the Brand Kits section with color, font, and voice controls](/img/howto/brand-kit.png)
 
 ## Where brand kits apply
 

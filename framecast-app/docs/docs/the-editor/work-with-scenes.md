@@ -26,9 +26,7 @@ Both open the **Add New Scene** panel:
    - **Assets** — pick a file from your library.
 4. Click **Add Scene**.
 
-:::info 📸 Screenshot
-`img/howto/editor-add-scene.png` — the Add New Scene panel with the scene-type chips and visual-source tabs.
-:::
+![the Add New Scene panel with the scene-type chips and visual-source tabs](/img/howto/editor-add-scene.png)
 
 ## Duplicate a scene
 

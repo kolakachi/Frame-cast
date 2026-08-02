@@ -18,9 +18,7 @@ Switch between three views at the top:
 
 Navigate months/weeks with the arrows, or jump back with **Today**.
 
-:::info 📸 Screenshot
-`img/howto/calendar-month.png` — the month view with scheduled and published posts.
-:::
+![the month view with scheduled and published posts](/img/howto/calendar-month.png)
 
 ## Statuses
 

@@ -14,9 +14,7 @@ Choose **Start from Scratch** when you want full control — no AI script, no pr
 
 From the dashboard, click **New Video** (top right), then choose **Start from Scratch**.
 
-:::info 📸 Screenshot
-`img/howto/new-video-path-picker.png` — the "How do you want to start?" dialog with the three cards.
-:::
+![the 'How do you want to start?' dialog with the three cards](/img/howto/new-video-path-picker.png)
 
 ## 2. Set up your project
 

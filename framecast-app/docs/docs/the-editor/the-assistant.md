@@ -25,9 +25,7 @@ Type an instruction and press **⌘/Ctrl + Enter** (or **Send**). When the chat 
 - *animate this scene*
 - *add a CTA scene*
 
-:::info 📸 Screenshot
-`img/howto/editor-assistant.png` — the Assistant tab with a proposed action card.
-:::
+![the Assistant tab with a proposed action card](/img/howto/editor-assistant.png)
 
 ## Approve changes
 

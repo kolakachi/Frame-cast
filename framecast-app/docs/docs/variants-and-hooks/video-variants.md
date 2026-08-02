@@ -25,9 +25,7 @@ Click **Generate Variants** and choose what to vary:
 
 A live **batch summary** multiplies your choices — e.g. *3 hooks × 2 voices × 1 visual pass × 4 formats = 24 variants* — so you can see how big the batch is before you run it.
 
-:::info 📸 Screenshot
-`img/howto/variants-generate.png` — the Generate Variants drawer with dimensions and the batch summary.
-:::
+![the Generate Variants drawer with dimensions and the batch summary](/img/howto/variants-generate.png)
 
 ## Review and export
 

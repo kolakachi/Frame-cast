@@ -12,9 +12,7 @@ Different platforms want different shapes — Reels/TikTok (9:16), feed (1:1), p
 
 In the editor, click **Export** (top right). A format menu opens.
 
-:::info 📸 Screenshot
-`img/howto/export-menu.png` — the export button with the format menu open, showing the four aspect-ratio checkboxes.
-:::
+![the export button with the format menu open, showing the four aspect-ratio checkboxes](/img/howto/export-menu.png)
 
 ## 2. Pick your formats
 
@@ -24,9 +22,7 @@ Tick the ratios you want — **9:16 / 1:1 / 4:5 / 16:9**. The button updates to 
 
 Click **Export N formats**. Each ratio queues its own render; they appear in your exports list as they finish.
 
-:::info 📸 Screenshot
-`img/howto/export-jobs.png` — the exports list showing multiple renders (one per ratio) completing.
-:::
+![the exports list showing multiple renders (one per ratio) completing](/img/howto/export-jobs.png)
 
 :::tip No extra credits
 Each format re-frames the **same** generated assets — it doesn't regenerate any AI. So exporting all four ratios costs the same in credits as exporting one. (Exports are part of your monthly plan allowance; a batch counts each ratio against it.)

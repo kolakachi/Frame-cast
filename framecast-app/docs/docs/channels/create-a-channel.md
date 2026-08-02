@@ -21,9 +21,7 @@ From **Channels**, click **New Channel** to open the setup drawer and fill in:
 
 Click **Save** to create it.
 
-:::info 📸 Screenshot
-`img/howto/channel-create.png` — the New Channel drawer with its fields.
-:::
+![the New Channel drawer with its fields](/img/howto/channel-create.png)
 
 ## Start a video in a channel
 

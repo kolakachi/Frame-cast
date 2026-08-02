@@ -22,9 +22,7 @@ The editor has three columns plus a top bar:
 
 Switch the right rail between Config and Assistant with **⌘/Ctrl + J**.
 
-:::info 📸 Screenshot
-`img/howto/editor-layout.png` — the editor with scenes, preview, and the config panel labeled.
-:::
+![the editor with scenes, preview, and the config panel labeled](/img/howto/editor-layout.png)
 
 ## The top bar
 

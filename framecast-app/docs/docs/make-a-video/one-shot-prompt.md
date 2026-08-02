@@ -36,9 +36,7 @@ Under the prompt, use the pills to shape the output. Anything you don't touch is
 
 - **+ Add** *(AI images only)* — upload up to 4 reference images (max 8 MB each) or pick a [character](/characters/create-a-character) to guide the look.
 
-:::info 📸 Screenshot
-`img/howto/one-shot-composer.png` — the One-shot composer with prompt and control pills.
-:::
+![the One-shot composer with prompt and control pills](/img/howto/one-shot-composer.png)
 
 ## 3. Review the plan
 
@@ -48,9 +46,7 @@ Click **Review plan →**. WyvStudio drafts every scene — the script line, plu
 - Toggle **On-screen captions** and **Background music** (both on by default).
 - Check the estimated **credit cost** for the run.
 
-:::info 📸 Screenshot
-`img/howto/one-shot-plan.png` — the "Here's the plan" review with scene cards and the captions/music toggles.
-:::
+![the 'Here's the plan' review with scene cards and the captions/music toggles](/img/howto/one-shot-plan.png)
 
 ## 4. Generate
 

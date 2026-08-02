@@ -18,9 +18,7 @@ The timeline shows five stacked tracks:
 - **Music** — the project's background track (or "No music selected").
 - **Captions** — a snippet of each scene's script.
 
-:::info 📸 Screenshot
-`img/howto/editor-timeline.png` — the timeline with scene, voice, sounds, music, and caption tracks.
-:::
+![the timeline with scene, voice, sounds, music, and caption tracks](/img/howto/editor-timeline.png)
 
 ## Interactions
 

@@ -12,25 +12,19 @@ Every scene is narrated by a voice you choose. The default engine is **Gemini 3.
 
 In the editor, open the **Config** panel and click **Voice** (it applies per scene).
 
-:::info 📸 Screenshot
-`img/howto/voice-config-row.png` — the editor Config panel with the "Voice" row.
-:::
+![the editor Config panel with the 'Voice' row](/img/howto/voice-config-row.png)
 
 ## 2. Pick a voice
 
 Browse voices by personality. Each shows its gender and a short description; tap **preview** to hear it. WyvStudio also auto-matches a gender-appropriate voice for spokesperson scenes.
 
-:::info 📸 Screenshot
-`img/howto/voice-picker.png` — the voice picker modal with personalities, previews, and descriptions.
-:::
+![the voice picker modal with personalities, previews, and descriptions](/img/howto/voice-picker.png)
 
 ## 3. Direct how it sounds
 
 Add a direction note — *how* it should be read, not what — e.g. "warm and confident, slightly slower." This shapes delivery and is never spoken aloud.
 
-:::info 📸 Screenshot
-`img/howto/voice-direction.png` — the voice direction field with an example note.
-:::
+![the voice direction field with an example note](/img/howto/voice-direction.png)
 
 ## 4. Re-record
 

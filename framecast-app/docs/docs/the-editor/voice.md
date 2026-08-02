@@ -29,9 +29,7 @@ If you edit the script, a **Regenerate** prompt appears so the voice matches the
 
 Preview any voice with ▶ and click **Use** to apply it.
 
-:::info 📸 Screenshot
-`img/howto/editor-voice-picker.png` — the Select a voice modal with the personality grid.
-:::
+![the Select a voice modal with the personality grid](/img/howto/editor-voice-picker.png)
 
 ## Custom voice
 

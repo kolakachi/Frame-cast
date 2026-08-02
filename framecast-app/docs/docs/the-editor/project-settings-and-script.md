@@ -32,9 +32,7 @@ Open **Rewrite with AI** to have the assistant rework just this scene's line:
 
 You'll get an **AI Rewrite Candidate** you can **Accept** or **Reject**. Locked facts are preserved, and the change applies to this scene only.
 
-:::info 📸 Screenshot
-`img/howto/editor-script-rewrite.png` — the Scene Script section with the Rewrite with AI options open.
-:::
+![the Scene Script section with the Rewrite with AI options open](/img/howto/editor-script-rewrite.png)
 
 ## What's next
 

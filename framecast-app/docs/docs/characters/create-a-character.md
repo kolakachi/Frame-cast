@@ -25,9 +25,7 @@ From **Characters**, click **＋ New Character** (or the create action) and fill
 
 Save to add the character to your library.
 
-:::info 📸 Screenshot
-`img/howto/character-create.png` — the character modal with reference photo, description, and identity strength.
-:::
+![the character modal with reference photo, description, and identity strength](/img/howto/character-create.png)
 
 ## What's next
 

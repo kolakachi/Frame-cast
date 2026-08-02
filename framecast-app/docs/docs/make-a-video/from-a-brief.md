@@ -14,9 +14,7 @@ description: Tell WyvStudio your topic and it writes the script, breaks it into 
 
 Each niche pre-configures sensible defaults — visual style, voice tone, captions, and music. Pick the card that fits your content, or choose **Other / Custom** to define your own.
 
-:::info 📸 Screenshot
-`img/howto/brief-niche.png` — the "Quick Start" niche grid with the Other / Custom card.
-:::
+![the 'Quick Start' niche grid with the Other / Custom card](/img/howto/brief-niche.png)
 
 ### Using a custom niche
 

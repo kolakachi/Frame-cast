@@ -8,9 +8,7 @@ description: Scratch, Brief, or One-shot — pick the right starting point.
 
 When you click **+ New Video**, you pick one of three starting points. They all land in the same editor — they just differ in how much WyvStudio does up front.
 
-:::info 📸 Screenshot
-`img/howto/new-video-three-cards.png` — the "How do you want to start?" dialog showing all three cards.
-:::
+![the 'How do you want to start?' dialog showing all three cards](/img/howto/new-video-three-cards.png)
 
 ## Start from Scratch
 Build every scene yourself. Pick a title and format, then drop straight into the editor. **Choose this when** you already know exactly what you want, scene by scene.

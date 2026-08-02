@@ -12,9 +12,7 @@ Publish finished videos straight to your social accounts — no downloading and 
 
 Go to **Channels** (or Settings → connected accounts) and connect **YouTube**, **TikTok**, **Instagram Reels**, or **Facebook**. You'll approve access on the platform's own login screen.
 
-:::info 📸 Screenshot
-`img/howto/connect-accounts.png` — the connected-accounts screen with the four platform options.
-:::
+![the connected-accounts screen with the four platform options](/img/howto/connect-accounts.png)
 
 ## 2. Publish or schedule
 

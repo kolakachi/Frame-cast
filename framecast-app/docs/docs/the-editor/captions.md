@@ -21,9 +21,7 @@ Toggle **On** at the top of the section. You can save a look as a **preset** and
 - **Text color** and **Highlight color** — pick a swatch (white, yellow, orange, red, green, blue, purple, black) or a custom color.
 - **Text size** — S, M, L, or XL.
 
-:::info 📸 Screenshot
-`img/howto/editor-captions.png` — the Captions section with effect, position, and color controls.
-:::
+![the Captions section with effect, position, and color controls](/img/howto/editor-captions.png)
 
 ## Apply to every scene
 

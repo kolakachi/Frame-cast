@@ -27,9 +27,7 @@ Everything about your account, connected platforms, and billing lives in **Setti
 
 These accounts are what you pick when you [schedule a post](/the-editor/export-share-and-schedule).
 
-:::info 📸 Screenshot
-`img/howto/settings-accounts.png` — the Connected Accounts tab.
-:::
+![the Connected Accounts tab](/img/howto/settings-accounts.png)
 
 ## Usage & billing
 

@@ -12,18 +12,14 @@ Create a cloned voice once on the **Voices** page, then use it to narrate any sc
 
 Open **Voices** from the left sidebar.
 
-:::info 📸 Screenshot
-`img/howto/voices-page.png` — the Voices page with the "Clone a voice" action.
-:::
+![the Voices page with the 'Clone a voice' action](/img/howto/voices-page.png)
 
 ## 2. Record or upload a sample
 
 - **Record:** a guided 3‑2‑1 countdown captures a short clip in your browser. Preview it, and retake if needed.
 - **Upload:** drop in an existing sample. Non‑WAV files are converted to WAV automatically.
 
-:::info 📸 Screenshot
-`img/howto/voice-clone-record.png` — the clone modal mid-record (countdown or waveform) with preview/retake controls.
-:::
+![the clone modal mid-record (countdown or waveform) with preview/retake controls](/img/howto/voice-clone-record.png)
 
 ## 3. Use it on a scene
 
