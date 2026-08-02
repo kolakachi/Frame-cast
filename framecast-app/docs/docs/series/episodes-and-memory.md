@@ -26,6 +26,18 @@ Everything else — tone, format, visual style, voice, language, and the **episo
 
 Each episode row shows a status: **Draft**, **Generating**, **Ready**, **Published**, or **Failed**. Click a row to open it in the [editor](/the-editor/editor-overview), where you can refine it like any other video.
 
+## Manage an episode
+
+Each episode row has quick actions on the right:
+
+- **Rename** (✎) — change the episode's title.
+- **Duplicate** (⧉) — make a copy as the next episode in the series (a great starting point for a follow-up). The copy reuses the original's scenes and visuals with no extra credits, and starts fresh with no episode summary.
+- **Delete** (✕) — remove the episode. This can't be undone.
+
+## Delete a series
+
+On the **Series Bible** tab, use **Delete series** at the bottom. The series is removed from your series list; its **episodes stay in All Videos**, so nothing you've made is lost.
+
 ## Episode memory
 
 This is what makes a series feel like a real show rather than a set of one-offs:
