@@ -132,7 +132,7 @@ class GenerateScriptJob implements ShouldQueue
             return '';
         }
 
-        $series = Series::query()->with('characters')->find($project->series_id);
+        $series = Series::query()->find($project->series_id);
 
         if (! $series) {
             return '';
@@ -166,17 +166,10 @@ class GenerateScriptJob implements ShouldQueue
             $parts[] = "\nNever include: ".implode(', ', $neverTags);
         }
 
-        $characters = $series->characters->where('status', 'active');
-        if ($characters->isNotEmpty()) {
-            $parts[] = "\n--- Characters ---";
-            foreach ($characters as $character) {
-                $line = $character->name;
-                if ($character->personality_notes) {
-                    $line .= ': '.$character->personality_notes;
-                }
-                $parts[] = $line;
-            }
-        }
+        // NOTE: the series-level characters() relationship was removed in
+        // May 2026 (workspace-level App\Models\Character is the supported home).
+        // Eager-loading / reading it here threw RelationNotFoundException, which
+        // failed every series episode at the first generation step.
 
         $memoryWindow = (int) $series->memory_window;
         if ($memoryWindow > 0) {
