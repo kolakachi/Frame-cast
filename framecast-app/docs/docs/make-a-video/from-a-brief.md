@@ -32,9 +32,7 @@ Leave any of these blank to let WyvStudio choose. You can select more than one o
 
 Pick where the video comes from — a prompt, a script, a URL, images, a product description, audio, video, or a CSV of topics. Each source is explained in **[Choose a source](/make-a-video/choose-a-source)**.
 
-:::info 📸 Screenshot
-`img/howto/brief-source.png` — the "Choose your source" tiles.
-:::
+![the 'Choose your source' tiles](/img/howto/brief-source.png)
 
 ## 3. Enter your content and confirm settings
 
@@ -55,9 +53,7 @@ On the content step you provide your source content (see [Choose a source](/make
 
 The **estimated credit cost** shows at the bottom, along with your balance. If you're short, the button becomes **Top up credits →**.
 
-:::info 📸 Screenshot
-`img/howto/brief-content.png` — the content step with the visual-type tabs, settings, and credit estimate.
-:::
+![the content step with the visual-type tabs, settings, and credit estimate](/img/howto/brief-content.png)
 
 ## 4. Generate
 
