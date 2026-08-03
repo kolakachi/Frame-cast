@@ -15,9 +15,7 @@ Click any channel to open its detail view, which has four tabs.
 - **Brand** — a read-only summary of the channel's brand defaults.
 - **Settings** — edit the same fields you set when [creating the channel](/channels/create-a-channel): name, description, platform targets, language, brand kit, and default voice. Save with **Save**.
 
-:::info 📸 Screenshot
-`img/howto/channel-detail.png` — the channel detail view with its tabs.
-:::
+![the channel detail view with its tabs](/img/howto/channel-detail.png)
 
 ## Edit a channel
 

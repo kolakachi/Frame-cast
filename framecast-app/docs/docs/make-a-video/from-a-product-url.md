@@ -12,17 +12,13 @@ WyvStudio can read a product page or article and ground the whole plan in its ac
 
 Click **+ New Video**, then choose the **From URL / Article** source (or paste the URL directly into a One-shot prompt).
 
-:::info 📸 Screenshot
-`img/howto/url-source-pick.png` — the wizard source picker with "From URL / Article" highlighted.
-:::
+![the wizard source picker with 'From URL / Article' highlighted](/img/howto/url-source-pick.png)
 
 ## 2. Paste the link
 
 Paste the product or article URL. WyvStudio extracts the key copy, claims, and product details.
 
-:::info 📸 Screenshot
-`img/howto/url-paste.png` — the URL input with a product link pasted in.
-:::
+![the URL input with a product link pasted in](/img/howto/url-paste.png)
 
 ## 3. Set format and visuals
 

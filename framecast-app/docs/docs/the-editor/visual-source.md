@@ -40,9 +40,7 @@ Generate a custom image for the scene.
 - **Prompt override** *(optional)* — override the auto-generated image prompt.
 - **✦ Generate** creates the image. Once generated you can **Regenerate**, **⚡ Animate**, or revert to the still. A **Versions** strip keeps the original still plus any animation clips.
 
-:::info 📸 Screenshot
-`img/howto/editor-ai-image.png` — the AI image tab with the character, style, and model pickers.
-:::
+![the AI image tab with the character, style, and model pickers](/img/howto/editor-ai-image.png)
 
 ## Assets
 

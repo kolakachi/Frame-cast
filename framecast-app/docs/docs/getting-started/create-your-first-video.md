@@ -42,9 +42,7 @@ WyvStudio writes the full plan — each scene's script line plus its image/motio
 
 Click **Generate**. You'll see live progress as WyvStudio writes the voice, creates visuals, adds motion, and composes music.
 
-:::info 📸 Screenshot
-`img/howto/first-video-generating.png` — the generation progress screen with the step checklist.
-:::
+![the generation progress screen with the step checklist](/img/howto/first-video-generating.png)
 
 ## 6. Refine in the editor
 

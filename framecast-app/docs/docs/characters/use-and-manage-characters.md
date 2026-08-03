@@ -19,9 +19,7 @@ Use the ✦ **Generate image** action on a character card to see how it renders 
 
 The estimated cost is shown before you generate.
 
-:::info 📸 Screenshot
-`img/howto/character-generate.png` — the test-image modal with model, style, and quality.
-:::
+![the test-image modal with model, style, and quality](/img/howto/character-generate.png)
 
 ## Use a character in a video
 

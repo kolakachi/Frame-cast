@@ -18,9 +18,7 @@ On the **Episodes** tab, click **+ New Episode**:
 
 Everything else — tone, format, visual style, voice, language, and the **episode number** — is inherited from the series automatically. You're taken to the generation progress view, and the finished episode appears back on the Episodes tab.
 
-:::info 📸 Screenshot
-`img/howto/series-new-episode.png` — the New Episode dialog with the inherited-defaults note.
-:::
+![the New Episode dialog with the inherited-defaults note](/img/howto/series-new-episode.png)
 
 ## Episode status
 
