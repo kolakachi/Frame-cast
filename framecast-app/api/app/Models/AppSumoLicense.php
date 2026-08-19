@@ -13,6 +13,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class AppSumoLicense extends Model
 {
+    // Class name snake-cases to "app_sumo_licenses"; the migration creates
+    // "appsumo_licenses". Pin it explicitly so Eloquent hits the real table.
+    protected $table = 'appsumo_licenses';
+
     protected $fillable = [
         'license_key',
         'workspace_id',

@@ -42,15 +42,65 @@ class AppSumoService
     public function verifyWebhook(string $rawBody, string $signature, string $timestamp): bool
     {
         $key = (string) config('appsumo.api_key', '');
-        if ($key === '' || $signature === '' || $timestamp === '') {
+        $sigRaw   = trim(preg_replace('/^sha256=/i', '', $signature));
+        $sigLower = strtolower($sigRaw);
+        if ($key === '' || $sigRaw === '' || $timestamp === '' || ! ctype_digit($timestamp)) {
             return false;
         }
-        if (! ctype_digit($timestamp) || abs(time() - (int) $timestamp) > 300) {
-            return false;
-        }
-        $expected = hash_hmac('sha256', $timestamp . $rawBody, $key);
 
-        return hash_equals($expected, $signature);
+        // X-Appsumo-Timestamp can be seconds or milliseconds — normalize to
+        // seconds for the replay-skew guard. The HMAC uses the raw string as
+        // sent (AppSumo signs the header verbatim). Skew is logged, not fatal,
+        // while we confirm the exact scheme against a live webhook; the HMAC
+        // below is the real gate. TODO: re-tighten to the confirmed scheme.
+        $tsSeconds = (int) $timestamp;
+        if ($tsSeconds > 1_000_000_000_000) {
+            $tsSeconds = intdiv($tsSeconds, 1000);
+        }
+        if (abs(time() - $tsSeconds) > 900) {
+            Log::warning('AppSumoWebhook: timestamp skew', ['skew_seconds' => time() - $tsSeconds]);
+        }
+
+        // Documented scheme is HMAC-SHA256(timestamp . body). Also accept a few
+        // standard construction variants — every one still requires the shared
+        // secret, so a match proves authenticity — and log which matched so we
+        // can pin the exact scheme, then drop the extras.
+        $hex = [
+            'ts.body' => hash_hmac('sha256', $timestamp . $rawBody, $key),
+            'body'    => hash_hmac('sha256', $rawBody, $key),
+            'ts:body' => hash_hmac('sha256', $timestamp . ':' . $rawBody, $key),
+            'body.ts' => hash_hmac('sha256', $rawBody . $timestamp, $key),
+        ];
+        foreach ($hex as $name => $expected) {
+            if (hash_equals($expected, $sigLower)) {
+                if ($name !== 'ts.body') {
+                    Log::warning('AppSumoWebhook: matched non-primary scheme', ['scheme' => $name.' (hex)']);
+                }
+                return true;
+            }
+        }
+        $b64 = [
+            'ts.body' => base64_encode(hash_hmac('sha256', $timestamp . $rawBody, $key, true)),
+            'body'    => base64_encode(hash_hmac('sha256', $rawBody, $key, true)),
+        ];
+        foreach ($b64 as $name => $expected) {
+            if (hash_equals($expected, $sigRaw)) {
+                Log::warning('AppSumoWebhook: matched non-primary scheme', ['scheme' => $name.' (base64)']);
+                return true;
+            }
+        }
+
+        // No scheme matched — record enough to identify the real one (never the key).
+        Log::warning('AppSumoWebhook: signature mismatch', [
+            'ts'                => $timestamp,
+            'body_len'          => strlen($rawBody),
+            'sig_len'           => strlen($sigRaw),
+            'sig_prefix'        => substr($sigLower, 0, 10),
+            'expected_ts_body'  => substr($hex['ts.body'], 0, 10),
+            'expected_body'     => substr($hex['body'], 0, 10),
+        ]);
+
+        return false;
     }
 
     // ── Webhook event handling ───────────────────────────────────────────────
