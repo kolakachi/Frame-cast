@@ -12,8 +12,10 @@ use Illuminate\Support\Facades\Log;
  * Kelviq (Merchant of Record) billing integration.
  *
  * Webhooks follow the Svix scheme: headers webhook-id / webhook-timestamp /
- * webhook-signature, signature = base64(HMAC-SHA256(secret, "id.timestamp.body")),
- * header carries space-separated `v1,<sig>` entries. Checkout is created via
+ * webhook-signature, signature = hex(HMAC-SHA256(secret, "id.timestamp.body"))
+ * where `secret` is the literal `kq_whsec_...` string (verified against a live
+ * delivery 2026-08-24); header carries space-separated `v1,<sig>` entries.
+ * Checkout is created via
  * POST {api_base}/checkout/. See spec/KELVIQ_INTEGRATION.md + docs.kelviq.com.
  */
 class KelviqService
@@ -38,14 +40,14 @@ class KelviqService
 
         $signedContent = "{$webhookId}.{$timestamp}.{$rawBody}";
 
-        // Secret is `kq_whsec_<base64>` (Svix); the HMAC key is the decoded
-        // portion. Fall back to the raw string forms in case Kelviq signs with
-        // the literal secret.
+        // Kelviq signs with the LITERAL secret string (the `kq_whsec_` prefix
+        // included) and sends the digest hex-encoded. The decoded/stripped keys
+        // and the base64 digest are kept as fallbacks in case that changes.
         $stripped = preg_replace('/^kq_whsec_|^whsec_/', '', $secret);
         $candidateKeys = array_filter([
-            base64_decode($stripped, true) ?: null,
-            $stripped,
             $secret,
+            $stripped,
+            base64_decode($stripped, true) ?: null,
         ]);
 
         // Header may be "v1,<sig> v1,<sig2>"; compare against each.
@@ -55,10 +57,12 @@ class KelviqService
         }
 
         foreach ($candidateKeys as $key) {
-            $expected = base64_encode(hash_hmac('sha256', $signedContent, $key, true));
-            foreach ($provided as $sig) {
-                if (hash_equals($expected, $sig)) {
-                    return true;
+            $raw = hash_hmac('sha256', $signedContent, $key, true);
+            foreach ([bin2hex($raw), base64_encode($raw)] as $expected) {
+                foreach ($provided as $sig) {
+                    if (hash_equals($expected, $sig)) {
+                        return true;
+                    }
                 }
             }
         }
@@ -193,7 +197,9 @@ class KelviqService
 
         $email = $object['customer']['email'] ?? null;
         if ($email) {
-            $user = User::query()->where('email', strtolower($email))->with('workspace')->first();
+            // Kelviq echoes the email as the customer typed it ("Davidmcdo@..."),
+            // so compare case-insensitively on both sides.
+            $user = User::query()->whereRaw('LOWER(email) = ?', [strtolower((string) $email)])->with('workspace')->first();
             if ($user?->workspace) {
                 return $user->workspace;
             }
