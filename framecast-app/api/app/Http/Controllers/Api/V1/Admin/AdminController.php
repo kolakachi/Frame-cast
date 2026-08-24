@@ -609,8 +609,9 @@ class AdminController extends Controller
                     'progress_percent' => $j->progress_percent,
                     'failure_reason' => $j->failure_reason,
                     'aspect_ratio' => $j->aspect_ratio,
+                    // Earlier instant first — Carbon 3 diffs are signed.
                     'render_seconds' => ($j->started_at && $j->completed_at)
-                        ? $j->completed_at->diffInSeconds($j->started_at)
+                        ? $j->started_at->diffInSeconds($j->completed_at)
                         : null,
                     'render_cost_usd' => $costByExportJob[$j->getKey()] ?? null,
                     'queue' => 'exports',

@@ -159,8 +159,11 @@ class ConcatenateExportJob implements ShouldQueue
             });
 
             if ($assetCreated) {
+                // Carbon 3 returns a SIGNED diff, so the earlier instant has to
+                // be the receiver — `now()->diffInSeconds($started)` yields a
+                // negative duration and drags the estimated cost below zero.
                 $renderSeconds = $exportJob->started_at
-                    ? (int) now()->diffInSeconds($exportJob->started_at)
+                    ? max(0, (int) $exportJob->started_at->diffInSeconds(now()))
                     : 0;
                 $fileSizeMb = ($fileSize ?? 0) / 1_048_576;
                 $estimatedCostUsd = round($renderSeconds * 0.0001 + $fileSizeMb * 0.00001, 6);
