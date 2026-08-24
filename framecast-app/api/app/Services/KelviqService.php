@@ -4,7 +4,10 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Models\Workspace;
-use Illuminate\Support\Facades\Cache;
+use Carbon\CarbonInterface;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -71,33 +74,91 @@ class KelviqService
 
     /**
      * Dispatch a verified webhook event. Idempotent per event id (Svix retries
-     * resend the same id), and credit refills SET (not add) the monthly bucket,
-     * so reprocessing is safe.
+     * and dashboard reruns resend the same id) via a permanent claim in
+     * `processed_webhook_events`; monthly credit refills additionally SET (not
+     * add) the bucket, so reprocessing is safe on both counts.
      *
      * @param  array<string,mixed>  $event
      */
     public function handleEvent(array $event): void
     {
         $eventId = (string) ($event['id'] ?? '');
-        if ($eventId !== '' && ! Cache::add("kelviq_evt:{$eventId}", true, 86400)) {
+        $type    = (string) ($event['type'] ?? '');
+
+        if ($eventId !== '' && ! $this->claimEvent($eventId, $type)) {
             return; // already processed
         }
 
-        $type   = (string) ($event['type'] ?? '');
         $object = $event['data']['object'] ?? [];
         if (! is_array($object)) {
             return;
         }
 
-        match ($type) {
-            'subscription.created',
-            'subscription.updated',
-            'subscription.plan_changed' => $this->applySubscription($object),
-            'subscription.cancelled'    => $this->markCancelled($object),
-            'invoice.paid'              => $this->handleRenewal($object),
-            'checkout.completed'        => $this->handleCheckoutCompleted($object),
-            default                     => null,
-        };
+        try {
+            match ($type) {
+                'subscription.created',
+                'subscription.updated',
+                'subscription.plan_changed' => $this->applySubscription($object),
+                'subscription.cancelled'    => $this->markCancelled($object),
+                'invoice.paid'              => $this->handleRenewal($object),
+                'checkout.completed'        => $this->handleCheckoutCompleted($object),
+                default                     => null,
+            };
+        } catch (\Throwable $e) {
+            // Don't let a failed attempt permanently burn the event id — a
+            // retry/rerun must be able to process it.
+            $this->releaseEvent($eventId);
+            throw $e;
+        }
+    }
+
+    /**
+     * Claim an event id exactly once, permanently. Returns false if some
+     * earlier delivery already processed it.
+     *
+     * The unique index does the work: a concurrent duplicate delivery loses the
+     * insert race and gets false rather than double-processing. This must not
+     * expire — `checkout.completed` grants top-up credits additively, so a
+     * rerun days later would otherwise grant the pack twice.
+     */
+    private function claimEvent(string $eventId, string $type): bool
+    {
+        try {
+            DB::table('processed_webhook_events')->insert([
+                'provider'     => 'kelviq',
+                'event_id'     => $eventId,
+                'type'         => $type !== '' ? $type : null,
+                'processed_at' => now(),
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ]);
+
+            return true;
+        } catch (QueryException $e) {
+            if ($this->isUniqueViolation($e)) {
+                Log::info('KelviqService: duplicate event ignored', ['event_id' => $eventId, 'type' => $type]);
+
+                return false;
+            }
+            throw $e;
+        }
+    }
+
+    private function releaseEvent(string $eventId): void
+    {
+        if ($eventId === '') {
+            return;
+        }
+        rescue(fn () => DB::table('processed_webhook_events')
+            ->where('provider', 'kelviq')
+            ->where('event_id', $eventId)
+            ->delete(), null, false);
+    }
+
+    /** Postgres unique-violation SQLSTATE (23505), with a MySQL fallback. */
+    private function isUniqueViolation(QueryException $e): bool
+    {
+        return in_array((string) $e->getCode(), ['23505', '23000'], true);
     }
 
     private function applySubscription(array $object): void
@@ -125,7 +186,7 @@ class KelviqService
         // Refill on tier change (SET, so it's idempotent).
         if ($previousTier !== $tier) {
             $update['credits_monthly']   = CreditService::PLAN_CREDITS[$tier] ?? 0;
-            $update['billing_renews_at'] = now()->addMonth();
+            $update['billing_renews_at'] = $this->periodEnd($object);
         }
         $workspace->forceFill($update)->save();
 
@@ -144,8 +205,46 @@ class KelviqService
         }
         $workspace->forceFill([
             'credits_monthly'   => CreditService::PLAN_CREDITS[$workspace->plan_tier] ?? 0,
-            'billing_renews_at' => now()->addMonth(),
+            'billing_renews_at' => $this->periodEnd($object),
         ])->save();
+    }
+
+    /**
+     * The real end of the paid period, taken from the event rather than clock
+     * arithmetic. `now()->addMonth()` drifted the renewal date forward by
+     * however long the webhook took to arrive (or be replayed) — a rerun hours
+     * later silently bought the customer extra paid time.
+     *
+     * Kelviq sends snake_case in webhooks and camelCase in REST responses, so
+     * accept both. Falls back to a month out only if the event carries nothing.
+     */
+    private function periodEnd(array $object): CarbonInterface
+    {
+        $candidates = [
+            $object['billing_period_end_time']       ?? null,
+            $object['subscription']['next_invoice_date'] ?? null,
+            $object['subscription']['nextInvoiceDate']   ?? null,
+            $object['subscription']['billing_period_end_time'] ?? null,
+            $object['next_invoice_date']             ?? null,
+            $object['nextInvoiceDate']               ?? null,
+            $object['billingPeriodEndTime']          ?? null,
+        ];
+
+        foreach ($candidates as $value) {
+            if (! $value) {
+                continue;
+            }
+            $parsed = rescue(fn () => Carbon::parse($value), null, false);
+            if ($parsed) {
+                return $parsed;
+            }
+        }
+
+        Log::warning('KelviqService: no period end on event, falling back to +1 month', [
+            'object_id' => $object['id'] ?? null,
+        ]);
+
+        return now()->addMonth();
     }
 
     private function markCancelled(array $object): void
