@@ -171,7 +171,17 @@ class GenerateProjectAIImagesJob implements ShouldQueue
         }
 
         if (! $result) {
-            $result = $adapter->generate($prompt, $style, $project->aspect_ratio ?? '9:16', $options);
+            // Auto-generated scene visuals render on DEFAULT_MODEL. Pin it here
+            // rather than relying on the globally bound adapter's own fallback —
+            // this is the path that produced the "images are poor quality"
+            // reports, and it must match what costFor(null) charges below.
+            $defaultFactory = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+            $defaultKey = \App\Services\Generation\Image\ImageAdapterFactory::DEFAULT_MODEL;
+            if ($override = $defaultFactory->openaiModelOverride($defaultKey)) {
+                $options['openai_model_override'] = $override;
+            }
+            $result = $defaultFactory->resolve($defaultKey)
+                ->generate($prompt, $style, $project->aspect_ratio ?? '9:16', $options);
         }
         $storagePath = $this->storeImage($result['image_url'] ?? null, $project, $result['image_b64'] ?? null);
 
@@ -215,7 +225,13 @@ class GenerateProjectAIImagesJob implements ShouldQueue
         // ones that ran through gpt-image-2 /edits at ~\$0.30 upstream.
         $providerKey = (string) ($result['provider_key'] ?? 'dalle');
         $ranCharacterPath = $providerKey === 'openai:gpt-image-2';
-        $imageCost = $ranCharacterPath ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM;
+        // Non-character scenes render on ImageAdapterFactory::DEFAULT_MODEL, so
+        // price them from the factory rather than a hardcoded AI_MEDIUM — that
+        // constant is gpt-image-1's 16cr and would undercharge the default.
+        $imageFactory = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+        $imageCost = $ranCharacterPath
+            ? CreditService::AI_CHARACTER
+            : $imageFactory->costFor(null);
 
         rescue(fn () => app(CreditService::class)->deduct(
             (int) $project->workspace_id,
@@ -225,7 +241,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                 'project_id' => $project->getKey(),
                 'scene_id'   => $scene->getKey(),
                 'user_id'    => $project->created_by_user_id,
-                'upstream_cost_usd' => CreditService::cogsUsd($ranCharacterPath ? 'ai_image:character' : 'ai_image:gpt-image-1'),
+                'upstream_cost_usd' => CreditService::cogsUsd($imageFactory->cogsKey(null, $ranCharacterPath)),
                 'metadata'   => [
                     'provider_key' => $providerKey,
                     'style'        => $style,

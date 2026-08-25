@@ -66,6 +66,11 @@ return [
         // ideogram-character path (better scene/style adherence, same vendor as our
         // text-only image path).
         'character_model' => env('OPENAI_CHARACTER_MODEL', 'gpt-image-2'),
+        // NOTE: deliberately no 'image_model' default here. Scene visuals pin
+        // their model via ImageAdapterFactory::DEFAULT_MODEL at the call site,
+        // because a global default would also silently upgrade the character
+        // no-reference path (GenerateCharacterImageJob), which is priced at
+        // AI_MEDIUM/gpt-image-1 and would go negative-margin.
         // Cruise Control resolver temperature. Above the old 0.2 so the model
         // writes richer image/script prompts (the length/detail instructions
         // do most of that work), but kept moderate — 0.6 was loose enough to

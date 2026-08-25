@@ -21,6 +21,19 @@ namespace App\Services\Generation\Image;
 class ImageAdapterFactory
 {
     /**
+     * Model used when the caller doesn't pick one — i.e. every auto-generated
+     * scene visual. Was gpt-image-1; customers reported the output quality as
+     * a dealbreaker, so the default moved up to gpt-image-2 (2026-08-25).
+     *
+     * This is the ONLY place the default lives. It must stay in step with
+     * config('services.openai.image_model'), which decides what the adapter
+     * actually calls, and with the charge sites below — the cost has to move
+     * with the model or we deliver a ~$0.17 image for 16cr (~$0.16) and lose
+     * money on every scene.
+     */
+    public const DEFAULT_MODEL = 'gpt-image-2';
+
+    /**
      * UI-facing registry. Each entry tells both the picker (label/cost) and
      * the dispatcher (which adapter to resolve). Read by /api/v1/image-models
      * so the frontend stays in sync without a parallel list to maintain.
@@ -90,7 +103,7 @@ class ImageAdapterFactory
     {
         $key = $modelKey && isset(self::AVAILABLE[$modelKey])
             ? $modelKey
-            : 'gpt-image-1';
+            : self::DEFAULT_MODEL;
         return app(self::AVAILABLE[$key]['adapter']);
     }
 
@@ -103,8 +116,8 @@ class ImageAdapterFactory
     {
         $key = $modelKey && isset(self::AVAILABLE[$modelKey])
             ? $modelKey
-            : 'gpt-image-1';
-        return (int) (self::AVAILABLE[$key]['cost'] ?? 16);
+            : self::DEFAULT_MODEL;
+        return (int) (self::AVAILABLE[$key]['cost'] ?? self::AVAILABLE[self::DEFAULT_MODEL]['cost']);
     }
 
     /**
@@ -114,21 +127,23 @@ class ImageAdapterFactory
      *
      * Precedence:
      *   1. Character/reference path (gpt-image-2 /edits) → AI_CHARACTER.
-     *   2. An explicit non-default model pick → that model's per-model cost.
-     *   3. Default gpt-image-1 (or null) → honor the legacy high-quality flag
-     *      (AI_HIGH) else AI_MEDIUM.
+     *   2. Any explicit model pick → that model's per-model cost.
+     *   3. No pick → DEFAULT_MODEL's cost.
+     *
+     * $aiQuality is retained for signature compatibility but no longer selects
+     * the price: it existed to map gpt-image-1's medium/high quality tiers
+     * (16cr / 63cr) when gpt-image-1 was the default. The default now renders
+     * at gpt-image-2 medium (43cr), which beats gpt-image-1 high on quality and
+     * costs less, so the flag has nothing left to switch on. No caller passes
+     * it today.
      */
     public function generationCost(?string $modelKey, bool $expectsCharacter = false, ?string $aiQuality = null): int
     {
         if ($expectsCharacter) {
             return \App\Services\CreditService::AI_CHARACTER;
         }
-        if ($modelKey && $modelKey !== 'gpt-image-1' && isset(self::AVAILABLE[$modelKey])) {
-            return $this->costFor($modelKey);
-        }
-        return $aiQuality === 'high'
-            ? \App\Services\CreditService::AI_HIGH
-            : \App\Services\CreditService::AI_MEDIUM;
+
+        return $this->costFor($modelKey);
     }
 
     /**
@@ -185,7 +200,7 @@ class ImageAdapterFactory
         if ($ranCharacter) {
             return 'ai_image:character';
         }
-        $key = $modelKey && isset(self::AVAILABLE[$modelKey]) ? $modelKey : 'gpt-image-1';
+        $key = $modelKey && isset(self::AVAILABLE[$modelKey]) ? $modelKey : self::DEFAULT_MODEL;
         return 'ai_image:'.$key;
     }
 

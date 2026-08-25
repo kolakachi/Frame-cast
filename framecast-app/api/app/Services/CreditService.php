@@ -470,8 +470,14 @@ class CreditService
     ): array {
         [$scenesMin, $scenesMax] = $this->estimateSceneCount($sourceType, $sourceContent);
 
+        // AI visuals render on ImageAdapterFactory::DEFAULT_MODEL. Price the
+        // quote from the factory so the estimate a user is shown before
+        // creating a project equals what the job actually deducts — a stale
+        // AI_MEDIUM here would quote 16cr/scene and then charge 43cr.
+        $aiPerScene = app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor(null);
+
         $visualPerScene = match ($visualMode) {
-            'ai_images', 'ai_broll' => $aiQuality === 'high' ? self::AI_HIGH : self::AI_MEDIUM,
+            'ai_images', 'ai_broll' => $aiPerScene,
             default                  => self::STOCK, // stock_video, stock_images, waveform, etc.
         };
 

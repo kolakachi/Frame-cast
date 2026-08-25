@@ -852,7 +852,9 @@ class ProjectController extends Controller
         // Stock matching + audiogram waveforms are included (0 cr) — only AI
         // image generation is billed per scene.
         $perSceneImageCost = $isAiVisuals
-            ? ($hasReferences ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM)
+            ? ($hasReferences
+                ? CreditService::AI_CHARACTER
+                : app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor(null))
             : 0;
         $perScene = $perSceneImageCost + CreditService::TTS
             + ($needsAnimation ? $this->animationTierCost($animationTier) : 0);
@@ -1019,7 +1021,9 @@ class ProjectController extends Controller
         $isSpokesperson = $animationTier === 'spokesperson';
         $animationCost  = $this->animationTierCost($animationTier);
         $perSceneImageCost = $isAiVisuals
-            ? ($referenceAssets->isNotEmpty() ? CreditService::AI_CHARACTER : CreditService::AI_MEDIUM)
+            ? ($referenceAssets->isNotEmpty()
+                ? CreditService::AI_CHARACTER
+                : app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor(null))
             : 0; // stock matching + waveforms are included
         // Scene count follows the approved plan when one was sent, so an
         // edited plan (user added/removed a scene) costs the right amount.
@@ -1487,7 +1491,7 @@ class ProjectController extends Controller
             $needsImage,
             fn ($scene) => ! empty(($scene->image_generation_settings_json ?? [])['auto_animate']),
         ));
-        $estimatedCost = count($needsImage) * CreditService::AI_MEDIUM
+        $estimatedCost = count($needsImage) * app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor(null)
             + $chainCount * $animationCost
             + count($needsAnimate) * $animationCost;
 

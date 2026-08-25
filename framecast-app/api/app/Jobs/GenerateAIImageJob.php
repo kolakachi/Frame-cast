@@ -252,15 +252,17 @@ class GenerateAIImageJob implements ShouldQueue
                 // the global bind. For OpenAI entries, pass the specific model
                 // name through options so DalleImageAdapter routes to the right
                 // /generations endpoint.
-                if ($this->modelKey) {
-                    $factory = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
-                    $resolved = $factory->resolve($this->modelKey);
-                    $override = $factory->openaiModelOverride($this->modelKey);
-                    if ($override) {
-                        $options['openai_model_override'] = $override;
-                    }
-                } else {
-                    $resolved = $adapter;
+                // No explicit pick resolves to DEFAULT_MODEL, not the globally
+                // bound adapter — otherwise we'd charge the default model's
+                // price (costFor(null)) while rendering whatever the global
+                // bind happens to be.
+                $pickedKey = $this->modelKey
+                    ?: \App\Services\Generation\Image\ImageAdapterFactory::DEFAULT_MODEL;
+                $factory = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+                $resolved = $factory->resolve($pickedKey);
+                $override = $factory->openaiModelOverride($pickedKey);
+                if ($override) {
+                    $options['openai_model_override'] = $override;
                 }
                 $result = $resolved->generate($prompt, $this->style, $aspectRatio, $options);
             }

@@ -99,8 +99,11 @@ class AddSceneTool implements CruiseTool
 
     public function estimateCost(Project $project, array $params): int
     {
-        // Image (AI_MEDIUM = gpt-image-1 default) + TTS + optional animate.
-        $cost = CreditService::AI_MEDIUM + CreditService::TTS;
+        // Image (priced from ImageAdapterFactory::DEFAULT_MODEL, so the quote
+        // tracks the default model instead of a stale AI_MEDIUM) + TTS +
+        // optional animate.
+        $cost = app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor(null)
+            + CreditService::TTS;
         if (! empty($params['animate_tier'])) {
             $cost += match ($params['animate_tier']) {
                 'premium'       => CreditService::VIDEO_PREMIUM,
