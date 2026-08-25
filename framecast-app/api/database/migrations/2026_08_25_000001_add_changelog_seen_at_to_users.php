@@ -12,10 +12,16 @@ use Illuminate\Support\Facades\Schema;
  * (config/changelog.php) rather than fanned out into a row per workspace the
  * way WorkspaceNotification does.
  *
- * Existing users start at NULL, which reads as "has seen nothing". Rather than
- * greeting everyone with a full-history badge, they're backfilled to now — the
- * entries that exist today describe fixes they already lived through, and the
- * badge should mean "something new since you last looked", not "welcome".
+ * Existing users start at NULL, which reads as "has seen nothing" and would
+ * badge them with the entire back catalogue. They're backfilled to now so the
+ * badge means "new since you last looked" rather than "welcome".
+ *
+ * This does NOT suppress entries dated today. Entry dates carry no time
+ * component, so an entry counts as unread when the END of its date is later
+ * than seen_at — same-day publishes still badge everyone. That is deliberate:
+ * a note shipped today is news to a user who signed up today just as much as
+ * to one who hit the bug yesterday. Only entries dated before the backfill are
+ * suppressed.
  */
 return new class extends Migration
 {
