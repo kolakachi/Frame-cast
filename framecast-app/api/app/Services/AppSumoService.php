@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Jobs\CloneSampleProjectJob;
+use App\Jobs\ProvisionWorkspaceDefaultsJob;
 use App\Models\AppSumoLicense;
 use App\Models\User;
 use App\Models\Workspace;
@@ -268,6 +270,17 @@ class AppSumoService
             ]);
             $workspace->forceFill(['owner_user_id' => $user->getKey()])->save();
             $user->forceFill(['preferences_json' => ['onboarded' => false, 'watermark_enabled' => false]])->save();
+
+            // AppSumo buyers never touched AuthController::magicLink, so they
+            // were missing BOTH onboarding steps every magic-link signup gets:
+            // the starter sample project (B7) and the default music library.
+            // Every LTD workspace landed in a completely empty app.
+            try {
+                CloneSampleProjectJob::dispatch($workspace->getKey(), $user->getKey());
+                ProvisionWorkspaceDefaultsJob::dispatch($workspace->getKey());
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         $license->forceFill(['workspace_id' => $user->workspace_id, 'status' => 'active'])->save();

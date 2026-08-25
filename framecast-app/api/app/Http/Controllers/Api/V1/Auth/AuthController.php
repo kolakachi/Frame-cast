@@ -148,6 +148,7 @@ class AuthController extends Controller
             // User's transaction has returned).
             try {
                 \App\Jobs\CloneSampleProjectJob::dispatch($user->workspace_id, $user->getKey());
+                \App\Jobs\ProvisionWorkspaceDefaultsJob::dispatch($user->workspace_id);
             } catch (\Throwable $e) {
                 report($e);
             }
