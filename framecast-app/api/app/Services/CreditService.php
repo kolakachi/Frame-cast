@@ -206,6 +206,44 @@ class CreditService
         'scale'      => 6500,   // mirrors pro
     ];
 
+    /**
+     * Tiers whose unused monthly credits carry forward at renewal instead of
+     * being replaced. Advertised as "Credit rollover" on the Agency plan card
+     * (marketing/index.html, help.html) and PRICING.md §5.
+     *
+     * Key present = rollover enabled. Value = the maximum multiple of the
+     * monthly allocation the bucket may hold, or null for uncapped (which is
+     * what the pricing page currently promises — it carries no qualifier). To
+     * bound the liability later, set e.g. 'agency' => 3 and update the copy to
+     * say "roll over for up to 3 months".
+     */
+    public const PLAN_ROLLOVER = [
+        'agency' => null,
+    ];
+
+    /**
+     * Credits the monthly bucket should hold after a renewal refill.
+     *
+     * Non-rollover tiers replace the bucket (unused credits are forfeited);
+     * rollover tiers add the new allocation on top of what's left, optionally
+     * capped. Callers must pass the CURRENT monthly balance.
+     */
+    public static function refilledMonthlyCredits(string $planTier, int $currentMonthly): int
+    {
+        $allocation = self::PLAN_CREDITS[$planTier] ?? 0;
+
+        if (! array_key_exists($planTier, self::PLAN_ROLLOVER)) {
+            return $allocation;
+        }
+
+        $total = max(0, $currentMonthly) + $allocation;
+        $capMultiplier = self::PLAN_ROLLOVER[$planTier];
+
+        return $capMultiplier === null
+            ? $total
+            : min($total, $allocation * $capMultiplier);
+    }
+
     // Per-plan resource caps + capability flags. Free-tier gates exist to
     // make the free trial feel real ("publish one video, see the moat") but
     // stop short of supporting a real workflow ("more characters, more
@@ -395,14 +433,28 @@ class CreditService
     }
 
     /**
-     * Reset monthly credits on billing renewal.
+     * Refill monthly credits on billing renewal.
+     *
+     * Replaces the bucket on normal tiers; adds to it on rollover tiers (see
+     * PLAN_ROLLOVER). The next anchor advances from the PREVIOUS renewal date,
+     * not from `now()` — the job runs hourly, so anchoring on `now()` pushed
+     * every customer's renewal a little later each cycle. If several cycles
+     * were missed the anchor is walked forward to the next future date, so one
+     * run always grants exactly one allocation.
      */
     public function resetMonthly(Workspace $workspace): void
     {
-        $monthly = self::PLAN_CREDITS[$workspace->plan_tier] ?? 0;
+        $anchor = $workspace->billing_renews_at?->copy() ?? now();
+        do {
+            $anchor->addMonth();
+        } while ($anchor->isPast());
+
         $workspace->update([
-            'credits_monthly'   => $monthly,
-            'billing_renews_at' => now()->addMonth(),
+            'credits_monthly'   => self::refilledMonthlyCredits(
+                (string) $workspace->plan_tier,
+                (int) $workspace->credits_monthly,
+            ),
+            'billing_renews_at' => $anchor,
         ]);
     }
 

@@ -183,7 +183,9 @@ class KelviqService
             'plan_tier'              => $tier,
             'plan_status'            => (string) ($object['status'] ?? 'active'),
         ];
-        // Refill on tier change (SET, so it's idempotent).
+        // Refill on tier change (SET, so it's idempotent). Deliberately NOT a
+        // rollover-aware add: rollover is a renewal benefit, and adding here
+        // would let anyone farm credits by toggling plans.
         if ($previousTier !== $tier) {
             $update['credits_monthly']   = CreditService::PLAN_CREDITS[$tier] ?? 0;
             $update['billing_renews_at'] = $this->periodEnd($object);
@@ -203,9 +205,28 @@ class KelviqService
         if (! $workspace || $workspace->plan_tier === 'free') {
             return;
         }
+
+        $periodEnd = $this->periodEnd($object);
+
+        // Two paths refill: this webhook and the hourly ResetMonthlyCreditsJob
+        // (which fires when a webhook is late or lost). A renewal date already
+        // at or past this period's end means that period was refilled — and on
+        // rollover tiers the refill ADDS, so doing it twice would double-grant.
+        if ($workspace->billing_renews_at && $workspace->billing_renews_at->greaterThanOrEqualTo($periodEnd)) {
+            Log::info('KelviqService: renewal already applied for this period', [
+                'workspace_id' => $workspace->getKey(),
+                'period_end'   => $periodEnd->toIso8601String(),
+            ]);
+
+            return;
+        }
+
         $workspace->forceFill([
-            'credits_monthly'   => CreditService::PLAN_CREDITS[$workspace->plan_tier] ?? 0,
-            'billing_renews_at' => $this->periodEnd($object),
+            'credits_monthly'   => CreditService::refilledMonthlyCredits(
+                (string) $workspace->plan_tier,
+                (int) $workspace->credits_monthly,
+            ),
+            'billing_renews_at' => $periodEnd,
         ])->save();
     }
 
