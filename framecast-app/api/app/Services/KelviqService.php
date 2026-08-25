@@ -384,7 +384,12 @@ class KelviqService
         if ($key === '') {
             return null;
         }
-        $customerId = $kelviqAccountId ?: (string) $workspaceId;
+        // Kelviq's portal keys on the customerId WE supplied at checkout (the
+        // workspace id), not on its own account UUID — passing the UUID returns
+        // 400 "Invalid customer id". Since a kelviq_account_id only exists once
+        // a subscription webhook has landed, preferring it broke the portal for
+        // exactly the customers who have a subscription to manage.
+        $customerId = (string) $workspaceId ?: (string) $kelviqAccountId;
 
         try {
             $resp = Http::withToken($key)
