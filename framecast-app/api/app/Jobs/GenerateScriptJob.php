@@ -14,7 +14,6 @@ use App\Services\Media\StorageService;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use App\Traits\TracksJobFailure;
 use Illuminate\Support\Str;
@@ -256,7 +255,11 @@ class GenerateScriptJob implements ShouldQueue
             return $source;
         }
 
-        return $this->fetchUrlContent($source) ?: "URL: {$source}";
+        // Throws (with a user-facing message) rather than falling back to
+        // "URL: <the url>" — that fallback made the model write a video ABOUT
+        // the link instead of its contents, with no error shown. This runs
+        // before any credits are deducted, so a failed import costs nothing.
+        return app(\App\Services\Generation\UrlContentExtractor::class)->extract($source);
     }
 
     private function imageSourceContent(Project $project, string $source): string
@@ -414,27 +417,4 @@ class GenerateScriptJob implements ShouldQueue
         return null;
     }
 
-    private function fetchUrlContent(string $url): ?string
-    {
-        if (! filter_var($url, FILTER_VALIDATE_URL)) {
-            return null;
-        }
-
-        try {
-            $response = Http::timeout(10)
-                ->withHeaders(['User-Agent' => 'FramecastBot/1.0'])
-                ->get($url);
-
-            if (! $response->ok()) {
-                return null;
-            }
-
-            $text = html_entity_decode(strip_tags((string) $response->body()));
-            $text = trim(preg_replace('/\s+/', ' ', $text) ?? '');
-
-            return $text !== '' ? Str::limit($text, 6000, '') : null;
-        } catch (\Throwable) {
-            return null;
-        }
-    }
 }
