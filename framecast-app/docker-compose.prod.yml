@@ -1,3 +1,11 @@
+# init: true on every app service — tini runs as PID 1 and forwards signals.
+# A process running AS PID 1 gets no default terminate action for a signal it
+# has no handler for, so commands lacking one ignored SIGTERM outright: docker
+# stop burned the full grace period then SIGKILLed. That stall raced compose's
+# rename-then-create swap, orphaned `<id>_<name>` containers, and broke the
+# NEXT deploy with a name conflict. Measured stop times before the fix:
+# scheduler 10s, reverb 10s, renderer 11s; queue:work was already 0s because
+# Laravel installs pcntl handlers.
 services:
 
   # ── Marketing site: serves wyvstudio.com (landing, terms, privacy) ─────────
@@ -41,6 +49,7 @@ services:
 
   # ── Laravel API ────────────────────────────────────────────────────────────
   api:
+    init: true  # see note at top of file
     build:
       context: ./api
     # No command override → image CMD ["php-fpm"]. nginx talks FastCGI to
@@ -62,6 +71,7 @@ services:
 
   # ── Queue workers ──────────────────────────────────────────────────────────
   worker-generation:
+    init: true  # see note at top of file
     build:
       context: ./api
     command: php artisan queue:work redis --queue=generation,tts,visual,translation --tries=2 --sleep=3
@@ -88,6 +98,7 @@ services:
         condition: service_healthy
 
   worker-exports:
+    init: true  # see note at top of file
     build:
       context: ./api
     command: php artisan queue:work redis --queue=exports,rendering --tries=2 --timeout=2700 --sleep=3
@@ -109,6 +120,7 @@ services:
         condition: service_healthy
 
   worker-default:
+    init: true  # see note at top of file
     build:
       context: ./api
     command: php artisan queue:work redis --queue=default --tries=2 --sleep=3
@@ -129,6 +141,7 @@ services:
         condition: service_healthy
 
   scheduler:
+    init: true  # see note at top of file
     build:
       context: ./api
     command: php artisan schedule:work
@@ -148,6 +161,7 @@ services:
 
   # ── Reverb WebSocket ───────────────────────────────────────────────────────
   reverb:
+    init: true  # see note at top of file
     build:
       context: ./api
     command: php artisan reverb:start --host=0.0.0.0 --port=8080
@@ -190,13 +204,7 @@ services:
       context: ./renderer
     restart: unless-stopped
     shm_size: '512m'
-    # tini as PID 1: forwards SIGTERM to node (which as PID 1 would otherwise
-    # ignore it — the kernel skips default signal actions for PID 1) and reaps
-    # Chromium's zombie children. Without this `docker stop` took the full 10s
-    # grace period + SIGKILL, and that stall raced compose's container swap and
-    # orphaned a `<id>_framecast-app-renderer-1`, breaking the NEXT deploy with
-    # a name conflict.
-    init: true
+    init: true  # see note at top of file (also reaps Chromium children)
     stop_grace_period: 30s
 
   redis:
