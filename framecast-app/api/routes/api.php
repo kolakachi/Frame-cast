@@ -65,6 +65,10 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/password/change', [AuthController::class, 'changePassword'])->middleware('auth.jwt');
     });
 
+    // Public release notes — powers the marketing /changelog.html page.
+    // No auth: a release note contains nothing private.
+    Route::get('/public/changelog', [\App\Http\Controllers\Api\V1\System\ChangelogController::class, 'publicIndex']);
+
     Route::post('/broadcasting/auth', [BroadcastController::class, 'authenticate'])->middleware('auth.jwt');
 
     // OAuth callbacks — unauthenticated (platform redirects here after approval)
@@ -129,6 +133,8 @@ Route::prefix('v1')->group(function (): void {
                 'meta' => [],
             ]);
         });
+        Route::get('/changelog', [\App\Http\Controllers\Api\V1\System\ChangelogController::class, 'index']);
+        Route::post('/changelog/seen', [\App\Http\Controllers\Api\V1\System\ChangelogController::class, 'markSeen']);
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
         Route::get('/voice-profiles', [VoiceProfileController::class, 'index']);

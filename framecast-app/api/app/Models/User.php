@@ -30,6 +30,7 @@ class User extends Authenticatable
         'onboarding_step',
         'onboarding_last_sent_at',
         'last_seen_at',
+        'changelog_seen_at',
     ];
 
     /**
@@ -55,6 +56,7 @@ class User extends Authenticatable
             'onboarding_step' => 'integer',
             'onboarding_last_sent_at' => 'datetime',
             'last_seen_at' => 'datetime',
+            'changelog_seen_at' => 'datetime',
         ];
     }
 

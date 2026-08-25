@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount } from "vue";
+import WhatsNew from './WhatsNew.vue'
 import { useRouter } from "vue-router";
 import { useWorkspaceStore } from "../stores/workspace";
 import { useSidebarStore } from "../stores/sidebar";
@@ -486,6 +487,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="sidebar-bottom">
+      <WhatsNew />
       <button
         class="sidebar-toggle-btn"
         type="button"
