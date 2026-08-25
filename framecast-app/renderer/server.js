@@ -115,4 +115,37 @@ app.get('/render', async (req, res) => {
   }
 })
 
-app.listen(PORT, () => console.log(`renderer listening on :${PORT}`))
+const server = app.listen(PORT, () => console.log(`renderer listening on :${PORT}`))
+
+// ── Graceful shutdown ──────────────────────────────────────────────────────
+// This process runs as PID 1. The kernel does NOT apply the default terminate
+// action to PID 1 for signals with no handler installed, so without this the
+// container ignored SIGTERM outright: `docker stop` waited the full 10s grace
+// period and then SIGKILLed. That ~11s stall on every recreate raced Docker's
+// rename/create swap and left an orphaned `<id>_framecast-app-renderer-1`
+// container behind, which then blocked the next deploy with a name conflict.
+// (compose also sets `init: true`, so tini forwards signals here and reaps
+// Chromium's zombie children.)
+let shuttingDown = false
+async function shutdown(signal) {
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log(`renderer received ${signal}, shutting down`)
+
+  // Stop accepting new work; let in-flight renders finish.
+  server.close(() => console.log('renderer http server closed'))
+
+  try {
+    if (browserPromise) {
+      const browser = await browserPromise
+      await browser.close()
+    }
+  } catch (e) {
+    console.warn('renderer browser close failed:', e.message)
+  }
+
+  process.exit(0)
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+process.on('SIGINT', () => shutdown('SIGINT'))

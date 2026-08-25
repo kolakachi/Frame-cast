@@ -121,6 +121,10 @@ services:
       context: ./renderer
     restart: unless-stopped
     shm_size: '512m'
+    # See docker-compose.prod.yml — tini as PID 1 so SIGTERM is honoured and
+    # Chromium's children are reaped. Keep both files in step.
+    init: true
+    stop_grace_period: 30s
 
   web:
     image: node:22-alpine

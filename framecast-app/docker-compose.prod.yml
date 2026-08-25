@@ -190,6 +190,14 @@ services:
       context: ./renderer
     restart: unless-stopped
     shm_size: '512m'
+    # tini as PID 1: forwards SIGTERM to node (which as PID 1 would otherwise
+    # ignore it — the kernel skips default signal actions for PID 1) and reaps
+    # Chromium's zombie children. Without this `docker stop` took the full 10s
+    # grace period + SIGKILL, and that stall raced compose's container swap and
+    # orphaned a `<id>_framecast-app-renderer-1`, breaking the NEXT deploy with
+    # a name conflict.
+    init: true
+    stop_grace_period: 30s
 
   redis:
     image: redis:7-alpine
