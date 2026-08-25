@@ -91,6 +91,15 @@ class KelviqService
 
         $object = $event['data']['object'] ?? [];
         if (! is_array($object)) {
+            // Silently returning here was one of the candidates we couldn't
+            // rule out when a cancellation went unrecorded — make it visible.
+            Log::warning('KelviqService: event has no usable data.object', [
+                'event_id'   => $eventId,
+                'type'       => $type,
+                'data_keys'  => is_array($event['data'] ?? null) ? array_keys($event['data']) : null,
+                'event_keys' => array_keys($event),
+            ]);
+
             return;
         }
 
@@ -165,23 +174,52 @@ class KelviqService
     {
         $workspace = $this->resolveWorkspace($object);
         if (! $workspace) {
-            Log::warning('KelviqService: subscription event — no workspace', ['object_id' => $object['id'] ?? null]);
+            // Diagnostics are keys and flags only — never the raw body, which
+            // carries customer name, email and billing address.
+            Log::warning('KelviqService: subscription event — no workspace', [
+                'object_id'      => $object['id'] ?? null,
+                'object_keys'    => array_keys($object),
+                'has_metadata_ws' => isset($object['metadata']['workspace_id']),
+                'customer_keys'  => is_array($object['customer'] ?? null) ? array_keys($object['customer']) : null,
+            ]);
             return;
         }
 
         $planId = $object['plan']['identifier'] ?? null;
         $tier   = config('billing.kelviq.plan_tiers')[$planId] ?? null;
         if (! $tier) {
-            Log::warning('KelviqService: unknown plan identifier', ['plan' => $planId]);
+            Log::warning('KelviqService: unknown plan identifier', [
+                'plan'         => $planId,
+                'workspace_id' => $workspace->getKey(),
+                'plan_keys'    => is_array($object['plan'] ?? null) ? array_keys($object['plan']) : null,
+                'object_keys'  => array_keys($object),
+            ]);
             return;
         }
+
+        // Kelviq keeps `status` at "active" for a cancel-at-period-end and
+        // signals the cancellation out-of-band via canceled_at /
+        // cancellation_reason. Reading `status` alone therefore records a
+        // cancelled subscriber as active and overstates MRR until the period
+        // actually lapses — and a `subscription.cancelled` event may never
+        // arrive at all (a merchant-initiated cancel arrives as .updated).
+        $cancelled = $this->isCancelled($object);
+        $status    = $cancelled ? 'cancelled' : (string) ($object['status'] ?? 'active');
+
+        Log::info('KelviqService: applying subscription', [
+            'workspace_id' => $workspace->getKey(),
+            'plan'         => $planId,
+            'raw_status'   => $object['status'] ?? null,
+            'cancelled'    => $cancelled,
+            'object_keys'  => array_keys($object),
+        ]);
 
         $previousTier = $workspace->plan_tier;
         $update = [
             'kelviq_account_id'      => $object['customer']['id'] ?? $workspace->kelviq_account_id,
             'kelviq_subscription_id' => $object['id'] ?? $workspace->kelviq_subscription_id,
             'plan_tier'              => $tier,
-            'plan_status'            => (string) ($object['status'] ?? 'active'),
+            'plan_status'            => $status,
         ];
         // Refill on tier change (SET, so it's idempotent). Deliberately NOT a
         // rollover-aware add: rollover is a renewal benefit, and adding here
@@ -196,6 +234,31 @@ class KelviqService
         if ($previousTier === 'free' && $tier !== 'free') {
             rescue(fn () => app(RewardService::class)->referralConversion($workspace->fresh()));
         }
+    }
+
+    /**
+     * Is this subscription cancelled — including cancelled-but-still-running
+     * until the period ends?
+     *
+     * `status` alone is not the signal: Kelviq reports "active" right up to the
+     * end date and marks the cancellation with canceled_at / cancellation_reason
+     * (and nextInvoiceDate: null). Accepts both the webhook's snake_case and the
+     * REST API's camelCase spellings.
+     */
+    private function isCancelled(array $object): bool
+    {
+        $status = strtolower(trim((string) ($object['status'] ?? '')));
+        if (in_array($status, ['cancelled', 'canceled'], true)) {
+            return true;
+        }
+
+        foreach (['canceled_at', 'canceledAt', 'cancelled_at', 'cancellation_reason', 'cancellationReason'] as $key) {
+            if (! empty($object[$key])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Recurring charge — refill the current plan's monthly allocation. */
