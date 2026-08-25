@@ -34,8 +34,27 @@ jobs:
             cd /opt/framecast/app
             git pull origin master
 
-            echo '==> Building and restarting containers...'
             cd /opt/framecast/app/framecast-app
+
+            # Self-heal before deploying. When Docker recreates a container it
+            # first renames the old one to `<short-id>_<name>`, then creates the
+            # replacement. If anything interrupts that swap the renamed husk is
+            # left behind and every LATER deploy dies on a name conflict —
+            # images build, containers never recreate, and the failure looks
+            # nothing like its cause. Slow SIGTERM handling used to trigger this
+            # (fixed via `init: true`), but any interruption can, so clear the
+            # husks rather than trusting it never happens again.
+            # The pattern only matches Docker's rename form, never a real name.
+            echo '==> Clearing stale renamed containers from any interrupted deploy...'
+            STALE=$(docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_framecast-app-' || true)
+            if [ -n "$STALE" ]; then
+              echo "    found: $STALE"
+              echo "$STALE" | xargs -r docker rm -f
+            else
+              echo '    none'
+            fi
+
+            echo '==> Building and restarting containers...'
             docker compose -f docker-compose.prod.yml up --build -d --remove-orphans
 
             # marketing + docs use a stock nginx image with bind-mounted config,
