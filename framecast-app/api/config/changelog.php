@@ -62,17 +62,6 @@ return [
                 .'Every workspace now has the full set, and new signups get it automatically.',
         ],
 
-        [
-            'slug'  => '2026-08-25-billing-reliability',
-            'date'  => '2026-08-25',
-            'tag'   => 'fixed',
-            'title' => 'Upgrades and billing management are reliable again',
-            'body'  => 'Subscription changes could fail to apply to your account, leaving a paid '
-                .'plan showing as free, and the "manage billing" link could fail to open. Both are '
-                .'fixed, plan changes now apply immediately, and cancelling keeps your access and '
-                .'remaining credits until the end of the period you\'ve paid for.',
-        ],
-
     ],
 
 ];
