@@ -2479,9 +2479,15 @@
         /* ── PRICING ── */
         .price-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 16px;
             margin-top: 32px;
+        }
+
+        @media(max-width:1100px) {
+            .price-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
         }
 
         .free-tier-box {
@@ -2630,11 +2636,14 @@
         }
 
         .plan-btn {
+            display: block;
             width: 100%;
             padding: 12px;
             border-radius: 8px;
             font-size: 15px;
             font-weight: 600;
+            font-family: inherit;
+            text-decoration: none;
             cursor: pointer;
             transition: all 0.2s;
             border: 1px solid var(--accent);
@@ -4105,6 +4114,50 @@
 
             <div class="price-grid">
                 <div class="plan">
+                    <div class="plan-name">Free</div>
+                    <div class="plan-price">$0</div>
+                    <div class="plan-sub">one-time credits<br>Try it, no card required</div>
+                    <hr class="plan-divider">
+                    <ul class="plan-feat">
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> 200 starter credits</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> All visual modes</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> 1 channel</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> AI script included</li>
+                        <li class="na"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg> Watermark on exports</li>
+                        <li class="na"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg> Social publishing</li>
+                        <li class="na"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg> Monthly credit refill</li>
+                    </ul>
+                    <a href="https://app.wyvstudio.com/register" class="plan-btn">Start free</a>
+                </div>
+                <div class="plan">
                     <div class="plan-name">Starter</div>
                     <div class="plan-price">$19</div>
                     <div class="plan-sub">per month<br>Solo creator, 1 channel</div>
@@ -4146,7 +4199,7 @@
                                 <line x1="5" y1="12" x2="19" y2="12"></line>
                             </svg> AI high-quality images</li>
                     </ul>
-                    <button class="plan-btn">Get Starter</button>
+                    <a href="https://app.wyvstudio.com/register" class="plan-btn">Get Starter</a>
                 </div>
                 <div class="plan hot">
                     <div class="plan-badge">Most popular</div>
@@ -4191,7 +4244,7 @@
                                 <polyline points="20 6 9 17 4 12" />
                             </svg> AI script included</li>
                     </ul>
-                    <button class="plan-btn">Get Creator</button>
+                    <a href="https://app.wyvstudio.com/register" class="plan-btn">Get Creator</a>
                 </div>
                 <div class="plan">
                     <div class="plan-name">Pro</div>
@@ -4235,7 +4288,7 @@
                                 <polyline points="20 6 9 17 4 12" />
                             </svg> Social publishing</li>
                     </ul>
-                    <button class="plan-btn">Get Pro</button>
+                    <a href="https://app.wyvstudio.com/register" class="plan-btn">Get Pro</a>
                 </div>
                 <div class="plan">
                     <div class="plan-name">Agency</div>
@@ -4279,7 +4332,7 @@
                                 <polyline points="20 6 9 17 4 12" />
                             </svg> Series Mode</li>
                     </ul>
-                    <button class="plan-btn">Get Agency</button>
+                    <a href="https://app.wyvstudio.com/register" class="plan-btn">Get Agency</a>
                 </div>
             </div>
 
