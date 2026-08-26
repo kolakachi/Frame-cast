@@ -17,11 +17,15 @@ use RuntimeException;
  */
 class FacebookAdapter implements PlatformAdapter
 {
+    // Minimum set for Reels-to-Page: list the user's Pages, read Page fields
+    // (which is what yields the Page access token), and publish. Deliberately
+    // NOT business_management — nothing here reaches Business Manager assets,
+    // we only call /me/accounts, and asking for it both alarms the user on the
+    // consent screen and invites heavier App Review scrutiny.
     private const SCOPES = [
         'pages_show_list',
         'pages_read_engagement',
         'pages_manage_posts',
-        'business_management',
     ];
 
     private const CAPTION_LIMIT = 5000;

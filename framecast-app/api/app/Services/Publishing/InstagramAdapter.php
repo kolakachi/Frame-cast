@@ -18,12 +18,14 @@ use RuntimeException;
  */
 class InstagramAdapter implements PlatformAdapter
 {
+    // Minimum set for Reels-to-IG: read the IG Business account, publish to
+    // it, and reach it via the linked Page (/me/accounts). Deliberately NOT
+    // business_management — see FacebookAdapter.
     private const SCOPES = [
         'instagram_basic',
         'instagram_content_publish',
         'pages_show_list',
         'pages_read_engagement',
-        'business_management',
     ];
 
     private const CAPTION_LIMIT = 2200;
