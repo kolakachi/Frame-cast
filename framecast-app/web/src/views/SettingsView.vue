@@ -333,7 +333,7 @@ const PLATFORMS = [
   { key: 'youtube',   label: 'YouTube',         icon: '▶', note: 'Upload and schedule YouTube Shorts & videos' },
   { key: 'tiktok',    label: 'TikTok',           icon: '♪', note: 'Post directly to your TikTok account' },
   { key: 'instagram', label: 'Instagram Reels',  icon: '◈', note: 'Publish Reels to your Instagram Business or Creator account' },
-  { key: 'facebook',  label: 'Facebook Reels',   icon: 'f', note: 'Publish Reels to your Facebook Page', comingSoon: true },
+  { key: 'facebook',  label: 'Facebook Reels',   icon: 'f', note: 'Publish Reels to your Facebook Page' },
 ]
 
 function accountForPlatform(platform) {
