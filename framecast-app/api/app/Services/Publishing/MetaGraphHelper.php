@@ -107,9 +107,58 @@ class MetaGraphHelper
     }
 
     /**
-     * Pick the first Page the user manages. For multi-Page users, page
-     * selection is a v2 enhancement — for v1 we use the first one and
-     * leave the rest accessible via the platform_meta on the account.
+     * Pages that have a linked Instagram Business/Creator account.
+     *
+     * @param  array<int, array<string, mixed>>  $pages
+     * @return array<int, array<string, mixed>>
+     */
+    public static function pagesWithInstagram(array $pages): array
+    {
+        return array_values(array_filter(
+            $pages,
+            static fn (array $p) => ! empty($p['instagram_business_account']['id']),
+        ));
+    }
+
+    /**
+     * Payload returned from exchangeCode() when the grant covers more than one
+     * publishable target and the user has to choose.
+     *
+     * Carries the already-exchanged user token: OAuth codes are single-use, so
+     * the exchange must happen before we can ask the question. The controller
+     * parks this briefly and never persists it against an account until a
+     * choice comes back.
+     *
+     * @param  array<int, array<string, mixed>>  $pages
+     * @return array<string, mixed>
+     */
+    public static function pageSelectionPayload(
+        string $platform,
+        string $userToken,
+        int $expiresIn,
+        ?string $metaUserId,
+        array $pages,
+    ): array {
+        return [
+            'requires_page_selection' => true,
+            'platform'                => $platform,
+            'user_token'              => $userToken,
+            'expires_in'              => $expiresIn,
+            'meta_user_id'            => $metaUserId,
+            // Only what the picker needs — never the per-Page access tokens.
+            'pages' => array_map(static fn (array $p) => [
+                'id'           => (string) $p['id'],
+                'name'         => $p['name'] ?? '(unnamed Page)',
+                'ig_username'  => $p['instagram_business_account']['username'] ?? null,
+                'ig_avatar_url'=> $p['instagram_business_account']['profile_picture_url'] ?? null,
+            ], $pages),
+        ];
+    }
+
+    /**
+     * Pick the only Page the user manages, or fail with guidance when there
+     * are none. Multi-Page accounts no longer reach this — exchangeCode()
+     * returns a selection payload instead (see pageSelectionPayload).
      *
      * @param array<int, array<string, mixed>> $pages
      * @return array<string, mixed>

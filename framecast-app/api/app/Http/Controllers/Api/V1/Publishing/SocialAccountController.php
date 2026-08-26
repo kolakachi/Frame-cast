@@ -78,6 +78,28 @@ class SocialAccountController extends Controller
             $adapter  = PlatformAdapterFactory::make($platform);
             $data     = $adapter->exchangeCode($code);
 
+            // The grant covers several Pages — park the exchanged token and ask
+            // which one, rather than publishing to whichever Meta listed first.
+            // Nothing is persisted against an account until the user chooses.
+            if (! empty($data['requires_page_selection'])) {
+                $selectionToken = (string) Str::uuid();
+
+                Cache::put("meta_page_selection:{$selectionToken}", [
+                    'workspace_id' => $workspaceId,
+                    'platform'     => $platform,
+                    'user_token'   => $data['user_token'],
+                    'expires_in'   => $data['expires_in'] ?? 0,
+                    'meta_user_id' => $data['meta_user_id'] ?? null,
+                ], now()->addMinutes(15));
+
+                return $this->closePopup([
+                    'select_page'     => true,
+                    'platform'        => $platform,
+                    'selection_token' => $selectionToken,
+                    'pages'           => $data['pages'],
+                ]);
+            }
+
             SocialAccount::query()->updateOrCreate(
                 ['workspace_id' => $workspaceId, 'platform' => $platform, 'platform_user_id' => $data['platform_user_id']],
                 [
@@ -101,6 +123,74 @@ class SocialAccountController extends Controller
     }
 
     // ── Disconnect ───────────────────────────────────────────────────────────
+
+    /**
+     * Finish a connection the user had to disambiguate: they picked which
+     * Facebook Page (or IG account) to publish to.
+     */
+    public function selectPage(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'selection_token' => 'required|string',
+            'page_id'         => 'required|string',
+        ]);
+
+        $pending = Cache::get("meta_page_selection:{$validated['selection_token']}");
+
+        if (! $pending) {
+            return response()->json([
+                'error' => ['code' => 'selection_expired', 'message' => 'That connection attempt expired. Please connect again.'],
+            ], 422);
+        }
+
+        // The pending entry holds a live user token — it must only ever be
+        // redeemable by the workspace that started the flow.
+        if ((int) $pending['workspace_id'] !== (int) $request->user()->workspace_id) {
+            return response()->json([
+                'error' => ['code' => 'forbidden', 'message' => 'This connection belongs to another workspace.'],
+            ], 403);
+        }
+
+        $platform = (string) $pending['platform'];
+        $adapter  = PlatformAdapterFactory::make($platform);
+
+        if (! $adapter instanceof \App\Services\Publishing\SupportsPageSelection) {
+            return response()->json([
+                'error' => ['code' => 'unsupported', 'message' => 'This platform does not support page selection.'],
+            ], 422);
+        }
+
+        try {
+            $data = $adapter->accountDataForPageId($pending, $validated['page_id']);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => ['code' => 'selection_failed', 'message' => $e->getMessage()],
+            ], 422);
+        }
+
+        $account = SocialAccount::query()->updateOrCreate(
+            ['workspace_id' => $pending['workspace_id'], 'platform' => $platform, 'platform_user_id' => $data['platform_user_id']],
+            [
+                'platform_username'     => $data['platform_username'],
+                'platform_display_name' => $data['platform_display_name'],
+                'platform_avatar_url'   => $data['platform_avatar_url'],
+                'access_token'          => $data['access_token'],
+                'refresh_token'         => $data['refresh_token'],
+                'token_expires_at'      => $data['token_expires_at'],
+                'scopes'                => $data['scopes'],
+                'platform_meta'         => $data['platform_meta'],
+                'status'                => 'active',
+            ],
+        );
+
+        // Single use — the token must not be redeemable twice.
+        Cache::forget("meta_page_selection:{$validated['selection_token']}");
+
+        return response()->json([
+            'data' => ['account' => ['id' => $account->id, 'platform' => $platform, 'display_name' => $account->platform_display_name]],
+            'meta' => [],
+        ]);
+    }
 
     public function destroy(Request $request, int $accountId): JsonResponse
     {

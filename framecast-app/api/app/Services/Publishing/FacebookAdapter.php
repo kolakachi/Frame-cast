@@ -15,7 +15,7 @@ use RuntimeException;
  * publish to the connected Facebook Page using the Page access token.
  * Videos are uploaded by URL (Meta fetches the public storage URL).
  */
-class FacebookAdapter implements PlatformAdapter
+class FacebookAdapter implements PlatformAdapter, SupportsPageSelection
 {
     // Minimum set for Reels-to-Page: list the user's Pages, read Page fields
     // (which is what yields the Page access token), and publish. Deliberately
@@ -51,21 +51,58 @@ class FacebookAdapter implements PlatformAdapter
         $userToken = $token['access_token'];
         $userInfo  = MetaGraphHelper::fetchUserInfo($userToken);
         $pages     = MetaGraphHelper::fetchPages($userToken);
-        $page      = MetaGraphHelper::firstPageOrFail($pages);
 
+        // More than one Page means we cannot know which one they meant. Hand
+        // the decision back rather than guessing — publishing a Reel to the
+        // wrong Page is not something the user can undo from here.
+        if (count($pages) > 1) {
+            return MetaGraphHelper::pageSelectionPayload(
+                platform:   $this->platform(),
+                userToken:  $userToken,
+                expiresIn:  (int) $token['expires_in'],
+                metaUserId: $userInfo['id'] ?? null,
+                pages:      $pages,
+            );
+        }
+
+        return $this->buildAccountData($userToken, (int) $token['expires_in'], $userInfo['id'] ?? null, MetaGraphHelper::firstPageOrFail($pages), $userInfo['name'] ?? null);
+    }
+
+    /** Resolve the user's choice into account data. */
+    public function accountDataForPageId(array $pending, string $pageId): array
+    {
+        $userToken = (string) $pending['user_token'];
+        // Re-fetch rather than trusting the cached list: Page admin rights can
+        // change between connecting and choosing, and we need a fresh Page token.
+        $pages = MetaGraphHelper::fetchPages($userToken);
+        $page  = collect($pages)->firstWhere('id', $pageId);
+
+        if (! $page) {
+            throw new RuntimeException('That Facebook Page is no longer available on your account. Reconnect and try again.');
+        }
+
+        return $this->buildAccountData($userToken, (int) ($pending['expires_in'] ?? 0), $pending['meta_user_id'] ?? null, $page, null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $page
+     * @return array<string, mixed>
+     */
+    private function buildAccountData(string $userToken, int $expiresIn, ?string $metaUserId, array $page, ?string $userName): array
+    {
         return [
             'platform_user_id'      => (string) $page['id'],
             'platform_username'     => $page['name'] ?? null,
-            'platform_display_name' => $page['name'] ?? ($userInfo['name'] ?? null),
+            'platform_display_name' => $page['name'] ?? $userName,
             'platform_avatar_url'   => null,
             // Store the Page access token (used for publishing). Page tokens don't expire.
             'access_token'          => (string) $page['access_token'],
             // Keep the long-lived user token in refresh_token so we can rotate it.
             'refresh_token'         => $userToken,
-            'token_expires_at'      => now()->addSeconds($token['expires_in']),
+            'token_expires_at'      => $expiresIn > 0 ? now()->addSeconds($expiresIn) : null,
             'scopes'                => self::SCOPES,
             'platform_meta'         => [
-                'meta_user_id' => $userInfo['id'] ?? null,
+                'meta_user_id' => $metaUserId,
                 'page_id'      => (string) $page['id'],
                 'page_name'    => $page['name'] ?? null,
             ],

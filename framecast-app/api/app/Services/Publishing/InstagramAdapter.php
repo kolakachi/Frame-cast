@@ -16,7 +16,7 @@ use RuntimeException;
  * FacebookAdapter); the IG Business Account ID is resolved during connect and
  * cached in `platform_meta.ig_user_id`.
  */
-class InstagramAdapter implements PlatformAdapter
+class InstagramAdapter implements PlatformAdapter, SupportsPageSelection
 {
     // Minimum set for Reels-to-IG: read the IG Business account, publish to
     // it, and reach it via the linked Page (/me/accounts). Deliberately NOT
@@ -51,26 +51,61 @@ class InstagramAdapter implements PlatformAdapter
         $userToken = $token['access_token'];
         $userInfo  = MetaGraphHelper::fetchUserInfo($userToken);
         $pages     = MetaGraphHelper::fetchPages($userToken);
-        $resolved  = MetaGraphHelper::firstInstagramAccountOrFail($pages);
 
-        $page     = $resolved['page'];
-        $igUserId = $resolved['ig_user_id'];
+        // Same ambiguity as Facebook: several Pages can each have their own
+        // linked IG Business account. Ask rather than take the first.
+        $igPages = MetaGraphHelper::pagesWithInstagram($pages);
+        if (count($igPages) > 1) {
+            return MetaGraphHelper::pageSelectionPayload(
+                platform:   $this->platform(),
+                userToken:  $userToken,
+                expiresIn:  (int) $token['expires_in'],
+                metaUserId: $userInfo['id'] ?? null,
+                pages:      $igPages,
+            );
+        }
 
+        $resolved = MetaGraphHelper::firstInstagramAccountOrFail($pages);
+
+        return $this->buildAccountData($userToken, (int) $token['expires_in'], $userInfo['id'] ?? null, $resolved['page'], $userInfo['name'] ?? null);
+    }
+
+    /** Resolve the user's choice into account data. */
+    public function accountDataForPageId(array $pending, string $pageId): array
+    {
+        $userToken = (string) $pending['user_token'];
+        $pages = MetaGraphHelper::fetchPages($userToken);
+        $page  = collect($pages)->firstWhere('id', $pageId);
+
+        if (! $page || empty($page['instagram_business_account']['id'])) {
+            throw new RuntimeException('That Instagram account is no longer available on your Facebook Page. Reconnect and try again.');
+        }
+
+        return $this->buildAccountData($userToken, (int) ($pending['expires_in'] ?? 0), $pending['meta_user_id'] ?? null, $page, null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $page
+     * @return array<string, mixed>
+     */
+    private function buildAccountData(string $userToken, int $expiresIn, ?string $metaUserId, array $page, ?string $userName): array
+    {
         $igProfile = $page['instagram_business_account'] ?? [];
+        $igUserId  = (string) ($igProfile['id'] ?? '');
 
         return [
             'platform_user_id'      => $igUserId,
             'platform_username'     => $igProfile['username'] ?? null,
-            'platform_display_name' => $igProfile['username'] ?? ($userInfo['name'] ?? null),
+            'platform_display_name' => $igProfile['username'] ?? $userName,
             'platform_avatar_url'   => $igProfile['profile_picture_url'] ?? null,
             // Store the Page access token (used for publishing). Page tokens don't expire.
             'access_token'          => (string) $page['access_token'],
             // Keep the long-lived user token in refresh_token so we can rotate it.
             'refresh_token'         => $userToken,
-            'token_expires_at'      => now()->addSeconds($token['expires_in']),
+            'token_expires_at'      => $expiresIn > 0 ? now()->addSeconds($expiresIn) : null,
             'scopes'                => self::SCOPES,
             'platform_meta'         => [
-                'meta_user_id' => $userInfo['id'] ?? null,
+                'meta_user_id' => $metaUserId,
                 'page_id'      => (string) $page['id'],
                 'page_name'    => $page['name'] ?? null,
                 'ig_user_id'   => $igUserId,

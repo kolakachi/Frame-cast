@@ -364,8 +364,7 @@ async function connectPlatform(platform) {
   const storageHandler = (e) => {
     if (e.key !== 'framecastOAuth' || !e.newValue) return
     cleanup()
-    localStorage.removeItem('framecastOAuth')
-    loadSocialAccounts()
+    handleOAuthResult(e.newValue)
   }
 
   // Fallback: poll localStorage in case the storage event is missed.
@@ -373,8 +372,7 @@ async function connectPlatform(platform) {
     const stored = localStorage.getItem('framecastOAuth')
     if (stored) {
       cleanup()
-      localStorage.removeItem('framecastOAuth')
-      loadSocialAccounts()
+      handleOAuthResult(stored)
     }
   }, 600)
 
@@ -389,6 +387,52 @@ async function connectPlatform(platform) {
   }
 
   window.addEventListener('storage', storageHandler)
+}
+
+// ── Page selection ─────────────────────────────────────────────────────────
+// A Facebook Login grant can cover several Pages. When it does, the callback
+// doesn't connect anything — it hands back the candidates and we ask, because
+// publishing a Reel to the wrong Page isn't undoable from here.
+const pageChoice = ref(null)      // { platform, selectionToken, pages: [] }
+const pageChoiceSaving = ref(false)
+const pageChoiceError = ref('')
+
+function handleOAuthResult(raw) {
+  localStorage.removeItem('framecastOAuth')
+
+  let payload = null
+  try { payload = JSON.parse(raw) } catch { /* fall through to a plain refresh */ }
+
+  if (payload?.select_page && Array.isArray(payload.pages) && payload.pages.length) {
+    pageChoiceError.value = ''
+    pageChoice.value = {
+      platform: payload.platform,
+      selectionToken: payload.selection_token,
+      pages: payload.pages,
+    }
+    return
+  }
+
+  loadSocialAccounts()
+}
+
+async function choosePage(pageId) {
+  if (!pageChoice.value || pageChoiceSaving.value) return
+  pageChoiceSaving.value = true
+  pageChoiceError.value = ''
+  try {
+    await api.post('/social/select-page', {
+      selection_token: pageChoice.value.selectionToken,
+      page_id: pageId,
+    })
+    pageChoice.value = null
+    loadSocialAccounts()
+  } catch (e) {
+    pageChoiceError.value = e?.response?.data?.error?.message
+      || 'Could not connect that page. Please try connecting again.'
+  } finally {
+    pageChoiceSaving.value = false
+  }
 }
 
 const disconnectTarget = ref(null)
@@ -1148,6 +1192,49 @@ onMounted(() => {
       @upgrade="limitModalOpen = false; activeSection = 'usage'"
     />
 
+    <!-- Which Page? Shown when a Meta grant covers more than one target. -->
+    <Teleport to="body">
+      <div v-if="pageChoice" class="del-backdrop" @click.self="pageChoiceSaving || (pageChoice = null)">
+        <div class="del-modal">
+          <div class="del-title">
+            {{ pageChoice.platform === 'instagram' ? 'Choose an Instagram account' : 'Choose a Facebook Page' }}
+          </div>
+          <div class="del-body">
+            You manage more than one. Pick the one to publish to — you can disconnect and
+            reconnect later to change it.
+          </div>
+
+          <div class="page-pick-list">
+            <button
+              v-for="pg in pageChoice.pages"
+              :key="pg.id"
+              class="page-pick"
+              type="button"
+              :disabled="pageChoiceSaving"
+              @click="choosePage(pg.id)"
+            >
+              <img v-if="pg.ig_avatar_url" :src="pg.ig_avatar_url" class="page-pick-avatar" alt="" />
+              <span v-else class="page-pick-avatar page-pick-avatar-fallback">
+                {{ (pg.ig_username || pg.name || '?').charAt(0).toUpperCase() }}
+              </span>
+              <span class="page-pick-body">
+                <span class="page-pick-name">{{ pg.ig_username ? '@' + pg.ig_username : pg.name }}</span>
+                <span v-if="pg.ig_username" class="page-pick-sub">via {{ pg.name }}</span>
+              </span>
+              <span class="page-pick-go">→</span>
+            </button>
+          </div>
+
+          <div v-if="pageChoiceError" class="del-error">{{ pageChoiceError }}</div>
+          <div class="del-foot">
+            <button class="btn btn-ghost btn-sm" type="button" :disabled="pageChoiceSaving" @click="pageChoice = null">
+              {{ pageChoiceSaving ? 'Connecting…' : 'Cancel' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- GDPR account deletion modal -->
     <Teleport to="body">
       <div v-if="deleteModalOpen" class="del-backdrop" @click.self="deleteAccountPending || (deleteModalOpen = false)">
@@ -1184,6 +1271,17 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.page-pick-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; max-height: 320px; overflow-y: auto; }
+.page-pick { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #25252f; background: #14141c; color: #ececf3; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: .15s; }
+.page-pick:hover:not(:disabled) { border-color: rgba(255,107,53,.5); background: rgba(255,107,53,.06); }
+.page-pick:disabled { opacity: .5; cursor: default; }
+.page-pick-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.page-pick-avatar-fallback { display: flex; align-items: center; justify-content: center; background: rgba(255,107,53,.15); color: #ff6b35; font-weight: 700; font-size: 13px; }
+.page-pick-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.page-pick-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-pick-sub { font-size: 11px; color: #8b8b9a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-pick-go { color: #8b8b9a; flex-shrink: 0; }
+
 .fc-shell {
   min-height: 100vh;
   background:

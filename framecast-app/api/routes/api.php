@@ -271,6 +271,8 @@ Route::prefix('v1')->group(function (): void {
         Route::prefix('/social')->group(function (): void {
             Route::get('/accounts', [SocialAccountController::class, 'index']);
             Route::get('/{platform}/connect', [SocialAccountController::class, 'connect'])->where('platform', 'youtube|tiktok|instagram|facebook');
+            // Finish a Meta connection where the grant covered several Pages.
+            Route::post('/select-page', [SocialAccountController::class, 'selectPage']);
             Route::delete('/accounts/{accountId}', [SocialAccountController::class, 'destroy'])->whereNumber('accountId');
             Route::post('/generate-caption', [SocialAccountController::class, 'generateCaption']);
         });
