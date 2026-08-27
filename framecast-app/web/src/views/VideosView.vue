@@ -64,6 +64,11 @@ function sourceLabel(sourceType) {
   return SOURCE_LABELS[sourceType] || sourceType || 'Manual'
 }
 
+function formatExportedAt(ts) {
+  if (!ts) return ''
+  return new Date(ts).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 function mapStatus(status) {
   const map = {
     draft:           { label: 'Draft',      cls: 'status-draft' },
@@ -311,6 +316,11 @@ onMounted(async () => {
                   <div class="phone-line"></div>
                   <div class="phone-line"></div>
                 </div>
+                <span v-if="project.has_export" class="export-badge" :title="`Exported ${formatExportedAt(project.exported_at)}`">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg> Exported
+                </span>
                 <span class="aspect-badge">{{ project.aspect_ratio || '9:16' }}</span>
                 <span v-if="formatDuration(project.duration_target_seconds)" class="duration-badge">
                   {{ formatDuration(project.duration_target_seconds) }}
@@ -461,6 +471,9 @@ onMounted(async () => {
 .source-badge { display: inline-block; padding: 1px 7px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 999px; font-size: 10px; font-weight: 600; color: var(--color-text-secondary); white-space: nowrap; font-family: "Space Mono", monospace; }
 
 /* Status */
+/* bottom-left is the only free corner: delete btn owns top-left (and sits
+   above on hover), aspect top-right, duration bottom-right. */
+.export-badge { position: absolute; bottom: 10px; left: 10px; z-index: 1; display: inline-flex; align-items: center; gap: 4px; background: rgba(52,211,153,.16); color: #34d399; border: 1px solid rgba(52,211,153,.3); font-size: 10px; font-weight: 700; letter-spacing: .02em; padding: 3px 7px; border-radius: 999px; backdrop-filter: blur(4px); }
 .project-status { font-size: 11px; font-weight: 600; margin-bottom: 10px; padding: 2px 0; }
 .status-draft { color: var(--color-text-muted); }
 .status-generating { color: #fbbf24; }

@@ -67,6 +67,15 @@ class ProjectController extends Controller
                     ->join('variant_sets', 'variant_sets.id', '=', 'variants.variant_set_id')
                     ->whereColumn('variant_sets.base_project_id', 'projects.id')
                     ->selectRaw('count(*)'),
+                // When the project last finished an export. Drives the
+                // "Exported" pill on the dashboard + video cards, so a user can
+                // tell at a glance which videos actually produced a file —
+                // project.status alone can't: it reads "ready_for_review" both
+                // before and after exporting.
+                'exported_at' => DB::table('export_jobs')
+                    ->whereColumn('export_jobs.project_id', 'projects.id')
+                    ->where('export_jobs.status', 'completed')
+                    ->selectRaw('max(completed_at)'),
             ])
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $page);
@@ -195,6 +204,15 @@ class ProjectController extends Controller
                     ->join('variant_sets', 'variant_sets.id', '=', 'variants.variant_set_id')
                     ->whereColumn('variant_sets.base_project_id', 'projects.id')
                     ->selectRaw('count(*)'),
+                // When the project last finished an export. Drives the
+                // "Exported" pill on the dashboard + video cards, so a user can
+                // tell at a glance which videos actually produced a file —
+                // project.status alone can't: it reads "ready_for_review" both
+                // before and after exporting.
+                'exported_at' => DB::table('export_jobs')
+                    ->whereColumn('export_jobs.project_id', 'projects.id')
+                    ->where('export_jobs.status', 'completed')
+                    ->selectRaw('max(completed_at)'),
             ])
             ->orderByDesc('updated_at')
             ->paginate($perPage, ['*'], 'page', $page);
@@ -2287,6 +2305,29 @@ class ProjectController extends Controller
      *     updated_at:?string
      * }
      */
+    /**
+     * When this project last completed an export, or null if it never has.
+     *
+     * List endpoints select this as a subquery (no N+1). Single-project
+     * endpoints don't, so fall back to one direct lookup rather than reporting
+     * "never exported" just because the column wasn't selected.
+     */
+    private function projectExportedAt(Project $project): ?string
+    {
+        $value = array_key_exists('exported_at', $project->getAttributes())
+            ? $project->getAttributes()['exported_at']
+            : \App\Models\ExportJob::query()
+                ->where('project_id', $project->getKey())
+                ->where('status', 'completed')
+                ->max('completed_at');
+
+        if (! $value) {
+            return null;
+        }
+
+        return \Illuminate\Support\Carbon::parse($value)->toIso8601String();
+    }
+
     private function serializeProject(Project $project): array
     {
         return [
@@ -2328,6 +2369,8 @@ class ProjectController extends Controller
             'music_asset_id' => $project->music_asset_id,
             'music_settings_json' => $project->music_settings_json,
             'variants_count' => isset($project->variants_count) ? (int) $project->variants_count : 0,
+            'exported_at' => $this->projectExportedAt($project),
+            'has_export'  => $this->projectExportedAt($project) !== null,
             'created_by_user_id' => $project->created_by_user_id,
             'created_at' => $project->created_at?->toIso8601String(),
             'updated_at' => $project->updated_at?->toIso8601String(),

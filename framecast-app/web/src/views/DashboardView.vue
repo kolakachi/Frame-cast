@@ -641,6 +641,11 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="continue-overlay"></div>
                 <span :class="['continue-badge', mapProjectStatus(project.status).className]">{{ mapProjectStatus(project.status).label }}</span>
+                <span v-if="project.has_export" class="export-badge" title="This video has been exported">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg> Exported
+                </span>
                 <span class="aspect-badge">{{ project.aspect_ratio || '9:16' }}</span>
               </div>
               <div class="continue-body">
@@ -982,6 +987,9 @@ onBeforeUnmount(() => {
 .continue-thumb { height: 108px; position: relative; overflow: hidden; background: linear-gradient(135deg, #141729, #1a223d); }
 .continue-thumb-inner { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 .continue-overlay { position: absolute; inset: auto 0 0; height: 50%; background: linear-gradient(180deg, transparent, rgba(0,0,0,0.45)); }
+/* bottom-right is the only free corner: delete btn owns top-left (and sits
+   above on hover), aspect top-right, status badge bottom-left. */
+.export-badge { position: absolute; bottom: 8px; right: 8px; z-index: 1; display: inline-flex; align-items: center; gap: 4px; background: rgba(52,211,153,.16); color: #34d399; border: 1px solid rgba(52,211,153,.3); font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 999px; }
 .continue-badge { position: absolute; bottom: 8px; left: 8px; padding: 2px 7px; border-radius: 4px; font-size: 9px; font-weight: 700; font-family: "Space Mono", monospace; }
 .continue-body { padding: 10px 12px; }
 .continue-title { font-size: 12px; font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; }
