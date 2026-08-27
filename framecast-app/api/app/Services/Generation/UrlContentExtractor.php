@@ -46,12 +46,27 @@ class UrlContentExtractor
         }
 
         $isYouTube = $this->isYouTube($url);
-        $content   = $isYouTube ? $this->extractYouTube($url) : $this->extractArticle($url);
+
+        if ($isYouTube) {
+            $content = $this->extractYouTube($url);
+        } else {
+            $content = $this->extractArticle($url);
+
+            // A plain HTTP fetch only sees the JS shell on a client-rendered
+            // site, and nothing at all behind a login wall. Before failing,
+            // retry through the headless-browser renderer, which is in the
+            // stack precisely for this.
+            if ($content === null || mb_strlen($content) < self::MIN_CONTENT_CHARS) {
+                $content = $this->extractViaRenderer($url) ?? $content;
+            }
+        }
 
         // YouTube is judged on having a real title (extractYouTube returns null
         // otherwise) rather than length — a title IS the topic, and the length
         // gate would otherwise be satisfied by our own appended instructions.
-        if ($content === null || (! $isYouTube && mb_strlen($content) < self::MIN_CONTENT_CHARS)) {
+        $lenientLength = $isYouTube || $this->isLoginWalledSocial($url);
+
+        if ($content === null || (! $lenientLength && mb_strlen($content) < self::MIN_CONTENT_CHARS)) {
             Log::warning('UrlContentExtractor: no usable content', [
                 'url'    => $url,
                 'length' => $content === null ? 0 : mb_strlen($content),
@@ -158,6 +173,86 @@ class UrlContentExtractor
     {
         return str_contains($description, 'Enjoy the videos and music you love')
             || str_contains($description, 'share it all with friends, family');
+    }
+
+    // ── Headless-browser fallback ─────────────────────────────────────────
+
+    /**
+     * Second attempt through the in-house Chromium renderer
+     * (framecast-app/renderer). It executes JS, so it sees SPA content that a
+     * plain fetch cannot, and it surfaces meta tags even when the body is a
+     * login wall.
+     */
+    private function extractViaRenderer(string $url): ?string
+    {
+        $base = rtrim((string) config('services.renderer.url', ''), '/');
+        if ($base === '') {
+            return null;
+        }
+
+        try {
+            $response = Http::timeout(35)->get($base.'/render', ['url' => $url]);
+            if (! $response->ok()) {
+                return null;
+            }
+
+            $title = trim((string) $response->json('title', ''));
+            $desc  = trim((string) $response->json('description', ''));
+            $text  = trim(preg_replace('/\s+/', ' ', (string) $response->json('text', '')) ?? '');
+        } catch (\Throwable $e) {
+            Log::warning('UrlContentExtractor: renderer failed', ['url' => $url, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        // Social posts sit behind a login wall: the body text is sign-up
+        // furniture, but the meta description carries the actual caption.
+        // Treat them like YouTube — use the caption, and say plainly that the
+        // full post wasn't readable rather than padding with boilerplate.
+        if ($this->isLoginWalledSocial($url)) {
+            if ($desc === '') {
+                return null;
+            }
+
+            return implode("\n", [
+                "Social post caption: {$desc}",
+                'Write the script about the topic of that caption. The full post could not be '
+                .'read, so cover the subject generally and do not invent quotes, statistics, or '
+                .'details that are not in the caption.',
+            ]);
+        }
+
+        $parts = [];
+        if ($title !== '') {
+            $parts[] = "Title: {$title}";
+        }
+        if ($desc !== '' && ! str_contains($text, $desc)) {
+            $parts[] = $desc;
+        }
+        if ($text !== '') {
+            $parts[] = $text;
+        }
+
+        $combined = trim(implode("\n\n", $parts));
+
+        return $combined !== '' ? $combined : null;
+    }
+
+    /**
+     * Hosts that serve a sign-in wall to logged-out readers, where the only
+     * usable signal is the meta description.
+     */
+    private function isLoginWalledSocial(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        foreach (['instagram.com', 'facebook.com', 'tiktok.com', 'twitter.com', 'x.com', 'threads.net', 'linkedin.com'] as $needle) {
+            if (str_contains($host, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // ── Generic pages ─────────────────────────────────────────────────────
