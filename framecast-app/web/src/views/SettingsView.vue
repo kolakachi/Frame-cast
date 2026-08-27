@@ -329,12 +329,37 @@ const socialAccounts    = ref([])
 const socialLoading     = ref(false)
 const disconnecting     = ref(null)
 
-const PLATFORMS = [
+const BASE_PLATFORMS = [
   { key: 'youtube',   label: 'YouTube',         icon: '▶', note: 'Upload and schedule YouTube Shorts & videos' },
   { key: 'tiktok',    label: 'TikTok',           icon: '♪', note: 'Post directly to your TikTok account' },
   { key: 'instagram', label: 'Instagram Reels',  icon: '◈', note: 'Publish Reels to your Instagram Business or Creator account' },
   { key: 'facebook',  label: 'Facebook Reels',   icon: 'f', note: 'Publish Reels to your Facebook Page' },
 ]
+
+// Meta publishing is held behind the team until App Review grants Advanced
+// Access. Until then Meta only honours the permissions for app admins,
+// developers and testers — everyone else would walk through the whole OAuth
+// flow just to be refused by Facebook. Showing "Coming soon" is honest and
+// spares them a dead end. Internal accounts keep the live flow so we can
+// finish review and record the reviewer screencast.
+const META_PLATFORMS = ['instagram', 'facebook']
+const INTERNAL_EMAIL_DOMAIN = '@wyvstudio.com'
+
+// Admins count as internal regardless of email domain — the founder's account
+// is on a personal address and an email-only rule would lock it out of the very
+// flow needed to finish App Review.
+const isInternalUser = computed(() => {
+  const email = String(authStore.user?.email ?? '').trim().toLowerCase()
+  const role  = String(authStore.user?.role ?? '').toLowerCase()
+
+  return email.endsWith(INTERNAL_EMAIL_DOMAIN) || ['admin', 'super_admin'].includes(role)
+})
+
+const PLATFORMS = computed(() => BASE_PLATFORMS.map((plat) => (
+  META_PLATFORMS.includes(plat.key) && !isInternalUser.value
+    ? { ...plat, comingSoon: true }
+    : plat
+)))
 
 function accountForPlatform(platform) {
   return socialAccounts.value.find(a => a.platform === platform) ?? null
