@@ -22,8 +22,14 @@ class FacebookAdapter implements PlatformAdapter, SupportsPageSelection, Provide
     // NOT business_management — nothing here reaches Business Manager assets,
     // we only call /me/accounts, and asking for it both alarms the user on the
     // consent screen and invites heavier App Review scrutiny.
+    // pages_read_engagement is NOT about reading engagement metrics here — it
+    // gates the per-Page access_token that /me/accounts returns, which is the
+    // token we publish with. Dropping it was tested against a clean grant on
+    // 2026-08-27 and publishing broke, so it stays. Do not remove it again on
+    // the reasoning that "we don't read engagement".
     private const SCOPES = [
         'pages_show_list',
+        'pages_read_engagement',
         'pages_manage_posts',
     ];
 

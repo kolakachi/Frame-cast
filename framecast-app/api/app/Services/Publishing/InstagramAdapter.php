@@ -21,10 +21,14 @@ class InstagramAdapter implements PlatformAdapter, SupportsPageSelection, Provid
     // Minimum set for Reels-to-IG: read the IG Business account, publish to
     // it, and reach it via the linked Page (/me/accounts). Deliberately NOT
     // business_management — see FacebookAdapter.
+    // pages_read_engagement gates the Page access_token from /me/accounts,
+    // which is how we reach the linked IG account and publish. Verified needed
+    // on 2026-08-27 — see FacebookAdapter for the detail.
     private const SCOPES = [
         'instagram_basic',
         'instagram_content_publish',
         'pages_show_list',
+        'pages_read_engagement',
     ];
 
     private const CAPTION_LIMIT = 2200;
