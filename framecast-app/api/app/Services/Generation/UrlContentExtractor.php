@@ -47,15 +47,22 @@ class UrlContentExtractor
 
         $isYouTube = $this->isYouTube($url);
 
+        $isSocial = $this->isLoginWalledSocial($url);
+
         if ($isYouTube) {
             $content = $this->extractYouTube($url);
+        } elseif ($isSocial) {
+            // Straight to the renderer. A direct fetch of a login-walled post
+            // returns the sign-in page, whose stripped text ("Instagram",
+            // "Log In", "Sign Up") is long enough to look like content but
+            // says nothing — the exact failure this class exists to prevent.
+            $content = $this->extractViaRenderer($url);
         } else {
             $content = $this->extractArticle($url);
 
             // A plain HTTP fetch only sees the JS shell on a client-rendered
-            // site, and nothing at all behind a login wall. Before failing,
-            // retry through the headless-browser renderer, which is in the
-            // stack precisely for this.
+            // site. Before failing, retry through the headless-browser
+            // renderer, which is in the stack precisely for this.
             if ($content === null || mb_strlen($content) < self::MIN_CONTENT_CHARS) {
                 $content = $this->extractViaRenderer($url) ?? $content;
             }
@@ -64,7 +71,7 @@ class UrlContentExtractor
         // YouTube is judged on having a real title (extractYouTube returns null
         // otherwise) rather than length — a title IS the topic, and the length
         // gate would otherwise be satisfied by our own appended instructions.
-        $lenientLength = $isYouTube || $this->isLoginWalledSocial($url);
+        $lenientLength = $isYouTube || $isSocial;
 
         if ($content === null || (! $lenientLength && mb_strlen($content) < self::MIN_CONTENT_CHARS)) {
             Log::warning('UrlContentExtractor: no usable content', [
@@ -210,6 +217,15 @@ class UrlContentExtractor
         // Treat them like YouTube — use the caption, and say plainly that the
         // full post wasn't readable rather than padding with boilerplate.
         if ($this->isLoginWalledSocial($url)) {
+            // Deleted/private posts render a "Post isn't available" shell.
+            // Say that, rather than blaming automated reading generically.
+            if ($this->looksUnavailable($title, $text)) {
+                throw new RuntimeException(
+                    "That post isn't available — it may have been deleted, or the account may be private. ".
+                    'Check the link, or paste the text you want the video to cover.'
+                );
+            }
+
             if ($desc === '') {
                 return null;
             }
@@ -236,6 +252,20 @@ class UrlContentExtractor
         $combined = trim(implode("\n\n", $parts));
 
         return $combined !== '' ? $combined : null;
+    }
+
+    /** A deleted, private or otherwise missing post, per the rendered shell. */
+    private function looksUnavailable(string $title, string $text): bool
+    {
+        $haystack = strtolower($title.' '.$text);
+
+        foreach (["post isn't available", 'post isnt available', 'page not found', 'content isn\'t available', 'sorry, this page'] as $needle) {
+            if (str_contains($haystack, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
