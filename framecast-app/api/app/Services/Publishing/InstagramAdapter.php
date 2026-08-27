@@ -99,7 +99,7 @@ class InstagramAdapter implements PlatformAdapter, SupportsPageSelection, Provid
             'platform_display_name' => $igProfile['username'] ?? $userName,
             'platform_avatar_url'   => $igProfile['profile_picture_url'] ?? null,
             // Store the Page access token (used for publishing). Page tokens don't expire.
-            'access_token'          => (string) $page['access_token'],
+            'access_token'          => MetaGraphHelper::requirePageToken($page),
             // Keep the long-lived user token in refresh_token so we can rotate it.
             'refresh_token'         => $userToken,
             'token_expires_at'      => $expiresIn > 0 ? now()->addSeconds($expiresIn) : null,

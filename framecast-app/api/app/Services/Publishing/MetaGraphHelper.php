@@ -107,6 +107,34 @@ class MetaGraphHelper
     }
 
     /**
+     * The Page access token, or a clear failure.
+     *
+     * /me/accounts only returns `access_token` when the app holds sufficient
+     * Pages permissions AND the user has a role on the Page. Without this
+     * guard the missing key cast to "" and we stored a connection that looked
+     * healthy but could never publish — the error only surfaced later, on the
+     * first post, far from its cause.
+     *
+     * @param  array<string, mixed>  $page
+     */
+    public static function requirePageToken(array $page): string
+    {
+        $token = (string) ($page['access_token'] ?? '');
+
+        if ($token === '') {
+            $name = $page['name'] ?? 'that Page';
+
+            throw new RuntimeException(
+                "Facebook returned \"{$name}\" without a Page access token, so we can't publish to it. ".
+                'That usually means the Page was not ticked on the Facebook consent screen, or your role on '.
+                'the Page does not allow posting. Reconnect and make sure the Page is selected.'
+            );
+        }
+
+        return $token;
+    }
+
+    /**
      * Pages that have a linked Instagram Business/Creator account.
      *
      * @param  array<int, array<string, mixed>>  $pages
