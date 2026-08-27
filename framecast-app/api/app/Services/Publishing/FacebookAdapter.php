@@ -24,7 +24,6 @@ class FacebookAdapter implements PlatformAdapter, SupportsPageSelection, Provide
     // consent screen and invites heavier App Review scrutiny.
     private const SCOPES = [
         'pages_show_list',
-        'pages_read_engagement',
         'pages_manage_posts',
     ];
 
