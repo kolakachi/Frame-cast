@@ -15,7 +15,7 @@ use RuntimeException;
  * publish to the connected Facebook Page using the Page access token.
  * Videos are uploaded by URL (Meta fetches the public storage URL).
  */
-class FacebookAdapter implements PlatformAdapter, SupportsPageSelection
+class FacebookAdapter implements PlatformAdapter, SupportsPageSelection, ProvidesPostUrl
 {
     // Minimum set for Reels-to-Page: list the user's Pages, read Page fields
     // (which is what yields the Page access token), and publish. Deliberately
@@ -127,6 +127,15 @@ class FacebookAdapter implements PlatformAdapter, SupportsPageSelection
             'token_expires_at' => now()->addSeconds($rotated['expires_in']),
             'status'           => 'active',
         ]);
+    }
+
+    /**
+     * Facebook Reels are served from /reel/<video-id> — the bare
+     * facebook.com/<id> form we used before does not resolve for a Reel.
+     */
+    public function postUrl(SocialAccount $account, string $postId): ?string
+    {
+        return "https://www.facebook.com/reel/{$postId}";
     }
 
     public function publish(SocialAccount $account, ScheduledPost $post, string $videoPath): string

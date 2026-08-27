@@ -16,7 +16,7 @@ use RuntimeException;
  * FacebookAdapter); the IG Business Account ID is resolved during connect and
  * cached in `platform_meta.ig_user_id`.
  */
-class InstagramAdapter implements PlatformAdapter, SupportsPageSelection
+class InstagramAdapter implements PlatformAdapter, SupportsPageSelection, ProvidesPostUrl
 {
     // Minimum set for Reels-to-IG: read the IG Business account, publish to
     // it, and reach it via the linked Page (/me/accounts). Deliberately NOT
@@ -184,6 +184,34 @@ class InstagramAdapter implements PlatformAdapter, SupportsPageSelection
         }
 
         return (string) $mediaId;
+    }
+
+    /**
+     * Instagram permalinks use a shortcode (instagram.com/reel/DchgvRtDXBJ/),
+     * which cannot be derived from the numeric media ID /media_publish returns.
+     * Ask the Graph API for the canonical permalink — it already points at
+     * /reel/ for Reels, so we never have to guess the path either.
+     */
+    public function postUrl(SocialAccount $account, string $postId): ?string
+    {
+        try {
+            $response = Http::timeout(15)->get(MetaGraphHelper::graphUrl($postId), [
+                'fields'       => 'permalink',
+                'access_token' => $account->access_token,
+            ]);
+
+            $permalink = trim((string) $response->json('permalink', ''));
+
+            return $permalink !== '' ? $permalink : null;
+        } catch (\Throwable $e) {
+            // Cosmetic only — never let a missing link fail a successful publish.
+            \Illuminate\Support\Facades\Log::warning('InstagramAdapter: permalink lookup failed', [
+                'media_id' => $postId,
+                'error'    => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     private function waitForContainerReady(string $creationId, string $pageToken): void

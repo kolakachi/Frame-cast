@@ -167,13 +167,22 @@ class PublishVideoJob implements ShouldQueue
     private function buildPostUrl(?string $platform, ?string $postId, ?\App\Models\SocialAccount $account): ?string
     {
         if (! $postId) return null;
+
+        // Meta links can't be assembled from the returned ID: an Instagram
+        // permalink needs a shortcode (not the numeric media ID) and a Facebook
+        // Reel lives under /reel/. Those adapters resolve their own URL.
+        if ($account && $platform) {
+            $adapter = rescue(fn () => \App\Services\Publishing\PlatformAdapterFactory::make($platform), null, false);
+            if ($adapter instanceof \App\Services\Publishing\ProvidesPostUrl) {
+                return $adapter->postUrl($account, $postId);
+            }
+        }
+
         return match ($platform) {
             'youtube'   => "https://www.youtube.com/watch?v={$postId}",
             'tiktok'    => $account?->platform_username
                 ? "https://www.tiktok.com/@{$account->platform_username}/video/{$postId}"
                 : "https://www.tiktok.com/video/{$postId}",
-            'instagram' => "https://www.instagram.com/p/{$postId}/",
-            'facebook'  => "https://www.facebook.com/{$postId}",
             default     => null,
         };
     }
