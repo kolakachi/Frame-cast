@@ -20,7 +20,11 @@ const viewMode        = ref('month') // month | week | list
 const currentDate     = ref(new Date())
 const posts           = ref([])
 const loading         = ref(false)
-const activePlatforms = ref(['youtube', 'tiktok'])
+// Every platform we can publish to. Defaulted to youtube+tiktok only, which
+// silently hid Instagram and Facebook posts from the month/week grids —
+// and the filter offered no buttons for them, so there was no way to turn
+// them back on. They showed only in the Posts list, which ignores this filter.
+const activePlatforms = ref(['youtube', 'tiktok', 'instagram', 'facebook'])
 const listFilter      = ref('all') // all | scheduled | published | failed | draft
 const seriesFilter    = ref('all') // 'all' | series_id
 
@@ -352,7 +356,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 
         <div v-if="viewMode !== 'list'" class="cal-platform-filter">
           <button
-            v-for="p in [['youtube','▶'],['tiktok','♪']]" :key="p[0]"
+            v-for="p in [['youtube','▶'],['tiktok','♪'],['instagram','◈'],['facebook','f']]" :key="p[0]"
             :class="['plat-filter-btn', activePlatforms.includes(p[0]) ? 'active' : '']"
             :title="p[0]"
             @click="togglePlatform(p[0])"
