@@ -63,6 +63,17 @@ jobs:
             echo '==> Reloading marketing + docs nginx (bind-mounted config)...'
             docker compose -f docker-compose.prod.yml restart marketing docs
 
+            # Reclaim disk. Each deploy writes a fresh build-cache layer set and
+            # orphans the previous images; nothing prunes them, so they grow
+            # without bound. On 2026-08-28 that filled a 96GB disk (75GB of
+            # build cache alone) and killed the deploy mid-way. Keep 72h of
+            # cache so consecutive deploys still hit it, and drop dangling
+            # images — neither touches anything a running container needs.
+            echo '==> Reclaiming disk (old build cache + dangling images)...'
+            docker builder prune -f --filter until=72h || true
+            docker image prune -f || true
+            df -h / | tail -1
+
             echo '==> Running migrations...'
             sleep 5
             docker compose -f docker-compose.prod.yml exec -T api php artisan migrate --force --no-interaction
