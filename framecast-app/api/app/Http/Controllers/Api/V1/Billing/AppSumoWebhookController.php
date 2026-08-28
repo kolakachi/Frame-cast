@@ -95,6 +95,14 @@ class AppSumoWebhookController extends Controller
         ?string $message,
         ?string $ip,
     ): void {
+        // Resolve the workspace defensively. record() rescues its own write,
+        // but an argument expression is evaluated BEFORE the call — so a throw
+        // here would escape the controller and hand AppSumo a 500, triggering
+        // retries for a purchase we had already processed.
+        $workspaceId = $licenseKey
+            ? rescue(fn () => \App\Models\AppSumoLicense::where('license_key', $licenseKey)->value('workspace_id'), null, false)
+            : null;
+
         BillingWebhookLog::record(
             provider: BillingWebhookLog::PROVIDER_APPSUMO,
             outcome: $outcome,
@@ -104,9 +112,7 @@ class AppSumoWebhookController extends Controller
             signatureValid: $signatureValid,
             httpStatus: $httpStatus,
             message: $message,
-            workspaceId: $licenseKey
-                ? \App\Models\AppSumoLicense::where('license_key', $licenseKey)->value('workspace_id')
-                : null,
+            workspaceId: $workspaceId,
             ip: $ip,
         );
     }
