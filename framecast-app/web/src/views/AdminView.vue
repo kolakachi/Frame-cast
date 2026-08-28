@@ -367,6 +367,50 @@ async function loadAudit() {
 }
 function auditPerPageChange() { auditPage.value = 1; loadAudit() }
 
+// ── Billing webhooks (Kelviq + AppSumo) ──────────────────────────────────────
+// Two logs over one endpoint. These live in the DB rather than storage/logs,
+// which is wiped on every deploy — that's what made a failed Kelviq delivery
+// impossible to diagnose after the fact.
+const hooksLoading = ref(false)
+const hooksData = ref([])
+const hooksCounts = ref({})
+const hooksPagination = ref({})
+const hooksProvider = ref('kelviq')
+const hooksOutcome = ref('')
+const hooksPage = ref(1)
+const hooksPerPage = ref(20)
+const hooksExpanded = ref(null)
+
+async function loadHooks() {
+  hooksLoading.value = true
+  try {
+    const res = await api.get('/admin/billing-webhooks', {
+      params: {
+        provider: hooksProvider.value,
+        outcome: hooksOutcome.value || undefined,
+        page: hooksPage.value,
+        per_page: hooksPerPage.value,
+      },
+    })
+    hooksData.value = res.data.data?.logs ?? []
+    hooksCounts.value = res.data.data?.counts ?? {}
+    hooksPagination.value = res.data.meta?.pagination ?? {}
+  } finally {
+    hooksLoading.value = false
+  }
+}
+function hooksSwitchProvider(p) { hooksProvider.value = p; hooksPage.value = 1; hooksExpanded.value = null; loadHooks() }
+function hooksFilter() { hooksPage.value = 1; loadHooks() }
+function hookOutcomeClass(outcome) {
+  return {
+    processed: 'badge-green',
+    duplicate: 'badge-purple',
+    ignored: 'badge-grey',
+    invalid_signature: 'badge-red',
+    error: 'badge-red',
+  }[outcome] || 'badge-grey'
+}
+
 // ── Videos ───────────────────────────────────────────────────────────────────
 const videosLoading = ref(false)
 const videosData = ref([])
@@ -632,6 +676,7 @@ function navigate(view) {
   if (view === 'videos') loadVideos()
   if (view === 'jobs') loadJobs()
   if (view === 'audit') loadAudit()
+  if (view === 'hooks') loadHooks()
   if (view === 'failures') loadFailures()
   if (view === 'billing') { loadBillingChart(); loadAudit() }
   if (view === 'storage') loadStorage()
@@ -717,6 +762,9 @@ onMounted(() => {
         <button :class="['nav-item', activeView === 'billing' ? 'active' : '']" @click="navigate('billing')">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           Billing
+        </button>
+        <button :class="['nav-item', activeView === 'hooks' ? 'active' : '']" @click="navigate('hooks')">
+          <span class="nav-icon">⇄</span><span class="nav-label">Webhooks</span>
         </button>
         <button :class="['nav-item', activeView === 'audit' ? 'active' : '']" @click="navigate('audit')">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
@@ -1181,6 +1229,83 @@ onMounted(() => {
                 <button :disabled="auditPage <= 1" @click="auditPage--; loadAudit()">‹</button>
                 <span>{{ auditPage }} / {{ auditPagination.last_page ?? 1 }}</span>
                 <button :disabled="auditPage >= (auditPagination.last_page ?? 1)" @click="auditPage++; loadAudit()">›</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ═══ BILLING WEBHOOKS ═══ -->
+        <template v-if="activeView === 'hooks'">
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Billing Webhooks</div>
+              <div class="section-actions">
+                <button :class="['btn', 'btn-sm', hooksProvider === 'kelviq' ? 'btn-primary' : '']" @click="hooksSwitchProvider('kelviq')">Kelviq</button>
+                <button :class="['btn', 'btn-sm', hooksProvider === 'appsumo' ? 'btn-primary' : '']" @click="hooksSwitchProvider('appsumo')">AppSumo</button>
+                <select v-model="hooksOutcome" class="pg-per-page" style="width:170px;" @change="hooksFilter">
+                  <option value="">All outcomes</option>
+                  <option value="processed">processed</option>
+                  <option value="duplicate">duplicate</option>
+                  <option value="ignored">ignored</option>
+                  <option value="invalid_signature">invalid signature</option>
+                  <option value="error">error</option>
+                </select>
+                <button class="btn btn-sm" @click="loadHooks()">Refresh</button>
+              </div>
+            </div>
+
+            <div class="hooks-counts">
+              <span v-for="(n, key) in hooksCounts" :key="key" :class="['badge', hookOutcomeClass(key)]">{{ key }}: {{ n }}</span>
+              <span v-if="!Object.keys(hooksCounts).length" class="cell-muted">No deliveries recorded yet.</span>
+            </div>
+
+            <div class="table-wrap">
+              <div v-if="hooksLoading" class="gm-spinner-wrap">Loading...</div>
+              <table v-else>
+                <thead>
+                  <tr><th>When</th><th>Event</th><th>Reference</th><th>Sig</th><th>Outcome</th><th>WS</th><th></th></tr>
+                </thead>
+                <tbody>
+                  <template v-for="row in hooksData" :key="row.id">
+                    <tr>
+                      <td class="cell-muted">{{ fmtDate(row.created_at) }}</td>
+                      <td>{{ row.event || '—' }}</td>
+                      <td class="cell-muted" style="max-width:230px;overflow:hidden;text-overflow:ellipsis">{{ row.event_id || '—' }}</td>
+                      <td>
+                        <span :class="['badge', row.signature_valid ? 'badge-green' : 'badge-red']">{{ row.signature_valid ? 'ok' : 'bad' }}</span>
+                      </td>
+                      <td><span :class="['badge', hookOutcomeClass(row.outcome)]">{{ row.outcome }}</span></td>
+                      <td class="cell-muted">{{ row.workspace_id ? '#' + row.workspace_id : '—' }}</td>
+                      <td>
+                        <button class="btn btn-sm" @click="hooksExpanded = hooksExpanded === row.id ? null : row.id">
+                          {{ hooksExpanded === row.id ? 'Hide' : 'Payload' }}
+                        </button>
+                      </td>
+                    </tr>
+                    <tr v-if="hooksExpanded === row.id">
+                      <td colspan="7">
+                        <div v-if="row.message" class="hook-msg">{{ row.message }}</div>
+                        <pre class="hook-payload">{{ JSON.stringify(row.payload, null, 2) }}</pre>
+                      </td>
+                    </tr>
+                  </template>
+                  <tr v-if="!hooksLoading && hooksData.length === 0">
+                    <td colspan="7" class="empty-cell">No {{ hooksProvider }} webhooks recorded yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="gm-pagination">
+              <span class="pg-label">Rows per page</span>
+              <select v-model="hooksPerPage" class="pg-per-page" @change="hooksFilter">
+                <option v-for="n in PER_PAGE_OPTIONS" :key="n" :value="n">{{ n }}</option>
+              </select>
+              <span class="pg-info">{{ hooksPagination.total ?? 0 }} total</span>
+              <div class="pg-controls">
+                <button :disabled="hooksPage <= 1" @click="hooksPage--; loadHooks()">‹</button>
+                <span>{{ hooksPage }} / {{ hooksPagination.last_page ?? 1 }}</span>
+                <button :disabled="hooksPage >= (hooksPagination.last_page ?? 1)" @click="hooksPage++; loadHooks()">›</button>
               </div>
             </div>
           </div>
@@ -2063,6 +2188,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.hooks-counts { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 0 4px; }
+.hook-msg { font-size: 12px; color: #f87171; padding: 6px 0; }
+.hook-payload { max-height: 340px; overflow: auto; background: #0d0d13; border: 1px solid #25252f; border-radius: 8px; padding: 12px; font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; margin: 0; }
+
 /* Trust & Safety / moderation tab */
 .gm-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .gm-modal { background: #14141c; border: 1px solid #2a2a36; border-radius: 12px; max-width: 640px; width: 90vw; max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }

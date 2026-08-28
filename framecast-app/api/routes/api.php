@@ -169,6 +169,8 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/jobs', [AdminController::class, 'jobs']);
             Route::get('/spend-chart', [AdminController::class, 'spendChart']);
             Route::get('/audit-log', [AdminController::class, 'auditLog']);
+            // Inbound billing webhooks (?provider=kelviq|appsumo).
+            Route::get('/billing-webhooks', [AdminController::class, 'billingWebhooks']);
             Route::get('/failure-traces', [AdminController::class, 'failureTraces']);
             Route::get('/storage', [AdminController::class, 'storage']);
 

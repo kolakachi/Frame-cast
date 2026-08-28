@@ -677,6 +677,68 @@ class AdminController extends Controller
         ]);
     }
 
+    /**
+     * Inbound billing webhooks, newest first. Two logs in practice — pass
+     * ?provider=kelviq or ?provider=appsumo.
+     *
+     * Exists because storage/logs is wiped on every deploy and neither
+     * provider exposes an event log we can replay from, so a failed delivery
+     * used to become unexplainable within hours.
+     */
+    public function billingWebhooks(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'provider' => ['nullable', Rule::in(['kelviq', 'appsumo'])],
+            'outcome'  => ['nullable', Rule::in(['processed', 'duplicate', 'ignored', 'invalid_signature', 'error'])],
+            'search'   => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $perPage = in_array((int) $request->query('per_page'), [10, 20, 50, 100], true)
+            ? (int) $request->query('per_page')
+            : 20;
+
+        $paginator = \App\Models\BillingWebhookLog::query()
+            ->when($validated['provider'] ?? null, fn ($q, $v) => $q->where('provider', $v))
+            ->when($validated['outcome'] ?? null, fn ($q, $v) => $q->where('outcome', $v))
+            ->when($validated['search'] ?? null, fn ($q, $v) => $q->where(
+                fn ($sub) => $sub->where('event_id', 'like', "%{$v}%")
+                    ->orWhere('event', 'like', "%{$v}%")
+                    ->orWhere('message', 'like', "%{$v}%")
+            ))
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', (int) ($request->query('page', 1)));
+
+        return response()->json([
+            'data' => [
+                'logs' => collect($paginator->items())->map(fn (\App\Models\BillingWebhookLog $l) => [
+                    'id'              => $l->id,
+                    'provider'        => $l->provider,
+                    'event'           => $l->event,
+                    'event_id'        => $l->event_id,
+                    'signature_valid' => $l->signature_valid,
+                    'outcome'         => $l->outcome,
+                    'http_status'     => $l->http_status,
+                    'message'         => $l->message,
+                    'workspace_id'    => $l->workspace_id,
+                    'payload'         => $l->payload,
+                    'ip'              => $l->ip,
+                    'created_at'      => $l->created_at?->toIso8601String(),
+                ])->all(),
+                'counts' => \App\Models\BillingWebhookLog::query()
+                    ->when($validated['provider'] ?? null, fn ($q, $v) => $q->where('provider', $v))
+                    ->selectRaw('outcome, count(*) as total')
+                    ->groupBy('outcome')
+                    ->pluck('total', 'outcome'),
+            ],
+            'meta' => ['pagination' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page'    => $paginator->lastPage(),
+                'per_page'     => $paginator->perPage(),
+                'total'        => $paginator->total(),
+            ]],
+        ]);
+    }
+
     private function planDistribution(): array
     {
         $total = Workspace::query()->count();

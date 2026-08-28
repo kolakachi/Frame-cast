@@ -27,6 +27,15 @@ Schedule::job(new ProcessOnboardingEmailsJob())->hourly()->name('process-onboard
 // gen and 15 min for animation (both well above worst-case real run times).
 Schedule::job(new ReapStuckGenerationsJob())->everyFiveMinutes()->name('reap-stuck-generations')->withoutOverlapping();
 
+// Billing webhook logs carry raw provider payloads, which include customer
+// name, email and billing address. Keep them long enough to debug a disputed
+// charge or a failed redemption, then drop them.
+Schedule::call(function (): void {
+    \App\Models\BillingWebhookLog::query()
+        ->where('created_at', '<', now()->subDays(\App\Models\BillingWebhookLog::RETENTION_DAYS))
+        ->delete();
+})->dailyAt('04:20')->name('prune-billing-webhook-logs')->withoutOverlapping();
+
 // Trust & Safety: scan the last 24h of generations + moderation events for
 // abuse patterns (rejection bursts, high-risk-term prompts), create
 // pattern_alert events, and email a single digest to the configured admin
