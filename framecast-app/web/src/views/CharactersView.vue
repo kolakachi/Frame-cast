@@ -70,6 +70,34 @@ const REF_MODEL_OPTIONS = [
 ];
 const genModelKey = ref("nano-banana-pro");
 const genStyle = ref("photorealistic");
+
+// Style catalog with B2 sample thumbnails, from the same /visual-styles
+// endpoint the New Video wizard uses — so the styles offered here, their
+// labels, and their samples can never drift from the ones shown there.
+// Falls back to a static list if the request fails, since a character can
+// still be generated without thumbnails.
+const styleCatalog = ref([
+  { key: "photorealistic", label: "Photorealistic", description: "Cinematic real-world stills" },
+  { key: "cinematic",      label: "Cinematic",      description: "Dramatic film-style shots" },
+  { key: "documentary",    label: "Documentary",    description: "Natural light realism" },
+  { key: "anime",          label: "Anime",          description: "Vibrant cel-shaded art" },
+  { key: "3d_animated",    label: "3D Animated",    description: "Pixar-quality 3D renders" },
+  { key: "comic",          label: "Comic",          description: "Bold ink and action" },
+  { key: "watercolor",     label: "Watercolor",     description: "Soft illustrated washes" },
+  { key: "dark_fantasy",   label: "Dark Fantasy",   description: "Gothic and ethereal" },
+  { key: "cyberpunk_80s",  label: "80s Cyberpunk",  description: "Neon retro future" },
+]);
+
+async function loadStyleCatalog() {
+  try {
+    const res = await api.get("/visual-styles");
+    const list = res?.data?.data ?? [];
+    // "custom" needs a free-text descriptor there is nowhere to type here,
+    // so it would send an empty style. Drop it rather than offer a dead card.
+    const usable = list.filter((s) => s.key && s.key !== "custom");
+    if (usable.length) styleCatalog.value = usable;
+  } catch { /* keep the static fallback */ }
+}
 const genAspectRatio = ref("9:16");
 const genQuality = ref("high");
 const genState = ref("idle");                    // 'idle' | 'loading' | 'done' | 'error'
@@ -235,6 +263,7 @@ onMounted(async () => {
     const me = await api.get("/me");
     mePayload.value = me.data?.data?.user ?? null;
   } catch {}
+  loadStyleCatalog();   // not awaited — thumbnails fill in, the page doesn't wait
   await loadCharacters();
   loading.value = false;
   refreshPendingPoll();
@@ -759,21 +788,30 @@ async function confirmDelete() {
             ></textarea>
           </div>
 
-          <div class="gen-controls-grid">
-            <div class="cv-field">
-              <label class="cv-label">Style</label>
-              <select v-model="genStyle" class="cv-input" :disabled="genState === 'loading'">
-                <option value="photorealistic">Photorealistic</option>
-                <option value="cinematic">Cinematic</option>
-                <option value="documentary">Documentary</option>
-                <option value="anime">Anime</option>
-                <option value="3d_animated">3D animated</option>
-                <option value="comic">Comic</option>
-                <option value="watercolor">Watercolor</option>
-                <option value="dark_fantasy">Dark fantasy</option>
-                <option value="cyberpunk_80s">Cyberpunk 80s</option>
-              </select>
+          <!-- Styles are shown, not named. A style is a visual choice, and a
+               word like "Fantasy Retro" doesn't tell you what you'll get. -->
+          <div class="cv-field">
+            <label class="cv-label">Style</label>
+            <div class="style-grid">
+              <button
+                v-for="st in styleCatalog"
+                :key="st.key"
+                type="button"
+                :class="['style-card', genStyle === st.key ? 'selected' : '']"
+                :disabled="genState === 'loading'"
+                :title="st.description || st.label"
+                @click="genStyle = st.key"
+              >
+                <span
+                  class="style-art"
+                  :style="st.sample_url ? { backgroundImage: `url(${st.sample_url})` } : {}"
+                ></span>
+                <span class="style-name">{{ st.label }}</span>
+              </button>
             </div>
+          </div>
+
+          <div class="gen-controls-grid gen-controls-grid-2">
             <div class="cv-field">
               <label class="cv-label">Aspect</label>
               <select v-model="genAspectRatio" class="cv-input" :disabled="genState === 'loading'">
@@ -978,6 +1016,14 @@ async function confirmDelete() {
 }
 .gen-mode-banner strong { color: var(--color-accent); }
 .gen-controls-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; }
+.gen-controls-grid-2 { grid-template-columns: 1fr 1fr; }
+.style-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 4px; }
+.style-card { padding: 0; overflow: hidden; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; text-align: left; font-family: inherit; transition: border-color .15s, transform .15s; }
+.style-card:hover:not(:disabled) { border-color: var(--color-text-muted); }
+.style-card.selected { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.style-card:disabled { opacity: .55; cursor: default; }
+.style-art { display: block; height: 68px; background-color: var(--color-bg-elevated); background-size: cover; background-position: center 25%; background-repeat: no-repeat; border-bottom: 1px solid var(--color-border); }
+.style-name { display: block; padding: 6px 8px; font-size: 11px; font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gen-promote-row { display: flex; gap: 8px; align-items: flex-start; padding: 10px 0; font-size: 12px; color: var(--color-text-secondary); cursor: pointer; line-height: 1.55; }
 .gen-promote-row input { margin-top: 3px; flex-shrink: 0; }
 .gen-promote-hint { display: block; font-size: 11px; color: var(--color-text-muted); margin-top: 3px; }
@@ -998,6 +1044,7 @@ async function confirmDelete() {
 .gen-progress-elapsed { font-family: "Space Mono", monospace; font-size: 10px; color: var(--color-text-muted); letter-spacing: 0.05em; margin-top: 2px; }
 @media (max-width: 600px) {
   .gen-controls-grid { grid-template-columns: 1fr; }
+  .style-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
 .cv-preview-replace {
