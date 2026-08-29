@@ -9437,6 +9437,9 @@ onBeforeUnmount(() => {
                     </span>
                     <span class="bulk-anim-scene-label">Scene {{ row.order }}</span>
                     <span v-if="row.blocked" class="bulk-anim-scene-why">{{ row.reason }}</span>
+                    <span v-else-if="row.shares_with" class="bulk-anim-scene-share">
+                      shares scene {{ row.shares_with }}'s clip · free
+                    </span>
                     <span v-else class="bulk-anim-scene-cost">{{ row.cost }} cr</span>
                   </button>
                 </div>
@@ -9454,6 +9457,14 @@ onBeforeUnmount(() => {
                   <div class="bulk-anim-row">
                     <span>{{ bulkAnimatePreview.eligible_count }} of {{ bulkAnimateRows.length }} scenes</span>
                     <strong :class="{ short: !bulkAnimatePreview.affordable }">{{ bulkAnimatePreview.total_cost }} credits</strong>
+                  </div>
+                  <!-- The whole point of the shared-clip path: one render
+                       covering several scenes, and what that saved. -->
+                  <div v-if="bulkAnimatePreview.saved > 0" class="bulk-anim-saving">
+                    {{ bulkAnimatePreview.render_count }}
+                    {{ bulkAnimatePreview.render_count === 1 ? 'render' : 'renders' }} —
+                    scenes built on the same image share one clip, saving
+                    {{ bulkAnimatePreview.saved }} credits.
                   </div>
                   <div class="bulk-anim-row sub">
                     <span>Your balance</span>
@@ -13419,6 +13430,8 @@ select.preset-select {
 .bulk-anim-box.blocked { border-style: dashed; color: var(--text-secondary); }
 .bulk-anim-scene-label { flex: 1; }
 .bulk-anim-scene-cost { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.bulk-anim-scene-share { font-size: 10.5px; color: #34d399; text-align: right; line-height: 1.35; }
+.bulk-anim-saving { margin-top: 6px; padding: 7px 9px; background: rgba(52,211,153,.1); border-radius: 6px; font-size: 11px; color: #34d399; line-height: 1.45; }
 .bulk-anim-scene-why { font-size: 10.5px; color: var(--text-secondary); text-align: right; max-width: 62%; line-height: 1.35; }
 .bulk-anim-selectall { width: 100%; padding: 6px; margin-bottom: 10px; background: none; border: 1px dashed var(--border-active); border-radius: 6px; color: var(--text-secondary); font-family: inherit; font-size: 11px; cursor: pointer; }
 .bulk-anim-selectall:hover { color: var(--text-primary); }
