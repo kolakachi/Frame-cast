@@ -30,6 +30,19 @@ return [
     'entries' => [
 
         [
+            'slug'  => '2026-08-29-video-from-pdf',
+            'date'  => '2026-08-29',
+            'tag'   => 'new',
+            'title' => 'Turn a PDF into a video',
+            'body'  => 'Upload a PDF and we\'ll build a video from it — reports, guides, one-pagers, '
+                .'decks. Long documents are condensed first, so the script covers the whole thing '
+                .'rather than just the opening pages. Scanned PDFs work too: where a page is a '
+                .'picture of text rather than text itself, we can read it with AI. You\'ll see how '
+                .'many pages that affects and exactly what it costs before anything is charged, and '
+                .'you can always choose to skip them.',
+        ],
+
+        [
             'slug'  => '2026-08-25-sharper-images-by-default',
             'date'  => '2026-08-25',
             'tag'   => 'improved',
