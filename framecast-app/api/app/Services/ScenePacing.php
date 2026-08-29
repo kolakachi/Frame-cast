@@ -61,6 +61,39 @@ class ScenePacing
      */
     public const PARSER_HARD_LIMIT = 60;
 
+    /**
+     * Above this, a video needs internal structure rather than one arc.
+     *
+     * A 3-minute video is not a 60-second video three times over: attention
+     * has to be re-won part way through, and 30 scenes of identical length
+     * read as a list rather than a story. Below the threshold a single
+     * hook-body-CTA arc is the right shape and sectioning would fragment it,
+     * so 30/60/90s deliberately get no structural instruction at all.
+     */
+    public const LONG_FORM_SECONDS = 120;
+
+    /**
+     * Structural guidance for long videos; empty for short ones.
+     *
+     * Pacing variation is already expressible — the breakdown returns a
+     * duration_seconds per scene — but nothing asked for it, so long videos
+     * came back uniformly paced.
+     */
+    public static function structureGuidance(int $durationSeconds): string
+    {
+        if ($durationSeconds < self::LONG_FORM_SECONDS) {
+            return '';
+        }
+
+        return 'This is a long video, so give it internal structure rather than one flat arc: '
+            .'group the scenes into 3-5 distinct sections, and open each section with its own '
+            .'short re-hook so a viewer arriving mid-way is pulled back in. '
+            .'Vary the pace deliberately — set a shorter duration_seconds (3-4s) on hooks, '
+            .'turns and recaps, and a longer one (7-9s) where something is being explained. '
+            .'Scenes of identical length read as a list rather than a story. '
+            .'Close on a single clear takeaway rather than trailing off.';
+    }
+
     /** Scenes to aim for at this length and visual mode. */
     public static function targetScenes(int $durationSeconds, ?string $visualMode, bool $animated = false): int
     {

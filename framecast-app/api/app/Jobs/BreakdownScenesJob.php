@@ -52,6 +52,7 @@ class BreakdownScenesJob implements ShouldQueue
                 $project->visual_generation_mode,
                 $animated,
             ),
+            'structure_guidance' => \App\Services\ScenePacing::structureGuidance($duration),
             'language' => $project->primary_language ?: 'en',
         ], $this->breakdownTokenBudget($duration, $project->visual_generation_mode, $animated), 0.2, [
             'usage_context' => [
