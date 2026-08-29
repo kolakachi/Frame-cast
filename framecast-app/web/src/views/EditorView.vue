@@ -5659,7 +5659,7 @@ function openAnimateModal() {
   bulkAnimateMode.value = false;
   bulkAnimatePreview.value = null;
   bulkAnimateSelection.value = null;
-  bulkAnimateSourceId.value = null;
+  bulkAnimateSourceId.value = null;   // re-seeded when bulk is switched on
   animateModalOpen.value = true;
   animateModelOpen.value = false;
 }
@@ -5805,10 +5805,9 @@ const bulkAnimateRows = computed(() => {
 const bulkAnimateSelectableCount = computed(
   () => bulkAnimateRows.value.filter((r) => !r.blocked).length);
 
-// Rows held back only because the scene has no still of its own. These are the
-// ones a picked image rescues.
-const bulkAnimateNeedImage = computed(
-  () => bulkAnimateRows.value.filter((r) => r.blocked && /pick an image/.test(r.reason || '')).length);
+// Scenes animating from the borrowed image rather than one of their own.
+const bulkAnimateBorrowCount = computed(
+  () => (bulkAnimatePreview.value?.scenes ?? []).filter((r) => r.from_picked_image).length);
 
 // The active scene's own still, offered as the obvious source to reuse.
 const bulkAnimateOwnStill = computed(() => {
@@ -5817,16 +5816,6 @@ const bulkAnimateOwnStill = computed(() => {
   const origId = activeScene.value?.image_generation_settings?.animation_original_image_asset_id;
   return origId ? { id: origId, title: 'this scene\'s original image' } : null;
 });
-
-function useOwnStillForAll() {
-  bulkAnimateSourceId.value = bulkAnimateOwnStill.value?.id ?? null;
-  loadBulkAnimatePreview();
-}
-
-function clearBulkSource() {
-  bulkAnimateSourceId.value = null;
-  loadBulkAnimatePreview();
-}
 
 async function loadBulkAnimatePreview() {
   if (!projectId.value) return;
@@ -5871,7 +5860,11 @@ function bulkAnimateSelectAll() {
 function toggleBulkAnimate() {
   bulkAnimateMode.value = !bulkAnimateMode.value;
   bulkAnimateSelection.value = null;
-  bulkAnimateSourceId.value = null;
+  // Default the fallback to the image you're configuring the action on. Bulk
+  // should behave like running this same action on each scene — a scene with
+  // its own still uses that; one with none (stock clip, upload) borrows this
+  // rather than being turned away and needing a separate decision.
+  bulkAnimateSourceId.value = bulkAnimateOwnStill.value?.id ?? null;
   if (bulkAnimateMode.value) loadBulkAnimatePreview();
   else { bulkAnimatePreview.value = null; animateError.value = ""; }
 }
@@ -9447,20 +9440,14 @@ onBeforeUnmount(() => {
                   <template v-else>With no motion direction, each scene moves naturally from its own image.</template>
                 </div>
 
-                <!-- Scenes with no still of their own aren't turned away:
-                     point them at one image and they animate from it. -->
-                <div v-if="bulkAnimateSourceId" class="bulk-anim-source on">
-                  <span>Animating every selected scene from your picked image.</span>
-                  <button type="button" class="bulk-anim-source-btn" @click="clearBulkSource">Use each scene's own image</button>
-                </div>
-                <div v-else-if="bulkAnimateNeedImage && bulkAnimateOwnStill" class="bulk-anim-source">
+                <!-- Scenes with no still of their own borrow the image you're
+                     working on, so bulk matches the single-scene action. -->
+                <div v-if="bulkAnimateBorrowCount" class="bulk-anim-source">
                   <span>
-                    {{ bulkAnimateNeedImage }} scene{{ bulkAnimateNeedImage === 1 ? ' has' : 's have' }}
-                    no still of their own — stock clips and uploads.
+                    {{ bulkAnimateBorrowCount }} scene{{ bulkAnimateBorrowCount === 1 ? '' : 's' }}
+                    (stock clips and uploads) have no image of their own — they'll animate
+                    from this scene's image, keeping their own script and voiceover.
                   </span>
-                  <button type="button" class="bulk-anim-source-btn" @click="useOwnStillForAll">
-                    Animate them from this scene's image
-                  </button>
                 </div>
 
                 <div v-if="!bulkAnimateSelectableCount" class="bulk-anim-none">
@@ -9485,7 +9472,7 @@ onBeforeUnmount(() => {
                     <span class="bulk-anim-scene-label">Scene {{ row.order }}</span>
                     <span v-if="row.blocked" class="bulk-anim-scene-why">{{ row.reason }}</span>
                     <span v-else-if="row.from_picked_image" class="bulk-anim-scene-share">
-                      from your picked image · {{ row.cost }} cr
+                      {{ row.shares_with ? `shares scene ${row.shares_with}'s clip · free` : `borrows this image · ${row.cost} cr` }}
                     </span>
                     <span v-else-if="row.shares_with" class="bulk-anim-scene-share">
                       shares scene {{ row.shares_with }}'s clip · free
@@ -13481,9 +13468,6 @@ select.preset-select {
 .bulk-anim-scene-label { flex: 1; }
 .bulk-anim-scene-cost { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .bulk-anim-source { display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px; padding: 9px 10px; background: var(--bg-elevated); border: 1px dashed var(--border-active); border-radius: 7px; font-size: 11px; color: var(--text-secondary); line-height: 1.45; }
-.bulk-anim-source.on { border-style: solid; border-color: var(--accent, #ff6b35); background: rgba(255,107,53,.07); }
-.bulk-anim-source-btn { align-self: flex-start; padding: 5px 9px; background: none; border: 1px solid var(--border-active); border-radius: 6px; color: var(--text-primary); font-family: inherit; font-size: 11px; cursor: pointer; }
-.bulk-anim-source-btn:hover { border-color: var(--accent, #ff6b35); color: var(--accent, #ff6b35); }
 .bulk-anim-scene-share { font-size: 10.5px; color: #34d399; text-align: right; line-height: 1.35; }
 .bulk-anim-saving { margin-top: 6px; padding: 7px 9px; background: rgba(52,211,153,.1); border-radius: 6px; font-size: 11px; color: #34d399; line-height: 1.45; }
 .bulk-anim-scene-why { font-size: 10.5px; color: var(--text-secondary); text-align: right; max-width: 62%; line-height: 1.35; }
