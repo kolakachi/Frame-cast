@@ -239,6 +239,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/projects/estimate-credits', [CreditEstimateController::class, 'estimate']);
         // Dry run for an uploaded PDF — free, no rendering, no credits spent.
         Route::post('/projects/analyze-pdf', \App\Http\Controllers\Api\V1\Project\PdfAnalysisController::class);
+        // Animate every scene at once. Returns a costed preview unless confirm=true.
+        Route::post('/projects/{projectId}/animate-all', \App\Http\Controllers\Api\V1\Project\BulkAnimateController::class)->whereNumber('projectId');
 
         Route::prefix('/projects')->group(function (): void {
             Route::get('/', [ProjectController::class, 'index']);
