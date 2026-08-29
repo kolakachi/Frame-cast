@@ -153,7 +153,13 @@ class PdfContentExtractor
         $pages  = (int) $response->json('page_count', 0);
         $counts = (array) $response->json('counts', []);
 
-        if (mb_strlen($text) < self::MIN_CONTENT_CHARS) {
+        $renders = (array) $response->json('renders', []);
+
+        // Fail only when we have NEITHER text NOR pages to read with vision.
+        // A fully scanned PDF has no text by definition — throwing here would
+        // have killed the feature for precisely the documents it exists for,
+        // because the renders sitting in this same response are the answer.
+        if (mb_strlen($text) < self::MIN_CONTENT_CHARS && $renders === []) {
             throw new RuntimeException(
                 "We couldn't find any readable text in {$label}. Scanned documents and image-only PDFs ".
                 "store pictures of words rather than the words themselves, so there's nothing to read. ".
@@ -186,7 +192,7 @@ class PdfContentExtractor
             'counts'    => $counts,
             // Rendered scanned pages, for the caller to transcribe and charge.
             // Empty unless rendering was explicitly requested.
-            'renders'   => (array) $response->json('renders', []),
+            'renders'   => $renders,
         ];
     }
 
