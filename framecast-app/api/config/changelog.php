@@ -30,8 +30,8 @@ return [
     'entries' => [
 
         [
-            'slug'  => '2026-08-30-ai-video-from-brief',
-            'date'  => '2026-08-30',
+            'slug'  => '2026-08-29-ai-video-from-brief',
+            'date'  => '2026-08-29',
             'tag'   => 'new',
             'title' => 'AI Video — fully animated videos from a brief',
             'body'  => 'The video wizard has a new visuals option: AI Video. Every scene gets an '
@@ -42,8 +42,8 @@ return [
         ],
 
         [
-            'slug'  => '2026-08-30-new-video-models',
-            'date'  => '2026-08-30',
+            'slug'  => '2026-08-29-new-video-models',
+            'date'  => '2026-08-29',
             'tag'   => 'new',
             'title' => 'Two new animation models: Veo 3.1 Fast and Seedance 2.5',
             'body'  => 'Google\'s Veo 3.1 Fast (sharp, natural motion — great with people) and '
@@ -53,8 +53,8 @@ return [
         ],
 
         [
-            'slug'  => '2026-08-30-bulk-scene-actions',
-            'date'  => '2026-08-30',
+            'slug'  => '2026-08-29-bulk-scene-actions',
+            'date'  => '2026-08-29',
             'tag'   => 'new',
             'title' => 'Do it once, apply it everywhere',
             'body'  => 'Three new bulk actions in the editor: animate scenes in one go (pick all '
@@ -66,8 +66,8 @@ return [
         ],
 
         [
-            'slug'  => '2026-08-30-audiogram-and-style-pickers',
-            'date'  => '2026-08-30',
+            'slug'  => '2026-08-29-audiogram-and-style-pickers',
+            'date'  => '2026-08-29',
             'tag'   => 'improved',
             'title' => 'See what you\'re picking',
             'body'  => 'The video wizard now lets you choose your audiogram\'s design, color and '
@@ -77,8 +77,8 @@ return [
         ],
 
         [
-            'slug'  => '2026-08-30-videos-match-their-length',
-            'date'  => '2026-08-30',
+            'slug'  => '2026-08-29-videos-match-their-length',
+            'date'  => '2026-08-29',
             'tag'   => 'fixed',
             'title' => 'Longer videos actually come out longer',
             'body'  => 'Choosing 90 seconds or 3 minutes could still produce a much shorter video '
@@ -89,8 +89,8 @@ return [
         ],
 
         [
-            'slug'  => '2026-08-30-voice-direction-stays-silent',
-            'date'  => '2026-08-30',
+            'slug'  => '2026-08-29-voice-direction-stays-silent',
+            'date'  => '2026-08-29',
             'tag'   => 'fixed',
             'title' => 'Voice direction no longer read aloud',
             'body'  => 'Occasionally an expressive voice would speak its direction — "calm, '

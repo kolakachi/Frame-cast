@@ -26,7 +26,13 @@ class ChangelogController extends Controller
             ? count($entries)
             : count(array_filter(
                 $entries,
-                fn (array $e) => $e['date'] !== null && Carbon::parse($e['date'])->endOfDay()->greaterThan($seenAt),
+                // startOfDay, not endOfDay: entries carry only a date while
+                // seen_at is a timestamp, and endOfDay made every entry dated
+                // TODAY count as unread until midnight — the dot came back on
+                // refresh all day, however many times the drawer was opened.
+                // The trade-off (an entry published later the same day the
+                // user last looked won't re-dot) is the lesser wrong.
+                fn (array $e) => $e['date'] !== null && Carbon::parse($e['date'])->startOfDay()->greaterThan($seenAt),
             ));
 
         return response()->json([
