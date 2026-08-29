@@ -51,11 +51,11 @@ class BulkAnimateController extends Controller
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:1000'],
             'quality'          => ['sometimes', 'nullable', 'string', 'max:16'],
-            // Fallback still for scenes that have none of their own. Bulk is
-            // meant to behave exactly like running the single-scene action on
-            // each scene: a scene with its own image animates THAT image; only
-            // a scene with nothing to animate (stock clip, upload) falls back
-            // to this one, instead of being turned away.
+            // The still EVERY selected scene animates from. Applying an
+            // action to all scenes means applying the whole action, image
+            // included — a scene's existing visual is replaced, and only its
+            // script and voiceover stay its own. Scenes keep their previous
+            // visual as their revert target, so this is undoable per scene.
             'source_asset_id'  => ['sometimes', 'nullable', 'integer'],
             // Restrict to chosen scenes. Absent = every eligible scene.
             'scene_ids'        => ['sometimes', 'array'],
@@ -72,18 +72,18 @@ class BulkAnimateController extends Controller
 
         // A picked source image, validated once. Must be an image in this
         // workspace — an override is not a way to reach another tenant's asset.
-        $fallbackStill = null;
+        $appliedStill = null;
         if (! empty($validated['source_asset_id'])) {
-            $fallbackStill = Asset::query()
+            $appliedStill = Asset::query()
                 ->whereKey((int) $validated['source_asset_id'])
                 ->where('workspace_id', $user->workspace_id)
                 ->first();
 
-            if (! $fallbackStill || ! $fallbackStill->storage_url) {
+            if (! $appliedStill || ! $appliedStill->storage_url) {
                 return $this->error('source_not_found', 'That image could not be found.', 404);
             }
 
-            if ($fallbackStill->asset_type === 'video' || str_starts_with((string) $fallbackStill->mime_type, 'video/')) {
+            if ($appliedStill->asset_type === 'video' || str_starts_with((string) $appliedStill->mime_type, 'video/')) {
                 return $this->error('source_not_image', 'Pick a still image — animation cannot start from a video.', 422);
             }
         }
@@ -102,9 +102,10 @@ class BulkAnimateController extends Controller
         $skipped  = [];
 
         foreach ($scenes as $scene) {
-            // Its own still if it has one, otherwise the fallback. This is the
-            // whole rule — everything below just reports it.
-            $sceneSource = $this->sourceStill($scene) ?? $fallbackStill;
+            // The chosen image wins for every scene; only without one does a
+            // scene fall back to its own still.
+            $ownStill    = $this->sourceStill($scene);
+            $sceneSource = $appliedStill ?? $ownStill;
             $reason      = $this->ineligibleReason($scene, $isSpokesperson, $sceneSource);
 
             if ($reason !== null) {
@@ -139,8 +140,12 @@ class BulkAnimateController extends Controller
                 'order'           => (int) $scene->scene_order,
                 'cost'            => $cost,
                 'source_still_id' => (int) $sceneSource->getKey(),
-                // True when this scene had nothing of its own and is borrowing.
-                'from_picked_image' => $this->sourceStill($scene) === null,
+                // This scene had its own image and is losing it to the batch.
+                'replaces_own'      => $appliedStill !== null
+                    && $ownStill !== null
+                    && $ownStill->getKey() !== $appliedStill->getKey(),
+                // Had nothing of its own; the chosen image gives it one.
+                'from_picked_image' => $ownStill === null,
             ];
         }
 
@@ -184,7 +189,8 @@ class BulkAnimateController extends Controller
             'tier'            => $validated['tier'],
             'eligible_count'  => count($eligible),
             'render_count'    => $isSpokesperson ? count($eligible) : count($groups),
-            'source_asset_id' => $fallbackStill?->getKey(),
+            'source_asset_id' => $appliedStill?->getKey(),
+            'replaced_count'  => count(array_filter(array_column($eligible, 'replaces_own'))),
             'unshared_cost'   => $unsharedTotal,
             'saved'           => max(0, $unsharedTotal - array_sum(array_column($eligible, 'cost'))),
             'skipped'         => $skipped,
@@ -283,7 +289,7 @@ class BulkAnimateController extends Controller
                     $scene->getKey(),
                     $scene->project_id,
                     $token,
-                    $this->sourceStill($scene)?->getKey() ?? $fallbackStill?->getKey(),
+                    $appliedStill?->getKey() ?? $this->sourceStill($scene)?->getKey(),
                 );
             } else {
                 \App\Jobs\AnimateSceneJob::dispatch(
@@ -294,7 +300,7 @@ class BulkAnimateController extends Controller
                     $validated['motion_prompt'] ?? null,
                     quality: $quality,
                     shareWithSceneIds: $sharersFor[$row['scene_id']] ?? [],
-                    sourceAssetId: $this->sourceStill($scene)?->getKey() ?? $fallbackStill?->getKey(),
+                    sourceAssetId: $appliedStill?->getKey() ?? $this->sourceStill($scene)?->getKey(),
                 );
             }
 

@@ -5805,9 +5805,9 @@ const bulkAnimateRows = computed(() => {
 const bulkAnimateSelectableCount = computed(
   () => bulkAnimateRows.value.filter((r) => !r.blocked).length);
 
-// Scenes animating from the borrowed image rather than one of their own.
-const bulkAnimateBorrowCount = computed(
-  () => (bulkAnimatePreview.value?.scenes ?? []).filter((r) => r.from_picked_image).length);
+// Scenes that will lose their own image to the batch's image.
+const bulkAnimateReplacedCount = computed(
+  () => bulkAnimatePreview.value?.replaced_count ?? 0);
 
 // The active scene's own still, offered as the obvious source to reuse.
 const bulkAnimateOwnStill = computed(() => {
@@ -9440,13 +9440,19 @@ onBeforeUnmount(() => {
                   <template v-else>With no motion direction, each scene moves naturally from its own image.</template>
                 </div>
 
-                <!-- Scenes with no still of their own borrow the image you're
-                     working on, so bulk matches the single-scene action. -->
-                <div v-if="bulkAnimateBorrowCount" class="bulk-anim-source">
+                <!-- Applying the action to every scene applies the IMAGE too.
+                     Say so plainly — a scene silently losing its visual is the
+                     kind of thing users should agree to, not discover. -->
+                <div v-if="bulkAnimateSourceId" class="bulk-anim-source">
+                  <strong>Every selected scene will use this scene's image.</strong>
                   <span>
-                    {{ bulkAnimateBorrowCount }} scene{{ bulkAnimateBorrowCount === 1 ? '' : 's' }}
-                    (stock clips and uploads) have no image of their own — they'll animate
-                    from this scene's image, keeping their own script and voiceover.
+                    Each keeps its own script and voiceover — only the visual is shared.
+                    <template v-if="bulkAnimateReplacedCount">
+                      {{ bulkAnimateReplacedCount }} scene{{ bulkAnimateReplacedCount === 1 ? '' : 's' }}
+                      already {{ bulkAnimateReplacedCount === 1 ? 'has' : 'have' }} an image of
+                      {{ bulkAnimateReplacedCount === 1 ? 'its' : 'their' }} own and will be replaced —
+                      you can revert any scene afterwards.
+                    </template>
                   </span>
                 </div>
 
@@ -9471,8 +9477,8 @@ onBeforeUnmount(() => {
                     </span>
                     <span class="bulk-anim-scene-label">Scene {{ row.order }}</span>
                     <span v-if="row.blocked" class="bulk-anim-scene-why">{{ row.reason }}</span>
-                    <span v-else-if="row.from_picked_image" class="bulk-anim-scene-share">
-                      {{ row.shares_with ? `shares scene ${row.shares_with}'s clip · free` : `borrows this image · ${row.cost} cr` }}
+                    <span v-else-if="row.replaces_own" class="bulk-anim-scene-replace">
+                      {{ row.shares_with ? 'image replaced · free' : `image replaced · ${row.cost} cr` }}
                     </span>
                     <span v-else-if="row.shares_with" class="bulk-anim-scene-share">
                       shares scene {{ row.shares_with }}'s clip · free
@@ -13467,7 +13473,9 @@ select.preset-select {
 .bulk-anim-box.blocked { border-style: dashed; color: var(--text-secondary); }
 .bulk-anim-scene-label { flex: 1; }
 .bulk-anim-scene-cost { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.bulk-anim-source { display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px; padding: 9px 10px; background: var(--bg-elevated); border: 1px dashed var(--border-active); border-radius: 7px; font-size: 11px; color: var(--text-secondary); line-height: 1.45; }
+.bulk-anim-source strong { color: var(--text-primary); font-size: 11.5px; }
+.bulk-anim-source { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; padding: 9px 10px; background: var(--bg-elevated); border: 1px dashed var(--border-active); border-radius: 7px; font-size: 11px; color: var(--text-secondary); line-height: 1.45; }
+.bulk-anim-scene-replace { font-size: 10.5px; color: #fbbf24; text-align: right; line-height: 1.35; }
 .bulk-anim-scene-share { font-size: 10.5px; color: #34d399; text-align: right; line-height: 1.35; }
 .bulk-anim-saving { margin-top: 6px; padding: 7px 9px; background: rgba(52,211,153,.1); border-radius: 6px; font-size: 11px; color: #34d399; line-height: 1.45; }
 .bulk-anim-scene-why { font-size: 10.5px; color: var(--text-secondary); text-align: right; max-width: 62%; line-height: 1.35; }
