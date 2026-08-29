@@ -266,7 +266,7 @@ class VariantController extends Controller
                 'watermark_enabled' => $this->shouldWatermark((int) $derivedProject->workspace_id, (bool) ($validated['watermark_enabled'] ?? false)),
                 'status' => 'queued',
                 'progress_percent' => 0,
-                'priority' => 0,
+                'priority' => CreditService::exportPriorityFor($user->workspace?->plan_tier),
                 'queued_at' => now(),
             ]);
 

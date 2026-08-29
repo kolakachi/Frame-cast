@@ -1702,7 +1702,7 @@ class ProjectController extends Controller
                 'watermark_enabled' => $watermark,
                 'status' => 'queued',
                 'progress_percent' => 0,
-                'priority' => 0,
+                'priority' => CreditService::exportPriorityFor($user->workspace?->plan_tier),
                 'queued_at' => now(),
             ]);
 

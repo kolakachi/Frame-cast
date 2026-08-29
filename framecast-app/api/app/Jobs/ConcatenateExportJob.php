@@ -37,7 +37,9 @@ class ConcatenateExportJob implements ShouldQueue
         public readonly int $exportJobId,
         public readonly int $sceneCount,
     ) {
-        $this->onQueue('exports');
+        // Final step of the chain — stays on the export's own queue so a
+        // priority job isn't overtaken at the last hurdle.
+        $this->onQueue(ProcessExportJob::queueForExport($exportJobId));
     }
 
     public function handle(): void

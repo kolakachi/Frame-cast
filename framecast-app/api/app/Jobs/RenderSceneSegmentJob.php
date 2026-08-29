@@ -39,7 +39,9 @@ class RenderSceneSegmentJob implements ShouldQueue
         public readonly float $elapsedSeconds,    // cumulative duration of preceding scenes
         public readonly float $totalDurationSeconds,
     ) {
-        $this->onQueue('exports');
+        // Same queue as its parent export, so a priority export's scenes don't
+        // queue behind standard-tier work halfway through.
+        $this->onQueue(ProcessExportJob::queueForExport($exportJobId));
     }
 
     public function handle(): void

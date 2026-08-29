@@ -52,6 +52,36 @@ class CreditService
     public const PDF_VISION_MAX_PER_DOCUMENT = 200;
 
     /**
+     * Plans whose exports jump the queue.
+     *
+     * "Top priority queue" is advertised on the Agency card and specified in
+     * PRD.md ("Higher tier jobs are dequeued first"), but was never built:
+     * every export was created with priority 0 and nothing ordered by it.
+     */
+    public const PRIORITY_EXPORT_TIERS = ['agency', 'enterprise', 'scale', 'appsumo_agency'];
+
+    /**
+     * Queue an export should run on.
+     *
+     * Laravel drains `--queue=a,b` strictly left to right, so putting priority
+     * work on its own queue name IS the priority mechanism — no custom dequeue
+     * logic, no polling, nothing to keep in sync. The workers list
+     * exports-priority ahead of exports.
+     */
+    public static function exportQueueFor(?string $planTier): string
+    {
+        return in_array((string) $planTier, self::PRIORITY_EXPORT_TIERS, true)
+            ? 'exports-priority'
+            : 'exports';
+    }
+
+    /** Numeric priority stored on the export row, for display and reporting. */
+    public static function exportPriorityFor(?string $planTier): int
+    {
+        return in_array((string) $planTier, self::PRIORITY_EXPORT_TIERS, true) ? 10 : 0;
+    }
+
+    /**
      * Scanned pages we'll read from one document for this plan.
      *
      * Always an int: null in PLAN_LIMITS means "no plan limit", never "no

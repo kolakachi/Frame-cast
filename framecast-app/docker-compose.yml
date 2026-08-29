@@ -61,10 +61,13 @@ services:
         condition: service_healthy
 
   worker-exports:
+    # NOTE the queue ORDER: Laravel drains --queue left to right, so listing
+    # exports-priority first IS the "top priority queue" Agency is sold on.
+    # Reordering these silently removes a paid feature.
     init: true  # see note at top of file
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=exports,rendering --tries=1 --timeout=2700
+    command: php artisan queue:work redis --queue=exports-priority,exports,rendering --tries=1 --timeout=2700
     env_file:
       - ./api/.env
     environment:

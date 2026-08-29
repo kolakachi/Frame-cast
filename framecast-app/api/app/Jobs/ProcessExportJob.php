@@ -36,7 +36,28 @@ class ProcessExportJob implements ShouldQueue
 
     public function __construct(public readonly int $exportJobId)
     {
-        $this->onQueue('exports');
+        // Priority tiers run on their own queue, which the workers drain first.
+        $this->onQueue(self::queueForExport($exportJobId));
+    }
+
+    /**
+     * Which queue this export belongs on, from the owning workspace's plan.
+     *
+     * Resolved at dispatch time rather than passed in, so every dispatch site
+     * gets it without having to remember. Falls back to the standard queue if
+     * the row or workspace can't be read — an export on the slow queue is a
+     * far better failure than an export that never runs.
+     */
+    public static function queueForExport(int $exportJobId): string
+    {
+        return rescue(function () use ($exportJobId) {
+            $tier = ExportJob::query()
+                ->whereKey($exportJobId)
+                ->join('workspaces', 'workspaces.id', '=', 'export_jobs.workspace_id')
+                ->value('workspaces.plan_tier');
+
+            return \App\Services\CreditService::exportQueueFor($tier);
+        }, 'exports', false);
     }
 
     public function handle(): void
@@ -149,7 +170,7 @@ class ProcessExportJob implements ShouldQueue
                     );
                 }, false);
             })
-            ->onQueue('exports')
+            ->onQueue(self::queueForExport($this->exportJobId))
             ->dispatch();
     }
 
