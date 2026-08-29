@@ -2281,12 +2281,15 @@ defineExpose({ open })
 .image-ai-hint { display: flex; gap: 10px; padding: 10px 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid rgba(255,107,53,0.2); background: rgba(255,107,53,0.08); color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; }
 .image-ai-hint strong { color: var(--color-text-primary); }
 
-.ag-style-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+/* Compact, editor-proportioned tiles. The modal is ~1500px wide; letting the
+   grid fill it made each preview a ~380px void — bars stretched into poles and
+   the fixed-size radial SVG shrank to a dot. Cap the grid instead. */
+.ag-style-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; max-width: 620px; }
 .ag-style-opt { background: var(--color-bg-elevated); border: 1.5px solid var(--color-border); border-radius: 8px; padding: 8px 6px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: border-color 0.15s; }
 .ag-style-opt:hover { border-color: var(--color-border-active); }
 .ag-style-opt.selected { border-color: var(--color-accent); }
-.ag-style-mini { width: 100%; aspect-ratio: 1 / 1; border-radius: 5px; display: flex; align-items: flex-end; justify-content: center; gap: 2px; overflow: hidden; padding: 8px 8px 6px; }
-.ag-mini-bar { flex: 1; max-width: 9px; border-radius: 2px 2px 0 0; opacity: 0.9; }
+.ag-style-mini { width: 100%; height: 64px; border-radius: 5px; display: flex; align-items: flex-end; justify-content: center; gap: 2px; overflow: hidden; padding: 6px 6px 4px; }
+.ag-mini-bar { flex: 1; max-width: 14px; border-radius: 2px 2px 0 0; opacity: 0.9; }
 .ag-mini-mirror { border-radius: 999px; align-self: center; }
 .ag-mini-minimal { flex: 1; max-width: 4px; border-radius: 1px 1px 0 0; opacity: 0.85; }
 .ag-style-label { font-size: 10px; color: var(--color-text-muted); font-weight: 500; }
@@ -2297,7 +2300,7 @@ defineExpose({ open })
 .ag-color-custom { width: 22px; height: 22px; border-radius: 50%; border: 1.5px dashed var(--color-border-active); cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
 .ag-color-custom input[type="color"] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .ag-color-custom-icon { font-size: 13px; color: var(--color-text-muted); pointer-events: none; }
-.ag-bg-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.ag-bg-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; max-width: 620px; }
 .ag-bg-opt { height: 32px; border-radius: 6px; border: 1.5px solid transparent; cursor: pointer; font-size: 9px; font-weight: 600; color: rgba(255,255,255,.7); letter-spacing: .04em; transition: border-color 0.12s; }
 .ag-bg-opt:hover { border-color: var(--color-border-active); }
 .ag-bg-opt.selected { border-color: #fff; }
