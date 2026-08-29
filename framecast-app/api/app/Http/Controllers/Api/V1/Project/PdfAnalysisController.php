@@ -72,8 +72,11 @@ class PdfAnalysisController extends Controller
 
         $plan       = WorkspaceUsageService::plans()[$user->workspace?->plan_tier ?? 'free'] ?? [];
         $limits     = CreditService::PLAN_LIMITS[$user->workspace?->plan_tier ?? 'free'] ?? CreditService::PLAN_LIMITS['free'];
-        $pageLimit  = $limits['pdf_page_limit'] ?? null;
-        $visionCap  = $limits['pdf_vision_page_limit'] ?? 0;
+        // null means UNLIMITED in PLAN_LIMITS, so `?? 0` would read "unlimited"
+        // as "none" — the most restrictive value, and exactly backwards. Only
+        // an absent key should fall back.
+        $pageLimit  = array_key_exists('pdf_page_limit', $limits) ? $limits['pdf_page_limit'] : null;
+        $visionCap  = array_key_exists('pdf_vision_page_limit', $limits) ? $limits['pdf_vision_page_limit'] : 0;
 
         // Pages we'd read at all, and of those, how many need vision.
         $readablePages   = $pageLimit === null ? $pageCount : min($pageCount, $pageLimit);
