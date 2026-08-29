@@ -78,7 +78,45 @@ const aiBrollStyle = ref('photorealistic')
 // the backend as project.custom_visual_style and is substituted into every
 // scene's image prompt in place of a preset style descriptor.
 const customVisualStyle = ref('')
-const globalVisualMode = ref('stock_video') // 'stock_video' | 'stock_images' | 'ai_images' | 'waveform'
+const globalVisualMode = ref('stock_video') // 'stock_video' | 'stock_images' | 'ai_images' | 'ai_video' | 'waveform'
+
+// ── AI Video (animated b-roll) ─────────────────────────────────────────
+// The video model is the real price lever — a 4x spread per scene — so it is
+// an explicit choice, never a hidden default.
+const animateTier = ref('quick')
+const ANIMATE_TIER_OPTIONS = [
+  { key: 'seedance_lite', label: 'Seedance Lite', sub: '720p · fastest', cr: 30 },
+  { key: 'quick',         label: 'Wan 2.5',       sub: '480p · balanced', cr: 50 },
+  { key: 'premium',       label: 'Kling Pro',     sub: 'pro mode · cinematic', cr: 100 },
+  { key: 'seedance_pro',  label: 'Seedance Pro',  sub: '1080p · sharpest', cr: 125 },
+]
+
+// Server-priced quote for AI Video. Local arithmetic is NOT trusted for this
+// mode — per-scene cost is image + animation and scene count follows the
+// animated pacing rule, both of which live in the backend. Quote = charge.
+const aiVideoEstimate = ref(null)
+const aiVideoEstimateLoading = ref(false)
+let aiVideoEstimateTimer = null
+async function refreshAiVideoEstimate() {
+  if (globalVisualMode.value !== 'ai_video') return
+  aiVideoEstimateLoading.value = true
+  try {
+    const res = await api.post('/projects/estimate-credits', {
+      source_type: wizardSourceType.value || 'prompt',
+      source_content_raw: (wizardSourceType.value === 'prompt' ? promptText.value : '') || null,
+      visual_generation_mode: 'ai_video',
+      duration_target_seconds: Number(durationTargetSeconds.value || 60),
+      animate_tier: animateTier.value,
+    })
+    aiVideoEstimate.value = res?.data?.data ?? null
+  } catch { aiVideoEstimate.value = null }
+  finally { aiVideoEstimateLoading.value = false }
+}
+watch([globalVisualMode, animateTier, durationTargetSeconds], () => {
+  if (globalVisualMode.value !== 'ai_video') { aiVideoEstimate.value = null; return }
+  clearTimeout(aiVideoEstimateTimer)
+  aiVideoEstimateTimer = setTimeout(refreshAiVideoEstimate, 250)
+})
 const brandKits = ref([])
 // Voice picker — selected at wizard time, applied to every generated scene
 // as default_voice_settings_json.voice_id. Loaded from /voice-profiles on
@@ -169,6 +207,7 @@ const visualTypeOptions = [
   { key: 'stock_video', label: 'Stock Video', hint: 'Real clips matched to each scene' },
   { key: 'stock_images', label: 'Stock Images', hint: 'Editorial stills and image montages' },
   { key: 'ai_images', label: 'AI Images', hint: 'Generated frames in your chosen style' },
+  { key: 'ai_video', label: 'AI Video', hint: 'AI images animated into real motion — premium b-roll' },
   { key: 'waveform', label: 'Audiogram', hint: 'Audio-reactive bars for podcasts and narration' },
 ]
 
@@ -497,6 +536,12 @@ onMounted(async () => {
 const creditEstimate = computed(() => {
   const SCRIPT = 2, BREAKDOWN = 1, TTS = 2, EXPORT = 5, STOCK = 1, AI_MED = 15
   const mode = globalVisualMode.value
+  // ai_video is priced by the server (see aiVideoEstimate) — image+animation
+  // per scene and animated pacing both live in the backend.
+  if (mode === 'ai_video') {
+    const e = aiVideoEstimate.value
+    return e ? { min: e.credits_min, max: e.credits_max, visualPerScene: e.breakdown?.visual_per_scene ?? 0 } : null
+  }
   const visualPerScene = ['ai_images','ai_broll'].includes(mode) ? AI_MED : STOCK
   const fixed = SCRIPT + BREAKDOWN + EXPORT
 
@@ -921,6 +966,11 @@ async function submitWizardProject() {
         : {}),
       ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'ai_images'
         ? { visual_type: projectVisualTypeForMode('ai_images'), ai_broll_style: aiBrollStyle.value }
+        : {}),
+      // ai_video sends the MODE, not visual_type — the controller derives the
+      // scene type from the mode, and a visual_type here would stomp it.
+      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'ai_video'
+        ? { visual_generation_mode: 'ai_video', ai_broll_style: aiBrollStyle.value, animate_tier: animateTier.value }
         : {}),
       ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'stock_images'
         ? { visual_type: projectVisualTypeForMode('stock_images') }
@@ -1696,10 +1746,11 @@ defineExpose({ open })
           <div class="wizard-visual-hint">
             {{ visualTypeOptions.find((item) => item.key === globalVisualMode)?.hint }}
           </div>
-          <div v-if="globalVisualMode === 'ai_images'">
+          <div v-if="globalVisualMode === 'ai_images' || globalVisualMode === 'ai_video'">
             <div class="image-ai-hint" style="margin-top:10px;">
               <span>✦</span>
-              <span>AI generates a custom image for every scene. Pick the visual style below.</span>
+              <span v-if="globalVisualMode === 'ai_video'">AI generates an image for every scene, then animates it into motion. Fewer, longer scenes keep the cost down — the video still runs the full length. Pick the visual style below.</span>
+              <span v-else>AI generates a custom image for every scene. Pick the visual style below.</span>
             </div>
             <div class="ai-broll-grid" style="margin-top:10px;">
               <button
@@ -1728,6 +1779,37 @@ defineExpose({ open })
                 <div class="hint-box">This text is appended to every scene's image prompt in place of a preset descriptor. Be concrete — name the director, film stock, mood, color grade.</div>
               </label>
             </div>
+
+            <!-- AI Video: model + honest, server-priced cost. -->
+            <template v-if="globalVisualMode === 'ai_video'">
+              <div class="input-label" style="margin:14px 0 8px;">Video model</div>
+              <div class="anim-tier-row">
+                <button
+                  v-for="t in ANIMATE_TIER_OPTIONS"
+                  :key="t.key"
+                  type="button"
+                  :class="['anim-tier-card', animateTier === t.key ? 'selected' : '']"
+                  @click="animateTier = t.key"
+                >
+                  <span class="anim-tier-name">{{ t.label }}</span>
+                  <span class="anim-tier-sub">{{ t.sub }}</span>
+                  <span class="anim-tier-cost">{{ t.cr }} cr / scene</span>
+                </button>
+              </div>
+
+              <div class="anim-cost-line" v-if="aiVideoEstimateLoading">Working out the cost…</div>
+              <div class="anim-cost-line" v-else-if="aiVideoEstimate">
+                ~{{ aiVideoEstimate.scenes_min }}–{{ aiVideoEstimate.scenes_max }} animated scenes ·
+                <strong>{{ aiVideoEstimate.credits_min }}–{{ aiVideoEstimate.credits_max }} credits</strong>
+                <template v-if="!aiVideoEstimate.can_afford">
+                  <span class="anim-cost-short"> — you're {{ aiVideoEstimate.shortage }} credits short</span>
+                </template>
+              </div>
+              <div v-if="Number(durationTargetSeconds) >= 120" class="anim-cost-warn">
+                Long videos multiply this quickly — a 3-minute AI Video runs 14–22 animated scenes.
+                Consider 60–90s, or AI Images with animation added to key scenes in the editor.
+              </div>
+            </template>
           </div>
           <div v-else-if="globalVisualMode === 'waveform'" class="image-ai-hint" style="margin-top:10px;">
             <span>🌊</span>
@@ -2105,6 +2187,17 @@ defineExpose({ open })
 .image-ai-hint { display: flex; gap: 10px; padding: 10px 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid rgba(255,107,53,0.2); background: rgba(255,107,53,0.08); color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; }
 .image-ai-hint strong { color: var(--color-text-primary); }
 
+.anim-tier-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.anim-tier-card { display: flex; flex-direction: column; gap: 2px; padding: 10px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; transition: border-color .15s; }
+.anim-tier-card:hover { border-color: var(--color-text-muted); }
+.anim-tier-card.selected { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.anim-tier-name { font-size: 12.5px; font-weight: 700; color: var(--color-text-primary); }
+.anim-tier-sub { font-size: 10.5px; color: var(--color-text-muted); }
+.anim-tier-cost { font-size: 11px; color: var(--color-accent); font-weight: 600; margin-top: 3px; }
+.anim-cost-line { margin-top: 10px; font-size: 12px; color: var(--color-text-muted); }
+.anim-cost-line strong { color: var(--color-text-primary); }
+.anim-cost-short { color: #f87171; }
+.anim-cost-warn { margin-top: 8px; padding: 8px 10px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.25); border-radius: 7px; font-size: 11.5px; color: #fbbf24; line-height: 1.45; }
 .ai-broll-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
 .custom-style-panel { padding: 12px; border-radius: 8px; background: rgba(255,107,53,0.04); border: 1px solid rgba(255,107,53,0.2); margin: -6px 0 14px; }
 .ai-broll-card { min-height: 200px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; padding: 0; overflow: hidden; transition: 0.15s; display: flex; flex-direction: column; }
