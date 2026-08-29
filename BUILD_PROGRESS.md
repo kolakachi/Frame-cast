@@ -2,9 +2,15 @@
 
 ## How to use this file
 
-This is the execution record for the Framecast build. It mirrors the phases in `spec/MASTER.md`.
+This was the execution record for the original phased build (the product was
+called Framecast then). It mirrors the phases in `spec/MASTER.md`.
 
-**Rules:**
+> **Read this first:** the phased build finished and the product moved on. This
+> file is kept as history. Live status lives in
+> [`spec/PENDING.md`](./spec/PENDING.md). Do not treat the phases below as the
+> current plan — they describe a different product for a different audience.
+
+**Rules (applied while the phased build was running):**
 - Update this file as you complete work — mark tasks `[x]` when done
 - Record blockers, decisions made during implementation, and anything that deviates from the spec
 - Any agent or engineer picking up this work reads this file first to understand current state
@@ -21,9 +27,21 @@ This is the execution record for the Framecast build. It mirrors the phases in `
 
 ## Current State
 
-**Active phase:** MVP Exit Gate QA
-**Last updated:** 2026-04-14
-**Last updated by:** Codex
+**Status:** Phase build COMPLETE and superseded. The product is live at
+app.wyvstudio.com, has paying customers, and has shipped far beyond the Phase
+0–5 scope recorded below (publishing, voice cloning, spokesperson video, Cruise
+Control, PDF import, AppSumo + Kelviq billing — none of which appear in these
+phases).
+
+**This file is a historical record of the original phased build, not a live
+tracker.** For what is actually outstanding, read
+[`spec/PENDING.md`](./spec/PENDING.md), which is maintained.
+
+It stayed frozen at "Active phase: MVP Exit Gate QA / 2026-04-14" for four
+months while the product launched and started charging, which made it actively
+misleading to anyone treating it as current.
+
+**Last updated:** 2026-08-29
 
 ---
 
@@ -237,15 +255,16 @@ Exit gate: User creates a channel with brand kit, produces a project using prese
 
 ## Product Hardening Backlog
 
-These are not blockers for the current Phase 4 exit gate, but they are important for market competitiveness before public launch.
+Status verified against the codebase on 2026-08-29 — the boxes below had gone
+stale in both directions, so each was checked rather than trusted.
 
-- [ ] Guided faceless creation wizard — project type, content type, source, channel/brand, duration, visual style, caption style, voice, and final generation review
-- [ ] Background music — upload/select music bed, per-template default music, volume controls, audio ducking, and render mixing
-- [ ] AI image generation provider — adapter-backed image generation for scenes when stock footage is weak or unavailable
-- [ ] Rich caption style picker — visual presets closer to high-performing faceless creator workflows
-- [ ] Template marketplace/manager — reusable scene structures, intros/outros, caption styles, and brand defaults
-- [ ] Better visual style controls — stock, realistic, anime, line-art, dark fantasy, product, finance, etc.
-- [ ] Auto-post/scheduling strategy — deferred from MVP, but useful for competitive positioning later
+- [x] Guided faceless creation wizard — `NewVideoWizard.vue`
+- [x] Background music — `projects.music_asset_id` + `applyMusicMix` in `ConcatenateExportJob`
+- [x] AI image generation provider — `ImageAdapterFactory`, six models
+- [x] Better visual style controls — 21 visual style presets
+- [x] Auto-post/scheduling — `ScheduledPost` + `PublishVideoJob`, four platforms
+- [ ] Rich caption style picker — presets exist (`CaptionPreset`); the richer picker does not
+- [ ] Template marketplace/manager — `Template` is read-only in code, no CRUD or management UI
 
 ---
 
@@ -282,33 +301,64 @@ Exit gate: User produces 3 language variants from one source project.
 
 ## MVP Exit Gate Checklist
 
-All must be true before public launch. See `spec/MASTER.md` for full criteria.
+**This gate was never formally signed off.** The product launched, took payment
+and acquired customers with all ten boxes unticked. Leaving them unticked
+implied work outstanding; ticking them now would claim verification that never
+happened. So each is recorded as what it actually is.
 
-- [ ] New user creates first publishable video in under 10 minutes
-- [ ] User generates at least 5 variants from one script
-- [ ] User exports a batch of selected variants
-- [ ] User reuses a saved channel preset and brand kit on a new project
-- [ ] Failed batch item retryable without affecting successful siblings
-- [ ] Export blocked (not silently failed) when required voice or visual is missing
-- [ ] Over-limit actions show correct limit, usage, and upgrade path
-- [ ] All Reverb events fire correctly
-- [ ] All rendered outputs pass aspect ratio, caption rendering, watermark rules
-- [ ] All acceptance criteria in `spec/ACCEPTANCE_CRITERIA.md` pass
+Capability shipped, never formally QA'd as a gate:
+
+- [x] User generates at least 5 variants from one script — `VariantSet` / `Variant`
+- [x] User exports a batch of selected variants — batch export, multi aspect ratio
+- [x] User reuses a saved channel preset and brand kit — verified in Phase 4 notes
+- [x] Failed batch item retryable without affecting siblings — `partial_success` handling
+- [x] Export blocked (not silently failed) on missing voice or visual — export validation
+- [x] Over-limit actions show limit, usage and upgrade path — `LimitModal` + `apiBudgetContext`
+- [x] Reverb events fire for generation, export and asset upload
+
+Never verified, and still unverified:
+
+- [ ] **New user creates first publishable video in under 10 minutes** — never timed.
+      The closest real evidence is negative: a paying customer's first three
+      attempts failed (2026-08-26/27, all URL imports), which is what prompted
+      the extractor rewrite.
+- [ ] **All rendered outputs pass aspect ratio, caption rendering, watermark rules** —
+      no systematic pass; ad-hoc only.
+- [ ] **All acceptance criteria in `spec/ACCEPTANCE_CRITERIA.md` pass** — never
+      run as a suite. That document also predates the pivot and describes
+      "Framecast" for faceless creators, so parts of it no longer apply.
 
 ---
 
 ## Decisions Made During Build
 
-Record any implementation decisions that deviate from or extend the spec here. Include the reason.
+This table sat empty through four months of decisions, several of which
+contradict `spec/MASTER.md` while that file still claims "if this document and
+any other spec disagree, this document wins". Backfilled from the code and
+commit history on 2026-08-29 — not exhaustive, but the ones that changed the
+product's shape.
 
-| Date | Decision | Reason | Spec section affected |
+| Date | Decision | Reason | Spec affected |
 |---|---|---|---|
-| — | — | — | — |
+| ~2026-06 | Product renamed **Framecast → WyvStudio**, audience moved from faceless creators to brands/marketers | Positioning shifted to "branded short-form video without a shoot"; DTC ad creatives as the wedge | `MASTER.md`, `PRD.md`, `MVP_AND_ROADMAP.md` all still describe the old product |
+| ~2026-05 | Pricing rebuilt on **credits**, not the PRD's render/minute quotas | Per-operation COGS varies by orders of magnitude; quotas couldn't price it | `PRD.md` Pricing Tiers; `CREDIT_CALIBRATION.md` is now authoritative |
+| ~2026-06 | **Direct publishing shipped** (YouTube, TikTok, IG, FB) | Explicitly listed under "What We Are Not Building" in MASTER | `MASTER.md` non-goals |
+| ~2026-06 | **Voice cloning shipped** via Chatterbox | Was Phase 5 "advanced differentiation", pulled forward as a differentiator | `MVP_AND_ROADMAP.md` Phase 5 |
+| ~2026-06 | **Spokesperson (lip-sync)** shipped via VEED Fabric | Not in any phase; competitive response | — |
+| ~2026-06 | **Cruise Control** (Cmd+K assistant) shipped, then extended well past its spec | Product-led; `PENDING.md` records it as "shipped + surpassed" | `CRUISE_CONTROL_PLAN.md` |
+| 2026-06-14 | **Kelviq** as sole Merchant of Record; Paddle and FastSpring removed | Kelviq approved us; avoids naming two MORs | `KELVIQ_INTEGRATION.md` |
+| ~2026-08 | **AppSumo LTD** launched | Was `PENDING.md` Tier 5 "only after Month 9" — pulled forward | `PENDING.md` Tier 5 |
+| ~2026-08 | Default TTS moved to **Gemini 3.1 Flash** | Quality/cost; contradicts MASTER's locked "OpenAI for TTS" decision | `MASTER.md` Locked Decisions |
+| 2026-08-25 | Default scene image model → **gpt-image-2** | gpt-image-1 output quality was a customer complaint; cost repriced to match | `CREDIT_CALIBRATION.md`, `PRICING.md` |
+| 2026-08-29 | **PDF import** added as a source type, incl. vision reading of scanned pages | Asked for by a prospective AppSumo buyer in the deal Q&A | `PRD.md` Supported Inputs |
+| 2026-08-29 | Content extraction moved to a **Python service** (`framecast-app/extract`) | PyMuPDF + trafilatura are materially better than the PHP equivalents | `TECH_STACK.md` (still lists PHP/Node only) |
 
 ---
 
 ## Blockers
 
-| Blocker | Phase | Raised by | Status |
-|---|---|---|---|
-| — | — | — | — |
+| Blocker | Impact | Status |
+|---|---|---|
+| `spec/MASTER.md`, `PRD.md`, `MVP_AND_ROADMAP.md` describe the pre-pivot product | Anyone onboarding from the spec pack builds the wrong thing | **Open** — flagged 2026-08-29 |
+| `ACCEPTANCE_CRITERIA.md` never run as a suite, and partly obsolete | No regression baseline; the exit gate above can't be closed | **Open** |
+| First-video time never measured | The headline MVP criterion is unverified, and early evidence is negative | **Open** |
