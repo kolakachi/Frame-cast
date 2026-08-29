@@ -2283,8 +2283,8 @@ defineExpose({ open })
 .ag-style-opt { background: var(--color-bg-elevated); border: 1.5px solid var(--color-border); border-radius: 8px; padding: 8px 6px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: border-color 0.15s; }
 .ag-style-opt:hover { border-color: var(--color-border-active); }
 .ag-style-opt.selected { border-color: var(--color-accent); }
-.ag-style-mini { width: 100%; height: 44px; border-radius: 5px; display: flex; align-items: flex-end; justify-content: center; gap: 2px; overflow: hidden; padding: 4px 4px 3px; }
-.ag-mini-bar { flex: 1; border-radius: 2px 2px 0 0; opacity: 0.9; }
+.ag-style-mini { width: 100%; aspect-ratio: 1 / 1; border-radius: 5px; display: flex; align-items: flex-end; justify-content: center; gap: 2px; overflow: hidden; padding: 8px 8px 6px; }
+.ag-mini-bar { flex: 1; max-width: 9px; border-radius: 2px 2px 0 0; opacity: 0.9; }
 .ag-mini-mirror { border-radius: 999px; align-self: center; }
 .ag-mini-minimal { flex: 1; max-width: 4px; border-radius: 1px 1px 0 0; opacity: 0.85; }
 .ag-style-label { font-size: 10px; color: var(--color-text-muted); font-weight: 500; }
