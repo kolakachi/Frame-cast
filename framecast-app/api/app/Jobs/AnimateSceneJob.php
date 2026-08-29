@@ -45,6 +45,18 @@ class AnimateSceneJob implements ShouldQueue
         // the tier's default. Drives both the credit cost and the model input.
         // Kept LAST so existing positional callers (resume) are unaffected.
         public readonly ?string $quality = null,
+        /**
+         * Other scenes built on the SAME source still, which should receive
+         * this very clip instead of paying to animate an identical image.
+         *
+         * Animating N scenes that share one image N times produces N copies of
+         * the same video for N times the credits. Only valid for i2v — a
+         * spokesperson clip is lip-synced to one scene's audio and can never
+         * be shared.
+         *
+         * @var array<int>
+         */
+        public readonly array $shareWithSceneIds = [],
     ) {
         $this->onQueue('visual');
     }
@@ -227,6 +239,8 @@ class AnimateSceneJob implements ShouldQueue
                 'animation_prediction_id'           => null, // done — nothing to resume
             ]);
 
+            $this->shareClipWith($asset, $scene);
+
             // Multi-scene aware: count scenes with completed animation. Emit
             // 'processing' with done/total until all scenes finish; then
             // 'completed'. Keeps the progress page's animation stage honest
@@ -284,6 +298,9 @@ class AnimateSceneJob implements ShouldQueue
                 'animation_in_progress' => false,
                 'animation_last_error'  => mb_substr($e->getMessage(), 0, 1000),
             ]);
+            // Siblings waiting on this clip were locked by the caller and will
+            // never get one. Release them here or they spin forever.
+            $this->releaseSharedScenes(mb_substr($e->getMessage(), 0, 1000));
             GenerationProgressed::dispatch($this->projectId, 'animation', 'failed', $e->getMessage(), ['scene_id' => $this->sceneId]);
             app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'animation', $e->getMessage(), $this->sceneId);
             throw $e;
@@ -293,6 +310,35 @@ class AnimateSceneJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         $this->recordFailureTrace($exception, 'scene', $this->sceneId, null, $this->projectId);
+        // Covers the paths the catch block can't: retries exhausted, timeout,
+        // worker killed. Without it a shared batch leaves scenes stuck
+        // "animating" with no job left to finish them.
+        $this->releaseSharedScenes(mb_substr($exception->getMessage(), 0, 1000));
+    }
+
+    /** Clear the in_progress lock on scenes that were waiting on a shared clip. */
+    private function releaseSharedScenes(string $error): void
+    {
+        if ($this->shareWithSceneIds === []) {
+            return;
+        }
+
+        rescue(function () use ($error): void {
+            Scene::query()
+                ->whereIn('id', $this->shareWithSceneIds)
+                ->where('project_id', $this->projectId)
+                ->get()
+                ->each(function (Scene $sibling) use ($error): void {
+                    if ((int) $sibling->getKey() === $this->sceneId) {
+                        return;
+                    }
+                    $this->stampAnimationState($sibling, [
+                        'animation_in_progress' => false,
+                        'animation_last_error'  => $error,
+                    ]);
+                    GenerationProgressed::dispatch($this->projectId, 'animation', 'failed', $error, ['scene_id' => $sibling->getKey()]);
+                });
+        }, report: false);
     }
 
     /**
@@ -343,6 +389,53 @@ class AnimateSceneJob implements ShouldQueue
      *
      * @param array<string,mixed> $delta
      */
+    /**
+     * Hand the finished clip to the sibling scenes that share its source still.
+     *
+     * They were locked as in_progress by the caller so the UI shows them
+     * working; this is where that lock is released. Each keeps its OWN
+     * animation_original_image_asset_id, so reverting stays per scene.
+     */
+    private function shareClipWith(Asset $asset, Scene $origin): void
+    {
+        if ($this->shareWithSceneIds === []) {
+            return;
+        }
+
+        $siblings = Scene::query()
+            ->whereIn('id', $this->shareWithSceneIds)
+            ->where('project_id', $this->projectId)   // never cross a project
+            ->get();
+
+        foreach ($siblings as $sibling) {
+            if ($sibling->getKey() === $origin->getKey()) {
+                continue;
+            }
+
+            $existingOriginal = data_get($sibling->image_generation_settings_json, 'animation_original_image_asset_id');
+            $currentAsset     = $sibling->visual_asset_id ? Asset::query()->find($sibling->visual_asset_id) : null;
+            $ownStillId       = ($currentAsset && $currentAsset->asset_type === 'image') ? $currentAsset->getKey() : null;
+
+            $sibling->forceFill(['visual_asset_id' => $asset->getKey()])->save();
+
+            $this->stampAnimationState($sibling->fresh(), [
+                'animation_in_progress'             => false,
+                'animation_last_error'              => null,
+                'animation_completed_at'            => now()->toIso8601String(),
+                'animation_video_asset_id'          => $asset->getKey(),
+                'animation_original_image_asset_id' => $existingOriginal ?: $ownStillId,
+                'animation_prediction_id'           => null,
+                // Recorded so the clip's provenance is visible rather than it
+                // just appearing on a scene that was never animated.
+                'animation_shared_from_scene_id'    => $origin->getKey(),
+            ]);
+
+            GenerationProgressed::dispatch($this->projectId, 'animation', 'completed', null, ['scene_id' => $sibling->getKey()]);
+        }
+
+        $asset->forceFill(['usage_count' => 1 + $siblings->count()])->save();
+    }
+
     private function stampAnimationState(Scene $scene, array $delta): void
     {
         $settings = is_array($scene->image_generation_settings_json)

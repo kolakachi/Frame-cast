@@ -108,18 +108,55 @@ class BulkAnimateController extends Controller
             }
 
             $eligible[] = [
-                'scene_id' => $scene->getKey(),
-                'order'    => (int) $scene->scene_order,
-                'cost'     => $cost,
+                'scene_id'        => $scene->getKey(),
+                'order'           => (int) $scene->scene_order,
+                'cost'            => $cost,
+                'source_still_id' => (int) ($this->sourceStill($scene)?->getKey() ?? 0),
             ];
+        }
+
+        // Animate each distinct image ONCE and share the clip with every other
+        // scene built on it. Projects routinely reuse one still across scenes;
+        // animating per scene would buy N identical videos at N times the price.
+        //
+        // Never for spokesperson — that clip is lip-synced to one scene's
+        // audio, so two scenes cannot share it even with the same photo.
+        $groups = [];
+
+        if (! $isSpokesperson) {
+            foreach ($eligible as $i => $row) {
+                $groups[$row['source_still_id']][] = $i;
+            }
+        }
+
+        foreach ($groups as $indexes) {
+            // First scene pays and renders; the rest ride along for free.
+            foreach (array_slice($indexes, 1) as $i) {
+                $eligible[$i]['cost']            = 0;
+                $eligible[$i]['shares_with']     = $eligible[$indexes[0]]['order'];
+                $eligible[$indexes[0]]['shared_with_count']
+                    = ($eligible[$indexes[0]]['shared_with_count'] ?? 0) + 1;
+            }
         }
 
         $total   = array_sum(array_column($eligible, 'cost'));
         $balance = $this->credits->balance((int) $user->workspace_id);
 
+        // What it WOULD have cost animating every scene separately, so the
+        // saving is visible rather than just a smaller number.
+        $unsharedTotal = 0;
+        foreach ($eligible as $row) {
+            $unsharedTotal += $isSpokesperson
+                ? $row['cost']
+                : CreditService::animationCost($validated['tier'], $quality, $durationSeconds);
+        }
+
         $payload = [
             'tier'            => $validated['tier'],
             'eligible_count'  => count($eligible),
+            'render_count'    => $isSpokesperson ? count($eligible) : count($groups),
+            'unshared_cost'   => $unsharedTotal,
+            'saved'           => max(0, $unsharedTotal - array_sum(array_column($eligible, 'cost'))),
             'skipped'         => $skipped,
             'total_cost'      => $total,
             'balance'         => $balance,
@@ -152,7 +189,41 @@ class BulkAnimateController extends Controller
 
         $started = 0;
 
-        foreach ($eligible as $row) {
+        // Only the paying scene of each group gets a job; its siblings receive
+        // the finished clip from AnimateSceneJob::shareClipWith.
+        $sharersFor = [];
+        $renderRows = $eligible;
+
+        if (! $isSpokesperson) {
+            $renderRows = [];
+            foreach ($groups as $indexes) {
+                $lead = $eligible[$indexes[0]];
+                $sharersFor[$lead['scene_id']] = array_map(
+                    fn (int $i): int => (int) $eligible[$i]['scene_id'],
+                    array_slice($indexes, 1),
+                );
+                $renderRows[] = $lead;
+            }
+        }
+
+        // Lock the sharers too, so they read as working rather than idle while
+        // the one render they depend on is running.
+        foreach ($sharersFor as $sharerIds) {
+            foreach ($sharerIds as $sharerId) {
+                $sharer = $scenes->firstWhere('id', $sharerId);
+                if (! $sharer) {
+                    continue;
+                }
+                $sharer->forceFill([
+                    'image_generation_settings_json' => array_merge($sharer->image_generation_settings_json ?? [], [
+                        'animation_in_progress' => true,
+                        'animation_last_error'  => null,
+                    ]),
+                ])->save();
+            }
+        }
+
+        foreach ($renderRows as $row) {
             $scene = $scenes->firstWhere('id', $row['scene_id']);
             if (! $scene) {
                 continue;
@@ -187,10 +258,11 @@ class BulkAnimateController extends Controller
                     $durationSeconds,
                     $validated['motion_prompt'] ?? null,
                     quality: $quality,
+                    shareWithSceneIds: $sharersFor[$row['scene_id']] ?? [],
                 );
             }
 
-            $started++;
+            $started += 1 + count($sharersFor[$row['scene_id']] ?? []);
         }
 
         $payload['started']       = true;
