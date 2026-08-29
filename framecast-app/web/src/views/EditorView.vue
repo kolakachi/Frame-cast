@@ -5088,6 +5088,78 @@ async function persistSceneScript(sceneId, scriptText) {
   }
 }
 
+// Apply the active scene's voice to every scene in the project.
+//
+// Carries the WHOLE voice setting, not just the voice id: provider, speed,
+// stability and the Gemini delivery direction. Copying the voice alone would
+// leave other scenes reading in the old direction, which sounds like the
+// change half-failed.
+//
+// Each scene is marked is_outdated so GenerateTTSJob re-synthesises it —
+// without that the old audio asset is kept and nothing audibly changes.
+const applyVoiceAllState = ref("idle");   // idle | saving | saved | error
+const applyVoiceAllError = ref("");
+
+async function applyVoiceToAllScenes() {
+  const source = activeScene.value;
+  if (!source || applyVoiceAllState.value === "saving") return;
+
+  const selectedProfile = (voiceProfiles.value || []).find(
+    (p) => p.provider_voice_key === voiceProfileKey.value
+  );
+  const provider =
+    selectedProfile?.provider ||
+    (OPENAI_VOICE_KEYS.includes(String(voiceProfileKey.value).toLowerCase()) ? "openai" : "google");
+
+  const shared = {
+    voice_id: voiceProfileKey.value,
+    provider,
+    speed: Number(voiceSpeedDraft.value || 1),
+    stability: voiceStabilityDraft.value,
+    voice_prompt: activeVoiceIsGemini.value ? voiceDirectionDraft.value.trim() : "",
+  };
+
+  const targets = scenes.value.filter((scene) => scene.id !== source.id);
+  if (targets.length === 0) return;
+
+  applyVoiceAllState.value = "saving";
+  applyVoiceAllError.value = "";
+
+  let failed = 0;
+
+  for (const scene of targets) {
+    try {
+      const response = await api.patch(`/scenes/${scene.id}`, {
+        voice_settings_json: {
+          ...(scene.voice_settings || {}),
+          ...shared,
+          is_outdated: true,
+        },
+        status: "edited",
+      });
+      const updated = normalizeScenePayload(response.data?.data?.scene ?? null);
+      if (updated) {
+        scenes.value = scenes.value.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
+      }
+    } catch {
+      failed++;
+    }
+  }
+
+  if (failed > 0) {
+    applyVoiceAllState.value = "error";
+    // Say how many, not just "failed" — a partial apply leaves the project in a
+    // mixed state and the user needs to know it wasn't all-or-nothing.
+    applyVoiceAllError.value = `${failed} of ${targets.length} scenes could not be updated. Try again.`;
+    return;
+  }
+
+  applyVoiceAllState.value = "saved";
+  window.setTimeout(() => {
+    if (applyVoiceAllState.value === "saved") applyVoiceAllState.value = "idle";
+  }, 1600);
+}
+
 async function persistVoiceSettings(sceneId, nextSettings) {
   voiceSaveTimer = null;
   voiceSaveState.value = "saving";
@@ -7773,6 +7845,31 @@ onBeforeUnmount(() => {
                     <code>[laughs]</code>, <code>[whispering]</code>, <code>[excited]</code>, <code>[sighs]</code>.
                   </div>
                 </div>
+                <!-- Push this scene's voice (including the direction) to every
+                     other scene. Marks them outdated so the audio actually
+                     re-synthesises rather than keeping the old take. -->
+                <div v-if="scenes.length > 1" class="apply-all-row">
+                  <button
+                    class="apply-all-btn"
+                    type="button"
+                    :disabled="applyVoiceAllState === 'saving'"
+                    @click="applyVoiceToAllScenes"
+                  >
+                    {{ applyVoiceAllState === 'saving'
+                        ? 'Applying to all scenes…'
+                        : `Apply this voice to all ${scenes.length} scenes` }}
+                  </button>
+                  <div v-if="applyVoiceAllState === 'saved'" class="apply-all-note">
+                    Applied. Voices will re-generate on the next render.
+                  </div>
+                  <div v-else-if="applyVoiceAllState === 'error'" class="apply-all-note error">
+                    {{ applyVoiceAllError }}
+                  </div>
+                  <div v-else class="apply-all-note muted">
+                    Copies the voice, speed, stability{{ activeVoiceIsGemini ? ' and direction' : '' }}.
+                  </div>
+                </div>
+
                 <div :class="activeVoiceOutdated ? 'voice-warning-row' : 'voice-warning-row state-hidden'">
                   <span class="voice-warning-copy">Script changed — voice outdated</span>
                   <button class="regen-btn" type="button" :disabled="voiceRegeneratePending" @click="regenerateVoice">
@@ -11787,6 +11884,14 @@ button {
   font-size: 13px;
   color: var(--text-secondary);
 }
+
+.apply-all-row { margin: 10px 0 4px; }
+.apply-all-btn { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text-secondary); font-family: inherit; font-size: 12px; cursor: pointer; transition: .15s; }
+.apply-all-btn:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-text-primary); }
+.apply-all-btn:disabled { opacity: .6; cursor: default; }
+.apply-all-note { margin-top: 5px; font-size: 11px; color: var(--color-text-muted); }
+.apply-all-note.error { color: #f87171; }
+.apply-all-note.muted { opacity: .75; }
 
 .voice-direction-block {
   margin-top: 10px;
