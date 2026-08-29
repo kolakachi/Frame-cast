@@ -5542,6 +5542,9 @@ function openAnimateModal() {
     || lastSettings.suggested_motion_prompt
     || "";
   animateError.value = "";
+  // Always reopen on the single-scene path — bulk is an explicit opt-in each time.
+  bulkAnimateMode.value = false;
+  bulkAnimatePreview.value = null;
   animateModalOpen.value = true;
   animateModelOpen.value = false;
 }
@@ -5650,6 +5653,82 @@ async function revertAnimation() {
       title: 'Could not revert',
       message: err.response?.data?.error?.message ?? 'The original image is no longer available.',
     });
+  }
+}
+
+// --- Animate every scene at once ---------------------------------------
+// The preview is always fetched from the server rather than multiplied in the
+// browser. Spokesperson bills per second of each scene's voiceover, so the
+// honest total can be nearly double a count x tier-price guess — and this is
+// the one screen where being wrong about the number means someone confirms a
+// charge they didn't agree to.
+const bulkAnimateMode    = ref(false);
+const bulkAnimatePreview = ref(null);
+const bulkAnimateLoading = ref(false);
+const bulkAnimateSkipsOpen = ref(false);
+
+async function loadBulkAnimatePreview() {
+  if (!projectId.value) return;
+  bulkAnimateLoading.value = true;
+  animateError.value = "";
+  try {
+    const response = await api.post(`/projects/${projectId.value}/animate-all`, {
+      tier: animateTier.value,
+      duration_seconds: animateDuration.value,
+      motion_prompt: animateMotionPrompt.value.trim() || null,
+      quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
+    });
+    bulkAnimatePreview.value = response.data?.data ?? null;
+  } catch (err) {
+    bulkAnimatePreview.value = null;
+    animateError.value = err.response?.data?.error?.message ?? "Could not price this.";
+  } finally {
+    bulkAnimateLoading.value = false;
+  }
+}
+
+function toggleBulkAnimate() {
+  bulkAnimateMode.value = !bulkAnimateMode.value;
+  bulkAnimateSkipsOpen.value = false;
+  if (bulkAnimateMode.value) loadBulkAnimatePreview();
+  else { bulkAnimatePreview.value = null; animateError.value = ""; }
+}
+
+// Any option that moves the price re-prices. A stale total here is the same
+// failure as a wrong one.
+watch([animateTier, animateDuration, animateQuality], () => {
+  if (bulkAnimateMode.value) loadBulkAnimatePreview();
+});
+
+async function submitBulkAnimate() {
+  const preview = bulkAnimatePreview.value;
+  if (!preview || !preview.eligible_count || !preview.affordable) return;
+  animateSubmitting.value = true;
+  animateError.value = "";
+  try {
+    const response = await api.post(`/projects/${projectId.value}/animate-all`, {
+      tier: animateTier.value,
+      duration_seconds: animateDuration.value,
+      motion_prompt: animateMotionPrompt.value.trim() || null,
+      quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
+      confirm: true,
+    });
+    const started = response.data?.data?.started_count ?? 0;
+    animateModalOpen.value = false;
+    bulkAnimateMode.value = false;
+    bulkAnimatePreview.value = null;
+    pushToast({
+      id: `bulk-anim-${Date.now()}`,
+      title: `Animating ${started} scene${started === 1 ? '' : 's'}`,
+      message: 'They render in the background — you can keep editing.',
+    });
+    // Each scene lands independently; poll them all so the grid fills in.
+    for (const row of preview.scenes) pollSceneUntilVisual(row.scene_id);
+  } catch (err) {
+    animateError.value =
+      err.response?.data?.error?.message ?? "Could not start animating.";
+  } finally {
+    animateSubmitting.value = false;
   }
 }
 
@@ -9048,16 +9127,79 @@ onBeforeUnmount(() => {
             <div class="ap-hint">Pick a quick start above or type your own. Leave blank for a sensible default.</div>
           </div>
 
+          <!-- Apply this same animation to every scene, priced by the server. -->
+          <div class="bulk-anim">
+            <button type="button" class="bulk-anim-toggle" :class="{ on: bulkAnimateMode }" @click="toggleBulkAnimate">
+              <span class="bulk-anim-check">{{ bulkAnimateMode ? '✓' : '' }}</span>
+              <span>Apply to all scenes in this project</span>
+            </button>
+
+            <div v-if="bulkAnimateMode" class="bulk-anim-body">
+              <div v-if="bulkAnimateLoading" class="bulk-anim-loading">Working out the cost…</div>
+
+              <template v-else-if="bulkAnimatePreview">
+                <div v-if="!bulkAnimatePreview.eligible_count" class="bulk-anim-none">
+                  None of these scenes can be animated yet — they need a still image first.
+                </div>
+
+                <template v-else>
+                  <div class="bulk-anim-row">
+                    <span>{{ bulkAnimatePreview.eligible_count }} scene{{ bulkAnimatePreview.eligible_count === 1 ? '' : 's' }}</span>
+                    <strong :class="{ short: !bulkAnimatePreview.affordable }">{{ bulkAnimatePreview.total_cost }} credits</strong>
+                  </div>
+                  <div class="bulk-anim-row sub">
+                    <span>Your balance</span>
+                    <span>{{ bulkAnimatePreview.balance }} credits</span>
+                  </div>
+
+                  <div v-if="!bulkAnimatePreview.affordable" class="bulk-anim-short">
+                    You're {{ bulkAnimatePreview.shortage }} credits short. Top up, or animate scenes one at a time.
+                  </div>
+
+                  <!-- Named, not silently dropped: a scene missing from the batch
+                       should never be a surprise after the credits are spent. -->
+                  <button
+                    v-if="bulkAnimatePreview.skipped.length"
+                    type="button"
+                    class="bulk-anim-skiptoggle"
+                    @click="bulkAnimateSkipsOpen = !bulkAnimateSkipsOpen"
+                  >
+                    {{ bulkAnimateSkipsOpen ? '▾' : '▸' }}
+                    {{ bulkAnimatePreview.skipped.length }} scene{{ bulkAnimatePreview.skipped.length === 1 ? '' : 's' }} will be skipped
+                  </button>
+                  <ul v-if="bulkAnimateSkipsOpen" class="bulk-anim-skips">
+                    <li v-for="s in bulkAnimatePreview.skipped" :key="s.scene_id">
+                      Scene {{ s.order }} — {{ s.reason }}
+                    </li>
+                  </ul>
+                </template>
+              </template>
+            </div>
+          </div>
+
           <div v-if="animateError" class="ap-error">{{ animateError }}</div>
 
           <div class="anim-foot">
             <div class="anim-total">
-              <span class="anim-total-credits">{{ animateCost }} credits</span>
-              <span class="anim-total-sub">{{ animateDuration }} s clip · regenerate if uncanny</span>
+              <span class="anim-total-credits">
+                {{ bulkAnimateMode && bulkAnimatePreview ? bulkAnimatePreview.total_cost : animateCost }} credits
+              </span>
+              <span class="anim-total-sub">
+                {{ bulkAnimateMode ? 'across every eligible scene' : `${animateDuration} s clip · regenerate if uncanny` }}
+              </span>
             </div>
             <div style="display:flex;gap:8px;">
               <button class="btn btn-ghost btn-sm" type="button" :disabled="animateSubmitting" @click="closeAnimateModal">Cancel</button>
-              <button class="btn btn-primary btn-sm" type="button" :disabled="animateSubmitting" @click="submitAnimate">
+              <button
+                v-if="bulkAnimateMode"
+                class="btn btn-primary btn-sm"
+                type="button"
+                :disabled="animateSubmitting || bulkAnimateLoading || !bulkAnimatePreview?.eligible_count || !bulkAnimatePreview?.affordable"
+                @click="submitBulkAnimate"
+              >
+                {{ animateSubmitting ? 'Starting…' : `⚡ Animate all ${bulkAnimatePreview?.eligible_count ?? ''}` }}
+              </button>
+              <button v-else class="btn btn-primary btn-sm" type="button" :disabled="animateSubmitting" @click="submitAnimate">
                 {{ animateSubmitting ? 'Starting…' : '⚡ Animate' }}
               </button>
             </div>
@@ -12948,6 +13090,21 @@ select.preset-select {
 .ap-input { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); padding: 9px 11px; font-size: 13px; font-family: inherit; outline: none; }
 .ap-input:focus { border-color: rgba(255,107,53,.5); }
 .ap-error { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.2); color: #fca5a5; border-radius: 7px; padding: 8px 11px; font-size: 12px; margin-bottom: 12px; }
+.bulk-anim { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
+.bulk-anim-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 2px; background: none; border: none; color: var(--text-secondary); font-family: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.bulk-anim-toggle:hover { color: var(--text-primary); }
+.bulk-anim-toggle.on { color: var(--text-primary); }
+.bulk-anim-check { width: 15px; height: 15px; flex-shrink: 0; border: 1px solid var(--border-active); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; }
+.bulk-anim-toggle.on .bulk-anim-check { background: var(--accent, #ff6b35); border-color: var(--accent, #ff6b35); color: #fff; }
+.bulk-anim-body { margin-top: 8px; padding: 10px 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; }
+.bulk-anim-loading, .bulk-anim-none { font-size: 12px; color: var(--text-secondary); }
+.bulk-anim-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--text-primary); }
+.bulk-anim-row.sub { margin-top: 3px; font-size: 11.5px; color: var(--text-secondary); }
+.bulk-anim-row strong.short { color: #f87171; }
+.bulk-anim-short { margin-top: 8px; font-size: 11.5px; color: #f87171; line-height: 1.45; }
+.bulk-anim-skiptoggle { margin-top: 8px; padding: 0; background: none; border: none; color: var(--text-secondary); font-family: inherit; font-size: 11.5px; cursor: pointer; }
+.bulk-anim-skiptoggle:hover { color: var(--text-primary); }
+.bulk-anim-skips { margin: 6px 0 0; padding-left: 16px; font-size: 11.5px; color: var(--text-secondary); line-height: 1.6; }
 .ap-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid var(--color-border); margin-top: 10px; }
 .ap-success { text-align: center; padding: 8px 0; }
 .ap-success-icon { width: 48px; height: 48px; border-radius: 50%; background: rgba(52,211,153,.15); color: #34d399; font-size: 22px; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
