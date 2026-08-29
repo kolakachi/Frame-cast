@@ -955,7 +955,7 @@ class SceneController extends Controller
         }
 
         $validated = $request->validate([
-            'tier'             => ['required', 'string', \Illuminate\Validation\Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro', 'spokesperson'])],
+            'tier'             => ['required', 'string', \Illuminate\Validation\Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro', 'veo_fast', 'seedance_25', 'spokesperson'])],
             // Accept any 3–10s from clients; the adapter clamps to 5 or 10 internally
             // (the Wan/Hailuo/Kling/Seedance models only render those two buckets).
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],

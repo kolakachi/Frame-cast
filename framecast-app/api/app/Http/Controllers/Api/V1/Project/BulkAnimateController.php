@@ -47,7 +47,7 @@ class BulkAnimateController extends Controller
         }
 
         $validated = $request->validate([
-            'tier'             => ['required', 'string', Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro', 'spokesperson'])],
+            'tier'             => ['required', 'string', Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro', 'veo_fast', 'seedance_25', 'spokesperson'])],
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:1000'],
             'quality'          => ['sometimes', 'nullable', 'string', 'max:16'],

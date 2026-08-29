@@ -103,6 +103,15 @@ return [
         'i2v_seedance_lite_model'   => env('REPLICATE_I2V_SEEDANCE_LITE_MODEL', 'bytedance/seedance-1-lite'),
         'i2v_seedance_lite_version' => env('REPLICATE_I2V_SEEDANCE_LITE_VERSION', ''),
         'i2v_seedance_pro_model'    => env('REPLICATE_I2V_SEEDANCE_PRO_MODEL',  'bytedance/seedance-1-pro'),
+        // Veo 3.1 Fast — billed per second; generate_audio=false halves the
+        // price ($0.10/s vs $0.20/s on full veo-3.1) and our clips are silent
+        // b-roll anyway (voiceover is mixed at render).
+        'i2v_veo_fast_model'        => env('REPLICATE_I2V_VEO_FAST_MODEL', 'google/veo-3.1-fast'),
+        'i2v_veo_fast_version'      => env('REPLICATE_I2V_VEO_FAST_VERSION'),
+        // Seedance 2.5 — per-second, non_video_in variant (plain i2v):
+        // 480p $0.1028/s, 720p $0.2312/s.
+        'i2v_seedance_25_model'     => env('REPLICATE_I2V_SEEDANCE_25_MODEL', 'bytedance/seedance-2.5'),
+        'i2v_seedance_25_version'   => env('REPLICATE_I2V_SEEDANCE_25_VERSION'),
         'i2v_seedance_pro_version'  => env('REPLICATE_I2V_SEEDANCE_PRO_VERSION', ''),
 
         // MusicGen for the one-shot prompt flow's background music.

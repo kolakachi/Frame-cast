@@ -111,7 +111,9 @@ const audiogramBgStyle = computed(() => {
 const ANIMATE_TIER_OPTIONS = [
   { key: 'seedance_lite', label: 'Seedance Lite', sub: '720p · fastest', cr: 30 },
   { key: 'quick',         label: 'Wan 2.5',       sub: '480p · balanced', cr: 50 },
+  { key: 'veo_fast',      label: 'Veo 3.1 Fast',  sub: 'Google · sharp motion', cr: 80 },
   { key: 'premium',       label: 'Kling Pro',     sub: 'pro mode · cinematic', cr: 100 },
+  { key: 'seedance_25',   label: 'Seedance 2.5',  sub: 'ByteDance flagship', cr: 105 },
   { key: 'seedance_pro',  label: 'Seedance Pro',  sub: '1080p · sharpest', cr: 125 },
 ]
 
@@ -2299,7 +2301,7 @@ defineExpose({ open })
 .ag-bg-opt { height: 32px; border-radius: 6px; border: 1.5px solid transparent; cursor: pointer; font-size: 9px; font-weight: 600; color: rgba(255,255,255,.7); letter-spacing: .04em; transition: border-color 0.12s; }
 .ag-bg-opt:hover { border-color: var(--color-border-active); }
 .ag-bg-opt.selected { border-color: #fff; }
-.anim-tier-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.anim-tier-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .anim-tier-card { display: flex; flex-direction: column; gap: 2px; padding: 10px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; transition: border-color .15s; }
 .anim-tier-card:hover { border-color: var(--color-text-muted); }
 .anim-tier-card.selected { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }

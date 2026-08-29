@@ -298,7 +298,7 @@ class ProjectController extends Controller
             'visual_type' => ['nullable', Rule::in(['stock_clip', 'stock_image', 'ai_image', 'waveform'])],
             'visual_generation_mode' => ['nullable', Rule::in(['stock', 'ai_images', 'stock_images', 'waveform', 'ai_video'])],
             // ai_video only: which i2v model animates each scene's still.
-            'animate_tier' => ['nullable', Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro'])],
+            'animate_tier' => ['nullable', Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro', 'veo_fast', 'seedance_25'])],
             'animate_quality' => ['nullable', 'string', 'max:16'],
             'ai_broll_style' => ['nullable', 'string', 'max:64'],
             'visual_style' => ['nullable', 'string', 'max:64'],

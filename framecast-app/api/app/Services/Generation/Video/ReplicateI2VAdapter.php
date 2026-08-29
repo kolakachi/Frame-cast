@@ -238,7 +238,10 @@ class ReplicateI2VAdapter implements I2VAdapter
         // because the adapter is the source of truth.
         $validDurations = match ($tier) {
             'balanced' => [6, 10],
-            'seedance_lite', 'seedance_pro' => [5, 10],
+            // Veo only renders 4/6/8s. 4→8 is the one pair where long is
+            // exactly double short, matching the ×2 billing rule.
+            'veo_fast' => [4, 8],
+            'seedance_lite', 'seedance_pro', 'seedance_25' => [5, 10],
             default    => [5, 10],
         };
         $duration = $durationSeconds <= 7 ? $validDurations[0] : $validDurations[1];
@@ -256,6 +259,41 @@ class ReplicateI2VAdapter implements I2VAdapter
                     'prompt'      => $prompt !== '' ? $prompt : 'subtle natural motion, gentle camera drift',
                     'duration'    => $duration,
                     'mode'        => $options['kling_mode'] ?? 'pro', // premium = Kling pro
+                ],
+            ],
+            'veo_fast' => [
+                config('services.replicate.i2v_veo_fast_model'),
+                config('services.replicate.i2v_veo_fast_version'),
+                [
+                    'image'          => $imageUrl,
+                    'prompt'         => $prompt !== '' ? $prompt : 'subtle natural motion, gentle camera drift',
+                    'duration'       => $duration,
+                    'resolution'     => $options['resolution'] ?? '720p',
+                    // The price we calibrated against is the without_audio
+                    // variant ($0.10/s vs $0.20/s). Clips are silent b-roll —
+                    // the voiceover is mixed at render — so audio would be
+                    // paid for and then discarded.
+                    'generate_audio' => false,
+                    // Veo supports only 16:9 / 9:16; 1:1 projects fall back to
+                    // 9:16 and the renderer letterboxes as usual.
+                    'aspect_ratio'   => in_array($options['aspect_ratio'] ?? '', ['16:9', '9:16'], true)
+                        ? $options['aspect_ratio']
+                        : '9:16',
+                ],
+            ],
+            'seedance_25' => [
+                config('services.replicate.i2v_seedance_25_model'),
+                config('services.replicate.i2v_seedance_25_version'),
+                [
+                    'image'          => $imageUrl,
+                    'prompt'         => $prompt !== '' ? $prompt : 'subtle natural motion',
+                    'duration'       => $duration,
+                    'resolution'     => $options['resolution'] ?? '480p',
+                    // Calibrated against the non_video_in, silent price.
+                    'generate_audio' => false,
+                    'watermark'      => false,
+                    // Follow the source image's shape.
+                    'aspect_ratio'   => 'adaptive',
                 ],
             ],
             'balanced' => [

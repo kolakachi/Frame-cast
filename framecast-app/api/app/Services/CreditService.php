@@ -125,6 +125,11 @@ class CreditService
     public const VIDEO_PREMIUM  = 100;  // Kling 2.1 pro mode, 5s (~$0.45) — 55%
     public const VIDEO_SEEDANCE_LITE = 30;   // Seedance 1 Lite @720p, 5s (~$0.18) — 40%
     public const VIDEO_SEEDANCE_PRO  = 125;  // Seedance 1 Pro @1080p, 5s (~$0.75) — 40%
+    // Veo 3.1 Fast bills PER SECOND ($0.10/s without audio), so its buckets are
+    // 4s and 8s — the only pair the model offers where long is exactly 2× short,
+    // which keeps the universal ×2 long-clip rule honest.
+    public const VIDEO_VEO_FAST      = 80;   // Veo 3.1 Fast @720p, 4s (~$0.40) — 50%
+    public const VIDEO_SEEDANCE_25   = 105;  // Seedance 2.5 @480p, 5s (~$0.514) — 51%
     // Spokesperson (VEED Fabric) is LENGTH-BASED — Fabric bills per second
     // ($0.08/s @ 480p), so a flat charge loses money on long clips. Buckets
     // hold ~50% margin across lengths (see spokespersonCost). The constant is
@@ -150,6 +155,22 @@ class CreditService
                 '480p'  => ['cr' => 15, 'cogs' => 0.09],
                 '720p'  => ['cr' => 30, 'cogs' => 0.18],
                 '1080p' => ['cr' => 60, 'cogs' => 0.36],
+            ],
+        ],
+        'veo_fast' => [
+            // Same per-second price at either resolution, so 1080p is a free
+            // upgrade — offered anyway so the choice is explicit.
+            'label' => 'Veo 3.1 Fast', 'param' => 'resolution', 'default' => '720p',
+            'options' => [
+                '720p'  => ['cr' => 80, 'cogs' => 0.40],
+                '1080p' => ['cr' => 80, 'cogs' => 0.40],
+            ],
+        ],
+        'seedance_25' => [
+            'label' => 'Seedance 2.5', 'param' => 'resolution', 'default' => '480p',
+            'options' => [
+                '480p' => ['cr' => 105, 'cogs' => 0.514],
+                '720p' => ['cr' => 235, 'cogs' => 1.156],
             ],
         ],
         'balanced' => [

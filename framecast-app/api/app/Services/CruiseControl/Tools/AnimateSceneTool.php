@@ -20,6 +20,8 @@ class AnimateSceneTool implements CruiseTool
     private const TIERS = [
         'quick'         => ['model' => 'Wan 2.5',       'cost_const' => CreditService::VIDEO_QUICK,         'duration_5' => 5],
         'seedance_lite' => ['model' => 'Seedance Lite', 'cost_const' => CreditService::VIDEO_SEEDANCE_LITE, 'duration_5' => 5],
+        'veo_fast'      => ['model' => 'Veo 3.1 Fast',  'cost_const' => CreditService::VIDEO_VEO_FAST,      'duration_5' => 4],
+        'seedance_25'   => ['model' => 'Seedance 2.5',  'cost_const' => CreditService::VIDEO_SEEDANCE_25,   'duration_5' => 5],
         'balanced'      => ['model' => 'Hailuo 2.3',    'cost_const' => CreditService::VIDEO_BALANCED,      'duration_5' => 6],
         'seedance_pro'  => ['model' => 'Seedance Pro',  'cost_const' => CreditService::VIDEO_SEEDANCE_PRO,  'duration_5' => 5],
         'premium'       => ['model' => 'Kling 2.1',     'cost_const' => CreditService::VIDEO_PREMIUM,       'duration_5' => 5],

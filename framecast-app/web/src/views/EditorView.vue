@@ -1347,7 +1347,7 @@ const animateMotionPrompt = ref("");
 const animateSubmitting = ref(false);
 const animateError = ref("");
 // Credits per short clip; long clip doubles. Mirror the backend cost calc exactly.
-const ANIMATE_TIER_COSTS_5S = { quick: 50, balanced: 35, premium: 100, seedance_lite: 30, seedance_pro: 125, spokesperson: 130 };
+const ANIMATE_TIER_COSTS_5S = { quick: 50, balanced: 35, premium: 100, seedance_lite: 30, seedance_pro: 125, veo_fast: 80, seedance_25: 105, spokesperson: 130 };
 // User-selectable quality per tier — mirrors CreditService::VIDEO_PRICING.
 // Each option: { value (sent as `quality`), label, cr (base-clip credits) }.
 const ANIMATE_QUALITY_OPTIONS = {
@@ -1356,8 +1356,11 @@ const ANIMATE_QUALITY_OPTIONS = {
   balanced:      [{ value: "768p", label: "768p", cr: 35 }, { value: "1080p", label: "1080p", cr: 60 }],
   seedance_pro:  [{ value: "480p", label: "480p", cr: 25 }, { value: "720p", label: "720p", cr: 50 }, { value: "1080p", label: "1080p", cr: 125 }],
   premium:       [{ value: "standard", label: "Standard", cr: 55 }, { value: "pro", label: "Pro", cr: 100 }],
+  // Veo bills per second regardless of resolution — 1080p costs the same.
+  veo_fast:      [{ value: "720p", label: "720p", cr: 80 }, { value: "1080p", label: "1080p", cr: 80 }],
+  seedance_25:   [{ value: "480p", label: "480p", cr: 105 }, { value: "720p", label: "720p", cr: 235 }],
 };
-const ANIMATE_QUALITY_DEFAULT = { quick: "480p", seedance_lite: "720p", balanced: "768p", seedance_pro: "1080p", premium: "pro" };
+const ANIMATE_QUALITY_DEFAULT = { quick: "480p", seedance_lite: "720p", balanced: "768p", seedance_pro: "1080p", premium: "pro", veo_fast: "720p", seedance_25: "480p" };
 const animateQuality = ref("480p");
 // Spokesperson is length-based (Fabric bills per second): ≤8s → 130, ≤15s → 240, longer → 320.
 // Mirror CreditService::spokespersonCost exactly.
@@ -1371,7 +1374,7 @@ function spokespersonCost(seconds) {
 //   Wan 2.5 (quick)         → 5 or 10
 //   Hailuo 2.3-fast (balanced) → 6 or 10 (NOT 5; sending 5 returns Replicate 422)
 //   Kling 2.1 (premium)     → 5 or 10
-const ANIMATE_TIER_DURATIONS = { quick: [5, 10], balanced: [6, 10], premium: [5, 10], seedance_lite: [5, 10], seedance_pro: [5, 10], spokesperson: [5] };
+const ANIMATE_TIER_DURATIONS = { quick: [5, 10], balanced: [6, 10], premium: [5, 10], seedance_lite: [5, 10], seedance_pro: [5, 10], veo_fast: [4, 8], seedance_25: [5, 10], spokesperson: [5] };
 // Spokesperson lip-syncs to the scene's voiceover — only offer it once voice exists.
 const activeSceneHasVoice = computed(() => !!activeScene.value?.voice_settings?.audio_asset_id);
 // The talking video was synced to an earlier voice; the voice has since changed
@@ -1409,10 +1412,12 @@ const ANIMATE_TIER_META = {
   balanced:      { name: "Hailuo 2.3",    sub: "Best for most",     quality: "Strong",     render: "~90s" },
   seedance_pro:  { name: "Seedance Pro",  sub: "ByteDance · sharp", quality: "Very high",  render: "~2 min" },
   premium:       { name: "Kling 2.1",     sub: "Cinematic",         quality: "Top",        render: "~3 min" },
+  veo_fast:      { name: "Veo 3.1 Fast",  sub: "Google · sharp motion", quality: "Very high", render: "~2 min" },
+  seedance_25:   { name: "Seedance 2.5",  sub: "ByteDance flagship",    quality: "Top",       render: "~3 min" },
   spokesperson:  { name: "Spokesperson",  sub: "Lip-sync · your voice", quality: "Talking", render: "~3 min" },
 };
 // Dropdown order: cheapest/fastest → most cinematic, then the talking option.
-const ANIMATE_TIER_ORDER = ['quick', 'seedance_lite', 'balanced', 'seedance_pro', 'premium', 'spokesperson'];
+const ANIMATE_TIER_ORDER = ['quick', 'seedance_lite', 'balanced', 'veo_fast', 'seedance_25', 'seedance_pro', 'premium', 'spokesperson'];
 
 // When the user switches tier, snap the chosen duration to one the new tier
 // actually supports. Prevents the 422 ("duration must be one of: 6, 10") that
@@ -5643,7 +5648,7 @@ function openAnimateModal() {
   // Pre-fill with the scene's last animation settings if any — saves the
   // re-animate flow a tier/duration click.
   const lastSettings = activeScene.value?.image_generation_settings ?? {};
-  animateTier.value = ['quick','balanced','premium','seedance_lite','seedance_pro','spokesperson'].includes(lastSettings.animation_tier)
+  animateTier.value = ['quick','balanced','premium','seedance_lite','seedance_pro','veo_fast','seedance_25','spokesperson'].includes(lastSettings.animation_tier)
     ? lastSettings.animation_tier
     : 'quick';
   animateDuration.value = lastSettings.animation_duration === 10 ? 10 : 5;
