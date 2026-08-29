@@ -104,6 +104,10 @@ const AUDIOGRAM_BACKGROUNDS = [
   { key: 'purple', label: 'Purple', css: 'linear-gradient(135deg,#1a0a2e 0%,#0d0d2b 50%,#14102a 100%)' },
   { key: 'ocean',  label: 'Ocean',  css: 'linear-gradient(135deg,#0a1628 0%,#0d1f3c 50%,#0a0e1a 100%)' },
 ]
+const audiogramBgStyle = computed(() => {
+  const bg = AUDIOGRAM_BACKGROUNDS.find(b => b.key === audiogramBg.value)
+  return { background: bg ? bg.css : AUDIOGRAM_BACKGROUNDS[0].css }
+})
 const ANIMATE_TIER_OPTIONS = [
   { key: 'seedance_lite', label: 'Seedance Lite', sub: '720p · fastest', cr: 30 },
   { key: 'quick',         label: 'Wan 2.5',       sub: '480p · balanced', cr: 50 },
@@ -1841,35 +1845,66 @@ defineExpose({ open })
           <div v-else-if="globalVisualMode === 'waveform'">
             <div class="image-ai-hint" style="margin-top:10px;">
               <span>🌊</span>
-              <span>Pick the audiogram look — you can still refine it in the editor.</span>
+              <span>Pick the audiogram design — you can still refine it in the editor.</span>
             </div>
 
-            <!-- Live swatch so the choice is seen, not imagined. -->
-            <div class="ag-preview" :style="{ background: AUDIOGRAM_BACKGROUNDS.find(b => b.key === audiogramBg)?.css }">
-              <div class="ag-preview-bars" :class="`ag-${audiogramStyle}`">
-                <span v-for="n in 14" :key="n" :style="{ background: audiogramColor, height: (18 + ((n * 37) % 46)) + '%' }"></span>
-              </div>
-            </div>
-
-            <div class="input-label" style="margin:12px 0 6px;">Style</div>
-            <div class="ag-row">
-              <button v-for="st in AUDIOGRAM_STYLES" :key="st.key" type="button"
-                :class="['ag-chip', audiogramStyle === st.key ? 'selected' : '']"
-                @click="audiogramStyle = st.key">{{ st.label }}</button>
+            <!-- Same picker as the editor's Audiogram panel: identical markup,
+                 classes and CSS, so the two surfaces cannot drift apart. -->
+            <div class="input-label" style="margin:12px 0 6px;">Design</div>
+            <div class="ag-style-grid">
+              <button
+                v-for="st in AUDIOGRAM_STYLES" :key="st.key"
+                :class="['ag-style-opt', audiogramStyle === st.key ? 'selected' : '']"
+                type="button"
+                @click="audiogramStyle = st.key"
+              >
+                <div class="ag-style-mini" :style="audiogramBgStyle">
+                  <template v-if="st.key === 'bars'">
+                    <span v-for="(h, i) in [0.4,0.7,0.55,0.9,0.6,0.8,0.45]" :key="i" class="ag-mini-bar" :style="{ height: `${h*100}%`, background: audiogramColor }"></span>
+                  </template>
+                  <template v-else-if="st.key === 'mirror'">
+                    <span v-for="(h, i) in [0.4,0.7,0.55,0.9,0.6,0.8,0.45]" :key="i" class="ag-mini-bar ag-mini-mirror" :style="{ height: `${h*100}%`, background: audiogramColor }"></span>
+                  </template>
+                  <template v-else-if="st.key === 'circle'">
+                    <svg viewBox="0 0 40 40" width="38" height="38" style="overflow:visible">
+                      <g transform="translate(20,20)">
+                        <line v-for="(h, i) in [0.5,0.8,0.6,0.9,0.55,0.75,0.65,0.85]" :key="i" :transform="`rotate(${i*45})`" x1="0" y1="7" :x2="0" :y2="`${7+h*10}`" :stroke="audiogramColor" stroke-width="2.5" stroke-linecap="round" />
+                      </g>
+                    </svg>
+                  </template>
+                  <template v-else-if="st.key === 'minimal'">
+                    <span v-for="(h, i) in [0.3,0.5,0.4,0.7,0.5,0.6,0.35,0.55,0.45,0.65]" :key="i" class="ag-mini-minimal" :style="{ height: `${h*100}%`, background: audiogramColor }"></span>
+                  </template>
+                </div>
+                <div class="ag-style-label">{{ st.label }}</div>
+              </button>
             </div>
 
             <div class="input-label" style="margin:12px 0 6px;">Color</div>
-            <div class="ag-row">
-              <button v-for="c in AUDIOGRAM_COLORS" :key="c" type="button"
-                :class="['ag-swatch', audiogramColor === c ? 'selected' : '']"
-                :style="{ background: c }" @click="audiogramColor = c"></button>
+            <div class="ag-colors">
+              <button
+                v-for="c in AUDIOGRAM_COLORS" :key="c"
+                :class="['ag-color-swatch', audiogramColor === c ? 'selected' : '']"
+                :style="{ background: c }"
+                type="button"
+                :title="c"
+                @click="audiogramColor = c"
+              ></button>
+              <label class="ag-color-custom" title="Custom color">
+                <input type="color" :value="audiogramColor" @input="e => { audiogramColor = e.target.value }" />
+                <span class="ag-color-custom-icon">＋</span>
+              </label>
             </div>
 
             <div class="input-label" style="margin:12px 0 6px;">Background</div>
-            <div class="ag-row">
-              <button v-for="bg in AUDIOGRAM_BACKGROUNDS" :key="bg.key" type="button"
-                :class="['ag-bg', audiogramBg === bg.key ? 'selected' : '']"
-                :style="{ background: bg.css }" @click="audiogramBg = bg.key">{{ bg.label }}</button>
+            <div class="ag-bg-row">
+              <button
+                v-for="bg in AUDIOGRAM_BACKGROUNDS" :key="bg.key"
+                :class="['ag-bg-opt', audiogramBg === bg.key ? 'selected' : '']"
+                :style="{ background: bg.css }"
+                type="button"
+                @click="audiogramBg = bg.key"
+              >{{ bg.label }}</button>
             </div>
           </div>
           <div v-else-if="globalVisualMode === 'stock_images'" class="image-ai-hint" style="margin-top:10px;">
@@ -2244,19 +2279,26 @@ defineExpose({ open })
 .image-ai-hint { display: flex; gap: 10px; padding: 10px 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid rgba(255,107,53,0.2); background: rgba(255,107,53,0.08); color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; }
 .image-ai-hint strong { color: var(--color-text-primary); }
 
-.ag-preview { height: 90px; border-radius: 10px; border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; margin-top: 10px; overflow: hidden; }
-.ag-preview-bars { display: flex; align-items: flex-end; gap: 3px; height: 60%; }
-.ag-preview-bars.ag-mirror { align-items: center; }
-.ag-preview-bars.ag-minimal span:nth-child(even) { opacity: .35; }
-.ag-preview-bars.ag-circle { transform: rotate(0deg); border-radius: 50%; }
-.ag-preview-bars span { width: 5px; border-radius: 3px; display: block; }
-.ag-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.ag-chip { padding: 7px 12px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); font-family: inherit; font-size: 12px; cursor: pointer; transition: border-color .15s; }
-.ag-chip.selected { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
-.ag-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
-.ag-swatch.selected { border-color: #fff; box-shadow: 0 0 0 2px var(--color-accent); }
-.ag-bg { width: 64px; height: 34px; border-radius: 7px; border: 1px solid var(--color-border); color: #cfcfe0; font-family: inherit; font-size: 10.5px; cursor: pointer; }
-.ag-bg.selected { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.ag-style-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ag-style-opt { background: var(--color-bg-elevated); border: 1.5px solid var(--color-border); border-radius: 8px; padding: 8px 6px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: border-color 0.15s; }
+.ag-style-opt:hover { border-color: var(--color-border-active); }
+.ag-style-opt.selected { border-color: var(--color-accent); }
+.ag-style-mini { width: 100%; height: 44px; border-radius: 5px; display: flex; align-items: flex-end; justify-content: center; gap: 2px; overflow: hidden; padding: 4px 4px 3px; }
+.ag-mini-bar { flex: 1; border-radius: 2px 2px 0 0; opacity: 0.9; }
+.ag-mini-mirror { border-radius: 999px; align-self: center; }
+.ag-mini-minimal { flex: 1; max-width: 4px; border-radius: 1px 1px 0 0; opacity: 0.85; }
+.ag-style-label { font-size: 10px; color: var(--color-text-muted); font-weight: 500; }
+.ag-colors { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ag-color-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: border-color 0.12s, transform 0.12s; padding: 0; }
+.ag-color-swatch:hover { transform: scale(1.15); }
+.ag-color-swatch.selected { border-color: #fff; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+.ag-color-custom { width: 22px; height: 22px; border-radius: 50%; border: 1.5px dashed var(--color-border-active); cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+.ag-color-custom input[type="color"] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.ag-color-custom-icon { font-size: 13px; color: var(--color-text-muted); pointer-events: none; }
+.ag-bg-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.ag-bg-opt { height: 32px; border-radius: 6px; border: 1.5px solid transparent; cursor: pointer; font-size: 9px; font-weight: 600; color: rgba(255,255,255,.7); letter-spacing: .04em; transition: border-color 0.12s; }
+.ag-bg-opt:hover { border-color: var(--color-border-active); }
+.ag-bg-opt.selected { border-color: #fff; }
 .anim-tier-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .anim-tier-card { display: flex; flex-direction: column; gap: 2px; padding: 10px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; transition: border-color .15s; }
 .anim-tier-card:hover { border-color: var(--color-text-muted); }
