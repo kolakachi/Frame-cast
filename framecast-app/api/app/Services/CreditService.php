@@ -471,6 +471,20 @@ class CreditService
         });
 
         if (! $charged) {
+            // The single strongest top-up-intent signal in the product: a user
+            // tried to spend and the balance refused. Every real charge funnels
+            // through here, so one hook covers all of them.
+            \App\Services\Analytics\PostHogService::capture(
+                isset($context['user_id']) ? (int) $context['user_id'] : null,
+                'credit_blocked',
+                [
+                    'operation' => $operation,
+                    'required'  => $amount,
+                    'balance'   => $this->balance($workspaceId),
+                ],
+                $workspaceId,
+            );
+
             return false;
         }
 

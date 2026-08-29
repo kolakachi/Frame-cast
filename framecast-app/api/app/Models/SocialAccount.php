@@ -8,6 +8,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SocialAccount extends Model
 {
+    protected static function booted(): void
+    {
+        static::created(function (SocialAccount $account): void {
+            // No per-user column on this table — attribute to the workspace
+            // owner, which for every current workspace is the only user.
+            $ownerId = \App\Models\User::where('workspace_id', $account->workspace_id)->orderBy('id')->value('id');
+            \App\Services\Analytics\PostHogService::capture(
+                $ownerId ? (int) $ownerId : null,
+                'social_account_connected',
+                ['platform' => $account->platform ?? $account->provider ?? null],
+                $account->workspace_id,
+            );
+        });
+    }
+
     protected $fillable = [
         'workspace_id',
         'platform',

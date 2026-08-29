@@ -7,6 +7,22 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ScheduledPost extends Model
 {
+    protected static function booted(): void
+    {
+        static::updated(function (ScheduledPost $post): void {
+            if (! $post->wasChanged('status') || $post->status !== 'published') {
+                return;
+            }
+            $ownerId = \App\Models\User::where('workspace_id', $post->workspace_id)->orderBy('id')->value('id');
+            \App\Services\Analytics\PostHogService::capture(
+                $ownerId ? (int) $ownerId : null,
+                'post_published',
+                ['platform' => $post->platform ?? null, 'post_id' => $post->getKey()],
+                $post->workspace_id,
+            );
+        });
+    }
+
     protected $fillable = [
         'workspace_id',
         'project_id',

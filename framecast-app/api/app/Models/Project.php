@@ -11,6 +11,51 @@ class Project extends Model
 {
     use HasFactory;
 
+    /**
+     * Funnel analytics ride the model's own state changes, so every code path
+     * — controllers, jobs, Cruise, retries — is covered from one place. These
+     * are the two moments the product either delivered or didn't.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (Project $project): void {
+            \App\Services\Analytics\PostHogService::capture(
+                $project->created_by_user_id,
+                'project_created',
+                [
+                    'source_type'  => $project->source_type,
+                    'visual_mode'  => $project->visual_generation_mode,
+                    'duration'     => $project->duration_target_seconds,
+                    'project_id'   => $project->getKey(),
+                ],
+                $project->workspace_id,
+            );
+        });
+
+        static::updated(function (Project $project): void {
+            if (! $project->wasChanged('status')) {
+                return;
+            }
+            $event = match ($project->status) {
+                'ready_for_review' => 'project_ready',
+                'failed'           => 'generation_failed',
+                default            => null,
+            };
+            if ($event) {
+                \App\Services\Analytics\PostHogService::capture(
+                    $project->created_by_user_id,
+                    $event,
+                    [
+                        'source_type' => $project->source_type,
+                        'visual_mode' => $project->visual_generation_mode,
+                        'project_id'  => $project->getKey(),
+                    ],
+                    $project->workspace_id,
+                );
+            }
+        });
+    }
+
     protected $fillable = [
         'workspace_id',
         'channel_id',

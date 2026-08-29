@@ -8,6 +8,26 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ExportJob extends Model
 {
+    /** Export outcome analytics — see Project::booted for the rationale. */
+    protected static function booted(): void
+    {
+        static::updated(function (ExportJob $job): void {
+            if (! $job->wasChanged('status') || ! in_array($job->status, ['completed', 'failed'], true)) {
+                return;
+            }
+            \App\Services\Analytics\PostHogService::capture(
+                $job->created_by_user_id,
+                $job->status === 'completed' ? 'export_completed' : 'export_failed',
+                array_filter([
+                    'project_id'   => $job->project_id,
+                    'aspect_ratio' => $job->aspect_ratio,
+                    'reason'       => $job->status === 'failed' ? mb_substr((string) $job->failure_reason, 0, 120) : null,
+                ]),
+                $job->workspace_id,
+            );
+        });
+    }
+
     use HasFactory;
 
     public $timestamps = false;

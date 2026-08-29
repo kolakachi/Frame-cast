@@ -2335,6 +2335,17 @@ const unreadCount = computed(() =>
   notifications.value.filter((item) => !item.is_read).length
 );
 const latestExportJob = computed(() => exportJobs.value[0] ?? null);
+// Download is the funnel's blind spot: every paying customer exports, then
+// the product loses sight of the video. This is the only event that can tell
+// export-then-post-manually apart from export-then-nothing. Client-side by
+// necessity — the file is fetched straight from storage, no API hop to hook.
+function trackVideoDownloaded(via) {
+  window.__posthog?.capture('video_downloaded', {
+    via,
+    project_id: Number(projectId.value),
+    export_job_id: latestExportJob.value?.id ?? null,
+  })
+}
 const latestExportDownloadUrl = computed(
   () => latestExportJob.value?.output_asset?.storage_url ?? null
 );
@@ -6675,11 +6686,13 @@ onBeforeUnmount(() => {
                   target="_blank"
                   rel="noopener"
                   class="export-pill-link"
+                  @click="trackVideoDownloaded('open')"
                 >Open ↗</a>
                 <a
                   :href="latestExportDownloadUrl"
                   :download="latestExportJob.file_name || 'export.mp4'"
                   class="export-pill-link"
+                  @click="trackVideoDownloaded('download')"
                 >Download ↓</a>
                 <span class="export-pill-sep">·</span>
                 <button class="export-pill-link export-pill-schedule" @click="scheduleModalOpen = true">📅 Schedule</button>

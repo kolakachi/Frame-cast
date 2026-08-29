@@ -83,6 +83,13 @@ return [
         'api_key' => env('PEXELS_API_KEY'),
     ],
 
+    // Product analytics. Same project key the SPA initialises posthog-js
+    // with — server events join the person profiles identify() creates.
+    'posthog' => [
+        'key'  => env('POSTHOG_KEY', ''),
+        'host' => env('POSTHOG_HOST', 'https://us.i.posthog.com'),
+    ],
+
     'replicate' => [
         'api_token' => env('REPLICATE_API_TOKEN'),
 
