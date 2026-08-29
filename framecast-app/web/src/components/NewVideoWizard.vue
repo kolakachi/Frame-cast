@@ -62,6 +62,12 @@ const targetAudience = ref('')
 const audioFile = ref(null)
 const videoFile = ref(null)
 const pdfFile = ref(null)
+// Dry-run result for the uploaded PDF. Free and side-effect-free: the service
+// analyses without rendering, so the user sees what reading the scanned pages
+// would cost BEFORE any credits move.
+const pdfAnalysis = ref(null)
+const pdfAnalysing = ref(false)
+const pdfReadScanned = ref(false)   // radio: read scanned pages, or skip them
 const imageFiles = ref([])
 const imagePreviewItems = ref([])
 const imageContext = ref('')
@@ -366,9 +372,32 @@ async function uploadImageSources() {
 async function resolveSourceContentRaw(sourceType = wizardSourceType.value) {
   if (sourceType === 'audio_upload' && audioFile.value) return uploadMediaSource(audioFile.value, 'audio')
   if (sourceType === 'video_upload' && videoFile.value) return uploadMediaSource(videoFile.value, 'video')
-  if (sourceType === 'pdf_upload' && pdfFile.value) return uploadMediaSource(pdfFile.value, 'document')
+  if (sourceType === 'pdf_upload' && pdfFile.value) {
+    const raw = await uploadMediaSource(pdfFile.value, 'document')
+    await analysePdf(raw)
+    return raw
+  }
   if (sourceType === 'images' && imageFiles.value.length > 0) return uploadImageSources()
   return buildSourceContentRaw(sourceType)
+}
+
+async function analysePdf(sourceRaw) {
+  const match = /asset_id:(\d+)/.exec(sourceRaw || '')
+  if (!match) return
+  pdfAnalysing.value = true
+  pdfAnalysis.value = null
+  try {
+    const res = await api.post('/projects/analyze-pdf', { asset_id: Number(match[1]) })
+    pdfAnalysis.value = res.data?.data ?? null
+    // Default to NOT spending credits — reading scanned pages is opt-in.
+    pdfReadScanned.value = false
+  } catch (e) {
+    // Analysis is advisory. If it fails, generation still runs on the text
+    // layer, so don't block the wizard on it.
+    pdfAnalysis.value = null
+  } finally {
+    pdfAnalysing.value = false
+  }
 }
 
 async function loadNiches() {
@@ -1601,6 +1630,50 @@ defineExpose({ open })
             The PDF needs selectable text. Scanned documents and image-only PDFs store pictures of
             words, so there's nothing for us to read. Long documents are condensed before scripting.
           </div>
+
+          <div v-if="pdfAnalysing" class="pdf-report">Checking the document…</div>
+
+          <div v-else-if="pdfAnalysis" class="pdf-report">
+            <div class="pdf-report-head">
+              <strong>{{ pdfAnalysis.page_count }} page{{ pdfAnalysis.page_count === 1 ? '' : 's' }}</strong>
+              · {{ pdfAnalysis.counts.text }} readable
+              <template v-if="pdfAnalysis.counts.scanned">· {{ pdfAnalysis.counts.scanned }} scanned image{{ pdfAnalysis.counts.scanned === 1 ? '' : 's' }}</template>
+            </div>
+
+            <!-- Over the plan's page limit: say what will be used, plainly. -->
+            <div v-if="pdfAnalysis.over_limit" class="pdf-report-note">
+              Your {{ pdfAnalysis.plan.name }} plan reads up to {{ pdfAnalysis.plan.page_limit }} pages,
+              so the video will cover the first {{ pdfAnalysis.readable_pages }} and the rest will be skipped.
+            </div>
+
+            <!-- Scanned pages: the actual choice, and what it costs. -->
+            <div v-if="pdfAnalysis.vision.pages > 0" class="pdf-choice">
+              <label class="pdf-radio">
+                <input type="radio" :value="false" v-model="pdfReadScanned" />
+                <span>
+                  <strong>Skip the scanned pages</strong> — free.
+                  The video covers only the {{ pdfAnalysis.counts.text }} readable page{{ pdfAnalysis.counts.text === 1 ? '' : 's' }}.
+                </span>
+              </label>
+              <label class="pdf-radio">
+                <input type="radio" :value="true" v-model="pdfReadScanned" />
+                <span>
+                  <strong>Read them with AI</strong> — {{ pdfAnalysis.vision.credits }} credits
+                  ({{ pdfAnalysis.vision.credits_per_page }} per page × {{ pdfAnalysis.vision.pages }}).
+                  Needed to cover the whole document.
+                </span>
+              </label>
+              <div v-if="pdfAnalysis.vision.beyond_plan" class="pdf-report-note">
+                {{ pdfAnalysis.vision.beyond_plan }} scanned page{{ pdfAnalysis.vision.beyond_plan === 1 ? '' : 's' }}
+                exceed your plan's limit of {{ pdfAnalysis.plan.vision_page_limit }} and won't be read either way.
+              </div>
+            </div>
+
+            <div v-else-if="pdfAnalysis.counts.scanned && !pdfAnalysis.plan.vision_page_limit" class="pdf-report-note">
+              This document has {{ pdfAnalysis.counts.scanned }} scanned page{{ pdfAnalysis.counts.scanned === 1 ? '' : 's' }} we can't read
+              on the {{ pdfAnalysis.plan.name }} plan. Upgrade to include them, or continue with the readable pages.
+            </div>
+          </div>
         </div>
 
         <!-- Visual type picker — shown for all text/media source types except images (which has its own) -->
@@ -1873,6 +1946,13 @@ defineExpose({ open })
 .format-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
 
 .input-optional { color: var(--color-text-muted); font-weight: 400; }
+.pdf-report { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-elevated); font-size: 12px; line-height: 1.55; }
+.pdf-report-head { color: var(--color-text-primary); margin-bottom: 6px; }
+.pdf-report-note { color: var(--color-text-muted); margin-top: 8px; }
+.pdf-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.pdf-radio { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; color: var(--color-text-muted); }
+.pdf-radio input { margin-top: 3px; flex-shrink: 0; }
+.pdf-radio strong { color: var(--color-text-primary); font-weight: 600; }
 .input-hint { margin-top: 8px; font-size: 11px; line-height: 1.5; color: var(--color-text-muted); }
 .script-edit-toggle { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--color-text-secondary); cursor: pointer; }
 .script-edit-toggle input { margin-top: 2px; accent-color: var(--color-accent); }

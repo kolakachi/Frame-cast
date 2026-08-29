@@ -237,6 +237,8 @@ Route::prefix('v1')->group(function (): void {
         });
 
         Route::post('/projects/estimate-credits', [CreditEstimateController::class, 'estimate']);
+        // Dry run for an uploaded PDF — free, no rendering, no credits spent.
+        Route::post('/projects/analyze-pdf', \App\Http\Controllers\Api\V1\Project\PdfAnalysisController::class);
 
         Route::prefix('/projects')->group(function (): void {
             Route::get('/', [ProjectController::class, 'index']);
