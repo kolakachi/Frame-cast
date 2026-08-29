@@ -88,6 +88,9 @@ class GenerateScriptJob implements ShouldQueue
                 'niche_guidance' => $niche ? $niche->guidance() : Niche::guidanceForSlug(null),
                 'platform' => $project->platform_target ?: 'general short-form',
                 'duration' => (int) ($project->duration_target_seconds ?: 60),
+                'word_target' => \App\Services\ScenePacing::targetWords(
+                    (int) ($project->duration_target_seconds ?: 60),
+                ),
                 'source_content' => $sourceContent,
             ], 1400, 0.35, $options);
 

@@ -95,6 +95,30 @@ class ScenePacing
             .'Close on a single clear takeaway rather than trailing off.';
     }
 
+    /**
+     * Spoken words per second, for turning a duration into a word count.
+     *
+     * ~150 wpm is the usual short-form narration pace and matches what the TTS
+     * engines actually produce.
+     */
+    public const WORDS_PER_SECOND = 2.5;
+
+    /**
+     * How many words of narration a video of this length needs.
+     *
+     * The script prompt only ever said "about N seconds — write only as much
+     * narration as fits", and the model did not calibrate: measured on the real
+     * pipeline, a 60s target produced 107 words (~43s) and a 180s target
+     * produced 142 (~57s). Tripling the runtime added 35 words. Since a
+     * segment's length comes from its voiceover, that made a 3-minute project
+     * render as a one-minute video however the scenes were cut — no breakdown
+     * change could fix it, because there was not enough script to cut up.
+     */
+    public static function targetWords(int $durationSeconds): int
+    {
+        return (int) round(max(1, $durationSeconds) * self::WORDS_PER_SECOND);
+    }
+
     /** Scenes to aim for at this length and visual mode. */
     public static function targetScenes(int $durationSeconds, ?string $visualMode, bool $animated = false): int
     {
