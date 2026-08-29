@@ -57,6 +57,16 @@ class AnimateSceneJob implements ShouldQueue
          * @var array<int>
          */
         public readonly array $shareWithSceneIds = [],
+        /**
+         * Still to animate, when it isn't simply the scene's current visual.
+         *
+         * Two cases: a RE-animate, where the scene's visual is already the
+         * video from last time and the real source is the preserved original;
+         * and a user-chosen image applied across scenes that have no still of
+         * their own. Without this the job re-derived the source from
+         * visual_asset_id and would hand a VIDEO to an image-to-video model.
+         */
+        public readonly ?int $sourceAssetId = null,
     ) {
         $this->onQueue('visual');
     }
@@ -120,11 +130,14 @@ class AnimateSceneJob implements ShouldQueue
         }
 
         try {
-            $sourceAsset = $scene->visual_asset_id
-                ? Asset::query()->find($scene->visual_asset_id)
-                : null;
+            $sourceAsset = $this->sourceAssetId
+                ? Asset::query()->find($this->sourceAssetId)
+                : ($scene->visual_asset_id ? Asset::query()->find($scene->visual_asset_id) : null);
             if (! $sourceAsset || ! $sourceAsset->storage_url) {
                 throw new RuntimeException('Scene has no source image to animate.');
+            }
+            if ($sourceAsset->asset_type === 'video' || str_starts_with((string) $sourceAsset->mime_type, 'video/')) {
+                throw new RuntimeException('Animation needs a still image, but this source is a video.');
             }
 
             if ($this->resumePredictionId) {
@@ -207,7 +220,10 @@ class AnimateSceneJob implements ShouldQueue
             // Track the previous still so the user can revert. Only set if the current
             // asset is an image — re-animation should preserve the *first* original still,
             // not whatever video the last animation produced.
-            $previousImageId = ($sourceAsset->asset_type === 'image') ? $sourceAsset->getKey() : null;
+            $currentVisual   = $scene->visual_asset_id ? Asset::query()->find($scene->visual_asset_id) : null;
+            $previousImageId = ($currentVisual && $currentVisual->asset_type === 'image')
+                ? $currentVisual->getKey()
+                : (($sourceAsset->asset_type === 'image') ? $sourceAsset->getKey() : null);
             $existingOriginal = data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id');
             $originalToStore = $existingOriginal ?: $previousImageId;
 

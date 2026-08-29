@@ -1052,7 +1052,7 @@ class SceneController extends Controller
         ])->save();
 
         if ($isSpokesperson) {
-            \App\Jobs\GenerateTalkingVideoJob::dispatch($scene->getKey(), $scene->project_id, $token);
+            \App\Jobs\GenerateTalkingVideoJob::dispatch($scene->getKey(), $scene->project_id, $token, $sourceAsset->getKey());
         } else {
             \App\Jobs\AnimateSceneJob::dispatch(
                 $scene->getKey(),
@@ -1061,6 +1061,11 @@ class SceneController extends Controller
                 $durationSeconds,
                 $validated['motion_prompt'] ?? null,
                 quality: $quality,
+                // Pass the still we ALREADY resolved above. The job used to
+                // re-derive it from visual_asset_id, which on a re-animate is
+                // last run's video — so this guard passed while the job then
+                // handed a video to an image-to-video model.
+                sourceAssetId: $sourceAsset->getKey(),
             );
         }
 

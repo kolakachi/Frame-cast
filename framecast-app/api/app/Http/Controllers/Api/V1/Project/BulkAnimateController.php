@@ -51,6 +51,10 @@ class BulkAnimateController extends Controller
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:1000'],
             'quality'          => ['sometimes', 'nullable', 'string', 'max:16'],
+            // A still to animate for EVERY chosen scene, whatever that scene
+            // currently holds. Lets a stock-clip scene be animated from a
+            // picked image instead of being turned away for having no still.
+            'source_asset_id'  => ['sometimes', 'nullable', 'integer'],
             // Restrict to chosen scenes. Absent = every eligible scene.
             'scene_ids'        => ['sometimes', 'array'],
             'scene_ids.*'      => ['integer'],
@@ -63,6 +67,24 @@ class BulkAnimateController extends Controller
         $quality         = $isSpokesperson
             ? null
             : CreditService::videoQuality($validated['tier'], $validated['quality'] ?? null);
+
+        // A picked source image, validated once. Must be an image in this
+        // workspace — an override is not a way to reach another tenant's asset.
+        $forcedStill = null;
+        if (! empty($validated['source_asset_id'])) {
+            $forcedStill = Asset::query()
+                ->whereKey((int) $validated['source_asset_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->first();
+
+            if (! $forcedStill || ! $forcedStill->storage_url) {
+                return $this->error('source_not_found', 'That image could not be found.', 404);
+            }
+
+            if ($forcedStill->asset_type === 'video' || str_starts_with((string) $forcedStill->mime_type, 'video/')) {
+                return $this->error('source_not_image', 'Pick a still image — animation cannot start from a video.', 422);
+            }
+        }
 
         $scenes = Scene::query()
             ->where('project_id', $project->getKey())
@@ -78,7 +100,7 @@ class BulkAnimateController extends Controller
         $skipped  = [];
 
         foreach ($scenes as $scene) {
-            $reason = $this->ineligibleReason($scene, $isSpokesperson);
+            $reason = $this->ineligibleReason($scene, $isSpokesperson, $forcedStill !== null);
 
             if ($reason !== null) {
                 $skipped[] = [
@@ -111,7 +133,8 @@ class BulkAnimateController extends Controller
                 'scene_id'        => $scene->getKey(),
                 'order'           => (int) $scene->scene_order,
                 'cost'            => $cost,
-                'source_still_id' => (int) ($this->sourceStill($scene)?->getKey() ?? 0),
+                'source_still_id' => (int) ($forcedStill?->getKey() ?? $this->sourceStill($scene)?->getKey() ?? 0),
+                'from_picked_image' => $forcedStill !== null && ! $this->sourceStill($scene),
             ];
         }
 
@@ -155,6 +178,7 @@ class BulkAnimateController extends Controller
             'tier'            => $validated['tier'],
             'eligible_count'  => count($eligible),
             'render_count'    => $isSpokesperson ? count($eligible) : count($groups),
+            'source_asset_id' => $forcedStill?->getKey(),
             'unshared_cost'   => $unsharedTotal,
             'saved'           => max(0, $unsharedTotal - array_sum(array_column($eligible, 'cost'))),
             'skipped'         => $skipped,
@@ -249,7 +273,12 @@ class BulkAnimateController extends Controller
             // and refund-on-failure, so bulk never becomes a second billing
             // route that can drift from the first.
             if ($isSpokesperson) {
-                \App\Jobs\GenerateTalkingVideoJob::dispatch($scene->getKey(), $scene->project_id, $token);
+                \App\Jobs\GenerateTalkingVideoJob::dispatch(
+                    $scene->getKey(),
+                    $scene->project_id,
+                    $token,
+                    $forcedStill?->getKey() ?? $this->sourceStill($scene)?->getKey(),
+                );
             } else {
                 \App\Jobs\AnimateSceneJob::dispatch(
                     $scene->getKey(),
@@ -259,6 +288,7 @@ class BulkAnimateController extends Controller
                     $validated['motion_prompt'] ?? null,
                     quality: $quality,
                     shareWithSceneIds: $sharersFor[$row['scene_id']] ?? [],
+                    sourceAssetId: $forcedStill?->getKey() ?? $this->sourceStill($scene)?->getKey(),
                 );
             }
 
@@ -279,7 +309,7 @@ class BulkAnimateController extends Controller
      * plainly DO have a visual — which reads as the batch miscounting rather
      * than as a scene that is already moving footage.
      */
-    private function ineligibleReason(Scene $scene, bool $isSpokesperson): ?string
+    private function ineligibleReason(Scene $scene, bool $isSpokesperson, bool $hasPickedImage = false): ?string
     {
         $existing = $scene->image_generation_settings_json ?? [];
 
@@ -287,14 +317,18 @@ class BulkAnimateController extends Controller
             return 'Already animating';
         }
 
-        if (! $scene->visual_asset_id) {
-            return 'No visual yet — generate or pick an image first';
-        }
+        // With a picked image, a scene needs no still of its own — that image
+        // IS the source. Only the spokesperson audio requirement still applies.
+        if (! $hasPickedImage) {
+            if (! $scene->visual_asset_id) {
+                return 'No image of its own — pick an image to animate it from';
+            }
 
-        if (! $this->sourceStill($scene)) {
-            // Has a visual, and it's a video with no still behind it: stock
-            // footage, an upload, or an animation whose original was purged.
-            return 'Already a video clip — there is no still to animate';
+            if (! $this->sourceStill($scene)) {
+                // A video with no still behind it: stock footage, an upload, or
+                // an animation whose original was purged.
+                return 'No still of its own — pick an image to animate it from';
+            }
         }
 
         if ($isSpokesperson && $this->voiceoverSeconds($scene) <= 0.0) {

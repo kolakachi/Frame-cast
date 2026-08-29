@@ -37,6 +37,12 @@ class GenerateTalkingVideoJob implements ShouldQueue
         public readonly int $sceneId,
         public readonly int $projectId,
         public readonly string $generationToken,
+        /**
+         * Still to lip-sync, when it isn't the scene's current visual — a
+         * re-render (visual is last time's talking video) or a user-chosen
+         * image applied to scenes with no still of their own.
+         */
+        public readonly ?int $sourceAssetId = null,
     ) {
         $this->onQueue('visual');
     }
@@ -130,7 +136,10 @@ class GenerateTalkingVideoJob implements ShouldQueue
             // On a RE-render the scene's visual is already the talking video, so
             // lip-sync from the preserved original still instead.
             $origStillId = (int) (data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id') ?? 0);
-            $imageAsset = $scene->visual_asset_id ? Asset::query()->find($scene->visual_asset_id) : null;
+            $imageAsset = $this->sourceAssetId ? Asset::query()->find($this->sourceAssetId) : null;
+            if (! $imageAsset) {
+                $imageAsset = $scene->visual_asset_id ? Asset::query()->find($scene->visual_asset_id) : null;
+            }
             if (! $imageAsset || $imageAsset->asset_type !== 'image') {
                 $imageAsset = $origStillId ? Asset::query()->find($origStillId) : $imageAsset;
             }
