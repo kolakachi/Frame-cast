@@ -34,7 +34,7 @@ class AnimateSceneJob implements ShouldQueue
     public function __construct(
         public readonly int $sceneId,
         public readonly int $projectId,
-        public readonly string $tier = 'quick',          // quick | balanced | premium | seedance_lite | seedance_pro
+        public readonly string $tier = 'quick',          // quick | balanced | premium | seedance_lite | seedance_pro | veo_fast | seedance_25
         public readonly int $durationSeconds = 6,        // 3–10
         public readonly ?string $motionPrompt = null,
         // Set by ReapStuckGenerationsJob to RESUME a prediction whose original

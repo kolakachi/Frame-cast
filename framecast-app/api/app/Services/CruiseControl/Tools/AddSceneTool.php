@@ -68,7 +68,7 @@ class AddSceneTool implements CruiseTool
             'animate_tier' => [
                 'type' => 'string',
                 'required' => false,
-                'enum' => ['quick', 'seedance_lite', 'balanced', 'seedance_pro', 'premium'],
+                'enum' => ['quick', 'seedance_lite', 'balanced', 'seedance_pro', 'premium', 'veo_fast', 'seedance_25'],
                 'description' => 'If set, the image is animated after generation. Adds the tier\'s VIDEO_* cost.',
             ],
             'character_names' => [

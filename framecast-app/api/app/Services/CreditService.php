@@ -219,6 +219,8 @@ class CreditService
         'video:seedance_lite'     => 0.18,  // Seedance Lite @720p, 5s ($0.036/s)
         'video:balanced'          => 0.19,  // Hailuo 2.3-fast @768p, 6s
         'video:seedance_pro'      => 0.75,  // Seedance Pro @1080p, 5s ($0.15/s)
+        'video:veo_fast'          => 0.40,  // Veo 3.1 Fast no-audio, 4s ($0.10/s)
+        'video:seedance_25'       => 0.514, // Seedance 2.5 @480p non_video_in, 5s ($0.1028/s)
         'video:premium'           => 0.45,  // Kling 2.1 pro, 5s ($0.09/s)
         'video:spokesperson'      => 0.64,  // Fabric 480p ~8s; actual scales per-second
     ];

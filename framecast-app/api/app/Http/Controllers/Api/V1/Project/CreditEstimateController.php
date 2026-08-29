@@ -20,7 +20,7 @@ class CreditEstimateController extends Controller
             'visual_generation_mode' => 'required|string',
             'ai_image_quality'     => 'nullable|string|in:low,medium,high',
             'duration_target_seconds' => 'nullable|integer|min:5|max:600',
-            'animate_tier'         => 'nullable|string|in:quick,balanced,premium,seedance_lite,seedance_pro',
+            'animate_tier'         => 'nullable|string|in:quick,balanced,premium,seedance_lite,seedance_pro,veo_fast,seedance_25',
             'animate_quality'      => 'nullable|string|max:16',
         ]);
 

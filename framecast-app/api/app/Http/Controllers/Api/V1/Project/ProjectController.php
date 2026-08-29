@@ -815,7 +815,7 @@ class ProjectController extends Controller
             'animate'        => ['nullable', 'boolean'],
             // Must match storeOneShot's tiers — spokesperson included, else the
             // plan/estimate call 422s the moment the user picks Spokesperson.
-            'animation_tier' => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro,spokesperson'],
+            'animation_tier' => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro,veo_fast,seedance_25,spokesperson'],
             'scenes_count'   => ['nullable', 'integer', 'min:1', 'max:8'],
             // Visual source: AI images (default), stock footage, or audiogram.
             'visual_source'  => ['nullable', 'string', 'in:ai_images,stock_video,stock_images,waveform'],
@@ -965,7 +965,7 @@ class ProjectController extends Controller
             // haven't moved to the array form yet (older wizard build).
             'source_image_asset_id'    => ['nullable', 'integer', 'exists:assets,id'],
             'character_id'             => ['nullable', 'integer', 'exists:characters,id'],
-            'animation_tier'           => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro,spokesperson'],
+            'animation_tier'           => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro,veo_fast,seedance_25,spokesperson'],
             // Visual source: AI images (default), stock footage, or audiogram.
             'visual_source'            => ['nullable', 'string', 'in:ai_images,stock_video,stock_images,waveform'],
             // 1-8 scenes. 1 = instant demo, 3 = DTC ad shape, 8 = full Reel.

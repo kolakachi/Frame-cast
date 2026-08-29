@@ -362,7 +362,7 @@ class CruiseControlController extends Controller
         $validated = $request->validate([
             'auto_apply'      => ['nullable', 'boolean'],
             'image_model'     => ['nullable', 'string', 'in:gpt-image-1,gpt-image-2,nano-banana,flux-schnell,sdxl-lightning'],
-            'animation_tier'  => ['nullable', 'string', 'in:quick,seedance_lite,balanced,seedance_pro,premium'],
+            'animation_tier'  => ['nullable', 'string', 'in:quick,seedance_lite,balanced,seedance_pro,premium,veo_fast,seedance_25'],
             // 'auto' explicitly clears the bias; a value locks the default.
             'visual_source'   => ['nullable', 'string', 'in:auto,ai_image,stock_video,stock_image,audiogram'],
         ]);
