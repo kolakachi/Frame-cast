@@ -84,6 +84,26 @@ const globalVisualMode = ref('stock_video') // 'stock_video' | 'stock_images' | 
 // The video model is the real price lever — a 4x spread per scene — so it is
 // an explicit choice, never a hidden default.
 const animateTier = ref('quick')
+
+// ── Audiogram (waveform) look, pickable at creation ────────────────────
+// Same catalogs as the editor's audiogram panel; the choice lands in
+// waveform_settings_json, which BreakdownScenesJob copies onto every scene.
+const audiogramStyle = ref('bars')
+const audiogramColor = ref('#ff6b35')
+const audiogramBg = ref('dark')
+const AUDIOGRAM_STYLES = [
+  { key: 'bars',    label: 'Classic' },
+  { key: 'mirror',  label: 'Mirror'  },
+  { key: 'circle',  label: 'Radial'  },
+  { key: 'minimal', label: 'Minimal' },
+]
+const AUDIOGRAM_COLORS = ['#ff6b35', '#60a5fa', '#34d399', '#a78bfa', '#f472b6', '#fbbf24', '#ffffff']
+const AUDIOGRAM_BACKGROUNDS = [
+  { key: 'dark',   label: 'Dark',   css: 'linear-gradient(180deg,#0d0d1a 0%,#0a0a14 100%)' },
+  { key: 'black',  label: 'Black',  css: '#000' },
+  { key: 'purple', label: 'Purple', css: 'linear-gradient(135deg,#1a0a2e 0%,#0d0d2b 50%,#14102a 100%)' },
+  { key: 'ocean',  label: 'Ocean',  css: 'linear-gradient(135deg,#0a1628 0%,#0d1f3c 50%,#0a0e1a 100%)' },
+]
 const ANIMATE_TIER_OPTIONS = [
   { key: 'seedance_lite', label: 'Seedance Lite', sub: '720p · fastest', cr: 30 },
   { key: 'quick',         label: 'Wan 2.5',       sub: '480p · balanced', cr: 50 },
@@ -976,7 +996,14 @@ async function submitWizardProject() {
         ? { visual_type: projectVisualTypeForMode('stock_images') }
         : {}),
       ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'waveform'
-        ? { visual_type: projectVisualTypeForMode('waveform') }
+        ? {
+            visual_type: projectVisualTypeForMode('waveform'),
+            waveform_settings_json: {
+              audiogram_style: audiogramStyle.value,
+              audiogram_color: audiogramColor.value,
+              audiogram_bg: audiogramBg.value,
+            },
+          }
         : {}),
     })
 
@@ -1811,9 +1838,39 @@ defineExpose({ open })
               </div>
             </template>
           </div>
-          <div v-else-if="globalVisualMode === 'waveform'" class="image-ai-hint" style="margin-top:10px;">
-            <span>🌊</span>
-            <span>The project will start as an audiogram. The bar style, color, and background can be refined in the editor.</span>
+          <div v-else-if="globalVisualMode === 'waveform'">
+            <div class="image-ai-hint" style="margin-top:10px;">
+              <span>🌊</span>
+              <span>Pick the audiogram look — you can still refine it in the editor.</span>
+            </div>
+
+            <!-- Live swatch so the choice is seen, not imagined. -->
+            <div class="ag-preview" :style="{ background: AUDIOGRAM_BACKGROUNDS.find(b => b.key === audiogramBg)?.css }">
+              <div class="ag-preview-bars" :class="`ag-${audiogramStyle}`">
+                <span v-for="n in 14" :key="n" :style="{ background: audiogramColor, height: (18 + ((n * 37) % 46)) + '%' }"></span>
+              </div>
+            </div>
+
+            <div class="input-label" style="margin:12px 0 6px;">Style</div>
+            <div class="ag-row">
+              <button v-for="st in AUDIOGRAM_STYLES" :key="st.key" type="button"
+                :class="['ag-chip', audiogramStyle === st.key ? 'selected' : '']"
+                @click="audiogramStyle = st.key">{{ st.label }}</button>
+            </div>
+
+            <div class="input-label" style="margin:12px 0 6px;">Color</div>
+            <div class="ag-row">
+              <button v-for="c in AUDIOGRAM_COLORS" :key="c" type="button"
+                :class="['ag-swatch', audiogramColor === c ? 'selected' : '']"
+                :style="{ background: c }" @click="audiogramColor = c"></button>
+            </div>
+
+            <div class="input-label" style="margin:12px 0 6px;">Background</div>
+            <div class="ag-row">
+              <button v-for="bg in AUDIOGRAM_BACKGROUNDS" :key="bg.key" type="button"
+                :class="['ag-bg', audiogramBg === bg.key ? 'selected' : '']"
+                :style="{ background: bg.css }" @click="audiogramBg = bg.key">{{ bg.label }}</button>
+            </div>
           </div>
           <div v-else-if="globalVisualMode === 'stock_images'" class="image-ai-hint" style="margin-top:10px;">
             <span>🖼️</span>
@@ -2187,6 +2244,19 @@ defineExpose({ open })
 .image-ai-hint { display: flex; gap: 10px; padding: 10px 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid rgba(255,107,53,0.2); background: rgba(255,107,53,0.08); color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; }
 .image-ai-hint strong { color: var(--color-text-primary); }
 
+.ag-preview { height: 90px; border-radius: 10px; border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; margin-top: 10px; overflow: hidden; }
+.ag-preview-bars { display: flex; align-items: flex-end; gap: 3px; height: 60%; }
+.ag-preview-bars.ag-mirror { align-items: center; }
+.ag-preview-bars.ag-minimal span:nth-child(even) { opacity: .35; }
+.ag-preview-bars.ag-circle { transform: rotate(0deg); border-radius: 50%; }
+.ag-preview-bars span { width: 5px; border-radius: 3px; display: block; }
+.ag-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ag-chip { padding: 7px 12px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); font-family: inherit; font-size: 12px; cursor: pointer; transition: border-color .15s; }
+.ag-chip.selected { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.ag-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+.ag-swatch.selected { border-color: #fff; box-shadow: 0 0 0 2px var(--color-accent); }
+.ag-bg { width: 64px; height: 34px; border-radius: 7px; border: 1px solid var(--color-border); color: #cfcfe0; font-family: inherit; font-size: 10.5px; cursor: pointer; }
+.ag-bg.selected { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
 .anim-tier-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .anim-tier-card { display: flex; flex-direction: column; gap: 2px; padding: 10px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; transition: border-color .15s; }
 .anim-tier-card:hover { border-color: var(--color-text-muted); }
