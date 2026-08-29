@@ -136,8 +136,19 @@ class AnimateSceneJob implements ShouldQueue
             if (! $sourceAsset || ! $sourceAsset->storage_url) {
                 throw new RuntimeException('Scene has no source image to animate.');
             }
-            if ($sourceAsset->asset_type === 'video' || str_starts_with((string) $sourceAsset->mime_type, 'video/')) {
-                throw new RuntimeException('Animation needs a still image, but this source is a video.');
+            // Re-animate: the scene's visual is last run's video. Fall back to
+            // the preserved original here rather than trusting every caller to
+            // pass one — Cruise's animate tool and the retry path don't, and
+            // handing a video to an image-to-video model fails at the provider.
+            if ($this->isVideoAsset($sourceAsset)) {
+                $originalId = (int) (data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id') ?? 0);
+                $original   = $originalId ? Asset::query()->find($originalId) : null;
+                if ($original && $original->storage_url && ! $this->isVideoAsset($original)) {
+                    $sourceAsset = $original;
+                }
+            }
+            if ($this->isVideoAsset($sourceAsset)) {
+                throw new RuntimeException('Animation needs a still image, but this scene has only a video.');
             }
 
             if ($this->resumePredictionId) {
@@ -450,6 +461,12 @@ class AnimateSceneJob implements ShouldQueue
         }
 
         $asset->forceFill(['usage_count' => 1 + $siblings->count()])->save();
+    }
+
+    private function isVideoAsset(Asset $asset): bool
+    {
+        return $asset->asset_type === 'video'
+            || str_starts_with((string) $asset->mime_type, 'video/');
     }
 
     private function stampAnimationState(Scene $scene, array $delta): void
