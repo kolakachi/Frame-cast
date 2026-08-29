@@ -153,6 +153,13 @@ return [
     // JS-rendered (SPA) pages as text for one-shot URL grounding. Internal
     // compose service, never publicly exposed. Empty URL disables the
     // fallback gracefully.
+    // Content-extraction service (framecast-app/extract) — URL scraping and
+    // PDF understanding. Internal only; see the service docstring for why it
+    // must never be exposed publicly.
+    'extract' => [
+        'url' => env('EXTRACT_URL', 'http://extract:8000'),
+    ],
+
     'renderer' => [
         'url' => env('RENDERER_URL', 'http://renderer:3000'),
     ],

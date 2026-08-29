@@ -1,0 +1,13 @@
+# Pinned — this service parses untrusted input from the internet, so upgrades
+# should be deliberate rather than implicit on rebuild.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+httpx==0.28.1
+# PyMuPDF covers all three PDF jobs in one library, in-process: per-page text,
+# per-page image inventory, and page->PNG rendering. Replaces smalot/pdfparser
+# plus poppler's pdfimages and pdftoppm.
+PyMuPDF==1.25.1
+# Purpose-built article extraction — boilerplate/nav/comment removal that our
+# hand-rolled regex stripping in PHP only approximates.
+trafilatura==2.0.0

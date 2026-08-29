@@ -139,6 +139,28 @@ services:
     init: true  # see note at top of file (also reaps Chromium children)
     stop_grace_period: 30s
 
+  # Internal content-extraction service — turns external things (web pages,
+  # PDFs) into text for script generation. Python because the libraries are
+  # simply better for this: PyMuPDF covers per-page text, image inventory and
+  # rendering in one in-process library, and trafilatura does real article
+  # extraction rather than the regex boilerplate-stripping it replaces.
+  #
+  # NO PUBLIC PORT — it fetches arbitrary user-supplied URLs, so exposing it
+  # would hand the internet a request forwarder into this network. Reachable
+  # from api/workers as http://extract:8000.
+  extract:
+    init: true  # see note at top of file
+    build:
+      context: ./extract
+    environment:
+      # JS-rendered pages are still delegated to the Node renderer, so exactly
+      # one Chromium lives in this stack rather than two.
+      RENDERER_URL: http://renderer:3000
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      - renderer
+
   web:
     image: node:22-alpine
     working_dir: /app
