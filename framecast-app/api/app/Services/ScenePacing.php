@@ -86,8 +86,9 @@ class ScenePacing
         }
 
         return 'This is a long video, so give it internal structure rather than one flat arc: '
-            .'group the scenes into 3-5 distinct sections, and open each section with its own '
-            .'short re-hook so a viewer arriving mid-way is pulled back in. '
+            .'group the scenes into 3-5 distinct sections, and open each section with a spoken '
+            .'re-hook — a real sentence of narration, not an empty divider or title card — so a '
+            .'viewer arriving mid-way is pulled back in. '
             .'Vary the pace deliberately — set a shorter duration_seconds (3-4s) on hooks, '
             .'turns and recaps, and a longer one (7-9s) where something is being explained. '
             .'Scenes of identical length read as a list rather than a story. '
