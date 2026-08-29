@@ -5796,11 +5796,25 @@ const bulkAnimateRows = computed(() => {
   const p = bulkAnimatePreview.value;
   if (!p) return [];
   const rows = [
-    ...p.scenes.map((r) => ({ ...r, included: true, blocked: false })),
-    ...p.skipped.map((r) => ({ ...r, included: false, blocked: !r.selectable })),
+    ...p.scenes.map((r) => ({ ...r, blocked: false })),
+    ...p.skipped.map((r) => ({ ...r, blocked: !r.selectable })),
   ];
-  return rows.sort((a, b) => a.order - b.order);
+  const sel = bulkAnimateSelection.value;
+  return rows
+    .map((r) => ({
+      ...r,
+      // Derived LOCALLY so a tick moves the instant it's clicked. Reading it
+      // back from the server meant every toggle waited on a round trip, and
+      // the row list swapped out underneath — which is what flickered.
+      included: r.blocked ? false : (sel === null ? true : sel.includes(r.scene_id)),
+    }))
+    .sort((a, b) => a.order - b.order);
 });
+
+// Only the very first fetch blanks the panel. Re-pricing keeps the list on
+// screen and just marks the total as stale.
+const bulkAnimateFirstLoad = computed(
+  () => bulkAnimateLoading.value && !bulkAnimatePreview.value);
 
 const bulkAnimateSelectableCount = computed(
   () => bulkAnimateRows.value.filter((r) => !r.blocked).length);
@@ -7309,11 +7323,15 @@ onBeforeUnmount(() => {
                   :class="captionPreviewClass"
                   :style="[captionPositionStyle, captionFontStyle]"
                 >
+                  <!-- Keyed by POSITION only. Including word.text made every
+                       keystroke change the keys, so Vue tore down and rebuilt
+                       every caption span instead of patching text in place —
+                       that was the flicker while typing in the script box. -->
                   <span
                     v-for="(word, index) in previewWords(
                       sceneScriptDraft || activeScene?.script_text
                     )"
-                    :key="`${index}-${word.text}`"
+                    :key="index"
                     :class="`caption-word ${word.highlighted ? 'highlight' : 'normal'}`"
                     :style="{ color: word.highlighted ? captionHighlightColorDraft : captionColorDraft }"
                   >
@@ -9430,7 +9448,7 @@ onBeforeUnmount(() => {
             </button>
 
             <div v-if="bulkAnimateMode" class="bulk-anim-body">
-              <div v-if="bulkAnimateLoading" class="bulk-anim-loading">Working out the cost…</div>
+              <div v-if="bulkAnimateFirstLoad" class="bulk-anim-loading">Working out the cost…</div>
 
               <template v-else-if="bulkAnimatePreview">
                 <!-- Says plainly what is per-scene and what is shared. -->
@@ -9499,7 +9517,8 @@ onBeforeUnmount(() => {
                 <template v-if="bulkAnimatePreview.eligible_count">
                   <div class="bulk-anim-row">
                     <span>{{ bulkAnimatePreview.eligible_count }} of {{ bulkAnimateRows.length }} scenes</span>
-                    <strong :class="{ short: !bulkAnimatePreview.affordable }">{{ bulkAnimatePreview.total_cost }} credits</strong>
+                    <strong v-if="bulkAnimateLoading" class="repricing">updating…</strong>
+                    <strong v-else :class="{ short: !bulkAnimatePreview.affordable }">{{ bulkAnimatePreview.total_cost }} credits</strong>
                   </div>
                   <!-- The whole point of the shared-clip path: one render
                        covering several scenes, and what that saved. -->
@@ -13455,7 +13474,7 @@ select.preset-select {
 .bulk-anim-toggle { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--text-secondary); font-family: inherit; cursor: pointer; transition: .15s; text-align: left; }
 .bulk-anim-toggle:hover { border-color: var(--border-active); color: var(--text-primary); }
 .bulk-anim-toggle.on { border-color: var(--accent, #ff6b35); background: rgba(255,107,53,.07); color: var(--text-primary); }
-.bulk-anim-check { width: 18px; height: 18px; flex-shrink: 0; border: 1.5px solid var(--border-active); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; line-height: 1; }
+.bulk-anim-check { width: 18px; height: 18px; flex-shrink: 0; border: 1.5px solid rgba(255,255,255,.6); background: rgba(255,255,255,.08); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; line-height: 1; }
 .bulk-anim-check.on { background: var(--accent, #ff6b35); border-color: var(--accent, #ff6b35); color: #fff; }
 .bulk-anim-toggle-text { display: flex; flex-direction: column; gap: 2px; }
 .bulk-anim-toggle-title { font-size: 12.5px; font-weight: 600; }
@@ -13468,9 +13487,10 @@ select.preset-select {
 .bulk-anim-scene:hover:not(:disabled) { background: var(--bg-elevated); }
 .bulk-anim-scene.off { color: var(--text-secondary); }
 .bulk-anim-scene.blocked { cursor: default; opacity: .6; }
-.bulk-anim-box { width: 16px; height: 16px; flex-shrink: 0; border: 1.5px solid var(--border-active); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; line-height: 1; }
+.bulk-anim-box { width: 16px; height: 16px; flex-shrink: 0; border: 1.5px solid rgba(255,255,255,.6); background: rgba(255,255,255,.08); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; line-height: 1; }
 .bulk-anim-box.on { background: var(--accent, #ff6b35); border-color: var(--accent, #ff6b35); color: #fff; }
-.bulk-anim-box.blocked { border-style: dashed; color: var(--text-secondary); }
+.bulk-anim-box.blocked { border-style: dashed; border-color: var(--border-active); background: transparent; color: var(--text-secondary); }
+.bulk-anim-row strong.repricing { color: var(--text-secondary); font-weight: 500; }
 .bulk-anim-scene-label { flex: 1; }
 .bulk-anim-scene-cost { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .bulk-anim-source strong { color: var(--text-primary); font-size: 11.5px; }
