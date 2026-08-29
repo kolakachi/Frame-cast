@@ -82,6 +82,21 @@ class CreditService
     }
 
     /**
+     * Credit cost for a TTS engine name (see RoutingTTSAdapter::engineFor).
+     * Mirrors GenerateTTSJob::ttsBilling, which keys off the provider the
+     * adapter actually returned — this is the pre-flight side of the same
+     * pricing, used to quote a bulk re-record before anything runs.
+     */
+    public static function ttsCostForEngine(string $engine): int
+    {
+        return match ($engine) {
+            'chatterbox' => self::TTS_CLONE,
+            'gemini'     => self::TTS_GEMINI,
+            default      => self::TTS,
+        };
+    }
+
+    /**
      * Scanned pages we'll read from one document for this plan.
      *
      * Always an int: null in PLAN_LIMITS means "no plan limit", never "no
@@ -99,6 +114,7 @@ class CreditService
             ? self::PDF_VISION_MAX_PER_DOCUMENT
             : min($planCap, self::PDF_VISION_MAX_PER_DOCUMENT);
     }
+
     public const AI_MUSIC     = 2;   // per scene, Replicate MusicGen (~$0.01 COGS) — 50%
 
     // Image-to-video animation tiers — base clip; 10s = 2×. Recalibrated to

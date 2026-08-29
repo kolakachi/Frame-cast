@@ -243,6 +243,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/projects/{projectId}/animate-all', \App\Http\Controllers\Api\V1\Project\BulkAnimateController::class)->whereNumber('projectId');
         // Restyle every scene's image at once. Costed preview unless confirm=true.
         Route::post('/projects/{projectId}/restyle-all', \App\Http\Controllers\Api\V1\Project\BulkVisualController::class)->whereNumber('projectId');
+        // Re-record every scene's voiceover. Costed preview unless confirm=true.
+        Route::post('/projects/{projectId}/rerecord-all', \App\Http\Controllers\Api\V1\Project\BulkVoiceController::class)->whereNumber('projectId');
 
         Route::prefix('/projects')->group(function (): void {
             Route::get('/', [ProjectController::class, 'index']);

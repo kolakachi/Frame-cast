@@ -5100,6 +5100,55 @@ async function persistSceneScript(sceneId, scriptText) {
 const applyVoiceAllState = ref("idle");   // idle | saving | saved | error
 const applyVoiceAllError = ref("");
 
+// --- Re-record every scene's voiceover -----------------------------------
+// Distinct from "apply this voice to all scenes", which only copies settings.
+// This actually re-runs TTS and costs credits, so it's priced first. The three
+// engines bill differently (OpenAI 1cr, cloned 2cr, Gemini 3cr) and a project
+// can mix them, so the total comes from the server per scene.
+const bulkVoiceOpen       = ref(false);
+const bulkVoicePreview    = ref(null);
+const bulkVoiceLoading    = ref(false);
+const bulkVoiceSubmitting = ref(false);
+const bulkVoiceError      = ref("");
+
+async function openBulkVoice() {
+  bulkVoiceOpen.value = true;
+  bulkVoiceError.value = "";
+  bulkVoiceLoading.value = true;
+  bulkVoicePreview.value = null;
+  try {
+    const response = await api.post(`/projects/${projectId.value}/rerecord-all`, {});
+    bulkVoicePreview.value = response.data?.data ?? null;
+  } catch (err) {
+    bulkVoiceError.value = err.response?.data?.error?.message ?? "Could not price this.";
+  } finally {
+    bulkVoiceLoading.value = false;
+  }
+}
+
+async function submitBulkVoice() {
+  const preview = bulkVoicePreview.value;
+  if (!preview || !preview.eligible_count || !preview.affordable) return;
+  bulkVoiceSubmitting.value = true;
+  bulkVoiceError.value = "";
+  try {
+    const response = await api.post(`/projects/${projectId.value}/rerecord-all`, { confirm: true });
+    const started = response.data?.data?.started_count ?? 0;
+    bulkVoiceOpen.value = false;
+    bulkVoicePreview.value = null;
+    pushToast({
+      id: `bulk-voice-${Date.now()}`,
+      title: `Re-recording ${started} scene${started === 1 ? '' : 's'}`,
+      message: 'Each scene re-records its own script.',
+    });
+  } catch (err) {
+    bulkVoiceError.value =
+      err.response?.data?.error?.message ?? "Could not start re-recording.";
+  } finally {
+    bulkVoiceSubmitting.value = false;
+  }
+}
+
 async function applyVoiceToAllScenes() {
   const source = activeScene.value;
   if (!source || applyVoiceAllState.value === "saving") return;
@@ -8068,6 +8117,60 @@ onBeforeUnmount(() => {
                   </div>
                   <div v-else class="apply-all-note muted">
                     Copies the voice, speed, stability{{ activeVoiceIsGemini ? ' and direction' : '' }}.
+                  </div>
+                </div>
+
+                <!-- Actually re-runs TTS for the whole project. Separate from
+                     the copy-settings action above because this one bills. -->
+                <div v-if="scenes.length > 1" class="apply-all-row">
+                  <button
+                    class="apply-all-btn"
+                    type="button"
+                    @click="bulkVoiceOpen ? (bulkVoiceOpen = false) : openBulkVoice()"
+                  >
+                    🎙 {{ bulkVoiceOpen ? 'Hide' : 'Re-record all scenes' }}
+                  </button>
+
+                  <div v-if="bulkVoiceOpen" class="bulk-voice-body">
+                    <div v-if="bulkVoiceLoading" class="bulk-voice-muted">Working out the cost…</div>
+                    <div v-else-if="bulkVoiceError" class="bulk-voice-short">{{ bulkVoiceError }}</div>
+
+                    <template v-else-if="bulkVoicePreview">
+                      <div v-if="!bulkVoicePreview.eligible_count" class="bulk-voice-muted">
+                        No scene has a script to record yet.
+                      </div>
+
+                      <template v-else>
+                        <div class="bulk-voice-row">
+                          <span>{{ bulkVoicePreview.eligible_count }} scene{{ bulkVoicePreview.eligible_count === 1 ? '' : 's' }}</span>
+                          <strong :class="{ short: !bulkVoicePreview.affordable }">{{ bulkVoicePreview.total_cost }} credits</strong>
+                        </div>
+                        <div class="bulk-voice-row sub">
+                          <span>Your balance</span>
+                          <span>{{ bulkVoicePreview.balance }} credits</span>
+                        </div>
+                        <div class="bulk-voice-muted">
+                          Each scene re-records its own script with its own voice.
+                        </div>
+                        <div v-if="!bulkVoicePreview.affordable" class="bulk-voice-short">
+                          You're {{ bulkVoicePreview.shortage }} credits short.
+                        </div>
+                        <ul v-if="bulkVoicePreview.skipped.length" class="bulk-voice-skips">
+                          <li v-for="sk in bulkVoicePreview.skipped" :key="sk.scene_id">
+                            Scene {{ sk.order }} skipped — {{ sk.reason }}
+                          </li>
+                        </ul>
+                        <button
+                          type="button"
+                          class="btn btn-primary btn-sm"
+                          style="width:100%;margin-top:10px;"
+                          :disabled="bulkVoiceSubmitting || !bulkVoicePreview.affordable"
+                          @click="submitBulkVoice"
+                        >
+                          {{ bulkVoiceSubmitting ? 'Starting…' : `Re-record all ${bulkVoicePreview.eligible_count} scenes` }}
+                        </button>
+                      </template>
+                    </template>
                   </div>
                 </div>
 
@@ -13221,6 +13324,13 @@ select.preset-select {
 .ap-input { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); padding: 9px 11px; font-size: 13px; font-family: inherit; outline: none; }
 .ap-input:focus { border-color: rgba(255,107,53,.5); }
 .ap-error { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.2); color: #fca5a5; border-radius: 7px; padding: 8px 11px; font-size: 12px; margin-bottom: 12px; }
+.bulk-voice-body { margin-top: 8px; padding: 10px 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; }
+.bulk-voice-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--text-primary); }
+.bulk-voice-row.sub { margin-top: 3px; font-size: 11.5px; color: var(--text-secondary); }
+.bulk-voice-row strong.short { color: #f87171; }
+.bulk-voice-muted { font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-top: 6px; }
+.bulk-voice-short { margin-top: 8px; font-size: 11.5px; color: #f87171; line-height: 1.45; }
+.bulk-voice-skips { margin: 8px 0 0; padding-left: 16px; font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
 .bulk-style { margin-top: 10px; }
 .bulk-style-cta { width: 100%; padding: 7px 10px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 7px; color: var(--text-secondary); font-family: inherit; font-size: 11.5px; cursor: pointer; transition: .15s; }
 .bulk-style-cta:hover { color: var(--text-primary); border-color: var(--border-active); }

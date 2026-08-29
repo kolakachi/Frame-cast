@@ -33,22 +33,42 @@ class RoutingTTSAdapter implements TTSAdapter
 
     private function pick(string $voiceId, array $options): TTSAdapter
     {
+        return match (self::engineFor($voiceId, $options)) {
+            'openai'     => $this->openai,
+            'chatterbox' => $this->chatterbox,
+            default      => $this->gemini,
+        };
+    }
+
+    /**
+     * Which engine a scene will route to, as a plain string.
+     *
+     * Split out of pick() so a caller can know the engine WITHOUT synthesizing
+     * — the three engines bill at different rates, so a bulk pre-flight quote
+     * has to resolve the same way the real run will. Sharing this method is
+     * what stops the quote and the charge drifting apart.
+     *
+     * @return 'openai'|'chatterbox'|'gemini'
+     */
+    public static function engineFor(string $voiceId, array $options = []): string
+    {
         $provider = strtolower(trim((string) ($options['provider'] ?? '')));
+
         if ($provider === 'openai') {
-            return $this->openai;
+            return 'openai';
         }
         // Cloned voices carry a replicate:chatterbox provider (or a clone_audio_url).
         if (str_contains($provider, 'chatterbox') || $provider === 'clone' || ! empty($options['clone_audio_url'])) {
-            return $this->chatterbox;
+            return 'chatterbox';
         }
         if ($provider === 'google' || $provider === 'gemini') {
-            return $this->gemini;
+            return 'gemini';
         }
 
         // No explicit provider — infer from the voice. Only the fixed OpenAI
         // voices stay on OpenAI; Gemini is the default for everything else.
         return in_array(strtolower($voiceId), self::OPENAI_VOICES, true)
-            ? $this->openai
-            : $this->gemini;
+            ? 'openai'
+            : 'gemini';
     }
 }
