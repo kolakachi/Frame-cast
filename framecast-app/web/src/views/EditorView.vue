@@ -5494,6 +5494,70 @@ async function swapVisual() {
   }
 }
 
+// --- Restyle every scene's image ---------------------------------------
+// Applies the picked style + model to the whole project. Each scene rebuilds
+// from its OWN prompt server-side, so scene 4 still depicts scene 4 — only the
+// look changes. There is deliberately no bulk prompt override.
+const bulkStyleOpen    = ref(false);
+const bulkStylePreview = ref(null);
+const bulkStyleLoading = ref(false);
+const bulkStyleSubmitting = ref(false);
+const bulkStyleError   = ref("");
+
+const bulkStyleKey = computed(() =>
+  visualStyleDraft.value
+  ?? activeScene.value?.visual_style
+  ?? activeScene.value?.image_generation_settings?.style
+  ?? "cinematic");
+
+async function openBulkStyle() {
+  bulkStyleOpen.value = true;
+  bulkStyleError.value = "";
+  bulkStyleLoading.value = true;
+  bulkStylePreview.value = null;
+  try {
+    const response = await api.post(`/projects/${projectId.value}/restyle-all`, {
+      style: bulkStyleKey.value,
+      custom_visual_style: customVisualStyleDraft.value || undefined,
+      model_key: aiImageModelKey.value,
+    });
+    bulkStylePreview.value = response.data?.data ?? null;
+  } catch (err) {
+    bulkStyleError.value = err.response?.data?.error?.message ?? "Could not price this.";
+  } finally {
+    bulkStyleLoading.value = false;
+  }
+}
+
+async function submitBulkStyle() {
+  const preview = bulkStylePreview.value;
+  if (!preview || !preview.eligible_count || !preview.affordable) return;
+  bulkStyleSubmitting.value = true;
+  bulkStyleError.value = "";
+  try {
+    const response = await api.post(`/projects/${projectId.value}/restyle-all`, {
+      style: bulkStyleKey.value,
+      custom_visual_style: customVisualStyleDraft.value || undefined,
+      model_key: aiImageModelKey.value,
+      confirm: true,
+    });
+    const started = response.data?.data?.started_count ?? 0;
+    bulkStyleOpen.value = false;
+    bulkStylePreview.value = null;
+    pushToast({
+      id: `bulk-style-${Date.now()}`,
+      title: `Restyling ${started} scene${started === 1 ? '' : 's'}`,
+      message: 'Each scene keeps its own subject — only the look changes.',
+    });
+    for (const row of preview.scenes) pollSceneUntilVisual(row.scene_id);
+  } catch (err) {
+    bulkStyleError.value =
+      err.response?.data?.error?.message ?? "Could not start restyling.";
+  } finally {
+    bulkStyleSubmitting.value = false;
+  }
+}
+
 async function generateAIImage() {
   if (!activeScene.value || aiImagePending.value || activeSceneAIImagePending.value) return;
 
@@ -7678,6 +7742,64 @@ onBeforeUnmount(() => {
                   <div v-if="visualStyleDraft && activeScene?.visual_type === 'ai_image' && !(aiImagePending || activeSceneAIImagePending) && visualStyleDraft !== (activeScene?.image_generation_settings?.style ?? activeScene?.visual_style ?? project?.ai_broll_style ?? visualStyleDraft)" class="style-regen-hint">
                     Style changed — regenerate to apply.
                   </div>
+
+                  <!-- Apply this look to the whole project. -->
+                  <div v-if="activeScene?.visual_type === 'ai_image'" class="bulk-style">
+                    <button type="button" class="bulk-style-cta" @click="bulkStyleOpen ? (bulkStyleOpen = false) : openBulkStyle()">
+                      🎨 {{ bulkStyleOpen ? 'Hide' : 'Apply this style to all scenes' }}
+                    </button>
+
+                    <div v-if="bulkStyleOpen" class="bulk-style-body">
+                      <div v-if="bulkStyleLoading" class="bulk-style-muted">Working out the cost…</div>
+                      <div v-else-if="bulkStyleError" class="bulk-style-short">{{ bulkStyleError }}</div>
+
+                      <template v-else-if="bulkStylePreview">
+                        <div v-if="!bulkStylePreview.eligible_count" class="bulk-style-muted">
+                          Every scene is already generating an image.
+                        </div>
+
+                        <template v-else>
+                          <div class="bulk-style-row">
+                            <span>{{ bulkStylePreview.eligible_count }} scene{{ bulkStylePreview.eligible_count === 1 ? '' : 's' }}</span>
+                            <strong :class="{ short: !bulkStylePreview.affordable }">{{ bulkStylePreview.total_cost }} credits</strong>
+                          </div>
+                          <div class="bulk-style-row sub">
+                            <span>Your balance</span>
+                            <span>{{ bulkStylePreview.balance }} credits</span>
+                          </div>
+
+                          <!-- The reassurance that matters most here: this is a
+                               restyle, not an overwrite. -->
+                          <div class="bulk-style-muted" style="margin-top:8px;">
+                            Each scene is redrawn from its own description — only the look changes.
+                          </div>
+                          <div v-if="bulkStylePreview.character_count" class="bulk-style-muted">
+                            {{ bulkStylePreview.character_count }} character scene{{ bulkStylePreview.character_count === 1 ? '' : 's' }}
+                            cost more — they redraw against the reference photo.
+                          </div>
+
+                          <div v-if="!bulkStylePreview.affordable" class="bulk-style-short">
+                            You're {{ bulkStylePreview.shortage }} credits short.
+                          </div>
+                          <ul v-if="bulkStylePreview.skipped.length" class="bulk-style-skips">
+                            <li v-for="s in bulkStylePreview.skipped" :key="s.scene_id">
+                              Scene {{ s.order }} skipped — {{ s.reason }}
+                            </li>
+                          </ul>
+
+                          <button
+                            type="button"
+                            class="btn btn-primary btn-sm"
+                            style="width:100%;margin-top:10px;"
+                            :disabled="bulkStyleSubmitting || !bulkStylePreview.affordable"
+                            @click="submitBulkStyle"
+                          >
+                            {{ bulkStyleSubmitting ? 'Starting…' : `Restyle all ${bulkStylePreview.eligible_count} scenes` }}
+                          </button>
+                        </template>
+                      </template>
+                    </div>
+                  </div>
                 </template>
 
                 <!-- My Assets -->
@@ -9136,6 +9258,15 @@ onBeforeUnmount(() => {
 
             <div v-if="bulkAnimateMode" class="bulk-anim-body">
               <div v-if="bulkAnimateLoading" class="bulk-anim-loading">Working out the cost…</div>
+
+              <!-- Says plainly what is per-scene and what is shared. Each scene
+                   animates its OWN image (and lip-syncs to its own voiceover);
+                   the motion direction above is the one shared input. -->
+              <div v-if="!bulkAnimateLoading" class="bulk-anim-scope">
+                Every scene animates its own image{{ animateTier === 'spokesperson' ? ', lip-synced to its own voiceover' : '' }}.
+                <template v-if="animateMotionPrompt.trim()">The motion direction above is applied to all of them.</template>
+                <template v-else>With no motion direction, each scene moves naturally from its own image.</template>
+              </div>
 
               <template v-else-if="bulkAnimatePreview">
                 <div v-if="!bulkAnimatePreview.eligible_count" class="bulk-anim-none">
@@ -13090,6 +13221,16 @@ select.preset-select {
 .ap-input { width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); padding: 9px 11px; font-size: 13px; font-family: inherit; outline: none; }
 .ap-input:focus { border-color: rgba(255,107,53,.5); }
 .ap-error { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.2); color: #fca5a5; border-radius: 7px; padding: 8px 11px; font-size: 12px; margin-bottom: 12px; }
+.bulk-style { margin-top: 10px; }
+.bulk-style-cta { width: 100%; padding: 7px 10px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 7px; color: var(--text-secondary); font-family: inherit; font-size: 11.5px; cursor: pointer; transition: .15s; }
+.bulk-style-cta:hover { color: var(--text-primary); border-color: var(--border-active); }
+.bulk-style-body { margin-top: 8px; padding: 10px 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; }
+.bulk-style-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--text-primary); }
+.bulk-style-row.sub { margin-top: 3px; font-size: 11.5px; color: var(--text-secondary); }
+.bulk-style-row strong.short { color: #f87171; }
+.bulk-style-muted { font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-top: 4px; }
+.bulk-style-short { margin-top: 8px; font-size: 11.5px; color: #f87171; line-height: 1.45; }
+.bulk-style-skips { margin: 8px 0 0; padding-left: 16px; font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
 .bulk-anim { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
 .bulk-anim-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 2px; background: none; border: none; color: var(--text-secondary); font-family: inherit; font-size: 12px; cursor: pointer; text-align: left; }
 .bulk-anim-toggle:hover { color: var(--text-primary); }
@@ -13097,6 +13238,7 @@ select.preset-select {
 .bulk-anim-check { width: 15px; height: 15px; flex-shrink: 0; border: 1px solid var(--border-active); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; }
 .bulk-anim-toggle.on .bulk-anim-check { background: var(--accent, #ff6b35); border-color: var(--accent, #ff6b35); color: #fff; }
 .bulk-anim-body { margin-top: 8px; padding: 10px 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; }
+.bulk-anim-scope { font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .bulk-anim-loading, .bulk-anim-none { font-size: 12px; color: var(--text-secondary); }
 .bulk-anim-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--text-primary); }
 .bulk-anim-row.sub { margin-top: 3px; font-size: 11.5px; color: var(--text-secondary); }
