@@ -39,6 +39,36 @@ class CreditService
     // Token count scales with page dimensions, so this is calibrated for
     // roughly A4; unusually large pages cost more.
     public const PDF_VISION_PAGE = 1;
+
+    /**
+     * Hard ceiling on vision pages read from ONE document, whatever the plan.
+     *
+     * Plan limits control monthly generosity; this controls blast radius. An
+     * "unlimited" plan otherwise means a single upload of a 5,000-page scanned
+     * archive is 5,000 credits and ~$28 of COGS in one action, with no human
+     * decision between the click and the bill. Unlimited should mean "as many
+     * documents as you like", not "any one document can be arbitrarily large".
+     */
+    public const PDF_VISION_MAX_PER_DOCUMENT = 200;
+
+    /**
+     * Scanned pages we'll read from one document for this plan.
+     *
+     * Always an int: null in PLAN_LIMITS means "no plan limit", never "no
+     * ceiling". Centralised because both the dry-run estimate and the job must
+     * agree — if they diverge, users are quoted one number and charged another.
+     */
+    public static function pdfVisionPageCap(?string $planTier): int
+    {
+        $limits  = self::PLAN_LIMITS[$planTier ?? 'free'] ?? self::PLAN_LIMITS['free'];
+        $planCap = array_key_exists('pdf_vision_page_limit', $limits)
+            ? $limits['pdf_vision_page_limit']
+            : 0;
+
+        return $planCap === null
+            ? self::PDF_VISION_MAX_PER_DOCUMENT
+            : min($planCap, self::PDF_VISION_MAX_PER_DOCUMENT);
+    }
     public const AI_MUSIC     = 2;   // per scene, Replicate MusicGen (~$0.01 COGS) — 50%
 
     // Image-to-video animation tiers — base clip; 10s = 2×. Recalibrated to

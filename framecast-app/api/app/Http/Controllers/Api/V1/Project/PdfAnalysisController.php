@@ -72,16 +72,15 @@ class PdfAnalysisController extends Controller
 
         $plan       = WorkspaceUsageService::plans()[$user->workspace?->plan_tier ?? 'free'] ?? [];
         $limits     = CreditService::PLAN_LIMITS[$user->workspace?->plan_tier ?? 'free'] ?? CreditService::PLAN_LIMITS['free'];
-        // null means UNLIMITED in PLAN_LIMITS, so `?? 0` would read "unlimited"
-        // as "none" — the most restrictive value, and exactly backwards. Only
-        // an absent key should fall back.
         $pageLimit  = array_key_exists('pdf_page_limit', $limits) ? $limits['pdf_page_limit'] : null;
-        $visionCap  = array_key_exists('pdf_vision_page_limit', $limits) ? $limits['pdf_vision_page_limit'] : 0;
+        // Shared with the job, so the number quoted here is the number charged.
+        // Already includes the per-document ceiling, so it's always an int.
+        $visionCap  = CreditService::pdfVisionPageCap($user->workspace?->plan_tier);
 
         // Pages we'd read at all, and of those, how many need vision.
         $readablePages   = $pageLimit === null ? $pageCount : min($pageCount, $pageLimit);
         $overLimit       = $pageCount > $readablePages;
-        $visionCandidates = min($scanned, $visionCap === null ? $scanned : $visionCap);
+        $visionCandidates = min($scanned, $visionCap);
         $visionCost      = $visionCandidates * CreditService::PDF_VISION_PAGE;
 
         return response()->json([

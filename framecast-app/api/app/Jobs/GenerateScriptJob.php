@@ -310,7 +310,7 @@ class GenerateScriptJob implements ShouldQueue
 
         try {
             $result = app(\App\Services\Generation\PdfContentExtractor::class)
-                ->extract($local, $asset->title, $wantsVision && $visionCap !== 0, $visionCap ?? 0);
+                ->extract($local, $asset->title, $wantsVision && $visionCap > 0, $visionCap);
         } finally {
             rescue(fn () => @unlink($local), null, false);
         }
@@ -332,16 +332,14 @@ class GenerateScriptJob implements ShouldQueue
         return $header."\n\n".$text;
     }
 
-    /** Scanned pages this workspace's plan allows. null = unlimited, 0 = none. */
-    private function visionPageCap(Project $project): ?int
+    /**
+     * Scanned pages we'll read from this document. Always an int — the plan
+     * limit floored by the per-document ceiling. Shared with the dry run so
+     * the estimate the user accepted is the amount actually charged.
+     */
+    private function visionPageCap(Project $project): int
     {
-        $tier   = (string) ($project->workspace?->plan_tier ?? 'free');
-        $limits = CreditService::PLAN_LIMITS[$tier] ?? CreditService::PLAN_LIMITS['free'];
-
-        // null means unlimited — only an absent key falls back to none.
-        return array_key_exists('pdf_vision_page_limit', $limits)
-            ? $limits['pdf_vision_page_limit']
-            : 0;
+        return CreditService::pdfVisionPageCap($project->workspace?->plan_tier);
     }
 
     /**
