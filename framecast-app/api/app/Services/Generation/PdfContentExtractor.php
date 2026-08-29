@@ -101,6 +101,10 @@ class PdfContentExtractor
      */
     private function normalise(string $text): string
     {
+        // PDF text can carry lone surrogates and control bytes that Postgres
+        // rejects outright, failing the whole generation on save. Clean first.
+        $text = \App\Support\Utf8::clean($text);
+
         $text = str_replace(["\r\n", "\r"], "\n", $text);
         // Keep paragraph breaks, flatten single line breaks inside them.
         $text = preg_replace('/\n{2,}/', "\x00", $text) ?? $text;

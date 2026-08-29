@@ -77,7 +77,7 @@ class GenerateScriptJob implements ShouldQueue
 
         if ($verbatimScript) {
             // Kept exactly as the user wrote it — only the scene breakdown splits it.
-            $project->forceFill(['script_text' => trim((string) $sourceContent)])->save();
+            $project->forceFill(['script_text' => \App\Support\Utf8::clean(trim((string) $sourceContent))])->save();
         } else {
             $result = $aiGeneration->generate($promptTemplateKey, [
                 'source_type' => $project->source_type ?: 'prompt',
@@ -91,7 +91,9 @@ class GenerateScriptJob implements ShouldQueue
                 'source_content' => $sourceContent,
             ], 1400, 0.35, $options);
 
-            $project->forceFill(['script_text' => $result['content']])->save();
+            // The model echoes source text back, so a bad byte in the source
+            // reaches this save even when the extractor was clean.
+            $project->forceFill(['script_text' => \App\Support\Utf8::clean($result['content'])])->save();
         }
 
         // Infer a title from the finished script when the user didn't set one —

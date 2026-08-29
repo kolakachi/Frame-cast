@@ -86,7 +86,8 @@ class UrlContentExtractor
             );
         }
 
-        return Str::limit($content, self::MAX_CONTENT_CHARS, '');
+        // Scraped pages carry the same malformed-byte risk as PDFs.
+        return \App\Support\Utf8::clean(Str::limit($content, self::MAX_CONTENT_CHARS, ''));
     }
 
     // ── YouTube ───────────────────────────────────────────────────────────
