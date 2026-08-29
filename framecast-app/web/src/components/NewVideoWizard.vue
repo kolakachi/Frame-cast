@@ -896,6 +896,9 @@ async function submitWizardProject() {
     const res = await api.post('/projects', {
       source_type: sourceType,
       source_content_raw: resolvedSource,
+      // The user's answer to "read the scanned pages?" from the dry run.
+      // Only meaningful for pdf_upload; harmless elsewhere.
+      pdf_read_scanned: wizardSourceType.value === 'pdf_upload' ? pdfReadScanned.value : false,
       allow_script_edit: sourceType === 'script' ? allowScriptEdit.value : false,
       languages: languageSelections.value,
       platform_target: platformTarget.value,

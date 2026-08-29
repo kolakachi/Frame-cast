@@ -302,14 +302,25 @@ class GenerateScriptJob implements ShouldQueue
         $local = tempnam(sys_get_temp_dir(), 'wyv-pdf-').'.pdf';
         file_put_contents($local, $bytes);
 
+        // Only render scanned pages if the user agreed to pay for it, and only
+        // as many as their plan allows. Both come from the dry run they were
+        // shown before creating the project.
+        $wantsVision = (bool) $project->pdf_read_scanned;
+        $visionCap   = $this->visionPageCap($project);
+
         try {
             $result = app(\App\Services\Generation\PdfContentExtractor::class)
-                ->extract($local, $asset->title);
+                ->extract($local, $asset->title, $wantsVision && $visionCap !== 0, $visionCap ?? 0);
         } finally {
             rescue(fn () => @unlink($local), null, false);
         }
 
         $text = $result['text'];
+
+        // Transcribe any rendered pages and fold them in.
+        if (! empty($result['renders'])) {
+            $text = $this->transcribeRenderedPages($project, $result['renders'], $text);
+        }
 
         // Condense first when the document is bigger than a prompt can carry.
         if ($result['truncated']) {
@@ -319,6 +330,94 @@ class GenerateScriptJob implements ShouldQueue
         $header = "Document: {$asset->title} ({$result['pages']} page".($result['pages'] === 1 ? '' : 's').')';
 
         return $header."\n\n".$text;
+    }
+
+    /** Scanned pages this workspace's plan allows. null = unlimited, 0 = none. */
+    private function visionPageCap(Project $project): ?int
+    {
+        $tier   = (string) ($project->workspace?->plan_tier ?? 'free');
+        $limits = CreditService::PLAN_LIMITS[$tier] ?? CreditService::PLAN_LIMITS['free'];
+
+        // null means unlimited — only an absent key falls back to none.
+        return array_key_exists('pdf_vision_page_limit', $limits)
+            ? $limits['pdf_vision_page_limit']
+            : 0;
+    }
+
+    /**
+     * Read rendered scanned pages with a vision model and merge them into the
+     * document text.
+     *
+     * Charges per page RESERVED UP FRONT and refunds pages that fail, mirroring
+     * the image/animation jobs. CREDIT_CALIBRATION.md records what happens
+     * otherwise: jobs that deducted at the end handed out free output whenever
+     * a balance hit zero mid-run.
+     *
+     * @param  list<array<string, mixed>>  $renders
+     */
+    private function transcribeRenderedPages(Project $project, array $renders, string $text): string
+    {
+        $credits    = app(CreditService::class);
+        $workspace  = (int) $project->workspace_id;
+        $reserve    = count($renders) * CreditService::PDF_VISION_PAGE;
+
+        if (! $credits->deduct($workspace, $reserve, 'pdf_vision', [
+            'project_id' => $project->getKey(),
+            'user_id'    => $project->created_by_user_id,
+            'metadata'   => ['pages' => count($renders)],
+        ])) {
+            // Not enough credits — proceed with the text we already have rather
+            // than failing a generation the user has otherwise paid for.
+            \Illuminate\Support\Facades\Log::warning('GenerateScriptJob: insufficient credits for PDF vision', [
+                'project_id' => $project->getKey(),
+                'needed'     => $reserve,
+            ]);
+
+            return $text;
+        }
+
+        $adapter    = app(AIGenerationAdapter::class);
+        $transcribed = [];
+        $failed      = 0;
+
+        foreach ($renders as $render) {
+            $page = (int) ($render['page'] ?? 0);
+            $b64  = (string) ($render['base64'] ?? '');
+
+            if ($b64 === '') {
+                $failed++;
+                continue;
+            }
+
+            $result = rescue(fn () => $adapter->generate('transcribe_document_page', [], 1200, 0.0, [
+                // A data URI keeps the page bytes out of storage — these are
+                // transient reads, not assets worth keeping.
+                'images'        => [['url' => 'data:image/png;base64,'.$b64]],
+                // Measured: 'low' transcribes fluently but WRONGLY. Reading a
+                // document demands 'high'.
+                'image_detail'  => 'high',
+                'usage_context' => $this->usageContext($project, ['template' => 'transcribe_document_page']),
+            ]), null, false);
+
+            $content = trim((string) ($result['content'] ?? ''));
+
+            if ($content === '') {
+                $failed++;
+                continue;
+            }
+
+            $transcribed[] = "[Page {$page}]\n".\App\Support\Utf8::clean($content);
+        }
+
+        if ($failed > 0) {
+            rescue(fn () => $credits->refund($workspace, $failed * CreditService::PDF_VISION_PAGE, 'pdf_vision'), null, false);
+        }
+
+        if ($transcribed === []) {
+            return $text;
+        }
+
+        return trim($text."\n\n".implode("\n\n", $transcribed));
     }
 
     /**

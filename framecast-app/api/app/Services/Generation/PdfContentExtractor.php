@@ -40,8 +40,12 @@ class PdfContentExtractor
      *
      * @throws RuntimeException with a user-facing message.
      */
-    public function extract(string $absolutePath, ?string $originalName = null): array
-    {
+    public function extract(
+        string $absolutePath,
+        ?string $originalName = null,
+        bool $renderScanned = false,
+        int $maxRender = 0,
+    ): array {
         $label = $originalName ?: 'that PDF';
 
         if (! is_readable($absolutePath)) {
@@ -51,7 +55,7 @@ class PdfContentExtractor
         // The extraction service knows things this parser can't: which pages
         // have a text layer, which are scans, and therefore whether we are only
         // reading PART of the document. Prefer it; fall back below if it's down.
-        if ($viaService = $this->viaService($absolutePath, $label)) {
+        if ($viaService = $this->viaService($absolutePath, $label, $renderScanned, $maxRender)) {
             return $viaService;
         }
 
@@ -105,17 +109,24 @@ class PdfContentExtractor
      *
      * @return array{text: string, pages: int, truncated: bool}|null
      */
-    private function viaService(string $absolutePath, string $label): ?array
-    {
+    private function viaService(
+        string $absolutePath,
+        string $label,
+        bool $renderScanned = false,
+        int $maxRender = 0,
+    ): ?array {
         $base = rtrim((string) config('services.extract.url', ''), '/');
         if ($base === '') {
             return null;
         }
 
         try {
-            $response = Http::timeout(120)
+            $response = Http::timeout(180)
                 ->attach('file', file_get_contents($absolutePath), 'document.pdf')
-                ->post($base.'/extract/pdf');
+                ->post($base.'/extract/pdf', [
+                    'render_scanned' => $renderScanned ? 'true' : 'false',
+                    'max_render'     => (string) $maxRender,
+                ]);
         } catch (\Throwable $e) {
             Log::warning('PdfContentExtractor: extract service unreachable, falling back', [
                 'file'  => $label,
@@ -153,7 +164,7 @@ class PdfContentExtractor
         // Some pages are scans we haven't read. Say so IN the source content,
         // so the model writes about what it actually has instead of presenting
         // a partial read as a summary of the whole document.
-        if ((bool) $response->json('partial', false)) {
+        if ((bool) $response->json('partial', false) && ! $renderScanned) {
             $scanned = (int) ($counts['scanned'] ?? 0);
             $text .= "\n\n[Note: {$scanned} of {$pages} pages in this document are scanned images that "
                 .'could not be read. Write only about the content above, and do not imply the video '
@@ -172,6 +183,10 @@ class PdfContentExtractor
                 : $text,
             'pages'     => $pages,
             'truncated' => mb_strlen($text) > self::MAX_CONTENT_CHARS,
+            'counts'    => $counts,
+            // Rendered scanned pages, for the caller to transcribe and charge.
+            // Empty unless rendering was explicitly requested.
+            'renders'   => (array) $response->json('renders', []),
         ];
     }
 

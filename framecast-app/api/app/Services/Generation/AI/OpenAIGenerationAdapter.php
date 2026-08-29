@@ -122,6 +122,8 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
             return $userPrompt;
         }
 
+        $detail = ($options['image_detail'] ?? 'low') === 'high' ? 'high' : 'low';
+
         $content = [
             ['type' => 'text', 'text' => $userPrompt],
         ];
@@ -147,7 +149,12 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
                 'type' => 'image_url',
                 'image_url' => [
                     'url' => $url,
-                    'detail' => 'low',
+                    // 'low' is right for "what is this a picture of" — it's a
+                    // flat, cheap token cost. It is NOT sufficient for reading
+                    // text off a page: measured against ground truth it
+                    // transcribes fluently but WRONGLY, inventing plausible
+                    // words. Document reading must pass 'high'.
+                    'detail' => $detail,
                 ],
             ];
         }

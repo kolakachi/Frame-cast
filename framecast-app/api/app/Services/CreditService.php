@@ -28,11 +28,17 @@ class CreditService
     public const AI_MEDIUM    = 16;  // per scene, gpt-image-1 medium (~$0.063 COGS)
     public const AI_HIGH      = 63;  // per scene, gpt-image-1 high (~$0.25 COGS)
     public const AI_CHARACTER = 50;  // per scene, OpenAI gpt-image-2 /edits (~$0.20 COGS, character + reference image)
-    // Reading ONE scanned PDF page with a vision model. Placeholder pending
-    // confirmation against live vision pricing — it must be re-derived from
-    // real per-page COGS before this is advertised, the same way every other
-    // constant here is pegged (CREDIT_CALIBRATION.md §2).
-    public const PDF_VISION_PAGE = 4;
+    // Reading ONE scanned PDF page with a vision model, at detail=high.
+    // Measured on a real rendered page (A4 @150dpi): 36,857 input + 292 output
+    // tokens on gpt-4o-mini = ~$0.0057 COGS, which at the standard peg
+    // (COGS / $0.004) is 1.43 -> 1 credit.
+    //
+    // detail=high is not optional. At detail=low the same page costs ~9x less
+    // but transcribes INACCURATELY — fluently inventing plausible words rather
+    // than failing visibly, which is the worst outcome for a document reader.
+    // Token count scales with page dimensions, so this is calibrated for
+    // roughly A4; unusually large pages cost more.
+    public const PDF_VISION_PAGE = 1;
     public const AI_MUSIC     = 2;   // per scene, Replicate MusicGen (~$0.01 COGS) — 50%
 
     // Image-to-video animation tiers — base clip; 10s = 2×. Recalibrated to

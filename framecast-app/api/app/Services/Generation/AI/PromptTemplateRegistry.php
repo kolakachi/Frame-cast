@@ -28,6 +28,14 @@ class PromptTemplateRegistry
                 'system' => 'You write short-form product explainer and UGC-style ad scripts. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
                 'user' => "Create a short-form product video script.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nRules: use only product details provided, do not invent testimonials/pricing/guarantees, include a clear CTA.\nProduct source:\n{{source_content}}",
             ],
+            // Reads a rendered page image from a scanned PDF. Transcription
+            // only — any 'helpful' summarising here would silently alter a
+            // document the user believes we read verbatim.
+            'transcribe_document_page' => [
+                'system' => 'You transcribe text from document page images. Output only the text you can actually read, preserving reading order. Do not summarise, do not explain, do not describe images or layout. If a passage is illegible write [illegible] rather than guessing at it. If the page contains no readable text at all, output nothing.',
+                'user' => "Transcribe all readable text from this document page.",
+            ],
+
             'script_from_pdf' => [
                 'system' => 'You are a short-form video script writer. Turn document content into plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines, no character cues. Write only the words the narrator will speak aloud. Preserve factual claims from the document and do not invent statistics, findings, or quotes it does not contain.',
                 'user' => "Turn this document into a short-form video script.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nRules: lead with the single most interesting idea in the document rather than its opening paragraph, keep every factual claim traceable to the source, do not invent figures, and use short caption-friendly lines.\nDocument:\n{{source_content}}",

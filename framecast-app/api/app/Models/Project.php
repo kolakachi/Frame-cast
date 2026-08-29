@@ -21,6 +21,7 @@ class Project extends Model
         'source_type',
         'source_content_raw',
         'source_content_normalized',
+        'pdf_read_scanned',
         'source_image_asset_ids',
         'visual_generation_mode',
         'ai_broll_style',
@@ -57,6 +58,7 @@ class Project extends Model
     protected function casts(): array
     {
         return [
+            'pdf_read_scanned' => 'boolean',
             'duration_target_seconds' => 'integer',
             'niche_id' => 'integer',
             'default_character_id' => 'integer',

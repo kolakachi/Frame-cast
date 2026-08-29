@@ -288,6 +288,9 @@ class ProjectController extends Controller
 
         $validated = $request->validate([
             'source_type' => ['required', Rule::in($this->allowedSourceTypes())],
+            // Consent to pay for reading this PDF's scanned pages (see
+            // /projects/analyze-pdf for the estimate the user was shown).
+            'pdf_read_scanned' => ['sometimes', 'boolean'],
             'source_content_raw' => ['nullable', 'string'],
             'allow_script_edit' => ['nullable', 'boolean'],
             'source_image_asset_ids' => ['nullable', 'array', 'max:15'],
