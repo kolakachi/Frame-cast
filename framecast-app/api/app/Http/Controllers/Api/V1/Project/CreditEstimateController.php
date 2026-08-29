@@ -19,6 +19,9 @@ class CreditEstimateController extends Controller
             'source_content_raw'   => 'nullable|string|max:10000',
             'visual_generation_mode' => 'required|string',
             'ai_image_quality'     => 'nullable|string|in:low,medium,high',
+            'duration_target_seconds' => 'nullable|integer|min:5|max:600',
+            'animate_tier'         => 'nullable|string|in:quick,balanced,premium,seedance_lite,seedance_pro',
+            'animate_quality'      => 'nullable|string|max:16',
         ]);
 
         /** @var User $user */
@@ -29,6 +32,9 @@ class CreditEstimateController extends Controller
             sourceContent: $request->input('source_content_raw'),
             visualMode:    $request->string('visual_generation_mode')->value(),
             aiQuality:     $request->input('ai_image_quality', 'medium'),
+            durationSeconds: (int) $request->input('duration_target_seconds', 60),
+            animateTier:   $request->input('animate_tier'),
+            animateQuality: $request->input('animate_quality'),
         );
 
         $balance    = $this->credits->balance((int) $user->workspace_id);

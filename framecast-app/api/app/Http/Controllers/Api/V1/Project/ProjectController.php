@@ -296,7 +296,10 @@ class ProjectController extends Controller
             'source_image_asset_ids' => ['nullable', 'array', 'max:15'],
             'source_image_asset_ids.*' => ['integer'],
             'visual_type' => ['nullable', Rule::in(['stock_clip', 'stock_image', 'ai_image', 'waveform'])],
-            'visual_generation_mode' => ['nullable', Rule::in(['stock', 'ai_images', 'stock_images', 'waveform'])],
+            'visual_generation_mode' => ['nullable', Rule::in(['stock', 'ai_images', 'stock_images', 'waveform', 'ai_video'])],
+            // ai_video only: which i2v model animates each scene's still.
+            'animate_tier' => ['nullable', Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro'])],
+            'animate_quality' => ['nullable', 'string', 'max:16'],
             'ai_broll_style' => ['nullable', 'string', 'max:64'],
             'visual_style' => ['nullable', 'string', 'max:64'],
             'custom_visual_style' => ['nullable', 'string', 'max:500'],
@@ -365,6 +368,9 @@ class ProjectController extends Controller
             sourceContent: $validated['source_content_raw'] ?? null,
             visualMode:    $validated['visual_generation_mode'] ?? 'stock',
             aiQuality:     $validated['ai_image_quality'] ?? 'medium',
+            durationSeconds: (int) ($validated['duration_target_seconds'] ?? 60),
+            animateTier:   $validated['animate_tier'] ?? null,
+            animateQuality: $validated['animate_quality'] ?? null,
         );
         $balance = $this->credits->balance((int) $user->workspace_id);
         if ($balance < $estimate['credits_min']) {
@@ -606,6 +612,13 @@ class ProjectController extends Controller
             'allow_script_edit' => (bool) ($validated['allow_script_edit'] ?? false),
             'source_image_asset_ids' => $sourceImageAssetIds,
             'visual_generation_mode' => $validated['visual_generation_mode'] ?? null,
+            // The animation choice lives in visual_brief so the whole pipeline
+            // (pacing, image job, estimator) reads one place. The brief job
+            // MERGES into this column, so the seed survives enrichment.
+            'visual_brief' => ($validated['visual_generation_mode'] ?? null) === 'ai_video' ? [
+                'animate_tier'    => $validated['animate_tier'] ?? 'quick',
+                'animate_quality' => $validated['animate_quality'] ?? null,
+            ] : null,
             'ai_broll_style' => $validated['ai_broll_style'] ?? null,
             'waveform_settings_json' => $waveformSettings,
             'default_visual_style' => $defaultVisualStyle,
@@ -2395,7 +2408,7 @@ class ProjectController extends Controller
     private function projectVisualTypeFromGenerationMode(?string $visualGenerationMode): ?string
     {
         return match ($visualGenerationMode) {
-            'ai_images' => 'ai_image',
+            'ai_images', 'ai_video' => 'ai_image',
             'stock_images' => 'stock_image',
             'waveform' => 'waveform',
             'stock', null => 'stock_clip',

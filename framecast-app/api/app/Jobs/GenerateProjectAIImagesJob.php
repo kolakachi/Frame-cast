@@ -64,6 +64,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
 
             try {
                 $this->generateSceneImage($adapter, $project, $scene);
+                $this->chainAnimationIfConfigured($project, $scene);
             } catch (\Throwable $exception) {
                 Log::error('Project AI B-roll scene generation failed', [
                     'project_id' => $project->getKey(),
@@ -113,6 +114,53 @@ class GenerateProjectAIImagesJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
+    }
+
+    /**
+     * AI Video mode: animate the still this scene just got.
+     *
+     * Chained per scene rather than batched at the end, so an image failure
+     * only costs THAT scene its animation — the rest still move. A scene whose
+     * animation later fails keeps its still (segments render images fine), so
+     * AI Video is best-effort per scene: a mixed still/video result beats a
+     * stuck project. AnimateSceneJob owns the charge and refund-on-failure,
+     * same as every other animation path.
+     */
+    private function chainAnimationIfConfigured(Project $project, Scene $scene): void
+    {
+        if ($project->visual_generation_mode !== 'ai_video') {
+            return;
+        }
+
+        $brief   = is_array($project->visual_brief) ? $project->visual_brief : [];
+        $tier    = (string) ($brief['animate_tier'] ?? 'quick');
+        $quality = CreditService::videoQuality($tier, $brief['animate_quality'] ?? null);
+
+        $fresh = $scene->fresh();
+        if (! $fresh || ! $fresh->visual_asset_id) {
+            return; // image did not land — nothing to animate
+        }
+
+        $fresh->forceFill([
+            'image_generation_settings_json' => array_merge($fresh->image_generation_settings_json ?? [], [
+                'animation_in_progress' => true,
+                'animation_last_error'  => null,
+                'animation_tier'        => $tier,
+                'animation_duration'    => 5,
+                'animation_quality'     => $quality,
+                'animation_started_at'  => now()->toIso8601String(),
+            ]),
+        ])->save();
+
+        AnimateSceneJob::dispatch(
+            $fresh->getKey(),
+            $project->getKey(),
+            $tier,
+            5,
+            null,
+            quality: $quality,
+            sourceAssetId: (int) $fresh->visual_asset_id,
+        );
     }
 
     private function generateSceneImage(ImageGenerationAdapter $adapter, Project $project, Scene $scene): void

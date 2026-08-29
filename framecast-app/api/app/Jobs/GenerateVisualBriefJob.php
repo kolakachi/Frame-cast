@@ -68,7 +68,7 @@ class GenerateVisualBriefJob implements ShouldQueue
             // 2026-05-31: project 16 had a male reference but the LLM card said
             // "34-year-old woman" and every scene 2+ generated a woman).
             if (
-                in_array($project->visual_generation_mode, ['ai_images', 'ai_broll'], true) &&
+                in_array($project->visual_generation_mode, ['ai_images', 'ai_broll', 'ai_video'], true) &&
                 ! isset($brief['reference_style']) &&
                 ! empty($project->script_text)
             ) {
@@ -82,7 +82,11 @@ class GenerateVisualBriefJob implements ShouldQueue
             }
 
             if ($brief !== []) {
-                $project->forceFill(['visual_brief' => $brief])->save();
+                // MERGE — creation seeds this column with the animation choice
+                // (animate_tier), and overwriting it here would silently turn
+                // an AI Video project back into stills.
+                $existing = is_array($project->visual_brief) ? $project->visual_brief : [];
+                $project->forceFill(['visual_brief' => array_merge($existing, $brief)])->save();
             }
         } catch (\Throwable) {
             // Non-fatal — visual matching will fall back to scene-only queries

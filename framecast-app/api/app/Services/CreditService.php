@@ -560,8 +560,20 @@ class CreditService
         ?string $sourceContent,
         string $visualMode,
         string $aiQuality = 'medium',
+        ?int $durationSeconds = null,
+        ?string $animateTier = null,
+        ?string $animateQuality = null,
     ): array {
         [$scenesMin, $scenesMax] = $this->estimateSceneCount($sourceType, $sourceContent);
+
+        // Animated projects are paced differently — fewer, longer scenes (see
+        // ScenePacing) — so the scene range comes from the pacing rule, not
+        // from source-content heuristics tuned for 5s still scenes.
+        if ($visualMode === 'ai_video') {
+            $target    = \App\Services\ScenePacing::targetScenes($durationSeconds ?: 60, $visualMode, true);
+            $scenesMin = max(\App\Services\ScenePacing::MIN_SCENES, (int) round($target * 0.8));
+            $scenesMax = min(\App\Services\ScenePacing::MAX_SCENES, (int) round($target * 1.2));
+        }
 
         // AI visuals render on ImageAdapterFactory::DEFAULT_MODEL. Price the
         // quote from the factory so the estimate a user is shown before
@@ -571,7 +583,13 @@ class CreditService
 
         $visualPerScene = match ($visualMode) {
             'ai_images', 'ai_broll' => $aiPerScene,
-            default                  => self::STOCK, // stock_video, stock_images, waveform, etc.
+            // Still first, then an i2v render on top of it — both are charged.
+            'ai_video' => $aiPerScene + self::animationCost(
+                $animateTier ?: 'quick',
+                self::videoQuality($animateTier ?: 'quick', $animateQuality),
+                5,
+            ),
+            default => self::STOCK, // stock_video, stock_images, waveform, etc.
         };
 
         $fixed = self::SCRIPT + self::BREAKDOWN + self::EXPORT;

@@ -103,7 +103,7 @@ class ScoreHooksJob implements ShouldQueue
 
         // 'images' source type means the creator uploaded reference images for style anchoring —
         // the output is always AI-generated visuals, not stock clips.
-        $useAiImages = $mode === 'ai_images' || $project?->source_type === 'images';
+        $useAiImages = in_array($mode, ['ai_images', 'ai_video'], true) || $project?->source_type === 'images';
 
         if ($useAiImages) {
             GenerateProjectAIImagesJob::dispatch($this->projectId);
