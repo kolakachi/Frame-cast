@@ -217,13 +217,19 @@ class GenerateTalkingVideoJob implements ShouldQueue
                 'animation_outdated'                => false,
             ]);
 
-            $aniTotal = Scene::query()->where('project_id', $this->projectId)->count();
-            $aniDone  = Scene::query()->where('project_id', $this->projectId)
-                ->whereRaw("(image_generation_settings_json->>'animation_video_asset_id') IS NOT NULL")->count();
-            GenerationProgressed::dispatch($this->projectId, 'animation', $aniDone >= $aniTotal ? 'completed' : 'processing', null, [
-                'scene_id' => $this->sceneId, 'done' => $aniDone, 'total' => $aniTotal,
-            ]);
-            app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'animation', $this->sceneId);
+            // NON-FATAL from here on — the clip is stored, assigned and
+            // stamped successful. A broadcast failure below must not reach the
+            // catch, which would refund a 130-320cr render that was delivered
+            // and stamp a transport error onto a finished scene.
+            rescue(function (): void {
+                $aniTotal = Scene::query()->where('project_id', $this->projectId)->count();
+                $aniDone  = Scene::query()->where('project_id', $this->projectId)
+                    ->whereRaw("(image_generation_settings_json->>'animation_video_asset_id') IS NOT NULL")->count();
+                GenerationProgressed::dispatch($this->projectId, 'animation', $aniDone >= $aniTotal ? 'completed' : 'processing', null, [
+                    'scene_id' => $this->sceneId, 'done' => $aniDone, 'total' => $aniTotal,
+                ]);
+            }, report: false);
+            rescue(fn () => app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'animation', $this->sceneId), report: false);
             rescue(fn () => app(\App\Services\Generation\PipelineStatusService::class)->maybeMarkReady($this->projectId));
         } catch (\Throwable $e) {
             if ($charged) {

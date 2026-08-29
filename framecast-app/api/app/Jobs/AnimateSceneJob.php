@@ -273,17 +273,25 @@ class AnimateSceneJob implements ShouldQueue
             // 'completed'. Keeps the progress page's animation stage honest
             // for one-shot multi-scene (otherwise it'd tick complete after
             // the first scene finishes animating).
-            $aniTotal = Scene::query()->where('project_id', $this->projectId)->count();
-            $aniDone  = Scene::query()->where('project_id', $this->projectId)
-                ->whereRaw("(image_generation_settings_json->>'animation_video_asset_id') IS NOT NULL")
-                ->count();
-            $aniStatus = ($aniDone >= $aniTotal) ? 'completed' : 'processing';
-            GenerationProgressed::dispatch($this->projectId, 'animation', $aniStatus, null, [
-                'scene_id' => $this->sceneId,
-                'done'     => $aniDone,
-                'total'    => $aniTotal,
-            ]);
-            app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'animation', $this->sceneId);
+            // NON-FATAL from here on. The clip is stored, assigned and stamped
+            // successful — nothing below may flip this scene into "failed".
+            // Observed in production: the completion broadcast threw (reverb
+            // restarting mid-deploy), the catch treated it as an animation
+            // failure, stamped a Pusher error onto a scene whose video had
+            // landed, and REFUNDED the charge for work that was delivered.
+            rescue(function (): void {
+                $aniTotal = Scene::query()->where('project_id', $this->projectId)->count();
+                $aniDone  = Scene::query()->where('project_id', $this->projectId)
+                    ->whereRaw("(image_generation_settings_json->>'animation_video_asset_id') IS NOT NULL")
+                    ->count();
+                $aniStatus = ($aniDone >= $aniTotal) ? 'completed' : 'processing';
+                GenerationProgressed::dispatch($this->projectId, 'animation', $aniStatus, null, [
+                    'scene_id' => $this->sceneId,
+                    'done'     => $aniDone,
+                    'total'    => $aniTotal,
+                ]);
+            }, report: false);
+            rescue(fn () => app(CruiseActionRunService::class)->markStageCompleted($this->projectId, 'animation', $this->sceneId), report: false);
 
             // Resume safety net: resumed runs never re-run TTS (which is what
             // normally flips status), so if this was the last in-flight piece,
