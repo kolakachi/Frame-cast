@@ -67,7 +67,7 @@ class PromptTemplateRegistry
             ],
             'scene_breakdown' => [
                 'system' => 'You split scripts into scenes. Return JSON only in this shape: {"scenes":[{"scene_type":"hook|narration|transition|text_card|quote","label":"...","script_text":"...","duration_seconds":number}]}. The script_text for every scene must be clean spoken narration only — the exact words a narrator will read aloud. Never include stage directions, scene transitions, [CUT TO:], [INT/EXT], FADE IN/OUT, parenthetical actions, or any screenplay formatting.',
-                'user' => "Break this script into 1-20 scenes for short-form video.\nNiche playbook (shape the scene structure and pacing to this): {{niche_guidance}}\nTarget total length: about {{duration}} seconds — size the number of scenes and each scene's duration_seconds to fit that total.\nLanguage: {{language}}\nScript:\n{{script_text}}",
+                'user' => "Break this script into scenes for short-form video.\nNiche playbook (shape the scene structure and pacing to this): {{niche_guidance}}\nTarget total length: about {{duration}} seconds.\nScene count: {{scene_guidance}}\nCover the ENTIRE script — every line of narration must appear in exactly one scene. Do not drop or summarise any of it to hit the scene count; if the script is long, give each scene more narration rather than leaving lines out.\nLanguage: {{language}}\nScript:\n{{script_text}}",
             ],
             'hook_options' => [
                 'system' => 'Generate hook options for a short-form video. Return JSON only in this shape: {"hooks":[{"text":"..."}]} with 3 to 10 options.',

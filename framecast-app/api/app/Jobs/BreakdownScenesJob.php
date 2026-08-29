@@ -36,12 +36,24 @@ class BreakdownScenesJob implements ShouldQueue
 
         $niche = $project->niche_id ? \App\Models\Niche::query()->find($project->niche_id) : null;
 
+        $duration = (int) ($project->duration_target_seconds ?: 60);
+
+        // Animated b-roll bills per scene, so those videos are cut into fewer,
+        // longer scenes. Video visuals loop to fill their segment, so a longer
+        // scene doesn't freeze — see ScenePacing.
+        $animated = $this->projectAnimatesScenes($project);
+
         $result = $aiGeneration->generate('scene_breakdown', [
             'script_text' => $project->script_text,
             'niche_guidance' => $niche ? $niche->guidance() : \App\Models\Niche::guidanceForSlug(null),
-            'duration' => (int) ($project->duration_target_seconds ?: 60),
+            'duration' => $duration,
+            'scene_guidance' => \App\Services\ScenePacing::guidance(
+                $duration,
+                $project->visual_generation_mode,
+                $animated,
+            ),
             'language' => $project->primary_language ?: 'en',
-        ], 1100, 0.2, [
+        ], $this->breakdownTokenBudget($duration, $project->visual_generation_mode, $animated), 0.2, [
             'usage_context' => [
                 'workspace_id' => $project->workspace_id,
                 'project_id' => $project->getKey(),
@@ -114,6 +126,38 @@ class BreakdownScenesJob implements ShouldQueue
     /**
      * @return list<array{scene_type:string,label:string,script_text:string,duration_seconds:float}>
      */
+    /**
+     * Room for the JSON the breakdown must return.
+     *
+     * Was a flat 1100 tokens, which is fine for 8 scenes and truncates the
+     * response for 30 — and a truncated JSON body fails to decode, silently
+     * dropping the whole AI breakdown in favour of naive chunking. Budget
+     * scales with the scenes we actually asked for.
+     */
+    private function breakdownTokenBudget(int $duration, ?string $visualMode, bool $animated): int
+    {
+        $scenes = \App\Services\ScenePacing::targetScenes($duration, $visualMode, $animated);
+
+        // ~110 tokens per scene of JSON (narration dominates), plus headroom.
+        return (int) min(8000, max(1100, 400 + $scenes * 110 * 1.3));
+    }
+
+    /**
+     * Whether this project's scenes will be animated (i2v b-roll).
+     *
+     * There is no project-level animation flag yet — the wizard's b-roll mode
+     * is still to come — so this reads the visual brief for one. Written as a
+     * single method so that when the flag lands, only this changes.
+     */
+    private function projectAnimatesScenes(\App\Models\Project $project): bool
+    {
+        $brief = is_array($project->visual_brief) ? $project->visual_brief : [];
+
+        return (bool) ($brief['animate'] ?? false)
+            || ! empty($brief['animate_tier'])
+            || $project->visual_generation_mode === 'ai_video';
+    }
+
     private function extractScenes(string $content, string $scriptText): array
     {
         $decoded = json_decode($content, true);
@@ -144,7 +188,11 @@ class BreakdownScenesJob implements ShouldQueue
                 }
 
                 if ($normalized !== []) {
-                    return array_slice($normalized, 0, 20);
+                    // Guard against a malformed response only. Slicing here
+                    // discards the user's narration, so the bound is far above
+                    // any real breakdown — it was a flat 20, which quietly cut
+                    // long videos short and lost the script past scene 20.
+                    return array_slice($normalized, 0, \App\Services\ScenePacing::PARSER_HARD_LIMIT);
                 }
             }
         }
@@ -221,7 +269,7 @@ class BreakdownScenesJob implements ShouldQueue
 
         $scenes = [];
 
-        foreach (array_slice($chunks, 0, 20) as $index => $chunk) {
+        foreach (array_slice($chunks, 0, \App\Services\ScenePacing::PARSER_HARD_LIMIT) as $index => $chunk) {
             $text = trim($chunk);
 
             if ($text === '') {
