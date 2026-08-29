@@ -5658,6 +5658,7 @@ function openAnimateModal() {
   // Always reopen on the single-scene path — bulk is an explicit opt-in each time.
   bulkAnimateMode.value = false;
   bulkAnimatePreview.value = null;
+  bulkAnimateSelection.value = null;
   animateModalOpen.value = true;
   animateModelOpen.value = false;
 }
@@ -5778,19 +5779,41 @@ async function revertAnimation() {
 const bulkAnimateMode    = ref(false);
 const bulkAnimatePreview = ref(null);
 const bulkAnimateLoading = ref(false);
-const bulkAnimateSkipsOpen = ref(false);
+// null = "all eligible". Once the user unticks anything it becomes an explicit
+// id list, which is also what gets sent so the server prices exactly the set
+// shown on screen.
+const bulkAnimateSelection = ref(null);
+
+// Every scene the batch could act on, eligible or not, in scene order — the
+// eligible ones plus the ones held back for a reason. Rendering the excluded
+// scenes alongside the included ones is what makes a count of 6 out of 13
+// legible instead of looking like a miscount.
+const bulkAnimateRows = computed(() => {
+  const p = bulkAnimatePreview.value;
+  if (!p) return [];
+  const rows = [
+    ...p.scenes.map((r) => ({ ...r, included: true, blocked: false })),
+    ...p.skipped.map((r) => ({ ...r, included: false, blocked: !r.selectable })),
+  ];
+  return rows.sort((a, b) => a.order - b.order);
+});
+
+const bulkAnimateSelectableCount = computed(
+  () => bulkAnimateRows.value.filter((r) => !r.blocked).length);
 
 async function loadBulkAnimatePreview() {
   if (!projectId.value) return;
   bulkAnimateLoading.value = true;
   animateError.value = "";
   try {
-    const response = await api.post(`/projects/${projectId.value}/animate-all`, {
+    const body = {
       tier: animateTier.value,
       duration_seconds: animateDuration.value,
       motion_prompt: animateMotionPrompt.value.trim() || null,
       quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
-    });
+    };
+    if (bulkAnimateSelection.value !== null) body.scene_ids = bulkAnimateSelection.value;
+    const response = await api.post(`/projects/${projectId.value}/animate-all`, body);
     bulkAnimatePreview.value = response.data?.data ?? null;
   } catch (err) {
     bulkAnimatePreview.value = null;
@@ -5800,9 +5823,26 @@ async function loadBulkAnimatePreview() {
   }
 }
 
+// Re-prices on every toggle. The total on screen is always the server's number
+// for the exact set that is ticked — never a local subtraction.
+function toggleBulkScene(row) {
+  if (row.blocked) return;
+  const current = bulkAnimateSelection.value
+    ?? bulkAnimateRows.value.filter((r) => !r.blocked).map((r) => r.scene_id);
+  bulkAnimateSelection.value = current.includes(row.scene_id)
+    ? current.filter((id) => id !== row.scene_id)
+    : [...current, row.scene_id];
+  loadBulkAnimatePreview();
+}
+
+function bulkAnimateSelectAll() {
+  bulkAnimateSelection.value = null;
+  loadBulkAnimatePreview();
+}
+
 function toggleBulkAnimate() {
   bulkAnimateMode.value = !bulkAnimateMode.value;
-  bulkAnimateSkipsOpen.value = false;
+  bulkAnimateSelection.value = null;
   if (bulkAnimateMode.value) loadBulkAnimatePreview();
   else { bulkAnimatePreview.value = null; animateError.value = ""; }
 }
@@ -5819,17 +5859,20 @@ async function submitBulkAnimate() {
   animateSubmitting.value = true;
   animateError.value = "";
   try {
-    const response = await api.post(`/projects/${projectId.value}/animate-all`, {
+    const body = {
       tier: animateTier.value,
       duration_seconds: animateDuration.value,
       motion_prompt: animateMotionPrompt.value.trim() || null,
       quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
       confirm: true,
-    });
+    };
+    if (bulkAnimateSelection.value !== null) body.scene_ids = bulkAnimateSelection.value;
+    const response = await api.post(`/projects/${projectId.value}/animate-all`, body);
     const started = response.data?.data?.started_count ?? 0;
     animateModalOpen.value = false;
     bulkAnimateMode.value = false;
     bulkAnimatePreview.value = null;
+    bulkAnimateSelection.value = null;
     pushToast({
       id: `bulk-anim-${Date.now()}`,
       title: `Animating ${started} scene${started === 1 ? '' : 's'}`,
@@ -9352,60 +9395,73 @@ onBeforeUnmount(() => {
             <div class="ap-hint">Pick a quick start above or type your own. Leave blank for a sensible default.</div>
           </div>
 
-          <!-- Apply this same animation to every scene, priced by the server. -->
-          <div class="bulk-anim">
+          <!-- Apply this same animation to other scenes, priced by the server. -->
+          <div class="bulk-anim" :class="{ on: bulkAnimateMode }">
             <button type="button" class="bulk-anim-toggle" :class="{ on: bulkAnimateMode }" @click="toggleBulkAnimate">
-              <span class="bulk-anim-check">{{ bulkAnimateMode ? '✓' : '' }}</span>
-              <span>Apply to all scenes in this project</span>
+              <span class="bulk-anim-check" :class="{ on: bulkAnimateMode }">{{ bulkAnimateMode ? '✓' : '' }}</span>
+              <span class="bulk-anim-toggle-text">
+                <span class="bulk-anim-toggle-title">Apply to multiple scenes</span>
+                <span class="bulk-anim-toggle-sub">Animate the whole project at once, or pick scenes</span>
+              </span>
             </button>
 
             <div v-if="bulkAnimateMode" class="bulk-anim-body">
               <div v-if="bulkAnimateLoading" class="bulk-anim-loading">Working out the cost…</div>
 
-              <!-- Says plainly what is per-scene and what is shared. Each scene
-                   animates its OWN image (and lip-syncs to its own voiceover);
-                   the motion direction above is the one shared input. -->
-              <div v-if="!bulkAnimateLoading" class="bulk-anim-scope">
-                Every scene animates its own image{{ animateTier === 'spokesperson' ? ', lip-synced to its own voiceover' : '' }}.
-                <template v-if="animateMotionPrompt.trim()">The motion direction above is applied to all of them.</template>
-                <template v-else>With no motion direction, each scene moves naturally from its own image.</template>
-              </div>
-
               <template v-else-if="bulkAnimatePreview">
-                <div v-if="!bulkAnimatePreview.eligible_count" class="bulk-anim-none">
-                  None of these scenes can be animated yet — they need a still image first.
+                <!-- Says plainly what is per-scene and what is shared. -->
+                <div class="bulk-anim-scope">
+                  Every scene animates its own image{{ animateTier === 'spokesperson' ? ', lip-synced to its own voiceover' : '' }}.
+                  <template v-if="animateMotionPrompt.trim()">The motion direction above is applied to all of them.</template>
+                  <template v-else>With no motion direction, each scene moves naturally from its own image.</template>
                 </div>
 
-                <template v-else>
+                <div v-if="!bulkAnimateSelectableCount" class="bulk-anim-none">
+                  None of these scenes can be animated — see the reasons below.
+                </div>
+
+                <!-- Every scene, included or not, with its reason. A count of
+                     "6 of 13" is only trustworthy if the other 7 are visible. -->
+                <div class="bulk-anim-list">
+                  <button
+                    v-for="row in bulkAnimateRows"
+                    :key="row.scene_id"
+                    type="button"
+                    class="bulk-anim-scene"
+                    :class="{ off: !row.included, blocked: row.blocked }"
+                    :disabled="row.blocked"
+                    @click="toggleBulkScene(row)"
+                  >
+                    <span class="bulk-anim-box" :class="{ on: row.included, blocked: row.blocked }">
+                      {{ row.included ? '✓' : (row.blocked ? '–' : '') }}
+                    </span>
+                    <span class="bulk-anim-scene-label">Scene {{ row.order }}</span>
+                    <span v-if="row.blocked" class="bulk-anim-scene-why">{{ row.reason }}</span>
+                    <span v-else class="bulk-anim-scene-cost">{{ row.cost }} cr</span>
+                  </button>
+                </div>
+
+                <button
+                  v-if="bulkAnimateSelection !== null"
+                  type="button"
+                  class="bulk-anim-selectall"
+                  @click="bulkAnimateSelectAll"
+                >
+                  Select all {{ bulkAnimateSelectableCount }} animatable scenes
+                </button>
+
+                <template v-if="bulkAnimatePreview.eligible_count">
                   <div class="bulk-anim-row">
-                    <span>{{ bulkAnimatePreview.eligible_count }} scene{{ bulkAnimatePreview.eligible_count === 1 ? '' : 's' }}</span>
+                    <span>{{ bulkAnimatePreview.eligible_count }} of {{ bulkAnimateRows.length }} scenes</span>
                     <strong :class="{ short: !bulkAnimatePreview.affordable }">{{ bulkAnimatePreview.total_cost }} credits</strong>
                   </div>
                   <div class="bulk-anim-row sub">
                     <span>Your balance</span>
                     <span>{{ bulkAnimatePreview.balance }} credits</span>
                   </div>
-
                   <div v-if="!bulkAnimatePreview.affordable" class="bulk-anim-short">
-                    You're {{ bulkAnimatePreview.shortage }} credits short. Top up, or animate scenes one at a time.
+                    You're {{ bulkAnimatePreview.shortage }} credits short. Untick a few scenes, or top up.
                   </div>
-
-                  <!-- Named, not silently dropped: a scene missing from the batch
-                       should never be a surprise after the credits are spent. -->
-                  <button
-                    v-if="bulkAnimatePreview.skipped.length"
-                    type="button"
-                    class="bulk-anim-skiptoggle"
-                    @click="bulkAnimateSkipsOpen = !bulkAnimateSkipsOpen"
-                  >
-                    {{ bulkAnimateSkipsOpen ? '▾' : '▸' }}
-                    {{ bulkAnimatePreview.skipped.length }} scene{{ bulkAnimatePreview.skipped.length === 1 ? '' : 's' }} will be skipped
-                  </button>
-                  <ul v-if="bulkAnimateSkipsOpen" class="bulk-anim-skips">
-                    <li v-for="s in bulkAnimatePreview.skipped" :key="s.scene_id">
-                      Scene {{ s.order }} — {{ s.reason }}
-                    </li>
-                  </ul>
                 </template>
               </template>
             </div>
@@ -13331,6 +13387,45 @@ select.preset-select {
 .bulk-voice-muted { font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-top: 6px; }
 .bulk-voice-short { margin-top: 8px; font-size: 11.5px; color: #f87171; line-height: 1.45; }
 .bulk-voice-skips { margin: 8px 0 0; padding-left: 16px; font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
+.bulk-style { margin-top: 10px; }
+.bulk-style-cta { width: 100%; padding: 7px 10px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 7px; color: var(--text-secondary); font-family: inherit; font-size: 11.5px; cursor: pointer; transition: .15s; }
+.bulk-style-cta:hover { color: var(--text-primary); border-color: var(--border-active); }
+.bulk-style-body { margin-top: 8px; padding: 10px 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; }
+.bulk-style-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--text-primary); }
+.bulk-style-row.sub { margin-top: 3px; font-size: 11.5px; color: var(--text-secondary); }
+.bulk-style-row strong.short { color: #f87171; }
+.bulk-style-muted { font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-top: 4px; }
+.bulk-style-short { margin-top: 8px; font-size: 11.5px; color: #f87171; line-height: 1.45; }
+.bulk-style-skips { margin: 8px 0 0; padding-left: 16px; font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
+.bulk-anim { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
+.bulk-anim-toggle { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--text-secondary); font-family: inherit; cursor: pointer; transition: .15s; text-align: left; }
+.bulk-anim-toggle:hover { border-color: var(--border-active); color: var(--text-primary); }
+.bulk-anim-toggle.on { border-color: var(--accent, #ff6b35); background: rgba(255,107,53,.07); color: var(--text-primary); }
+.bulk-anim-check { width: 18px; height: 18px; flex-shrink: 0; border: 1.5px solid var(--border-active); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; line-height: 1; }
+.bulk-anim-check.on { background: var(--accent, #ff6b35); border-color: var(--accent, #ff6b35); color: #fff; }
+.bulk-anim-toggle-text { display: flex; flex-direction: column; gap: 2px; }
+.bulk-anim-toggle-title { font-size: 12.5px; font-weight: 600; }
+.bulk-anim-toggle-sub { font-size: 11px; color: var(--text-secondary); }
+.bulk-anim-body { margin-top: 10px; padding: 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; }
+.bulk-anim-loading, .bulk-anim-none { font-size: 12px; color: var(--text-secondary); }
+.bulk-anim-scope { font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.bulk-anim-list { display: flex; flex-direction: column; gap: 2px; max-height: 210px; overflow-y: auto; margin-bottom: 10px; }
+.bulk-anim-scene { display: flex; align-items: center; gap: 9px; width: 100%; padding: 6px 7px; border-radius: 6px; border: none; background: transparent; color: var(--text-primary); font-family: inherit; font-size: 12px; cursor: pointer; text-align: left; transition: .12s; }
+.bulk-anim-scene:hover:not(:disabled) { background: var(--bg-elevated); }
+.bulk-anim-scene.off { color: var(--text-secondary); }
+.bulk-anim-scene.blocked { cursor: default; opacity: .6; }
+.bulk-anim-box { width: 16px; height: 16px; flex-shrink: 0; border: 1.5px solid var(--border-active); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; line-height: 1; }
+.bulk-anim-box.on { background: var(--accent, #ff6b35); border-color: var(--accent, #ff6b35); color: #fff; }
+.bulk-anim-box.blocked { border-style: dashed; color: var(--text-secondary); }
+.bulk-anim-scene-label { flex: 1; }
+.bulk-anim-scene-cost { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.bulk-anim-scene-why { font-size: 10.5px; color: var(--text-secondary); text-align: right; max-width: 62%; line-height: 1.35; }
+.bulk-anim-selectall { width: 100%; padding: 6px; margin-bottom: 10px; background: none; border: 1px dashed var(--border-active); border-radius: 6px; color: var(--text-secondary); font-family: inherit; font-size: 11px; cursor: pointer; }
+.bulk-anim-selectall:hover { color: var(--text-primary); }
+.bulk-anim-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--text-primary); }
+.bulk-anim-row.sub { margin-top: 3px; font-size: 11.5px; color: var(--text-secondary); }
+.bulk-anim-row strong.short { color: #f87171; }
+.bulk-anim-short { margin-top: 8px; font-size: 11.5px; color: #f87171; line-height: 1.45; }
 .bulk-style { margin-top: 10px; }
 .bulk-style-cta { width: 100%; padding: 7px 10px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 7px; color: var(--text-secondary); font-family: inherit; font-size: 11.5px; cursor: pointer; transition: .15s; }
 .bulk-style-cta:hover { color: var(--text-primary); border-color: var(--border-active); }

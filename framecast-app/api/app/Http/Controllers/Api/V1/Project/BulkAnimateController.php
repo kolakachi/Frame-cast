@@ -51,6 +51,9 @@ class BulkAnimateController extends Controller
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:1000'],
             'quality'          => ['sometimes', 'nullable', 'string', 'max:16'],
+            // Restrict to chosen scenes. Absent = every eligible scene.
+            'scene_ids'        => ['sometimes', 'array'],
+            'scene_ids.*'      => ['integer'],
             // Preview by default. Nothing is charged or queued without this.
             'confirm'          => ['sometimes', 'boolean'],
         ]);
@@ -66,6 +69,11 @@ class BulkAnimateController extends Controller
             ->orderBy('scene_order')
             ->get();
 
+        // A subset the user picked, or null for "everything eligible".
+        $selection = array_key_exists('scene_ids', $validated)
+            ? array_map('intval', $validated['scene_ids'])
+            : null;
+
         $eligible = [];
         $skipped  = [];
 
@@ -74,9 +82,10 @@ class BulkAnimateController extends Controller
 
             if ($reason !== null) {
                 $skipped[] = [
-                    'scene_id' => $scene->getKey(),
-                    'order'    => (int) $scene->scene_order,
-                    'reason'   => $reason,
+                    'scene_id'   => $scene->getKey(),
+                    'order'      => (int) $scene->scene_order,
+                    'reason'     => $reason,
+                    'selectable' => false,
                 ];
                 continue;
             }
@@ -84,6 +93,19 @@ class BulkAnimateController extends Controller
             $cost = $isSpokesperson
                 ? CreditService::spokespersonCost($this->voiceoverSeconds($scene))
                 : CreditService::animationCost($validated['tier'], $quality, $durationSeconds);
+
+            // Animatable but not picked. Reported separately from "can't" so
+            // the UI can offer it as a checkbox rather than an excuse.
+            if ($selection !== null && ! in_array((int) $scene->getKey(), $selection, true)) {
+                $skipped[] = [
+                    'scene_id'   => $scene->getKey(),
+                    'order'      => (int) $scene->scene_order,
+                    'reason'     => 'Not selected',
+                    'selectable' => true,
+                    'cost'       => $cost,
+                ];
+                continue;
+            }
 
             $eligible[] = [
                 'scene_id' => $scene->getKey(),
@@ -177,7 +199,14 @@ class BulkAnimateController extends Controller
         return response()->json(['data' => $payload, 'meta' => []]);
     }
 
-    /** Why this scene can't be animated, or null if it can. */
+    /**
+     * Why this scene can't be animated, or null if it can.
+     *
+     * The reasons are specific on purpose. "No still image" was originally
+     * returned for every ineligible scene, including stock-clip scenes that
+     * plainly DO have a visual — which reads as the batch miscounting rather
+     * than as a scene that is already moving footage.
+     */
     private function ineligibleReason(Scene $scene, bool $isSpokesperson): ?string
     {
         $existing = $scene->image_generation_settings_json ?? [];
@@ -186,8 +215,14 @@ class BulkAnimateController extends Controller
             return 'Already animating';
         }
 
+        if (! $scene->visual_asset_id) {
+            return 'No visual yet — generate or pick an image first';
+        }
+
         if (! $this->sourceStill($scene)) {
-            return 'No still image to animate yet';
+            // Has a visual, and it's a video with no still behind it: stock
+            // footage, an upload, or an animation whose original was purged.
+            return 'Already a video clip — there is no still to animate';
         }
 
         if ($isSpokesperson && $this->voiceoverSeconds($scene) <= 0.0) {

@@ -45,9 +45,16 @@ class BulkVoiceController extends Controller
             return $this->error('not_found', 'Project not found.', 404);
         }
 
-        $request->validate([
-            'confirm' => ['sometimes', 'boolean'],
+        $validated = $request->validate([
+            // Restrict to chosen scenes. Absent = every eligible scene.
+            'scene_ids'   => ['sometimes', 'array'],
+            'scene_ids.*' => ['integer'],
+            'confirm'     => ['sometimes', 'boolean'],
         ]);
+
+        $selection = array_key_exists('scene_ids', $validated)
+            ? array_map('intval', $validated['scene_ids'])
+            : null;
 
         $usage = app(WorkspaceUsageService::class);
 
@@ -84,9 +91,10 @@ class BulkVoiceController extends Controller
         foreach ($scenes as $scene) {
             if (trim((string) $scene->script_text) === '') {
                 $skipped[] = [
-                    'scene_id' => $scene->getKey(),
-                    'order'    => (int) $scene->scene_order,
-                    'reason'   => 'No script to record yet',
+                    'scene_id'   => $scene->getKey(),
+                    'order'      => (int) $scene->scene_order,
+                    'reason'     => 'No script to record yet',
+                    'selectable' => false,
                 ];
                 continue;
             }
@@ -98,6 +106,17 @@ class BulkVoiceController extends Controller
             // Resolved through the SAME method the router uses at synthesis
             // time, so the quote can't drift from the charge.
             $engine = RoutingTTSAdapter::engineFor($voiceId, ['provider' => $provider]);
+
+            if ($selection !== null && ! in_array((int) $scene->getKey(), $selection, true)) {
+                $skipped[] = [
+                    'scene_id'   => $scene->getKey(),
+                    'order'      => (int) $scene->scene_order,
+                    'reason'     => 'Not selected',
+                    'selectable' => true,
+                    'cost'       => CreditService::ttsCostForEngine($engine),
+                ];
+                continue;
+            }
 
             $eligible[] = [
                 'scene_id' => $scene->getKey(),

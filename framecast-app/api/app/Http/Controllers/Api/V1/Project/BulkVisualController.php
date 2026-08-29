@@ -63,6 +63,9 @@ class BulkVisualController extends Controller
             'style'               => ['required', 'string', 'in:'.$styles],
             'custom_visual_style' => ['sometimes', 'nullable', 'string', 'max:500'],
             'model_key'           => ['sometimes', 'nullable', 'string', Rule::in(array_keys(ImageAdapterFactory::AVAILABLE))],
+            // Restrict to chosen scenes. Absent = every eligible scene.
+            'scene_ids'           => ['sometimes', 'array'],
+            'scene_ids.*'         => ['integer'],
             // Preview by default. Nothing is charged or queued without this.
             'confirm'             => ['sometimes', 'boolean'],
         ]);
@@ -88,20 +91,36 @@ class BulkVisualController extends Controller
                 ->pluck('id')
                 ->flip();
 
+        $selection = array_key_exists('scene_ids', $validated)
+            ? array_map('intval', $validated['scene_ids'])
+            : null;
+
         $eligible = [];
         $skipped  = [];
 
         foreach ($scenes as $scene) {
             if ($this->isGenerating($scene)) {
                 $skipped[] = [
-                    'scene_id' => $scene->getKey(),
-                    'order'    => (int) $scene->scene_order,
-                    'reason'   => 'Already generating an image',
+                    'scene_id'   => $scene->getKey(),
+                    'order'      => (int) $scene->scene_order,
+                    'reason'     => 'Already generating an image',
+                    'selectable' => false,
                 ];
                 continue;
             }
 
             $usesCharacter = $scene->character_id && $withReference->has($scene->character_id);
+
+            if ($selection !== null && ! in_array((int) $scene->getKey(), $selection, true)) {
+                $skipped[] = [
+                    'scene_id'   => $scene->getKey(),
+                    'order'      => (int) $scene->scene_order,
+                    'reason'     => 'Not selected',
+                    'selectable' => true,
+                    'cost'       => $factory->generationCost($modelKey, (bool) $usesCharacter),
+                ];
+                continue;
+            }
 
             $eligible[] = [
                 'scene_id'       => $scene->getKey(),
@@ -151,13 +170,18 @@ class BulkVisualController extends Controller
         }
 
         // Remember the choice at project level so scenes added later inherit
-        // the look instead of reverting to the old style.
-        $project->forceFill([
-            'default_visual_style' => $validated['style'],
-            'custom_visual_style'  => $validated['style'] === 'custom'
-                ? ($validated['custom_visual_style'] ?? $project->custom_visual_style)
-                : $project->custom_visual_style,
-        ])->save();
+        // the look instead of reverting to the old style. Only when the WHOLE
+        // project was restyled — after a deliberate subset, the project has no
+        // single look, and adopting the subset's style as the default would
+        // silently apply it to every scene added later.
+        if ($selection === null) {
+            $project->forceFill([
+                'default_visual_style' => $validated['style'],
+                'custom_visual_style'  => $validated['style'] === 'custom'
+                    ? ($validated['custom_visual_style'] ?? $project->custom_visual_style)
+                    : $project->custom_visual_style,
+            ])->save();
+        }
 
         $started = 0;
 
