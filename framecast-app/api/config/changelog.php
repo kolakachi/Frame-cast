@@ -30,6 +30,76 @@ return [
     'entries' => [
 
         [
+            'slug'  => '2026-08-30-ai-video-from-brief',
+            'date'  => '2026-08-30',
+            'tag'   => 'new',
+            'title' => 'AI Video — fully animated videos from a brief',
+            'body'  => 'The video wizard has a new visuals option: AI Video. Every scene gets an '
+                .'AI-generated image in your chosen style, then comes to life as real motion video. '
+                .'Pick the video model that fits your budget, and see the full credit cost before '
+                .'anything is generated. Works with your recurring character too — pick one and '
+                .'they appear in every animated scene.',
+        ],
+
+        [
+            'slug'  => '2026-08-30-new-video-models',
+            'date'  => '2026-08-30',
+            'tag'   => 'new',
+            'title' => 'Two new animation models: Veo 3.1 Fast and Seedance 2.5',
+            'body'  => 'Google\'s Veo 3.1 Fast (sharp, natural motion — great with people) and '
+                .'ByteDance\'s Seedance 2.5 flagship join the animation line-up, in the scene '
+                .'editor and the video wizard. Each shows its per-scene price up front. If a '
+                .'model declines an image, you\'re told plainly and nothing is charged.',
+        ],
+
+        [
+            'slug'  => '2026-08-30-bulk-scene-actions',
+            'date'  => '2026-08-30',
+            'tag'   => 'new',
+            'title' => 'Do it once, apply it everywhere',
+            'body'  => 'Three new bulk actions in the editor: animate scenes in one go (pick all '
+                .'or just some), apply an image style across the project, and re-record every '
+                .'voiceover after a change. Each shows the exact credit cost and your balance '
+                .'before you confirm — and scenes built on the same image share one animation '
+                .'instead of paying to render it repeatedly. You can also apply one voice, '
+                .'including its delivery direction, to every scene at once.',
+        ],
+
+        [
+            'slug'  => '2026-08-30-audiogram-and-style-pickers',
+            'date'  => '2026-08-30',
+            'tag'   => 'improved',
+            'title' => 'See what you\'re picking',
+            'body'  => 'The video wizard now lets you choose your audiogram\'s design, color and '
+                .'background up front — same picker as the editor, with live previews. And '
+                .'generating images from a character now shows sample thumbnails for all 21 '
+                .'styles instead of a nine-item dropdown.',
+        ],
+
+        [
+            'slug'  => '2026-08-30-videos-match-their-length',
+            'date'  => '2026-08-30',
+            'tag'   => 'fixed',
+            'title' => 'Longer videos actually come out longer',
+            'body'  => 'Choosing 90 seconds or 3 minutes could still produce a much shorter video '
+                .'— the script didn\'t grow with the target length, and long scripts could '
+                .'silently lose their ending. Scripts and scene counts now scale with your '
+                .'chosen duration, every line of the script makes it into the video, and long '
+                .'videos get proper pacing: sections, re-hooks, and varied scene lengths.',
+        ],
+
+        [
+            'slug'  => '2026-08-30-voice-direction-stays-silent',
+            'date'  => '2026-08-30',
+            'tag'   => 'fixed',
+            'title' => 'Voice direction no longer read aloud',
+            'body'  => 'Occasionally an expressive voice would speak its direction — "calm, '
+                .'soothing, and relaxed…" — before the actual line. Directions are now phrased '
+                .'to the voice engine as instructions, so they shape the delivery without '
+                .'ending up in it.',
+        ],
+
+        [
             'slug'  => '2026-08-29-video-from-pdf',
             'date'  => '2026-08-29',
             'tag'   => 'new',
