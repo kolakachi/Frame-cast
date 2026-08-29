@@ -1927,6 +1927,7 @@ class ProjectController extends Controller
             'csv_topic',
             'audio_upload',
             'video_upload',
+            'pdf_upload',
         ];
     }
 

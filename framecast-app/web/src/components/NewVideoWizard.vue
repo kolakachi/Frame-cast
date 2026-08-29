@@ -61,6 +61,7 @@ const productUrl = ref('')
 const targetAudience = ref('')
 const audioFile = ref(null)
 const videoFile = ref(null)
+const pdfFile = ref(null)
 const imageFiles = ref([])
 const imagePreviewItems = ref([])
 const imageContext = ref('')
@@ -144,6 +145,7 @@ const sourceOptions = [
   { key: 'product_description', icon: '📦', label: 'Product Description', hint: 'Name, features, audience' },
   { key: 'audio_upload',        icon: '🎙️', label: 'Upload Audio',        hint: 'Transcribe and structure' },
   { key: 'video_upload',        icon: '🎬', label: 'Upload Video',        hint: 'Extract and repurpose' },
+  { key: 'pdf_upload',          icon: '📄', label: 'Upload PDF',          hint: 'Turn a document into a video' },
   { key: 'csv_topic',           icon: '📋', label: 'CSV Batch',           hint: 'Multiple topics at once' },
   // 'blank' / 'Start from Scratch' used to live here; promoted to the new
   // step-0 path picker so blank users don't have to scroll past 8 other
@@ -364,6 +366,7 @@ async function uploadImageSources() {
 async function resolveSourceContentRaw(sourceType = wizardSourceType.value) {
   if (sourceType === 'audio_upload' && audioFile.value) return uploadMediaSource(audioFile.value, 'audio')
   if (sourceType === 'video_upload' && videoFile.value) return uploadMediaSource(videoFile.value, 'video')
+  if (sourceType === 'pdf_upload' && pdfFile.value) return uploadMediaSource(pdfFile.value, 'document')
   if (sourceType === 'images' && imageFiles.value.length > 0) return uploadImageSources()
   return buildSourceContentRaw(sourceType)
 }
@@ -850,6 +853,7 @@ async function submitWizardProject() {
   const rawContent = buildSourceContentRaw(sourceType)
   const hasMedia = (sourceType === 'audio_upload' && audioFile.value)
     || (sourceType === 'video_upload' && videoFile.value)
+    || (sourceType === 'pdf_upload' && pdfFile.value)
     || (sourceType === 'images' && imageFiles.value.length > 0)
 
   if (sourceType !== 'blank' && !rawContent && !hasMedia) {
@@ -1587,6 +1591,18 @@ defineExpose({ open })
           </label>
         </div>
 
+        <div v-else-if="wizardSourceType === 'pdf_upload'" class="input-group">
+          <label class="input-label">Upload PDF</label>
+          <label class="upload-zone upload-zone-input">
+            <span>{{ pdfFile ? pdfFile.name : '📄  Drop your PDF here — reports, guides, one-pagers · max 100MB' }}</span>
+            <input class="hidden-file-input" type="file" accept="application/pdf,.pdf" @change="pdfFile = selectedFile($event)" />
+          </label>
+          <div class="input-hint">
+            The PDF needs selectable text. Scanned documents and image-only PDFs store pictures of
+            words, so there's nothing for us to read. Long documents are condensed before scripting.
+          </div>
+        </div>
+
         <!-- Visual type picker — shown for all text/media source types except images (which has its own) -->
         <div v-if="wizardSourceType && wizardSourceType !== 'images' && wizardSourceType !== 'blank'" class="input-group mt">
           <div class="input-label" style="margin-bottom:8px;">Visuals</div>
@@ -1857,6 +1873,7 @@ defineExpose({ open })
 .format-chip.active { border-color: var(--color-accent); background: rgba(255,107,53,0.1); color: var(--color-accent); }
 
 .input-optional { color: var(--color-text-muted); font-weight: 400; }
+.input-hint { margin-top: 8px; font-size: 11px; line-height: 1.5; color: var(--color-text-muted); }
 .script-edit-toggle { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--color-text-secondary); cursor: pointer; }
 .script-edit-toggle input { margin-top: 2px; accent-color: var(--color-accent); }
 .script-edit-hint { color: var(--color-text-muted); }

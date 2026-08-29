@@ -28,6 +28,19 @@ class PromptTemplateRegistry
                 'system' => 'You write short-form product explainer and UGC-style ad scripts. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
                 'user' => "Create a short-form product video script.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nRules: use only product details provided, do not invent testimonials/pricing/guarantees, include a clear CTA.\nProduct source:\n{{source_content}}",
             ],
+            'script_from_pdf' => [
+                'system' => 'You are a short-form video script writer. Turn document content into plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines, no character cues. Write only the words the narrator will speak aloud. Preserve factual claims from the document and do not invent statistics, findings, or quotes it does not contain.',
+                'user' => "Turn this document into a short-form video script.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nRules: lead with the single most interesting idea in the document rather than its opening paragraph, keep every factual claim traceable to the source, do not invent figures, and use short caption-friendly lines.\nDocument:\n{{source_content}}",
+            ],
+
+            // Condenses a long document before scripting. A 40-page report
+            // can't fit a prompt, and truncating it would script pages 1-3 and
+            // silently misrepresent the rest.
+            'summarize_document' => [
+                'system' => 'You condense documents for downstream video scripting. Return plain prose only — no headings, no bullet points, no preamble. Preserve concrete facts, figures, names and conclusions; drop boilerplate, page furniture, citations and legal notices. Never invent detail that is not present.',
+                'user' => "Condense this document to roughly 600 words, keeping the specific claims and figures a short video would want to cite. Prioritise findings and conclusions over background.\n\nDocument:\n{{source_content}}",
+            ],
+
             'script_from_csv' => [
                 'system' => 'You turn CSV topic rows into short-form video scripts. Return plain spoken narration only. Never use screenplay formatting — no stage directions, no [CUT TO:], no [INT/EXT], no FADE IN/OUT, no parenthetical action lines. Write only the words the narrator will speak aloud.',
                 'user' => "Create one short-form video script from this CSV. Use the first topic row as the primary video unless the source clearly asks for a batch. Preserve fields like topic, angle, audience, and CTA.\nNiche: {{niche}}\nNiche playbook (follow this structure, hook style, pacing, and CTA): {{niche_guidance}}\nTone: {{tone}}\nGoal: {{content_goal}}\nPlatform: {{platform}}\nTarget length: about {{duration}} seconds — write only as much narration as fits.\nLanguage: {{language}}\nCSV:\n{{source_content}}",

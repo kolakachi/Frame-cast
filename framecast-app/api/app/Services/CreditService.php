@@ -524,6 +524,9 @@ class CreditService
             'product_description'=> [8, 12],
             'audio_upload'      => [8, 14],
             'video_upload'      => [8, 14],
+            // A document carries more material than a prompt, and the estimate
+            // is made before the PDF is read, so it can't key off word count.
+            'pdf_upload'        => [9, 14],
             default             => [8, 12],
         };
     }

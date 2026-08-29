@@ -233,6 +233,7 @@ class GenerateScriptJob implements ShouldQueue
             'images' => 'script_from_images',
             'product_description' => 'script_from_product',
             'csv_topic' => 'script_from_csv',
+            'pdf_upload' => 'script_from_pdf',
             'audio_upload' => 'script_from_audio_reference',
             'video_upload' => 'script_from_video_reference',
             default => 'script_from_prompt',
@@ -251,6 +252,10 @@ class GenerateScriptJob implements ShouldQueue
             return $this->imageSourceContent($project, $source);
         }
 
+        if ($project->source_type === 'pdf_upload') {
+            return $this->pdfSourceContent($project, $source);
+        }
+
         if ($project->source_type !== 'url') {
             return $source;
         }
@@ -260,6 +265,85 @@ class GenerateScriptJob implements ShouldQueue
         // the link instead of its contents, with no error shown. This runs
         // before any credits are deducted, so a failed import costs nothing.
         return app(\App\Services\Generation\UrlContentExtractor::class)->extract($source);
+    }
+
+    /**
+     * Read an uploaded PDF into prose.
+     *
+     * Long documents are CONDENSED rather than truncated. Cutting a 40-page
+     * report at 6,000 characters would script its first few pages and present
+     * the result as a video about the whole document — the same class of
+     * confidently-wrong output the URL importer was fixed to stop.
+     *
+     * Runs before any credit deduction, so a PDF we can't read costs nothing.
+     */
+    private function pdfSourceContent(Project $project, string $source): string
+    {
+        $assetId = $this->extractAssetId($source);
+        $asset   = $assetId
+            ? Asset::query()->whereKey($assetId)->where('workspace_id', $project->workspace_id)->first()
+            : null;
+
+        if (! $asset) {
+            throw new \RuntimeException('The uploaded PDF could not be found. Please upload it again.');
+        }
+
+        // The parser needs a real file on disk; assets live in B2. Pull the
+        // bytes to a temp file and always clean it up — a PDF left in /tmp is
+        // how a disk fills.
+        $bytes = app(StorageService::class)->get($asset->storage_url);
+
+        if ($bytes === null || $bytes === '') {
+            throw new \RuntimeException('The uploaded PDF could not be downloaded. Please upload it again.');
+        }
+
+        $local = tempnam(sys_get_temp_dir(), 'wyv-pdf-').'.pdf';
+        file_put_contents($local, $bytes);
+
+        try {
+            $result = app(\App\Services\Generation\PdfContentExtractor::class)
+                ->extract($local, $asset->title);
+        } finally {
+            rescue(fn () => @unlink($local), null, false);
+        }
+
+        $text = $result['text'];
+
+        // Condense first when the document is bigger than a prompt can carry.
+        if ($result['truncated']) {
+            $text = $this->summariseDocument($project, $text, $asset->title, $result['pages']);
+        }
+
+        $header = "Document: {$asset->title} ({$result['pages']} page".($result['pages'] === 1 ? '' : 's').')';
+
+        return $header."\n\n".$text;
+    }
+
+    /**
+     * Condense an over-long document. Falls back to the leading extract if the
+     * summariser fails — a partial script beats failing the whole generation
+     * at this point, and the header still tells the model what it's holding.
+     */
+    private function summariseDocument(Project $project, string $text, string $title, int $pages): string
+    {
+        $summary = rescue(function () use ($project, $text) {
+            $result = app(AIGenerationAdapter::class)->generate('summarize_document', [
+                'source_content' => $text,
+            ], 900, 0.2, ['usage_context' => $this->usageContext($project, ['template' => 'summarize_document'])]);
+
+            return trim((string) ($result['content'] ?? ''));
+        }, null, false);
+
+        if (! $summary) {
+            \Illuminate\Support\Facades\Log::warning('GenerateScriptJob: document summary failed, using leading extract', [
+                'project_id' => $project->getKey(),
+                'title'      => $title,
+            ]);
+
+            return $text;
+        }
+
+        return "Condensed from a {$pages}-page document:\n{$summary}";
     }
 
     private function imageSourceContent(Project $project, string $source): string
