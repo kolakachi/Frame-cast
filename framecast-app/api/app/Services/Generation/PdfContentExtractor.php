@@ -2,6 +2,7 @@
 
 namespace App\Services\Generation;
 
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Smalot\PdfParser\Parser;
@@ -47,6 +48,13 @@ class PdfContentExtractor
             throw new RuntimeException("We couldn't open {$label}. Please try uploading it again.");
         }
 
+        // The extraction service knows things this parser can't: which pages
+        // have a text layer, which are scans, and therefore whether we are only
+        // reading PART of the document. Prefer it; fall back below if it's down.
+        if ($viaService = $this->viaService($absolutePath, $label)) {
+            return $viaService;
+        }
+
         try {
             $document = (new Parser())->parseFile($absolutePath);
             $pages    = count($document->getPages());
@@ -85,6 +93,85 @@ class PdfContentExtractor
             'text'      => $truncated ? mb_substr($text, 0, self::MAX_CONTENT_CHARS) : $text,
             'pages'     => $pages,
             'truncated' => $truncated,
+        ];
+    }
+
+    /**
+     * Ask the extraction service (framecast-app/extract).
+     *
+     * Returns the same shape as extract(), or null when the service can't be
+     * reached. A 422 is authoritative — an unreadable PDF is a verdict, not a
+     * reason to retry with weaker tooling.
+     *
+     * @return array{text: string, pages: int, truncated: bool}|null
+     */
+    private function viaService(string $absolutePath, string $label): ?array
+    {
+        $base = rtrim((string) config('services.extract.url', ''), '/');
+        if ($base === '') {
+            return null;
+        }
+
+        try {
+            $response = Http::timeout(120)
+                ->attach('file', file_get_contents($absolutePath), 'document.pdf')
+                ->post($base.'/extract/pdf');
+        } catch (\Throwable $e) {
+            Log::warning('PdfContentExtractor: extract service unreachable, falling back', [
+                'file'  => $label,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (in_array($response->status(), [400, 413, 422], true)) {
+            throw new RuntimeException((string) $response->json('detail', "We couldn't read {$label}."));
+        }
+
+        if (! $response->successful()) {
+            Log::warning('PdfContentExtractor: extract service error, falling back', [
+                'file'   => $label,
+                'status' => $response->status(),
+            ]);
+
+            return null;
+        }
+
+        $text   = \App\Support\Utf8::clean((string) $response->json('text', ''));
+        $pages  = (int) $response->json('page_count', 0);
+        $counts = (array) $response->json('counts', []);
+
+        if (mb_strlen($text) < self::MIN_CONTENT_CHARS) {
+            throw new RuntimeException(
+                "We couldn't find any readable text in {$label}. Scanned documents and image-only PDFs ".
+                "store pictures of words rather than the words themselves, so there's nothing to read. ".
+                'Try a PDF exported from a document editor, or paste the text directly.'
+            );
+        }
+
+        // Some pages are scans we haven't read. Say so IN the source content,
+        // so the model writes about what it actually has instead of presenting
+        // a partial read as a summary of the whole document.
+        if ((bool) $response->json('partial', false)) {
+            $scanned = (int) ($counts['scanned'] ?? 0);
+            $text .= "\n\n[Note: {$scanned} of {$pages} pages in this document are scanned images that "
+                .'could not be read. Write only about the content above, and do not imply the video '
+                .'covers the whole document.]';
+
+            Log::info('PdfContentExtractor: document only partially readable', [
+                'file'   => $label,
+                'pages'  => $pages,
+                'counts' => $counts,
+            ]);
+        }
+
+        return [
+            'text'      => mb_strlen($text) > self::MAX_CONTENT_CHARS
+                ? mb_substr($text, 0, self::MAX_CONTENT_CHARS)
+                : $text,
+            'pages'     => $pages,
+            'truncated' => mb_strlen($text) > self::MAX_CONTENT_CHARS,
         ];
     }
 

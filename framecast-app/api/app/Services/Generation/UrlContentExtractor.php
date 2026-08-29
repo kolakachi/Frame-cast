@@ -47,6 +47,13 @@ class UrlContentExtractor
 
         $isYouTube = $this->isYouTube($url);
 
+        // Prefer the extraction service — trafilatura does real boilerplate
+        // removal rather than the tag-stripping below, which is kept only as a
+        // fallback for when the service is unreachable.
+        if ($viaService = $this->viaService($url)) {
+            return Str::limit(\App\Support\Utf8::clean($viaService), self::MAX_CONTENT_CHARS, '');
+        }
+
         $isSocial = $this->isLoginWalledSocial($url);
 
         if ($isYouTube) {
@@ -88,6 +95,61 @@ class UrlContentExtractor
 
         // Scraped pages carry the same malformed-byte risk as PDFs.
         return \App\Support\Utf8::clean(Str::limit($content, self::MAX_CONTENT_CHARS, ''));
+    }
+
+    /**
+     * Ask the extraction service (framecast-app/extract).
+     *
+     * Returns the text, or null when the service can't be reached so the caller
+     * falls back to the PHP path. A 422 is NOT a fallback case: that means the
+     * service read the page and judged it unusable, which is an authoritative
+     * answer we surface to the user rather than second-guessing with weaker
+     * code.
+     */
+    private function viaService(string $url): ?string
+    {
+        $base = rtrim((string) config('services.extract.url', ''), '/');
+        if ($base === '') {
+            return null;
+        }
+
+        try {
+            $response = Http::timeout(75)
+                ->acceptJson()
+                ->post($base.'/extract/url', ['url' => $url]);
+        } catch (\Throwable $e) {
+            Log::warning('UrlContentExtractor: extract service unreachable, falling back', [
+                'url'   => $url,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        // 400/422 — the service reached a verdict. Trust it.
+        if (in_array($response->status(), [400, 422], true)) {
+            throw new RuntimeException((string) $response->json('detail', 'That link could not be read.'));
+        }
+
+        if (! $response->successful()) {
+            Log::warning('UrlContentExtractor: extract service error, falling back', [
+                'url'    => $url,
+                'status' => $response->status(),
+            ]);
+
+            return null;
+        }
+
+        $text  = trim((string) $response->json('text', ''));
+        $title = trim((string) $response->json('title', ''));
+
+        if ($text === '') {
+            return null;
+        }
+
+        return $title !== '' && ! str_contains($text, $title)
+            ? "Title: {$title}\n\n{$text}"
+            : $text;
     }
 
     // ── YouTube ───────────────────────────────────────────────────────────
