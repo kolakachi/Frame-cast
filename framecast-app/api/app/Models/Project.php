@@ -25,6 +25,9 @@ class Project extends Model
         'source_image_asset_ids',
         'visual_generation_mode',
         'ai_broll_style',
+        // Seeded at creation for ai_video (animate_tier); enriched later by
+        // GenerateVisualBriefJob, which merges rather than overwrites.
+        'visual_brief',
         'waveform_settings_json',
         'default_visual_style',
         'custom_visual_style',
