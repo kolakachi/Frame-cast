@@ -58,7 +58,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 
       <article v-for="e in entries" :key="e.slug" class="wn-item">
         <div class="wn-meta">
-          <span :class="['wn-tag', e.tag]">{{ e.tag }}</span>
+          <span :class="['wn-tag', `wn-tag-${e.tag}`]">{{ e.tag }}</span>
           <span class="wn-date">{{ formatDate(e.date) }}</span>
         </div>
         <div class="wn-item-title">{{ e.title }}</div>
@@ -88,9 +88,13 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 .wn-item { padding: 14px 18px; border-bottom: 1px solid var(--color-border); }
 .wn-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .wn-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 4px; }
-.wn-tag.new      { background: rgba(52,211,153,.15); color: #34d399; }
-.wn-tag.improved { background: rgba(96,165,250,.15); color: #60a5fa; }
-.wn-tag.fixed    { background: rgba(255,107,53,.12); color: var(--color-accent); }
+/* Prefixed, NOT bare `.new`/`.fixed`. Tailwind ships a global `.fixed`
+   utility (position: fixed), so a bare modifier class here took the "FIXED"
+   badge out of flex flow and dropped it on top of the date. Scoped styles
+   don't protect against that — a global utility still matches the element. */
+.wn-tag-new      { background: rgba(52,211,153,.15); color: #34d399; }
+.wn-tag-improved { background: rgba(96,165,250,.15); color: #60a5fa; }
+.wn-tag-fixed    { background: rgba(255,107,53,.12); color: var(--color-accent); }
 .wn-date { font-size: 10px; color: var(--color-text-muted); opacity: .8; }
 .wn-item-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .wn-body { font-size: 12px; color: var(--color-text-muted); line-height: 1.5; margin: 0; }
