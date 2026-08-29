@@ -28,6 +28,52 @@ class GeminiTTSAdapter implements TTSAdapter
     ) {
     }
 
+    /**
+     * Shape a free-text voice direction into the imperative form this model
+     * expects.
+     *
+     * `prompt` is a style field whose own default is "Say the following." and
+     * whose documented examples are imperative ("Say this in a calm,
+     * professional tone"). A bare descriptive fragment — "Calm, soothing, and
+     * relaxed — gentle and reassuring." — reads as content instead, and the
+     * model intermittently SPEAKS it ahead of the script. Measured on real
+     * production audio: 4 of 13 scenes, all sharing one direction, had the
+     * direction read aloud before the line.
+     *
+     * Wrapping it in an imperative frame removes that ambiguity. Directions
+     * the user already phrased as an instruction are left untouched.
+     */
+    public static function asStyleInstruction(string $direction): string
+    {
+        $d = trim($direction);
+
+        if ($d === '') {
+            return '';
+        }
+
+        // Already an instruction — respect the user's phrasing.
+        if (preg_match('/^(say|speak|read|narrate|deliver|talk|use|sound|perform|voice|make)\b/i', $d)) {
+            return $d;
+        }
+
+        $d = rtrim($d, " \t\n\r\0\x0B.!,;:");
+
+        if ($d === '') {
+            return '';
+        }
+
+        // Lower the first letter so it reads as one sentence — but leave an
+        // all-caps opening word alone ("NASA mission control" must not become
+        // "nASA mission control").
+        $firstWord = preg_split('/\s+/', $d)[0] ?? '';
+        $isAcronym = mb_strlen($firstWord) > 1 && mb_strtoupper($firstWord) === $firstWord;
+        if ($firstWord === '' || ! $isAcronym) {
+            $d = mb_strtolower(mb_substr($d, 0, 1)).mb_substr($d, 1);
+        }
+
+        return "Say the following in a manner that is {$d}.";
+    }
+
     public function synthesize(string $text, string $language, string $voiceId, float $speed = 1.0, array $options = []): array
     {
         $apiToken = (string) config('services.replicate.api_token');
@@ -56,7 +102,7 @@ class GeminiTTSAdapter implements TTSAdapter
         $url = 'https://api.replicate.com/v1/models/'.$model.'/predictions';
         $input = ['text' => $script, 'voice' => $voice];
         if ($direction !== '') {
-            $input['prompt'] = $direction; // style instructions, separate from spoken text
+            $input['prompt'] = self::asStyleInstruction($direction);
         }
         if (($ver = (string) config('services.gemini_tts.version', '')) !== '') {
             $url = 'https://api.replicate.com/v1/predictions';
