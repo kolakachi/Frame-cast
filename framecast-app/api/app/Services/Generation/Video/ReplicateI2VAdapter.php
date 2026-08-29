@@ -144,7 +144,18 @@ class ReplicateI2VAdapter implements I2VAdapter
                 break;
             }
             if (in_array($status, ['failed', 'canceled'], true)) {
-                $err = $payload['error'] ?? 'unknown error';
+                $err = (string) ($payload['error'] ?? 'unknown error');
+                // Model-side content filters (Seedance 2.5 is the strict one —
+                // it declines some realistic-people stills that Veo and Kling
+                // accept) return an opaque "flagged as sensitive" ModelError.
+                // Users see animation_last_error verbatim, so translate it and
+                // say the part that matters: they were refunded.
+                if (stripos($err, 'flagged as sensitive') !== false || str_contains($err, '(E005)')) {
+                    throw new RuntimeException(
+                        "This model's content filter declined the image — it is strict, especially with realistic people. "
+                        ."You were not charged. Try a different model (Veo 3.1 Fast handles the same images), or a different image."
+                    );
+                }
                 throw new RuntimeException("Replicate i2v {$status}: {$err}");
             }
             // else: starting | processing — keep polling
