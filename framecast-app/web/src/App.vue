@@ -180,7 +180,9 @@ function handleUpgrade() {
 .imp-banner { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 5000; display: flex; align-items: center; gap: 14px; background: #7c2d12; color: #ffedd5; border: 1px solid #ea580c; border-radius: 999px; padding: 8px 10px 8px 18px; font-size: 12.5px; font-weight: 600; box-shadow: 0 8px 30px rgba(0,0,0,.45); }
 .imp-exit { background: #ea580c; color: #fff; border: none; border-radius: 999px; padding: 6px 14px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; }
 .imp-exit:hover { background: #f97316; }
-.rage-card { position: fixed; right: 18px; bottom: 18px; z-index: 3500; width: 300px; background: #17171f; border: 1px solid #2a2a36; border-radius: 12px; padding: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.5); color: #ececf3; display: flex; flex-direction: column; gap: 8px; }
+/* bottom: 96px clears the Crisp bubble (~56px + its 20px inset), so the
+   Send button is never under the chat icon. */
+.rage-card { position: fixed; right: 18px; bottom: 96px; z-index: 3500; width: 300px; background: #17171f; border: 1px solid #2a2a36; border-radius: 12px; padding: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.5); color: #ececf3; display: flex; flex-direction: column; gap: 8px; }
 .rage-close { position: absolute; top: 8px; right: 12px; background: none; border: none; color: #a1a1b5; font-size: 16px; cursor: pointer; }
 .rage-title { font-size: 13.5px; font-weight: 700; }
 .rage-copy { font-size: 12px; color: #a1a1b5; line-height: 1.5; }
