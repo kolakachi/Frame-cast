@@ -72,6 +72,11 @@ class DetectAbusePatternsJob implements ShouldQueue, ShouldBeUnique
             $this->scanHighRiskTerms($since),
         );
 
+        $newAlerts = array_merge(
+            $newAlerts,
+            $this->scanCogsBurnRate($since),
+        );
+
         if ($newAlerts !== []) {
             $this->sendDigest($newAlerts);
         }
@@ -146,6 +151,77 @@ class DetectAbusePatternsJob implements ShouldQueue, ShouldBeUnique
      *
      * @return array<int,ModerationEvent>
      */
+    /**
+     * Rule 3: workspaces burning upstream COGS faster than the configured 24h
+     * threshold. The burn-and-refund guard: an LTD buyer who torches their
+     * grant inside the refund window is visible here days before the refund
+     * lands — while it can still inform a support conversation or an AppSumo
+     * dispute. One alert per workspace per window.
+     *
+     * @return array<int,ModerationEvent>
+     */
+    private function scanCogsBurnRate(CarbonImmutable $since): array
+    {
+        $threshold = (float) config('moderation.cogs_burn_alert_usd_24h', 10.0);
+        if ($threshold <= 0) {
+            return [];
+        }
+
+        $table = (new \App\Models\ApiUsageEvent)->getTable();
+
+        $hot = DB::table($table)
+            ->join('workspaces', 'workspaces.id', '=', "$table.workspace_id")
+            ->where("$table.created_at", '>=', $since)
+            ->selectRaw("workspaces.id as ws_id, workspaces.plan_tier, ROUND(SUM($table.estimated_cost_usd)::numeric, 2) as cogs")
+            ->groupBy('workspaces.id', 'workspaces.plan_tier')
+            ->havingRaw("SUM($table.estimated_cost_usd) >= ?", [$threshold])
+            ->get();
+
+        if ($hot->isEmpty()) {
+            return [];
+        }
+
+        $alreadyAlerted = ModerationEvent::query()
+            ->where('source', ModerationEvent::SOURCE_PATTERN_ALERT)
+            ->where('operation', 'cogs_burn_rate')
+            ->where('created_at', '>=', $since)
+            ->pluck('workspace_id')
+            ->flip()
+            ->toArray();
+
+        $alerts = [];
+        $service = app(ModerationService::class);
+
+        foreach ($hot as $row) {
+            if (isset($alreadyAlerted[$row->ws_id])) {
+                continue;
+            }
+
+            $owner = \App\Models\User::query()->where('workspace_id', $row->ws_id)->orderBy('id')->first();
+            $event = $service->recordPatternAlert(
+                'cogs_burn_rate',
+                sprintf('Workspace %d (%s) consumed $%s of upstream COGS in 24h (threshold $%s).',
+                    $row->ws_id, $row->plan_tier, $row->cogs, $threshold),
+                [
+                    'workspace_id' => (int) $row->ws_id,
+                    'user_id'      => $owner?->getKey(),
+                    'severity'     => ModerationEvent::SEVERITY_HIGH,
+                    'metadata'     => [
+                        'cogs_24h_usd' => (float) $row->cogs,
+                        'threshold'    => $threshold,
+                        'plan_tier'    => $row->plan_tier,
+                    ],
+                ],
+            );
+
+            if ($event) {
+                $alerts[] = $event;
+            }
+        }
+
+        return $alerts;
+    }
+
     private function scanHighRiskTerms(CarbonImmutable $since): array
     {
         $tiers = (array) config('moderation.term_tiers', []);

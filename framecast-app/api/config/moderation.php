@@ -99,6 +99,16 @@ return [
     ],
 
     /**
+     * A workspace consuming more than this much upstream COGS (USD) in a
+     * rolling 24h window triggers a pattern alert. This is the burn-and-refund
+     * guard for LTD cohorts: a buyer who torches their whole credit grant
+     * inside the 60-day refund window shows up here days before the refund,
+     * while a normal heavy user is just... visible, which is also fine —
+     * heavy users are the ones worth talking to either way.
+     */
+    'cogs_burn_alert_usd_24h' => 10.0,
+
+    /**
      * Email address that receives the daily moderation digest. The digest
      * is sent only if there are pending events (no spam on quiet days).
      */
