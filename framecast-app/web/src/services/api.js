@@ -39,6 +39,13 @@ export function configureApiClient(authStore) {
       const status = error.response?.status
       const originalRequest = error.config
 
+      // Suspended workspace: every API call is refused at the auth middleware,
+      // which without this reads as "the app is broken" — buttons fail with no
+      // explanation. Flag it once; App.vue shows a blocking modal.
+      if (status === 403 && error.response?.data?.error?.code === 'workspace_suspended') {
+        window.dispatchEvent(new CustomEvent('workspace-suspended'))
+      }
+
       // Surface plan limit errors globally via the limit modal
       if (status === 422 && error.response?.data?.error?.limit_context) {
         try {
