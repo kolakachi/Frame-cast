@@ -72,6 +72,7 @@ class AdminMailController extends Controller
             payload: [
                 'segment'    => $validated['segment'],
                 'subject'    => $validated['subject'],
+                'body'       => mb_substr($validated['body'], 0, 10000),
                 'recipients' => $users->pluck('email')->all(),
             ],
             ip: $request->ip(),
@@ -83,6 +84,28 @@ class AdminMailController extends Controller
                 'recipients' => $users->pluck('email')->all(),
             ],
         ]);
+    }
+
+    /** Previously sent mail, straight from the audit log — one source of truth. */
+    public function history(Request $request): JsonResponse
+    {
+        $rows = AdminAuditLog::query()
+            ->where('action', 'admin_mail_sent')
+            ->with('admin:id,email')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get()
+            ->map(fn (AdminAuditLog $log) => [
+                'id'         => $log->id,
+                'sent_at'    => $log->created_at?->toIso8601String(),
+                'sent_by'    => $log->admin?->email,
+                'segment'    => $log->payload_json['segment'] ?? null,
+                'subject'    => $log->payload_json['subject'] ?? null,
+                'body'       => $log->payload_json['body'] ?? null,   // sends before body-logging show null
+                'recipients' => $log->payload_json['recipients'] ?? [],
+            ]);
+
+        return response()->json(['data' => ['sends' => $rows]]);
     }
 
     /** @return \Illuminate\Support\Collection<int,User> */

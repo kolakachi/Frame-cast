@@ -71,6 +71,15 @@ watch(mailSegment, async (seg) => {
   } catch { mailRecipients.value = null }
 })
 
+const mailHistory = ref([])
+const mailHistoryOpen = ref(null)   // expanded send id
+async function loadMailHistory() {
+  try {
+    const res = await api.get('/admin/mail/history')
+    mailHistory.value = res.data?.data?.sends ?? []
+  } catch { mailHistory.value = [] }
+}
+
 async function sendMail() {
   if (mailSending.value) return
   mailError.value = ''
@@ -89,6 +98,7 @@ async function sendMail() {
     })
     mailResult.value = res.data?.data ?? null
     mailSubject.value = ''; mailBody.value = ''; mailEmails.value = ''
+    loadMailHistory()
   } catch (err) {
     mailError.value = err.response?.data?.error?.message ?? 'Send failed.'
   } finally { mailSending.value = false }
@@ -749,6 +759,7 @@ function navigate(view) {
   if (view === 'billing') { loadBillingChart(); loadAudit() }
   if (view === 'storage') loadStorage()
   if (view === 'moderation') loadModeration()
+  if (view === 'mail') loadMailHistory()
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1785,6 +1796,32 @@ onMounted(() => {
                 </button>
               </div>
             </div>
+
+            <div class="gm-section-title" style="margin-top:34px;">Sent</div>
+            <div v-if="!mailHistory.length" class="mail-hint" style="padding:14px 0;">Nothing sent yet.</div>
+            <table v-else class="gm-table">
+              <thead><tr><th>When</th><th>By</th><th>To</th><th>Subject</th></tr></thead>
+              <tbody>
+                <template v-for="m in mailHistory" :key="m.id">
+                  <tr class="gm-row-click" @click="mailHistoryOpen = mailHistoryOpen === m.id ? null : m.id">
+                    <td class="cell-muted" style="white-space:nowrap;">{{ fmtDate(m.sent_at) }}</td>
+                    <td class="cell-muted">{{ m.sent_by || '—' }}</td>
+                    <td>
+                      <span style="font-weight:500">{{ m.segment === 'custom' ? m.recipients.join(', ') : m.segment }}</span>
+                      <span class="cell-sub"> · {{ m.recipients.length }} recipient{{ m.recipients.length === 1 ? '' : 's' }}</span>
+                    </td>
+                    <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ m.subject }}</td>
+                  </tr>
+                  <tr v-if="mailHistoryOpen === m.id">
+                    <td colspan="4" class="mail-history-detail">
+                      <div v-if="m.segment !== 'custom'" class="mail-hint" style="margin-bottom:8px;">To: {{ m.recipients.join(', ') }}</div>
+                      <div v-if="m.body" style="white-space:pre-wrap;font-size:12.5px;line-height:1.6;">{{ m.body }}</div>
+                      <div v-else class="mail-hint">Message text wasn't stored for this send (sent before body logging).</div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
           </div>
         </template>
 
@@ -2858,4 +2895,5 @@ tr:hover td { background: #1e2129; }
 .mail-success { margin-top: 10px; font-size: 12.5px; color: #34d399; }
 .mail-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
 .mail-confirm-copy { font-size: 13px; font-weight: 600; }
+.mail-history-detail { background: var(--gm-card, rgba(255,255,255,.02)); padding: 14px 16px !important; border-radius: 8px; }
 </style>

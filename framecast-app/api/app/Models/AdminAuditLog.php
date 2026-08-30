@@ -23,6 +23,11 @@ class AdminAuditLog extends Model
         'created_at' => 'datetime',
     ];
 
+    public function admin()
+    {
+        return $this->belongsTo(User::class, 'admin_user_id');
+    }
+
     public static function record(
         int $adminUserId,
         string $action,
