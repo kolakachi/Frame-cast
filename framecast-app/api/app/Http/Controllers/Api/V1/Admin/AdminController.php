@@ -342,7 +342,10 @@ class AdminController extends Controller
             'expires_at' => now()->addMinutes($ttl),
         ]);
 
-        $token = $jwt->issue($target, $target->workspace, $session);
+        // impersonated=true rides in the token so the auth middleware knows
+        // this session is support access — it may enter SUSPENDED workspaces,
+        // which is precisely when an admin most needs to see the account.
+        $token = $jwt->issue($target, $target->workspace, $session, impersonated: true);
 
         AdminAuditLog::record(
             adminUserId: $admin->getKey(),

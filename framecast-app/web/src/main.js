@@ -62,6 +62,13 @@ const authStore = useAuthStore()
 // Impersonation handoff — swap session before anything else boots
 const _impersonateParam = new URLSearchParams(window.location.search).get('impersonate')
 if (_impersonateParam) {
+  // Stash the admin's own session BEFORE the swap so impersonation is exitable.
+  // Without this the swap clobbered the only copy of the admin's token
+  // (localStorage is origin-wide), and the sole way back was waiting out the
+  // impersonation TTL and logging in again.
+  const _prior = window.localStorage.getItem('framecast.auth')
+  if (_prior) window.localStorage.setItem('framecast.admin_return', _prior)
+  window.localStorage.setItem('framecast.impersonating', '1')
   // Replace session with the impersonation token; fetch /me to get the user object
   authStore.setSession({ accessToken: _impersonateParam, user: null })
   // Strip the param from the URL so refresh / back-button don't re-apply it

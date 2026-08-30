@@ -19,7 +19,7 @@ use Symfony\Component\Clock\NativeClock;
 
 class JwtService
 {
-    public function issue(User $user, Workspace $workspace, AuthSession $session): string
+    public function issue(User $user, Workspace $workspace, AuthSession $session, bool $impersonated = false): string
     {
         $configuration = $this->configuration($workspace);
         $now = new DateTimeImmutable();
@@ -35,6 +35,7 @@ class JwtService
             ->withClaim('workspace_id', $workspace->getKey())
             ->withClaim('session_id', $session->getKey())
             ->withClaim('role', $user->role)
+            ->withClaim('imp', $impersonated)
             ->getToken($configuration->signer(), $configuration->signingKey())
             ->toString();
     }
@@ -65,6 +66,7 @@ class JwtService
             'workspace_id' => $workspaceId,
             'session_id' => (int) $parsed->claims()->get('session_id'),
             'role' => $parsed->claims()->get('role'),
+            'impersonated' => (bool) $parsed->claims()->get('imp', false),
         ];
     }
 

@@ -49,6 +49,10 @@ export const useAuthStore = defineStore('auth', {
     },
 
     clearSession() {
+      // A logout ends any impersonation with it — otherwise the banner (and
+      // the stashed admin token) would leak into the next login.
+      window.localStorage.removeItem('framecast.impersonating')
+      window.localStorage.removeItem('framecast.admin_return')
       this.accessToken = null
       this.user = null
       window.localStorage.removeItem(STORAGE_KEY)
