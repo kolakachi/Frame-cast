@@ -123,6 +123,10 @@ class AdminMailController extends Controller
             return $this->error('draft_failed', 'Model returned an unusable draft — try again.', 502);
         }
 
+        // The renderer only substitutes into the user prompt, so the sign-off
+        // placeholder from the system prompt can survive verbatim.
+        $parsed['body'] = str_replace(['{{sender_name}}', '{{ sender_name }}'], 'Amara', (string) $parsed['body']);
+
         return response()->json(['data' => [
             'subject' => (string) $parsed['subject'],
             'body'    => (string) $parsed['body'],
@@ -154,8 +158,12 @@ class AdminMailController extends Controller
 
         foreach ($projects as $p) {
             $scenes = $p->scenes()->count();
-            $lines[] = sprintf('- "%s" (%s, from %s, %d scenes, %s)',
-                $p->title ?: 'untitled', $p->status, $p->source_type ?: '?', $scenes, $p->created_at?->format('M j'));
+            // The onboarding flow auto-creates a sample titled "Wyvstudio Ad".
+            // Without this note the model congratulates people on a project
+            // the machine made — instantly reads as a bot that didn't look.
+            $sample = ($p->title === 'Wyvstudio Ad') ? ' — AUTO-CREATED onboarding sample, not their own work; do not praise it' : '';
+            $lines[] = sprintf('- "%s" (%s, from %s, %d scenes, %s)%s',
+                $p->title ?: 'untitled', $p->status, $p->source_type ?: '?', $scenes, $p->created_at?->format('M j'), $sample);
         }
 
         // Failures are often the most useful specifics of all.
