@@ -34,6 +34,64 @@ const topbarTitles = {
   jobs: 'Queue & Jobs', billing: 'Billing & Spend', audit: 'Audit Log',
   failures: 'Job Failures', storage: 'Storage',
   moderation: 'Trust & Safety',
+  mail: 'Email',
+}
+
+// ── Admin mail ────────────────────────────────────────────────────────────────
+const mailSegment = ref('custom')
+const mailEmails = ref('')            // comma/space-separated for 'custom'
+const mailSubject = ref('')
+const mailBody = ref('')
+const mailRecipients = ref(null)      // {count, sample} for segments
+const mailSending = ref(false)
+const mailResult = ref(null)
+const mailError = ref('')
+const mailConfirming = ref(false)
+
+const MAIL_SEGMENTS = [
+  { key: 'custom',  label: 'Specific customer(s)' },
+  { key: 'paying',  label: 'All paying customers' },
+  { key: 'appsumo', label: 'AppSumo license holders' },
+  { key: 'free',    label: 'Free accounts' },
+  { key: 'all',     label: 'Everyone' },
+]
+
+const mailCustomList = computed(() =>
+  mailEmails.value.split(/[\s,;]+/).map(e => e.trim()).filter(e => e.includes('@')))
+const mailRecipientCount = computed(() =>
+  mailSegment.value === 'custom' ? mailCustomList.value.length : (mailRecipients.value?.count ?? null))
+
+watch(mailSegment, async (seg) => {
+  mailRecipients.value = null
+  mailError.value = ''
+  if (seg === 'custom') return
+  try {
+    const res = await api.get('/admin/mail/recipients', { params: { segment: seg } })
+    mailRecipients.value = res.data?.data ?? null
+  } catch { mailRecipients.value = null }
+})
+
+async function sendMail() {
+  if (mailSending.value) return
+  mailError.value = ''
+  if (!mailSubject.value.trim() || !mailBody.value.trim()) { mailError.value = 'Subject and message are required.'; return }
+  if (!mailRecipientCount.value) { mailError.value = 'No recipients.'; return }
+  // Broadcasts get an explicit confirm step; a single reply-style mail doesn't need one.
+  if (mailSegment.value !== 'custom' && !mailConfirming.value) { mailConfirming.value = true; return }
+  mailConfirming.value = false
+  mailSending.value = true
+  try {
+    const res = await api.post('/admin/mail/send', {
+      segment: mailSegment.value,
+      ...(mailSegment.value === 'custom' ? { emails: mailCustomList.value } : {}),
+      subject: mailSubject.value.trim(),
+      body: mailBody.value,
+    })
+    mailResult.value = res.data?.data ?? null
+    mailSubject.value = ''; mailBody.value = ''; mailEmails.value = ''
+  } catch (err) {
+    mailError.value = err.response?.data?.error?.message ?? 'Send failed.'
+  } finally { mailSending.value = false }
 }
 
 // ── Trust & Safety (moderation events) ────────────────────────────────────────
@@ -792,6 +850,10 @@ onMounted(() => {
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
           Trust &amp; Safety
           <span v-if="modUnreviewedCount > 0" class="nav-badge">{{ modUnreviewedCount }}</span>
+        </button>
+        <button :class="['nav-item', activeView === 'mail' ? 'active' : '']" @click="navigate('mail')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          Email
         </button>
       </nav>
       <div class="gm-sidebar-foot">
@@ -1672,6 +1734,58 @@ onMounted(() => {
               </div>
             </div>
           </template>
+        </template>
+
+        <!-- ── Admin Email ────────────────────────────────────────────────── -->
+        <template v-if="activeView === 'mail'">
+          <div class="mail-page">
+            <div class="gm-section-title">Send email</div>
+            <p style="font-size:12px;color:var(--gm-muted);margin-bottom:18px">
+              Sends from <strong>hello@wyvstudio.com</strong>. Broadcasts skip internal accounts and
+              suspended (refunded) workspaces automatically, and every send is written to the audit log.
+            </p>
+
+            <div class="mail-form">
+              <label class="mail-label">To</label>
+              <select v-model="mailSegment" class="mod-select" style="max-width:320px;">
+                <option v-for="s in MAIL_SEGMENTS" :key="s.key" :value="s.key">{{ s.label }}</option>
+              </select>
+
+              <template v-if="mailSegment === 'custom'">
+                <input v-model="mailEmails" class="mail-input" placeholder="email@example.com, another@example.com" />
+                <div class="mail-hint">{{ mailCustomList.length }} recipient{{ mailCustomList.length === 1 ? '' : 's' }}</div>
+              </template>
+              <div v-else-if="mailRecipients" class="mail-hint">
+                {{ mailRecipients.count }} recipient{{ mailRecipients.count === 1 ? '' : 's' }} —
+                {{ mailRecipients.sample.join(', ') }}{{ mailRecipients.count > mailRecipients.sample.length ? '…' : '' }}
+              </div>
+              <div v-else class="mail-hint">Counting recipients…</div>
+
+              <label class="mail-label">Subject</label>
+              <input v-model="mailSubject" class="mail-input" maxlength="200" placeholder="Subject line" />
+
+              <label class="mail-label">Message</label>
+              <textarea v-model="mailBody" class="mail-input mail-textarea" rows="12"
+                placeholder="Plain text. Blank line = new paragraph. Use {name} to insert the customer's first name."></textarea>
+              <div class="mail-hint">Plain text only — links are sent as written. <code v-pre>{name}</code> becomes each recipient's first name ("there" if unknown).</div>
+
+              <div v-if="mailError" class="mail-error">{{ mailError }}</div>
+              <div v-if="mailResult" class="mail-success">
+                Queued to {{ mailResult.queued }} recipient{{ mailResult.queued === 1 ? '' : 's' }} ✓
+              </div>
+
+              <div class="mail-actions">
+                <template v-if="mailConfirming">
+                  <span class="mail-confirm-copy">Send to {{ mailRecipientCount }} people?</span>
+                  <button class="btn btn-primary btn-sm" type="button" :disabled="mailSending" @click="sendMail">Yes, send broadcast</button>
+                  <button class="btn btn-ghost btn-sm" type="button" @click="mailConfirming = false">Cancel</button>
+                </template>
+                <button v-else class="btn btn-primary" type="button" :disabled="mailSending" @click="sendMail">
+                  {{ mailSending ? 'Sending…' : (mailSegment === 'custom' ? 'Send' : 'Send broadcast…') }}
+                </button>
+              </div>
+            </div>
+          </div>
         </template>
 
         <!-- ── Trust & Safety (Moderation Events) ─────────────────────────── -->
@@ -2734,4 +2848,14 @@ tr:hover td { background: #1e2129; }
 .mod-term { background: rgba(248,113,113,.12); color: #f87171; padding: 2px 7px; border-radius: 5px; font-size: 12px; }
 .mod-tier { margin-left: 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--gm-muted); }
 :deep(.mod-mark), .mod-mark { background: rgba(248,113,113,.25); color: inherit; border-radius: 3px; padding: 0 2px; }
+.mail-page { max-width: 720px; }
+.mail-form { display: flex; flex-direction: column; gap: 6px; }
+.mail-label { font-size: 12px; font-weight: 600; margin-top: 14px; }
+.mail-input { width: 100%; padding: 9px 12px; background: var(--gm-card, var(--color-bg-card)); border: 1px solid var(--gm-border, var(--color-border)); border-radius: 8px; color: inherit; font-family: inherit; font-size: 13px; }
+.mail-textarea { resize: vertical; line-height: 1.55; }
+.mail-hint { font-size: 11.5px; color: var(--gm-muted); }
+.mail-error { margin-top: 10px; font-size: 12.5px; color: #f87171; }
+.mail-success { margin-top: 10px; font-size: 12.5px; color: #34d399; }
+.mail-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.mail-confirm-copy { font-size: 13px; font-weight: 600; }
 </style>

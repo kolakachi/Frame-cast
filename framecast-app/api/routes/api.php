@@ -174,6 +174,10 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/failure-traces', [AdminController::class, 'failureTraces']);
             Route::get('/storage', [AdminController::class, 'storage']);
 
+            // Admin mail — single customer or segment broadcast from hello@
+            Route::get('/mail/recipients', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'recipients']);
+            Route::post('/mail/send', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'send']);
+
             // Trust & Safety — moderation events triage
             Route::get('/moderation/events', [\App\Http\Controllers\Api\V1\Admin\AdminModerationController::class, 'index']);
             Route::get('/moderation/events/{eventId}', [\App\Http\Controllers\Api\V1\Admin\AdminModerationController::class, 'show'])->whereNumber('eventId');
