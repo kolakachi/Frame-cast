@@ -86,6 +86,90 @@ class AdminMailController extends Controller
         ]);
     }
 
+    /**
+     * Usage dossier + AI-drafted feedback email for one customer.
+     *
+     * The "agent" is deliberately grounded: it assembles hard facts from our
+     * own database (projects, sources, failures, exports, credit spend,
+     * recency) and the model may reference ONLY those — the prompt forbids
+     * invented activity. The admin reviews and edits before sending; nothing
+     * is sent from here.
+     */
+    public function draft(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['email' => ['required', 'email']]);
+
+        $user = User::query()->where('email', $validated['email'])->first();
+        if (! $user) {
+            return $this->error('not_found', 'No user with that email.', 404);
+        }
+
+        $dossier = $this->buildDossier($user);
+
+        try {
+            $result = app(\App\Services\Generation\AI\AIGenerationAdapter::class)->generate(
+                'admin_feedback_email',
+                ['dossier' => $dossier, 'sender_name' => 'Amara'],
+                600,
+                0.5,
+                ['usage_context' => ['workspace_id' => $user->workspace_id, 'operation' => 'admin_feedback_email']],
+            );
+            $parsed = json_decode((string) $result['content'], true);
+        } catch (\Throwable $e) {
+            return $this->error('draft_failed', 'Could not draft: '.$e->getMessage(), 502);
+        }
+
+        if (! is_array($parsed) || empty($parsed['subject']) || empty($parsed['body'])) {
+            return $this->error('draft_failed', 'Model returned an unusable draft — try again.', 502);
+        }
+
+        return response()->json(['data' => [
+            'subject' => (string) $parsed['subject'],
+            'body'    => (string) $parsed['body'],
+            'dossier' => $dossier,
+        ]]);
+    }
+
+    /** Hard facts about one user's product usage, as plain text for the model AND the admin. */
+    private function buildDossier(User $user): string
+    {
+        $ws = $user->workspace;
+        $lines = [];
+        $lines[] = 'Name: '.($user->name ?: '(none)').' | Email: '.$user->email;
+        $lines[] = 'Plan: '.($ws->plan_tier ?? 'free').' | Signed up: '.$user->created_at?->format('M j').' ('.$user->created_at?->diffForHumans().')';
+        $lines[] = 'Last seen: '.($user->last_seen_at?->diffForHumans() ?? 'unknown');
+
+        $projects = \App\Models\Project::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->orderByDesc('id')->limit(10)
+            ->get(['id', 'title', 'status', 'source_type', 'visual_generation_mode', 'created_at']);
+
+        $exports = \App\Models\ExportJob::query()
+            ->where('workspace_id', $user->workspace_id)->where('status', 'completed')->count();
+
+        $spent = (int) \App\Models\CreditLedgerEntry::query()
+            ->where('workspace_id', $user->workspace_id)->where('credits', '>', 0)->sum('credits');
+
+        $lines[] = "Projects: {$projects->count()} | Completed exports: {$exports} | Credits spent: {$spent}";
+
+        foreach ($projects as $p) {
+            $scenes = $p->scenes()->count();
+            $lines[] = sprintf('- "%s" (%s, from %s, %d scenes, %s)',
+                $p->title ?: 'untitled', $p->status, $p->source_type ?: '?', $scenes, $p->created_at?->format('M j'));
+        }
+
+        // Failures are often the most useful specifics of all.
+        $failed = $projects->firstWhere('status', 'failed');
+        if ($failed) {
+            $msg = data_get(\App\Events\GenerationProgressed::getProgress($failed->id), 'last_message');
+            if ($msg) {
+                $lines[] = 'A generation failed for them with: "'.mb_substr($msg, 0, 160).'"';
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
     /** Previously sent mail, straight from the audit log — one source of truth. */
     public function history(Request $request): JsonResponse
     {

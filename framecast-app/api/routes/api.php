@@ -87,6 +87,8 @@ Route::prefix('v1')->group(function (): void {
         // Kelviq (MOR) hosted checkout — returns a checkoutUrl to redirect to.
         Route::post('/billing/kelviq/checkout', [BillingController::class, 'kelviqCheckout']);
         Route::get('/me', [VerificationController::class, 'me']);
+        // Frustration feedback from the rageclick prompt (and anywhere else).
+        Route::post('/feedback', [\App\Http\Controllers\Api\V1\FeedbackController::class, 'store']);
         // Daily streak — Spin & Win retention gamification
         Route::get('/daily-streak', [\App\Http\Controllers\Api\V1\Workspace\DailyStreakController::class, 'show']);
         Route::post('/daily-streak/claim', [\App\Http\Controllers\Api\V1\Workspace\DailyStreakController::class, 'claim']);
@@ -178,6 +180,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/mail/recipients', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'recipients']);
             Route::post('/mail/send', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'send']);
             Route::get('/mail/history', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'history']);
+            Route::get('/mail/draft', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'draft']);
 
             // Trust & Safety — moderation events triage
             Route::get('/moderation/events', [\App\Http\Controllers\Api\V1\Admin\AdminModerationController::class, 'index']);

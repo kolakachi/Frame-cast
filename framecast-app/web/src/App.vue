@@ -40,6 +40,52 @@ function exitImpersonation() {
   }
 }
 
+// ── Rageclick prompt ──────────────────────────────────────────────────
+// 3+ clicks in the same ~30px spot within 800ms = frustration. Interrupt AT
+// that moment with a way to tell us — silent churners never email support
+// afterwards (one refunded with the chat widget on screen the whole time).
+const ragePromptOpen = ref(false)
+const rageMessage = ref('')
+const rageSending = ref(false)
+const rageSent = ref(false)
+let rageClicks = []
+let rageCooldownUntil = 0
+
+function onRageCandidate(e) {
+  if (ragePromptOpen.value || suspended.value) return
+  const now = Date.now()
+  rageClicks = rageClicks.filter(c => now - c.t < 800)
+  rageClicks.push({ t: now, x: e.clientX, y: e.clientY })
+  if (rageClicks.length < 3) return
+  const [a, , c] = [rageClicks[0], rageClicks[1], rageClicks[rageClicks.length - 1]]
+  if (Math.abs(a.x - c.x) > 30 || Math.abs(a.y - c.y) > 30) return
+  rageClicks = []
+  // Only for signed-in users, at most once per 15 minutes.
+  if (!authStore.isAuthenticated || now < rageCooldownUntil) return
+  rageCooldownUntil = now + 15 * 60 * 1000
+  rageSent.value = false
+  rageMessage.value = ''
+  ragePromptOpen.value = true
+}
+onMounted(() => window.addEventListener('click', onRageCandidate, true))
+onUnmounted(() => window.removeEventListener('click', onRageCandidate, true))
+
+async function sendRageFeedback() {
+  if (rageSending.value || !rageMessage.value.trim()) return
+  rageSending.value = true
+  try {
+    const { default: api } = await import('./services/api')
+    await api.post('/feedback', {
+      message: rageMessage.value.trim(),
+      page: window.location.pathname,
+      trigger: 'rageclick',
+    })
+    rageSent.value = true
+    setTimeout(() => { ragePromptOpen.value = false }, 2500)
+  } catch { /* never make a frustration prompt itself frustrating */ ragePromptOpen.value = false }
+  finally { rageSending.value = false }
+}
+
 async function suspendedLogout() {
   suspended.value = false
   try { await authStore.logout() } catch { authStore.clearSession() }
@@ -55,6 +101,24 @@ function handleUpgrade() {
 <template>
   <div :class="{ 'sb-collapsed': sidebarStore.collapsed }">
     <RouterView />
+
+    <!-- Rageclick prompt: bottom-right, dismissible, never modal. -->
+    <div v-if="ragePromptOpen" class="rage-card">
+      <template v-if="rageSent">
+        <div class="rage-title">Got it — thank you. 🙏</div>
+        <div class="rage-copy">A human reads every one of these.</div>
+      </template>
+      <template v-else>
+        <button class="rage-close" type="button" @click="ragePromptOpen = false">×</button>
+        <div class="rage-title">Something not working?</div>
+        <div class="rage-copy">Tell us what you were trying to do — it goes straight to a human.</div>
+        <textarea v-model="rageMessage" class="rage-input" rows="3" maxlength="2000"
+          placeholder="I was trying to…"></textarea>
+        <button class="rage-send" type="button" :disabled="rageSending || !rageMessage.trim()" @click="sendRageFeedback">
+          {{ rageSending ? 'Sending…' : 'Send' }}
+        </button>
+      </template>
+    </div>
 
     <!-- Impersonation: always-visible, with a way OUT. -->
     <div v-if="impersonating" class="imp-banner">
@@ -116,4 +180,11 @@ function handleUpgrade() {
 .imp-banner { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 5000; display: flex; align-items: center; gap: 14px; background: #7c2d12; color: #ffedd5; border: 1px solid #ea580c; border-radius: 999px; padding: 8px 10px 8px 18px; font-size: 12.5px; font-weight: 600; box-shadow: 0 8px 30px rgba(0,0,0,.45); }
 .imp-exit { background: #ea580c; color: #fff; border: none; border-radius: 999px; padding: 6px 14px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; }
 .imp-exit:hover { background: #f97316; }
+.rage-card { position: fixed; right: 18px; bottom: 18px; z-index: 3500; width: 300px; background: #17171f; border: 1px solid #2a2a36; border-radius: 12px; padding: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.5); color: #ececf3; display: flex; flex-direction: column; gap: 8px; }
+.rage-close { position: absolute; top: 8px; right: 12px; background: none; border: none; color: #a1a1b5; font-size: 16px; cursor: pointer; }
+.rage-title { font-size: 13.5px; font-weight: 700; }
+.rage-copy { font-size: 12px; color: #a1a1b5; line-height: 1.5; }
+.rage-input { width: 100%; padding: 8px 10px; background: #0f0f16; border: 1px solid #2a2a36; border-radius: 8px; color: #ececf3; font-family: inherit; font-size: 12.5px; resize: none; }
+.rage-send { align-self: flex-end; background: #ff6b35; color: #fff; border: none; border-radius: 7px; padding: 7px 16px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.rage-send:disabled { opacity: .5; cursor: default; }
 </style>

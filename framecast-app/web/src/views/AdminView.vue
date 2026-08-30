@@ -80,6 +80,24 @@ async function loadMailHistory() {
   } catch { mailHistory.value = [] }
 }
 
+const mailDrafting = ref(false)
+const mailDossier = ref('')
+async function draftFromUsage() {
+  if (mailDrafting.value || mailCustomList.value.length !== 1) return
+  mailDrafting.value = true
+  mailError.value = ''
+  mailDossier.value = ''
+  try {
+    const res = await api.get('/admin/mail/draft', { params: { email: mailCustomList.value[0] } })
+    const d = res.data?.data
+    mailSubject.value = d.subject
+    mailBody.value = d.body
+    mailDossier.value = d.dossier
+  } catch (err) {
+    mailError.value = err.response?.data?.error?.message ?? 'Draft failed.'
+  } finally { mailDrafting.value = false }
+}
+
 async function sendMail() {
   if (mailSending.value) return
   mailError.value = ''
@@ -1764,7 +1782,17 @@ onMounted(() => {
 
               <template v-if="mailSegment === 'custom'">
                 <input v-model="mailEmails" class="mail-input" placeholder="email@example.com, another@example.com" />
-                <div class="mail-hint">{{ mailCustomList.length }} recipient{{ mailCustomList.length === 1 ? '' : 's' }}</div>
+                <div class="mail-hint" style="display:flex;align-items:center;gap:10px;">
+                  <span>{{ mailCustomList.length }} recipient{{ mailCustomList.length === 1 ? '' : 's' }}</span>
+                  <button v-if="mailCustomList.length === 1" class="btn btn-ghost btn-sm" type="button"
+                    :disabled="mailDrafting" @click="draftFromUsage">
+                    {{ mailDrafting ? 'Reading their usage…' : '✨ Draft from their usage' }}
+                  </button>
+                </div>
+                <div v-if="mailDossier" class="mail-dossier">
+                  <div style="font-weight:600;margin-bottom:4px;">What the draft is based on (facts from our DB):</div>
+                  <pre>{{ mailDossier }}</pre>
+                </div>
               </template>
               <div v-else-if="mailRecipients" class="mail-hint">
                 {{ mailRecipients.count }} recipient{{ mailRecipients.count === 1 ? '' : 's' }} —
@@ -2895,5 +2923,7 @@ tr:hover td { background: #1e2129; }
 .mail-success { margin-top: 10px; font-size: 12.5px; color: #34d399; }
 .mail-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
 .mail-confirm-copy { font-size: 13px; font-weight: 600; }
+.mail-dossier { margin-top: 8px; padding: 10px 12px; background: var(--gm-card, rgba(255,255,255,.03)); border: 1px solid var(--gm-border, #2a2a36); border-radius: 8px; font-size: 11px; color: var(--gm-muted); }
+.mail-dossier pre { white-space: pre-wrap; margin: 0; font-family: inherit; line-height: 1.55; }
 .mail-history-detail { background: var(--gm-card, rgba(255,255,255,.02)); padding: 14px 16px !important; border-radius: 8px; }
 </style>
