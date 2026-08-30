@@ -148,14 +148,29 @@ class DetectAbusePatternsJob implements ShouldQueue, ShouldBeUnique
      */
     private function scanHighRiskTerms(CarbonImmutable $since): array
     {
-        $terms = (array) config('moderation.high_risk_terms', []);
-        if ($terms === []) {
+        $tiers = (array) config('moderation.term_tiers', []);
+        if ($tiers === []) {
             return [];
         }
 
-        // Pull all scenes touched in the window. We pull and scan in PHP
-        // rather than constructing a giant LIKE-OR query — clearer code
-        // and at this stage the volume is small.
+        // Compile once: term => [regex, severity, tier]. Word-boundary
+        // matching, not substring — the substring version's live precision
+        // was 0% (four alerts, four false positives: "ye " matched "eye ",
+        // "looks like" matched ordinary scene descriptions).
+        $compiled = [];
+        foreach ($tiers as $tierName => $tier) {
+            foreach ((array) ($tier['terms'] ?? []) as $term) {
+                $t = trim((string) $term);
+                if ($t !== '') {
+                    $compiled[$t] = [
+                        '/\b'.preg_quote($t, '/').'\b/iu',
+                        (string) ($tier['severity'] ?? ModerationEvent::SEVERITY_MEDIUM),
+                        (string) $tierName,
+                    ];
+                }
+            }
+        }
+
         $scenes = Scene::query()
             ->where('updated_at', '>=', $since)
             ->whereNotNull('visual_prompt')
@@ -166,7 +181,6 @@ class DetectAbusePatternsJob implements ShouldQueue, ShouldBeUnique
             return [];
         }
 
-        // (workspace_id, term) tuples we've already alerted on in this window.
         $alreadyAlerted = ModerationEvent::query()
             ->where('source', ModerationEvent::SOURCE_PATTERN_ALERT)
             ->where('operation', 'high_risk_term')
@@ -185,15 +199,14 @@ class DetectAbusePatternsJob implements ShouldQueue, ShouldBeUnique
         $service = app(ModerationService::class);
 
         foreach ($scenes as $scene) {
-            $prompt = strtolower((string) $scene->visual_prompt);
+            $prompt = (string) $scene->visual_prompt;
             $workspaceId = $scene->project?->workspace_id;
             if (! $workspaceId) {
                 continue;
             }
 
-            foreach ($terms as $term) {
-                $needle = strtolower($term);
-                if ($needle === '' || ! str_contains($prompt, $needle)) {
+            foreach ($compiled as $term => [$regex, $severity, $tierName]) {
+                if (! preg_match($regex, $prompt, $m, PREG_OFFSET_CAPTURE)) {
                     continue;
                 }
 
@@ -203,18 +216,31 @@ class DetectAbusePatternsJob implements ShouldQueue, ShouldBeUnique
                 }
                 $alreadyAlerted[$key] = true;
 
+                // Context AROUND the match — the old snippet was the first
+                // 200 chars of the prompt, which routinely didn't even
+                // contain the matched term.
+                $off = (int) $m[0][1];
+                $ctx = trim(mb_substr($prompt, max(0, $off - 90), 90 + mb_strlen($term) + 90));
+
                 $event = $service->recordPatternAlert(
                     'high_risk_term',
-                    "Prompt in workspace contains high-risk term: \"{$term}\". Scene {$scene->id}.",
+                    "Prompt contains \"{$term}\" ({$tierName}): …{$ctx}…",
                     [
                         'workspace_id' => $workspaceId,
                         'user_id'      => $scene->project->created_by_user_id ?? null,
-                        'severity'     => ModerationEvent::SEVERITY_MEDIUM,
+                        'severity'     => $severity,
                         'metadata'     => [
-                            'term'             => $term,
-                            'scene_id'         => $scene->id,
-                            'prompt_snippet'   => mb_substr($scene->visual_prompt, 0, 200),
+                            'term'          => $term,
+                            'tier'          => $tierName,
+                            'scene_id'      => $scene->id,
+                            'project_id'    => $scene->project_id,
+                            'match_context' => $ctx,
                         ],
+                        // Full prompt + location — rendered by the admin
+                        // detail modal, which the old alerts left empty.
+                        'prompt'     => $prompt,
+                        'scene_id'   => $scene->id,
+                        'project_id' => $scene->project_id,
                     ],
                 );
 

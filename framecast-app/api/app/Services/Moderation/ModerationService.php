@@ -103,6 +103,11 @@ class ModerationService
                 'user_id'      => $context['user_id'] ?? null,
                 'operation'    => $rule,
                 'reason'       => mb_substr($reason, 0, 2000),
+                // Full offending prompt + location, so the triage modal shows
+                // WHAT fired and WHERE instead of an opaque one-liner.
+                'prompt'       => isset($context['prompt']) ? mb_substr((string) $context['prompt'], 0, 4000) : null,
+                'scene_id'     => $context['scene_id'] ?? null,
+                'project_id'   => $context['project_id'] ?? null,
                 'metadata'     => $context['metadata'] ?? null,
             ]);
         } catch (\Throwable $e) {

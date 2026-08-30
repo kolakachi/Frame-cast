@@ -101,6 +101,16 @@ function modSeverityClass(sev) {
     info: 'sev-info', low: 'sev-low', medium: 'sev-med', high: 'sev-high', critical: 'sev-crit'
   }[sev] || 'sev-low'
 }
+// Escape then highlight the matched term inside prompt text. Escaping first
+// means the only HTML that can ever reach v-html is our own <mark>.
+function modHighlight(text, term) {
+  const esc = String(text ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  if (!term) return esc
+  const safeTerm = String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return esc.replace(new RegExp(`(${safeTerm})`, 'gi'), '<mark class="mod-mark">$1</mark>')
+}
+
 function modSourceLabel(src) {
   return ({
     generation_rejection: 'Provider rejection',
@@ -1761,7 +1771,19 @@ onMounted(() => {
                 <div class="mod-detail-row"><span>Operation</span><span>{{ modSelectedEvent.event.operation || '—' }}</span></div>
                 <div v-if="modSelectedEvent.event.project_id" class="mod-detail-row"><span>Project</span><span>#{{ modSelectedEvent.event.project_id }} · scene #{{ modSelectedEvent.event.scene_id || '—' }}</span></div>
                 <div class="mod-detail-row"><span>Reason</span><span style="white-space:pre-wrap;">{{ modSelectedEvent.event.reason }}</span></div>
-                <div v-if="modSelectedEvent.event.prompt" class="mod-detail-row"><span>Prompt</span><span style="white-space:pre-wrap;font-family:monospace;font-size:12px;">{{ modSelectedEvent.event.prompt }}</span></div>
+
+                <!-- Pattern-alert specifics: WHAT matched and WHERE, instead of
+                     an opaque one-liner. -->
+                <div v-if="modSelectedEvent.event.metadata?.term" class="mod-detail-row">
+                  <span>Matched term</span>
+                  <span><code class="mod-term">{{ modSelectedEvent.event.metadata.term }}</code>
+                    <span v-if="modSelectedEvent.event.metadata.tier" class="mod-tier">{{ modSelectedEvent.event.metadata.tier }}</span></span>
+                </div>
+                <div v-if="modSelectedEvent.event.metadata?.match_context" class="mod-detail-row">
+                  <span>In context</span>
+                  <span style="white-space:pre-wrap;font-size:12px;" v-html="modHighlight(modSelectedEvent.event.metadata.match_context, modSelectedEvent.event.metadata.term)"></span>
+                </div>
+                <div v-if="modSelectedEvent.event.prompt" class="mod-detail-row"><span>Full prompt</span><span style="white-space:pre-wrap;font-family:monospace;font-size:12px;" v-html="modHighlight(modSelectedEvent.event.prompt, modSelectedEvent.event.metadata?.term)"></span></div>
                 <div v-if="modSelectedEvent.event.report_url" class="mod-detail-row"><span>Reported URL</span><span><a :href="modSelectedEvent.event.report_url" target="_blank" rel="noopener">{{ modSelectedEvent.event.report_url }}</a></span></div>
                 <div v-if="modSelectedEvent.event.report_message" class="mod-detail-row"><span>Reporter message</span><span style="white-space:pre-wrap;">{{ modSelectedEvent.event.report_message }}</span></div>
                 <div v-if="modSelectedEvent.event.report_email" class="mod-detail-row"><span>Reporter email</span><span>{{ modSelectedEvent.event.report_email }}</span></div>
@@ -2709,4 +2731,7 @@ tr:hover td { background: #1e2129; }
 .adm-modal-btn-primary:hover { background: #4f52d3; }
 .adm-modal-btn-danger { background: #ef4444; border-color: #ef4444; color: #fff; }
 .adm-modal-btn-danger:hover { background: #dc2626; }
+.mod-term { background: rgba(248,113,113,.12); color: #f87171; padding: 2px 7px; border-radius: 5px; font-size: 12px; }
+.mod-tier { margin-left: 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--gm-muted); }
+:deep(.mod-mark), .mod-mark { background: rgba(248,113,113,.25); color: inherit; border-radius: 3px; padding: 0 2px; }
 </style>
