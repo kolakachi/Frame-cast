@@ -3587,6 +3587,47 @@ async function loadImageModelCatalog() {
 const modelPickerOpen = ref(false);
 const activeImageModelLabel = computed(() => activeImageModelMeta.value?.label ?? 'GPT Image 1');
 
+// --- Failed-generation recovery -----------------------------------------
+// A failed project used to open into the normal editor with zero scenes — a
+// dead surface that recorded rageclicks from two paying users. The failure
+// reason has been stored on the project all along (generation_status_json);
+// it was simply never shown.
+const generationFailed = computed(() =>
+  project.value?.status === 'failed' && scenes.value.length === 0);
+const generationFailureMessage = computed(() =>
+  project.value?.generation_status_json?.last_message
+  || 'Generation failed before any scenes were created.');
+const retrySourceDraft = ref('');
+const retryPending = ref(false);
+const retryError = ref('');
+// Sources a user can meaningfully edit inline before retrying.
+const retrySourceEditable = computed(() =>
+  ['url', 'prompt', 'script', 'product_description'].includes(project.value?.source_type));
+
+watch(generationFailed, (failed) => {
+  if (failed) retrySourceDraft.value = project.value?.source_content_raw || '';
+}, { immediate: true });
+
+async function retryGeneration() {
+  if (retryPending.value) return;
+  retryPending.value = true;
+  retryError.value = '';
+  try {
+    const body = {};
+    if (retrySourceEditable.value && retrySourceDraft.value.trim()
+        && retrySourceDraft.value.trim() !== (project.value?.source_content_raw || '').trim()) {
+      body.source_content_raw = retrySourceDraft.value.trim();
+    }
+    await api.post(`/projects/${projectId.value}/retry-generation`, body);
+    // The pipeline re-runs from the script; the progress page owns that view.
+    router.push({ name: 'generation-progress', params: { projectId: projectId.value } });
+  } catch (err) {
+    retryError.value = err.response?.data?.error?.message ?? 'Retry failed.';
+  } finally {
+    retryPending.value = false;
+  }
+}
+
 async function loadProject() {
   loading.value = true;
   error.value = "";
@@ -6655,6 +6696,39 @@ onBeforeUnmount(() => {
   <main class="editor-page">
     <EditorSkeleton v-if="loading" />
     <section v-else-if="error" class="state-card error">{{ error }}</section>
+
+    <!-- Failed before any scenes existed: recovery, not a dead editor. -->
+    <section v-else-if="generationFailed" class="state-card gen-failed">
+      <div class="gf-icon">⚠️</div>
+      <h2 class="gf-title">This video couldn't be generated</h2>
+      <p class="gf-reason">{{ generationFailureMessage }}</p>
+      <p class="gf-note">Nothing was charged for the failed attempt.</p>
+
+      <div v-if="retrySourceEditable" class="gf-source">
+        <label class="gf-label">
+          {{ project?.source_type === 'url' ? 'Source link — fix it or paste a different one' : 'Your source — edit it before retrying' }}
+        </label>
+        <textarea
+          v-model="retrySourceDraft"
+          class="gf-input"
+          :rows="project?.source_type === 'url' ? 2 : 5"
+          :placeholder="project?.source_type === 'url' ? 'https://…' : 'Describe what the video should be about'"
+        ></textarea>
+        <div v-if="project?.source_type === 'url'" class="gf-hint">
+          Instagram, TikTok and other login-only pages can't be read automatically —
+          paste the text or an open article link instead.
+        </div>
+      </div>
+
+      <div v-if="retryError" class="gf-error">{{ retryError }}</div>
+
+      <div class="gf-actions">
+        <button class="btn btn-primary" type="button" :disabled="retryPending" @click="retryGeneration">
+          {{ retryPending ? 'Retrying…' : '↻ Try again' }}
+        </button>
+        <router-link class="btn btn-ghost" :to="{ name: 'dashboard' }">Start a different video</router-link>
+      </div>
+    </section>
 
     <div v-else class="editor-shell">
       <AppSidebar :user="mePayload" active-page="editor" @logout="logout" />
@@ -13488,6 +13562,17 @@ select.preset-select {
 .bulk-style-muted { font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-top: 4px; }
 .bulk-style-short { margin-top: 8px; font-size: 11.5px; color: #f87171; line-height: 1.45; }
 .bulk-style-skips { margin: 8px 0 0; padding-left: 16px; font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
+.state-card.gen-failed { max-width: 560px; margin: 80px auto; padding: 36px 40px; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.gf-icon { font-size: 34px; }
+.gf-title { font-size: 20px; font-weight: 700; margin: 0; }
+.gf-reason { font-size: 13.5px; line-height: 1.55; color: var(--text-secondary); margin: 0; }
+.gf-note { font-size: 12px; color: var(--text-secondary); opacity: .75; margin: 0; }
+.gf-source { width: 100%; text-align: left; margin-top: 6px; }
+.gf-label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.gf-input { width: 100%; padding: 10px 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical; }
+.gf-hint { margin-top: 6px; font-size: 11.5px; color: var(--text-secondary); line-height: 1.45; }
+.gf-error { font-size: 12.5px; color: #f87171; }
+.gf-actions { display: flex; gap: 10px; margin-top: 8px; }
 .bulk-anim { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
 .bulk-anim-toggle { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--text-secondary); font-family: inherit; cursor: pointer; transition: .15s; text-align: left; }
 .bulk-anim-toggle:hover { border-color: var(--border-active); color: var(--text-primary); }

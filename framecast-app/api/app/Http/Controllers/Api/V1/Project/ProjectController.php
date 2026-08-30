@@ -679,6 +679,28 @@ class ProjectController extends Controller
             return $this->error('invalid_state', 'Blank projects have no generation to retry.', 422);
         }
 
+        // Let the retry carry a CORRECTED source. Retrying the exact input
+        // that just failed re-fails identically — watched happen in production:
+        // a user pasted an Instagram URL (login-walled, unreadable), got a
+        // failed project, retried the same URL, and got a second failed
+        // project. The fix they needed was to change the input, and this is
+        // the only place they can.
+        $retryValidated = $request->validate([
+            'source_content_raw' => ['nullable', 'string'],
+        ]);
+
+        if (isset($retryValidated['source_content_raw']) && trim($retryValidated['source_content_raw']) !== '') {
+            $newSource   = $retryValidated['source_content_raw'];
+            $sourceError = $this->validateSourceContent($project->source_type, $newSource);
+            if ($sourceError) {
+                return $this->error('invalid_source_content', $sourceError, 422);
+            }
+            $project->forceFill([
+                'source_content_raw'        => $newSource,
+                'source_content_normalized' => $this->normalizeSource($newSource),
+            ])->save();
+        }
+
         $hasScenes = Scene::query()->where('project_id', $project->getKey())->exists();
 
         if (! $hasScenes) {
