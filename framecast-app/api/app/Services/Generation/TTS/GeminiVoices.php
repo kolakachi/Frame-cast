@@ -86,7 +86,7 @@ final class GeminiVoices
         'Achird'        => 'Male',
         'Zubenelgenubi' => 'Male',
         'Vindemiatrix'  => 'Female',
-        'Sadachbia'     => 'Female',
+        'Sadachbia'     => 'Male',    // corrected 2026-08-31: founder ear-audit of all 30 samples
         'Sadaltager'    => 'Male',
         'Sulafat'       => 'Female',
     ];
