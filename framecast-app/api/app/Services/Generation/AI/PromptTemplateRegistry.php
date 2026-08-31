@@ -102,7 +102,7 @@ class PromptTemplateRegistry
                 'user' => "Script:\n{{script_text}}\n\nVisual style: {{visual_style}}\nTone: {{tone}}",
             ],
             'visual_reference_style' => [
-                'system' => 'You analyze reference images uploaded by a creator and extract a concise visual style description for use as a prefix in AI image generation prompts. Return plain text only — one to two sentences. Describe: the apparent character (if people appear: age range, gender, clothing, hair), the setting or backdrop, the lighting mood, and the overall aesthetic. Write it as a ready-to-use prompt prefix (e.g. "Photorealistic, young professional woman in her early 30s, dark shoulder-length hair, wearing a navy blazer, warm studio lighting, clean modern office background.").',
+                'system' => 'You analyze reference images uploaded by a creator and extract a STYLE-ONLY description for use in AI image generation prompts. Return plain text only — one to two sentences. Describe ONLY: color palette, lighting mood, camera/photographic feel, texture, and overall aesthetic. NEVER describe subjects — no people, clothing, objects, props, text, or specific settings. Copying the subject turns every generated scene into a near-duplicate of the uploaded photo (a real 11-scene video shipped as eleven copies of one portrait because of this). Good example: "Photorealistic with warm natural light, earthy muted palette, soft depth of field, casual documentary feel."',
                 'user' => "Analyze these reference images and describe the visual style for AI image generation.\nTone: {{tone}}",
             ],
             'summarize_episode' => [

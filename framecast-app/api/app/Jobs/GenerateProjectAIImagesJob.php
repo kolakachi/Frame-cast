@@ -350,7 +350,21 @@ class GenerateProjectAIImagesJob implements ShouldQueue
         // Consistency card locks character appearance, lighting, and color grade.
         $consistencyCard = trim((string) ($brief['consistency_card'] ?? ''));
         $referenceStyle  = trim((string) ($brief['reference_style'] ?? ''));
-        $prefix = $referenceStyle !== '' ? "{$referenceStyle} " : ($consistencyCard !== '' ? "{$consistencyCard} " : '');
+
+        // The brief's per-project creative direction — palette, setting,
+        // keywords — was generated for exactly this purpose and then never
+        // read; meanwhile the reference card was PREFIXED whole, so every
+        // scene rendered as the same picture with a different caption (a real
+        // customer's 11 scenes were one portrait, eleven times). The SCENE
+        // leads now; style material follows as modifiers.
+        $palette = trim((string) ($brief['palette'] ?? ''));
+        $setting = trim((string) ($brief['setting'] ?? ''));
+        $styleBits = array_filter([
+            $referenceStyle !== '' ? "Visual style: {$referenceStyle}" : ($consistencyCard !== '' ? $consistencyCard : ''),
+            $palette !== '' ? "Palette: {$palette}" : '',
+            $setting !== '' ? "Typical setting: {$setting}" : '',
+        ]);
+        $styleClause = $styleBits ? ' '.implode('. ', $styleBits).'.' : '';
 
         // Inject character into the prompt only on the description-only (DALL-E) path.
         // When PuLID is the adapter, the reference image carries identity and over-describing
@@ -364,7 +378,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             }
         }
 
-        return trim("{$prefix}{$characterChunk}{$label} for a faceless {$tone} video. B-roll style: {$style}. Scene narration: {$sceneText}. Context: {$context}. Make it vertical-video friendly, visually specific, no text overlays.");
+        return trim("{$characterChunk}A distinct {$style} scene depicting: {$sceneText} ({$label}, {$tone} tone).{$styleClause} Context: {$context}. Vertical-video friendly, visually specific, different composition from other scenes in this video, no text overlays.");
     }
 
     private function storeImage(string|null $url, Project $project, string|null $b64 = null): string
