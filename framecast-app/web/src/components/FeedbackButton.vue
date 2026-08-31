@@ -56,8 +56,8 @@ async function send() {
 </template>
 
 <style scoped>
-.fb-btn { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: 7px; border: none; background: transparent; color: var(--color-text-muted); font-family: inherit; font-size: 12px; cursor: pointer; transition: .15s; text-align: left; }
-.fb-btn:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.fb-btn { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: 7px; border: none; background: transparent; color: #34d399; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: .15s; text-align: left; }
+.fb-btn:hover { background: rgba(52,211,153,.1); }
 .fb-pop { position: fixed; left: 210px; bottom: 18px; z-index: 240; width: 290px; background: #17171f; border: 1px solid #2a2a36; border-radius: 12px; padding: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.5); color: #ececf3; display: flex; flex-direction: column; gap: 8px; }
 .fb-close { position: absolute; top: 8px; right: 12px; background: none; border: none; color: #a1a1b5; font-size: 16px; cursor: pointer; }
 .fb-title { font-size: 13.5px; font-weight: 700; }

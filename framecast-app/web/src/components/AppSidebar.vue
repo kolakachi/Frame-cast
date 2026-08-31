@@ -860,8 +860,8 @@ onBeforeUnmount(() => {
   color: var(--color-text-secondary);
 }
 
-.community-link { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: 7px; color: var(--color-text-muted); font-size: 12px; text-decoration: none; transition: .15s; }
-.community-link:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.community-link { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: 7px; color: #60a5fa; font-size: 12px; font-weight: 600; text-decoration: none; transition: .15s; }
+.community-link:hover { background: rgba(96,165,250,.1); }
 .sidebar.collapsed .community-label { display: none; }
 
 .sidebar-bottom {

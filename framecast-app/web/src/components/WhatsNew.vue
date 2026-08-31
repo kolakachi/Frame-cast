@@ -73,8 +73,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 </template>
 
 <style scoped>
-.wn-btn { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: 7px; border: none; background: transparent; color: var(--color-text-muted); font-family: inherit; font-size: 12px; cursor: pointer; transition: .15s; text-align: left; }
-.wn-btn:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.wn-btn { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: 7px; border: none; background: transparent; color: var(--color-accent); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: .15s; text-align: left; }
+.wn-btn svg { color: var(--color-accent); }
+.wn-btn:hover { background: rgba(255,107,53,.1); }
 .wn-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); flex-shrink: 0; margin-left: auto; }
 
 .wn-backdrop { position: fixed; inset: 0; z-index: 150; }
