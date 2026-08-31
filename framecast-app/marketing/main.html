@@ -4134,6 +4134,26 @@
         if (nextBtn && prevBtn && totalUcCards > 0) {
             nextBtn.addEventListener('click', ucNextCard);
             prevBtn.addEventListener('click', ucPrevCard);
+
+            // The peeking cards LOOK clickable — offset behind the active one,
+            // fully visible — but had no handler. A real visitor clicked them
+            // eleven times (with a rageclick) and left. Clicking any card now
+            // brings it to the front, and hovering the stack pauses the 12s
+            // autoplay so a card can't be yanked away mid-read.
+            ucCards.forEach((card, index) => {
+                card.style.cursor = 'pointer';
+                card.addEventListener('click', () => {
+                    if (index === ucCurrentIndex) return;
+                    ucCurrentIndex = index;
+                    updateUcCards();
+                    resetAutoplay();
+                });
+            });
+            const ucStackEl = document.getElementById('ucStackCards');
+            if (ucStackEl) {
+                ucStackEl.addEventListener('mouseenter', () => clearInterval(autoplayInterval));
+                ucStackEl.addEventListener('mouseleave', resetAutoplay);
+            }
             // Initialize positions
             updateUcCards();
             resetAutoplay();
