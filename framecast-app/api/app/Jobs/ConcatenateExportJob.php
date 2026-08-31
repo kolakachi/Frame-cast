@@ -106,6 +106,32 @@ class ConcatenateExportJob implements ShouldQueue
                 throw new \RuntimeException('Export output could not be verified in storage.');
             }
 
+            // Real video thumbnail — a frame from 1s in, uploaded next to the
+            // export. Share pages and unfurls need og:image to actually look
+            // like the video; the first b-roll still often doesn't.
+            $thumbnailUrl = null;
+            rescue(function () use ($outputFile, $exportJob, &$thumbnailUrl): void {
+                $thumbPath = $this->tempDir.'/thumb.jpg';
+                $proc = new \Symfony\Component\Process\Process([
+                    'ffmpeg', '-y', '-ss', '1', '-i', $outputFile,
+                    '-frames:v', '1', '-q:v', '3', $thumbPath,
+                ]);
+                $proc->setTimeout(60);
+                $proc->run();
+                if ($proc->isSuccessful() && is_file($thumbPath) && filesize($thumbPath) > 0) {
+                    $stream = fopen($thumbPath, 'rb');
+                    if (is_resource($stream)) {
+                        $thumbnailUrl = app(StorageService::class)->put(
+                            'exports/export-'.$exportJob->getKey().'-thumb.jpg',
+                            $stream,
+                            ['ContentType' => 'image/jpeg'],
+                        );
+                        fclose($stream);
+                    }
+                    @unlink($thumbPath);
+                }
+            }, report: false);
+
             $fileSize = filesize($outputFile) ?: null;
             @unlink($outputFile);
 
@@ -114,7 +140,7 @@ class ConcatenateExportJob implements ShouldQueue
 
             $assetCreated = false;
 
-            DB::transaction(function () use ($exportJob, $exportStorageUrl, $fileSize, $totalDurationSeconds, $dimensions, &$assetCreated): void {
+            DB::transaction(function () use ($exportJob, $exportStorageUrl, $fileSize, $totalDurationSeconds, $dimensions, $thumbnailUrl, &$assetCreated): void {
                 $fresh = ExportJob::query()->lockForUpdate()->find($exportJob->getKey());
 
                 // Another attempt already completed — skip.
@@ -129,6 +155,7 @@ class ConcatenateExportJob implements ShouldQueue
                     'title'           => $exportJob->file_name,
                     'description'     => 'Rendered export output',
                     'storage_url'     => $exportStorageUrl,
+                    'thumbnail_url'   => $thumbnailUrl,
                     'duration_seconds'=> $totalDurationSeconds,
                     'dimensions_json' => $dimensions,
                     'file_size_bytes' => $fileSize,

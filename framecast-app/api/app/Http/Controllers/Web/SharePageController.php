@@ -51,10 +51,28 @@ class SharePageController extends Controller
 
         // Poster: the first scene that has an IMAGE visual. Scrapers need a
         // real thumbnail URL or the unfurl is a grey box.
+        // Poster priority:
+        //   1. the export's own thumbnail (a real frame of the actual video),
+        //   2. a still from a CHARACTER scene — when a project stars someone,
+        //      the unfurl should show them, not whichever b-roll came first,
+        //   3. any still at all.
         $poster = null;
+        if ($export) {
+            $thumb = Asset::query()->find($export->output_asset_id)?->thumbnail_url;
+            if ($thumb) {
+                $poster = $storage->url($thumb);
+            }
+        }
+
         $scenes = Scene::query()->where('project_id', $project->getKey())
-            ->orderBy('scene_order')->get(['visual_asset_id', 'image_generation_settings_json']);
-        foreach ($scenes as $s) {
+            ->orderBy('scene_order')->get(['visual_asset_id', 'image_generation_settings_json', 'character_id']);
+
+        if (! $poster) {
+            $ordered = $scenes->sortBy(fn ($s) => $s->character_id ? 0 : 1)->values();
+        } else {
+            $ordered = collect();
+        }
+        foreach ($ordered as $s) {
             // The scene's visual if it's a still — or, when it's been animated
             // into video, the PRESERVED original still (a fully-animated
             // project otherwise has no image anywhere and og:image goes
