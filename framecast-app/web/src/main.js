@@ -49,6 +49,16 @@ if (posthogKey) {
       // Don't capture form fields, password inputs, or any text content from
       // <textarea> / <input> — we want event names, not user content.
       autocapture: { dom_event_allowlist: ['click', 'submit'] },
+      // Session replay — the richest zero-ask feedback there is. Recording
+      // only actually starts if "Record user sessions" is ALSO enabled in the
+      // PostHog project settings; this side masks every input and anything
+      // marked [data-ph-mask] so credentials and typed content never leave
+      // the browser.
+      disable_session_recording: false,
+      session_recording: {
+        maskAllInputs: true,
+        maskTextSelector: '[data-ph-mask]',
+      },
     })
     window.__posthog = posthog
   })

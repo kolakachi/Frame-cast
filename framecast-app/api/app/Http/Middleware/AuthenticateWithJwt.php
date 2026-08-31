@@ -47,6 +47,11 @@ class AuthenticateWithJwt
             // Impersonation tokens pass: suspension gates the CUSTOMER, and a
             // suspended account is exactly the one an admin needs to inspect.
             && empty($claims['impersonated'])
+            // The feedback box is the ONE thing a suspended (usually refunded)
+            // user may still submit — the suspension modal asks "what was
+            // missing?", and blocking the answer would be self-defeating.
+            // Write-only, rate-limited, creates nothing but a report.
+            && ! ($request->is('api/v1/feedback') && $request->isMethod('POST'))
             && $user->workspace
             && $user->workspace->status !== 'active'
         ) {

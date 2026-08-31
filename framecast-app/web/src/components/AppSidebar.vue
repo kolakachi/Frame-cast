@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import WhatsNew from './WhatsNew.vue'
+import FeedbackButton from './FeedbackButton.vue'
 import { useRouter } from "vue-router";
 import { useWorkspaceStore } from "../stores/workspace";
 import { useSidebarStore } from "../stores/sidebar";
@@ -488,6 +489,7 @@ onBeforeUnmount(() => {
 
     <div class="sidebar-bottom">
       <WhatsNew />
+      <FeedbackButton />
       <a
         class="community-link"
         href="https://www.facebook.com/groups/893816426910556/"

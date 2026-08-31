@@ -17,6 +17,21 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { useAuthStore } from './stores/auth'
 const suspended = ref(false)
 const authStore = useAuthStore()
+// Exit interview: the suspension modal is the one surface we still own after
+// a refund — two LTD refunds arrived with zero feedback. One question, once.
+const suspMsg = ref('')
+const suspSending = ref(false)
+const suspSent = ref(false)
+async function sendSuspFeedback() {
+  if (suspSending.value || !suspMsg.value.trim()) return
+  suspSending.value = true
+  try {
+    const { default: api } = await import('./services/api')
+    await api.post('/feedback', { message: suspMsg.value.trim(), page: window.location.pathname, trigger: 'refund_exit' })
+    suspSent.value = true
+  } catch { suspSent.value = true /* don't trap them in a failing form */ }
+  finally { suspSending.value = false }
+}
 function onSuspended() { suspended.value = true }
 onMounted(() => window.addEventListener('workspace-suspended', onSuspended))
 onUnmounted(() => window.removeEventListener('workspace-suspended', onSuspended))
@@ -136,6 +151,15 @@ function handleUpgrade() {
           mistake — or you'd like your data — contact us and a human will look
           into it.
         </p>
+        <div v-if="suspSent" class="susp-thanks">Thank you — that genuinely helps. 🙏</div>
+        <div v-else class="susp-ask">
+          <div class="susp-ask-label">Before you go — what was missing?</div>
+          <textarea v-model="suspMsg" class="susp-input" rows="3" maxlength="2000"
+            placeholder="One line is plenty. This goes straight to the founders."></textarea>
+          <button class="btn btn-primary susp-send" type="button" :disabled="suspSending || !suspMsg.trim()" @click="sendSuspFeedback">
+            {{ suspSending ? 'Sending…' : 'Send' }}
+          </button>
+        </div>
         <div class="susp-actions">
           <a class="btn btn-primary" href="mailto:hello@wyvstudio.com?subject=Suspended%20workspace">Contact support</a>
           <button class="btn btn-ghost" type="button" @click="suspendedLogout">Log out</button>
@@ -173,6 +197,11 @@ function handleUpgrade() {
 .susp-icon { font-size: 34px; }
 .susp-title { font-size: 19px; font-weight: 700; margin: 0; }
 .susp-copy { font-size: 13.5px; line-height: 1.6; color: #a1a1b5; margin: 0; }
+.susp-ask { width: 100%; display: flex; flex-direction: column; gap: 8px; text-align: left; margin-top: 4px; }
+.susp-ask-label { font-size: 12.5px; font-weight: 600; }
+.susp-input { width: 100%; padding: 9px 11px; background: #0f0f16; border: 1px solid #2a2a36; border-radius: 8px; color: #ececf3; font-family: inherit; font-size: 13px; resize: none; }
+.susp-send { align-self: flex-end; }
+.susp-thanks { font-size: 13.5px; font-weight: 600; color: #34d399; }
 .susp-actions { display: flex; gap: 10px; margin-top: 10px; }
 .susp-actions .btn { padding: 9px 18px; border-radius: 8px; font-size: 13px; text-decoration: none; }
 .susp-actions .btn-primary { background: #ff6b35; color: #fff; border: none; cursor: pointer; }
