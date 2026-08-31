@@ -609,6 +609,10 @@ class ProjectController extends Controller
             'source_type' => $validated['source_type'],
             'source_content_raw' => $validated['source_content_raw'] ?? null,
             'source_content_normalized' => $this->normalizeSource($validated['source_content_raw'] ?? ''),
+            // Preserve the consent collected after the PDF dry run. Without
+            // this assignment the database default (false) wins, so scanned
+            // pages are never rendered even when the user selected AI reading.
+            'pdf_read_scanned' => (bool) ($validated['pdf_read_scanned'] ?? false),
             'allow_script_edit' => (bool) ($validated['allow_script_edit'] ?? false),
             'source_image_asset_ids' => $sourceImageAssetIds,
             'visual_generation_mode' => $validated['visual_generation_mode'] ?? null,
