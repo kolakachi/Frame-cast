@@ -4679,7 +4679,12 @@ function fullPreviewAudioProgress() {
     sceneStart += sceneDuration(scenes.value[i]);
   }
 
-  const activeDuration = sceneDuration(activeScene.value);
+  // The REAL file's duration, not the stored one — historical TTS assets
+  // carry word-count estimates that undershoot by seconds, and clamping to
+  // them advanced scenes mid-sentence.
+  const activeDuration = (Number.isFinite(audio.duration) && audio.duration > 0)
+    ? audio.duration
+    : sceneDuration(activeScene.value);
   const sceneElapsed = Math.min(audio.currentTime, activeDuration);
   const total = totalVideoDuration.value || 1;
 
@@ -4692,6 +4697,20 @@ function syncFullPreviewScene() {
   const elapsed = previewElapsedSecs.value;
   const match = sceneAtFullElapsed(elapsed);
   if (!match.scene) return;
+
+  // A scene OWNS the stage until its narration finishes. The boundary math
+  // runs on stored durations, which for older audio are estimates — when the
+  // estimate ran short, the preview cut scenes off mid-sentence. If the
+  // current scene's voice is still playing, hold; the tick advances us the
+  // moment it actually ends.
+  const audio = audioRef.value;
+  if (
+    match.scene.id !== activeSceneId.value &&
+    audio && !audio.paused && !audio.ended &&
+    activeSceneAudioUrl.value
+  ) {
+    return;
+  }
 
   pendingPreviewAudioOffset = Math.max(0, elapsed - match.start);
   if (activeSceneId.value !== match.scene.id) {

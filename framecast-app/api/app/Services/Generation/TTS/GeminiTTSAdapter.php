@@ -159,6 +159,26 @@ class GeminiTTSAdapter implements TTSAdapter
             $audioStorageUrl = app(StorageService::class)->put($path, $bytes, [
                 'ContentType' => $isWav ? 'audio/wav' : 'audio/mpeg',
             ]);
+
+            // MEASURE the real duration while the bytes are in hand. The
+            // word-count estimate this used to return drifts from the actual
+            // audio by seconds, and two things depend on the stored number
+            // being true: the editor's full preview (advanced scenes before
+            // their narration finished) and spokesperson billing (length
+            // buckets keyed off it). Exports were immune only because the
+            // renderer re-probes the file itself.
+            $measured = null;
+            rescue(function () use ($bytes, $ext, &$measured): void {
+                $tmp = tempnam(sys_get_temp_dir(), 'tts-').'.'.$ext;
+                file_put_contents($tmp, $bytes);
+                $out = [];
+                exec('ffprobe -v error -show_entries format=duration -of csv=p=0 '.escapeshellarg($tmp), $out);
+                @unlink($tmp);
+                $d = isset($out[0]) ? (float) $out[0] : 0.0;
+                if ($d > 0.05) {
+                    $measured = $d;
+                }
+            }, report: false);
         } catch (Throwable $exception) {
             $this->usage->record([
                 ...$usageContext,
@@ -194,7 +214,7 @@ class GeminiTTSAdapter implements TTSAdapter
 
         return [
             'audio_url' => $audioStorageUrl,
-            'duration_seconds' => $this->estimateDuration($text, $speed),
+            'duration_seconds' => $measured ?? $this->estimateDuration($text, $speed),
             'provider_key' => 'replicate:'.$model,
             'provider_voice_id' => $voice,
         ];
