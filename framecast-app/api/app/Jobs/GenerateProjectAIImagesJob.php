@@ -58,6 +58,43 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             'done' => 0, 'total' => $total,
         ]);
 
+        // Monotony guard — the assert this pipeline never had. A real
+        // customer's 11 scenes rendered as one portrait eleven times because a
+        // subject-description was smuggled in as "style" and dominated every
+        // prompt. That bug completes successfully — no exception, no failed
+        // job — so nothing mechanical could catch it. This can: if the
+        // scene-specific openings of the prompts are near-identical, something
+        // upstream is broken. Alert loudly (T&S inbox + digest); don't block —
+        // a false positive that halts a customer's generation is worse than a
+        // true positive that pages us.
+        rescue(function () use ($project, $scenes): void {
+            if ($scenes->count() < 3) {
+                return;
+            }
+            $heads = $scenes->map(fn ($s) => mb_substr($this->buildPrompt($project, $s, $project->ai_broll_style ?: 'cinematic'), 0, 140))->values();
+            $pairs = 0; $simSum = 0.0;
+            for ($i = 0; $i < min(6, $heads->count()); $i++) {
+                for ($j = $i + 1; $j < min(6, $heads->count()); $j++) {
+                    similar_text($heads[$i], $heads[$j], $pct);
+                    $simSum += $pct; $pairs++;
+                }
+            }
+            $avg = $pairs ? $simSum / $pairs : 0;
+            if ($avg > 82) {
+                app(\App\Services\Moderation\ModerationService::class)->recordPatternAlert(
+                    'prompt_monotony',
+                    sprintf('Project %d: scene image prompts are %.0f%% identical — the video will render as near-duplicate frames. Check visual_brief.reference_style for smuggled subject descriptions.', $project->getKey(), $avg),
+                    [
+                        'workspace_id' => $project->workspace_id,
+                        'user_id'      => $project->created_by_user_id,
+                        'severity'     => \App\Models\ModerationEvent::SEVERITY_MEDIUM,
+                        'project_id'   => $project->getKey(),
+                        'metadata'     => ['avg_similarity' => round($avg, 1), 'sample' => $heads->first()],
+                    ],
+                );
+            }
+        }, report: false);
+
         foreach ($scenes as $scene) {
             // Lock the scene so the editor's manual generate-image endpoint is rejected
             // while the pipeline is actively generating for it.
