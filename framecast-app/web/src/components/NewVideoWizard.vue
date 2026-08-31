@@ -458,6 +458,17 @@ const pdfUploadedRaw = ref(null)
 const pdfCheckPending = computed(() =>
   wizardSourceType.value === 'pdf_upload' && pdfFile.value && (pdfAnalysing.value || (!pdfUploadedRaw.value && !pdfAnalysis.value)))
 
+// The chosen configuration cannot produce a video: nothing readable and AI
+// reading declined (or unavailable on the plan). Refuse at the button, with
+// a reason — an async failure minutes later teaches the user nothing.
+const pdfDoomed = computed(() => {
+  if (wizardSourceType.value !== 'pdf_upload' || !pdfAnalysis.value) return false
+  const d = pdfAnalysis.value
+  if (d.counts.text > 0) return false
+  if (d.vision.pages > 0) return !pdfReadScanned.value
+  return true   // zero readable text and no vision available on this plan
+})
+
 // Upload + analyse the MOMENT the file is picked. This used to happen inside
 // createProject — after Generate — so the scanned-page consent radios were
 // computed when it was already too late to consent: every scanned PDF was
@@ -488,8 +499,12 @@ async function analysePdf(sourceRaw) {
   try {
     const res = await api.post('/projects/analyze-pdf', { asset_id: Number(match[1]) })
     pdfAnalysis.value = res.data?.data ?? null
-    // Default to NOT spending credits — reading scanned pages is opt-in.
-    pdfReadScanned.value = false
+    const d = pdfAnalysis.value
+    // Default to NOT spending credits — reading scanned pages is opt-in —
+    // EXCEPT when the document has zero readable text: skipping the scanned
+    // content then means generating from nothing, a guaranteed failure the
+    // old default walked users straight into. Twice, in production.
+    pdfReadScanned.value = !!(d && d.counts.text === 0 && d.vision.pages > 0)
   } catch (e) {
     // Analysis is advisory. If it fails, generation still runs on the text
     // layer, so don't block the wizard on it.
@@ -997,7 +1012,7 @@ async function submitWizardProject() {
   }
 
   try {
-    if (pdfCheckPending.value) { wizardCreateState.value = 'idle'; return }
+    if (pdfCheckPending.value || pdfDoomed.value) { wizardCreateState.value = 'idle'; return }
     const resolvedSource = await resolveSourceContentRaw(sourceType)
     const res = await api.post('/projects', {
       source_type: sourceType,
@@ -1771,7 +1786,11 @@ defineExpose({ open })
             <div v-if="pdfAnalysis.vision.pages > 0" class="pdf-choice">
               <label class="pdf-radio">
                 <input type="radio" :value="false" v-model="pdfReadScanned" />
-                <span>
+                <span v-if="pdfAnalysis.counts.text === 0">
+                  <strong>Skip the scanned content</strong> — but this document has
+                  nothing else, so there'd be nothing to generate from.
+                </span>
+                <span v-else>
                   <strong>Skip the scanned pages</strong> — free.
                   The video covers only the {{ pdfAnalysis.counts.text }} readable page{{ pdfAnalysis.counts.text === 1 ? '' : 's' }}.
                 </span>
@@ -2024,12 +2043,13 @@ defineExpose({ open })
             v-else
             class="btn btn-primary"
             type="button"
-            :disabled="wizardCreateState === 'loading' || pdfCheckPending"
+            :disabled="wizardCreateState === 'loading' || pdfCheckPending || pdfDoomed"
             @click="submitWizardProject"
           >
             {{ wizardCreateState === 'loading'
               ? (wizardSourceType === 'blank' ? 'Creating…' : '✦ Generating…')
               : pdfCheckPending ? 'Checking your PDF…'
+              : pdfDoomed ? 'Nothing to generate from'
               : (wizardSourceType === 'blank' ? 'Create Project →' : '✦ Generate Video') }}
           </button>
         </div>
