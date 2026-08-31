@@ -21,9 +21,15 @@ class GenerateProjectAIImagesJob implements ShouldQueue
     use Queueable;
     use TracksJobFailure;
 
-    public int $tries = 1;
+    // The batch is RESUMABLE by construction — it only touches scenes that
+    // still lack a visual — so retries continue where the last attempt died
+    // instead of redoing work. tries=3 + a bigger timeout turns a mid-batch
+    // death (deploy restart, provider slowness) into a pause, not a loss.
+    // 900s was exceeded by a real 11-image project at ~93s/image; the job
+    // died at image 10 and the user sat on "generating" forever.
+    public int $tries = 3;
 
-    public int $timeout = 900;
+    public int $timeout = 2700;
 
     public function __construct(
         public readonly int $projectId,
@@ -114,6 +120,20 @@ class GenerateProjectAIImagesJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
+
+        // Terminal failure must not strand the user on a forever-"generating"
+        // screen. The scenes that DID get images are real work worth keeping,
+        // so continue the pipeline (TTS -> ready) rather than junking the
+        // project: missing visuals stay fillable per-scene in the editor.
+        rescue(function (): void {
+            $project = Project::query()->find($this->projectId);
+            if (! $project || $project->status !== 'generating') {
+                return;
+            }
+            GenerationProgressed::dispatch($this->projectId, 'ai_image', 'failed',
+                'Some scene images could not be generated — you can create them per scene in the editor.');
+            GenerateTTSJob::dispatch($this->projectId);
+        }, report: false);
     }
 
     /**
