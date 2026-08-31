@@ -52,14 +52,23 @@ class SharePageController extends Controller
         // Poster: the first scene that has an IMAGE visual. Scrapers need a
         // real thumbnail URL or the unfurl is a grey box.
         $poster = null;
-        foreach (Scene::query()->where('project_id', $project->getKey())->orderBy('scene_order')->get(['visual_asset_id']) as $s) {
-            if (! $s->visual_asset_id) {
-                continue;
-            }
-            $a = Asset::query()->find($s->visual_asset_id);
-            if ($a && $a->asset_type === 'image' && $a->storage_url) {
-                $poster = $storage->url($a->storage_url);
-                break;
+        $scenes = Scene::query()->where('project_id', $project->getKey())
+            ->orderBy('scene_order')->get(['visual_asset_id', 'image_generation_settings_json']);
+        foreach ($scenes as $s) {
+            // The scene's visual if it's a still — or, when it's been animated
+            // into video, the PRESERVED original still (a fully-animated
+            // project otherwise has no image anywhere and og:image goes
+            // missing, which unfurls as a grey box).
+            $candidates = array_filter([
+                $s->visual_asset_id,
+                data_get($s->image_generation_settings_json, 'animation_original_image_asset_id'),
+            ]);
+            foreach ($candidates as $id) {
+                $a = Asset::query()->find($id);
+                if ($a && $a->asset_type === 'image' && $a->storage_url) {
+                    $poster = $storage->url($a->storage_url);
+                    break 2;
+                }
             }
         }
 
