@@ -451,6 +451,13 @@ async function resolveSourceContentRaw(sourceType = wizardSourceType.value) {
 // reuses it instead of uploading twice.
 const pdfUploadedRaw = ref(null)
 
+// Generate must WAIT for the upload+analysis — clicking through mid-check
+// creates the project before the scanned-page consent exists, which is the
+// exact bug the at-selection analysis was built to kill. Also true while a
+// picked file hasn't finished uploading yet.
+const pdfCheckPending = computed(() =>
+  wizardSourceType.value === 'pdf_upload' && pdfFile.value && (pdfAnalysing.value || (!pdfUploadedRaw.value && !pdfAnalysis.value)))
+
 // Upload + analyse the MOMENT the file is picked. This used to happen inside
 // createProject — after Generate — so the scanned-page consent radios were
 // computed when it was already too late to consent: every scanned PDF was
@@ -990,6 +997,7 @@ async function submitWizardProject() {
   }
 
   try {
+    if (pdfCheckPending.value) { wizardCreateState.value = 'idle'; return }
     const resolvedSource = await resolveSourceContentRaw(sourceType)
     const res = await api.post('/projects', {
       source_type: sourceType,
@@ -1750,7 +1758,7 @@ defineExpose({ open })
             <div class="pdf-report-head">
               <strong>{{ pdfAnalysis.page_count }} page{{ pdfAnalysis.page_count === 1 ? '' : 's' }}</strong>
               · {{ pdfAnalysis.counts.text }} readable
-              <template v-if="pdfAnalysis.counts.scanned">· {{ pdfAnalysis.counts.scanned }} scanned image{{ pdfAnalysis.counts.scanned === 1 ? '' : 's' }}</template>
+              <template v-if="pdfAnalysis.counts.scanned">· {{ pdfAnalysis.counts.scanned }} scanned image{{ pdfAnalysis.counts.scanned === 1 ? '' : 's' }}<template v-if="(pdfAnalysis.vision.pages + pdfAnalysis.vision.beyond_plan) > pdfAnalysis.counts.scanned"> (≈{{ pdfAnalysis.vision.pages + pdfAnalysis.vision.beyond_plan }} page-sized sections)</template></template>
             </div>
 
             <!-- Over the plan's page limit: say what will be used, plainly. -->
@@ -1772,13 +1780,18 @@ defineExpose({ open })
                 <input type="radio" :value="true" v-model="pdfReadScanned" />
                 <span>
                   <strong>Read them with AI</strong> — {{ pdfAnalysis.vision.credits }} credits
-                  ({{ pdfAnalysis.vision.credits_per_page }} per page × {{ pdfAnalysis.vision.pages }}).
-                  Needed to cover the whole document.
+                  ({{ pdfAnalysis.vision.credits_per_page }} per page-sized section × {{ pdfAnalysis.vision.pages }}).
                 </span>
               </label>
+              <!-- Units are page-SIZED sections, not PDF pages: one very tall
+                   page (e-commerce product sheets) can be dozens of sections,
+                   and "16 pages exceed your limit" on a 1-page document reads
+                   as a bug to the user. Say what's covered, not what's denied. -->
               <div v-if="pdfAnalysis.vision.beyond_plan" class="pdf-report-note">
-                {{ pdfAnalysis.vision.beyond_plan }} scanned page{{ pdfAnalysis.vision.beyond_plan === 1 ? '' : 's' }}
-                exceed your plan's limit of {{ pdfAnalysis.plan.vision_page_limit }} and won't be read either way.
+                Long document: measured in page-sized sections it's
+                {{ pdfAnalysis.vision.pages + pdfAnalysis.vision.beyond_plan }} sections of reading.
+                Your {{ pdfAnalysis.plan.name }} plan reads the first {{ pdfAnalysis.vision.pages }} —
+                usually the heart of the document — and skips the rest.
               </div>
             </div>
 
@@ -2011,11 +2024,12 @@ defineExpose({ open })
             v-else
             class="btn btn-primary"
             type="button"
-            :disabled="wizardCreateState === 'loading'"
+            :disabled="wizardCreateState === 'loading' || pdfCheckPending"
             @click="submitWizardProject"
           >
             {{ wizardCreateState === 'loading'
               ? (wizardSourceType === 'blank' ? 'Creating…' : '✦ Generating…')
+              : pdfCheckPending ? 'Checking your PDF…'
               : (wizardSourceType === 'blank' ? 'Create Project →' : '✦ Generate Video') }}
           </button>
         </div>
