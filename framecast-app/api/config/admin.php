@@ -1,6 +1,21 @@
 <?php
 
 return [
+
+    /**
+     * Internal / test accounts. Broadcast segments in the admin mail tool
+     * always exclude these, whatever their plan tier or workspace status —
+     * suspension happened to hide them so far, which is protection by
+     * accident, not by design.
+     */
+    'internal_emails' => [
+        'kolakachi@gmail.com',
+        'cutestnavybrown@gmail.com',
+        'testa2@gmail.com',
+        'testa3@gmail.com',
+        'googletest@wyvstudio.com',
+    ],
+
     /*
      * Comma-separated IPs or CIDR ranges allowed to access admin endpoints.
      * Empty string = no restriction (safe for dev/staging).

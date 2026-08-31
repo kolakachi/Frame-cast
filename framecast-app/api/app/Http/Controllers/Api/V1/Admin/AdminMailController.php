@@ -220,6 +220,7 @@ class AdminMailController extends Controller
             // Never broadcast to internal accounts or suspended (refunded /
             // banned) workspaces.
             ->where('users.email', 'not like', '%@wyvstudio.com')
+            ->whereNotIn('users.email', (array) config('admin.internal_emails', []))
             ->where(fn ($w) => $w->whereNull('workspaces.status')->orWhere('workspaces.status', '!=', 'suspended'));
 
         match ($segment) {
