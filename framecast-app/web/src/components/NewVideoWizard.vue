@@ -1807,10 +1807,9 @@ defineExpose({ open })
                    and "16 pages exceed your limit" on a 1-page document reads
                    as a bug to the user. Say what's covered, not what's denied. -->
               <div v-if="pdfAnalysis.vision.beyond_plan" class="pdf-report-note">
-                Long document: measured in page-sized sections it's
-                {{ pdfAnalysis.vision.pages + pdfAnalysis.vision.beyond_plan }} sections of reading.
-                Your {{ pdfAnalysis.plan.name }} plan reads the first {{ pdfAnalysis.vision.pages }} —
-                usually the heart of the document — and skips the rest.
+                Very long document: {{ pdfAnalysis.vision.pages + pdfAnalysis.vision.beyond_plan }}
+                page-sized sections of reading. We read up to {{ pdfAnalysis.plan.vision_page_limit }}
+                sections per document, starting from the top.
               </div>
             </div>
 

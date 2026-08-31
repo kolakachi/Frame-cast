@@ -108,14 +108,13 @@ class CreditService
      */
     public static function pdfVisionPageCap(?string $planTier): int
     {
-        $limits  = self::PLAN_LIMITS[$planTier ?? 'free'] ?? self::PLAN_LIMITS['free'];
-        $planCap = array_key_exists('pdf_vision_page_limit', $limits)
-            ? $limits['pdf_vision_page_limit']
-            : 0;
-
-        return $planCap === null
-            ? self::PDF_VISION_MAX_PER_DOCUMENT
-            : min($planCap, self::PDF_VISION_MAX_PER_DOCUMENT);
+        // Product decision (2026-08-31): the CREDITS are the limiter, not the
+        // plan tier. A document quotes what it actually needs — a 21-section
+        // sheet is 21 credits on any plan — and the per-document ceiling
+        // exists only as blast-radius protection. The per-tier
+        // pdf_vision_page_limit values in PLAN_LIMITS are vestigial; kept for
+        // reference, deliberately unread here so quote and charge can't split.
+        return self::PDF_VISION_MAX_PER_DOCUMENT;
     }
 
     public const AI_MUSIC     = 2;   // per scene, Replicate MusicGen (~$0.01 COGS) — 50%
