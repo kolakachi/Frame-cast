@@ -21,6 +21,75 @@ use Illuminate\Support\Facades\Mail;
  */
 class FeedbackController extends Controller
 {
+    /**
+     * Post-export rating — the one-time "how was that?" modal.
+     *
+     * Structured (rating + picked aspects + optional comment) so it can be
+     * aggregated, unlike the freeform frustration box. Submitting OR
+     * dismissing marks preferences.export_feedback_done server-side, in the
+     * same request, so the modal shows exactly once per user.
+     */
+    public function rate(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'rating'        => ['nullable', 'integer', 'min:1', 'max:5'],
+            'options'       => ['nullable', 'array', 'max:8'],
+            'options.*'     => ['string', 'max:60'],
+            'comment'       => ['nullable', 'string', 'max:2000'],
+            'project_id'    => ['nullable', 'integer'],
+            'export_job_id' => ['nullable', 'integer'],
+            'dismissed'     => ['sometimes', 'boolean'],
+        ]);
+
+        $dismissed = (bool) ($validated['dismissed'] ?? false);
+
+        if (! $dismissed) {
+            \App\Models\ProductFeedback::create([
+                'workspace_id'  => $user->workspace_id,
+                'user_id'       => $user->getKey(),
+                'rating'        => $validated['rating'] ?? null,
+                'options'       => $validated['options'] ?? null,
+                'comment'       => $validated['comment'] ?? null,
+                'trigger'       => 'export',
+                'project_id'    => $validated['project_id'] ?? null,
+                'export_job_id' => $validated['export_job_id'] ?? null,
+            ]);
+
+            \App\Services\Analytics\PostHogService::capture(
+                $user->getKey(),
+                'export_feedback_given',
+                array_filter([
+                    'rating'  => $validated['rating'] ?? null,
+                    'options' => $validated['options'] ?? null,
+                ]),
+                $user->workspace_id,
+            );
+
+            rescue(fn () => Mail::raw(
+                "Export feedback from {$user->email}
+"
+                .'Rating: '.($validated['rating'] ?? '—')."/5
+"
+                .'Aspects: '.implode(', ', $validated['options'] ?? [])."
+
+"
+                .($validated['comment'] ?? '(no comment)'),
+                fn ($m) => $m->to(config('moderation.digest_email'))
+                    ->subject('⭐ Export feedback: '.($validated['rating'] ?? '—').'/5 from '.$user->email),
+            ), report: false);
+        }
+
+        // Once ever — dismissal counts as answered.
+        $user->forceFill([
+            'preferences_json' => array_merge($user->preferences_json ?? [], ['export_feedback_done' => true]),
+        ])->save();
+
+        return response()->json(['data' => ['received' => ! $dismissed]]);
+    }
+
     public function store(Request $request, ModerationService $moderation): JsonResponse
     {
         /** @var User $user */

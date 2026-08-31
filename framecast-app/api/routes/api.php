@@ -89,6 +89,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/me', [VerificationController::class, 'me']);
         // Frustration feedback from the rageclick prompt (and anywhere else).
         Route::post('/feedback', [\App\Http\Controllers\Api\V1\FeedbackController::class, 'store']);
+        Route::post('/feedback/export', [\App\Http\Controllers\Api\V1\FeedbackController::class, 'rate']);
         // Daily streak — Spin & Win retention gamification
         Route::get('/daily-streak', [\App\Http\Controllers\Api\V1\Workspace\DailyStreakController::class, 'show']);
         Route::post('/daily-streak/claim', [\App\Http\Controllers\Api\V1\Workspace\DailyStreakController::class, 'claim']);

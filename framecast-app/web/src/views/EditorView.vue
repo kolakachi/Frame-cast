@@ -2335,6 +2335,57 @@ const unreadCount = computed(() =>
   notifications.value.filter((item) => !item.is_read).length
 );
 const latestExportJob = computed(() => exportJobs.value[0] ?? null);
+
+// ── Post-export feedback (once per user, ever) ──────────────────────────
+// Fires when an export completes in this session — the peak moment, when the
+// result is fresh on screen. Two steps: stars + aspect chips (which flip
+// between "what stood out" and "what fell short" based on the rating), then
+// an optional comment. Dismissing counts as answered — one ask per user.
+const exportFbOpen = ref(false);
+const exportFbRating = ref(0);
+const exportFbOptions = ref([]);
+const exportFbComment = ref('');
+const exportFbSending = ref(false);
+const exportFbDone = ref(false);
+let exportFbShownThisSession = false;
+
+const EXPORT_FB_POSITIVE = ['Video quality', 'Voices', 'Script', 'Speed', 'Ease of use', 'Value for credits'];
+const EXPORT_FB_NEGATIVE = ['Video quality', 'Voices sounded off', 'Script missed the mark', 'Too slow', 'Editor was confusing', 'Cost too many credits'];
+const exportFbChips = computed(() => exportFbRating.value >= 4 ? EXPORT_FB_POSITIVE : EXPORT_FB_NEGATIVE);
+
+watch(() => latestExportJob.value?.status, (status, prev) => {
+  if (status !== 'completed' || prev === 'completed' || prev === undefined) return;
+  if (exportFbShownThisSession) return;
+  if (mePayload.value?.preferences?.export_feedback_done) return;
+  exportFbShownThisSession = true;
+  // Let the "Export complete" moment land first.
+  setTimeout(() => { exportFbOpen.value = true; }, 1800);
+});
+
+function exportFbToggle(chip) {
+  const i = exportFbOptions.value.indexOf(chip);
+  if (i >= 0) exportFbOptions.value.splice(i, 1); else exportFbOptions.value.push(chip);
+}
+
+async function exportFbSubmit(dismissed = false) {
+  if (exportFbSending.value) return;
+  exportFbSending.value = true;
+  try {
+    await api.post('/feedback/export', dismissed ? { dismissed: true } : {
+      rating: exportFbRating.value || null,
+      options: exportFbOptions.value,
+      comment: exportFbComment.value.trim() || null,
+      project_id: Number(projectId.value) || null,
+      export_job_id: latestExportJob.value?.id ?? null,
+    });
+  } catch { /* feedback must never error at the user */ }
+  finally {
+    exportFbSending.value = false;
+    if (mePayload.value?.preferences) mePayload.value.preferences.export_feedback_done = true;
+    if (dismissed) { exportFbOpen.value = false; }
+    else { exportFbDone.value = true; setTimeout(() => { exportFbOpen.value = false; }, 2000); }
+  }
+}
 // Download is the funnel's blind spot: every paying customer exports, then
 // the product loses sight of the video. This is the only event that can tell
 // export-then-post-manually apart from export-then-nothing. Client-side by
@@ -9751,6 +9802,43 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
 
+    <!-- Post-export feedback: once per user, optional, two steps in one card -->
+    <Teleport to="body">
+      <div v-if="exportFbOpen" class="xfb-backdrop" @click.self="exportFbSubmit(true)">
+        <div class="xfb-card">
+          <template v-if="exportFbDone">
+            <div class="xfb-thanks">Thank you! 🙏</div>
+            <div class="xfb-sub">This goes straight to the founders.</div>
+          </template>
+          <template v-else>
+            <button class="xfb-close" type="button" @click="exportFbSubmit(true)">×</button>
+            <div class="xfb-title">Your video is ready — how was making it?</div>
+
+            <div class="xfb-stars">
+              <button v-for="n in 5" :key="n" type="button"
+                :class="['xfb-star', n <= exportFbRating ? 'on' : '']"
+                @click="exportFbRating = n; exportFbOptions = []">★</button>
+            </div>
+
+            <template v-if="exportFbRating > 0">
+              <div class="xfb-sub">{{ exportFbRating >= 4 ? 'What stood out?' : 'What fell short?' }} <span style="opacity:.6">(pick any)</span></div>
+              <div class="xfb-chips">
+                <button v-for="c in exportFbChips" :key="c" type="button"
+                  :class="['xfb-chip', exportFbOptions.includes(c) ? 'on' : '']"
+                  @click="exportFbToggle(c)">{{ c }}</button>
+              </div>
+              <textarea v-model="exportFbComment" class="xfb-input" rows="2" maxlength="2000"
+                placeholder="Anything else? (optional)"></textarea>
+              <button class="xfb-send" type="button" :disabled="exportFbSending" @click="exportFbSubmit(false)">
+                {{ exportFbSending ? 'Sending…' : 'Send feedback' }}
+              </button>
+            </template>
+            <div v-else class="xfb-sub" style="text-align:center;opacity:.7">We only ask once, promise.</div>
+          </template>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Clone a voice without leaving the editor -->
     <VoiceCloneModal v-if="showCloneModal" @close="showCloneModal = false" @created="onVoiceCloned" />
   </main>
@@ -14055,4 +14143,20 @@ select.preset-select {
     padding: 24px 16px;
   }
 }
+.xfb-backdrop { position: fixed; inset: 0; z-index: 300; background: rgba(5,5,10,.6); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.xfb-card { position: relative; width: 100%; max-width: 400px; background: var(--bg-card, #17171f); border: 1px solid var(--border, #2a2a36); border-radius: 14px; padding: 24px 26px; display: flex; flex-direction: column; gap: 12px; }
+.xfb-close { position: absolute; top: 10px; right: 14px; background: none; border: none; color: var(--text-secondary, #a1a1b5); font-size: 18px; cursor: pointer; }
+.xfb-title { font-size: 15px; font-weight: 700; padding-right: 18px; }
+.xfb-stars { display: flex; gap: 6px; justify-content: center; }
+.xfb-star { background: none; border: none; font-size: 30px; color: #3a3a48; cursor: pointer; transition: color .12s, transform .12s; padding: 2px; }
+.xfb-star:hover { transform: scale(1.15); }
+.xfb-star.on { color: #fbbf24; }
+.xfb-sub { font-size: 12.5px; color: var(--text-secondary, #a1a1b5); }
+.xfb-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.xfb-chip { padding: 6px 12px; background: var(--bg-soft, #15151d); border: 1px solid var(--border, #2a2a36); border-radius: 999px; color: var(--text-primary, #ececf3); font-family: inherit; font-size: 12px; cursor: pointer; transition: border-color .12s; }
+.xfb-chip.on { border-color: var(--accent, #ff6b35); background: rgba(255,107,53,.1); }
+.xfb-input { width: 100%; padding: 9px 11px; background: var(--bg-soft, #15151d); border: 1px solid var(--border, #2a2a36); border-radius: 8px; color: var(--text-primary, #ececf3); font-family: inherit; font-size: 12.5px; resize: none; }
+.xfb-send { align-self: flex-end; background: var(--accent, #ff6b35); color: #fff; border: none; border-radius: 8px; padding: 9px 20px; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.xfb-send:disabled { opacity: .5; }
+.xfb-thanks { font-size: 17px; font-weight: 700; text-align: center; }
 </style>
