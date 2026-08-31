@@ -4,6 +4,11 @@ use App\Http\Controllers\Api\V1\Asset\AssetController;
 use App\Http\Controllers\Api\V1\Sfx\SfxController;
 use Illuminate\Support\Facades\Route;
 
+// Server-rendered public share page — real OG/VideoObject markup for
+// scrapers and search, hover-to-play for humans. nginx routes /sample/
+// here instead of the SPA.
+Route::get('/sample/{token}', [\App\Http\Controllers\Web\SharePageController::class, 'show']);
+
 Route::get('/', function () {
     return response()->json([
         'data' => [
