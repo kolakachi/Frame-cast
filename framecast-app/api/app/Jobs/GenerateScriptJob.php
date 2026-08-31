@@ -23,6 +23,13 @@ class GenerateScriptJob implements ShouldQueue
     use Queueable;
     use TracksJobFailure;
 
+    // No explicit timeout meant queue:work's 60-SECOND default applied — and
+    // a scanned PDF's vision pass alone runs several minutes. The worker
+    // killed the job at exactly +60s, twice, leaving projects stranded at
+    // "generating" with the vision reserve charged. Same allowance as the
+    // other long-running generation jobs.
+    public int $timeout = 900;
+
     public function __construct(
         public readonly int $projectId,
     ) {
