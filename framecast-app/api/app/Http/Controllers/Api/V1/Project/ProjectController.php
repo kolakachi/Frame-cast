@@ -687,7 +687,15 @@ class ProjectController extends Controller
         // the only place they can.
         $retryValidated = $request->validate([
             'source_content_raw' => ['nullable', 'string'],
+            // Rescue for scanned PDFs: the failure message tells the user the
+            // document is image-only; this lets the retry opt in to vision
+            // without recreating the project.
+            'pdf_read_scanned'   => ['sometimes', 'boolean'],
         ]);
+
+        if (($retryValidated['pdf_read_scanned'] ?? false) && $project->source_type === 'pdf_upload') {
+            $project->forceFill(['pdf_read_scanned' => true])->save();
+        }
 
         if (isset($retryValidated['source_content_raw']) && trim($retryValidated['source_content_raw']) !== '') {
             $newSource   = $retryValidated['source_content_raw'];

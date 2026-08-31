@@ -3659,12 +3659,13 @@ watch(generationFailed, (failed) => {
   if (failed) retrySourceDraft.value = project.value?.source_content_raw || '';
 }, { immediate: true });
 
-async function retryGeneration() {
+async function retryGeneration(opts = {}) {
   if (retryPending.value) return;
   retryPending.value = true;
   retryError.value = '';
   try {
     const body = {};
+    if (opts.readScanned) body.pdf_read_scanned = true;
     if (retrySourceEditable.value && retrySourceDraft.value.trim()
         && retrySourceDraft.value.trim() !== (project.value?.source_content_raw || '').trim()) {
       body.source_content_raw = retrySourceDraft.value.trim();
@@ -6754,6 +6755,10 @@ onBeforeUnmount(() => {
       <h2 class="gf-title">This video couldn't be generated</h2>
       <p class="gf-reason">{{ generationFailureMessage }}</p>
       <p class="gf-note">Nothing was charged for the failed attempt.</p>
+      <p v-if="project?.source_type === 'pdf_upload'" class="gf-note">
+        Scanned or image-only PDFs can be read with AI — 1 credit per page-sized
+        section, shown in your balance before anything runs.
+      </p>
 
       <div v-if="retrySourceEditable" class="gf-source">
         <label class="gf-label">
@@ -6774,7 +6779,17 @@ onBeforeUnmount(() => {
       <div v-if="retryError" class="gf-error">{{ retryError }}</div>
 
       <div class="gf-actions">
-        <button class="btn btn-primary" type="button" :disabled="retryPending" @click="retryGeneration">
+        <!-- Scanned-PDF rescue: the most common PDF failure is an image-only
+             document, and the fix is one consent away. Priced per A4-sized
+             section, capped by plan, refunded per failed section. -->
+        <button
+          v-if="project?.source_type === 'pdf_upload'"
+          class="btn btn-primary" type="button" :disabled="retryPending"
+          @click="retryGeneration({ readScanned: true })"
+        >
+          {{ retryPending ? 'Retrying…' : '📖 Read it with AI & retry' }}
+        </button>
+        <button v-else class="btn btn-primary" type="button" :disabled="retryPending" @click="retryGeneration">
           {{ retryPending ? 'Retrying…' : '↻ Try again' }}
         </button>
         <router-link class="btn btn-ghost" :to="{ name: 'dashboard' }">Start a different video</router-link>

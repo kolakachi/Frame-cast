@@ -68,7 +68,11 @@ class PdfAnalysisController extends Controller
 
         $pageCount = (int) $response->json('page_count', 0);
         $counts    = (array) $response->json('counts', []);
-        $scanned   = (int) ($counts['scanned'] ?? 0);
+        // Vision is counted in A4-slice UNITS, not pages — one very tall
+        // "page" (e-commerce product sheets) is dozens of pages of content.
+        // Fallback to the page count for an extract service that predates
+        // the field.
+        $scanned   = (int) $response->json('vision_units', $counts['scanned'] ?? 0);
 
         $plan       = WorkspaceUsageService::plans()[$user->workspace?->plan_tier ?? 'free'] ?? [];
         $limits     = CreditService::PLAN_LIMITS[$user->workspace?->plan_tier ?? 'free'] ?? CreditService::PLAN_LIMITS['free'];
