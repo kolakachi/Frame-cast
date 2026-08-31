@@ -438,12 +438,39 @@ async function resolveSourceContentRaw(sourceType = wizardSourceType.value) {
   if (sourceType === 'audio_upload' && audioFile.value) return uploadMediaSource(audioFile.value, 'audio')
   if (sourceType === 'video_upload' && videoFile.value) return uploadMediaSource(videoFile.value, 'video')
   if (sourceType === 'pdf_upload' && pdfFile.value) {
+    if (pdfUploadedRaw.value) return pdfUploadedRaw.value   // uploaded at selection
     const raw = await uploadMediaSource(pdfFile.value, 'document')
     await analysePdf(raw)
     return raw
   }
   if (sourceType === 'images' && imageFiles.value.length > 0) return uploadImageSources()
   return buildSourceContentRaw(sourceType)
+}
+
+// The uploaded PDF's source string, kept from selection time so Generate
+// reuses it instead of uploading twice.
+const pdfUploadedRaw = ref(null)
+
+// Upload + analyse the MOMENT the file is picked. This used to happen inside
+// createProject — after Generate — so the scanned-page consent radios were
+// computed when it was already too late to consent: every scanned PDF was
+// created with pdf_read_scanned=false and failed. Two real users hit it.
+async function onPdfSelected(event) {
+  pdfFile.value = selectedFile(event)
+  pdfUploadedRaw.value = null
+  pdfAnalysis.value = null
+  if (!pdfFile.value) return
+  pdfAnalysing.value = true
+  try {
+    const raw = await uploadMediaSource(pdfFile.value, 'document')
+    pdfUploadedRaw.value = raw
+    await analysePdf(raw)   // manages pdfAnalysing for the analysis phase
+  } catch (e) {
+    // Upload at selection failed — fall back to the old upload-at-create
+    // path rather than blocking the wizard.
+    pdfUploadedRaw.value = null
+    pdfAnalysing.value = false
+  }
 }
 
 async function analysePdf(sourceRaw) {
@@ -1710,7 +1737,7 @@ defineExpose({ open })
           <label class="input-label">Upload PDF</label>
           <label class="upload-zone upload-zone-input">
             <span>{{ pdfFile ? pdfFile.name : '📄  Drop your PDF here — reports, guides, one-pagers · max 100MB' }}</span>
-            <input class="hidden-file-input" type="file" accept="application/pdf,.pdf" @change="pdfFile = selectedFile($event)" />
+            <input class="hidden-file-input" type="file" accept="application/pdf,.pdf" @change="onPdfSelected($event)" />
           </label>
           <div class="input-hint">
             The PDF needs selectable text. Scanned documents and image-only PDFs store pictures of
