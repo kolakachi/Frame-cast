@@ -322,7 +322,10 @@ class GenerateScriptJob implements ShouldQueue
 
         // Transcribe any rendered pages and fold them in.
         if (! empty($result['renders'])) {
-            $text = $this->transcribeRenderedPages($project, $result['renders'], $text);
+            $renders = $result['renders'];
+            $result['renders'] = [];   // drop the caller's copy before the loop doubles it
+            $text = $this->transcribeRenderedPages($project, $renders, $text);
+            unset($renders);
         }
 
         // Condense first when the document is bigger than a prompt can carry.
@@ -381,9 +384,14 @@ class GenerateScriptJob implements ShouldQueue
         $transcribed = [];
         $failed      = 0;
 
-        foreach ($renders as $render) {
+        foreach ($renders as $i => $render) {
             $page = (int) ($render['page'] ?? 0);
             $b64  = (string) ($render['base64'] ?? '');
+            // Free the slice the moment we've copied it. A tall-page document
+            // arrives as dozens of ~2.5MB base64 slices; holding all of them
+            // for the whole loop killed the worker at 21 slices (php fatal,
+            // container restart, project stranded at "generating").
+            unset($renders[$i]);
 
             if ($b64 === '') {
                 $failed++;

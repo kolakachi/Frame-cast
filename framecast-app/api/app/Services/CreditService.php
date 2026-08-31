@@ -49,7 +49,10 @@ class CreditService
      * decision between the click and the bill. Unlimited should mean "as many
      * documents as you like", not "any one document can be arbitrarily large".
      */
-    public const PDF_VISION_MAX_PER_DOCUMENT = 200;
+    // 60, down from 200: units arrive as ~2.5MB rendered slices that one
+    // worker pass must hold; 200 would be ~500MB of base64 and no realistic
+    // memory_limit survives it. Raise only alongside batched rendering.
+    public const PDF_VISION_MAX_PER_DOCUMENT = 60;
 
     /**
      * Plans whose exports jump the queue.

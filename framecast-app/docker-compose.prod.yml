@@ -78,7 +78,9 @@ services:
     init: true  # see note at top of file
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=generation,tts,visual,translation --tries=2 --sleep=3
+    # 768M: PDF vision holds multi-MB page slices in flight; the default
+    # 256M limit killed the worker mid-document and stranded the project.
+    command: php -d memory_limit=768M artisan queue:work redis --queue=generation,tts,visual,translation --tries=2 --sleep=3
     # On deploy (SIGTERM) let a busy worker finish its current job before
     # SIGKILL. Must exceed the LONGEST job timeout on these queues —
     # GenerateAIImageJob is 300s (gpt-image-2 character path runs 3-4 min),
