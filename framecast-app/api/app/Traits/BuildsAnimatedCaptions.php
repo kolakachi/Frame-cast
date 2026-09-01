@@ -288,8 +288,11 @@ trait BuildsAnimatedCaptions
     {
         $u = $underline && $state === 'active' ? '\\u1' : '';
         // \frz inside a multi-word line orbits around the LINE origin, so the
-        // in-place tilt has to be faked with \fax shear instead.
-        $fax = $index % 2 === 0 ? '-0.10' : '0.10';
+        // in-place tilt has to be faked with \fax shear instead. Strong on
+        // entry, settling to a visible resting lean (alternating direction).
+        $sign = $index % 2 === 0 ? '-' : '';
+        $faxIn = "{$sign}0.28";
+        $faxRest = "{$sign}0.14";
 
         $tags = match ($animation) {
             'beast' => match ($state) {
@@ -299,7 +302,7 @@ trait BuildsAnimatedCaptions
             },
             'comic' => match ($state) {
                 'unspoken' => '\\alpha&HA6&',
-                'active' => "\\1c{$highlight}\\fax{$fax}\\fscx20\\fscy20\\t(0,150,\\fscx118\\fscy118)\\t(150,220,\\fscx100\\fscy100)",
+                'active' => "\\1c{$highlight}\\fax{$faxIn}\\fscx20\\fscy20\\t(0,150,\\fscx118\\fscy118)\\t(150,260,\\fscx100\\fscy100\\fax{$faxRest})",
                 default => '',
             },
             'glitch' => match ($state) {
