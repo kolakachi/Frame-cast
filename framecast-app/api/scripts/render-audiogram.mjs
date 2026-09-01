@@ -76,6 +76,9 @@ try {
       duration,
       payload.timedWords || [],
     );
+    const captionAnimWords = (payload.captionAnimation || "plain") !== "plain"
+      ? buildAnimatedCaptionLine(payload, localSeconds, duration)
+      : null;
 
     await page.evaluate((frame) => {
       window.renderFrame(frame);
@@ -83,6 +86,7 @@ try {
       bars,
       localSeconds,
       captionWords,
+      captionAnimWords,
     });
 
     await page.screenshot({
@@ -249,6 +253,68 @@ function simulatedBars(currentSeconds, count, style) {
   });
 }
 
+// ─── Animated caption presets (twin of CaptionPreview.vue) ────────────────
+// Frames are screenshotted out of real time, so nothing may depend on wall
+// clocks or CSS animations: every word carries its state plus tRel (seconds
+// since it activated) and the in-page renderer computes deterministic
+// easings from that.
+const ANIM_CHUNK = { beast: 1, comic: 1, glitch: 1, sticker: 3, blur: 3, punch: 3, neon: 3, marker: 3, stream: 8, news: 5 };
+const ANIM_UPPER = ["beast", "comic", "sticker", "karaoke", "blur", "punch", "tracking", "neon"];
+
+function buildAnimatedCaptionLine(payload, seconds, duration) {
+  const animation = payload.captionAnimation || "plain";
+  let words = (Array.isArray(payload.timedWords) ? payload.timedWords : [])
+    .map((w) => ({
+      text: String(w?.text || w?.word || "").trim(),
+      start: Number(w?.start),
+      end: Number(w?.end),
+    }))
+    .filter((w) => w.text && Number.isFinite(w.start) && Number.isFinite(w.end) && w.end > w.start)
+    .sort((a, b) => a.start - b.start);
+
+  if (words.length === 0) {
+    const plain = String(payload.captionText || "").trim().split(/\s+/).filter(Boolean);
+    const per = plain.length ? duration / plain.length : 0;
+    words = plain.map((text, i) => ({ text, start: i * per, end: (i + 1) * per }));
+  }
+  if (ANIM_UPPER.includes(animation)) {
+    words = words.map((w) => ({ ...w, text: w.text.toUpperCase() }));
+  }
+
+  let chunk = ANIM_CHUNK[animation] || 4;
+  if ((payload.captionHighlightMode || "keywords") === "word_by_word") chunk = 1;
+
+  const lines = [];
+  for (let i = 0; i < words.length; i += chunk) lines.push(words.slice(i, i + chunk));
+
+  for (let li = 0; li < lines.length; li += 1) {
+    const line = lines[li];
+    const start = line[0].start;
+    const end = line[line.length - 1].end;
+    const next = lines[li + 1];
+    const hideAt = next ? Math.min(end + 0.35, next[0].start) : end + 0.35;
+    if (seconds < start - 0.05 || seconds >= hideAt) continue;
+
+    return line.map((w) => {
+      let state = "unspoken";
+      let frac = 0;
+      let tRel = 0;
+      if (seconds >= w.end) {
+        state = "spoken";
+        frac = 1;
+        tRel = seconds - w.start;
+      } else if (seconds >= w.start) {
+        state = "active";
+        tRel = seconds - w.start;
+        frac = Math.min(1, tRel / Math.max(0.03, w.end - w.start));
+      }
+      return { text: w.text, state, frac, tRel };
+    });
+  }
+
+  return [];
+}
+
 function buildCaptionWords(text, highlightMode, currentSeconds, duration, timedWords) {
   const mode = highlightMode || "keywords";
   const pct = clamp(duration > 0 ? currentSeconds / duration : 0, 0, 1);
@@ -344,6 +410,10 @@ function buildInitialState(payload) {
     captionFontSize: captionFontSize(payload.captionSize || "medium", Number(payload.height || 1920)),
     captionColor: payload.captionColor || "#ffffff",
     captionHighlightColor: payload.captionHighlightColor || "#ff6b35",
+    captionAnimation: payload.captionAnimation || "plain",
+    captionHighlightStyle: payload.captionHighlightStyle || "color",
+    captionPanelColor: payload.captionPanelColor || null,
+    captionBackdrop: payload.captionBackdrop === undefined ? null : payload.captionBackdrop,
   };
 }
 
@@ -628,7 +698,11 @@ function buildHtml() {
 
       window.renderFrame = function renderFrame(frame) {
         const state = window.__rendererState;
-        renderCaption(frame.captionWords, state);
+        if (state.captionAnimation && state.captionAnimation !== "plain") {
+          renderAnimatedCaption(frame.captionAnimWords || [], state);
+        } else {
+          renderCaption(frame.captionWords, state);
+        }
         renderWaveform(frame.bars, frame.localSeconds || 0, state);
       };
 
@@ -736,6 +810,211 @@ function buildHtml() {
           el.style.boxShadow = "0 0 calc(12px * var(--scale)) " + state.color + "44";
           el.style.transform = "scaleY(" + bounceScale + ")";
         });
+      }
+
+      // ── Animated caption presets — deterministic per-frame styling ──────
+      // Frames render out of real time, so every transform is a pure
+      // function of the word's tRel/frac (no CSS animations or transitions).
+      var ANIM_FONT_SCALE = { beast: 1.55, comic: 1.4, glitch: 1.45, sticker: 1.15, punch: 1.1, blur: 1.1, marker: 1.05, neon: 0.95, stream: 0.85, news: 0.75 };
+
+      function clamp01(x) { return Math.min(1, Math.max(0, x)); }
+      function easeOutBack(x) {
+        var c1 = 2.6, c3 = c1 + 1;
+        return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+      }
+
+      function renderAnimatedCaption(words, state) {
+        var container = document.getElementById("preview-caption");
+        if (!state.captionEnabled || !Array.isArray(words) || words.length === 0) {
+          container.classList.add("caption-hidden");
+          container.innerHTML = "";
+          return;
+        }
+        container.classList.remove("caption-hidden");
+        container.innerHTML = "";
+
+        var anim = state.captionAnimation;
+        var hl = state.captionHighlightStyle === "plain" ? state.captionColor : state.captionHighlightColor;
+        var isPanel = anim === "stream" || anim === "news";
+        var backdropOn = state.captionBackdrop === null || state.captionBackdrop === undefined
+          ? isPanel
+          : state.captionBackdrop !== false;
+
+        var baseColor = state.captionColor;
+        if (anim === "news" && backdropOn && ["#fff", "#ffffff"].indexOf(String(baseColor).toLowerCase()) !== -1) {
+          baseColor = "#111111";
+        }
+
+        var wrap = document.createElement("span");
+        wrap.style.display = "inline-block";
+        wrap.style.maxWidth = "100%";
+        wrap.style.fontSize = (ANIM_FONT_SCALE[anim] || 1) + "em";
+        wrap.style.lineHeight = "1.18";
+        wrap.style.color = baseColor;
+        if (anim === "sticker" || anim === "marker") wrap.style.transform = "rotate(-2deg)";
+        if (anim === "tracking") wrap.style.letterSpacing = "0.35em";
+        if (isPanel && backdropOn) {
+          wrap.style.background = state.captionPanelColor || (anim === "news" ? "#ffffff" : "rgba(0,0,0,0.62)");
+          wrap.style.padding = "0.5em 0.7em";
+          wrap.style.borderRadius = anim === "news" ? "0.22em" : "0.5em";
+          wrap.style.textAlign = "left";
+          if (anim === "news") wrap.style.boxShadow = "0 0.35em 1.2em rgba(0,0,0,0.45)";
+        } else if (!isPanel && backdropOn) {
+          wrap.style.background = state.captionPanelColor || "rgba(0,0,0,0.58)";
+          wrap.style.padding = "0.35em 0.55em";
+          wrap.style.borderRadius = "0.45em";
+        }
+
+        if (isPanel) {
+          buildTypewriterCaption(wrap, words, anim, hl, baseColor);
+        } else {
+          words.forEach(function (word, index) {
+            var span = wordSpanFor(anim, word, index, hl, baseColor);
+            if (span) {
+              if (state.captionHighlightStyle === "underline" && word.state === "active") {
+                span.style.textDecoration = "underline";
+              }
+              wrap.appendChild(span);
+              wrap.appendChild(document.createTextNode(" "));
+            }
+          });
+        }
+
+        container.appendChild(wrap);
+      }
+
+      function wordSpanFor(anim, word, index, hl, baseColor) {
+        var oneWordMode = anim === "beast" || anim === "comic" || anim === "glitch";
+        if (oneWordMode && word.state !== "active") return null;
+
+        var span = document.createElement("span");
+        span.textContent = word.text;
+        span.style.display = "inline-block";
+        span.style.margin = "0 0.1em";
+        span.style.fontWeight = "700";
+        span.style.textShadow = "0 0.08em 0.18em rgba(0,0,0,0.7)";
+        var t = word.tRel || 0;
+        var active = word.state === "active";
+        var unspoken = word.state === "unspoken";
+
+        if (anim === "beast") {
+          span.style.fontWeight = "900";
+          var e = easeOutBack(clamp01(t / 0.18));
+          span.style.transform = "scale(" + (0.35 + 0.65 * e) + ")";
+          span.style.webkitTextStroke = "0.035em #000";
+        } else if (anim === "comic") {
+          var ec = easeOutBack(clamp01(t / 0.22));
+          var tilt = index % 2 === 0 ? -3 : 2.5;
+          span.style.transform = "scale(" + (0.2 + 0.8 * ec) + ") rotate(" + (tilt * clamp01(t / 0.22)) + "deg)";
+          span.style.webkitTextStroke = "0.045em #000";
+        } else if (anim === "glitch") {
+          if (t < 0.2) {
+            var step = Math.floor(t / 0.05) % 2 === 0 ? 1 : -1;
+            span.style.transform = "translate(" + step * 0.06 + "em, " + -step * 0.03 + "em) skewX(" + step * 9 + "deg)";
+            span.style.textShadow = "-0.05em 0 0 #0ff, 0.05em 0 0 #f0f";
+          } else {
+            span.style.color = hl;
+          }
+        } else if (anim === "karaoke") {
+          span.style.fontWeight = "800";
+          span.style.fontStyle = "italic";
+          span.style.opacity = unspoken ? "0.38" : "1";
+          if (active) { span.style.color = hl; span.style.transform = "scale(1.08)"; }
+        } else if (anim === "box") {
+          span.style.fontWeight = "800";
+          span.style.padding = "0.04em 0.18em";
+          span.style.borderRadius = "0.28em";
+          if (active) { span.style.background = hl; span.style.color = "#111"; span.style.transform = "scale(1.07)"; span.style.textShadow = "none"; }
+        } else if (anim === "sticker") {
+          span.style.webkitTextStroke = "0.07em #000";
+          if (unspoken) { span.style.opacity = "0"; }
+          else if (active) {
+            var es = easeOutBack(clamp01(t / 0.16));
+            span.style.transform = "scale(" + (0.4 + 0.6 * es) + ")";
+            span.style.color = hl;
+          }
+        } else if (anim === "blur") {
+          if (unspoken) { span.style.opacity = "0"; }
+          else {
+            var eb = clamp01(t / 0.28);
+            span.style.filter = "blur(" + (10 * (1 - eb)) + "px)";
+            span.style.transform = "scale(" + (1.15 - 0.15 * eb) + ")";
+            if (active) span.style.color = hl;
+          }
+        } else if (anim === "slide") {
+          if (unspoken) { span.style.opacity = "0"; }
+          else {
+            var el = clamp01(t / 0.22);
+            span.style.opacity = String(Math.min(1, el * 2));
+            span.style.transform = "translateY(" + (0.9 * (1 - easeOutBack(el))) + "em)";
+            if (active) span.style.color = hl;
+          }
+        } else if (anim === "wave") {
+          span.style.webkitTextStroke = "0.04em #000";
+          if (active) {
+            var ew = clamp01(t / 0.32);
+            span.style.transform = "translateY(" + (-0.32 * Math.sin(Math.PI * ew)) + "em)";
+            span.style.color = hl;
+          }
+        } else if (anim === "punch") {
+          span.style.fontWeight = "900";
+          span.style.fontStyle = "italic";
+          span.style.textShadow = "0.1em 0.12em 0 #000";
+          span.style.opacity = unspoken ? "0.3" : "1";
+          span.style.transform = active ? "skewX(-4deg) scale(1.22)" : "skewX(-4deg)";
+          if (active) span.style.color = hl;
+        } else if (anim === "tracking") {
+          span.style.opacity = unspoken ? "0.45" : "1";
+          if (active) span.style.color = hl;
+        } else if (anim === "neon") {
+          span.style.textShadow = "0 0 0.22em " + hl + ", 0 0 0.55em " + hl + ", 0 0 1em " + hl;
+          if (unspoken) span.style.opacity = "0.3";
+          else if (active) {
+            var flick = t < 0.13 ? [0.15, 1, 0.45][Math.floor(t / 0.045) % 3] : 1;
+            span.style.opacity = String(flick);
+          } else span.style.opacity = "0.85";
+        } else if (anim === "marker") {
+          if (unspoken) { span.style.opacity = "0"; }
+          else if (active) {
+            var em = clamp01(t / 0.18);
+            span.style.transform = "rotate(" + (4 * (1 - em)) + "deg) scale(" + (1.35 - 0.35 * em) + ")";
+            span.style.color = hl;
+          }
+        } else if (active) {
+          span.style.color = hl;
+        }
+
+        return span;
+      }
+
+      function buildTypewriterCaption(wrap, words, anim, hl, baseColor) {
+        words.forEach(function (word) {
+          if (word.state === "unspoken") return;
+          var shown = word.text;
+          if (anim === "stream" && word.state === "active") {
+            var chars = Array.from(word.text);
+            shown = chars.slice(0, Math.round(word.frac * chars.length)).join("");
+            if (shown === "") return;
+          }
+          var span = document.createElement("span");
+          span.textContent = shown;
+          span.style.display = "inline-block";
+          span.style.margin = "0 0.12em 0 0";
+          span.style.fontWeight = anim === "news" ? "800" : "500";
+          if (anim === "news" && word.state === "active") {
+            span.style.background = hl;
+            span.style.borderRadius = "0.15em";
+            span.style.padding = "0 0.12em";
+          }
+          wrap.appendChild(span);
+        });
+        var caret = document.createElement("span");
+        caret.style.display = "inline-block";
+        caret.style.width = anim === "news" ? "0.45em" : "0.5em";
+        caret.style.height = anim === "news" ? "0.95em" : "1.05em";
+        caret.style.background = anim === "news" ? baseColor : hl;
+        caret.style.verticalAlign = "text-bottom";
+        wrap.appendChild(caret);
       }
 
       function renderCaption(words, state) {

@@ -342,6 +342,10 @@ trait RendersExportScenes
                 'captionSize'          => (string) ($captionSettings['size'] ?? 'medium'),
                 'captionHighlightColor'=> $this->normalizeHexColor((string) ($captionSettings['highlight_color'] ?? '#ff6b35')),
                 'captionText'   => (string) ($scene->script_text ?: $scene->label ?: 'Framecast'),
+                'captionAnimation'      => (string) ($captionSettings['animation'] ?? 'plain'),
+                'captionHighlightStyle' => (string) ($captionSettings['highlight_style'] ?? 'color'),
+                'captionPanelColor'     => $captionSettings['panel_color'] ?? null,
+                'captionBackdrop'       => $captionSettings['backdrop'] ?? null,
                 'timedWords'    => $this->captionTimingWordsFromAsset($audioAsset),
                 'pcmPath'       => $pcmPath,
             ];
