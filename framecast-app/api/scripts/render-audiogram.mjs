@@ -903,13 +903,23 @@ function buildHtml() {
         var unspoken = word.state === "unspoken";
 
         if (popPreset && !oneWordMode) {
-          // one-word preset forced into line mode: dim line, active pops
+          // one-word preset forced into line mode: dim line, active word keeps
+          // the preset's character (comic tilt, glitch skew) — spans transform
+          // in place in DOM, unlike ASS \frz.
           span.style.opacity = unspoken ? "0.35" : "1";
           span.style.fontWeight = "900";
           span.style.webkitTextStroke = "0.03em #000";
           if (active) {
             var ep = easeOutBack(clamp01(t / 0.14));
-            span.style.transform = "scale(" + (0.55 + 0.45 * ep) + ")";
+            var tx = "scale(" + (0.55 + 0.45 * ep) + ")";
+            if (anim === "comic") {
+              var tiltL = (index % 2 === 0 ? -6 : 6) * clamp01(t / 0.22);
+              tx += " rotate(" + tiltL + "deg)";
+            } else if (anim === "glitch" && t < 0.2) {
+              tx += " skewX(" + ((Math.floor(t / 0.05) % 2 === 0 ? 1 : -1) * 9) + "deg)";
+              span.style.textShadow = "-0.05em 0 0 #0ff, 0.05em 0 0 #f0f";
+            }
+            span.style.transform = tx;
             span.style.color = hl;
           }
           return span;

@@ -256,7 +256,7 @@ trait BuildsAnimatedCaptions
                 foreach ($line as $j => $other) {
                     $text = $this->escapeASSText($other['text']);
                     $state = $j < $wi ? 'spoken' : ($j === $wi ? 'active' : 'unspoken');
-                    $parts[] = $this->animWordTag($animation, $state, $highlight, $underline).$text.'{\\r}';
+                    $parts[] = $this->animWordTag($animation, $state, $highlight, $underline, $j).$text.'{\\r}';
                 }
 
                 $prefix = $this->animLinePrefix($animation, $wi === 0);
@@ -284,15 +284,27 @@ trait BuildsAnimatedCaptions
     }
 
     /** Per-word override tags for the line-based presets. */
-    protected function animWordTag(string $animation, string $state, string $highlight, bool $underline): string
+    protected function animWordTag(string $animation, string $state, string $highlight, bool $underline, int $index = 0): string
     {
         $u = $underline && $state === 'active' ? '\\u1' : '';
+        // \frz inside a multi-word line orbits around the LINE origin, so the
+        // in-place tilt has to be faked with \fax shear instead.
+        $fax = $index % 2 === 0 ? '-0.10' : '0.10';
 
         $tags = match ($animation) {
-            // one-word presets forced into line mode: dim line, active pops
-            'beast', 'comic', 'glitch' => match ($state) {
+            'beast' => match ($state) {
                 'unspoken' => '\\alpha&HA6&',
                 'active' => "\\1c{$highlight}\\fscx55\\fscy55\\t(0,140,\\fscx100\\fscy100)",
+                default => '',
+            },
+            'comic' => match ($state) {
+                'unspoken' => '\\alpha&HA6&',
+                'active' => "\\1c{$highlight}\\fax{$fax}\\fscx20\\fscy20\\t(0,150,\\fscx118\\fscy118)\\t(150,220,\\fscx100\\fscy100)",
+                default => '',
+            },
+            'glitch' => match ($state) {
+                'unspoken' => '\\alpha&HA6&',
+                'active' => "\\fax0.25\\alpha&H60&\\1c&HFFFF00&\\t(0,60,\\1c&HFF00FF&)\\t(60,120,\\alpha&H00&\\fax-0.12)\\t(120,200,\\fax0\\1c{$highlight})",
                 default => '',
             },
             'karaoke' => match ($state) {
