@@ -111,10 +111,11 @@ trait RendersExportScenes
             $isVideo = $visualAsset !== null
                 && ($visualAsset->asset_type === 'video' || str_starts_with((string) $visualAsset->mime_type, 'video/'));
 
-            // Videos should preserve the whole frame on aspect-ratio changes. For stills we
-            // still respect any stored fit/crop preference, defaulting to blurred-fill.
-            $fitMode = (string) (data_get($scene->motion_settings_json, 'fit', 'fit'));
-            $useFit  = $isVideo ? true : $fitMode !== 'crop';
+            // Videos preserve the whole frame. Stills mirror the editor's
+            // full-bleed preview and default to crop, which is also what makes
+            // its visible Ken Burns controls operative. Keep honoring an
+            // explicit legacy `fit` value for older scenes.
+            $useFit = $this->shouldUseFit($scene, $isVideo);
 
             // Ken Burns motion only applies to still images in crop mode — a contained
             // (letterboxed) image shouldn't pan/zoom its blurred backdrop.
@@ -1078,6 +1079,15 @@ trait RendersExportScenes
     }
 
     // ── Motion / Ken Burns ───────────────────────────────────────────────────
+
+    protected function shouldUseFit(Scene $scene, bool $isVideo): bool
+    {
+        if ($isVideo) {
+            return true;
+        }
+
+        return data_get($scene->motion_settings_json, 'fit', 'crop') === 'fit';
+    }
 
     /** @param array{width:int,height:int} $dimensions */
     protected function buildMotionFilter(Scene $scene, array $dimensions, float $duration): ?string
