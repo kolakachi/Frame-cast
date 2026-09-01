@@ -44,7 +44,10 @@ class ReplicateClaudeAdapter implements AIGenerationAdapter
         $input = [
             'prompt'        => $userPrompt,
             'system_prompt' => $systemPrompt,
-            'max_tokens'    => max(256, $maxTokens),
+            // Replicate's Sonnet endpoint requires max_tokens >= 1024 —
+            // smaller budgets (visual_brief, hook_options) 422'd and fell
+            // back to the cheap tier on the first live run.
+            'max_tokens'    => max(1024, $maxTokens),
             'effort'        => (string) config('services.ai.premium_effort', 'medium'),
         ];
 
