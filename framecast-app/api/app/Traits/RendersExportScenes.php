@@ -785,19 +785,24 @@ trait RendersExportScenes
         $marginLR = (int) round(60 * $playResX / 1080);
         $fontName = $this->sanitizeASSFontName($captionFont);
 
-        [$baseFontSize, $bold, $italic] = match ($captionStyle) {
-            'editorial' => [(int) round(22 * $playResY / 480), 0, 1],
-            'hacker'    => [(int) round(16 * $playResY / 480), -1, 0],
-            default     => [(int) round(22 * $playResY / 480), -1, 0],
+        [$bold, $italic] = match ($captionStyle) {
+            'editorial' => [0, 1],
+            'hacker'    => [-1, 0],
+            default     => [-1, 0],
         };
 
-        $sizeMultiplier = match ($captionSize) {
-            'small'  => 0.72,
-            'large'  => 1.35,
-            'xlarge' => 1.72,
-            default  => 1.0,
+        // These are the editor's CAPTION_SIZE_MAP values at its 480px-tall
+        // preview canvas. Scale those exact pixels to the export resolution
+        // so line wrapping and preset proportions remain identical. The old
+        // 22px base made medium captions 29% larger in exports (88px versus
+        // the preview-equivalent 68px at 1080x1920).
+        $previewFontSize = match ($captionSize) {
+            'small'  => 13,
+            'large'  => 23,
+            'xlarge' => 30,
+            default  => 17,
         };
-        $fontSize = (int) round($baseFontSize * $sizeMultiplier);
+        $fontSize = (int) round($previewFontSize * $playResY / 480);
         $primaryColor = $this->hexToASS($captionColor);
 
         $animation = (string) ($animationOptions['animation'] ?? 'plain');

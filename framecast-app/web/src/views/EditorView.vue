@@ -12329,7 +12329,9 @@ button {
 
 /* Hacker style — monospace, yellow highlight */
 .caption-style-hacker .caption-word {
-  font-size: 16px;
+  /* Keep the size picker authoritative, as it is for every other style and
+     in the export renderer. */
+  font-size: inherit;
   font-weight: 400;
 }
 .caption-style-hacker .caption-word.highlight {
