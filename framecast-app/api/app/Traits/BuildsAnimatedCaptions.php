@@ -65,6 +65,36 @@ trait BuildsAnimatedCaptions
         // blurred CSS halo — keep the offset token
         'karaoke' => [0.035, 0.02], 'box' => [0.030, 0.02], 'blur' => [0.035, 0.02],
         'slide' => [0.035, 0.02], 'tracking' => [0.035, 0.02],
+        // neon's outline IS the glow (coloured + blurred), so it runs wider
+        'neon' => [0.060, 0.02],
+    ];
+
+    /**
+     * Presets laid out one \pos'd word at a time.
+     *
+     * Any preset that scales the spoken word must be here: CSS `transform:
+     * scale()` doesn't reflow, but ASS `\fscx` changes the glyph advance, so
+     * inside a single line event the whole line re-centres on every word —
+     * a horizontal wobble the preview never shows. Positioning each word
+     * pins it. Comic/Slide additionally need it for \frz / \move.
+     * Stream and News are excluded: they're one growing run by design.
+     */
+    protected const ANIM_POSITIONED = [
+        'comic', 'slide', 'beast', 'sticker', 'karaoke', 'blur', 'wave', 'punch', 'marker',
+    ];
+
+    /** Whole-line tilt in ASS degrees (counter-clockwise), matching the CSS rotate. */
+    protected const ANIM_LINE_TILT = ['sticker' => 2.0, 'marker' => 2.0];
+
+    /**
+     * Extra gap between positioned words, as a fraction of font size, for
+     * presets whose spoken word grows past 100%. Positions are fixed at the
+     * resting width, so without this the peak of the pop overlaps the
+     * neighbours (Marker peaks at 135%, Punch 122%, Comic 107%).
+     */
+    protected const ANIM_WORD_GAP = [
+        'marker' => 0.34, 'comic' => 0.30, 'punch' => 0.28, 'blur' => 0.18,
+        'wave' => 0.18, 'sticker' => 0.14, 'beast' => 0.10, 'karaoke' => 0.10,
     ];
 
     /** Words per line per preset (word_by_word highlight mode forces 1). */
@@ -110,8 +140,11 @@ trait BuildsAnimatedCaptions
         // Box draws a pill behind the spoken word, which is BorderStyle=3 with
         // a per-word \3c — so it needs the box border mode even when no
         // backdrop is on. Without this its pill silently never rendered.
+        // News keeps its per-word marker even with the bar switched off (the
+        // preview does — CSS background doesn't need the panel), and that
+        // marker is also a \3c box.
         $panelBGR = substr($panelColor, 2, 6); // strip &H … &
-        if ($animation === 'box' && ! $panelOn) {
+        if (in_array($animation, ['box', 'news'], true) && ! $panelOn) {
             $padding = max(4, (int) round($fontSize * 0.16));
             // Shadow must be 0: under BorderStyle=3 it paints a filled box of
             // its own, which ran the whole line as a grey band behind the
@@ -130,12 +163,13 @@ trait BuildsAnimatedCaptions
             $backColour = '&H80000000&';
         } else {
             [$outlineEm, $shadowEm] = self::ANIM_EDGE[$animation] ?? [0.035, 0.05];
-            $styleTail = sprintf(
-                '1,%.1f,%.1f',
-                $outlineEm > 0 ? max(1.0, $fontSize * $outlineEm) : 0.0,
-                max(1.0, $fontSize * $shadowEm),
-            );
-            $outlineColourFull = '&H00000000&';
+            $outlinePx = $outlineEm > 0 ? max(1.0, $fontSize * $outlineEm) : 0.0;
+            $styleTail = sprintf('1,%.1f,%.1f', $outlinePx, max(1.0, $fontSize * $shadowEm));
+            // Neon's halo is a blurred outline in the highlight colour —
+            // blurring the default black outline just made a dark smudge.
+            $outlineColourFull = $animation === 'neon'
+                ? str_replace('&H', '&H00', $highlight)
+                : '&H00000000&';
             $backColour = '&H80000000&';
         }
 
@@ -179,7 +213,7 @@ trait BuildsAnimatedCaptions
         // for real, where the inline approximation could only squash it
         // vertically (\fscy) and left the active word looking distorted.
         $positioned = null;
-        if (($animation === 'comic' && $chunk > 1) || $animation === 'slide') {
+        if (in_array($animation, self::ANIM_POSITIONED, true) && ($chunk > 1 || $animation === 'slide')) {
             $positioned = $this->animPositionedWordEvents($animation, $lines, $highlight, $underline, [
                 'fontName' => $fontName,
                 'fontSize' => $fontSize,
@@ -188,6 +222,7 @@ trait BuildsAnimatedCaptions
                 'alignment' => $ctx['alignment'],
                 'marginV' => $ctx['marginV'],
                 'marginLR' => $ctx['marginLR'],
+                'outlinePx' => $outlinePx ?? 0.0,
             ]);
         }
 
@@ -196,7 +231,7 @@ trait BuildsAnimatedCaptions
             $animation === 'stream' => $this->animTypewriterEvents($lines, $highlight, true),
             $animation === 'news' => $this->animTypewriterEvents($lines, $highlight, false),
             $chunk === 1 => $this->animWordEvents($animation, $lines, $highlight, $underline),
-            default => $this->animLineEvents($animation, $lines, $highlight, $underline),
+            default => $this->animLineEvents($animation, $lines, $highlight, $underline, $fontSize),
         };
 
         $dialogue = array_map(
@@ -299,7 +334,7 @@ trait BuildsAnimatedCaptions
      * @param array<int,array<int,array{text:string,start:float,end:float}>> $lines
      * @return list<array{string,string,string}>
      */
-    protected function animLineEvents(string $animation, array $lines, string $highlight, bool $underline): array
+    protected function animLineEvents(string $animation, array $lines, string $highlight, bool $underline, int $fontSize = 0): array
     {
         $events = [];
         $lineCount = count($lines);
@@ -316,18 +351,23 @@ trait BuildsAnimatedCaptions
                     continue;
                 }
 
+                // Line-level tags have to be repeated on every word: each word
+                // is terminated with {\r}, which resets ALL overrides — so a
+                // prefix-only \fsp survived on the first word alone.
+                $prefix = trim($this->animLinePrefix($animation, $wi === 0, $fontSize), '{}');
+
                 $parts = [];
                 foreach ($line as $j => $other) {
                     $text = $this->escapeASSText($other['text']);
                     $state = $j < $wi ? 'spoken' : ($j === $wi ? 'active' : 'unspoken');
-                    $parts[] = $this->animWordTag($animation, $state, $highlight, $underline, $j).$text.'{\\r}';
+                    $tag = trim($this->animWordTag($animation, $state, $highlight, $underline, $j), '{}');
+                    $parts[] = '{'.$prefix.$tag.'}'.$text.'{\\r}';
                 }
 
-                $prefix = $this->animLinePrefix($animation, $wi === 0);
                 $events[] = [
                     $this->formatASSTime($start),
                     $this->formatASSTime($end),
-                    $prefix.implode(' ', $parts),
+                    implode(' ', $parts),
                 ];
             }
         }
@@ -353,12 +393,12 @@ trait BuildsAnimatedCaptions
         if ($spaceWidth === null) {
             return null;
         }
-        // Presets that scale or rotate the spoken word need a little more air
-        // between words than the font's space, or the animating word clips
-        // into its neighbours (scaling doesn't reflow the line).
-        if ($animation === 'comic') {
-            $spaceWidth *= 1.6;
-        }
+        // The font's space alone isn't enough between positioned words: the
+        // outline bleeds outward on both sides (measurement covers glyph
+        // advances only), and presets that pop past 100% need headroom on
+        // top of that.
+        $spaceWidth += 2 * ($layout['outlinePx'] ?? 0.0)
+            + $fontSize * (self::ANIM_WORD_GAP[$animation] ?? 0.0);
 
         $maxWidth = max(100.0, $layout['playResX'] - 2 * $layout['marginLR']);
         $rowHeight = $fontSize * 1.18;
@@ -418,6 +458,22 @@ trait BuildsAnimatedCaptions
                     }
                     $positions[$wi] = [$cursor + $widths[$wi] / 2, $y];
                     $cursor += $widths[$wi];
+                }
+
+                // Whole-line tilt (Sticker/Marker). Positioning words kills the
+                // line-level \frz, so rotate each word and ride it along the
+                // tilt: a word dx from centre lifts by dx*sin(theta).
+                $tilt = self::ANIM_LINE_TILT[$animation] ?? 0.0;
+                if ($tilt !== 0.0) {
+                    $rad = deg2rad($tilt);
+                    $centreX = $layout['playResX'] / 2;
+                    foreach ($row as $wi) {
+                        $dx = $positions[$wi][0] - $centreX;
+                        $positions[$wi] = [
+                            $centreX + $dx * cos($rad),
+                            $positions[$wi][1] - $dx * sin($rad),
+                        ];
+                    }
                 }
             }
 
@@ -483,7 +539,24 @@ trait BuildsAnimatedCaptions
             };
         }
 
-        return sprintf('{\\an5\\pos(%.1f,%.1f)%s}', $x, $y, trim(
+        $tilt = self::ANIM_LINE_TILT[$animation] ?? 0.0;
+
+        if ($animation === 'marker') {
+            // Marker animates \frz itself, which would cancel the line tilt —
+            // settle onto the tilt instead of onto 0.
+            return match ($state) {
+                'active' => sprintf(
+                    '{\\an5\\pos(%.1f,%.1f)\\1c%s\\frz%.1f\\fscx135\\fscy135\\t(0,180,\\frz%.1f\\fscx100\\fscy100)}',
+                    $x, $y, $highlight, $tilt + 6, $tilt
+                ),
+                'unspoken' => sprintf('{\\an5\\pos(%.1f,%.1f)\\frz%.1f\\alpha&HFF&}', $x, $y, $tilt),
+                default => sprintf('{\\an5\\pos(%.1f,%.1f)\\frz%.1f}', $x, $y, $tilt),
+            };
+        }
+
+        $frz = $tilt !== 0.0 ? sprintf('\\frz%.1f', $tilt) : '';
+
+        return sprintf('{\\an5\\pos(%.1f,%.1f)%s%s}', $x, $y, $frz, trim(
             $this->animWordTag($animation, $state, $highlight, $underline, $index, true), '{}'
         ));
     }
@@ -505,13 +578,20 @@ trait BuildsAnimatedCaptions
     }
 
     /** Whole-line override tags emitted before the words. */
-    protected function animLinePrefix(string $animation, bool $firstEventOfLine): string
+    protected function animLinePrefix(string $animation, bool $firstEventOfLine, int $fontSize = 0): string
     {
         return match ($animation) {
             // \frz is CCW-positive: browser -2deg tilt = \frz2
             'sticker', 'marker' => '{\\frz2}',
-            // letter-spacing opens up as the line enters
-            'tracking' => $firstEventOfLine ? '{\\fsp1\\t(0,500,\\fsp8)}' : '{\\fsp8}',
+            // letter-spacing opens up as the line enters. \fsp is in pixels,
+            // so it has to scale with the font — a flat \fsp8 was nearly
+            // invisible next to the preview's 0.35em (~31px at this size).
+            'tracking' => (function () use ($firstEventOfLine, $fontSize) {
+                $fsp = max(4.0, $fontSize * 0.30);
+                return $firstEventOfLine
+                    ? sprintf('{\\fsp%.1f\\t(0,500,\\fsp%.1f)}', $fsp * 0.15, $fsp)
+                    : sprintf('{\\fsp%.1f}', $fsp);
+            })(),
             default => '',
         };
     }
@@ -683,8 +763,9 @@ trait BuildsAnimatedCaptions
                         continue;
                     }
                     $active = sprintf(
-                        '{\\3c%s\\3a&H00&}%s{\\r}',
+                        '{\\3c%s\\3a&H00&\\1c%s}%s{\\r}',
                         $highlight,
+                        $this->assPillTextColor($highlight),
                         $this->escapeASSText($word['text'])
                     );
                     $text = trim($prefixText.' ').($prefixText !== '' ? ' ' : '').$active.$caret;
