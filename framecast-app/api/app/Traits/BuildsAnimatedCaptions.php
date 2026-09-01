@@ -107,8 +107,19 @@ trait BuildsAnimatedCaptions
         $bold = in_array($animation, ['beast', 'karaoke', 'box', 'slide', 'punch', 'news', 'neon'], true) ? -1 : 0;
         $italic = in_array($animation, ['karaoke', 'punch'], true) ? -1 : 0;
 
+        // Box draws a pill behind the spoken word, which is BorderStyle=3 with
+        // a per-word \3c — so it needs the box border mode even when no
+        // backdrop is on. Without this its pill silently never rendered.
         $panelBGR = substr($panelColor, 2, 6); // strip &H … &
-        if ($panelOn) {
+        if ($animation === 'box' && ! $panelOn) {
+            $padding = max(4, (int) round($fontSize * 0.16));
+            // Shadow must be 0: under BorderStyle=3 it paints a filled box of
+            // its own, which ran the whole line as a grey band behind the
+            // words that aren't active.
+            $styleTail = sprintf('3,%d,0', $padding);
+            $outlineColourFull = '&HFF000000&'; // transparent until a word is active
+            $backColour = '&H80000000&';
+        } elseif ($panelOn) {
             // BorderStyle=3: the "outline" becomes a filled box behind the
             // text (its color+alpha = OutlineColour); Outline width is the
             // padding. libass draws the box per override run, which is what
@@ -342,6 +353,12 @@ trait BuildsAnimatedCaptions
         if ($spaceWidth === null) {
             return null;
         }
+        // Presets that scale or rotate the spoken word need a little more air
+        // between words than the font's space, or the animating word clips
+        // into its neighbours (scaling doesn't reflow the line).
+        if ($animation === 'comic') {
+            $spaceWidth *= 1.6;
+        }
 
         $maxWidth = max(100.0, $layout['playResX'] - 2 * $layout['marginLR']);
         $rowHeight = $fontSize * 1.18;
@@ -526,8 +543,11 @@ trait BuildsAnimatedCaptions
             },
             'comic' => match ($state) {
                 'unspoken' => '\\alpha&HA6&',
+                // Positioned words sit at their 100% width, so a big overshoot
+                // bleeds into the neighbours (118% collided visibly). Keep the
+                // bounce, cap the peak.
                 'active' => $positioned
-                    ? "\\1c{$highlight}\\frz{$frzIn}\\fscx20\\fscy20\\t(0,150,\\fscx118\\fscy118\\frz{$frzRest})\\t(150,260,\\fscx100\\fscy100)"
+                    ? "\\1c{$highlight}\\frz{$frzIn}\\fscx35\\fscy35\\t(0,150,\\fscx107\\fscy107\\frz{$frzRest})\\t(150,260,\\fscx100\\fscy100)"
                     : "\\1c{$highlight}\\fax{$faxIn}\\fscx20\\fscy20\\t(0,150,\\fscx118\\fscy118)\\t(150,260,\\fscx100\\fscy100\\fax{$faxRest})",
                 default => '',
             },
@@ -544,8 +564,10 @@ trait BuildsAnimatedCaptions
             'box' => match ($state) {
                 // BorderStyle=3 + per-run \3c: only the active word's box is
                 // visible (its alpha is opaque); the rest stay transparent.
-                'active' => "\\3a&H00&\\3c{$highlight}\\1c&H111111&\\bord6",
-                default => '\\3a&HFF&\\bord6',
+                // Text colour flips with the pill's brightness so a dark
+                // highlight doesn't render dark-on-dark.
+                'active' => "\\3a&H00&\\3c{$highlight}\\1c".$this->assPillTextColor($highlight),
+                default => '\\3a&HFF&',
             },
             'sticker' => match ($state) {
                 'unspoken' => '\\alpha&HFF&',
@@ -672,6 +694,26 @@ trait BuildsAnimatedCaptions
         }
 
         return $events;
+    }
+
+    /**
+     * Readable text colour to sit on a pill of the given ASS colour. A user
+     * who picks a dark highlight would otherwise get dark text on a dark
+     * pill (the browser preset hardcodes #111 and has the same blind spot).
+     */
+    protected function assPillTextColor(string $assColor): string
+    {
+        if (! preg_match('/&H([0-9A-Fa-f]{6})&/', $assColor, $m)) {
+            return '&H111111&';
+        }
+
+        // ASS packs colours as BBGGRR.
+        $b = hexdec(substr($m[1], 0, 2));
+        $g = hexdec(substr($m[1], 2, 2));
+        $r = hexdec(substr($m[1], 4, 2));
+        $luma = 0.299 * $r + 0.587 * $g + 0.114 * $b;
+
+        return $luma > 140 ? '&H111111&' : '&HFFFFFF&';
     }
 
     /**
