@@ -128,7 +128,25 @@ trait BuildsAnimatedCaptions
         }
         $lines = array_chunk($words, max(1, $chunk));
 
+        // Comic Pop tilts each word independently. ASS rotates a run around
+        // the LINE anchor, so an in-place spin is only possible when every
+        // word is its own \pos'd event — which needs real font metrics.
+        // Falls back to the shared line builder if the font can't be measured.
+        $positioned = null;
+        if ($animation === 'comic' && $chunk > 1) {
+            $positioned = $this->animPositionedWordEvents($animation, $lines, $highlight, $underline, [
+                'fontName' => $fontName,
+                'fontSize' => $fontSize,
+                'playResX' => $ctx['playResX'],
+                'playResY' => $ctx['playResY'],
+                'alignment' => $ctx['alignment'],
+                'marginV' => $ctx['marginV'],
+                'marginLR' => $ctx['marginLR'],
+            ]);
+        }
+
         $events = match (true) {
+            $positioned !== null => $positioned,
             $animation === 'stream' => $this->animTypewriterEvents($lines, $highlight, true),
             $animation === 'news' => $this->animTypewriterEvents($lines, $highlight, false),
             $chunk === 1 => $this->animWordEvents($animation, $lines, $highlight, $underline),
@@ -271,6 +289,130 @@ trait BuildsAnimatedCaptions
         return $events;
     }
 
+    /**
+     * Per-word positioned events, so each word can rotate around its OWN
+     * centre (\an5 + \pos + \frz) instead of orbiting the line anchor.
+     * Words are laid out by measuring the real font, wrapped to the caption
+     * width, and stacked to sit where the style's alignment/margin would.
+     *
+     * @param array<int,array<int,array{text:string,start:float,end:float}>> $lines
+     * @param array{fontName:string,fontSize:int,playResX:int,playResY:int,alignment:int,marginV:int,marginLR:int} $layout
+     * @return list<array{string,string,string}>|null null = can't measure, use the line builder
+     */
+    protected function animPositionedWordEvents(string $animation, array $lines, string $highlight, bool $underline, array $layout): ?array
+    {
+        $metrics = app(\App\Services\Media\FontMetrics::class);
+        $fontSize = (float) $layout['fontSize'];
+        $spaceWidth = $metrics->width(' ', $layout['fontName'], $fontSize);
+        if ($spaceWidth === null) {
+            return null;
+        }
+
+        $maxWidth = max(100.0, $layout['playResX'] - 2 * $layout['marginLR']);
+        $rowHeight = $fontSize * 1.18;
+        $events = [];
+        $lineCount = count($lines);
+
+        foreach ($lines as $li => $line) {
+            // Measure every word; bail out entirely if any glyph is unknown so
+            // we never render a half-misaligned line.
+            $widths = [];
+            foreach ($line as $word) {
+                $w = $metrics->width($word['text'], $layout['fontName'], $fontSize);
+                if ($w === null) {
+                    return null;
+                }
+                $widths[] = $w;
+            }
+
+            // Greedy wrap into rows that fit the caption width.
+            $rows = [];
+            $current = [];
+            $currentWidth = 0.0;
+            foreach ($line as $wi => $word) {
+                $addition = $widths[$wi] + ($current === [] ? 0 : $spaceWidth);
+                if ($current !== [] && $currentWidth + $addition > $maxWidth) {
+                    $rows[] = $current;
+                    $current = [];
+                    $currentWidth = 0.0;
+                    $addition = $widths[$wi];
+                }
+                $current[] = $wi;
+                $currentWidth += $addition;
+            }
+            if ($current !== []) {
+                $rows[] = $current;
+            }
+
+            $blockHeight = count($rows) * $rowHeight;
+            $blockTop = match ($layout['alignment']) {
+                8 => (float) $layout['marginV'],
+                5 => ($layout['playResY'] - $blockHeight) / 2,
+                default => $layout['playResY'] - $layout['marginV'] - $blockHeight,
+            };
+
+            // x/y centre for every word index in this line.
+            $positions = [];
+            foreach ($rows as $ri => $row) {
+                $rowWidth = 0.0;
+                foreach ($row as $n => $wi) {
+                    $rowWidth += $widths[$wi] + ($n === 0 ? 0 : $spaceWidth);
+                }
+                $cursor = ($layout['playResX'] - $rowWidth) / 2;
+                $y = $blockTop + $ri * $rowHeight + $rowHeight / 2;
+                foreach ($row as $n => $wi) {
+                    if ($n > 0) {
+                        $cursor += $spaceWidth;
+                    }
+                    $positions[$wi] = [$cursor + $widths[$wi] / 2, $y];
+                    $cursor += $widths[$wi];
+                }
+            }
+
+            $nextStart = $li + 1 < $lineCount ? $lines[$li + 1][0]['start'] : null;
+            $lineEnd = $line[count($line) - 1]['end'];
+            $hideAt = $nextStart !== null ? min($lineEnd + 0.35, $nextStart) : $lineEnd + 0.35;
+            $lineStart = $line[0]['start'];
+
+            foreach ($line as $wi => $word) {
+                [$x, $y] = $positions[$wi];
+                $pos = sprintf('\\an5\\pos(%.1f,%.1f)', $x, $y);
+                $text = $this->escapeASSText($word['text']);
+                $activeStart = $word['start'];
+                $activeEnd = $wi + 1 < count($line) ? max($word['end'], $line[$wi + 1]['start']) : $hideAt;
+
+                // waiting its turn
+                if ($activeStart > $lineStart) {
+                    $events[] = [
+                        $this->formatASSTime($lineStart),
+                        $this->formatASSTime($activeStart),
+                        '{'.$pos.trim($this->animWordTag($animation, 'unspoken', $highlight, $underline, $wi, true), '{}').'}'.$text,
+                    ];
+                }
+
+                // spoken now — pops, tilts, holds the highlight colour
+                if ($activeEnd > $activeStart) {
+                    $events[] = [
+                        $this->formatASSTime($activeStart),
+                        $this->formatASSTime($activeEnd),
+                        '{'.$pos.trim($this->animWordTag($animation, 'active', $highlight, $underline, $wi, true), '{}').'}'.$text,
+                    ];
+                }
+
+                // already said
+                if ($hideAt > $activeEnd) {
+                    $events[] = [
+                        $this->formatASSTime($activeEnd),
+                        $this->formatASSTime($hideAt),
+                        '{'.$pos.trim($this->animWordTag($animation, 'spoken', $highlight, $underline, $wi, true), '{}').'}'.$text,
+                    ];
+                }
+            }
+        }
+
+        return $events;
+    }
+
     /** Whole-line override tags emitted before the words. */
     protected function animLinePrefix(string $animation, bool $firstEventOfLine): string
     {
@@ -283,16 +425,24 @@ trait BuildsAnimatedCaptions
         };
     }
 
-    /** Per-word override tags for the line-based presets. */
-    protected function animWordTag(string $animation, string $state, string $highlight, bool $underline, int $index = 0): string
+    /**
+     * Per-word override tags for the line-based presets.
+     *
+     * $positioned means the caller emits this word as its own \an5\pos event,
+     * so \frz spins it in place. Without that, \frz would orbit the whole
+     * line's anchor, and the tilt has to be approximated with \fax shear.
+     */
+    protected function animWordTag(string $animation, string $state, string $highlight, bool $underline, int $index = 0, bool $positioned = false): string
     {
         $u = $underline && $state === 'active' ? '\\u1' : '';
-        // \frz inside a multi-word line orbits around the LINE origin, so the
-        // in-place tilt has to be faked with \fax shear instead. Strong on
-        // entry, settling to a visible resting lean (alternating direction).
         $sign = $index % 2 === 0 ? '-' : '';
         $faxIn = "{$sign}0.28";
         $faxRest = "{$sign}0.14";
+        // True rotation, mirroring the preview: a big entry kick settling to a
+        // small alternating lean. (\frz is counter-clockwise, CSS rotate is
+        // clockwise, hence the flipped signs against CaptionPreview.vue.)
+        $frzIn = $index % 2 === 0 ? 14 : -14;
+        $frzRest = $index % 2 === 0 ? 3 : -2.5;
 
         $tags = match ($animation) {
             'beast' => match ($state) {
@@ -302,7 +452,9 @@ trait BuildsAnimatedCaptions
             },
             'comic' => match ($state) {
                 'unspoken' => '\\alpha&HA6&',
-                'active' => "\\1c{$highlight}\\fax{$faxIn}\\fscx20\\fscy20\\t(0,150,\\fscx118\\fscy118)\\t(150,260,\\fscx100\\fscy100\\fax{$faxRest})",
+                'active' => $positioned
+                    ? "\\1c{$highlight}\\frz{$frzIn}\\fscx20\\fscy20\\t(0,150,\\fscx118\\fscy118\\frz{$frzRest})\\t(150,260,\\fscx100\\fscy100)"
+                    : "\\1c{$highlight}\\fax{$faxIn}\\fscx20\\fscy20\\t(0,150,\\fscx118\\fscy118)\\t(150,260,\\fscx100\\fscy100\\fax{$faxRest})",
                 default => '',
             },
             'glitch' => match ($state) {
