@@ -107,10 +107,33 @@ class ChatterboxTTSAdapter implements TTSAdapter
 
             $isWav = str_contains(strtolower((string) $audioUrl), '.wav');
             $ext = $isWav ? 'wav' : 'mp3';
+
+            // Chatterbox has no pace parameter — the speed slider was a
+            // silent no-op for cloned voices until a customer reported their
+            // clone "speaks too fast even though I selected the slowest
+            // level". Apply the requested tempo ourselves, pitch-preserved.
+            $bytes = \App\Services\Media\AudioTempo::apply($bytes, $ext, $speed);
+
             $path = 'audio/tts/'.Str::uuid().'.'.$ext;
             $audioStorageUrl = app(StorageService::class)->put($path, $bytes, [
                 'ContentType' => $isWav ? 'audio/wav' : 'audio/mpeg',
             ]);
+
+            // Measure the REAL duration (post-tempo) — same reasoning as the
+            // Gemini adapter: the stored number drives preview pacing and
+            // spokesperson billing, and the word-count estimate drifts.
+            $measured = null;
+            rescue(function () use ($bytes, $ext, &$measured): void {
+                $tmp = tempnam(sys_get_temp_dir(), 'tts-').'.'.$ext;
+                file_put_contents($tmp, $bytes);
+                $out = [];
+                exec('ffprobe -v error -show_entries format=duration -of csv=p=0 '.escapeshellarg($tmp), $out);
+                @unlink($tmp);
+                $d = isset($out[0]) ? (float) $out[0] : 0.0;
+                if ($d > 0.05) {
+                    $measured = $d;
+                }
+            }, report: false);
         } catch (Throwable $exception) {
             $this->usage->record([
                 ...$usageContext,
@@ -146,7 +169,7 @@ class ChatterboxTTSAdapter implements TTSAdapter
 
         return [
             'audio_url' => $audioStorageUrl,
-            'duration_seconds' => $this->estimateDuration($text, $speed),
+            'duration_seconds' => $measured ?? $this->estimateDuration($text, $speed),
             'provider_key' => 'replicate:'.$model,
             'provider_voice_id' => $voiceId ?: 'clone',
         ];

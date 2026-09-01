@@ -155,6 +155,12 @@ class GeminiTTSAdapter implements TTSAdapter
             // Gemini TTS emits WAV; keep the extension/content-type honest.
             $isWav = str_contains(strtolower((string) $audioUrl), '.wav');
             $ext = $isWav ? 'wav' : 'mp3';
+
+            // The model accepts no pace parameter, so the speed slider was a
+            // silent no-op for every expressive voice. Apply it ourselves,
+            // pitch-preserved; the duration measured below reflects it.
+            $bytes = \App\Services\Media\AudioTempo::apply($bytes, $ext, $speed);
+
             $path = 'audio/tts/'.Str::uuid().'.'.$ext;
             $audioStorageUrl = app(StorageService::class)->put($path, $bytes, [
                 'ContentType' => $isWav ? 'audio/wav' : 'audio/mpeg',
