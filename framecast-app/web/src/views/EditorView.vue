@@ -10100,7 +10100,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat&family=Raleway&family=Nunito&family=Lato&family=Roboto+Mono&family=Roboto+Slab&family=Libre+Baskerville&family=Playfair+Display&family=Dancing+Script&family=Fredoka+One&family=Sacramento&family=Luckiest+Guy&family=Orbitron&family=Satisfy&family=Permanent+Marker&family=Noto+Sans&family=Amatic+SC&family=Days+One&family=Rock+Salt&family=New+Rocker&family=Passion+One&family=Indie+Flower&family=Quicksand&family=Shadows+Into+Light&family=Source+Code+Pro&family=Aladin&family=Calligraffitti&display=swap");
+/* Caption fonts. The animated presets need the heavy cuts (Montserrat
+   700/800/900 + italics, Nunito 800, Passion One 700, Orbitron 700,
+   Roboto Mono 500) — without them the browser fakes bold/italic and the
+   presets lose their punch. */
+@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:ital,wght@0,400;0,700;0,800;0,900;1,800;1,900&family=Raleway&family=Nunito:wght@400;800&family=Lato&family=Roboto+Mono:wght@400;500&family=Roboto+Slab&family=Libre+Baskerville&family=Playfair+Display&family=Dancing+Script&family=Fredoka+One&family=Sacramento&family=Luckiest+Guy&family=Orbitron:wght@400;700&family=Satisfy&family=Permanent+Marker&family=Noto+Sans&family=Amatic+SC&family=Days+One&family=Rock+Salt&family=New+Rocker&family=Passion+One:wght@400;700&family=Indie+Flower&family=Quicksand&family=Shadows+Into+Light&family=Source+Code+Pro&family=Aladin&family=Calligraffitti&display=swap");
 
 .editor-page {
   --bg-deep: #0a0a0f;

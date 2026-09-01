@@ -80,6 +80,11 @@ const rootStyle = computed(() => {
     style.color = color;
   }
   if (props.settings.panel_color) style["--cp-bg"] = props.settings.panel_color;
+  // Demo tiles have no user font — show the preset in its own typeface, like
+  // the CapCut picker. The main preview inherits the font from the wrapper.
+  if (props.demo && preset.value.font) {
+    style.fontFamily = `"${preset.value.font}", sans-serif`;
+  }
   return style;
 });
 
@@ -122,14 +127,14 @@ function charOn(word, index) {
 .cp-plain .cp-active { color: var(--cp-hl); }
 
 /* beast — one giant word, spring pop */
-.cp-beast { font-weight: 900; font-size: 1.55em; text-transform: uppercase;
+.cp-beast { font-weight: 900; font-size: 2.5em; text-transform: uppercase;
   -webkit-text-stroke: 0.035em #000; paint-order: stroke fill; text-shadow: 0 0.08em 0 rgba(0, 0, 0, 0.55); }
 .cp-beast .cp-w { display: none; }
 .cp-beast .cp-active { display: inline-block; animation: cp-pop 0.18s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
 @keyframes cp-pop { from { transform: scale(0.35); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 /* comic — bubble bounce with tilt */
-.cp-comic { font-size: 1.4em; text-transform: uppercase; letter-spacing: 0.02em;
+.cp-comic { font-size: 2.1em; text-transform: uppercase; letter-spacing: 0.02em;
   -webkit-text-stroke: 0.045em #000; paint-order: stroke fill; text-shadow: 0.06em 0.09em 0 #000; }
 .cp-comic .cp-w { display: none; }
 .cp-comic .cp-active { display: inline-block; animation: cp-comic-in 0.22s cubic-bezier(0.2, 2.2, 0.5, 1) both; }
@@ -138,7 +143,7 @@ function charOn(word, index) {
 @keyframes cp-comic-in { 0% { transform: scale(0.2) rotate(-14deg); opacity: 0; } 70% { transform: scale(1.18); } 100% { transform: scale(1); opacity: 1; } }
 
 /* sticker — tilted line, words scale in, active wiggles */
-.cp-sticker { font-size: 1.15em; text-transform: uppercase; transform: rotate(-2deg); letter-spacing: 0.015em;
+.cp-sticker { font-size: 1.7em; text-transform: uppercase; transform: rotate(-2deg); letter-spacing: 0.015em;
   -webkit-text-stroke: 0.07em #000; paint-order: stroke fill; text-shadow: 0.05em 0.07em 0 rgba(0, 0, 0, 0.85); }
 .cp-sticker .cp-unspoken { opacity: 0; transform: scale(0.4); }
 .cp-sticker .cp-spoken, .cp-sticker .cp-active { opacity: 1; transform: scale(1);
@@ -147,19 +152,19 @@ function charOn(word, index) {
 @keyframes cp-wiggle { 0% { rotate: 0deg; } 30% { rotate: 4deg; } 60% { rotate: -3deg; } 100% { rotate: 0deg; } }
 
 /* karaoke — dim line, spoken words light up */
-.cp-karaoke { font-weight: 800; font-style: italic; text-transform: uppercase;
+.cp-karaoke { font-weight: 800; font-style: italic; font-size: 1.5em; text-transform: uppercase;
   -webkit-text-stroke: 0.03em #000; paint-order: stroke fill; text-shadow: 0 0.1em 0.18em rgba(0, 0, 0, 0.7); }
 .cp-karaoke .cp-w { opacity: 0.38; transition: opacity 0.08s; }
 .cp-karaoke .cp-spoken { opacity: 1; }
 .cp-karaoke .cp-active { opacity: 1; color: var(--cp-hl); transform: scale(1.08); transition: transform 0.1s, opacity 0.08s; }
 
 /* box — pill behind the active word */
-.cp-box { font-weight: 800; text-shadow: 0 0.09em 0.15em rgba(0, 0, 0, 0.75); }
+.cp-box { font-weight: 800; font-size: 1.45em; text-shadow: 0 0.09em 0.15em rgba(0, 0, 0, 0.75); }
 .cp-box .cp-w { padding: 0.04em 0.18em; border-radius: 0.28em; transition: background 0.09s, color 0.09s, transform 0.12s; }
 .cp-box .cp-active { background: var(--cp-hl); color: #111; transform: scale(1.07); text-shadow: none; }
 
 /* stream — typewriter console; panel grows, caret rides last typed char */
-.cp-stream { font-size: 0.85em; background: var(--cp-bg, rgba(0, 0, 0, 0.62));
+.cp-stream { font-size: 1.15em; background: var(--cp-bg, rgba(0, 0, 0, 0.62));
   padding: 0.5em 0.7em; border-radius: 0.5em; text-align: left; }
 .cp-stream .cp-w { display: none; margin: 0 0.12em 0 0; }
 .cp-stream .cp-active, .cp-stream .cp-spoken { display: inline-block; }
@@ -170,14 +175,14 @@ function charOn(word, index) {
 @keyframes cp-blink { 50% { opacity: 0; } }
 
 /* blur — words de-blur as spoken */
-.cp-blur { font-size: 1.1em; text-transform: uppercase; letter-spacing: 0.03em; text-shadow: 0 0.1em 0.2em rgba(0, 0, 0, 0.7); }
+.cp-blur { font-size: 1.6em; text-transform: uppercase; letter-spacing: 0.03em; text-shadow: 0 0.1em 0.2em rgba(0, 0, 0, 0.7); }
 .cp-blur .cp-unspoken { opacity: 0; filter: blur(10px); transform: scale(1.15); }
 .cp-blur .cp-spoken, .cp-blur .cp-active { opacity: 1; filter: blur(0); transform: scale(1);
   transition: filter 0.28s ease, opacity 0.22s, transform 0.28s; }
 .cp-blur .cp-active { color: var(--cp-hl); }
 
 /* glitch — RGB-split flicker per word */
-.cp-glitch { font-size: 1.45em; letter-spacing: 0.04em; text-shadow: 0 0.07em 0 rgba(0, 0, 0, 0.6); }
+.cp-glitch { font-size: 2.1em; letter-spacing: 0.04em; text-shadow: 0 0.07em 0 rgba(0, 0, 0, 0.6); }
 .cp-glitch .cp-w { display: none; }
 .cp-glitch .cp-active { display: inline-block; animation: cp-glitch 0.3s steps(2) both; }
 @keyframes cp-glitch {
@@ -188,34 +193,34 @@ function charOn(word, index) {
 }
 
 /* slide — words rise into place and stay */
-.cp-slide { font-weight: 700; text-shadow: 0 0.1em 0.2em rgba(0, 0, 0, 0.8); }
+.cp-slide { font-weight: 700; font-size: 1.4em; text-shadow: 0 0.1em 0.2em rgba(0, 0, 0, 0.8); }
 .cp-slide .cp-unspoken { opacity: 0; transform: translateY(0.9em); }
 .cp-slide .cp-spoken, .cp-slide .cp-active { opacity: 1; transform: translateY(0);
   transition: transform 0.22s cubic-bezier(0.2, 1, 0.3, 1), opacity 0.18s; }
 .cp-slide .cp-active { color: var(--cp-hl); }
 
 /* wave — spoken word hops */
-.cp-wave { -webkit-text-stroke: 0.04em #000; paint-order: stroke fill; text-shadow: 0 0.08em 0 rgba(0, 0, 0, 0.6); }
+.cp-wave { font-size: 1.5em; -webkit-text-stroke: 0.04em #000; paint-order: stroke fill; text-shadow: 0 0.08em 0 rgba(0, 0, 0, 0.6); }
 .cp-wave .cp-w { transition: color 0.1s; }
 .cp-wave .cp-active { color: var(--cp-hl); animation: cp-bounce 0.32s ease both; }
 @keyframes cp-bounce { 0% { transform: translateY(0); } 40% { transform: translateY(-0.32em) scale(1.12); } 100% { transform: translateY(0) scale(1); } }
 
 /* punch — heavy italic, active word scales hard */
-.cp-punch { font-weight: 900; font-style: italic; font-size: 1.1em; text-transform: uppercase;
+.cp-punch { font-weight: 900; font-style: italic; font-size: 1.55em; text-transform: uppercase;
   text-shadow: 0.1em 0.12em 0 #000; letter-spacing: 0.01em; }
 .cp-punch .cp-w { opacity: 0.3; transform: skewX(-4deg); transition: all 0.09s; }
 .cp-punch .cp-spoken { opacity: 1; }
 .cp-punch .cp-active { opacity: 1; color: var(--cp-hl); transform: skewX(-4deg) scale(1.22); }
 
 /* tracking — spaced caps expand open per line */
-.cp-tracking { letter-spacing: 0.35em; text-shadow: 0 0.08em 0.18em rgba(0, 0, 0, 0.8); animation: cp-track-in 0.5s ease both; }
+.cp-tracking { font-size: 1.35em; letter-spacing: 0.35em; text-shadow: 0 0.08em 0.18em rgba(0, 0, 0, 0.8); animation: cp-track-in 0.5s ease both; }
 .cp-tracking .cp-w { opacity: 0.45; transition: opacity 0.09s; }
 .cp-tracking .cp-spoken, .cp-tracking .cp-active { opacity: 1; }
 .cp-tracking .cp-active { color: var(--cp-hl); }
 @keyframes cp-track-in { from { letter-spacing: 0.05em; opacity: 0; } to { letter-spacing: 0.35em; opacity: 1; } }
 
 /* neon — glow in highlight color, tube flicker */
-.cp-neon { font-weight: 700; font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.06em;
+.cp-neon { font-weight: 700; font-size: 1.3em; text-transform: uppercase; letter-spacing: 0.06em;
   text-shadow: 0 0 0.22em var(--cp-hl), 0 0 0.55em var(--cp-hl), 0 0 1em var(--cp-hl); }
 .cp-neon .cp-w { opacity: 0.3; transition: opacity 0.12s; }
 .cp-neon .cp-spoken { opacity: 0.85; }
@@ -223,7 +228,7 @@ function charOn(word, index) {
 @keyframes cp-neon-flick { 0% { opacity: 0.15; } 40% { opacity: 1; } 60% { opacity: 0.45; } 100% { opacity: 1; } }
 
 /* news — lower-third bar grows word by word */
-.cp-news { font-weight: 800; font-size: 0.75em; background: var(--cp-bg, #fff); color: #111;
+.cp-news { font-weight: 800; font-size: 0.95em; background: var(--cp-bg, #fff); color: #111;
   padding: 0.5em 0.75em; border-radius: 0.22em; box-shadow: 0 0.35em 1.2em rgba(0, 0, 0, 0.45); text-align: left; }
 .cp-news .cp-w { display: none; margin: 0 0.12em 0 0; }
 .cp-news .cp-spoken, .cp-news .cp-active { display: inline-block; }
@@ -231,7 +236,7 @@ function charOn(word, index) {
 .cp-news .cp-caret { background: currentColor; width: 0.45em; height: 0.95em; }
 
 /* marker — handwritten stamp-in */
-.cp-marker { font-size: 1.05em; rotate: -2deg; text-shadow: 0.04em 0.06em 0 rgba(0, 0, 0, 0.6); }
+.cp-marker { font-size: 1.45em; rotate: -2deg; text-shadow: 0.04em 0.06em 0 rgba(0, 0, 0, 0.6); }
 .cp-marker .cp-unspoken { opacity: 0; transform: rotate(4deg) scale(1.35); }
 .cp-marker .cp-spoken, .cp-marker .cp-active { opacity: 1; transform: none; transition: all 0.18s ease-out; }
 .cp-marker .cp-active { color: var(--cp-hl); }
@@ -249,7 +254,7 @@ function charOn(word, index) {
   opacity: 1;
   color: var(--cp-hl);
 }
-.cp-beast.cp-multi, .cp-comic.cp-multi, .cp-glitch.cp-multi { font-size: 1.1em; }
+.cp-beast.cp-multi, .cp-comic.cp-multi, .cp-glitch.cp-multi { font-size: 1.4em; }
 
 /* user overrides */
 .cp-underline .cp-active { text-decoration: underline; text-decoration-thickness: 0.07em; text-underline-offset: 0.14em; }
