@@ -17,12 +17,21 @@ trait BuildsAnimatedCaptions
     /** Presets rendered as ALL CAPS on export (mirrors the CSS text-transform). */
     protected const ANIM_UPPERCASE = ['beast', 'comic', 'sticker', 'karaoke', 'blur', 'punch', 'tracking', 'neon'];
 
-    /** Font-size multiplier per preset (mirrors the component's em scale). */
+    /**
+     * Font-size multiplier per preset — these ARE the `font-size: Xem` values
+     * in CaptionPreview.vue, so preview and export land on the same fraction
+     * of frame height (buildASSCaption already scales the editor's own
+     * CAPTION_SIZE_MAP px to the export resolution). They were previously
+     * ~0.62x these values, which is why every preset exported smaller than
+     * it previewed.
+     */
     protected const ANIM_FONT_SCALE = [
-        'beast' => 1.55, 'comic' => 1.40, 'glitch' => 1.45, 'sticker' => 1.15,
-        'punch' => 1.10, 'blur' => 1.10, 'marker' => 1.05, 'neon' => 0.95,
-        'stream' => 0.85, 'news' => 0.75,
+        'beast' => 2.50, 'comic' => 2.10, 'glitch' => 2.10, 'sticker' => 1.70,
+        'blur' => 1.60, 'punch' => 1.55, 'karaoke' => 1.50, 'wave' => 1.50,
+        'box' => 1.45, 'marker' => 1.45, 'slide' => 1.40, 'tracking' => 1.35,
+        'neon' => 1.30, 'stream' => 1.15, 'news' => 0.95,
     ];
+
 
     /**
      * Heavy-cut font substitution: libass's Bold flag only reaches weight
@@ -499,11 +508,39 @@ trait BuildsAnimatedCaptions
 
                 // spoken now — pops, tilts, holds the highlight colour
                 if ($activeEnd > $activeStart) {
-                    $events[] = [
-                        $this->formatASSTime($activeStart),
-                        $this->formatASSTime($activeEnd),
-                        $this->animPositionedOverride($animation, 'active', $x, $y, $layout['fontSize'], $highlight, $underline, $wi).$text,
-                    ];
+                    if ($animation === 'wave') {
+                        // A hop is up-then-down; \move is a single linear leg,
+                        // so the active word is split into two events. Mirrors
+                        // the preview's translateY(-0.32em) at 40% of 320ms.
+                        $lift = $fontSize * 0.32;
+                        $apex = min($activeStart + 0.128, $activeEnd);
+
+                        $events[] = [
+                            $this->formatASSTime($activeStart),
+                            $this->formatASSTime($apex),
+                            sprintf(
+                                '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,128)\\1c%s\\t(0,128,\\fscx112\\fscy112)}',
+                                $x, $y, $x, $y - $lift, $highlight
+                            ).$text,
+                        ];
+
+                        if ($activeEnd > $apex) {
+                            $events[] = [
+                                $this->formatASSTime($apex),
+                                $this->formatASSTime($activeEnd),
+                                sprintf(
+                                    '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,192)\\1c%s\\fscx112\\fscy112\\t(0,192,\\fscx100\\fscy100)}',
+                                    $x, $y - $lift, $x, $y, $highlight
+                                ).$text,
+                            ];
+                        }
+                    } else {
+                        $events[] = [
+                            $this->formatASSTime($activeStart),
+                            $this->formatASSTime($activeEnd),
+                            $this->animPositionedOverride($animation, 'active', $x, $y, $layout['fontSize'], $highlight, $underline, $wi).$text,
+                        ];
+                    }
                 }
 
                 // already said

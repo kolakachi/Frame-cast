@@ -2610,10 +2610,23 @@ const selectedCaptionFont = computed(
       group: "Custom",
     }
 );
-const captionFontStyle = computed(() => ({
-  fontFamily: fontFamilyValue(captionFontDraft.value || DEFAULT_CAPTION_FONT),
-  fontSize: CAPTION_SIZE_MAP[captionSizeDraft.value] || "17px",
-}));
+const captionFontStyle = computed(() => {
+  // CAPTION_SIZE_MAP is calibrated to a 480px-tall preview, and the export
+  // scales those same px by playResY/480. But the preview box keeps its
+  // longest side at 480, so a 16:9 project previews only 270px tall — a
+  // fixed px size there rendered captions ~1.8x larger than they export.
+  // Scale by the pane's actual height so both sides stay the same fraction
+  // of the frame at every aspect ratio.
+  const ratio = project.value?.aspect_ratio || "9:16";
+  const [w, h] = { "9:16": [9, 16], "16:9": [16, 9], "1:1": [1, 1] }[ratio] || [9, 16];
+  const paneHeight = Math.round(h * (480 / Math.max(w, h)));
+  const basePx = parseFloat(CAPTION_SIZE_MAP[captionSizeDraft.value] || "17px");
+
+  return {
+    fontFamily: fontFamilyValue(captionFontDraft.value || DEFAULT_CAPTION_FONT),
+    fontSize: `${(basePx * (paneHeight / 480)).toFixed(2)}px`,
+  };
+});
 const activeCaptionSettings = computed(
   () => activeScene.value?.caption_settings ?? activeScene.value?.caption_settings_json ?? {}
 );

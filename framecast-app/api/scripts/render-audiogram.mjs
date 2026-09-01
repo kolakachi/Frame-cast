@@ -439,12 +439,14 @@ function captionClassName(style, enabled) {
 
 function captionFontSize(size, height) {
   const base = (17 * height) / 480;
+  // Ratios of the editor's CAPTION_SIZE_MAP (13/17/23/30 px) — the same
+  // scale buildASSCaption uses, so all three renderers agree.
   const multiplier = size === "small"
-    ? 0.76
+    ? 13 / 17
     : size === "large"
-      ? 1.35
+      ? 23 / 17
       : size === "xlarge"
-        ? 1.76
+        ? 30 / 17
         : 1;
   return `${Math.round(base * multiplier)}px`;
 }
@@ -819,7 +821,13 @@ function buildHtml() {
       // ── Animated caption presets — deterministic per-frame styling ──────
       // Frames render out of real time, so every transform is a pure
       // function of the word's tRel/frac (no CSS animations or transitions).
-      var ANIM_FONT_SCALE = { beast: 1.55, comic: 1.4, glitch: 1.45, sticker: 1.15, punch: 1.1, blur: 1.1, marker: 1.05, neon: 0.95, stream: 0.85, news: 0.75 };
+      // Must equal ANIM_FONT_SCALE in BuildsAnimatedCaptions.php and the
+      // font-size em values in CaptionPreview.vue, or audiogram scenes
+      // export captions at a different size than the video scenes beside
+      // them in the same project.
+      var ANIM_FONT_SCALE = { beast: 2.5, comic: 2.1, glitch: 2.1, sticker: 1.7, blur: 1.6,
+        punch: 1.55, karaoke: 1.5, wave: 1.5, box: 1.45, marker: 1.45, slide: 1.4,
+        tracking: 1.35, neon: 1.3, stream: 1.15, news: 0.95 };
 
       function clamp01(x) { return Math.min(1, Math.max(0, x)); }
       function easeOutBack(x) {
