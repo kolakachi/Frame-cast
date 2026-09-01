@@ -1638,9 +1638,11 @@ const MOTION_INTENSITY_OPTIONS = [
   { value: "dramatic", label: "Dramatic" },
 ];
 const VOICE_SPEED_OPTIONS = [
-  // 0.7 floor chosen by ear against a real cloned voice: 0.8 was barely
-  // noticeable, 0.6 audibly stretched, 0.7 reads as natural deliberate
-  // speech. (ElevenLabs ships the same 0.7 floor on its speed setting.)
+  // Floor set to 0.6 by founder ear-test against a real cloned voice.
+  // 0.7 reads as natural deliberate speech; 0.6 is the acceptable edge.
+  // (Applied via pitch-preserving atempo on our side for Gemini/Chatterbox,
+  // natively by OpenAI for its voices — same technique either way.)
+  { value: "0.6", label: "0.6x" },
   { value: "0.7", label: "0.7x" },
   { value: "0.8", label: "0.8x" },
   { value: "1.0", label: "1.0x" },
