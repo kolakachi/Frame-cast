@@ -40,6 +40,7 @@ class CaptionPresetController extends Controller
             'highlight_color'  => ['nullable', 'string', 'max:20'],
             'caption_color'    => ['nullable', 'string', 'max:20'],
             'caption_position' => ['nullable', 'string', 'in:bottom_third,center,top_third'],
+            'animation_type'   => ['nullable', 'string', 'max:30'],
         ]);
 
         $preset = CaptionPreset::query()->create([
@@ -52,6 +53,7 @@ class CaptionPresetController extends Controller
             'highlight_color'  => $validated['highlight_color'] ?? null,
             'caption_color'    => $validated['caption_color'] ?? null,
             'caption_position' => $validated['caption_position'] ?? null,
+            'animation_type'   => $validated['animation_type'] ?? null,
         ]);
 
         return response()->json(['data' => ['caption_preset' => $this->serialize($preset)], 'meta' => []], 201);
@@ -88,6 +90,7 @@ class CaptionPresetController extends Controller
             'highlight_color'  => $preset->highlight_color,
             'caption_color'    => $preset->caption_color,
             'caption_position' => $preset->caption_position,
+            'animation_type'   => $preset->animation_type,
             'created_at'       => $preset->created_at?->toISOString(),
         ];
     }

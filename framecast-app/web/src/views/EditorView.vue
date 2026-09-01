@@ -12,6 +12,8 @@ import MediaPickerModal from "../components/MediaPickerModal.vue";
 import SchedulePostModal from "../components/SchedulePostModal.vue";
 import UiSelect from "../components/UiSelect.vue";
 import VoiceCloneModal from "../components/VoiceCloneModal.vue";
+import CaptionPreview from "../components/CaptionPreview.vue";
+import { CAPTION_ANIMATIONS, animationByKey, panelRowAnimations, syntheticTimedWords } from "../composables/captionPresets";
 import NotifBell from "../components/NotifBell.vue";
 
 const route = useRoute();
@@ -1602,12 +1604,88 @@ const DEFAULT_CAPTION_SETTINGS = Object.freeze({
   color: "#ffffff",
   size: "medium",
   preset_id: null,
+  // Animation layer — absent/plain on every pre-existing project.
+  animation: "plain",
+  highlight_style: "color",
+  panel_color: null,
+  backdrop: null, // null = the preset decides (panel presets on, others off)
 });
 const captionFontDraft = ref(DEFAULT_CAPTION_FONT);
 const captionColorDraft = ref("#ffffff");
 const captionSizeDraft = ref("medium");
 const captionHighlightColorDraft = ref("#ff6b35");
+const captionAnimationDraft = ref("plain");
+const captionHighlightStyleDraft = ref("color");
+const captionPanelColorDraft = ref("");
+const captionBackdropDraft = ref(null);
+const captionEffectModalOpen = ref(false);
 const CAPTION_COLOR_SWATCHES = ["#ffffff","#ffff00","#ff6b35","#ff4444","#44ff88","#44aaff","#cc88ff","#000000"];
+const CAPTION_PANEL_SWATCHES = ["", "rgba(0,0,0,0.62)", "#ffffff", "#7c5cff", "#0b2a12", "#ffd21e", "#c62828", "#0d2b52"];
+
+// --- Caption animation presets (panel row + modal + live preview) ---
+const captionPanelRow = computed(() => panelRowAnimations(captionAnimationDraft.value));
+const activeCaptionAnimation = computed(() => animationByKey(captionAnimationDraft.value));
+const captionBackdropChecked = computed({
+  get: () =>
+    captionBackdropDraft.value === null
+      ? activeCaptionAnimation.value.panel
+      : captionBackdropDraft.value !== false,
+  set: (value) => {
+    captionBackdropDraft.value = value;
+  },
+});
+
+function selectCaptionAnimation(key) {
+  const preset = animationByKey(key);
+  captionAnimationDraft.value = preset.key;
+  // Preset default font lands in the picker so the user sees + can change it.
+  if (preset.font) captionFontDraft.value = preset.font;
+  // Panel presets carry a panel by design — auto-enable the backdrop switch.
+  if (preset.panel) captionBackdropDraft.value = true;
+  captionEffectModalOpen.value = false;
+}
+
+const captionPreviewSettings = computed(() => ({
+  animation: captionAnimationDraft.value,
+  highlight_mode: captionHighlightDraft.value,
+  highlight_style: captionHighlightStyleDraft.value,
+  color: captionColorDraft.value,
+  highlight_color: captionHighlightColorDraft.value,
+  panel_color: captionPanelColorDraft.value || null,
+  backdrop: captionBackdropDraft.value === null ? undefined : captionBackdropDraft.value,
+}));
+
+const captionPreviewTimedWords = computed(() => {
+  const timed = captionTimingWords(activeScene.value);
+  if (timed.length > 0) return timed;
+  return syntheticTimedWords(
+    sceneScriptDraft.value || activeScene.value?.script_text,
+    Number(activeScene.value?.duration_seconds) || 0
+  );
+});
+
+// Animated presets need a smooth playhead; the debounced playProgress ticks
+// are too coarse. rAF only runs while playing AND an animation is selected.
+const captionClock = ref(0);
+let captionClockRaf = null;
+function captionClockTick() {
+  captionClock.value = currentCaptionSeconds();
+  captionClockRaf = requestAnimationFrame(captionClockTick);
+}
+watch([isPreviewPlaying, captionAnimationDraft], ([playing, animation]) => {
+  if (captionClockRaf) {
+    cancelAnimationFrame(captionClockRaf);
+    captionClockRaf = null;
+  }
+  if (playing && animation !== "plain") captionClockTick();
+  else captionClock.value = currentCaptionSeconds();
+});
+watch(playProgress, () => {
+  if (!isPreviewPlaying.value) captionClock.value = currentCaptionSeconds();
+});
+onBeforeUnmount(() => {
+  if (captionClockRaf) cancelAnimationFrame(captionClockRaf);
+});
 const CAPTION_SIZE_MAP = { small: "13px", medium: "17px", large: "23px", xlarge: "30px" };
 const fontDropdownOpen = ref(false);
 const captionSaveState = ref("idle");
@@ -1803,6 +1881,11 @@ const CAPTION_HIGHLIGHT_OPTIONS = [
   { value: "word_by_word", label: "Word-by-word" },
   { value: "line_by_line", label: "Line-by-line" },
   { value: "none", label: "None" },
+];
+const CAPTION_HIGHLIGHT_STYLE_OPTIONS = [
+  { value: "color", label: "Color the spoken word" },
+  { value: "underline", label: "Color + underline" },
+  { value: "plain", label: "Motion only, no color" },
 ];
 const CAPTION_POSITION_OPTIONS = [
   { value: "bottom_third", label: "Bottom third" },
@@ -2629,6 +2712,11 @@ watch(
       captionColorDraft.value = captionSettings.color || "#ffffff";
       captionSizeDraft.value = captionSettings.size || "medium";
       captionHighlightColorDraft.value = captionSettings.highlight_color || "#ff6b35";
+      captionAnimationDraft.value = String(captionSettings.animation || "plain");
+      captionHighlightStyleDraft.value = String(captionSettings.highlight_style || "color");
+      captionPanelColorDraft.value = captionSettings.panel_color || "";
+      captionBackdropDraft.value =
+        captionSettings.backdrop === undefined ? null : captionSettings.backdrop;
       fontDropdownOpen.value = false;
       const motionSettings = scene?.motion_settings || scene?.motion_settings_json || {};
       motionEffectDraft.value = String(motionSettings.effect || "zoom_in");
@@ -2815,7 +2903,7 @@ watch(sceneScriptDraft, (draft) => {
   }, 700);
 });
 
-watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPositionDraft, captionFontDraft, captionColorDraft, captionSizeDraft, captionHighlightColorDraft], () => {
+watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPositionDraft, captionFontDraft, captionColorDraft, captionSizeDraft, captionHighlightColorDraft, captionAnimationDraft, captionHighlightStyleDraft, captionPanelColorDraft, captionBackdropDraft], () => {
   const scene = activeScene.value;
 
   if (!scene) return;
@@ -2831,6 +2919,10 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
     color: captionColorDraft.value,
     size: captionSizeDraft.value,
     preset_id: savedCaptions.preset_id || null,
+    animation: captionAnimationDraft.value,
+    highlight_style: captionHighlightStyleDraft.value,
+    panel_color: captionPanelColorDraft.value || null,
+    backdrop: captionBackdropDraft.value,
   };
 
   if (
@@ -2841,7 +2933,11 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
     String(savedCaptions.font || DEFAULT_CAPTION_FONT) === nextSettings.font &&
     String(savedCaptions.color || "#ffffff") === nextSettings.color &&
     String(savedCaptions.size || "medium") === nextSettings.size &&
-    String(savedCaptions.highlight_color || "#ff6b35") === nextSettings.highlight_color
+    String(savedCaptions.highlight_color || "#ff6b35") === nextSettings.highlight_color &&
+    String(savedCaptions.animation || "plain") === nextSettings.animation &&
+    String(savedCaptions.highlight_style || "color") === nextSettings.highlight_style &&
+    (savedCaptions.panel_color || null) === nextSettings.panel_color &&
+    (savedCaptions.backdrop ?? null) === (nextSettings.backdrop ?? null)
   ) {
     if (captionSaveTimer) {
       window.clearTimeout(captionSaveTimer);
@@ -4943,6 +5039,7 @@ function applyCaptionPreset(preset) {
   if (preset.highlight_color) captionHighlightColorDraft.value = preset.highlight_color;
   if (preset.caption_color) captionColorDraft.value = preset.caption_color;
   if (preset.caption_position) captionPositionDraft.value = preset.caption_position;
+  if (preset.animation_type) captionAnimationDraft.value = preset.animation_type;
   // watcher autosaves
 }
 
@@ -4960,6 +5057,7 @@ async function saveCaptionPreset() {
       highlight_color: captionHighlightColorDraft.value || null,
       caption_color: captionColorDraft.value || null,
       caption_position: captionPositionDraft.value || null,
+      animation_type: captionAnimationDraft.value || null,
     });
     const created = response.data?.data?.caption_preset;
     if (created) captionPresets.value = [...captionPresets.value, created].sort((a, b) => a.name.localeCompare(b.name));
@@ -5450,6 +5548,10 @@ async function applyCaptionsToAllScenes() {
     color: captionColorDraft.value,
     size: captionSizeDraft.value,
     preset_id: activeCaptionSettings.value?.preset_id || null,
+    animation: captionAnimationDraft.value,
+    highlight_style: captionHighlightStyleDraft.value,
+    panel_color: captionPanelColorDraft.value || null,
+    backdrop: captionBackdropDraft.value,
   };
 
   applyAllState.value = "applying";
@@ -6641,7 +6743,13 @@ async function flushActiveSceneDrafts() {
       position: captionPositionDraft.value,
       font: captionFontDraft.value,
       highlight_color: savedCaptions.highlight_color || "#ff6b35",
+      color: captionColorDraft.value,
+      size: captionSizeDraft.value,
       preset_id: savedCaptions.preset_id || null,
+      animation: captionAnimationDraft.value,
+      highlight_style: captionHighlightStyleDraft.value,
+      panel_color: captionPanelColorDraft.value || null,
+      backdrop: captionBackdropDraft.value,
     };
 
     if (
@@ -6650,7 +6758,8 @@ async function flushActiveSceneDrafts() {
       String(savedCaptions.style_key || "impact") !== nextCaptions.style_key ||
       String(savedCaptions.highlight_mode || "keywords") !== nextCaptions.highlight_mode ||
       String(savedCaptions.position || "bottom_third") !== nextCaptions.position ||
-      String(savedCaptions.font || DEFAULT_CAPTION_FONT) !== nextCaptions.font
+      String(savedCaptions.font || DEFAULT_CAPTION_FONT) !== nextCaptions.font ||
+      String(savedCaptions.animation || "plain") !== nextCaptions.animation
     ) {
       if (captionSaveTimer) {
         window.clearTimeout(captionSaveTimer);
@@ -7501,7 +7610,7 @@ onBeforeUnmount(() => {
                 <div class="preview-watermark">WYVSTUDIO</div>
                 <div class="preview-timer">{{ previewTimer.elapsed }}</div>
                 <div
-                  v-if="captionEnabledDraft && captionHighlightDraft !== 'none'"
+                  v-if="captionEnabledDraft && captionHighlightDraft !== 'none' && captionAnimationDraft === 'plain'"
                   class="preview-caption"
                   :class="captionPreviewClass"
                   :style="[captionPositionStyle, captionFontStyle]"
@@ -7520,6 +7629,17 @@ onBeforeUnmount(() => {
                   >
                     {{ word.text }}
                   </span>
+                </div>
+                <div
+                  v-else-if="captionEnabledDraft && captionHighlightDraft !== 'none' && captionsCanRender"
+                  class="preview-caption preview-caption-animated"
+                  :style="[captionPositionStyle, captionFontStyle]"
+                >
+                  <CaptionPreview
+                    :words="captionPreviewTimedWords"
+                    :seconds="captionClock"
+                    :settings="captionPreviewSettings"
+                  />
                 </div>
               </div>
             </div>
@@ -8724,6 +8844,50 @@ onBeforeUnmount(() => {
                   </label>
                 </div>
                 <div class="micro-label" style="margin-bottom:6px;">Caption effect</div>
+                <div class="caption-anim-row">
+                  <button
+                    v-for="anim in captionPanelRow"
+                    :key="anim.key"
+                    type="button"
+                    :class="['caption-anim-tile', captionAnimationDraft === anim.key ? 'active' : '']"
+                    :title="anim.desc"
+                    @click="selectCaptionAnimation(anim.key)"
+                  >
+                    <span class="caption-anim-sample">
+                      <CaptionPreview :demo="true" :settings="{ animation: anim.key, highlight_color: captionHighlightColorDraft }" />
+                    </span>
+                    <span class="caption-anim-name">{{ anim.name }}</span>
+                  </button>
+                  <button type="button" class="caption-anim-tile caption-anim-more" @click="captionEffectModalOpen = true">
+                    <span class="caption-anim-sample caption-anim-more-icon">⊞</span>
+                    <span class="caption-anim-name">View all</span>
+                  </button>
+                </div>
+                <div class="control-row top-space">
+                  <span class="control-name">Highlight style</span>
+                  <UiSelect v-model="captionHighlightStyleDraft" :options="CAPTION_HIGHLIGHT_STYLE_OPTIONS" />
+                </div>
+                <div class="caption-toggle-row">
+                  <span class="control-name">Backdrop panel</span>
+                  <label class="caption-toggle">
+                    <input v-model="captionBackdropChecked" type="checkbox" />
+                    <span>{{ captionBackdropChecked ? "On" : "Off" }}</span>
+                  </label>
+                </div>
+                <div v-if="captionBackdropChecked">
+                  <div class="micro-label" style="margin:8px 0 6px;">Panel color</div>
+                  <div class="caption-color-row">
+                    <div
+                      v-for="swatch in CAPTION_PANEL_SWATCHES"
+                      :key="'pc-' + (swatch || 'auto')"
+                      :class="['color-swatch', (captionPanelColorDraft || '') === swatch ? 'active' : '', swatch === '' ? 'swatch-auto' : '']"
+                      :style="swatch ? { background: swatch, borderColor: swatch === '#ffffff' ? '#555' : swatch } : {}"
+                      :title="swatch || 'Auto (preset default)'"
+                      @click="captionPanelColorDraft = swatch"
+                    ></div>
+                  </div>
+                </div>
+                <div class="micro-label" style="margin:10px 0 6px;">Base style</div>
                 <div class="caption-style-grid">
                   <div
                     :class="['caption-style-opt', captionStyleDraft === 'impact' ? 'active' : '']"
@@ -9334,6 +9498,39 @@ onBeforeUnmount(() => {
           <button class="btn btn-primary danger-btn" type="button" :disabled="deleteScenePending" @click="confirmDeleteScene">
             {{ deleteScenePending ? "Deleting..." : "Delete Scene" }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Caption effect gallery -->
+    <div
+      :class="`modal-backdrop ${captionEffectModalOpen ? 'open' : ''}`"
+      @click="captionEffectModalOpen = false"
+    ></div>
+    <div v-if="captionEffectModalOpen" class="modal-shell" role="dialog" aria-modal="true">
+      <div class="confirm-modal caption-effect-modal">
+        <div class="confirm-modal-title">Caption effects</div>
+        <div class="confirm-modal-copy">
+          Words animate on your voiceover's real timing. Your font, colors and
+          position apply on top of any effect.
+        </div>
+        <div class="caption-effect-grid">
+          <button
+            v-for="anim in CAPTION_ANIMATIONS"
+            :key="'m-' + anim.key"
+            type="button"
+            :class="['caption-anim-tile', 'caption-anim-tile-lg', captionAnimationDraft === anim.key ? 'active' : '']"
+            @click="selectCaptionAnimation(anim.key)"
+          >
+            <span class="caption-anim-sample">
+              <CaptionPreview :demo="true" :settings="{ animation: anim.key, highlight_color: captionHighlightColorDraft, panel_color: captionPanelColorDraft || null }" />
+            </span>
+            <span class="caption-anim-name">{{ anim.name }}</span>
+            <span v-if="anim.badge" class="caption-anim-badge">{{ anim.badge }}</span>
+          </button>
+        </div>
+        <div class="confirm-modal-actions">
+          <button class="btn btn-ghost" type="button" @click="captionEffectModalOpen = false">Close</button>
         </div>
       </div>
     </div>
@@ -12929,6 +13126,116 @@ select.preset-select {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* --- Caption animation presets --- */
+.caption-anim-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+
+.caption-anim-tile {
+  position: relative;
+  flex: 0 0 72px;
+  width: 72px;
+  height: 64px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+  transition: 0.2s;
+  color: var(--text);
+  font-family: inherit;
+}
+
+.caption-anim-tile:hover {
+  border-color: var(--text-muted);
+}
+
+.caption-anim-tile.active {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.caption-anim-sample {
+  font-size: 9px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.caption-anim-name {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.caption-anim-more-icon {
+  font-size: 18px;
+  color: var(--accent);
+}
+
+.caption-anim-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.caption-effect-modal {
+  width: min(680px, 92vw);
+  max-height: 84vh;
+  overflow-y: auto;
+}
+
+.caption-effect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.caption-anim-tile-lg {
+  flex: none;
+  width: 100%;
+  height: 92px;
+}
+
+.caption-anim-tile-lg .caption-anim-sample {
+  font-size: 12px;
+  height: 52px;
+}
+
+.color-swatch.swatch-auto {
+  background: linear-gradient(135deg, #333 50%, #fff 50%);
+  border-color: #555;
+}
+
+.preview-caption-animated {
+  display: flex;
+  justify-content: center;
+  text-align: center;
 }
 
 .hooks-block {

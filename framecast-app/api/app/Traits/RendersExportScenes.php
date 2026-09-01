@@ -20,6 +20,8 @@ use Symfony\Component\Process\Process;
  */
 trait RendersExportScenes
 {
+    use BuildsAnimatedCaptions;
+
     // ── Dimensions ───────────────────────────────────────────────────────────
 
     /**
@@ -82,6 +84,12 @@ trait RendersExportScenes
         $captionSize = (string) ($captionSettings['size'] ?? 'medium');
         $captionHighlightColor = (string) ($captionSettings['highlight_color'] ?? '#ff6b35');
         $captionText = (string) ($scene->script_text ?: $scene->label ?: 'Framecast');
+        $captionAnimationOptions = [
+            'animation' => (string) ($captionSettings['animation'] ?? 'plain'),
+            'highlight_style' => (string) ($captionSettings['highlight_style'] ?? 'color'),
+            'panel_color' => $captionSettings['panel_color'] ?? null,
+            'backdrop' => $captionSettings['backdrop'] ?? null,
+        ];
 
         if ($captionHighlightMode === 'none') {
             $captionEnabled = false;
@@ -136,6 +144,7 @@ trait RendersExportScenes
                     $dimensions, $assFile, $captionHighlightMode,
                     $this->captionTimingWordsFromAsset($audioAsset),
                     $captionColor, $captionSize, $captionHighlightColor,
+                    $captionAnimationOptions,
                 );
                 $tail[] = "subtitles={$assFile}";
                 $cleanupPaths[] = $assFile;
@@ -754,6 +763,7 @@ trait RendersExportScenes
         string $captionColor = '#ffffff',
         string $captionSize = 'medium',
         string $captionHighlightColor = '#ff6b35',
+        array $animationOptions = [],
     ): void {
         $playResX = $dimensions['width'];
         $playResY = $dimensions['height'];
@@ -785,6 +795,41 @@ trait RendersExportScenes
         };
         $fontSize = (int) round($baseFontSize * $sizeMultiplier);
         $primaryColor = $this->hexToASS($captionColor);
+
+        $animation = (string) ($animationOptions['animation'] ?? 'plain');
+        if ($animation !== '' && $animation !== 'plain') {
+            $animWords = $timedWords;
+            if (empty($animWords)) {
+                // Same fallback as the static builders: spread the script
+                // evenly across the scene duration.
+                $plainWords = array_values(array_filter(preg_split('/\s+/', trim($text)) ?: []));
+                $per = count($plainWords) > 0 ? $duration / count($plainWords) : 0;
+                $animWords = [];
+                foreach ($plainWords as $i => $word) {
+                    $animWords[] = ['text' => $word, 'start' => $i * $per, 'end' => ($i + 1) * $per];
+                }
+            }
+
+            $content = $this->buildAnimatedASSContent($animation, $animWords, [
+                'playResX' => $playResX,
+                'playResY' => $playResY,
+                'alignment' => $alignment,
+                'marginV' => $marginV,
+                'marginLR' => $marginLR,
+                'fontName' => $fontName,
+                'fontSize' => $fontSize,
+                'primary' => $captionColor,
+                'highlight' => $captionHighlightColor,
+                'highlightStyle' => (string) ($animationOptions['highlight_style'] ?? 'color'),
+                'panelColor' => $animationOptions['panel_color'] ?? null,
+                'backdrop' => $animationOptions['backdrop'] ?? null,
+                'duration' => $duration,
+                'chunkOverride' => $highlightMode === 'word_by_word' ? 1 : 0,
+            ]);
+            file_put_contents($outputPath, $content);
+
+            return;
+        }
 
         $events = match ($highlightMode) {
             'word_by_word'           => $this->buildWordByWordEvents($text, $captionStyle, $duration, $timedWords, $captionHighlightColor),
