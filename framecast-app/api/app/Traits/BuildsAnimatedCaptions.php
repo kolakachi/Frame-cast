@@ -89,7 +89,7 @@ trait BuildsAnimatedCaptions
      * Stream and News are excluded: they're one growing run by design.
      */
     protected const ANIM_POSITIONED = [
-        'comic', 'slide', 'beast', 'sticker', 'karaoke', 'blur', 'wave', 'punch', 'marker',
+        'comic', 'slide', 'beast', 'sticker', 'karaoke', 'blur', 'wave', 'punch', 'marker', 'box',
     ];
 
     /** Whole-line tilt in ASS degrees (counter-clockwise), matching the CSS rotate. */
@@ -102,8 +102,8 @@ trait BuildsAnimatedCaptions
      * neighbours (Marker peaks at 135%, Punch 122%, Comic 107%).
      */
     protected const ANIM_WORD_GAP = [
-        'marker' => 0.34, 'comic' => 0.30, 'punch' => 0.28, 'blur' => 0.18,
-        'wave' => 0.18, 'sticker' => 0.14, 'beast' => 0.10, 'karaoke' => 0.10,
+        'marker' => 0.30, 'comic' => 0.26, 'punch' => 0.20, 'blur' => 0.12,
+        'wave' => 0.08, 'sticker' => 0.12, 'beast' => 0.10, 'karaoke' => 0.08,
     ];
 
     /** Words per line per preset (word_by_word highlight mode forces 1). */
@@ -152,35 +152,24 @@ trait BuildsAnimatedCaptions
         // News keeps its per-word marker even with the bar switched off (the
         // preview does — CSS background doesn't need the panel), and that
         // marker is also a \3c box.
-        $panelBGR = substr($panelColor, 2, 6); // strip &H … &
-        if (in_array($animation, ['box', 'news'], true) && ! $panelOn) {
-            $padding = max(4, (int) round($fontSize * 0.16));
-            // Shadow must be 0: under BorderStyle=3 it paints a filled box of
-            // its own, which ran the whole line as a grey band behind the
-            // words that aren't active.
-            $styleTail = sprintf('3,%d,0', $padding);
-            $outlineColourFull = '&HFF000000&'; // transparent until a word is active
-            $backColour = '&H80000000&';
-        } elseif ($panelOn) {
-            // BorderStyle=3: the "outline" becomes a filled box behind the
-            // text (its color+alpha = OutlineColour); Outline width is the
-            // padding. libass draws the box per override run, which is what
-            // makes per-word markers possible.
-            $padding = max(4, (int) round($fontSize * 0.35));
-            $styleTail = sprintf('3,%d,0', $padding);
-            $outlineColourFull = '&H'.$panelAlpha.$panelBGR.'&';
-            $backColour = '&H80000000&';
-        } else {
-            [$outlineEm, $shadowEm] = self::ANIM_EDGE[$animation] ?? [0.035, 0.05];
-            $outlinePx = $outlineEm > 0 ? max(1.0, $fontSize * $outlineEm) : 0.0;
-            $styleTail = sprintf('1,%.1f,%.1f', $outlinePx, max(1.0, $fontSize * $shadowEm));
-            // Neon's halo is a blurred outline in the highlight colour —
-            // blurring the default black outline just made a dark smudge.
-            $outlineColourFull = $animation === 'neon'
-                ? str_replace('&H', '&H00', $highlight)
-                : '&H00000000&';
-            $backColour = '&H80000000&';
+        // Every box — panel, pill, marker, backdrop — is drawn as a vector
+        // (see assRoundedRect) rather than BorderStyle=3, so corners can be
+        // rounded like the preview and a backdrop can stay static while the
+        // text animates over it. The style itself is always outline mode.
+        [$outlineEm, $shadowEm] = self::ANIM_EDGE[$animation] ?? [0.035, 0.05];
+        if ($isPanelPreset) {
+            // On the bar/console the mockup draws plain text — an outline and
+            // drop shadow there read as a blobby smear.
+            [$outlineEm, $shadowEm] = $panelOn ? [0.0, 0.0] : [0.030, 0.02];
         }
+        $outlinePx = $outlineEm > 0 ? max(1.0, $fontSize * $outlineEm) : 0.0;
+        $styleTail = sprintf('1,%.1f,%.1f', $outlinePx, max(1.0, $fontSize * $shadowEm));
+        // Neon's halo is a blurred outline in the highlight colour —
+        // blurring the default black outline just made a dark smudge.
+        $outlineColourFull = $animation === 'neon'
+            ? str_replace('&H', '&H00', $highlight)
+            : '&H00000000&';
+        $backColour = '&H80000000&';
 
         $primaryStyleColour = str_replace('&H', '&H00', $primary);
 
@@ -232,13 +221,29 @@ trait BuildsAnimatedCaptions
                 'marginV' => $ctx['marginV'],
                 'marginLR' => $ctx['marginLR'],
                 'outlinePx' => $outlinePx ?? 0.0,
+                'panelOn' => $panelOn,
+                'panelColor' => $panelColor,
+                'panelAlpha' => $panelAlpha,
             ]);
         }
 
+        $typewriterLayout = [
+            'fontName' => $fontName,
+            'fontSize' => $fontSize,
+            'playResX' => $ctx['playResX'],
+            'playResY' => $ctx['playResY'],
+            'alignment' => $ctx['alignment'],
+            'marginV' => $ctx['marginV'],
+            'panelOn' => $panelOn,
+            'panelColor' => $panelColor,
+            'panelAlpha' => $panelAlpha,
+            'animation' => $animation,
+        ];
+
         $events = match (true) {
             $positioned !== null => $positioned,
-            $animation === 'stream' => $this->animTypewriterEvents($lines, $highlight, true),
-            $animation === 'news' => $this->animTypewriterEvents($lines, $highlight, false),
+            $animation === 'stream' => $this->animTypewriterEvents($lines, $highlight, true, $typewriterLayout),
+            $animation === 'news' => $this->animTypewriterEvents($lines, $highlight, false, $typewriterLayout),
             $chunk === 1 => $this->animWordEvents($animation, $lines, $highlight, $underline),
             default => $this->animLineEvents($animation, $lines, $highlight, $underline, $fontSize),
         };
@@ -246,7 +251,7 @@ trait BuildsAnimatedCaptions
         $dialogue = array_map(
             static fn (array $e): string => sprintf(
                 'Dialogue: %d,%s,%s,Default,,0,0,0,,%s',
-                $e[3] ?? 0, $e[0], $e[1], $e[2]
+                $e[3] ?? 1, $e[0], $e[1], $e[2]
             ),
             $events
         );
@@ -320,7 +325,7 @@ trait BuildsAnimatedCaptions
                 ),
                 // skew + color flicker settling to primary
                 'glitch' => sprintf(
-                    '\\fax0.25\\alpha&H60&\\1c&HFFFF00&\\t(0,60,\\1c&HFF00FF&)\\t(60,120,\\alpha&H00&\\fax-0.12)\\t(120,200,\\fax0\\1c%s)',
+                    '\\1c%s\\fax-0.22\\alpha&H60&\\t(0,60,\\alpha&H00&\\fax0.10)\\t(60,160,\\fax0)',
                     $highlight,
                 ),
                 default => sprintf('\\1c%s', $highlight),
@@ -491,11 +496,58 @@ trait BuildsAnimatedCaptions
             $hideAt = $this->animLineHideAt($lineEnd, $nextStart, 0.35);
             $lineStart = $line[0]['start'];
 
+            // One static backdrop for the whole line. Attaching a box to each
+            // word made the backdrop scale and rotate along with whatever word
+            // was animating — Marker's looked like it was moving.
+            if ($layout['panelOn'] ?? false) {
+                $x0 = null;
+                $x1 = null;
+                foreach ($positions as $pi => $pos) {
+                    $x0 = $x0 === null ? $pos[0] - $widths[$pi] / 2 : min($x0, $pos[0] - $widths[$pi] / 2);
+                    $x1 = $x1 === null ? $pos[0] + $widths[$pi] / 2 : max($x1, $pos[0] + $widths[$pi] / 2);
+                }
+                $padX = $fontSize * 0.55;
+                $padY = $fontSize * 0.35;
+                $events[] = [
+                    $this->formatASSTime($lineStart),
+                    $this->formatASSTime($hideAt),
+                    $this->assRoundedRect(
+                        $x0 - $padX,
+                        $blockTop - $padY,
+                        ($x1 - $x0) + 2 * $padX,
+                        $blockHeight + 2 * $padY,
+                        $fontSize * 0.45,
+                        $layout['panelColor'] ?? '&H000000&',
+                        $layout['panelAlpha'] ?? '9E'
+                    ),
+                    0,
+                ];
+            }
+
             foreach ($line as $wi => $word) {
                 [$x, $y] = $positions[$wi];
                 $text = $this->escapeASSText($word['text']);
                 $activeStart = $word['start'];
                 $activeEnd = $wi + 1 < count($line) ? max($word['end'], $line[$wi + 1]['start']) : $hideAt;
+
+                // Box's pill, drawn so it can have the preview's corner radius.
+                if ($animation === 'box' && $activeEnd > $activeStart) {
+                    $padX = $fontSize * 0.18;
+                    $pillH = $fontSize * 1.06;
+                    $events[] = [
+                        $this->formatASSTime($activeStart),
+                        $this->formatASSTime($activeEnd),
+                        $this->assRoundedRect(
+                            $x - $widths[$wi] / 2 - $padX,
+                            $y - $pillH / 2,
+                            $widths[$wi] + 2 * $padX,
+                            $pillH,
+                            $fontSize * 0.28,
+                            $highlight
+                        ),
+                        0,
+                    ];
+                }
 
                 // waiting its turn
                 if ($activeStart > $lineStart) {
@@ -624,7 +676,7 @@ trait BuildsAnimatedCaptions
             // so it has to scale with the font — a flat \fsp8 was nearly
             // invisible next to the preview's 0.35em (~31px at this size).
             'tracking' => (function () use ($firstEventOfLine, $fontSize) {
-                $fsp = max(4.0, $fontSize * 0.30);
+                $fsp = max(4.0, $fontSize * 0.35);
                 return $firstEventOfLine
                     ? sprintf('{\\fsp%.1f\\t(0,500,\\fsp%.1f)}', $fsp * 0.15, $fsp)
                     : sprintf('{\\fsp%.1f}', $fsp);
@@ -670,7 +722,10 @@ trait BuildsAnimatedCaptions
             },
             'glitch' => match ($state) {
                 'unspoken' => '\\alpha&HA6&',
-                'active' => "\\fax0.25\\alpha&H60&\\1c&HFFFF00&\\t(0,60,\\1c&HFF00FF&)\\t(60,120,\\alpha&H00&\\fax-0.12)\\t(120,200,\\fax0\\1c{$highlight})",
+                // CSS skewX(+12deg) leans the opposite way to ASS \fax, so the
+                // signs are flipped; and the word settles on the user's
+                // highlight colour rather than a hardcoded magenta.
+                'active' => "\\1c{$highlight}\\fax-0.22\\alpha&H60&\\t(0,60,\\alpha&H00&\\fax0.10)\\t(60,160,\\fax0)",
                 default => '',
             },
             'karaoke' => match ($state) {
@@ -683,8 +738,8 @@ trait BuildsAnimatedCaptions
                 // visible (its alpha is opaque); the rest stay transparent.
                 // Text colour flips with the pill's brightness so a dark
                 // highlight doesn't render dark-on-dark.
-                'active' => "\\3a&H00&\\3c{$highlight}\\1c".$this->assPillTextColor($highlight),
-                default => '\\3a&HFF&',
+                'active' => '\\1c'.$this->assPillTextColor($highlight),
+                default => '',
             },
             'sticker' => match ($state) {
                 'unspoken' => '\\alpha&HFF&',
@@ -693,7 +748,8 @@ trait BuildsAnimatedCaptions
             },
             'blur' => match ($state) {
                 'unspoken' => '\\alpha&HFF&',
-                'active' => "\\1c{$highlight}\\blur8\\fscx112\\fscy112\\t(0,250,\\blur0\\fscx100\\fscy100)",
+                // \blur8 over 250ms was barely visible at export sizes.
+                'active' => "\\1c{$highlight}\\blur22\\fscx112\\fscy112\\t(0,420,\\blur0\\fscx100\\fscy100)",
                 default => '',
             },
             'slide' => match ($state) {
@@ -707,9 +763,10 @@ trait BuildsAnimatedCaptions
                 default => '',
             },
             'punch' => match ($state) {
-                'unspoken' => '\\alpha&HB3&',
-                'active' => "\\1c{$highlight}\\fscx122\\fscy122",
-                default => '',
+                // \fax matches the preview's skewX(-4deg) on every word.
+                'unspoken' => '\\alpha&HB3&\\fax0.07',
+                'active' => "\\1c{$highlight}\\fax0.07\\fscx122\\fscy122",
+                default => '\\fax0.07',
             },
             'tracking' => match ($state) {
                 'unspoken' => '\\alpha&H8C&',
@@ -740,11 +797,64 @@ trait BuildsAnimatedCaptions
      * @param array<int,array<int,array{text:string,start:float,end:float}>> $lines
      * @return list<array{string,string,string}>
      */
-    protected function animTypewriterEvents(array $lines, string $highlight, bool $perCharacter): array
+    protected function animTypewriterEvents(array $lines, string $highlight, bool $perCharacter, array $layout = []): array
     {
         $events = [];
         $lineCount = count($lines);
         $caret = '\\h▌';
+
+        // Panel geometry. The bar/console is drawn as a rounded rect sized to
+        // whatever is on screen at that moment, so it grows with the typing
+        // and carries the preview's corner radius (a BorderStyle=3 box is
+        // always square). Needs metrics; without them we simply draw no panel.
+        $anim = $layout['animation'] ?? 'stream';
+        $panelOn = (bool) ($layout['panelOn'] ?? false);
+        $fontSize = (float) ($layout['fontSize'] ?? 0);
+        $fontName = (string) ($layout['fontName'] ?? '');
+        $metrics = $fontSize > 0 && $fontName !== '' ? app(\App\Services\Media\FontMetrics::class) : null;
+        $padX = $fontSize * ($anim === 'news' ? 0.75 : 0.70);
+        $padY = $fontSize * 0.50;
+        $radius = $fontSize * ($anim === 'news' ? 0.22 : 0.50);
+        $rowH = $fontSize * 1.18;
+        $maxWidth = max(100.0, ($layout['playResX'] ?? 1080) - 2 * $padX - 40);
+        $centreX = ($layout['playResX'] ?? 1080) / 2;
+        $bottom = match ($layout['alignment'] ?? 2) {
+            8 => (float) ($layout['marginV'] ?? 0) + $rowH,
+            5 => ($layout['playResY'] ?? 1920) / 2 + $rowH / 2,
+            default => ($layout['playResY'] ?? 1920) - ($layout['marginV'] ?? 0),
+        };
+
+        // Emits the panel behind one frame of typed text.
+        $panelFor = function (string $plain, string $start, string $end) use (
+            $metrics, $panelOn, $fontName, $fontSize, $padX, $padY, $radius,
+            $rowH, $maxWidth, $centreX, $bottom, $layout
+        ): ?array {
+            if (! $panelOn || $metrics === null) {
+                return null;
+            }
+            $w = $metrics->width($plain.' ▌', $fontName, $fontSize);
+            if ($w === null) {
+                return null;
+            }
+            $rows = max(1, (int) ceil($w / $maxWidth));
+            $boxW = min($w, $maxWidth) + 2 * $padX;
+            $boxH = $rows * $rowH + 2 * $padY;
+
+            return [
+                $start,
+                $end,
+                $this->assRoundedRect(
+                    $centreX - $boxW / 2,
+                    $bottom - $rows * $rowH - $padY,
+                    $boxW,
+                    $boxH,
+                    $radius,
+                    $layout['panelColor'] ?? '&H000000&',
+                    $layout['panelAlpha'] ?? '00'
+                ),
+                0,
+            ];
+        };
 
         foreach ($lines as $li => $line) {
             $nextStart = $li + 1 < $lineCount ? $lines[$li + 1][0]['start'] : null;
@@ -791,6 +901,10 @@ trait BuildsAnimatedCaptions
                         }
                         $partial = $this->escapeASSText(implode('', array_slice($chars, 0, $shown)));
                         $text = trim($prefixText.' '.$partial).$caret;
+                        $panel = $panelFor(trim($prefixText.' '.$partial), $this->formatASSTime($start), $this->formatASSTime($end));
+                        if ($panel !== null) {
+                            $events[] = $panel;
+                        }
                         $events[] = [$this->formatASSTime($start), $this->formatASSTime($end), $text];
                     }
                 } else {
@@ -800,18 +914,93 @@ trait BuildsAnimatedCaptions
                         continue;
                     }
                     $active = sprintf(
-                        '{\\3c%s\\3a&H00&\\1c%s}%s{\\r}',
-                        $highlight,
+                        '{\\1c%s}%s{\\r}',
                         $this->assPillTextColor($highlight),
                         $this->escapeASSText($word['text'])
                     );
                     $text = trim($prefixText.' ').($prefixText !== '' ? ' ' : '').$active.$caret;
+                    $plain = trim($prefixText.' '.$word['text']);
+                    $panel = $panelFor($plain, $this->formatASSTime($start), $this->formatASSTime($end));
+                    if ($panel !== null) {
+                        $events[] = $panel;
+                    }
+
+                    // Marker sweep behind the spoken word, drawn so it gets the
+                    // same rounding as the bar. Only while the line fits one
+                    // row — past that libass owns the wrap and we can't place it.
+                    if ($metrics !== null) {
+                        $full = $metrics->width($plain.' ▌', $fontName, $fontSize);
+                        $lead = $metrics->width($prefixText === '' ? '' : $prefixText.' ', $fontName, $fontSize);
+                        $wordW = $metrics->width($word['text'], $fontName, $fontSize);
+                        if ($full !== null && $lead !== null && $wordW !== null && $full <= $maxWidth) {
+                            // Sit the marker on the glyphs' real ink band —
+                            // deriving it from fontSize alone put it visibly
+                            // high, since libass renders an em smaller than
+                            // the nominal size.
+                            $vm = $metrics->verticalMetrics($fontName, $fontSize);
+                            $markH = ($vm['inkHeight'] ?? $fontSize * 0.75) * 1.30;
+                            $centreY = $vm !== null
+                                ? $bottom - $vm['descent'] - $vm['inkRise']
+                                : $bottom - $rowH / 2;
+                            $events[] = [
+                                $this->formatASSTime($start),
+                                $this->formatASSTime($end),
+                                $this->assRoundedRect(
+                                    $centreX - $full / 2 + $lead - $fontSize * 0.06,
+                                    $centreY - $markH / 2,
+                                    $wordW + $fontSize * 0.12,
+                                    $markH,
+                                    $fontSize * 0.15,
+                                    $highlight
+                                ),
+                                0,
+                            ];
+                        }
+                    }
                     $events[] = [$this->formatASSTime($start), $this->formatASSTime($end), $text];
                 }
             }
         }
 
         return $events;
+    }
+
+    /**
+     * A filled rounded rectangle, as an ASS vector drawing.
+     *
+     * BorderStyle=3 boxes are square-cornered and are drawn per override run,
+     * so they can't match the preview's border-radius and they scale/rotate
+     * with whatever word they're attached to. Drawing the shape ourselves
+     * gives real corner radii and lets a backdrop stay put while the text
+     * animates on top of it.
+     *
+     * Returns the Dialogue Text field; anchor is the rect's top-left.
+     */
+    protected function assRoundedRect(float $x, float $y, float $w, float $h, float $r, string $colour, string $alphaHex = '00'): string
+    {
+        $r = max(0.0, min($r, min($w, $h) / 2));
+        $w = round($w, 1);
+        $h = round($h, 1);
+        $r = round($r, 1);
+
+        // Corner control points sit on the corner itself — a good-enough
+        // circular approximation at these radii, and cheap to emit.
+        $path = sprintf(
+            'm %s 0 l %s 0 b %s 0 %s 0 %s %s l %s %s b %s %s %s %s %s %s l %s %s b 0 %s 0 %s 0 %s l 0 %s b 0 0 0 0 %s 0',
+            $r, $w - $r,
+            $w, $w, $w, $r,
+            $w, $h - $r,
+            $w, $h, $w, $h, $w - $r, $h,
+            $r, $h,
+            $h, $h, $h - $r,
+            $r,
+            $r
+        );
+
+        return sprintf(
+            '{\\an7\\pos(%.1f,%.1f)\\p1\\bord0\\shad0\\1c%s\\1a&H%s&}%s{\\p0}',
+            $x, $y, $colour, strtoupper($alphaHex), $path
+        );
     }
 
     /**

@@ -42,6 +42,38 @@ class FontMetrics
         return $units / $font['units'] * $fontSizePx;
     }
 
+    /**
+     * Where libass will actually put the glyphs, in pixels at $fontSizePx.
+     *
+     * Needed to place a marker/pill behind text that libass positions itself
+     * (alignment + margin), where guessing "centre = bottom - fontSize/2"
+     * lands visibly wrong: the rendered em is fontSize * upem/(winAsc+winDesc),
+     * so ink sits higher than the nominal size implies.
+     *
+     * - descent:  baseline offset up from the line box's bottom
+     * - inkRise:  centre of the cap..descender band, above the baseline
+     * - inkHeight: that band's height
+     *
+     * @return array{descent:float,inkRise:float,inkHeight:float}|null
+     */
+    public function verticalMetrics(string $family, float $fontSizePx): ?array
+    {
+        $font = $this->load($family);
+        if ($font === null || ($font['box'] ?? 0) <= 0) {
+            return null;
+        }
+
+        $emPx = $fontSizePx * $font['upem'] / $font['box'];
+        $cap = ($font['capHeight'] ?: (int) round($font['upem'] * 0.70)) / $font['upem'] * $emPx;
+        $desc = abs($font['descender']) / $font['upem'] * $emPx;
+
+        return [
+            'descent' => $fontSizePx * $font['winDescent'] / $font['box'],
+            'inkRise' => ($cap - $desc) / 2,
+            'inkHeight' => $cap + $desc,
+        ];
+    }
+
     /** @return array<int,int> */
     private function codepoints(string $text): array
     {
@@ -92,6 +124,9 @@ class FontMetrics
             // (2048 upem vs 2510 win height), which would drift every word
             // position. Verified empirically against libass renders.
             $units = $upem;
+            $winAscent = 0;
+            $winDescent = 0;
+            $capHeight = 0;
             if (isset($tables['OS/2'])) {
                 $os2 = $tables['OS/2']['offset'];
                 $winAscent = $this->uint16($data, $os2 + 74);
@@ -99,7 +134,12 @@ class FontMetrics
                 if ($winAscent + $winDescent > 0) {
                     $units = $winAscent + $winDescent;
                 }
+                // sCapHeight exists from OS/2 v2 onward; 0 means "unknown".
+                if ($this->uint16($data, $os2) >= 2 && $tables['OS/2']['length'] >= 90) {
+                    $capHeight = $this->int16($data, $os2 + 88);
+                }
             }
+            $descender = $this->int16($data, $tables['hhea']['offset'] + 6);
 
             $advances = [];
             $hmtx = $tables['hmtx']['offset'];
@@ -114,6 +154,11 @@ class FontMetrics
 
             self::$cache[$family] = [
                 'units' => $units,
+                'upem' => $upem,
+                'box' => $winAscent + $winDescent,
+                'winDescent' => $winDescent,
+                'capHeight' => max(0, $capHeight),
+                'descender' => $descender,
                 'advances' => $advances,
                 'cmap' => $cmap,
                 'default' => $advances[$numHMetrics - 1] ?? (int) round($units * 0.5),
@@ -248,6 +293,13 @@ class FontMetrics
         }
 
         return unpack('n', substr($data, $offset, 2))[1];
+    }
+
+    private function int16(string $data, int $offset): int
+    {
+        $v = $this->uint16($data, $offset);
+
+        return $v >= 0x8000 ? $v - 0x10000 : $v;
     }
 
     private function uint32(string $data, int $offset): int
