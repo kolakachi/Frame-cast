@@ -24,6 +24,21 @@ trait BuildsAnimatedCaptions
         'stream' => 0.85, 'news' => 0.75,
     ];
 
+    /**
+     * Heavy-cut font substitution: libass's Bold flag only reaches weight
+     * 700, so presets designed around 800/900 swap to the named family of
+     * the bundled cut (resources/fonts). Applied ONLY when the user is on
+     * the preset's default font — a custom font choice is left alone.
+     */
+    protected const ANIM_FONT_FAMILY = [
+        'beast' => ['Montserrat' => 'Montserrat Black'],
+        'punch' => ['Montserrat' => 'Montserrat Black'],
+        'karaoke' => ['Montserrat' => 'Montserrat ExtraBold'],
+        'box' => ['Nunito' => 'Nunito ExtraBold'],
+        'news' => ['Nunito' => 'Nunito ExtraBold'],
+        'stream' => ['Roboto Mono' => 'Roboto Mono Medium'],
+    ];
+
     /** Words per line per preset (word_by_word highlight mode forces 1). */
     protected const ANIM_CHUNK = [
         'beast' => 1, 'comic' => 1, 'glitch' => 1,
@@ -83,9 +98,11 @@ trait BuildsAnimatedCaptions
 
         $primaryStyleColour = str_replace('&H', '&H00', $primary);
 
+        $fontName = self::ANIM_FONT_FAMILY[$animation][$ctx['fontName']] ?? $ctx['fontName'];
+
         $style = sprintf(
             'Style: Default,%s,%d,%s,&H000000FF&,%s,%s,%d,%d,0,0,100,100,0,0,%s,%d,%d,%d,%d,1',
-            $ctx['fontName'],
+            $fontName,
             $fontSize,
             $primaryStyleColour,
             $outlineColourFull,
