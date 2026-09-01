@@ -89,6 +89,22 @@ return [
 
     // Product analytics. Same project key the SPA initialises posthog-js
     // with — server events join the person profiles identify() creates.
+    // Premium text brain (Claude via Replicate) for the templates where
+    // model quality shows in the finished video. Templates that pass images
+    // (visual_reference_style, transcribe_document_page, script_from_images)
+    // MUST stay off this list — the Replicate text adapter has no vision path.
+    'ai' => [
+        'premium_model'  => env('AI_PREMIUM_MODEL', 'anthropic/claude-sonnet-5'),
+        'premium_effort' => env('AI_PREMIUM_EFFORT', 'medium'),
+        'premium_templates' => [
+            'script_from_prompt', 'script_from_url', 'script_from_product',
+            'script_from_pdf', 'script_from_csv', 'script_from_audio_reference',
+            'script_from_video_reference', 'script_polish',
+            'scene_breakdown', 'hook_options', 'scene_rewrite', 'scene_insert',
+            'visual_brief', 'summarize_document', 'scene_visual_concepts',
+        ],
+    ],
+
     'posthog' => [
         'key'  => env('POSTHOG_KEY', ''),
         'host' => env('POSTHOG_HOST', 'https://us.i.posthog.com'),

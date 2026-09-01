@@ -58,6 +58,15 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             'done' => 0, 'total' => $total,
         ]);
 
+        // Art-director pass: the premium model writes ONE distinct visual
+        // concept per scene before anything renders. Until now image prompts
+        // were mechanical string assembly (script text + style card), which is
+        // how eleven near-identical frames shipped — assembly can't imagine
+        // variety, a model can. Fail-open: on any error the mechanical
+        // composition below still runs.
+        $this->artDirectScenes($project, $scenes);
+        $scenes = $scenes->map(fn ($s) => $s->refresh());
+
         // Monotony guard — the assert this pipeline never had. A real
         // customer's 11 scenes rendered as one portrait eleven times because a
         // subject-description was smuggled in as "style" and dominated every
@@ -375,6 +384,50 @@ class GenerateProjectAIImagesJob implements ShouldQueue
         );
     }
 
+    /**
+     * One premium-model call writes a distinct visual concept for every scene
+     * that doesn't already have one; concepts land in scene.visual_prompt,
+     * which buildPrompt() then prefers over mechanical assembly.
+     */
+    private function artDirectScenes(Project $project, $scenes): void
+    {
+        $pending = $scenes->filter(fn ($s) => trim((string) $s->visual_prompt) === '');
+        if ($pending->count() < 2) {
+            return; // singles are fine mechanically; nothing to vary against
+        }
+
+        rescue(function () use ($project, $pending): void {
+            $brief = is_array($project->visual_brief) ? $project->visual_brief : [];
+            $list = $pending->map(fn ($s) => $s->scene_order.'. '.mb_substr(trim((string) $s->script_text), 0, 200))->implode("\n");
+
+            $result = app(\App\Services\Generation\AI\AIGenerationAdapter::class)->generate('scene_visual_concepts', [
+                'style'      => $project->ai_broll_style ?: ($project->default_visual_style ?: 'cinematic'),
+                'palette'    => (string) ($brief['palette'] ?? 'natural'),
+                'setting'    => (string) ($brief['setting'] ?? 'varied, fitting each scene'),
+                'subject'    => (string) ($brief['subject'] ?? ($brief['recurring_subject'] ?? 'none')),
+                'tone'       => $project->tone ?: 'neutral',
+                'scene_list' => $list,
+            ], 2500, 0.7, [
+                'usage_context' => [
+                    'workspace_id' => $project->workspace_id,
+                    'project_id'   => $project->getKey(),
+                    'user_id'      => $project->created_by_user_id,
+                    'template'     => 'scene_visual_concepts',
+                ],
+            ]);
+
+            $decoded = json_decode((string) $result['content'], true);
+            $byOrder = collect($decoded['scenes'] ?? [])->keyBy('order');
+
+            foreach ($pending as $scene) {
+                $visual = trim((string) ($byOrder[$scene->scene_order]['visual'] ?? ''));
+                if ($visual !== '') {
+                    $scene->forceFill(['visual_prompt' => mb_substr($visual, 0, 900)])->save();
+                }
+            }
+        }, report: false);
+    }
+
     private function buildPrompt(Project $project, Scene $scene, string $style, bool $includeCharacterDescription = true): string
     {
         $sceneText = mb_substr(trim((string) $scene->script_text), 0, 260);
@@ -413,6 +466,13 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                 $desc = trim((string) $character->description);
                 $characterChunk = "Character: {$character->name}".($desc !== '' ? " — {$desc}" : '').'. ';
             }
+        }
+
+        // An art-directed concept (or an editor-established prompt) wins over
+        // mechanical assembly — it was written to be distinct.
+        $established = trim((string) $scene->visual_prompt);
+        if ($established !== '') {
+            return trim("{$characterChunk}{$established}{$styleClause} Vertical-video friendly, no text overlays.");
         }
 
         return trim("{$characterChunk}A distinct {$style} scene depicting: {$sceneText} ({$label}, {$tone} tone).{$styleClause} Context: {$context}. Vertical-video friendly, visually specific, different composition from other scenes in this video, no text overlays.");

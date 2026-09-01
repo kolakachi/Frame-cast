@@ -25,7 +25,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->bind(AIGenerationAdapter::class, OpenAIGenerationAdapter::class);
+        // Router sends creative templates to the premium brain (Claude via
+        // Replicate) and everything else — including all vision calls — to
+        // OpenAI. Premium failures fall back to cheap automatically.
+        $this->app->bind(AIGenerationAdapter::class, \App\Services\Generation\AI\RoutingTextAdapter::class);
         // Round-robin stock across every provider that has a key configured
         // (Pexels primary; Pixabay joins when PIXABAY_API_KEY is set) for more
         // B-roll variety. Degrades to Pexels-only when no other key is present.
