@@ -39,6 +39,19 @@ trait BuildsAnimatedCaptions
         'stream' => ['Roboto Mono' => 'Roboto Mono Medium'],
     ];
 
+    /**
+     * [outline, shadow] as a fraction of font size, mirroring each preset's
+     * -webkit-text-stroke / text-shadow in CaptionPreview.vue. Fixed 3px/2px
+     * for every preset made the chunky presets look thin next to the preview,
+     * since these scale with font size in CSS but didn't here.
+     */
+    protected const ANIM_EDGE = [
+        'beast' => [0.035, 0.08], 'comic' => [0.045, 0.09], 'sticker' => [0.070, 0.07],
+        'karaoke' => [0.030, 0.10], 'wave' => [0.040, 0.08], 'marker' => [0.0, 0.06],
+        'punch' => [0.0, 0.12], 'box' => [0.0, 0.09], 'blur' => [0.0, 0.10],
+        'glitch' => [0.0, 0.07], 'slide' => [0.0, 0.10], 'tracking' => [0.0, 0.09],
+    ];
+
     /** Words per line per preset (word_by_word highlight mode forces 1). */
     protected const ANIM_CHUNK = [
         'beast' => 1, 'comic' => 1, 'glitch' => 1,
@@ -90,8 +103,12 @@ trait BuildsAnimatedCaptions
             $outlineColourFull = '&H'.$panelAlpha.$panelBGR.'&';
             $backColour = '&H80000000&';
         } else {
-            $outlineWidth = in_array($animation, ['sticker'], true) ? 5 : 3;
-            $styleTail = sprintf('1,%d,2', $outlineWidth);
+            [$outlineEm, $shadowEm] = self::ANIM_EDGE[$animation] ?? [0.035, 0.05];
+            $styleTail = sprintf(
+                '1,%.1f,%.1f',
+                $outlineEm > 0 ? max(1.0, $fontSize * $outlineEm) : 0.0,
+                max(1.0, $fontSize * $shadowEm),
+            );
             $outlineColourFull = '&H00000000&';
             $backColour = '&H80000000&';
         }
