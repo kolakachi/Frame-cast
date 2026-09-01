@@ -58,6 +58,10 @@ return [
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
         'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        // Cruise + other cheap/mechanical calls. gpt-5-mini: generational jump
+        // in tool/JSON reliability at bargain pricing; param quirks handled at
+        // the call sites (no custom temperature, max_completion_tokens).
+        'cheap_model' => env('OPENAI_CHEAP_MODEL', 'gpt-4o-mini'),
         'transcription_model' => env('OPENAI_TRANSCRIPTION_MODEL', 'whisper-1'),
         'timestamp_transcription_model' => env('OPENAI_TIMESTAMP_TRANSCRIPTION_MODEL', 'whisper-1'),
         // Character / reference-image generation via /v1/images/edits. gpt-image-2's

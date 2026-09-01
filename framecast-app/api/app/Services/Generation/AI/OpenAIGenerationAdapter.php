@@ -44,8 +44,11 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
                 ->withToken($apiKey)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model' => $model,
-                    'temperature' => $temperature,
-                    'max_tokens' => $maxTokens,
+                    // GPT-5-family: custom temperature is rejected and
+                    // max_tokens was renamed — probed before migrating Cruise.
+                    ...(str_starts_with($model, 'gpt-5')
+                        ? ['max_completion_tokens' => $maxTokens]
+                        : ['temperature' => $temperature, 'max_tokens' => $maxTokens]),
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $this->userMessageContent($userPrompt, $options)],

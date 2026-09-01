@@ -91,14 +91,20 @@ class CruiseControlService
         $messages[] = ['role' => 'user', 'content' => $intent];
 
         try {
+            $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini');
+            $payload = [
+                'model'           => $model,
+                'response_format' => ['type' => 'json_object'],
+                'messages'        => $messages,
+            ];
+            // GPT-5-family models reject custom temperature outright (only the
+            // default is allowed) — probed empirically before the migration.
+            if (! str_starts_with($model, 'gpt-5')) {
+                $payload['temperature'] = (float) config('services.openai.cruise_temperature', 0.6);
+            }
             $response = Http::withToken($apiKey)
                 ->timeout(25)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model'           => config('services.openai.cheap_model', 'gpt-4o-mini'),
-                    'temperature'     => (float) config('services.openai.cruise_temperature', 0.6),
-                    'response_format' => ['type' => 'json_object'],
-                    'messages' => $messages,
-                ]);
+                ->post('https://api.openai.com/v1/chat/completions', $payload);
 
             if (! $response->successful()) {
                 Log::warning('CruiseControl LLM call failed', [
