@@ -100,17 +100,21 @@ trait BuildsAnimatedCaptions
         );
 
         $words = $this->prepareAnimatedWords($animation, $timedWords, $ctx['duration']);
+        // word_by_word = one word for every preset; line_by_line = full lines
+        // even for one-word presets; keywords = the preset's natural default.
         $chunk = self::ANIM_CHUNK[$animation] ?? 4;
-        if (($ctx['chunkOverride'] ?? 0) === 1) {
+        $mode = (string) ($ctx['highlightMode'] ?? 'keywords');
+        if ($mode === 'word_by_word') {
             $chunk = 1;
+        } elseif ($mode === 'line_by_line' && $chunk === 1) {
+            $chunk = 4;
         }
         $lines = array_chunk($words, max(1, $chunk));
 
         $events = match (true) {
-            in_array($animation, ['beast', 'comic', 'glitch'], true) || $chunk === 1
-                => $this->animWordEvents($animation, $lines, $highlight, $underline),
             $animation === 'stream' => $this->animTypewriterEvents($lines, $highlight, true),
             $animation === 'news' => $this->animTypewriterEvents($lines, $highlight, false),
+            $chunk === 1 => $this->animWordEvents($animation, $lines, $highlight, $underline),
             default => $this->animLineEvents($animation, $lines, $highlight, $underline),
         };
 
@@ -268,6 +272,12 @@ trait BuildsAnimatedCaptions
         $u = $underline && $state === 'active' ? '\\u1' : '';
 
         $tags = match ($animation) {
+            // one-word presets forced into line mode: dim line, active pops
+            'beast', 'comic', 'glitch' => match ($state) {
+                'unspoken' => '\\alpha&HA6&',
+                'active' => "\\1c{$highlight}\\fscx55\\fscy55\\t(0,140,\\fscx100\\fscy100)",
+                default => '',
+            },
             'karaoke' => match ($state) {
                 'unspoken' => '\\alpha&H9E&',
                 'active' => "\\1c{$highlight}\\fscx108\\fscy108",

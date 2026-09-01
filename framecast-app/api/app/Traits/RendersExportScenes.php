@@ -828,7 +828,7 @@ trait RendersExportScenes
                 'panelColor' => $animationOptions['panel_color'] ?? null,
                 'backdrop' => $animationOptions['backdrop'] ?? null,
                 'duration' => $duration,
-                'chunkOverride' => $highlightMode === 'word_by_word' ? 1 : 0,
+                'highlightMode' => $highlightMode,
             ]);
             file_put_contents($outputPath, $content);
 

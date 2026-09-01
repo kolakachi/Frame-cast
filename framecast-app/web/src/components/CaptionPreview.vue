@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { animationByKey, captionLineAt } from "../composables/captionPresets";
+import { animationByKey, captionLineAt, effectiveChunk } from "../composables/captionPresets";
 
 const props = defineProps({
   // timed words: [{ text, start, end }] — real Whisper timings or synthetic
@@ -37,8 +37,7 @@ const isTypewriter = computed(() => preset.value.key === "stream" || preset.valu
 
 const chunkSize = computed(() => {
   if (props.demo) return DEMO_WORDS.length;
-  if ((props.settings.highlight_mode || "keywords") === "word_by_word") return 1;
-  return preset.value.chunk;
+  return effectiveChunk(preset.value, props.settings.highlight_mode);
 });
 
 const line = computed(() => {
@@ -64,6 +63,7 @@ const rootClass = computed(() => [
   "cp",
   `cp-${preset.value.key}`,
   {
+    "cp-multi": (line.value?.length || 0) > 1,
     "cp-underline": highlightStyle.value === "underline",
     "cp-backdrop": backdropOn.value && !isPanelPreset.value,
     "cp-nopanel": isPanelPreset.value && !backdropOn.value,
@@ -235,6 +235,21 @@ function charOn(word, index) {
 .cp-marker .cp-unspoken { opacity: 0; transform: rotate(4deg) scale(1.35); }
 .cp-marker .cp-spoken, .cp-marker .cp-active { opacity: 1; transform: none; transition: all 0.18s ease-out; }
 .cp-marker .cp-active { color: var(--cp-hl); }
+
+/* one-word presets in line-by-line mode: show the whole line dimmed, the
+   active word still pops with its motion */
+.cp-beast.cp-multi .cp-w, .cp-comic.cp-multi .cp-w, .cp-glitch.cp-multi .cp-w {
+  display: inline-block;
+  opacity: 0.35;
+}
+.cp-beast.cp-multi .cp-spoken, .cp-comic.cp-multi .cp-spoken, .cp-glitch.cp-multi .cp-spoken {
+  opacity: 1;
+}
+.cp-beast.cp-multi .cp-active, .cp-comic.cp-multi .cp-active, .cp-glitch.cp-multi .cp-active {
+  opacity: 1;
+  color: var(--cp-hl);
+}
+.cp-beast.cp-multi, .cp-comic.cp-multi, .cp-glitch.cp-multi { font-size: 1.1em; }
 
 /* user overrides */
 .cp-underline .cp-active { text-decoration: underline; text-decoration-thickness: 0.07em; text-underline-offset: 0.14em; }

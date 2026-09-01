@@ -281,8 +281,12 @@ function buildAnimatedCaptionLine(payload, seconds, duration) {
     words = words.map((w) => ({ ...w, text: w.text.toUpperCase() }));
   }
 
+  // word_by_word = one word for every preset; line_by_line = full lines even
+  // for one-word presets; keywords = the preset's natural default.
   let chunk = ANIM_CHUNK[animation] || 4;
-  if ((payload.captionHighlightMode || "keywords") === "word_by_word") chunk = 1;
+  const mode = payload.captionHighlightMode || "keywords";
+  if (mode === "word_by_word") chunk = 1;
+  else if (mode === "line_by_line" && chunk === 1) chunk = 4;
 
   const lines = [];
   for (let i = 0; i < words.length; i += chunk) lines.push(words.slice(i, i + chunk));
@@ -868,8 +872,9 @@ function buildHtml() {
         if (isPanel) {
           buildTypewriterCaption(wrap, words, anim, hl, baseColor);
         } else {
+          var oneWordMode = words.length === 1;
           words.forEach(function (word, index) {
-            var span = wordSpanFor(anim, word, index, hl, baseColor);
+            var span = wordSpanFor(anim, word, index, hl, baseColor, oneWordMode);
             if (span) {
               if (state.captionHighlightStyle === "underline" && word.state === "active") {
                 span.style.textDecoration = "underline";
@@ -883,9 +888,9 @@ function buildHtml() {
         container.appendChild(wrap);
       }
 
-      function wordSpanFor(anim, word, index, hl, baseColor) {
-        var oneWordMode = anim === "beast" || anim === "comic" || anim === "glitch";
-        if (oneWordMode && word.state !== "active") return null;
+      function wordSpanFor(anim, word, index, hl, baseColor, oneWordMode) {
+        var popPreset = anim === "beast" || anim === "comic" || anim === "glitch";
+        if (popPreset && oneWordMode && word.state !== "active") return null;
 
         var span = document.createElement("span");
         span.textContent = word.text;
@@ -896,6 +901,19 @@ function buildHtml() {
         var t = word.tRel || 0;
         var active = word.state === "active";
         var unspoken = word.state === "unspoken";
+
+        if (popPreset && !oneWordMode) {
+          // one-word preset forced into line mode: dim line, active pops
+          span.style.opacity = unspoken ? "0.35" : "1";
+          span.style.fontWeight = "900";
+          span.style.webkitTextStroke = "0.03em #000";
+          if (active) {
+            var ep = easeOutBack(clamp01(t / 0.14));
+            span.style.transform = "scale(" + (0.55 + 0.45 * ep) + ")";
+            span.style.color = hl;
+          }
+          return span;
+        }
 
         if (anim === "beast") {
           span.style.fontWeight = "900";

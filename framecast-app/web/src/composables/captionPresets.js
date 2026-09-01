@@ -162,6 +162,18 @@ export function animationByKey(key) {
   return CAPTION_ANIMATIONS.find((p) => p.key === key) || CAPTION_ANIMATIONS[0];
 }
 
+// Highlight mode semantics on top of a preset:
+//   word_by_word  -> one word on screen, whatever the preset
+//   line_by_line  -> full lines even for one-word presets (they show 4-word
+//                    lines; the active word still carries the motion)
+//   keywords      -> the preset's natural default
+export function effectiveChunk(preset, highlightMode) {
+  const mode = highlightMode || "keywords";
+  if (mode === "word_by_word") return 1;
+  if (mode === "line_by_line") return preset.chunk > 1 ? preset.chunk : 4;
+  return preset.chunk;
+}
+
 export function panelRowAnimations(currentKey) {
   const row = [CAPTION_ANIMATIONS[0]];
   const current = animationByKey(currentKey);
