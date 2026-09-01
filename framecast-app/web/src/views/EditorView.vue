@@ -3234,9 +3234,26 @@ function replaceSceneInCollection(updatedScene) {
   // every caption toggle / preview poll / generation event replaced the
   // whole scenes array with new object references and the editor
   // flickered on every API response.
+  //
+  // Same-asset responses keep the asset object we already have: every PATCH
+  // re-signs storage URLs, and adopting the new URL for an UNCHANGED asset
+  // forced the <img>/<video>/<audio> to reload — a "Loading scene…" flash on
+  // every caption save. A different asset id (regeneration, swap) still
+  // takes the fresh payload.
+  const keepAssets = {};
+  for (const key of ["visual_asset", "audio_asset"]) {
+    if (
+      updatedScene[key]?.id &&
+      existing[key]?.id === updatedScene[key].id &&
+      existing[key]?.storage_url
+    ) {
+      keepAssets[key] = existing[key];
+    }
+  }
   Object.assign(existing, updatedScene, {
     caption_settings: captionSettings,
     caption_settings_json: captionSettings,
+    ...keepAssets,
   });
 
   // Keep the live preview in sync when the ACTIVE scene's visual changed.
