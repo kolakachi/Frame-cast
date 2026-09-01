@@ -44,12 +44,17 @@ trait BuildsAnimatedCaptions
      * -webkit-text-stroke / text-shadow in CaptionPreview.vue. Fixed 3px/2px
      * for every preset made the chunky presets look thin next to the preview,
      * since these scale with font size in CSS but didn't here.
+     *
+     * Presets the preview draws with no stroke still keep a thin outline:
+     * their legibility there comes from a *blurred* text-shadow halo, which
+     * ASS's hard offset shadow can't reproduce — dropping to 0 would leave
+     * pale captions unreadable on light footage.
      */
     protected const ANIM_EDGE = [
         'beast' => [0.035, 0.08], 'comic' => [0.045, 0.09], 'sticker' => [0.070, 0.07],
-        'karaoke' => [0.030, 0.10], 'wave' => [0.040, 0.08], 'marker' => [0.0, 0.06],
-        'punch' => [0.0, 0.12], 'box' => [0.0, 0.09], 'blur' => [0.0, 0.10],
-        'glitch' => [0.0, 0.07], 'slide' => [0.0, 0.10], 'tracking' => [0.0, 0.09],
+        'karaoke' => [0.030, 0.10], 'wave' => [0.040, 0.08], 'marker' => [0.030, 0.06],
+        'punch' => [0.030, 0.12], 'box' => [0.030, 0.09], 'blur' => [0.030, 0.10],
+        'glitch' => [0.030, 0.07], 'slide' => [0.030, 0.10], 'tracking' => [0.030, 0.09],
     ];
 
     /** Words per line per preset (word_by_word highlight mode forces 1). */
