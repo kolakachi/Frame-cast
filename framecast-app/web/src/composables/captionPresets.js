@@ -204,7 +204,12 @@ export function captionLineAt(timedWords, seconds, chunkSize) {
     const start = line[0].start;
     const end = line[line.length - 1].end;
     const next = lines[li + 1];
-    const hideAt = next ? Math.min(end + 0.35, next[0].start) : end + 0.35;
+    // Hold a line until the next one starts across normal speech pauses.
+    // Dropping it a fixed 0.35s after its last word left a blank hole
+    // whenever the pause was just longer than that — a one-frame flash.
+    const nextStart = next ? next[0].start : null;
+    const hideAt =
+      nextStart === null ? end + 0.35 : nextStart - end <= 1.2 ? nextStart : end + 0.35;
     if (seconds < start - 0.05 || seconds >= hideAt) continue;
 
     return line.map((word) => {

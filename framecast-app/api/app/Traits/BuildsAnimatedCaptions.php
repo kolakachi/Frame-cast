@@ -49,12 +49,22 @@ trait BuildsAnimatedCaptions
      * their legibility there comes from a *blurred* text-shadow halo, which
      * ASS's hard offset shadow can't reproduce — dropping to 0 would leave
      * pale captions unreadable on light footage.
+     *
+     * Shadow only tracks the CSS value where that shadow is HARD (blur 0:
+     * Comic `0.06em 0.09em 0`, Punch, Sticker...). Where the CSS blurs it
+     * into a halo (Slide/Karaoke/Box/Blur/Tracking `0 0.1em 0.2em`), a
+     * matching ASS offset renders a crisp duplicate of the text a tenth of
+     * an em away — which reads as doubled captions, not depth. Those get a
+     * token offset and lean on the outline instead.
      */
     protected const ANIM_EDGE = [
-        'beast' => [0.035, 0.08], 'comic' => [0.045, 0.09], 'sticker' => [0.070, 0.07],
-        'karaoke' => [0.030, 0.10], 'wave' => [0.040, 0.08], 'marker' => [0.030, 0.06],
-        'punch' => [0.030, 0.12], 'box' => [0.030, 0.09], 'blur' => [0.030, 0.10],
-        'glitch' => [0.030, 0.07], 'slide' => [0.030, 0.10], 'tracking' => [0.030, 0.09],
+        // hard CSS shadow — offset carries the look
+        'beast' => [0.035, 0.06], 'comic' => [0.045, 0.07], 'sticker' => [0.070, 0.06],
+        'punch' => [0.030, 0.09], 'wave' => [0.040, 0.06], 'marker' => [0.030, 0.05],
+        'glitch' => [0.030, 0.05],
+        // blurred CSS halo — keep the offset token
+        'karaoke' => [0.035, 0.02], 'box' => [0.030, 0.02], 'blur' => [0.035, 0.02],
+        'slide' => [0.035, 0.02], 'tracking' => [0.035, 0.02],
     ];
 
     /** Words per line per preset (word_by_word highlight mode forces 1). */
@@ -154,8 +164,11 @@ trait BuildsAnimatedCaptions
         // the LINE anchor, so an in-place spin is only possible when every
         // word is its own \pos'd event — which needs real font metrics.
         // Falls back to the shared line builder if the font can't be measured.
+        // Slide joins Comic on the positioned path: \move translates a word
+        // for real, where the inline approximation could only squash it
+        // vertically (\fscy) and left the active word looking distorted.
         $positioned = null;
-        if ($animation === 'comic' && $chunk > 1) {
+        if (($animation === 'comic' && $chunk > 1) || $animation === 'slide') {
             $positioned = $this->animPositionedWordEvents($animation, $lines, $highlight, $underline, [
                 'fontName' => $fontName,
                 'fontSize' => $fontSize,
@@ -283,7 +296,7 @@ trait BuildsAnimatedCaptions
         foreach ($lines as $li => $line) {
             $nextStart = $li + 1 < $lineCount ? $lines[$li + 1][0]['start'] : null;
             $lineEnd = $line[count($line) - 1]['end'];
-            $hideAt = $nextStart !== null ? min($lineEnd + 0.35, $nextStart) : $lineEnd + 0.35;
+            $hideAt = $this->animLineHideAt($lineEnd, $nextStart, 0.35);
 
             foreach ($line as $wi => $word) {
                 $start = $word['start'];
@@ -393,12 +406,11 @@ trait BuildsAnimatedCaptions
 
             $nextStart = $li + 1 < $lineCount ? $lines[$li + 1][0]['start'] : null;
             $lineEnd = $line[count($line) - 1]['end'];
-            $hideAt = $nextStart !== null ? min($lineEnd + 0.35, $nextStart) : $lineEnd + 0.35;
+            $hideAt = $this->animLineHideAt($lineEnd, $nextStart, 0.35);
             $lineStart = $line[0]['start'];
 
             foreach ($line as $wi => $word) {
                 [$x, $y] = $positions[$wi];
-                $pos = sprintf('\\an5\\pos(%.1f,%.1f)', $x, $y);
                 $text = $this->escapeASSText($word['text']);
                 $activeStart = $word['start'];
                 $activeEnd = $wi + 1 < count($line) ? max($word['end'], $line[$wi + 1]['start']) : $hideAt;
@@ -408,7 +420,7 @@ trait BuildsAnimatedCaptions
                     $events[] = [
                         $this->formatASSTime($lineStart),
                         $this->formatASSTime($activeStart),
-                        '{'.$pos.trim($this->animWordTag($animation, 'unspoken', $highlight, $underline, $wi, true), '{}').'}'.$text,
+                        $this->animPositionedOverride($animation, 'unspoken', $x, $y, $layout['fontSize'], $highlight, $underline, $wi).$text,
                     ];
                 }
 
@@ -417,7 +429,7 @@ trait BuildsAnimatedCaptions
                     $events[] = [
                         $this->formatASSTime($activeStart),
                         $this->formatASSTime($activeEnd),
-                        '{'.$pos.trim($this->animWordTag($animation, 'active', $highlight, $underline, $wi, true), '{}').'}'.$text,
+                        $this->animPositionedOverride($animation, 'active', $x, $y, $layout['fontSize'], $highlight, $underline, $wi).$text,
                     ];
                 }
 
@@ -426,13 +438,53 @@ trait BuildsAnimatedCaptions
                     $events[] = [
                         $this->formatASSTime($activeEnd),
                         $this->formatASSTime($hideAt),
-                        '{'.$pos.trim($this->animWordTag($animation, 'spoken', $highlight, $underline, $wi, true), '{}').'}'.$text,
+                        $this->animPositionedOverride($animation, 'spoken', $x, $y, $layout['fontSize'], $highlight, $underline, $wi).$text,
                     ];
                 }
             }
         }
 
         return $events;
+    }
+
+    /**
+     * Override block for one positioned word. Most presets just pin the word
+     * with \pos and reuse the shared inline tags; presets whose motion is a
+     * translation need \move instead (mutually exclusive with \pos).
+     */
+    protected function animPositionedOverride(string $animation, string $state, float $x, float $y, int $fontSize, string $highlight, bool $underline, int $index): string
+    {
+        if ($animation === 'slide') {
+            return match ($state) {
+                // rises into place as it's spoken, mirroring translateY(0.9em)
+                'active' => sprintf(
+                    '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,220)\\1c%s\\fad(70,0)%s}',
+                    $x, $y + $fontSize * 0.9, $x, $y, $highlight, $underline ? '\\u1' : ''
+                ),
+                'unspoken' => sprintf('{\\an5\\pos(%.1f,%.1f)\\alpha&HFF&}', $x, $y),
+                default => sprintf('{\\an5\\pos(%.1f,%.1f)}', $x, $y),
+            };
+        }
+
+        return sprintf('{\\an5\\pos(%.1f,%.1f)%s}', $x, $y, trim(
+            $this->animWordTag($animation, $state, $highlight, $underline, $index, true), '{}'
+        ));
+    }
+
+    /**
+     * When a line should disappear. Dropping it a fixed hold after its last
+     * word leaves a blank hole whenever the pause to the next line is barely
+     * longer than that hold — a 30ms hole renders as a one-frame flash. Hold
+     * the line until the next one starts across normal speech pauses; only
+     * genuinely long silences go to black.
+     */
+    protected function animLineHideAt(float $lineEnd, ?float $nextStart, float $hold): float
+    {
+        if ($nextStart === null) {
+            return $lineEnd + $hold;
+        }
+
+        return $nextStart - $lineEnd <= 1.2 ? $nextStart : $lineEnd + $hold;
     }
 
     /** Whole-line override tags emitted before the words. */
@@ -558,7 +610,7 @@ trait BuildsAnimatedCaptions
         foreach ($lines as $li => $line) {
             $nextStart = $li + 1 < $lineCount ? $lines[$li + 1][0]['start'] : null;
             $lineEnd = $line[count($line) - 1]['end'];
-            $hideAt = $nextStart !== null ? min($lineEnd + 0.6, $nextStart) : $lineEnd + 0.6;
+            $hideAt = $this->animLineHideAt($lineEnd, $nextStart, 0.6);
 
             foreach ($line as $wi => $word) {
                 $prefixWords = array_map(
@@ -573,9 +625,21 @@ trait BuildsAnimatedCaptions
                     $chars = preg_split('//u', $word['text'], -1, PREG_SPLIT_NO_EMPTY) ?: [];
                     $charCount = count($chars);
                     $step = max(1, (int) ceil($charCount / 4)); // ≤4 events per word
-                    for ($ci = $step; $ci <= $charCount; $ci += $step) {
-                        $shown = min($ci, $charCount);
-                        $frac0 = ($shown - $step) / $charCount;
+                    // Boundaries must END on charCount. Stepping by $step and
+                    // stopping at <= charCount skipped the final group whenever
+                    // the length wasn't a multiple of the step ("certain": 2,4,6
+                    // — never 7), so the word never finished typing and left a
+                    // hole in the timeline until the next word began.
+                    $stops = [];
+                    for ($ci = $step; $ci < $charCount; $ci += $step) {
+                        $stops[] = $ci;
+                    }
+                    $stops[] = $charCount;
+
+                    $prevShown = 0;
+                    foreach ($stops as $shown) {
+                        $frac0 = $prevShown / $charCount;
+                        $prevShown = $shown;
                         $frac1 = $shown / $charCount;
                         $start = $wordStart + $frac0 * ($wordEnd - $wordStart);
                         $end = $shown >= $charCount && $wi + 1 >= count($line)

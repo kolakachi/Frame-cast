@@ -107,6 +107,10 @@ function charOn(word, index) {
       :class="`cp-w cp-${word.state}`"
     >
       <template v-if="isTypewriter">
+        <!-- Real space, inside the word span so it appears and hides with the
+             word — a margin can't match the font's space advance (0.6em in
+             Roboto Mono), which made typed words look jammed together. -->
+        <span v-if="index > 0" class="cp-ch cp-on">&nbsp;</span>
         <span
           v-for="(ch, ci) in chars(word)"
           :key="ci"
@@ -166,7 +170,7 @@ function charOn(word, index) {
 /* stream — typewriter console; panel grows, caret rides last typed char */
 .cp-stream { font-size: 1.15em; background: var(--cp-bg, rgba(0, 0, 0, 0.62));
   padding: 0.5em 0.7em; border-radius: 0.5em; text-align: left; }
-.cp-stream .cp-w { display: none; margin: 0 0.12em 0 0; }
+.cp-stream .cp-w { display: none; margin: 0; }
 .cp-stream .cp-active, .cp-stream .cp-spoken { display: inline-block; }
 .cp-stream .cp-ch { display: none; }
 .cp-stream .cp-ch.cp-on { display: inline; }
@@ -230,7 +234,7 @@ function charOn(word, index) {
 /* news — lower-third bar grows word by word */
 .cp-news { font-weight: 800; font-size: 0.95em; background: var(--cp-bg, #fff); color: #111;
   padding: 0.5em 0.75em; border-radius: 0.22em; box-shadow: 0 0.35em 1.2em rgba(0, 0, 0, 0.45); text-align: left; }
-.cp-news .cp-w { display: none; margin: 0 0.12em 0 0; }
+.cp-news .cp-w { display: none; margin: 0; }
 .cp-news .cp-spoken, .cp-news .cp-active { display: inline-block; }
 .cp-news .cp-active { background: var(--cp-hl); border-radius: 0.15em; padding: 0 0.12em; }
 .cp-news .cp-caret { background: currentColor; width: 0.45em; height: 0.95em; }
