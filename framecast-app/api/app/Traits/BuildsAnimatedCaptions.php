@@ -581,24 +581,56 @@ trait BuildsAnimatedCaptions
                 // spoken now — pops, tilts, holds the highlight colour
                 if ($activeEnd > $activeStart) {
                     if ($animation === 'glitch') {
-                        // Cyan/magenta copies sliding back to register — the
-                        // preview does this with two offset text-shadows, which
-                        // a single ASS run can't reproduce.
-                        $split = $fontSize * 0.055;
+                        // Replay the preview's keyframes: the word jumps in
+                        // low-and-left, kicks up-and-right, then settles. It
+                        // previously only sheared in place, so the export read
+                        // as moving the opposite way to the editor.
+                        $exUp = $fontSize * 0.04;   // starts BELOW the line
+                        $exDn = $fontSize * 0.03;   // overshoots ABOVE it
+                        $lx = $fontSize * 0.08;
+                        $rx = $fontSize * 0.05;
+                        $legA = min($activeStart + 0.105, $activeEnd);
+
+                        $events[] = [
+                            $this->formatASSTime($activeStart),
+                            $this->formatASSTime($legA),
+                            sprintf(
+                                '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,105)\\1c%s\\alpha&H66&\\fax-0.21\\t(0,105,\\alpha&H00&\\fax0.14)}',
+                                $x - $lx, $y + $exUp, $x + $rx, $y - $exDn, $highlight
+                            ).$text,
+                        ];
+
+                        // Cyan/magenta ghosts, offset the same way the preview's
+                        // twin text-shadows are.
+                        $split = $fontSize * 0.06;
                         foreach ([['&HFFFF00&', -1], ['&HFF00FF&', 1]] as [$tint, $dir]) {
                             $events[] = [
                                 $this->formatASSTime($activeStart),
-                                $this->formatASSTime(min($activeStart + 0.16, $activeEnd)),
+                                $this->formatASSTime($legA),
                                 sprintf(
-                                    '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,160)\\1c%s\\alpha&H40&\\bord0\\shad0}',
-                                    $x + $dir * $split, $y, $x, $y, $tint
+                                    '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,105)\\1c%s\\alpha&H50&\\bord0\\shad0\\fax-0.21}',
+                                    $x - $lx + $dir * $split, $y + $exUp,
+                                    $x + $rx + $dir * $split, $y - $exDn, $tint
                                 ).$text,
                                 0,
                             ];
                         }
+
+                        if ($activeEnd > $legA) {
+                            $events[] = [
+                                $this->formatASSTime($legA),
+                                $this->formatASSTime($activeEnd),
+                                sprintf(
+                                    '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,195)\\1c%s\\fax0.14\\t(0,195,\\fax0)}',
+                                    $x + $rx, $y - $exDn, $x, $y, $highlight
+                                ).$text,
+                            ];
+                        }
                     }
 
-                    if ($animation === 'wave') {
+                    if ($animation === 'glitch') {
+                        // its legs are emitted above
+                    } elseif ($animation === 'wave') {
                         // A hop is up-then-down; \move is a single linear leg,
                         // so the active word is split into two events. Mirrors
                         // the preview's translateY(-0.32em) at 40% of 320ms.
