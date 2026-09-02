@@ -52,7 +52,7 @@ const EXPORT_FONT = Math.round((BASE_FONT * H) / 480);
 const SETTINGS = {
   color: "#ffffff",
   highlight_color: "#ffd21e",
-  highlight_mode: "line_by_line",
+  highlight_mode: process.env.CAPTION_COMPARE_MODE || "line_by_line",
   highlight_style: "color",
   panel_color: null,
 };
@@ -88,8 +88,10 @@ function previewMarkup(preset, seconds) {
   const words = line.map((w, i) => {
     // Freeze the CSS animation and seek it to this word's elapsed time, so the
     // screenshot shows the same instant the export's \t() does.
+    const sourceWord = WORDS.find((candidate) => candidate.text === w.text);
+    const elapsed = sourceWord ? Math.max(0, seconds - sourceWord.start) : 0;
     const seek = w.state === "active"
-      ? ` style="animation-delay:-${(w.tRel ?? 0).toFixed(3)}s"`
+      ? ` style="animation-delay:-${elapsed.toFixed(3)}s"`
       : "";
     let inner;
     if (typewriter) {

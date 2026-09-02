@@ -70,7 +70,9 @@ trait BuildsAnimatedCaptions
         // hard CSS shadow — offset carries the look
         'beast' => [0.035, 0.06], 'comic' => [0.045, 0.07], 'sticker' => [0.070, 0.06],
         'punch' => [0.030, 0.09], 'wave' => [0.040, 0.06], 'marker' => [0.030, 0.05],
-        'glitch' => [0.030, 0.05],
+        // Glitch's RGB copies supply its edge contrast; the preview has no
+        // stroke, only a small downward shadow.
+        'glitch' => [0.000, 0.07],
         // blurred CSS halo — keep the offset token
         'karaoke' => [0.035, 0.02], 'box' => [0.030, 0.02], 'blur' => [0.035, 0.02],
         'slide' => [0.035, 0.02], 'tracking' => [0.035, 0.02],
@@ -123,12 +125,26 @@ trait BuildsAnimatedCaptions
      */
     protected function buildAnimatedASSContent(string $animation, array $timedWords, array $ctx): string
     {
+        // Resolve the display mode before sizing. Beast/Comic/Glitch collapse
+        // to 1.4em in the editor whenever a full line is shown; Glitch needs
+        // that override here as well instead of retaining its one-word scale.
+        $chunk = self::ANIM_CHUNK[$animation] ?? 4;
+        $mode = (string) ($ctx['highlightMode'] ?? 'keywords');
+        if ($mode === 'word_by_word') {
+            $chunk = 1;
+        } elseif ($mode === 'line_by_line' && $chunk === 1) {
+            $chunk = 4;
+        }
+        $fontScale = $animation === 'glitch' && $chunk > 1
+            ? 1.40
+            : (self::ANIM_FONT_SCALE[$animation] ?? 1.0);
+
         // $fontSize is the CSS-style em size, identical to the number the
         // editor preview uses. It drives ALL geometry below. Only the Style
         // line converts to an ASS Fontsize, which measures a different box
         // (usWinAscent+usWinDescent) and is font-specific — feeding CSS px
         // straight in rendered captions up to a third smaller than preview.
-        $fontSize = (int) round($ctx['fontSize'] * (self::ANIM_FONT_SCALE[$animation] ?? 1.0));
+        $fontSize = (int) round($ctx['fontSize'] * $fontScale);
         $isPanelPreset = in_array($animation, ['stream', 'news'], true);
         $backdrop = $ctx['backdrop'] ?? null;
         $panelOn = $isPanelPreset ? ($backdrop !== false) : ($backdrop === true);
@@ -204,13 +220,6 @@ trait BuildsAnimatedCaptions
         $words = $this->prepareAnimatedWords($animation, $timedWords, $ctx['duration']);
         // word_by_word = one word for every preset; line_by_line = full lines
         // even for one-word presets; keywords = the preset's natural default.
-        $chunk = self::ANIM_CHUNK[$animation] ?? 4;
-        $mode = (string) ($ctx['highlightMode'] ?? 'keywords');
-        if ($mode === 'word_by_word') {
-            $chunk = 1;
-        } elseif ($mode === 'line_by_line' && $chunk === 1) {
-            $chunk = 4;
-        }
         $lines = array_chunk($words, max(1, $chunk));
 
         // Comic Pop tilts each word independently. ASS rotates a run around
@@ -221,7 +230,7 @@ trait BuildsAnimatedCaptions
         // for real, where the inline approximation could only squash it
         // vertically (\fscy) and left the active word looking distorted.
         $positioned = null;
-        if (in_array($animation, self::ANIM_POSITIONED, true) && ($chunk > 1 || $animation === 'slide')) {
+        if (in_array($animation, self::ANIM_POSITIONED, true) && ($chunk > 1 || in_array($animation, ['slide', 'glitch'], true))) {
             $positioned = $this->animPositionedWordEvents($animation, $lines, $highlight, $underline, [
                 'fontName' => $fontName,
                 'fontSize' => $fontSize,
@@ -234,6 +243,7 @@ trait BuildsAnimatedCaptions
                 'panelOn' => $panelOn,
                 'panelColor' => $panelColor,
                 'panelAlpha' => $panelAlpha,
+                'primary' => $primary,
             ]);
         }
 
@@ -406,7 +416,7 @@ trait BuildsAnimatedCaptions
      * width, and stacked to sit where the style's alignment/margin would.
      *
      * @param array<int,array<int,array{text:string,start:float,end:float}>> $lines
-     * @param array{fontName:string,fontSize:int,playResX:int,playResY:int,alignment:int,marginV:int,marginLR:int} $layout
+     * @param array{fontName:string,fontSize:int,playResX:int,playResY:int,alignment:int,marginV:int,marginLR:int,primary:string} $layout
      * @return list<array{string,string,string}>|null null = can't measure, use the line builder
      */
     protected function animPositionedWordEvents(string $animation, array $lines, string $highlight, bool $underline, array $layout): ?array
@@ -581,51 +591,20 @@ trait BuildsAnimatedCaptions
                 // spoken now — pops, tilts, holds the highlight colour
                 if ($activeEnd > $activeStart) {
                     if ($animation === 'glitch') {
-                        // Replay the preview's keyframes: the word jumps in
-                        // low-and-left, kicks up-and-right, then settles. It
-                        // previously only sheared in place, so the export read
-                        // as moving the opposite way to the editor.
-                        $exUp = $fontSize * 0.04;   // starts BELOW the line
-                        $exDn = $fontSize * 0.03;   // overshoots ABOVE it
-                        $lx = $fontSize * 0.08;
-                        $rx = $fontSize * 0.05;
-                        $legA = min($activeStart + 0.105, $activeEnd);
-
-                        $events[] = [
-                            $this->formatASSTime($activeStart),
-                            $this->formatASSTime($legA),
-                            sprintf(
-                                '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,105)\\1c%s\\alpha&H66&\\fax-0.21\\t(0,105,\\alpha&H00&\\fax0.14)}',
-                                $x - $lx, $y + $exUp, $x + $rx, $y - $exDn, $highlight
-                            ).$text,
-                        ];
-
-                        // Cyan/magenta ghosts, offset the same way the preview's
-                        // twin text-shadows are.
-                        $split = $fontSize * 0.06;
-                        foreach ([['&HFFFF00&', -1], ['&HFF00FF&', 1]] as [$tint, $dir]) {
-                            $events[] = [
-                                $this->formatASSTime($activeStart),
-                                $this->formatASSTime($legA),
-                                sprintf(
-                                    '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,105)\\1c%s\\alpha&H50&\\bord0\\shad0\\fax-0.21}',
-                                    $x - $lx + $dir * $split, $y + $exUp,
-                                    $x + $rx + $dir * $split, $y - $exDn, $tint
-                                ).$text,
-                                0,
-                            ];
-                        }
-
-                        if ($activeEnd > $legA) {
-                            $events[] = [
-                                $this->formatASSTime($legA),
-                                $this->formatASSTime($activeEnd),
-                                sprintf(
-                                    '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,195)\\1c%s\\fax0.14\\t(0,195,\\fax0)}',
-                                    $x + $rx, $y - $exDn, $x, $y, $highlight
-                                ).$text,
-                            ];
-                        }
+                        // One-word Glitch uses the normal caption colour in the
+                        // preview. Multi-word line mode highlights the active
+                        // word. Keep that distinction in export.
+                        $core = count($line) > 1 ? $highlight : ($layout['primary'] ?? $highlight);
+                        $this->appendPositionedGlitchEvents(
+                            $events,
+                            $text,
+                            $activeStart,
+                            $activeEnd,
+                            $x,
+                            $y,
+                            $fontSize,
+                            $core,
+                        );
                     }
 
                     if ($animation === 'glitch') {
@@ -677,6 +656,95 @@ trait BuildsAnimatedCaptions
         }
 
         return $events;
+    }
+
+    /**
+     * Reproduce the browser's four Glitch keyframes with positioned ASS events.
+     * Two lower-layer copies provide the cyan/magenta text-shadow split.
+     *
+     * @param list<array{string,string,string,int?}> $events
+     */
+    protected function appendPositionedGlitchEvents(
+        array &$events,
+        string $text,
+        float $start,
+        float $end,
+        float $x,
+        float $y,
+        float $fontSize,
+        string $coreColor,
+    ): void {
+        $points = [
+            [$start,         $x - $fontSize * 0.08, $y + $fontSize * 0.04, -0.21,  0.06],
+            [$start + 0.105, $x + $fontSize * 0.05, $y - $fontSize * 0.03,  0.14, -0.05],
+            [$start + 0.210, $x - $fontSize * 0.02, $y + $fontSize * 0.01,  0.00,  0.02],
+            [$start + 0.300, $x,                    $y,                    0.00,  0.00],
+        ];
+
+        for ($leg = 0; $leg < 3; $leg++) {
+            $legStart = $points[$leg][0];
+            $legEnd = min($points[$leg + 1][0], $end);
+            if ($legEnd <= $legStart) {
+                break;
+            }
+
+            $durationMs = max(1, (int) round(($legEnd - $legStart) * 1000));
+            [$fromX, $fromY, $fromFax, $fromSplit] = array_slice($points[$leg], 1);
+            [$toX, $toY, $toFax, $toSplit] = array_slice($points[$leg + 1], 1);
+            $alpha = $leg === 0
+                ? sprintf('\\alpha&H99&\\t(0,%d,\\alpha&H00&)', $durationMs)
+                : '';
+            $fax = sprintf('\\fax%.2f', $fromFax);
+            if ($fromFax !== $toFax) {
+                $fax .= sprintf('\\t(0,%d,\\fax%.2f)', $durationMs, $toFax);
+            }
+
+            $events[] = [
+                $this->formatASSTime($legStart),
+                $this->formatASSTime($legEnd),
+                sprintf(
+                    '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,%d)\\1c%s%s%s}',
+                    $fromX, $fromY, $toX, $toY, $durationMs, $coreColor, $alpha, $fax
+                ).$text,
+            ];
+
+            foreach ([['&HFFFF00&', -1], ['&HFF00FF&', 1]] as [$tint, $dir]) {
+                $ghostAlpha = match ($leg) {
+                    0 => sprintf('\\alpha&H99&\\t(0,%d,\\alpha&H00&)', $durationMs),
+                    2 => sprintf('\\alpha&H00&\\t(0,%d,\\alpha&HFF&)', $durationMs),
+                    default => '\\alpha&H00&',
+                };
+                $ghostFax = sprintf('\\fax%.2f', $fromFax);
+                if ($fromFax !== $toFax) {
+                    $ghostFax .= sprintf('\\t(0,%d,\\fax%.2f)', $durationMs, $toFax);
+                }
+                $events[] = [
+                    $this->formatASSTime($legStart),
+                    $this->formatASSTime($legEnd),
+                    sprintf(
+                        '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,%d)\\1c%s%s\\bord0\\shad0%s}',
+                        $fromX + $dir * $fontSize * $fromSplit,
+                        $fromY,
+                        $toX + $dir * $fontSize * $toSplit,
+                        $toY,
+                        $durationMs,
+                        $tint,
+                        $ghostAlpha,
+                        $ghostFax,
+                    ).$text,
+                    0,
+                ];
+            }
+        }
+
+        $settledAt = min($start + 0.300, $end);
+        if ($end > $settledAt) {
+            $events[] = [
+                $this->formatASSTime($settledAt),
+                $this->formatASSTime($end),
+                sprintf('{\\an5\\pos(%.1f,%.1f)\\1c%s}', $x, $y, $coreColor).$text,
+            ];
+        }
     }
 
     /**
