@@ -588,7 +588,15 @@ class GenerateScriptJob implements ShouldQueue
                 'transcription_error' => $exception->getMessage(),
             ])->save();
 
-            return "Media asset: {$asset->title}\nTranscript unavailable. Use the uploaded media as a source reference and create a repurposing draft.";
+            // Previously this fell through with "transcript unavailable, write a
+            // repurposing draft", which made the model invent a script bearing no
+            // relation to the upload — the user paid credits for a confident piece
+            // of fiction. Fail loudly instead; the editor's recovery panel lets
+            // them retry or paste their own brief.
+            throw new \RuntimeException(
+                "We couldn't read the audio from \"{$asset->title}\". If the file has no soundtrack, "
+                .'add your brief as text instead — or re-upload and try again.'
+            );
         }
 
         $asset->forceFill([
@@ -602,7 +610,31 @@ class GenerateScriptJob implements ShouldQueue
             ]),
         ])->save();
 
+        $this->assertTranscriptHasSpeech((string) $result['transcript'], (string) $asset->title);
+
         return "Media asset: {$asset->title}\nTranscript:\n{$result['transcript']}";
+    }
+
+    /**
+     * A silent clip, or one carrying only music, transcribes to nothing (or to
+     * a stray artefact like "Thank you." / "♪" that speech models emit over
+     * music). Handing that to the script model produced a fully-formed script
+     * about something the video never said, with no warning — worse than an
+     * error, because it looks correct. Stop before that happens.
+     */
+    private function assertTranscriptHasSpeech(string $transcript, string $title): void
+    {
+        $clean = trim(preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $transcript) ?? '');
+        $words = $clean === '' ? [] : preg_split('/\s+/u', $clean, -1, PREG_SPLIT_NO_EMPTY);
+
+        if (count($words ?: []) >= 8) {
+            return;
+        }
+
+        throw new \RuntimeException(
+            "We couldn't hear any spoken words in \"{$title}\" — it looks like the clip is silent or "
+            .'only has music. Add your brief as text and we\'ll build the video from that instead.'
+        );
     }
 
     private function extractAssetId(string $source): ?int
