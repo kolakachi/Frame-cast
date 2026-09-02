@@ -345,7 +345,7 @@ trait BuildsAnimatedCaptions
                 ),
                 // skew + color flicker settling to primary
                 'glitch' => sprintf(
-                    '\\1c%s\\fax-0.22\\alpha&H60&\\t(0,60,\\alpha&H00&\\fax0.10)\\t(60,160,\\fax0)',
+                    '\\1c%s\\fax0.22\\alpha&H60&\\t(0,60,\\alpha&H00&\\fax-0.10)\\t(60,160,\\fax0)',
                     $highlight,
                 ),
                 default => sprintf('\\1c%s', $highlight),
@@ -675,8 +675,8 @@ trait BuildsAnimatedCaptions
         string $coreColor,
     ): void {
         $points = [
-            [$start,         $x - $fontSize * 0.08, $y + $fontSize * 0.04, -0.21,  0.06],
-            [$start + 0.105, $x + $fontSize * 0.05, $y - $fontSize * 0.03,  0.14, -0.05],
+            [$start,         $x - $fontSize * 0.08, $y + $fontSize * 0.04,  0.21,  0.06],
+            [$start + 0.105, $x + $fontSize * 0.05, $y - $fontSize * 0.03, -0.14, -0.05],
             [$start + 0.210, $x - $fontSize * 0.02, $y + $fontSize * 0.01,  0.00,  0.02],
             [$start + 0.300, $x,                    $y,                    0.00,  0.00],
         ];
@@ -860,10 +860,10 @@ trait BuildsAnimatedCaptions
             },
             'glitch' => match ($state) {
                 'unspoken' => '\\alpha&HA6&',
-                // CSS skewX(+12deg) leans the opposite way to ASS \fax, so the
-                // signs are flipped; and the word settles on the user's
-                // highlight colour rather than a hardcoded magenta.
-                'active' => "\\1c{$highlight}\\fax-0.22\\alpha&H60&\\t(0,60,\\alpha&H00&\\fax0.10)\\t(60,160,\\fax0)",
+                // CSS skewX(+12deg) and libass \fax lean the same way in the
+                // rendered frame. Keeping their signs aligned avoids the
+                // top/bottom mirrored look reported in exported Glitch text.
+                'active' => "\\1c{$highlight}\\fax0.22\\alpha&H60&\\t(0,60,\\alpha&H00&\\fax-0.10)\\t(60,160,\\fax0)",
                 default => '',
             },
             'karaoke' => match ($state) {

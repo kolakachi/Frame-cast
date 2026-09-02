@@ -42,7 +42,7 @@ class CaptionExportParityTest extends TestCase
         $this->assertStringContainsString('\\1c&HFFFF00&', $ass); // cyan ghost in ASS BGR
         $this->assertStringContainsString('\\1c&HFF00FF&', $ass); // magenta ghost
         $this->assertStringContainsString('\\1c&HFFFFFF&\\alpha&H99&', $ass);
-        $this->assertStringContainsString('\\alpha&H99&\\t(0,105,\\alpha&H00&)\\fax-0.21\\t(0,105,\\fax0.14)', $ass);
+        $this->assertStringContainsString('\\alpha&H99&\\t(0,105,\\alpha&H00&)\\fax0.21\\t(0,105,\\fax-0.14)', $ass);
         $this->assertStringContainsString('\\alpha&H00&\\t(0,90,\\alpha&HFF&)', $ass);
         $this->assertStringNotContainsString('\\t(60,160,\\fax0)', $ass);
         $this->assertMatchesRegularExpression('/Style: Default,[^\\n]+,1,0\\.0,\\d+\\.\\d+,2,/', $ass);
