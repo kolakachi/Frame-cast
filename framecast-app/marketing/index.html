@@ -2512,6 +2512,13 @@
             color: var(--text-dim);
         }
 
+        /* An author `display: grid` outranks the UA's [hidden] rule, so the
+           attribute alone would leave both grids on screen. */
+        .price-grid[hidden],
+        .lifetime-grid[hidden] {
+            display: none;
+        }
+
         .lifetime-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
