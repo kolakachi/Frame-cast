@@ -657,9 +657,52 @@ const canAffordEstimate = computed(() => {
   return creditBalance.value >= creditEstimate.value.min
 })
 
+// Has the user actually put anything in? Used to protect their work — the
+// wizard used to close on any click of the backdrop and reopening resets every
+// field, so a stray click threw the whole form away with no warning. A customer
+// lost four attempts to it before telling us.
+const hasEnteredContent = computed(() => Boolean(
+  title.value.trim()
+  || promptText.value.trim()
+  || scriptText.value.trim()
+  || urlText.value.trim()
+  || productDescription.value.trim()
+  || audioFile.value
+  || videoFile.value
+  || pdfFile.value
+  || csvText.value.trim()
+  || imageFiles.value.length
+  || sourceImageAssetIds.value.length
+  || customNicheName.value.trim()
+  || customNicheContext.value.trim()
+))
+
+const confirmDiscard = ref(false)
+
 function close() {
   if (wizardCreateState.value === 'loading') return
+  confirmDiscard.value = false
   show.value = false
+}
+
+/** Cancel / X — confirm first when there's work to lose. */
+function requestClose() {
+  if (wizardCreateState.value === 'loading') return
+  if (hasEnteredContent.value && !confirmDiscard.value) {
+    confirmDiscard.value = true
+    return
+  }
+  close()
+}
+
+/**
+ * Clicking the dark area around the form never discards anything. It only
+ * dismisses an untouched wizard; once something is typed the click is ignored,
+ * because a mis-click there is far more likely than an intent to quit.
+ */
+function backdropClick() {
+  if (hasEnteredContent.value) return
+  close()
 }
 
 function wizardNext() {
@@ -1094,7 +1137,7 @@ defineExpose({ open })
 </script>
 
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="close">
+  <div v-if="show" class="modal-overlay" @click.self="backdropClick">
     <div class="modal wizard-modal">
 
       <!-- Step indicator — hidden on the path picker (step 0) and on the
@@ -1163,7 +1206,12 @@ defineExpose({ open })
         </div>
 
         <div class="modal-actions">
-          <button class="btn btn-ghost" type="button" @click="close">Cancel</button>
+          <template v-if="confirmDiscard">
+            <span class="discard-warn">Discard what you've entered?</span>
+            <button class="btn btn-ghost" type="button" @click="confirmDiscard = false">Keep editing</button>
+            <button class="btn btn-ghost danger-btn" type="button" @click="close">Discard</button>
+          </template>
+          <button v-else class="btn btn-ghost" type="button" @click="requestClose">Cancel</button>
         </div>
       </div>
 
@@ -2074,6 +2122,8 @@ defineExpose({ open })
 .modal-title { font-size: 20px; font-weight: 700; color: var(--color-text-primary); }
 .modal-subtitle { margin-top: 4px; margin-bottom: 22px; font-size: 13px; color: var(--color-text-muted); }
 .modal-actions { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 10px; }
+.modal-actions .discard-warn { margin-right: auto; align-self: center; font-size: 13px; color: var(--text-secondary); }
+.modal-actions .danger-btn { color: #ff6b6b; }
 .modal-error { padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(248,113,113,0.25); color: #f87171; font-size: 12px; background: rgba(248,113,113,0.1); }
 .credit-estimate { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 9px 12px; border-radius: 7px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); font-size: 12px; flex-wrap: wrap; }
 .credit-estimate-warn { border-color: rgba(248,113,113,.25); background: rgba(248,113,113,.06); }
