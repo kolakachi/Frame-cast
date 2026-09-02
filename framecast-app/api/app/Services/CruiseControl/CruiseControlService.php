@@ -101,9 +101,16 @@ class CruiseControlService
             // default is allowed) — probed empirically before the migration.
             if (! str_starts_with($model, 'gpt-5')) {
                 $payload['temperature'] = (float) config('services.openai.cruise_temperature', 0.6);
+            } else {
+                // Reasoning models think before answering, and on a project
+                // with several scenes plus the tool catalogue that pushed past
+                // the old 25s ceiling — the user waited, then got "something
+                // went wrong". Cruise is interactive and its job is routing to
+                // a tool, not deep reasoning, so keep the effort low.
+                $payload['reasoning_effort'] = (string) config('services.openai.cruise_reasoning_effort', 'low');
             }
             $response = Http::withToken($apiKey)
-                ->timeout(25)
+                ->timeout((int) config('services.openai.cruise_timeout', 60))
                 ->post('https://api.openai.com/v1/chat/completions', $payload);
 
             if (! $response->successful()) {

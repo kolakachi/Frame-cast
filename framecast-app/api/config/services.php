@@ -81,6 +81,11 @@ return [
         // hurt scene-id routing precision (wrong-scene edits). 0.4 keeps the
         // richness while tightening which scene each action targets.
         'cruise_temperature' => (float) env('OPENAI_CRUISE_TEMPERATURE', 0.4),
+        // Reasoning models need more headroom than the old 25s allowed, and
+        // low effort keeps the assistant snappy — it routes to a tool rather
+        // than reasoning deeply.
+        'cruise_timeout' => (int) env('OPENAI_CRUISE_TIMEOUT', 60),
+        'cruise_reasoning_effort' => env('OPENAI_CRUISE_REASONING_EFFORT', 'low'),
     ],
 
     'pexels' => [
