@@ -78,7 +78,11 @@ const aiBrollStyle = ref('photorealistic')
 // the backend as project.custom_visual_style and is substituted into every
 // scene's image prompt in place of a preset style descriptor.
 const customVisualStyle = ref('')
-const globalVisualMode = ref('stock_video') // 'stock_video' | 'stock_images' | 'ai_images' | 'ai_video' | 'waveform'
+// Defaults to AI visuals, not stock. Stock was the silent default and it is
+// the weakest output the product makes — a CREATOR-tier customer refunded
+// after one 8-scene video came out as stock clips with a voiceover, comparing
+// it to HeyGen. Stock stays available, but as a deliberate choice.
+const globalVisualMode = ref('ai_images') // 'stock_video' | 'stock_images' | 'ai_images' | 'ai_video' | 'waveform'
 
 // ── AI Video (animated b-roll) ─────────────────────────────────────────
 // The video model is the real price lever — a 4x spread per scene — so it is

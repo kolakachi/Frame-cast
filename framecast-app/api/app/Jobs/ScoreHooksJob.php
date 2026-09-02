@@ -4,8 +4,11 @@ namespace App\Jobs;
 
 use App\Events\GenerationProgressed;
 use App\Models\Project;
+use App\Models\Scene;
 use App\Models\ProjectHookOption;
 use App\Services\Generation\AI\AIGenerationAdapter;
+use Illuminate\Support\Facades\Log;
+use App\Services\CreditService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use App\Traits\TracksJobFailure;
 use Illuminate\Foundation\Queue\Queueable;
@@ -105,6 +108,16 @@ class ScoreHooksJob implements ShouldQueue
         // the output is always AI-generated visuals, not stock clips.
         $useAiImages = in_array($mode, ['ai_images', 'ai_video'], true) || $project?->source_type === 'images';
 
+        // No explicit choice used to fall through to stock footage — the
+        // weakest output we make, and the majority of everything generated
+        // (568 stock scenes vs 177 AI). A CREATOR-tier customer refunded over
+        // exactly that, comparing it to HeyGen. Absent a choice, generate AI
+        // visuals; only drop to stock when the workspace can't afford them,
+        // since the AI job fails per scene rather than falling back itself.
+        if ($mode === null && ! $useAiImages && $project !== null) {
+            $useAiImages = $this->canAffordAiVisuals($project);
+        }
+
         if ($useAiImages) {
             GenerateProjectAIImagesJob::dispatch($this->projectId);
 
@@ -118,6 +131,30 @@ class ScoreHooksJob implements ShouldQueue
         }
 
         MatchVisualsJob::dispatch($this->projectId);
+    }
+
+    /** Can this workspace pay for AI visuals across the project's scenes? */
+    private function canAffordAiVisuals(Project $project): bool
+    {
+        try {
+            $scenes = Scene::query()->where('project_id', $project->getKey())->count();
+            if ($scenes === 0) {
+                return false;
+            }
+
+            $perScene = app(\App\Services\Generation\Image\ImageAdapterFactory::class)
+                ->generationCost('gpt-image-1', false);
+
+            return app(CreditService::class)
+                ->canAfford((int) $project->workspace_id, $scenes * $perScene);
+        } catch (\Throwable $e) {
+            Log::warning('AI visual affordability check failed — using stock', [
+                'project_id' => $project->getKey(),
+                'error' => mb_substr($e->getMessage(), 0, 160),
+            ]);
+
+            return false;
+        }
     }
 
     /**
