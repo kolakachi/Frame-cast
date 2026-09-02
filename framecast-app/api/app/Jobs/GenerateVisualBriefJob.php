@@ -9,6 +9,7 @@ use App\Services\Media\StorageService;
 use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 
 class GenerateVisualBriefJob implements ShouldQueue
 {
@@ -211,12 +212,58 @@ class GenerateVisualBriefJob implements ShouldQueue
                 ],
             ]);
 
-            $style = trim($result['content']);
-
-            return $style !== '' ? $style : null;
+            return $this->usableReferenceStyle(trim($result['content']));
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Accept a style description only if the model actually produced one.
+     *
+     * A vision model can decline ("I'm unable to analyze that image directly…")
+     * even when the image is served fine, and the reply is stored verbatim as
+     * `reference_style`, which then gets welded into EVERY scene prompt as
+     * "Visual style: <refusal>". One live project shipped five scenes that way.
+     * Better no style clause than a refusal steering the image model.
+     */
+    private function usableReferenceStyle(string $style): ?string
+    {
+        if ($style === '') {
+            return null;
+        }
+
+        $probe = mb_strtolower($style);
+        $tells = [
+            'unable to analyze', 'unable to view', 'cannot analyze', "can't analyze",
+            'cannot view', "can't view", 'unable to see', 'cannot see the image',
+            "i'm sorry", 'i am sorry', 'as an ai', 'i cannot help', "i can't help",
+            'if you describe', 'please describe', 'unable to process', 'unable to identify',
+        ];
+
+        foreach ($tells as $tell) {
+            if (str_contains($probe, $tell)) {
+                Log::warning('reference style rejected — model did not describe the image', [
+                    'project_id' => $this->projectId,
+                    'reply' => mb_substr($style, 0, 160),
+                ]);
+
+                return null;
+            }
+        }
+
+        // A usable answer is a short style phrase. Anything long-winded is the
+        // model explaining itself rather than describing a look.
+        if (mb_strlen($style) > 600) {
+            Log::warning('reference style rejected — reply too long to be a style phrase', [
+                'project_id' => $this->projectId,
+                'length' => mb_strlen($style),
+            ]);
+
+            return null;
+        }
+
+        return $style;
     }
 
     private function resolvePublicUrl(string $storageUrl): ?string
