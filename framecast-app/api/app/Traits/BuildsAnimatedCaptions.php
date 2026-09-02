@@ -26,7 +26,7 @@ trait BuildsAnimatedCaptions
      * it previewed.
      */
     protected const ANIM_FONT_SCALE = [
-        'beast' => 2.50, 'comic' => 2.10, 'glitch' => 2.10, 'sticker' => 1.70,
+        'beast' => 2.00, 'comic' => 1.75, 'glitch' => 1.90, 'sticker' => 1.70,
         'blur' => 1.60, 'punch' => 1.55, 'karaoke' => 1.50, 'wave' => 1.50,
         'box' => 1.45, 'marker' => 1.45, 'slide' => 1.40, 'tracking' => 1.35,
         'neon' => 1.30, 'stream' => 1.15, 'news' => 0.95,
@@ -89,7 +89,7 @@ trait BuildsAnimatedCaptions
      * Stream and News are excluded: they're one growing run by design.
      */
     protected const ANIM_POSITIONED = [
-        'comic', 'slide', 'beast', 'sticker', 'karaoke', 'blur', 'wave', 'punch', 'marker', 'box',
+        'comic', 'slide', 'beast', 'sticker', 'karaoke', 'blur', 'wave', 'punch', 'marker', 'box', 'glitch',
     ];
 
     /** Whole-line tilt in ASS degrees (counter-clockwise), matching the CSS rotate. */
@@ -102,7 +102,7 @@ trait BuildsAnimatedCaptions
      * neighbours (Marker peaks at 135%, Punch 122%, Comic 107%).
      */
     protected const ANIM_WORD_GAP = [
-        'marker' => 0.30, 'comic' => 0.26, 'punch' => 0.20, 'blur' => 0.12,
+        'marker' => 0.16, 'comic' => 0.22, 'punch' => 0.20, 'blur' => 0.12,
         'wave' => 0.08, 'sticker' => 0.12, 'beast' => 0.10, 'karaoke' => 0.08,
     ];
 
@@ -426,6 +426,8 @@ trait BuildsAnimatedCaptions
 
         $maxWidth = max(100.0, $layout['playResX'] - 2 * $layout['marginLR']);
         $rowHeight = $fontSize * 1.18;
+        // \an5 centres the ASS line box (winAscent+winDescent tall) on y.
+        $assLineBox = $metrics->assFontSize($layout['fontName'], $fontSize) ?? $fontSize;
         $events = [];
         $lineCount = count($lines);
 
@@ -543,13 +545,21 @@ trait BuildsAnimatedCaptions
                 // Box's pill, drawn so it can have the preview's corner radius.
                 if ($animation === 'box' && $activeEnd > $activeStart) {
                     $padX = $fontSize * 0.18;
-                    $pillH = $fontSize * 1.06;
+                    // The preview's pill is the word's inline box (line-height
+                    // 1.18em) plus 0.04em padding, centred on the glyphs. Sizing
+                    // it off the nominal em alone left it short, with the text
+                    // sitting low inside it.
+                    $vm = $metrics->verticalMetrics($layout['fontName'], $fontSize);
+                    $pillH = $vm !== null ? $vm['inkHeight'] + $fontSize * 0.34 : $fontSize * 1.26;
+                    $pillCy = $vm !== null
+                        ? $y + ($assLineBox / 2) - $vm['descent'] - $vm['inkRise']
+                        : $y;
                     $events[] = [
                         $this->formatASSTime($activeStart),
                         $this->formatASSTime($activeEnd),
                         $this->assRoundedRect(
                             $x - $widths[$wi] / 2 - $padX,
-                            $y - $pillH / 2,
+                            $pillCy - $pillH / 2,
                             $widths[$wi] + 2 * $padX,
                             $pillH,
                             $fontSize * 0.28,
@@ -570,6 +580,24 @@ trait BuildsAnimatedCaptions
 
                 // spoken now — pops, tilts, holds the highlight colour
                 if ($activeEnd > $activeStart) {
+                    if ($animation === 'glitch') {
+                        // Cyan/magenta copies sliding back to register — the
+                        // preview does this with two offset text-shadows, which
+                        // a single ASS run can't reproduce.
+                        $split = $fontSize * 0.055;
+                        foreach ([['&HFFFF00&', -1], ['&HFF00FF&', 1]] as [$tint, $dir]) {
+                            $events[] = [
+                                $this->formatASSTime($activeStart),
+                                $this->formatASSTime(min($activeStart + 0.16, $activeEnd)),
+                                sprintf(
+                                    '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,160)\\1c%s\\alpha&H40&\\bord0\\shad0}',
+                                    $x + $dir * $split, $y, $x, $y, $tint
+                                ).$text,
+                                0,
+                            ];
+                        }
+                    }
+
                     if ($animation === 'wave') {
                         // A hop is up-then-down; \move is a single linear leg,
                         // so the active word is split into two events. Mirrors
@@ -827,7 +855,7 @@ trait BuildsAnimatedCaptions
         $fontName = (string) ($layout['fontName'] ?? '');
         $metrics = $fontSize > 0 && $fontName !== '' ? app(\App\Services\Media\FontMetrics::class) : null;
         $padX = $fontSize * ($anim === 'news' ? 0.75 : 0.70);
-        $padY = $fontSize * 0.50;
+        $padY = $fontSize * 0.60;
         $radius = $fontSize * ($anim === 'news' ? 0.22 : 0.50);
         $rowH = $fontSize * 1.18;
         $maxWidth = max(100.0, ($layout['playResX'] ?? 1080) - 2 * $padX - 40);
@@ -852,14 +880,27 @@ trait BuildsAnimatedCaptions
             }
             $rows = max(1, (int) ceil($w / $maxWidth));
             $boxW = min($w, $maxWidth) + 2 * $padX;
-            $boxH = $rows * $rowH + 2 * $padY;
+
+            // Wrap the glyphs' real ink, not a guess from the nominal em:
+            // libass renders an em smaller than the Fontsize, so a box derived
+            // from font size alone sat tight and off-centre on the text.
+            $vm = $metrics->verticalMetrics($fontName, $fontSize);
+            $step = $metrics->assFontSize($fontName, $fontSize) ?? $rowH;
+            if ($vm !== null) {
+                $lastInkCentre = $bottom - $vm['descent'] - $vm['inkRise'];
+                $boxH = $vm['inkHeight'] + ($rows - 1) * $step + 2 * $padY;
+                $boxTop = $lastInkCentre - $vm['inkHeight'] / 2 - ($rows - 1) * $step - $padY;
+            } else {
+                $boxH = $rows * $rowH + 2 * $padY;
+                $boxTop = $bottom - $rows * $rowH - $padY;
+            }
 
             return [
                 $start,
                 $end,
                 $this->assRoundedRect(
                     $centreX - $boxW / 2,
-                    $bottom - $rows * $rowH - $padY,
+                    $boxTop,
                     $boxW,
                     $boxH,
                     $radius,

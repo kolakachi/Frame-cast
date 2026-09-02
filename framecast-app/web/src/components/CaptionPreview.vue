@@ -169,7 +169,7 @@ function charOn(word, index) {
 
 /* stream — typewriter console; panel grows, caret rides last typed char */
 .cp-stream { font-size: 1.15em; background: var(--cp-bg, rgba(0, 0, 0, 0.62));
-  padding: 0.5em 0.7em; border-radius: 0.5em; text-align: left; }
+  padding: 0.5em 0.7em; border-radius: 0.5em; text-align: center; }
 .cp-stream .cp-w { display: none; margin: 0; }
 .cp-stream .cp-active, .cp-stream .cp-spoken { display: inline-block; }
 .cp-stream .cp-ch { display: none; }
@@ -180,7 +180,7 @@ function charOn(word, index) {
 
 /* blur — words de-blur as spoken */
 .cp-blur { font-size: 1.6em; text-transform: uppercase; letter-spacing: 0.03em; text-shadow: 0 0.1em 0.2em rgba(0, 0, 0, 0.7); }
-.cp-blur .cp-unspoken { opacity: 0; filter: blur(10px); transform: scale(1.15); }
+.cp-blur .cp-unspoken { opacity: 0; filter: blur(0.22em); transform: scale(1.15); }
 .cp-blur .cp-spoken, .cp-blur .cp-active { opacity: 1; filter: blur(0); transform: scale(1);
   transition: filter 0.28s ease, opacity 0.22s, transform 0.28s; }
 .cp-blur .cp-active { color: var(--cp-hl); }
