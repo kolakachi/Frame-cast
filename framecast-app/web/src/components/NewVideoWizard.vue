@@ -696,13 +696,14 @@ function requestClose() {
 }
 
 /**
- * Clicking the dark area around the form never discards anything. It only
- * dismisses an untouched wizard; once something is typed the click is ignored,
- * because a mis-click there is far more likely than an intent to quit.
+ * Clicking the dark area around the form does nothing at all.
+ *
+ * It used to close the wizard, and reopening resets every field — a customer
+ * lost four attempts that way. Dismissing only ever happens through Cancel or
+ * the X, where the intent is unambiguous.
  */
 function backdropClick() {
-  if (hasEnteredContent.value) return
-  close()
+  /* intentionally inert */
 }
 
 function wizardNext() {
@@ -1139,6 +1140,13 @@ defineExpose({ open })
 <template>
   <div v-if="show" class="modal-overlay" @click.self="backdropClick">
     <div class="modal wizard-modal">
+      <button
+        class="wizard-close"
+        type="button"
+        aria-label="Close"
+        title="Close"
+        @click="requestClose"
+      >&#10005;</button>
 
       <!-- Step indicator — hidden on the path picker (step 0) and on the
            blank single-step form (since they're one-screen flows). -->
@@ -2120,6 +2128,15 @@ defineExpose({ open })
 .modal { width: min(680px,calc(100vw - 32px)); max-height: 86vh; overflow-y: auto; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; padding: 28px; box-shadow: 0 30px 80px rgba(0,0,0,0.5); }
 .wizard-modal { width: min(860px,calc(100vw - 32px)); }
 .modal-title { font-size: 20px; font-weight: 700; color: var(--color-text-primary); }
+.wizard-modal { position: relative; }
+.wizard-close {
+  position: absolute; top: 14px; right: 16px; z-index: 5;
+  width: 32px; height: 32px; line-height: 1; font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid transparent; border-radius: 8px;
+  color: var(--text-secondary); cursor: pointer; transition: 0.15s;
+}
+.wizard-close:hover { background: var(--color-surface-2, rgba(255,255,255,0.06)); color: var(--color-text-primary); }
 .modal-subtitle { margin-top: 4px; margin-bottom: 22px; font-size: 13px; color: var(--color-text-muted); }
 .modal-actions { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 10px; }
 .modal-actions .discard-warn { margin-right: auto; align-self: center; font-size: 13px; color: var(--text-secondary); }
