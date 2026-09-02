@@ -603,6 +603,7 @@ trait BuildsAnimatedCaptions
                             $x,
                             $y,
                             $fontSize,
+                            $assLineBox,
                             $core,
                         );
                     }
@@ -659,8 +660,16 @@ trait BuildsAnimatedCaptions
     }
 
     /**
-     * Reproduce the browser's four Glitch keyframes with positioned ASS events.
-     * Two lower-layer copies provide the cyan/magenta text-shadow split.
+     * Reproduce the browser's stepped Glitch keyframes with positioned ASS
+     * events. libass's \fax is anchored at the font ascender (the top of the
+     * line box), whereas CSS skewX() defaults to the element centre. Shifting
+     * each event left by half the line-box shear keeps the word's visual centre
+     * fixed, making the ASS shear pivot around the same point as Chrome.
+     *
+     * CSS `steps(2)` holds the start and midpoint of each keyframe interval.
+     * Emit those six states directly instead of using \move/\t, whose linear
+     * interpolation crossed through zero while Chrome was still holding a
+     * positive skew. Two lower-layer copies provide the RGB text-shadow split.
      *
      * @param list<array{string,string,string,int?}> $events
      */
@@ -672,65 +681,58 @@ trait BuildsAnimatedCaptions
         float $x,
         float $y,
         float $fontSize,
+        float $assLineBox,
         string $coreColor,
     ): void {
-        $points = [
-            [$start,         $x - $fontSize * 0.08, $y + $fontSize * 0.04,  0.21,  0.06],
-            [$start + 0.105, $x + $fontSize * 0.05, $y - $fontSize * 0.03, -0.14, -0.05],
-            [$start + 0.210, $x - $fontSize * 0.02, $y + $fontSize * 0.01,  0.00,  0.02],
-            [$start + 0.300, $x,                    $y,                    0.00,  0.00],
+        // [time, translateX(em), translateY(em), tan(skew angle), RGB split(em), alpha]
+        // Midpoint rows are the second held value produced by steps(2, end).
+        $states = [
+            [0.0000, -0.0800,  0.0400,  0.213,  0.0600, '99'], // 0%: 12deg, 40% opacity
+            [0.0525, -0.0150,  0.0050,  0.035,  0.0050, '4D'], // halfway to 35%
+            [0.1050,  0.0500, -0.0300, -0.141, -0.0500, '00'], // 35%: -8deg
+            [0.1575,  0.0150, -0.0100, -0.070, -0.0150, '00'], // halfway to 70%
+            [0.2100, -0.0200,  0.0100,  0.000,  0.0200, '00'], // 70%
+            [0.2550, -0.0100,  0.0050,  0.000,  0.0100, '00'], // halfway to settled
+            [0.3000,  0.0000,  0.0000,  0.000,  0.0000, '00'], // 100%
         ];
 
-        for ($leg = 0; $leg < 3; $leg++) {
-            $legStart = $points[$leg][0];
-            $legEnd = min($points[$leg + 1][0], $end);
-            if ($legEnd <= $legStart) {
+        $pivotDistance = $assLineBox / 2;
+
+        for ($index = 0; $index < count($states) - 1; $index++) {
+            [$offset, $tx, $ty, $fax, $split, $alpha] = $states[$index];
+            $stateStart = $start + $offset;
+            $stateEnd = min($start + $states[$index + 1][0], $end);
+            if ($stateEnd <= $stateStart) {
                 break;
             }
 
-            $durationMs = max(1, (int) round(($legEnd - $legStart) * 1000));
-            [$fromX, $fromY, $fromFax, $fromSplit] = array_slice($points[$leg], 1);
-            [$toX, $toY, $toFax, $toSplit] = array_slice($points[$leg + 1], 1);
-            $alpha = $leg === 0
-                ? sprintf('\\alpha&H99&\\t(0,%d,\\alpha&H00&)', $durationMs)
-                : '';
-            $fax = sprintf('\\fax%.2f', $fromFax);
-            if ($fromFax !== $toFax) {
-                $fax .= sprintf('\\t(0,%d,\\fax%.2f)', $durationMs, $toFax);
-            }
+            $baseX = $x + $fontSize * $tx;
+            $baseY = $y + $fontSize * $ty;
+            $centredX = $baseX - $fax * $pivotDistance;
 
             $events[] = [
-                $this->formatASSTime($legStart),
-                $this->formatASSTime($legEnd),
+                $this->formatASSTime($stateStart),
+                $this->formatASSTime($stateEnd),
                 sprintf(
-                    '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,%d)\\1c%s%s%s}',
-                    $fromX, $fromY, $toX, $toY, $durationMs, $coreColor, $alpha, $fax
+                    '{\\an5\\pos(%.1f,%.1f)\\1c%s\\alpha&H%s&\\fax%.3f\\shad0}',
+                    $centredX, $baseY, $coreColor, $alpha, $fax,
                 ).$text,
             ];
 
             foreach ([['&HFFFF00&', -1], ['&HFF00FF&', 1]] as [$tint, $dir]) {
-                $ghostAlpha = match ($leg) {
-                    0 => sprintf('\\alpha&H99&\\t(0,%d,\\alpha&H00&)', $durationMs),
-                    2 => sprintf('\\alpha&H00&\\t(0,%d,\\alpha&HFF&)', $durationMs),
-                    default => '\\alpha&H00&',
-                };
-                $ghostFax = sprintf('\\fax%.2f', $fromFax);
-                if ($fromFax !== $toFax) {
-                    $ghostFax .= sprintf('\\t(0,%d,\\fax%.2f)', $durationMs, $toFax);
-                }
+                // At the 85% state Chrome is halfway from the two RGB shadows
+                // back to the single black resting shadow, so fade both copies.
+                $ghostAlpha = $index === 5 ? '80' : $alpha;
                 $events[] = [
-                    $this->formatASSTime($legStart),
-                    $this->formatASSTime($legEnd),
+                    $this->formatASSTime($stateStart),
+                    $this->formatASSTime($stateEnd),
                     sprintf(
-                        '{\\an5\\move(%.1f,%.1f,%.1f,%.1f,0,%d)\\1c%s%s\\bord0\\shad0%s}',
-                        $fromX + $dir * $fontSize * $fromSplit,
-                        $fromY,
-                        $toX + $dir * $fontSize * $toSplit,
-                        $toY,
-                        $durationMs,
+                        '{\\an5\\pos(%.1f,%.1f)\\1c%s\\alpha&H%s&\\bord0\\shad0\\fax%.3f}',
+                        $centredX + $dir * $fontSize * $split,
+                        $baseY,
                         $tint,
                         $ghostAlpha,
-                        $ghostFax,
+                        $fax,
                     ).$text,
                     0,
                 ];

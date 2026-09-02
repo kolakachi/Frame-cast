@@ -255,9 +255,9 @@ function simulatedBars(currentSeconds, count, style) {
 
 // ─── Animated caption presets (twin of CaptionPreview.vue) ────────────────
 // Frames are screenshotted out of real time, so nothing may depend on wall
-// clocks or CSS animations: every word carries its state plus tRel (seconds
-// since it activated) and the in-page renderer computes deterministic
-// easings from that.
+// clocks. Every word carries tRel (seconds since activation); most presets
+// compute their easing directly, while Glitch pauses the editor's exact CSS
+// animation and seeks it to tRel with a negative delay.
 const ANIM_CHUNK = { beast: 1, comic: 1, glitch: 1, sticker: 3, blur: 3, punch: 3, neon: 3, marker: 3, stream: 8, news: 5 };
 const ANIM_UPPER = ["beast", "comic", "sticker", "karaoke", "blur", "punch", "tracking", "neon"];
 
@@ -618,6 +618,16 @@ function buildHtml() {
         display: none !important;
       }
 
+      /* Exact twin of CaptionPreview.vue. Audiogram frames are rendered out
+         of real time, so wordSpanFor pauses this animation and seeks it using
+         the active word's elapsed time. */
+      @keyframes caption-glitch {
+        0% { opacity: 0.4; transform: translate(-0.08em, 0.04em) skewX(12deg); text-shadow: -0.06em 0 0 #0ff, 0.06em 0 0 #f0f; }
+        35% { opacity: 1; transform: translate(0.05em, -0.03em) skewX(-8deg); text-shadow: 0.05em 0 0 #0ff, -0.05em 0 0 #f0f; }
+        70% { transform: translate(-0.02em, 0.01em); text-shadow: -0.02em 0 0 #0ff, 0.02em 0 0 #f0f; }
+        100% { transform: none; text-shadow: 0 0.07em 0 rgba(0, 0, 0, 0.6); }
+      }
+
       .caption-style-editorial .caption-word {
         font-style: italic;
         font-weight: 400;
@@ -835,6 +845,12 @@ function buildHtml() {
         return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
       }
 
+      function applyGlitchFrame(span, elapsed) {
+        span.style.transformOrigin = "center center";
+        span.style.animation = "caption-glitch 0.3s steps(2) both paused";
+        span.style.animationDelay = "-" + Math.max(0, elapsed) + "s";
+      }
+
       function renderAnimatedCaption(words, state) {
         var container = document.getElementById("preview-caption");
         if (!state.captionEnabled || !Array.isArray(words) || words.length === 0) {
@@ -860,7 +876,8 @@ function buildHtml() {
         var wrap = document.createElement("span");
         wrap.style.display = "inline-block";
         wrap.style.maxWidth = "100%";
-        wrap.style.fontSize = (ANIM_FONT_SCALE[anim] || 1) + "em";
+        var multiPop = words.length > 1 && (anim === "beast" || anim === "comic" || anim === "glitch");
+        wrap.style.fontSize = (multiPop ? 1.4 : (ANIM_FONT_SCALE[anim] || 1)) + "em";
         wrap.style.lineHeight = "1.18";
         wrap.style.color = baseColor;
         if (anim === "sticker" || anim === "marker") wrap.style.transform = "rotate(-2deg)";
@@ -906,6 +923,10 @@ function buildHtml() {
         span.style.margin = "0 0.1em";
         span.style.fontWeight = "700";
         span.style.textShadow = "0 0.08em 0.18em rgba(0,0,0,0.7)";
+        if (anim === "glitch") {
+          span.style.fontWeight = "400";
+          span.style.textShadow = "0 0.07em 0 rgba(0,0,0,0.6)";
+        }
         var t = word.tRel || 0;
         var active = word.state === "active";
         var unspoken = word.state === "unspoken";
@@ -915,19 +936,24 @@ function buildHtml() {
           // the preset's character (comic tilt, glitch skew) — spans transform
           // in place in DOM, unlike ASS \frz.
           span.style.opacity = unspoken ? "0.35" : "1";
-          span.style.fontWeight = "900";
-          span.style.webkitTextStroke = "0.03em #000";
+          if (anim === "beast") {
+            span.style.fontWeight = "900";
+            span.style.webkitTextStroke = "0.035em #000";
+          } else if (anim === "comic") {
+            span.style.webkitTextStroke = "0.045em #000";
+          }
           if (active) {
-            var ep = easeOutBack(clamp01(t / 0.14));
-            var tx = "scale(" + (0.55 + 0.45 * ep) + ")";
-            if (anim === "comic") {
+            if (anim === "glitch") {
+              // Unlike Beast/Comic, the Vue Glitch preset has no scale-in. Its
+              // translate/skew and steps(2) timing are applied verbatim.
+              applyGlitchFrame(span, t);
+            } else {
+              var ep = easeOutBack(clamp01(t / 0.14));
+              var tx = "scale(" + (0.55 + 0.45 * ep) + ")";
               var tiltL = (index % 2 === 0 ? -6 : 6) * clamp01(t / 0.22);
-              tx += " rotate(" + tiltL + "deg)";
-            } else if (anim === "glitch" && t < 0.2) {
-              tx += " skewX(" + ((Math.floor(t / 0.05) % 2 === 0 ? 1 : -1) * 9) + "deg)";
-              span.style.textShadow = "-0.05em 0 0 #0ff, 0.05em 0 0 #f0f";
+              if (anim === "comic") tx += " rotate(" + tiltL + "deg)";
+              span.style.transform = tx;
             }
-            span.style.transform = tx;
             span.style.color = hl;
           }
           return span;
@@ -944,13 +970,10 @@ function buildHtml() {
           span.style.transform = "scale(" + (0.2 + 0.8 * ec) + ") rotate(" + (tilt * clamp01(t / 0.22)) + "deg)";
           span.style.webkitTextStroke = "0.045em #000";
         } else if (anim === "glitch") {
-          if (t < 0.2) {
-            var step = Math.floor(t / 0.05) % 2 === 0 ? 1 : -1;
-            span.style.transform = "translate(" + step * 0.06 + "em, " + -step * 0.03 + "em) skewX(" + step * 9 + "deg)";
-            span.style.textShadow = "-0.05em 0 0 #0ff, 0.05em 0 0 #f0f";
-          } else {
-            span.style.color = hl;
-          }
+          // One-word Glitch keeps the base caption colour in Vue; the RGB
+          // split, vertical direction, duration and stepped timing all come
+          // from the same keyframes used in the editor.
+          applyGlitchFrame(span, t);
         } else if (anim === "karaoke") {
           span.style.fontWeight = "800";
           span.style.fontStyle = "italic";

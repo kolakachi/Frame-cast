@@ -188,7 +188,7 @@ function charOn(word, index) {
 /* glitch — RGB-split flicker per word */
 .cp-glitch { font-size: 2.1em; letter-spacing: 0.04em; text-shadow: 0 0.07em 0 rgba(0, 0, 0, 0.6); }
 .cp-glitch .cp-w { display: none; }
-.cp-glitch .cp-active { display: inline-block; animation: cp-glitch 0.3s steps(2) both; }
+.cp-glitch .cp-active { display: inline-block; transform-origin: center center; animation: cp-glitch 0.3s steps(2) both; }
 @keyframes cp-glitch {
   0% { opacity: 0.4; transform: translate(-0.08em, 0.04em) skewX(12deg); text-shadow: -0.06em 0 0 #0ff, 0.06em 0 0 #f0f; }
   35% { opacity: 1; transform: translate(0.05em, -0.03em) skewX(-8deg); text-shadow: 0.05em 0 0 #0ff, -0.05em 0 0 #f0f; }

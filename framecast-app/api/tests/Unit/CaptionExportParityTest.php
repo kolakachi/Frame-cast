@@ -37,14 +37,20 @@ class CaptionExportParityTest extends TestCase
     {
         $ass = $this->renderer()->caption('medium', 'glitch', 'keywords');
 
-        $this->assertStringContainsString('\\move(', $ass);
+        $this->assertStringNotContainsString('\\move(', $ass);
         $this->assertStringContainsString('Style: Default,Luckiest Guy,158,', $ass);
         $this->assertStringContainsString('\\1c&HFFFF00&', $ass); // cyan ghost in ASS BGR
         $this->assertStringContainsString('\\1c&HFF00FF&', $ass); // magenta ghost
         $this->assertStringContainsString('\\1c&HFFFFFF&\\alpha&H99&', $ass);
-        $this->assertStringContainsString('\\alpha&H99&\\t(0,105,\\alpha&H00&)\\fax0.21\\t(0,105,\\fax-0.14)', $ass);
-        $this->assertStringContainsString('\\alpha&H00&\\t(0,90,\\alpha&HFF&)', $ass);
-        $this->assertStringNotContainsString('\\t(60,160,\\fax0)', $ass);
+        // CSS steps(2) is exported as held 0%, midpoint, 35%, midpoint,
+        // 70%, midpoint states. No continuous ASS transform may reverse the
+        // lean while Chrome is still holding its previous step.
+        $this->assertStringContainsString('\\alpha&H99&\\fax0.213\\shad0', $ass);
+        $this->assertStringContainsString('\\alpha&H4D&\\fax0.035\\shad0', $ass);
+        $this->assertStringContainsString('\\alpha&H00&\\fax-0.141\\shad0', $ass);
+        $this->assertStringContainsString('\\alpha&H00&\\fax-0.070\\shad0', $ass);
+        $this->assertStringContainsString('\\alpha&H80&\\bord0\\shad0\\fax0.000', $ass);
+        $this->assertStringNotContainsString('\\t(', $ass);
         $this->assertMatchesRegularExpression('/Style: Default,[^\\n]+,1,0\\.0,\\d+\\.\\d+,2,/', $ass);
     }
 

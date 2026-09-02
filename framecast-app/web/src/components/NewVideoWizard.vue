@@ -233,11 +233,13 @@ const durationOptions = [
   { label: '3 min', value: '180' },
 ]
 
+// AI first — it's the default and the differentiated output. Stock sat at the
+// top and was preselected, which is what most projects silently shipped with.
 const visualTypeOptions = [
-  { key: 'stock_video', label: 'Stock Video', hint: 'Real clips matched to each scene' },
-  { key: 'stock_images', label: 'Stock Images', hint: 'Editorial stills and image montages' },
   { key: 'ai_images', label: 'AI Images', hint: 'Generated frames in your chosen style' },
   { key: 'ai_video', label: 'AI Video', hint: 'AI images animated into real motion — premium b-roll' },
+  { key: 'stock_video', label: 'Stock Video', hint: 'Real clips matched to each scene' },
+  { key: 'stock_images', label: 'Stock Images', hint: 'Editorial stills and image montages' },
   { key: 'waveform', label: 'Audiogram', hint: 'Audio-reactive bars for podcasts and narration' },
 ]
 
@@ -340,7 +342,10 @@ function scrollToActions() {
 
 function setWizardSourceType(sourceType) {
   wizardSourceType.value = sourceType
-  globalVisualMode.value = 'stock_video'
+  // Reset to AI, not stock: stock is the weakest output we make and it was
+  // being reselected here every time the source type changed, which quietly
+  // undid the default.
+  globalVisualMode.value = 'ai_images'
   if (sourceType !== 'images') {
     sourceImageAssetIds.value = []
     imageFiles.value = []
@@ -559,7 +564,7 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   imageVisualMode.value = 'upload'
   aiBrollStyle.value = 'photorealistic'
   customVisualStyle.value = ''
-  globalVisualMode.value = 'stock_video'
+  globalVisualMode.value = 'ai_images'
   channelId.value = presetChannelId ? String(presetChannelId) : ''
   title.value = ''
   promptText.value = ''
