@@ -123,6 +123,11 @@ trait BuildsAnimatedCaptions
      */
     protected function buildAnimatedASSContent(string $animation, array $timedWords, array $ctx): string
     {
+        // $fontSize is the CSS-style em size, identical to the number the
+        // editor preview uses. It drives ALL geometry below. Only the Style
+        // line converts to an ASS Fontsize, which measures a different box
+        // (usWinAscent+usWinDescent) and is font-specific — feeding CSS px
+        // straight in rendered captions up to a third smaller than preview.
         $fontSize = (int) round($ctx['fontSize'] * (self::ANIM_FONT_SCALE[$animation] ?? 1.0));
         $isPanelPreset = in_array($animation, ['stream', 'news'], true);
         $backdrop = $ctx['backdrop'] ?? null;
@@ -175,10 +180,15 @@ trait BuildsAnimatedCaptions
 
         $fontName = self::ANIM_FONT_FAMILY[$animation][$ctx['fontName']] ?? $ctx['fontName'];
 
+        $assFontSize = (int) round(
+            app(\App\Services\Media\FontMetrics::class)->assFontSize($fontName, (float) $fontSize)
+                ?? $fontSize
+        );
+
         $style = sprintf(
             'Style: Default,%s,%d,%s,&H000000FF&,%s,%s,%d,%d,0,0,100,100,0,0,%s,%d,%d,%d,%d,1',
             $fontName,
-            $fontSize,
+            $assFontSize,
             $primaryStyleColour,
             $outlineColourFull,
             $backColour,
@@ -801,7 +811,11 @@ trait BuildsAnimatedCaptions
     {
         $events = [];
         $lineCount = count($lines);
-        $caret = '\\h▌';
+        // Stream's caret is the highlight colour in the preview; News's takes
+        // the text colour so it stays visible on the light bar.
+        $caret = ($layout['animation'] ?? 'stream') === 'news'
+            ? '\\h▌'
+            : '\\h{\\1c'.$highlight.'}▌';
 
         // Panel geometry. The bar/console is drawn as a rounded rect sized to
         // whatever is on screen at that moment, so it grows with the typing
@@ -873,7 +887,7 @@ trait BuildsAnimatedCaptions
                 if ($perCharacter) {
                     $chars = preg_split('//u', $word['text'], -1, PREG_SPLIT_NO_EMPTY) ?: [];
                     $charCount = count($chars);
-                    $step = max(1, (int) ceil($charCount / 4)); // ≤4 events per word
+                    $step = max(1, (int) ceil($charCount / 6)); // ≤6 events per word
                     // Boundaries must END on charCount. Stepping by $step and
                     // stopping at <= charCount skipped the final group whenever
                     // the length wasn't a multiple of the step ("certain": 2,4,6

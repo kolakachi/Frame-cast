@@ -23,10 +23,12 @@ class FontMetrics
     private static array $cache = [];
 
     /**
-     * Width of $text in pixels at $fontSizePx, or null when the font can't be
-     * measured (caller falls back to a non-positioned layout).
+     * Width of $text in pixels when the font is rendered at $emPx.
+     *
+     * $emPx is the CSS-style em size — the same number the browser preview
+     * uses — NOT an ASS Fontsize. See assFontSize() for the difference.
      */
-    public function width(string $text, string $family, float $fontSizePx): ?float
+    public function width(string $text, string $family, float $emPx): ?float
     {
         $font = $this->load($family);
         if ($font === null) {
@@ -39,7 +41,26 @@ class FontMetrics
             $units += $font['advances'][$gid] ?? $font['default'];
         }
 
-        return $units / $font['units'] * $fontSizePx;
+        return $units / $font['upem'] * $emPx;
+    }
+
+    /**
+     * ASS `Fontsize` that renders glyphs at $emPx.
+     *
+     * CSS font-size sets the em; ASS Fontsize sets the usWinAscent+usWinDescent
+     * height instead, and the gap between them is font-specific (0.64 for
+     * Montserrat, 0.82 for Luckiest Guy). Passing CSS pixels straight into
+     * Fontsize therefore renders captions up to a third smaller than the
+     * editor preview shows.
+     */
+    public function assFontSize(string $family, float $emPx): ?float
+    {
+        $font = $this->load($family);
+        if ($font === null || ($font['box'] ?? 0) <= 0 || ($font['upem'] ?? 0) <= 0) {
+            return null;
+        }
+
+        return $emPx * $font['box'] / $font['upem'];
     }
 
     /**
@@ -56,19 +77,18 @@ class FontMetrics
      *
      * @return array{descent:float,inkRise:float,inkHeight:float}|null
      */
-    public function verticalMetrics(string $family, float $fontSizePx): ?array
+    public function verticalMetrics(string $family, float $emPx): ?array
     {
         $font = $this->load($family);
         if ($font === null || ($font['box'] ?? 0) <= 0) {
             return null;
         }
 
-        $emPx = $fontSizePx * $font['upem'] / $font['box'];
         $cap = ($font['capHeight'] ?: (int) round($font['upem'] * 0.70)) / $font['upem'] * $emPx;
         $desc = abs($font['descender']) / $font['upem'] * $emPx;
 
         return [
-            'descent' => $fontSizePx * $font['winDescent'] / $font['box'],
+            'descent' => $emPx * $font['winDescent'] / $font['upem'],
             'inkRise' => ($cap - $desc) / 2,
             'inkHeight' => $cap + $desc,
         ];
