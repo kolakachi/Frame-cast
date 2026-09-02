@@ -313,6 +313,13 @@ class CreditService
         'pro'        => 6500,
         'agency'     => 13000,
         'enterprise' => 50000,
+        // Lifetime tiers get NO monthly allocation. Their credits are a
+        // one-time bucket in credits_topup, same as the AppSumo LTDs — a
+        // recurring refill would both undercut the subscriptions and make the
+        // per-licence cost unbounded.
+        'lifetime_starter' => 0,
+        'lifetime_creator' => 0,
+        'lifetime_agency'  => 0,
         // Legacy tier aliases
         'studio'     => 3000,   // mirrors creator
         'scale'      => 6500,   // mirrors pro
@@ -382,6 +389,12 @@ class CreditService
         'appsumo_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'pdf_vision_page_limit' => 5],
         'appsumo_creator' => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'pdf_vision_page_limit' => 15],
         'appsumo_agency'  => ['max_duration_seconds' => 600, 'max_characters' => 10, 'max_brand_kits' => null, 'max_channels' => null, 'social_publishing' => true, 'pdf_page_limit' => null, 'pdf_vision_page_limit' => 100],
+        // Direct lifetime tiers ($89/$199/$399). Same product as the AppSumo
+        // LTDs, sold from our own checkout — identical limits, separate keys so
+        // reporting can tell the two cohorts apart.
+        'lifetime_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'pdf_vision_page_limit' => 5],
+        'lifetime_creator' => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'pdf_vision_page_limit' => 15],
+        'lifetime_agency'  => ['max_duration_seconds' => 600, 'max_characters' => 10, 'max_brand_kits' => null, 'max_channels' => null, 'social_publishing' => true, 'pdf_page_limit' => null, 'pdf_vision_page_limit' => 100],
     ];
 
     /**

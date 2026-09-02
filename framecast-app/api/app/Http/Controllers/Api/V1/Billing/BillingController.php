@@ -57,14 +57,25 @@ class BillingController extends Controller
         }
 
         $validated = $request->validate([
-            'plan'  => ['sometimes', 'string', 'in:starter,creator,pro,agency'],
-            'topup' => ['sometimes', 'string', 'in:small,medium,large,xl'],
+            'plan'     => ['sometimes', 'string', 'in:starter,creator,pro,agency'],
+            'topup'    => ['sometimes', 'string', 'in:small,medium,large,xl'],
+            'lifetime' => ['sometimes', 'string', 'in:lifetime_starter,lifetime_creator,lifetime_agency'],
         ]);
 
         $planTiers  = config('billing.kelviq.plan_tiers', []);
         $topupPlans = config('billing.kelviq.topup_plans', []);
 
-        if (! empty($validated['plan'])) {
+        if (! empty($validated['lifetime'])) {
+            // One-time purchase: buys the tier outright plus its credit bucket.
+            $identifier = null;
+            foreach (config('billing.kelviq.lifetime_plans', []) as $planId => $meta) {
+                if (($meta['tier'] ?? null) === $validated['lifetime']) {
+                    $identifier = $planId;
+                    break;
+                }
+            }
+            $chargePeriod = 'ONE_TIME';
+        } elseif (! empty($validated['plan'])) {
             $identifier   = array_search($validated['plan'], $planTiers, true);
             $chargePeriod = 'MONTHLY';
         } elseif (! empty($validated['topup'])) {

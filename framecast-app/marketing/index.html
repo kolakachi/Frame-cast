@@ -2477,6 +2477,57 @@
         }
 
         /* ── PRICING ── */
+        .pay-toggle {
+            display: inline-flex;
+            gap: 4px;
+            padding: 4px;
+            margin-top: 28px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--surface);
+        }
+
+        .pay-toggle button {
+            appearance: none;
+            border: 0;
+            cursor: pointer;
+            font: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-dim);
+            background: transparent;
+            padding: 10px 22px;
+            border-radius: 999px;
+            transition: all .18s;
+        }
+
+        .pay-toggle button.on {
+            background: var(--accent, #ff6b35);
+            color: #fff;
+        }
+
+        .pay-note {
+            margin-top: 14px;
+            font-size: 13px;
+            color: var(--text-dim);
+        }
+
+        .lifetime-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-top: 32px;
+            max-width: 860px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        @media(max-width:900px) {
+            .lifetime-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .price-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -4112,7 +4163,66 @@
                 captions and exports are included in every plan. Credits go to AI generation. No surprise overages. No
                 per-seat fees.</p>
 
-            <div class="price-grid">
+            <div class="pay-toggle" role="tablist" aria-label="Billing type">
+                <button type="button" id="tab-onetime" class="on" role="tab" aria-selected="true">One-time</button>
+                <button type="button" id="tab-monthly" role="tab" aria-selected="false">Monthly</button>
+            </div>
+            <div class="pay-note" id="pay-note">Pay once, keep it for good. Credits are a one-time bucket — top
+                up any time at the same prices everyone pays.</div>
+
+            <!-- One-time (lifetime) plans. Credits are a ONE-TIME bucket — no
+                 monthly refill — which is what keeps this fair alongside the
+                 subscriptions and bounds our cost per licence. -->
+            <div id="plans-onetime" class="lifetime-grid">
+                <div class="plan">
+                    <div class="plan-name">Starter</div>
+                    <div class="plan-price">$89</div>
+                    <div class="plan-sub">one-time<br>4,000 credits, yours to keep</div>
+                    <hr class="plan-divider">
+                    <ul class="plan-feat">
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> 4,000 credits, one-time</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> No watermark</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> 1 channel</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> 2 characters</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> All visual modes</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> Social publishing</li>
+                    </ul>
+                    <a href="https://app.wyvstudio.com/register?plan=lifetime_starter" class="plan-btn">Get Starter</a>
+                </div>
+                <div class="plan hot">
+                    <div class="plan-badge">Most popular</div>
+                    <div class="plan-name">Creator</div>
+                    <div class="plan-price">$199</div>
+                    <div class="plan-sub">one-time<br>12,000 credits, yours to keep</div>
+                    <hr class="plan-divider">
+                    <ul class="plan-feat">
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> 12,000 credits, one-time</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> No watermark</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> 3 channels</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> 5 characters</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> All visual modes</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> Social publishing</li>
+                    </ul>
+                    <a href="https://app.wyvstudio.com/register?plan=lifetime_creator" class="plan-btn featured">Get Creator</a>
+                </div>
+                <div class="plan">
+                    <div class="plan-name">Agency</div>
+                    <div class="plan-price">$399</div>
+                    <div class="plan-sub">one-time<br>20,000 credits, yours to keep</div>
+                    <hr class="plan-divider">
+                    <ul class="plan-feat">
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> 20,000 credits, one-time</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> No watermark</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> Unlimited channels</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> 10 characters</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> All visual modes</li>
+                        <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> Series Mode</li>
+                    </ul>
+                    <a href="https://app.wyvstudio.com/register?plan=lifetime_agency" class="plan-btn">Get Agency</a>
+                </div>
+            </div>
+
+            <div class="price-grid" id="plans-monthly" hidden>
                 <div class="plan">
                     <div class="plan-name">Free</div>
                     <div class="plan-price">$0</div>
@@ -4338,8 +4448,55 @@
 
 
 
-            <div style="margin-top:32px;font-size:13px;color:var(--text-dim);text-align:center">14-day full refund.
-                After 14 days, unused credits refunded pro-rata on cancellation. Payments via Kelviq.</div>
+            <div id="pay-terms" style="margin-top:32px;font-size:13px;color:var(--text-dim);text-align:center">
+                14-day full refund. Lifetime plans are a one-time payment with a one-time credit bucket — there's no
+                monthly refill and nothing to cancel. Payments via Kelviq.</div>
+
+            <script>
+                (function () {
+                    var oneBtn = document.getElementById('tab-onetime');
+                    var monBtn = document.getElementById('tab-monthly');
+                    var onePanel = document.getElementById('plans-onetime');
+                    var monPanel = document.getElementById('plans-monthly');
+                    var note = document.getElementById('pay-note');
+                    var terms = document.getElementById('pay-terms');
+                    if (!oneBtn || !monBtn || !onePanel || !monPanel) return;
+
+                    var COPY = {
+                        onetime: {
+                            note: "Pay once, keep it for good. Credits are a one-time bucket \u2014 top up any time at "
+                                + "the same prices everyone pays.",
+                            terms: "14-day full refund. Lifetime plans are a one-time payment with a one-time credit "
+                                + "bucket \u2014 there's no monthly refill and nothing to cancel. Payments via Kelviq."
+                        },
+                        monthly: {
+                            note: "Credits refill every month, at a better rate per credit, with nothing to pay "
+                                + "upfront.",
+                            terms: "14-day full refund. After 14 days, unused credits refunded pro-rata on "
+                                + "cancellation. Payments via Kelviq."
+                        }
+                    };
+
+                    function show(which) {
+                        var one = which === 'onetime';
+                        onePanel.hidden = !one;
+                        monPanel.hidden = one;
+                        oneBtn.classList.toggle('on', one);
+                        monBtn.classList.toggle('on', !one);
+                        oneBtn.setAttribute('aria-selected', String(one));
+                        monBtn.setAttribute('aria-selected', String(!one));
+                        if (note) note.textContent = COPY[which].note;
+                        if (terms) terms.textContent = COPY[which].terms;
+                        try { history.replaceState(null, '', one ? '#pricing' : '#pricing-monthly'); } catch (e) {}
+                    }
+
+                    oneBtn.addEventListener('click', function () { show('onetime'); });
+                    monBtn.addEventListener('click', function () { show('monthly'); });
+
+                    // Deep link straight to the subscription tab.
+                    if (location.hash === '#pricing-monthly') show('monthly');
+                })();
+            </script>
         </div>
     </section>
 

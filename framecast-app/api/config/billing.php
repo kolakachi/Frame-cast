@@ -48,6 +48,25 @@ return [
             env('KELVIQ_PLAN_TOPUP_XL',     'wyvstudio-new-topup-5000') => 5000,
         ],
 
+        // Lifetime (one-time) plans sold from our own checkout. identifier =>
+        // [tier, credits]. Credits land in the one-time bucket and the tier
+        // never renews, exactly like an AppSumo licence.
+        //
+        // Priced ABOVE the AppSumo tiers ($49/$139/$299) so their deal stays
+        // the best available, which their agreement requires — and a direct
+        // sale still nets several times more after their revenue share.
+        'lifetime_plans' => [
+            env('KELVIQ_PLAN_LIFETIME_STARTER', 'wyvstudio-lifetime-starter') => ['tier' => 'lifetime_starter', 'credits' => 4000],
+            env('KELVIQ_PLAN_LIFETIME_CREATOR', 'wyvstudio-lifetime-creator') => ['tier' => 'lifetime_creator', 'credits' => 12000],
+            env('KELVIQ_PLAN_LIFETIME_AGENCY',  'wyvstudio-lifetime-agency')  => ['tier' => 'lifetime_agency',  'credits' => 20000],
+        ],
+
+        'lifetime_packs' => [
+            ['key' => 'lifetime_starter', 'name' => 'Starter',  'credits' => 4000,  'price_usd' => 89],
+            ['key' => 'lifetime_creator', 'name' => 'Creator',  'credits' => 12000, 'price_usd' => 199],
+            ['key' => 'lifetime_agency',  'name' => 'Agency',   'credits' => 20000, 'price_usd' => 399],
+        ],
+
         // Top-up pack display metadata for the Settings grid (key drives the
         // checkout call). Prices locked in CREDIT_CALIBRATION.md §10.
         'topup_packs' => [

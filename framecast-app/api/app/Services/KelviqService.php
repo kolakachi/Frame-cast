@@ -340,10 +340,21 @@ class KelviqService
         }
     }
 
-    /** One-time checkout — grant top-up credits when it's a top-up plan. */
+    /** One-time checkout — a lifetime plan, or a credit top-up. */
     private function handleCheckoutCompleted(array $object): void
     {
         $planId = $object['plan']['identifier'] ?? null;
+
+        // Lifetime purchase: set the tier permanently and grant its one-time
+        // credit bucket. No subscription is created, so nothing renews and
+        // credits_monthly stays 0 — the same shape as an AppSumo licence.
+        $lifetime = config('billing.kelviq.lifetime_plans')[$planId] ?? null;
+        if ($lifetime) {
+            $this->applyLifetimePurchase($object, $planId, $lifetime);
+
+            return;
+        }
+
         $credits = config('billing.kelviq.topup_plans')[$planId] ?? null;
         if (! $credits) {
             return; // not a top-up (subscription checkout is handled by subscription.*)
@@ -354,6 +365,48 @@ class KelviqService
             return;
         }
         $this->credits->grant((int) $workspace->getKey(), (int) $credits, 'topup_kelviq');
+    }
+
+    /**
+     * Apply a lifetime purchase: permanent tier + a one-time credit bucket.
+     *
+     * Idempotent on the credit grant — a webhook redelivery would otherwise
+     * hand out the bucket twice. We record the grant against the workspace's
+     * plan_source/plan_reference and skip if this exact plan was already
+     * applied.
+     *
+     * @param array{tier:string,credits:int} $lifetime
+     */
+    private function applyLifetimePurchase(array $object, string $planId, array $lifetime): void
+    {
+        $workspace = $this->resolveWorkspace($object);
+        if (! $workspace) {
+            Log::warning('KelviqService: lifetime — no workspace', ['plan' => $planId]);
+
+            return;
+        }
+
+        $already = $workspace->plan_source === 'lifetime' && $workspace->plan_tier === $lifetime['tier'];
+
+        $workspace->forceFill([
+            'plan_tier'       => $lifetime['tier'],
+            'plan_source'     => 'lifetime',
+            'plan_status'     => 'active',
+            'status'          => 'active',
+            'plan_renews_at'  => null,
+            'credits_monthly' => 0,
+        ])->save();
+
+        if ($already) {
+            Log::info('KelviqService: lifetime already applied, credits not re-granted', [
+                'workspace_id' => $workspace->getKey(),
+                'plan' => $planId,
+            ]);
+
+            return;
+        }
+
+        $this->credits->grant((int) $workspace->getKey(), (int) $lifetime['credits'], 'lifetime_kelviq');
     }
 
     /**
