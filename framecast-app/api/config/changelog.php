@@ -30,6 +30,32 @@ return [
     'entries' => [
 
         [
+            'slug'  => '2026-09-02-captions-match-your-export',
+            'date'  => '2026-09-02',
+            'tag'   => 'fixed',
+            'title' => 'Captions now look the same in your video as in the editor',
+            'body'  => 'What you set up in the editor is what you get in the finished video. '
+                .'Caption text was rendering smaller in exports than it looked while you were '
+                .'editing, and the bolder fonts came out thinner than they should have. Both are '
+                .'fixed, so sizes, weights and spacing now match the preview exactly — at every '
+                .'caption size and in every aspect ratio.',
+        ],
+
+        [
+            'slug'  => '2026-09-01-caption-effects',
+            'date'  => '2026-09-01',
+            'tag'   => 'new',
+            'title' => 'Caption effects — 16 animated styles',
+            'body'  => 'Captions can move now. Open the Captions panel and pick an effect: words '
+                .'pop in one at a time, light up as they\'re spoken, type out like a terminal, '
+                .'glow, glitch, or slide onto a news-style bar. Whatever you choose, the words '
+                .'animate on your voiceover\'s real timing, so they land on the beat. Your font, '
+                .'size, colours and position still apply on top of any effect — and Plain keeps '
+                .'the classic look if you\'d rather have no animation. Pick from the row in the '
+                .'Captions panel, or hit View all to preview every style on your own scene.',
+        ],
+
+        [
             'slug'  => '2026-08-29-ai-video-from-brief',
             'date'  => '2026-08-29',
             'tag'   => 'new',
