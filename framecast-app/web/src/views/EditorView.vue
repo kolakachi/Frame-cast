@@ -2063,9 +2063,14 @@ const activeSceneVisualIsVideo = computed(() => {
 const activeSceneVisualIsFromLibrary = computed(() => {
   const asset = activeSceneVisualAsset.value;
   if (!asset) return false;
+  // AI images own their own tab, with their own preview and controls.
   if (activeScene.value?.visual_type === "ai_image") return false;
-  const tags = Array.isArray(asset.tags) ? asset.tags : [];
-  return !tags.includes("matched_visual");
+  // Everything else assigned to the scene shows here. Stock pulls are tagged
+  // "matched_visual" and used to be excluded, which meant picking a previously
+  // used stock image out of the library rendered neither its preview nor the
+  // Animate button — the asset is in the workspace library either way, and
+  // how it first arrived there says nothing about whether it can be animated.
+  return true;
 });
 const activeSceneAudioUrl = computed(
   () => activeScene.value?.audio_asset?.storage_url ?? null
