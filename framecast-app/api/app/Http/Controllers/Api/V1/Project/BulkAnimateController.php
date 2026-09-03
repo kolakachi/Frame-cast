@@ -62,6 +62,9 @@ class BulkAnimateController extends Controller
             'scene_ids.*'      => ['integer'],
             // Preview by default. Nothing is charged or queued without this.
             'confirm'          => ['sometimes', 'boolean'],
+            // Likeness consent — required to start a spokesperson batch. One
+            // attestation covers the batch; it is one user action over one face.
+            'consent'          => ['sometimes', 'boolean'],
         ]);
 
         $isSpokesperson  = $validated['tier'] === 'spokesperson';
@@ -210,6 +213,19 @@ class BulkAnimateController extends Controller
             return $this->error('nothing_to_animate', 'No scenes in this project can be animated yet.', 422);
         }
 
+        // Same attestation the single-scene path takes, asked once for the
+        // batch. Preview (above) is free and ungated — this sits on the
+        // confirm, which is the point work is actually queued.
+        if ($isSpokesperson && empty($validated['consent'])) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'consent_required',
+                    'message' => 'Please confirm you have the rights and consent to make this person appear to speak.',
+                    'context' => ['field' => 'consent'],
+                ],
+            ], 422);
+        }
+
         // All or nothing. Animating "as many as affordable" would drain the
         // balance AND leave a half-animated project, which is worse than being
         // told the number up front.
@@ -278,7 +294,12 @@ class BulkAnimateController extends Controller
                     'animation_motion_prompt' => $validated['motion_prompt'] ?? null,
                     'animation_started_at'    => now()->toIso8601String(),
                     'generation_token'        => $token,
-                ]),
+                ], $isSpokesperson && ! data_get($existing, 'spokesperson_consent.at') ? [
+                    'spokesperson_consent' => [
+                        'at'      => now()->toIso8601String(),
+                        'user_id' => (int) $user->getKey(),
+                    ],
+                ] : []),
             ])->save();
 
             // Same jobs as the single-scene path — they own the atomic deduct

@@ -748,6 +748,9 @@ function pickOneShotPrompt() {
 const oneShotPrompt = ref('')
 const oneShotAnimate = ref(true)
 const oneShotAnimateTier = ref('quick')
+// Likeness attestation — required before a spokesperson run, since every scene
+// of it makes a face appear to speak. Carried onto the scenes it creates.
+const oneShotSpokespersonConsent = ref(false)
 // Visual source for the one-shot: AI images (default), stock, or audiogram.
 // Animation + reference images only apply to AI images.
 const oneShotVisualSource = ref('ai_images')
@@ -913,6 +916,13 @@ async function onOneShotPhotoChange(event) {
 // Submit gate: prompt is the only hard requirement now. References are
 // optional hints to the model — empty is fine (text-to-image).
 const canSubmitOneShot = computed(() => !!oneShotPrompt.value.trim())
+// Blocks generation (not the free plan step) until the likeness box is ticked.
+const needsOneShotConsent = computed(
+  () => oneShotIsAiVisuals.value
+    && oneShotAnimate.value
+    && oneShotAnimateTier.value === 'spokesperson'
+    && !oneShotSpokespersonConsent.value
+)
 
 // Helper — collect the reference ids from the unified references list.
 function oneShotReferenceIds() {
@@ -998,6 +1008,7 @@ async function submitOneShot() {
       visual_source: oneShotVisualSource.value,
       animate: oneShotIsAiVisuals.value && oneShotAnimate.value,
       animation_tier: oneShotAnimateTier.value,
+      ...(oneShotAnimateTier.value === 'spokesperson' ? { consent: oneShotSpokespersonConsent.value } : {}),
       scenes_count: oneShotScenesCount.value,
       include_music: oneShotIncludeMusic.value,
       include_captions: oneShotIncludeCaptions.value,
@@ -1430,11 +1441,19 @@ defineExpose({ open })
           <span v-if="oneShotPlanCost !== null" class="plan-meta-cost">~{{ oneShotPlanCost }} cr</span>
         </div>
 
+        <label v-if="oneShotIsAiVisuals && oneShotAnimate && oneShotAnimateTier === 'spokesperson'" class="spokesperson-consent">
+          <input type="checkbox" v-model="oneShotSpokespersonConsent">
+          <span>
+            I have the rights and consent to make this person appear to speak.
+            <a href="/synthetic-media" target="_blank" rel="noopener">Synthetic media policy</a>
+          </span>
+        </label>
+
         <div v-if="wizardCreateError" class="modal-error" style="margin-top:14px;">{{ wizardCreateError }}</div>
 
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" @click="wizardStep = 4">← Edit prompt</button>
-          <button class="btn btn-primary" type="button" :disabled="wizardCreateState === 'loading'" @click="submitOneShot">
+          <button class="btn btn-primary" type="button" :disabled="wizardCreateState === 'loading' || needsOneShotConsent" @click="submitOneShot">
             {{ wizardCreateState === 'loading' ? 'Generating…' : '⚡ Generate' }}
           </button>
         </div>
@@ -2369,6 +2388,9 @@ defineExpose({ open })
 
 .micro-section-label { font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; font-family: "Space Mono", monospace; }
 .spokesperson-note { margin-top: 10px; padding: 9px 12px; border-radius: 8px; background: rgba(255,107,53,0.08); border: 1px solid rgba(255,107,53,0.25); color: var(--color-text-secondary); font-size: 12px; line-height: 1.45; }
+.spokesperson-consent { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: rgba(255,107,53,0.07); border: 1px solid rgba(255,107,53,0.22); color: var(--color-text-secondary); font-size: 12px; line-height: 1.45; cursor: pointer; }
+.spokesperson-consent input { margin-top: 2px; flex: none; cursor: pointer; accent-color: #ff6b35; }
+.spokesperson-consent a { color: #ff6b35; }
 
 /* Character thumbnail picker — one-shot character source mode. */
 /* Shared dropdown picker (character + voice). Mirrors the editor's

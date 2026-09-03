@@ -1000,6 +1000,9 @@ class ProjectController extends Controller
             'source_image_asset_id'    => ['nullable', 'integer', 'exists:assets,id'],
             'character_id'             => ['nullable', 'integer', 'exists:characters,id'],
             'animation_tier'           => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro,veo_fast,seedance_25,spokesperson'],
+            // Likeness consent — required when the spokesperson tier is picked,
+            // since every scene of the run will make a face appear to speak.
+            'consent'                  => ['nullable', 'boolean'],
             // Visual source: AI images (default), stock footage, or audiogram.
             'visual_source'            => ['nullable', 'string', 'in:ai_images,stock_video,stock_images,waveform'],
             // 1-8 scenes. 1 = instant demo, 3 = DTC ad shape, 8 = full Reel.
@@ -1087,6 +1090,19 @@ class ProjectController extends Controller
         }
         $animationTier  = $validated['animation_tier'] ?? 'quick';
         $isSpokesperson = $animationTier === 'spokesperson';
+
+        // Every scene of a spokesperson run makes a face appear to speak, so
+        // the attestation is taken once, up front, before anything is charged.
+        if ($isSpokesperson && empty($validated['consent'])) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'consent_required',
+                    'message' => 'Please confirm you have the rights and consent to make this person appear to speak.',
+                    'context' => ['field' => 'consent'],
+                ],
+            ], 422);
+        }
+
         $animationCost  = $this->animationTierCost($animationTier);
         $perSceneImageCost = $isAiVisuals
             ? ($referenceAssets->isNotEmpty()
@@ -1327,6 +1343,13 @@ class ProjectController extends Controller
                     // image + TTS jobs fire GenerateTalkingVideoJob once both
                     // are ready (see GenerateTalkingVideoJob::maybeDispatchForScene).
                     'planned_spokesperson'    => ($needsAnimation && $isSpokesperson) ? true : null,
+                    // Carries the up-front attestation onto every scene the run
+                    // creates, so the editor doesn't re-ask and the record sits
+                    // with the scene that used it.
+                    'spokesperson_consent'    => ($needsAnimation && $isSpokesperson) ? [
+                        'at'      => now()->toIso8601String(),
+                        'user_id' => (int) $user->getKey(),
+                    ] : null,
                     'include_music'           => $includeMusic,
                     'visual_source'           => $visualSource,
                     // Audiogram scenes render the waveform at preview/export —

@@ -1385,6 +1385,20 @@ const spokespersonOutdated = computed(() =>
   activeScene.value?.image_generation_settings?.animation_tier === 'spokesperson'
   && !!activeScene.value?.image_generation_settings?.animation_outdated
 );
+// Likeness attestation for lip-sync. Asked once per scene — a scene that has
+// already been made to speak carries the record, so re-rendering after a script
+// or voice change doesn't re-prompt.
+const spokespersonConsent = ref(false);
+// Mirrors the server: an explicit record, or a scene already lip-synced before
+// the gate shipped. Keeps the modal from demanding a tick the API won't ask for.
+const activeSceneConsented = computed(() => {
+  const s = activeScene.value?.image_generation_settings ?? {};
+  return !!s.spokesperson_consent?.at || s.animation_tier === 'spokesperson';
+});
+const needsSpokespersonConsent = computed(
+  () => animateTier.value === 'spokesperson' && !activeSceneConsented.value
+);
+
 const animateDurations = computed(() => ANIMATE_TIER_DURATIONS[animateTier.value] || [5, 10]);
 const animateShortDuration = computed(() => animateDurations.value[0]);
 // Quality options for the current tier (empty for spokesperson, which has no picker).
@@ -5928,6 +5942,8 @@ function openAnimateModal() {
   bulkAnimateSourceId.value = null;   // re-seeded when bulk is switched on
   animateModalOpen.value = true;
   animateModelOpen.value = false;
+  // Never carry a tick across openings — each scene attests for itself.
+  spokespersonConsent.value = false;
 }
 
 function closeAnimateModal() {
@@ -6167,6 +6183,7 @@ async function submitBulkAnimate() {
       motion_prompt: animateMotionPrompt.value.trim() || null,
       quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
       confirm: true,
+      ...(animateTier.value === 'spokesperson' ? { consent: spokespersonConsent.value } : {}),
     };
     if (bulkAnimateSelection.value !== null) body.scene_ids = bulkAnimateSelection.value;
     if (bulkAnimateSourceId.value) body.source_asset_id = bulkAnimateSourceId.value;
@@ -6203,6 +6220,7 @@ async function submitAnimate() {
       duration_seconds: animateDuration.value,
       motion_prompt: animateMotionPrompt.value.trim() || null,
       quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
+      ...(animateTier.value === 'spokesperson' ? { consent: spokespersonConsent.value || activeSceneConsented.value } : {}),
     });
     const updated = response.data?.data?.scene;
     if (updated) {
@@ -9950,6 +9968,14 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <label v-if="needsSpokespersonConsent || (bulkAnimateMode && animateTier === 'spokesperson')" class="anim-consent">
+            <input type="checkbox" v-model="spokespersonConsent">
+            <span>
+              I have the rights and consent to make this person appear to speak.
+              <a href="/synthetic-media" target="_blank" rel="noopener">Synthetic media policy</a>
+            </span>
+          </label>
+
           <div v-if="animateError" class="ap-error">{{ animateError }}</div>
 
           <div class="anim-foot">
@@ -9967,12 +9993,12 @@ onBeforeUnmount(() => {
                 v-if="bulkAnimateMode"
                 class="btn btn-primary btn-sm"
                 type="button"
-                :disabled="animateSubmitting || bulkAnimateLoading || !bulkAnimatePreview?.eligible_count || !bulkAnimatePreview?.affordable"
+                :disabled="animateSubmitting || bulkAnimateLoading || !bulkAnimatePreview?.eligible_count || !bulkAnimatePreview?.affordable || (animateTier === 'spokesperson' && !spokespersonConsent)"
                 @click="submitBulkAnimate"
               >
                 {{ animateSubmitting ? 'Starting…' : `⚡ Animate all ${bulkAnimatePreview?.eligible_count ?? ''}` }}
               </button>
-              <button v-else class="btn btn-primary btn-sm" type="button" :disabled="animateSubmitting" @click="submitAnimate">
+              <button v-else class="btn btn-primary btn-sm" type="button" :disabled="animateSubmitting || (needsSpokespersonConsent && !spokespersonConsent)" @click="submitAnimate">
                 {{ animateSubmitting ? 'Starting…' : '⚡ Animate' }}
               </button>
             </div>
@@ -14404,6 +14430,15 @@ select.preset-select {
   font-weight: 600;
 }
 
+.anim-consent {
+  display: flex; align-items: flex-start; gap: 9px;
+  margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+  background: rgba(255,107,53,0.07); border: 1px solid rgba(255,107,53,0.22);
+  font-size: 12px; line-height: 1.45; color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.anim-consent input { margin-top: 2px; flex: none; cursor: pointer; accent-color: #ff6b35; }
+.anim-consent a { color: #ff6b35; }
 .anim-foot {
   display: flex;
   align-items: center;

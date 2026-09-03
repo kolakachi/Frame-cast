@@ -967,6 +967,9 @@ class SceneController extends Controller
             // User-chosen quality (resolution for i2v / mode for Kling). Resolved
             // against the tier's catalog; an unknown value falls back to default.
             'quality'          => ['sometimes', 'nullable', 'string', 'max:16'],
+            // Likeness consent — required the first time a still is made to
+            // speak on this scene. See the spokesperson gate below.
+            'consent'          => ['sometimes', 'boolean'],
         ]);
         // Talking spokesperson (Fabric lip-sync) is a separate path: image +
         // the scene's voiceover -> lip-synced clip. Cost is LENGTH-BASED on the
@@ -998,6 +1001,30 @@ class SceneController extends Controller
             }
             $audioAsset = \App\Models\Asset::query()->find($audioId);
             $voiceoverSeconds = (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 8);
+
+            // Making a still speak is the point where a likeness starts saying
+            // words it never said, so it carries the same attestation the
+            // character flow takes on a reference photo. Asked once per scene:
+            // re-rendering the lip-sync after a script or voice change is the
+            // same face under the same attestation, and re-prompting there
+            // would train people to click through it.
+            // A scene already lip-synced before this gate shipped counts as
+            // attested — re-rendering it is the same face under the same act,
+            // and the one-click "regenerate lip-sync" button in the Visual tab
+            // has nowhere to show a checkbox.
+            $alreadySpokesperson = data_get($scene->image_generation_settings_json, 'animation_tier') === 'spokesperson';
+
+            if (! data_get($scene->image_generation_settings_json, 'spokesperson_consent.at')
+                && ! $alreadySpokesperson
+                && empty($validated['consent'])) {
+                return response()->json([
+                    'error' => [
+                        'code'    => 'consent_required',
+                        'message' => 'Please confirm you have the rights and consent to make this person appear to speak.',
+                        'context' => ['field' => 'consent'],
+                    ],
+                ], 422);
+            }
         }
 
         $quality = null;
@@ -1052,7 +1079,14 @@ class SceneController extends Controller
                 'animation_motion_prompt'    => $validated['motion_prompt'] ?? null,
                 'animation_started_at'       => now()->toIso8601String(),
                 'generation_token'           => $token,
-            ]),
+            ], $isSpokesperson && ! data_get($existing, 'spokesperson_consent.at') ? [
+                // First lip-sync on this scene — stamp who attested and when.
+                'spokesperson_consent' => [
+                    'at'      => now()->toIso8601String(),
+                    'user_id' => (int) $user->getKey(),
+                    'source_asset_id' => (int) $sourceAsset->getKey(),
+                ],
+            ] : []),
         ])->save();
 
         if ($isSpokesperson) {
