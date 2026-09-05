@@ -14,12 +14,17 @@ const emit = defineEmits(['close', 'select'])
 
 const activeTab = ref('browse')
 const searchQuery = ref('')
-const visualFilter = ref('all') // 'all' | 'video' | 'image'
+const visualFilter = ref('all') // 'all' | 'video' | 'image' | 'character'
 
 const selectedId = ref(undefined)
 const selectedItem = ref(null) // { ...asset|track, _type: 'asset'|'track'|'no-music' }
 
 const assets = ref([])
+// Workspace characters, kept separate from `assets` on purpose: a character's
+// reference image is already in the library, so merging them would show the
+// same picture twice under All and Image. They surface only under Characters.
+const characters = ref([])
+const charactersLoading = ref(false)
 const assetsLoading = ref(false)
 
 const uploadDragging = ref(false)
@@ -49,6 +54,7 @@ const VISUAL_FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'video', label: 'Video' },
   { key: 'image', label: 'Image' },
+  { key: 'character', label: 'Characters' },
 ]
 
 const WAVE_HEIGHTS = ['40%', '70%', '90%', '55%', '100%', '65%', '45%', '80%']
@@ -113,11 +119,35 @@ const musicTrackGroups = computed(() => {
   return Object.entries(groups).map(([mood, tracks]) => ({ mood, tracks }))
 })
 
+// Every character reference, flattened into asset-shaped rows. The id is the
+// real asset id, so picking one behaves exactly like picking from the library.
+// Multi-reference characters contribute each of their references, labelled so
+// the grid and the search box can tell them apart.
+const characterAssets = computed(() =>
+  characters.value.flatMap((c) => {
+    const refs = Array.isArray(c.reference_assets) && c.reference_assets.length
+      ? c.reference_assets
+      : (c.reference_asset ? [c.reference_asset] : [])
+    return refs.map((ref, i) => ({
+      id: ref.id,
+      title: refs.length > 1 ? `${c.name} (${i + 1})` : c.name,
+      storage_url: ref.storage_url,
+      thumbnail_url: ref.thumbnail_url ?? ref.storage_url,
+      mime_type: ref.mime_type ?? 'image/png',
+      asset_type: 'image',
+      usage_count: c.scenes_count ?? 0,
+      tags: ['character'],
+      updated_at: c.updated_at ?? null,
+    }))
+  })
+)
+
 const filteredAssets = computed(() => {
   let list = assets.value
   if (props.mode === 'visual') {
     if (visualFilter.value === 'video') list = list.filter(a => isVideo(a))
     else if (visualFilter.value === 'image') list = list.filter(a => !isVideo(a))
+    else if (visualFilter.value === 'character') list = characterAssets.value
   }
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
@@ -138,6 +168,10 @@ watch(
     visualFilter.value = 'all'
     uploadError.value = ''
     stopAllAudio()
+
+    // Fetched alongside the assets so the Characters chip is populated the
+    // moment it's clicked. Cached for the session — characters change rarely.
+    if (props.mode === 'visual') loadCharacters()
 
     if (props.mode === 'music') {
       if (props.selectedMusicTrackId === null) {
@@ -167,6 +201,21 @@ watch(
     }
   }
 )
+
+async function loadCharacters() {
+  if (charactersLoading.value || characters.value.length) return
+  charactersLoading.value = true
+  try {
+    const resp = await api.get('/characters')
+    characters.value = (resp.data?.data?.characters ?? []).filter(
+      (c) => c.reference_asset || (c.reference_assets ?? []).length
+    )
+  } catch {
+    characters.value = []
+  } finally {
+    charactersLoading.value = false
+  }
+}
 
 async function loadAssets() {
   if (assetsLoading.value) return
@@ -519,6 +568,11 @@ function trackMoodLabel(track) {
                 <!-- Visual browse -->
                 <template v-if="mode === 'visual'">
                   <div v-if="assetsLoading" class="mp-loading">Loading…</div>
+                  <div v-else-if="filteredAssets.length === 0 && visualFilter === 'character'" class="mp-empty">
+                    <div class="mp-empty-icon">🎭</div>
+                    <div class="mp-empty-title">No characters yet</div>
+                    <div class="mp-empty-sub">Create one from a photo on the Characters page to reuse the same face across scenes</div>
+                  </div>
                   <div v-else-if="filteredAssets.length === 0" class="mp-empty">
                     <div class="mp-empty-icon">🖼</div>
                     <div class="mp-empty-title">No visuals in your library</div>
