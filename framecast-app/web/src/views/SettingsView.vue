@@ -1025,7 +1025,7 @@ onMounted(() => {
                  a different decision from changing plan. -->
             <div style="display:flex; gap:10px; margin:16px 0 22px; flex-wrap:wrap; align-items:center;">
               <router-link class="btn btn-primary" to="/plans">
-                {{ hasLifetimePlan || hasSubscription ? 'Upgrade plan' : 'View plans' }}
+                Upgrade
               </router-link>
               <button
                 v-if="hasSubscription"

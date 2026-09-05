@@ -26,6 +26,8 @@ const assets = ref([])
 const characters = ref([])
 const charactersLoading = ref(false)
 const assetsLoading = ref(false)
+// Debounce handle for the server-side asset search.
+let searchTimer = null
 
 const uploadDragging = ref(false)
 const uploading = ref(false)
@@ -143,15 +145,20 @@ const characterAssets = computed(() =>
 )
 
 const filteredAssets = computed(() => {
+  // Characters are held separately and are never paged, so they keep the
+  // client-side search. Everything else is searched on the server, which is
+  // what lets a query reach assets that haven't been scrolled to yet.
+  if (props.mode === 'visual' && visualFilter.value === 'character') {
+    const q = searchQuery.value.trim().toLowerCase()
+    return q
+      ? characterAssets.value.filter((a) => (a.title ?? '').toLowerCase().includes(q))
+      : characterAssets.value
+  }
+
   let list = assets.value
   if (props.mode === 'visual') {
     if (visualFilter.value === 'video') list = list.filter(a => isVideo(a))
     else if (visualFilter.value === 'image') list = list.filter(a => !isVideo(a))
-    else if (visualFilter.value === 'character') list = characterAssets.value
-  }
-  if (searchQuery.value) {
-    const q = searchQuery.value.toLowerCase()
-    list = list.filter(a => (a.title ?? '').toLowerCase().includes(q))
   }
   return list
 })
@@ -168,6 +175,9 @@ watch(
     visualFilter.value = 'all'
     uploadError.value = ''
     stopAllAudio()
+    // Clearing the box above wakes the search watcher; the explicit load below
+    // already covers it, so drop the queued duplicate.
+    clearTimeout(searchTimer)
 
     // Fetched alongside the assets so the Characters chip is populated the
     // moment it's clicked. Cached for the session — characters change rarely.
@@ -217,31 +227,99 @@ async function loadCharacters() {
   }
 }
 
-async function loadAssets() {
+// Types this mode browses. Visual pages images and videos independently and
+// merges them, since each has its own page counter on the server.
+const assetTypes = computed(() =>
+  props.mode === 'visual' ? ['image', 'video'] : [props.mode === 'music' ? 'music' : 'sound']
+)
+
+const PER_PAGE = 60
+// { image: { page, lastPage }, ... } — how far we've read each type.
+const assetPaging = ref({})
+
+const hasMoreAssets = computed(() =>
+  assetTypes.value.some((t) => {
+    const p = assetPaging.value[t]
+    return p && p.page < p.lastPage
+  })
+)
+
+/**
+ * Load one page of each type. `append` keeps what's on screen and adds to it —
+ * that's the infinite scroll path; otherwise the list is replaced, which is
+ * what a new search or a freshly opened modal wants.
+ *
+ * Previously this pulled a single page of 60 per type with no way to reach
+ * anything older, so a workspace with 113 images simply could not see its
+ * oldest 53 — including, for one customer, every one of their character
+ * reference photos.
+ */
+async function loadAssets({ append = false } = {}) {
   if (assetsLoading.value) return
   assetsLoading.value = true
+  const q = searchQuery.value.trim()
   try {
-    if (props.mode === 'visual') {
-      const [imgResp, vidResp] = await Promise.all([
-        api.get('/assets', { params: { asset_type: 'image', per_page: 60 } }),
-        api.get('/assets', { params: { asset_type: 'video', per_page: 60 } }),
-      ])
-      const imgs = imgResp.data?.data?.assets ?? []
-      const vids = vidResp.data?.data?.assets ?? []
-      assets.value = [...vids, ...imgs].sort(
-        (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
-      )
-    } else {
-      const type = props.mode === 'music' ? 'music' : 'sound'
-      const resp = await api.get('/assets', { params: { asset_type: type, per_page: 60 } })
-      assets.value = resp.data?.data?.assets ?? []
+    const results = await Promise.all(
+      assetTypes.value.map((type) => {
+        const page = append ? (assetPaging.value[type]?.page ?? 0) + 1 : 1
+        // Nothing left for this type — don't spend a request on it.
+        if (append && assetPaging.value[type] && page > assetPaging.value[type].lastPage) {
+          return Promise.resolve({ type, rows: [], lastPage: assetPaging.value[type].lastPage, page: assetPaging.value[type].page })
+        }
+        return api
+          .get('/assets', { params: { asset_type: type, per_page: PER_PAGE, page, ...(q ? { q } : {}) } })
+          .then((resp) => ({
+            type,
+            rows: resp.data?.data?.assets ?? [],
+            lastPage: resp.data?.meta?.pagination?.last_page ?? 1,
+            page,
+          }))
+      })
+    )
+
+    const paging = append ? { ...assetPaging.value } : {}
+    let rows = []
+    for (const r of results) {
+      paging[r.type] = { page: r.page, lastPage: r.lastPage }
+      rows = rows.concat(r.rows)
     }
+    assetPaging.value = paging
+
+    const merged = append ? [...assets.value, ...rows] : rows
+    // De-dupe defensively: a row can shift pages if something is updated
+    // between requests, and a repeated key would break the grid.
+    const seen = new Set()
+    assets.value = merged
+      .filter((a) => (seen.has(a.id) ? false : seen.add(a.id)))
+      .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
   } catch {
-    assets.value = []
+    if (!append) assets.value = []
   } finally {
     assetsLoading.value = false
   }
 }
+
+function loadMoreAssets() {
+  if (assetsLoading.value || !hasMoreAssets.value) return
+  loadAssets({ append: true })
+}
+
+// Infinite scroll: pull the next page once the grid is within ~240px of the
+// end. Bound to the scrolling pane rather than the window — the modal scrolls
+// its own container.
+function onGridScroll(e) {
+  const el = e.target
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) loadMoreAssets()
+}
+
+// Search runs on the server (title + description), so it reaches assets that
+// were never loaded — the whole point of paging. Debounced to keep a fast
+// typist from firing a request per keystroke.
+watch(searchQuery, () => {
+  if (activeTab.value !== 'browse') return
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => loadAssets({ append: false }), 300)
+})
 
 // ── SFX library ──────────────────────────────────────────
 async function loadSfxLibrary() {
@@ -560,14 +638,14 @@ function trackMoodLabel(track) {
           <div class="mp-body">
 
             <!-- GRID PANE -->
-            <div class="mp-grid-pane">
+            <div class="mp-grid-pane" @scroll.passive="onGridScroll">
 
               <!-- BROWSE TAB -->
               <template v-if="activeTab === 'browse'">
 
                 <!-- Visual browse -->
                 <template v-if="mode === 'visual'">
-                  <div v-if="assetsLoading" class="mp-loading">Loading…</div>
+                  <div v-if="assetsLoading && !assets.length" class="mp-loading">Loading…</div>
                   <div v-else-if="filteredAssets.length === 0 && visualFilter === 'character'" class="mp-empty">
                     <div class="mp-empty-icon">🎭</div>
                     <div class="mp-empty-title">No characters yet</div>
@@ -606,6 +684,18 @@ function trackMoodLabel(track) {
                           <div class="mp-play-btn">▶</div>
                         </div>
                       </div>
+                    </div>
+                    <!-- Scrolling loads the next page; this is the visible
+                         affordance for anyone who doesn't scroll, and the
+                         fallback if the scroll handler never fires. Characters
+                         are not paged, so it stays hidden for that filter. -->
+                    <div v-if="visualFilter !== 'character' && (hasMoreAssets || assetsLoading)" class="mp-more">
+                      <button
+                        class="mp-more-btn"
+                        type="button"
+                        :disabled="assetsLoading"
+                        @click="loadMoreAssets"
+                      >{{ assetsLoading ? 'Loading…' : 'Load more' }}</button>
                     </div>
                   </template>
                 </template>
@@ -669,7 +759,7 @@ function trackMoodLabel(track) {
 
                 <!-- Sound browse: user's sound assets -->
                 <template v-else-if="mode === 'sound'">
-                  <div v-if="assetsLoading" class="mp-loading">Loading…</div>
+                  <div v-if="assetsLoading && !assets.length" class="mp-loading">Loading…</div>
                   <div v-else-if="filteredAssets.length === 0" class="mp-empty">
                     <div class="mp-empty-icon">🔊</div>
                     <div class="mp-empty-title">No sounds yet</div>
@@ -772,7 +862,7 @@ function trackMoodLabel(track) {
 
                 <!-- Visual uploads list -->
                 <template v-if="mode === 'visual'">
-                  <div v-if="assetsLoading" class="mp-loading">Loading…</div>
+                  <div v-if="assetsLoading && !assets.length" class="mp-loading">Loading…</div>
                   <template v-else-if="filteredAssets.length > 0">
                     <div class="mp-source-label">Your Uploads</div>
                     <div class="mp-visual-grid">
@@ -1350,6 +1440,13 @@ function trackMoodLabel(track) {
 .mp-upload-error { font-size: 11px; color: #ef4444; margin-top: 8px; }
 
 /* States */
+.mp-more { display: flex; justify-content: center; padding: 14px 0 4px; }
+.mp-more-btn {
+  padding: 8px 18px; border-radius: 8px; font: inherit; font-size: 12.5px; cursor: pointer;
+  border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-secondary);
+}
+.mp-more-btn:hover:not(:disabled) { background: var(--color-bg-card); color: var(--color-text-primary); }
+.mp-more-btn:disabled { opacity: 0.6; cursor: default; }
 .mp-loading {
   font-size: 12px;
   color: var(--color-text-muted);
