@@ -509,6 +509,19 @@ onBeforeUnmount(() => {
       <DashboardSkeleton v-if="loading" />
       <div v-else class="dashboard">
 
+        <!-- Checkout started but never paid. Kept visible until they either
+             complete the purchase or the webhook clears it — a one-shot
+             redirect at sign-in left an abandoned attempt with no trace at
+             all. Placed above the credit banners: finishing a purchase they
+             already chose beats being told to top up. -->
+        <div
+          v-if="creditsPayload && creditsPayload.pending_checkout"
+          class="credit-banner credit-banner-warn"
+        >
+          <span>You started a purchase but it didn't go through. Your account is unchanged.</span>
+          <button class="credit-banner-btn" @click="router.push({ name: 'plans' })">Finish checkout →</button>
+        </div>
+
         <!-- Credit warning banner -->
         <div
           v-if="creditsPayload && creditsPayload.balance <= 0"

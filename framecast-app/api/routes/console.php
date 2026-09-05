@@ -2,6 +2,7 @@
 
 use App\Jobs\DetectAbusePatternsJob;
 use App\Jobs\ProcessOnboardingEmailsJob;
+use App\Jobs\SendAbandonedCheckoutEmailsJob;
 use App\Jobs\ReapStuckGenerationsJob;
 use App\Jobs\ResetMonthlyCreditsJob;
 use Illuminate\Foundation\Inspiring;
@@ -20,6 +21,12 @@ Schedule::job(new ResetMonthlyCreditsJob())->hourly()->name('reset-monthly-credi
 // from AuthController at signup; this scanner picks up everyone whose signup
 // age has crossed the next threshold and dispatches the matching Mailable.
 Schedule::job(new ProcessOnboardingEmailsJob())->hourly()->name('process-onboarding-emails')->withoutOverlapping();
+
+// Nudge anyone who was handed a Kelviq checkout URL and never completed the
+// purchase. BillingController stamps the intent, the webhook clears it on
+// success, so what's left after the grace period is a real abandonment. One
+// email per attempt.
+Schedule::job(new SendAbandonedCheckoutEmailsJob())->hourly()->name('send-abandoned-checkout-emails')->withoutOverlapping();
 
 // Watchdog: clear stuck image-generation / animation `in_progress` flags so a
 // crashed worker, dropped Reverb event, or silent-save quirk doesn't leave

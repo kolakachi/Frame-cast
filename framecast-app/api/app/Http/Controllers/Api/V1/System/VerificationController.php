@@ -37,6 +37,13 @@ class VerificationController extends Controller
                     'credits_topup'    => (int) ($workspace?->credits_topup ?? 0),
                     'billing_renews_at'=> $workspace?->billing_renews_at?->toIso8601String(),
                     'plan_monthly_allocation' => CreditService::PLAN_CREDITS[$workspace?->plan_tier ?? 'free'] ?? 0,
+                    // Checkout started, never completed. Surfaced here rather
+                    // than via /billing/status so the dashboard banner costs no
+                    // extra request. Cleared by the webhook on any purchase.
+                    'pending_checkout' => $workspace?->pending_checkout_at ? [
+                        'plan' => $workspace->pending_checkout_plan,
+                        'at'   => $workspace->pending_checkout_at->toIso8601String(),
+                    ] : null,
                 ],
                 'cruise' => [
                     'auto_apply'     => (bool) ($workspace?->cruise_auto_apply ?? true),
@@ -242,6 +249,13 @@ class VerificationController extends Controller
                     'credits_topup'    => (int) ($workspace?->credits_topup ?? 0),
                     'billing_renews_at'=> $workspace?->billing_renews_at?->toIso8601String(),
                     'plan_monthly_allocation' => CreditService::PLAN_CREDITS[$workspace?->plan_tier ?? 'free'] ?? 0,
+                    // Checkout started, never completed. Surfaced here rather
+                    // than via /billing/status so the dashboard banner costs no
+                    // extra request. Cleared by the webhook on any purchase.
+                    'pending_checkout' => $workspace?->pending_checkout_at ? [
+                        'plan' => $workspace->pending_checkout_plan,
+                        'at'   => $workspace->pending_checkout_at->toIso8601String(),
+                    ] : null,
                 ],
             ],
             'meta' => [],

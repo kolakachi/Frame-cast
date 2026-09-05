@@ -229,6 +229,7 @@ class KelviqService
             $update['billing_renews_at'] = $this->periodEnd($object);
         }
         $workspace->forceFill($update)->save();
+        $this->clearPendingCheckout($workspace);
 
         // First free -> paid conversion rewards the referrer (idempotent).
         if ($previousTier === 'free' && $tier !== 'free') {
@@ -365,6 +366,24 @@ class KelviqService
             return;
         }
         $this->credits->grant((int) $workspace->getKey(), (int) $credits, 'topup_kelviq');
+        $this->clearPendingCheckout($workspace);
+    }
+
+    /**
+     * A purchase landed for this workspace, so it is no longer abandoned.
+     * Cleared on every success path — top-up, lifetime and subscription — so
+     * the banner disappears and no follow-up email goes to someone who paid.
+     */
+    private function clearPendingCheckout(\App\Models\Workspace $workspace): void
+    {
+        if ($workspace->pending_checkout_at === null && $workspace->pending_checkout_plan === null) {
+            return;
+        }
+        $workspace->forceFill([
+            'pending_checkout_plan'        => null,
+            'pending_checkout_at'          => null,
+            'pending_checkout_reminded_at' => null,
+        ])->save();
     }
 
     /**
@@ -396,6 +415,8 @@ class KelviqService
             'plan_renews_at'  => null,
             'credits_monthly' => 0,
         ])->save();
+
+        $this->clearPendingCheckout($workspace);
 
         if ($already) {
             Log::info('KelviqService: lifetime already applied, credits not re-granted', [

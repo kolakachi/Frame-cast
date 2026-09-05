@@ -38,6 +38,9 @@ class Workspace extends Model
         'cruise_visual_source',
         'referral_code',
         'referred_by_workspace_id',
+        'pending_checkout_plan',
+        'pending_checkout_at',
+        'pending_checkout_reminded_at',
     ];
 
     protected $casts = [
@@ -49,6 +52,8 @@ class Workspace extends Model
         'daily_streak_count' => 'integer',
         'daily_streak_last_claim_at' => 'datetime',
         'cruise_auto_apply' => 'boolean',
+        'pending_checkout_at' => 'datetime',
+        'pending_checkout_reminded_at' => 'datetime',
     ];
 
     public function creditsBalance(): int

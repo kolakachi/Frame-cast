@@ -36,6 +36,12 @@ class BillingController extends Controller
                     'plan_renews_at'   => $workspace->plan_renews_at?->toIso8601String(),
                     'has_subscription' => (bool) ($workspace->kelviq_subscription_id || $workspace->kelviq_account_id),
                     'topup_packs'      => config('billing.kelviq.topup_packs', []),
+                    // A checkout that was started and never completed. Drives
+                    // the "finish your purchase" banner; null once they pay.
+                    'pending_checkout' => $workspace->pending_checkout_at ? [
+                        'plan' => $workspace->pending_checkout_plan,
+                        'at'   => $workspace->pending_checkout_at->toIso8601String(),
+                    ] : null,
                 ],
             ],
             'meta' => [],
@@ -101,6 +107,18 @@ class BillingController extends Controller
         if (! $url) {
             return response()->json(['error' => ['code' => 'checkout_unavailable', 'message' => 'Could not start checkout. Please try again.']], 502);
         }
+
+        // Record what they were sent to pay for. Cleared by the webhook the
+        // moment a purchase lands; anything still set afterwards is an
+        // abandoned attempt, which is what the banner and the follow-up email
+        // key on. Held server-side because the browser cannot be the record —
+        // localStorage dies with a cleared cache or a change of device.
+        $workspace->forceFill([
+            'pending_checkout_plan'        => $validated['lifetime'] ?? $validated['plan'] ?? $validated['topup'] ?? null,
+            'pending_checkout_at'          => now(),
+            // A fresh attempt earns a fresh reminder.
+            'pending_checkout_reminded_at' => null,
+        ])->save();
 
         return response()->json(['data' => ['url' => $url], 'meta' => []]);
     }
