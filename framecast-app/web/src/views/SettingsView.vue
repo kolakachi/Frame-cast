@@ -1066,10 +1066,16 @@ onMounted(() => {
 
             <div style="display:flex; gap:10px; margin:16px 0 22px; flex-wrap:wrap;">
               <!-- Monthly plans. Previously gated on isFreePlan, which hid every
-                   upgrade from anyone already on a tier — including AppSumo LTD
-                   holders, who are never 'free' and have no subscription, so
-                   they saw no way to move at all. -->
-              <template v-if="billing && !hasSubscription">
+                   upgrade from anyone already on a tier.
+
+                   Withheld from lifetime and AppSumo holders on purpose:
+                   applySubscription() sets plan_tier unconditionally, so an
+                   appsumo_starter holder subscribing to monthly Starter would
+                   have their LTD tier overwritten — and markCancelled() only
+                   records the status, so cancelling later would leave them a
+                   lapsed subscriber instead of the lifetime holder they paid
+                   to be. Their routes are one-time upgrades and top-ups. -->
+              <template v-if="billing && !hasSubscription && !hasLifetimePlan">
                 <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'starter' })">Subscribe — Starter $19/mo</button>
                 <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'creator' })">Creator $39/mo</button>
                 <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'pro' })">Pro $79/mo</button>
