@@ -10,6 +10,7 @@ import RegisterView from '../views/RegisterView.vue'
 import ForgotPasswordView from '../views/ForgotPasswordView.vue'
 import ResetPasswordView from '../views/ResetPasswordView.vue'
 import SettingsView from '../views/SettingsView.vue'
+import PlansView from '../views/PlansView.vue'
 import VariantsView from '../views/VariantsView.vue'
 import AdminView from '../views/AdminView.vue'
 import WorkspaceView from '../views/WorkspaceView.vue'
@@ -47,6 +48,7 @@ const routes = [
   { path: '/assets', name: 'asset-library', component: AssetLibraryView, meta: { requiresAuth: true } },
   { path: '/workspace', name: 'workspace', component: WorkspaceView, meta: { requiresAuth: true } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true } },
+  { path: '/plans', name: 'plans', component: PlansView, meta: { requiresAuth: true } },
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
   { path: '/series', name: 'series', component: SeriesView, meta: { requiresAuth: true } },
   { path: '/series/new', name: 'series-create', component: SeriesCreateView, meta: { requiresAuth: true } },

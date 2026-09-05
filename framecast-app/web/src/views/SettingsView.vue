@@ -148,28 +148,6 @@ const hasLifetimePlan = computed(() => {
   return t.startsWith('lifetime_') || t.startsWith('appsumo_')
 })
 
-// One-time plans in ascending size. Rank drives the upgrade list: a holder is
-// only offered what is bigger than what they have, so an Agency holder isn't
-// invited to "upgrade" to Starter.
-const LIFETIME_PLANS = [
-  { key: 'lifetime_starter', rank: 1, label: 'Starter — $89 · 4,000 credits' },
-  { key: 'lifetime_creator', rank: 2, label: 'Creator — $199 · 12,000 credits' },
-  { key: 'lifetime_agency', rank: 3, label: 'Agency — $399 · 20,000 credits' },
-]
-
-const currentLifetimeRank = computed(() => {
-  const t = billing.value?.plan_tier ?? ''
-  if (t.endsWith('_agency')) return 3
-  if (t.endsWith('_creator')) return 2
-  if (t.endsWith('_starter')) return 1
-  return 0
-})
-
-const upgradeLifetimePlans = computed(() => {
-  if (!hasLifetimePlan.value) return LIFETIME_PLANS
-  return LIFETIME_PLANS.filter((p) => p.rank > currentLifetimeRank.value)
-})
-
 // Kelviq hosted checkout. selection = { plan: 'starter'|... } for a
 // subscription, or { topup: 'small'|... } for a one-time pack.
 const checkoutPending = ref(false)
@@ -1040,63 +1018,22 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- One-time plans. Anyone already holding one is offered only the
-                 tiers ABOVE theirs, so this doubles as the upgrade path for
-                 lifetime and AppSumo holders — buying a higher pack grants its
-                 credits and moves the tier; re-buying the same one is caught by
-                 the webhook's idempotency guard and never double-grants. -->
-            <div v-if="billing && upgradeLifetimePlans.length" class="plan-buy-block">
-              <div class="section-title" style="font-size:13px;margin-bottom:8px">
-                {{ hasLifetimePlan ? 'Upgrade your plan — one-time, no subscription' : 'One-time credit packs — no subscription' }}
-              </div>
-              <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button
-                  v-for="(p, i) in upgradeLifetimePlans"
-                  :key="p.key"
-                  :class="['btn', i === 0 ? 'btn-primary' : 'btn-ghost']"
-                  type="button"
-                  :disabled="checkoutPending"
-                  @click="startCheckout({ lifetime: p.key })"
-                >{{ p.label }}</button>
-              </div>
-              <div v-if="hasLifetimePlan" class="plan-buy-note">
-                Credits are added to your balance. Or top up any amount below without changing plan.
-              </div>
-            </div>
-
-            <div style="display:flex; gap:10px; margin:16px 0 22px; flex-wrap:wrap;">
-              <!-- Monthly plans. Previously gated on isFreePlan, which hid every
-                   upgrade from anyone already on a tier.
-
-                   Withheld from lifetime and AppSumo holders on purpose:
-                   applySubscription() sets plan_tier unconditionally, so an
-                   appsumo_starter holder subscribing to monthly Starter would
-                   have their LTD tier overwritten — and markCancelled() only
-                   records the status, so cancelling later would leave them a
-                   lapsed subscriber instead of the lifetime holder they paid
-                   to be. Their routes are one-time upgrades and top-ups. -->
-              <template v-if="billing && !hasSubscription && !hasLifetimePlan">
-                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'starter' })">Subscribe — Starter $19/mo</button>
-                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'creator' })">Creator $39/mo</button>
-                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'pro' })">Pro $79/mo</button>
-                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'agency' })">Agency $149/mo</button>
-              </template>
+            <!-- Plan selection lives on its own page now. Settings shows the
+                 current plan and usage; choosing between one-time packs and
+                 monthly tiers needs room to explain what each buys, which a row
+                 of chips here never had. Top-ups stay below — adding credits is
+                 a different decision from changing plan. -->
+            <div style="display:flex; gap:10px; margin:16px 0 22px; flex-wrap:wrap; align-items:center;">
+              <router-link class="btn btn-primary" to="/plans">
+                {{ hasLifetimePlan || hasSubscription ? 'Upgrade plan' : 'View plans' }}
+              </router-link>
               <button
                 v-if="hasSubscription"
-                class="btn btn-primary"
+                class="btn btn-ghost"
                 type="button"
                 :disabled="billingPortalPending"
                 @click="openBillingPortal"
-              >{{ billingPortalPending ? 'Opening…' : 'Change plan or manage billing' }}</button>
-            </div>
-
-            <!-- An existing subscriber changes tier in Kelviq's portal, never
-                 through a second checkout — that would open a second
-                 subscription alongside the first and bill them twice. There is
-                 no in-place plan-change API, so the portal is the only safe
-                 route, and the button above now says so plainly. -->
-            <div v-if="hasSubscription" class="plan-buy-note" style="margin:-10px 0 22px">
-              Moving up or down a tier, updating your card and cancelling all happen in the billing portal.
+              >{{ billingPortalPending ? 'Opening…' : 'Manage billing' }}</button>
             </div>
 
             <!-- Credit top-up packs -->
@@ -1665,8 +1602,6 @@ onMounted(() => {
 
 /* ── Plan table ── */
 .topup-section { margin: 22px 0; padding: 18px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 10px; }
-.plan-buy-block { margin: 16px 0 6px; padding: 18px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 10px; }
-.plan-buy-note { margin-top: 10px; font-size: 12.5px; line-height: 1.5; color: var(--color-text-muted); }
 .referral-row { display: flex; gap: 10px; align-items: stretch; max-width: 560px; }
 .referral-link-input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-primary); font-family: "Space Mono", monospace; font-size: 13px; }
 .btn-copy-referral { flex-shrink: 0; padding: 10px 18px; border-radius: 8px; border: none; background: var(--color-accent); color: #fff; font-weight: 600; cursor: pointer; transition: transform .15s; }
