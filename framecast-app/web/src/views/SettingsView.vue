@@ -142,6 +142,13 @@ const planStatusColor = computed(() => {
 
 const isFreePlan = computed(() => !billing.value?.plan_tier || billing.value.plan_tier === 'free')
 const hasSubscription = computed(() => Boolean(billing.value?.has_subscription))
+// Already holds a one-time plan (bought here, or redeemed through AppSumo) —
+// selling them a second credit pack as an "upgrade" would just confuse.
+// Top-ups stay available to them, which is the right way to add credits.
+const hasLifetimePlan = computed(() => {
+  const t = billing.value?.plan_tier ?? ''
+  return t.startsWith('lifetime_') || t.startsWith('appsumo_')
+})
 
 // Kelviq hosted checkout. selection = { plan: 'starter'|... } for a
 // subscription, or { topup: 'small'|... } for a one-time pack.
@@ -1013,13 +1020,29 @@ onMounted(() => {
               </div>
             </div>
 
+            <!-- One-time plans. Shown to everyone without one: a credit pack is
+                 an outright purchase, so an LTD holder or a subscriber can buy
+                 one too. These had no button anywhere, which made a lifetime
+                 plan literally unbuyable from inside the app. -->
+            <div v-if="billing && !hasLifetimePlan" class="plan-buy-block">
+              <div class="section-title" style="font-size:13px;margin-bottom:8px">One-time credit packs — no subscription</div>
+              <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-primary" type="button" :disabled="checkoutPending" @click="startCheckout({ lifetime: 'lifetime_starter' })">Starter — $89 · 4,000 credits</button>
+                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ lifetime: 'lifetime_creator' })">Creator — $199 · 12,000</button>
+                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ lifetime: 'lifetime_agency' })">Agency — $399 · 20,000</button>
+              </div>
+            </div>
+
             <div style="display:flex; gap:10px; margin:16px 0 22px; flex-wrap:wrap;">
-              <!-- Upgrade buttons — one per paid plan (Kelviq hosted checkout) -->
-              <template v-if="isFreePlan && billing">
-                <button class="btn btn-primary" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'starter' })">Upgrade — Starter $19</button>
-                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'creator' })">Creator $39</button>
-                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'pro' })">Pro $79</button>
-                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'agency' })">Agency $149</button>
+              <!-- Monthly plans. Previously gated on isFreePlan, which hid every
+                   upgrade from anyone already on a tier — including AppSumo LTD
+                   holders, who are never 'free' and have no subscription, so
+                   they saw no way to move at all. -->
+              <template v-if="billing && !hasSubscription">
+                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'starter' })">Subscribe — Starter $19/mo</button>
+                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'creator' })">Creator $39/mo</button>
+                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'pro' })">Pro $79/mo</button>
+                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ plan: 'agency' })">Agency $149/mo</button>
               </template>
               <button
                 v-if="hasSubscription"

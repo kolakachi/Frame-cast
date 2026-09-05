@@ -1,13 +1,45 @@
 <script setup>
-import { ref, reactive } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
+import { useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
 const authStore = useAuthStore();
+const route = useRoute();
 
 const state = ref("idle"); // 'idle' | 'loading' | 'sent' | 'error'
 const errorMessage = ref("");
 
 const form = reactive({ name: "", email: "", password: "" });
+
+// The pricing page sends ?plan=lifetime_starter (etc). Registration is magic
+// link, so the user leaves for their inbox and comes back on a fresh page load
+// with no query string — the intent has to be parked somewhere that survives
+// that. Stashed here, picked up after login, and turned into a Kelviq checkout
+// so clicking a price on the site actually ends at a payment page.
+const PLAN_LABELS = {
+  lifetime_starter: "Starter — $89, 4,000 credits",
+  lifetime_creator: "Creator — $199, 12,000 credits",
+  lifetime_agency: "Agency — $399, 20,000 credits",
+  starter: "Starter — $19/month",
+  creator: "Creator — $39/month",
+  pro: "Pro — $79/month",
+  agency: "Agency — $149/month",
+};
+
+const pendingPlan = ref("");
+const pendingPlanLabel = computed(() => PLAN_LABELS[pendingPlan.value] ?? "");
+
+onMounted(() => {
+  const plan = String(route.query.plan ?? "");
+  if (!PLAN_LABELS[plan]) return;
+  pendingPlan.value = plan;
+  try {
+    localStorage.setItem("wyv_pending_plan", plan);
+  } catch {
+    // Private window or storage blocked — the plan is simply forgotten and the
+    // user lands on Settings, where every plan now has a button.
+  }
+});
 
 async function submit() {
   if (!form.name || !form.email) return;
@@ -40,6 +72,10 @@ async function submit() {
           <span class="auth-email-highlight">{{
             form.email || "you@example.com"
           }}</span>
+        </p>
+        <p v-if="pendingPlanLabel" class="auth-subtitle centered">
+          Open it and we'll take you straight to checkout for
+          <strong>{{ pendingPlanLabel }}</strong>.
         </p>
         <div class="auth-note centered">
           Click the link to activate your account. It expires in 15 minutes.
