@@ -234,9 +234,28 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.plans-shell { display: flex; min-height: 100vh; background: var(--color-bg-deep); }
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.content { padding: 24px 28px 80px; max-width: 1120px; }
+.plans-shell { display: flex; min-height: 100vh; background: #0a0a0f; color: #e8e8ee; }
+/* The sidebar is position:fixed (220px); offset main like the other views so
+   left-aligned content isn't clipped under it. */
+.main { margin-left: var(--sidebar-width, 220px); flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.topbar-left { font-size: 13px; color: #8a8a9a; }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.bc-sep { margin: 0 8px; opacity: 0.5; }
+.bc-page { color: #e8e8ee; }
+.content { padding: 24px; max-width: 1100px; }
+.banner { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+.banner.error { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.25); color: #fca5a5; }
+
+/* Buttons are defined per-view in this codebase rather than globally — without
+   these the plan CTAs render as bare text. */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04); color: #e8e8ee; font: inherit; font-size: 13px; cursor: pointer; text-decoration: none; }
+.btn:hover { background: rgba(255,255,255,0.08); }
+.btn-primary { background: #ff6b35; border-color: #ff6b35; color: #0a0a0f; font-weight: 600; }
+.btn-primary:hover { background: #ff8055; border-color: #ff8055; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-ghost { background: transparent; border-color: rgba(255,255,255,0.14); }
+.btn-ghost:hover { background: rgba(255,255,255,0.06); }
 
 .plans-head { margin-bottom: 26px; }
 .plans-title { font-size: 26px; font-weight: 700; color: var(--color-text-primary); letter-spacing: -.4px; }
