@@ -142,12 +142,32 @@ const planStatusColor = computed(() => {
 
 const isFreePlan = computed(() => !billing.value?.plan_tier || billing.value.plan_tier === 'free')
 const hasSubscription = computed(() => Boolean(billing.value?.has_subscription))
-// Already holds a one-time plan (bought here, or redeemed through AppSumo) —
-// selling them a second credit pack as an "upgrade" would just confuse.
-// Top-ups stay available to them, which is the right way to add credits.
+// Holds a one-time plan already, bought here or redeemed through AppSumo.
 const hasLifetimePlan = computed(() => {
   const t = billing.value?.plan_tier ?? ''
   return t.startsWith('lifetime_') || t.startsWith('appsumo_')
+})
+
+// One-time plans in ascending size. Rank drives the upgrade list: a holder is
+// only offered what is bigger than what they have, so an Agency holder isn't
+// invited to "upgrade" to Starter.
+const LIFETIME_PLANS = [
+  { key: 'lifetime_starter', rank: 1, label: 'Starter — $89 · 4,000 credits' },
+  { key: 'lifetime_creator', rank: 2, label: 'Creator — $199 · 12,000 credits' },
+  { key: 'lifetime_agency', rank: 3, label: 'Agency — $399 · 20,000 credits' },
+]
+
+const currentLifetimeRank = computed(() => {
+  const t = billing.value?.plan_tier ?? ''
+  if (t.endsWith('_agency')) return 3
+  if (t.endsWith('_creator')) return 2
+  if (t.endsWith('_starter')) return 1
+  return 0
+})
+
+const upgradeLifetimePlans = computed(() => {
+  if (!hasLifetimePlan.value) return LIFETIME_PLANS
+  return LIFETIME_PLANS.filter((p) => p.rank > currentLifetimeRank.value)
 })
 
 // Kelviq hosted checkout. selection = { plan: 'starter'|... } for a
@@ -1020,16 +1040,27 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- One-time plans. Shown to everyone without one: a credit pack is
-                 an outright purchase, so an LTD holder or a subscriber can buy
-                 one too. These had no button anywhere, which made a lifetime
-                 plan literally unbuyable from inside the app. -->
-            <div v-if="billing && !hasLifetimePlan" class="plan-buy-block">
-              <div class="section-title" style="font-size:13px;margin-bottom:8px">One-time credit packs — no subscription</div>
+            <!-- One-time plans. Anyone already holding one is offered only the
+                 tiers ABOVE theirs, so this doubles as the upgrade path for
+                 lifetime and AppSumo holders — buying a higher pack grants its
+                 credits and moves the tier; re-buying the same one is caught by
+                 the webhook's idempotency guard and never double-grants. -->
+            <div v-if="billing && upgradeLifetimePlans.length" class="plan-buy-block">
+              <div class="section-title" style="font-size:13px;margin-bottom:8px">
+                {{ hasLifetimePlan ? 'Upgrade your plan — one-time, no subscription' : 'One-time credit packs — no subscription' }}
+              </div>
               <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button class="btn btn-primary" type="button" :disabled="checkoutPending" @click="startCheckout({ lifetime: 'lifetime_starter' })">Starter — $89 · 4,000 credits</button>
-                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ lifetime: 'lifetime_creator' })">Creator — $199 · 12,000</button>
-                <button class="btn btn-ghost" type="button" :disabled="checkoutPending" @click="startCheckout({ lifetime: 'lifetime_agency' })">Agency — $399 · 20,000</button>
+                <button
+                  v-for="(p, i) in upgradeLifetimePlans"
+                  :key="p.key"
+                  :class="['btn', i === 0 ? 'btn-primary' : 'btn-ghost']"
+                  type="button"
+                  :disabled="checkoutPending"
+                  @click="startCheckout({ lifetime: p.key })"
+                >{{ p.label }}</button>
+              </div>
+              <div v-if="hasLifetimePlan" class="plan-buy-note">
+                Credits are added to your balance. Or top up any amount below without changing plan.
               </div>
             </div>
 
@@ -1046,11 +1077,20 @@ onMounted(() => {
               </template>
               <button
                 v-if="hasSubscription"
-                class="btn btn-ghost"
+                class="btn btn-primary"
                 type="button"
                 :disabled="billingPortalPending"
                 @click="openBillingPortal"
-              >{{ billingPortalPending ? 'Opening…' : 'Manage Billing' }}</button>
+              >{{ billingPortalPending ? 'Opening…' : 'Change plan or manage billing' }}</button>
+            </div>
+
+            <!-- An existing subscriber changes tier in Kelviq's portal, never
+                 through a second checkout — that would open a second
+                 subscription alongside the first and bill them twice. There is
+                 no in-place plan-change API, so the portal is the only safe
+                 route, and the button above now says so plainly. -->
+            <div v-if="hasSubscription" class="plan-buy-note" style="margin:-10px 0 22px">
+              Moving up or down a tier, updating your card and cancelling all happen in the billing portal.
             </div>
 
             <!-- Credit top-up packs -->
@@ -1619,6 +1659,8 @@ onMounted(() => {
 
 /* ── Plan table ── */
 .topup-section { margin: 22px 0; padding: 18px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 10px; }
+.plan-buy-block { margin: 16px 0 6px; padding: 18px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 10px; }
+.plan-buy-note { margin-top: 10px; font-size: 12.5px; line-height: 1.5; color: var(--color-text-muted); }
 .referral-row { display: flex; gap: 10px; align-items: stretch; max-width: 560px; }
 .referral-link-input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-primary); font-family: "Space Mono", monospace; font-size: 13px; }
 .btn-copy-referral { flex-shrink: 0; padding: 10px 18px; border-radius: 8px; border: none; background: var(--color-accent); color: #fff; font-weight: 600; cursor: pointer; transition: transform .15s; }
