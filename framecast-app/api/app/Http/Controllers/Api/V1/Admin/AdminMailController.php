@@ -35,6 +35,14 @@ class AdminMailController extends Controller
             'data' => [
                 'count'  => $users->count(),
                 'sample' => $users->take(12)->pluck('email')->all(),
+                // The full list, so the admin can drop individuals before
+                // sending. A segment used to be all-or-nothing: no way to mail
+                // "every free user except these two" without retyping the rest
+                // by hand as a custom list.
+                'recipients' => $users->map(fn ($u) => [
+                    'email' => $u->email,
+                    'name'  => $u->name,
+                ])->values()->all(),
             ],
         ]);
     }
@@ -49,9 +57,19 @@ class AdminMailController extends Controller
             'emails.*' => ['email'],
             'subject'  => ['required', 'string', 'max:200'],
             'body'     => ['required', 'string', 'max:10000'],
+            // Addresses the admin unticked in the recipient list. Applied
+            // after the segment resolves, so the segment's own safety rules —
+            // skipping internal accounts and suspended workspaces — still run.
+            'exclude'   => ['sometimes', 'array', 'max:500'],
+            'exclude.*' => ['email'],
         ]);
 
         $users = $this->resolveSegment($validated['segment'], $validated['emails'] ?? []);
+
+        $excluded = array_map('mb_strtolower', $validated['exclude'] ?? []);
+        if ($excluded !== []) {
+            $users = $users->reject(fn ($u) => in_array(mb_strtolower((string) $u->email), $excluded, true))->values();
+        }
 
         if ($users->isEmpty()) {
             return $this->error('no_recipients', 'No matching recipients.', 422);
@@ -71,6 +89,7 @@ class AdminMailController extends Controller
             targetId: null,
             payload: [
                 'segment'    => $validated['segment'],
+                'excluded'   => $excluded,
                 'subject'    => $validated['subject'],
                 'body'       => mb_substr($validated['body'], 0, 10000),
                 'recipients' => $users->pluck('email')->all(),

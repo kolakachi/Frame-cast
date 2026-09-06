@@ -58,11 +58,31 @@ const MAIL_SEGMENTS = [
 
 const mailCustomList = computed(() =>
   mailEmails.value.split(/[\s,;]+/).map(e => e.trim()).filter(e => e.includes('@')))
-const mailRecipientCount = computed(() =>
-  mailSegment.value === 'custom' ? mailCustomList.value.length : (mailRecipients.value?.count ?? null))
+// Addresses unticked from a segment. A segment used to be all-or-nothing —
+// mailing "every free user except two" meant retyping the rest by hand.
+const mailExcluded = ref(new Set())
+const mailListOpen = ref(false)
+
+function toggleMailRecipient(email) {
+  const next = new Set(mailExcluded.value)
+  next.has(email) ? next.delete(email) : next.add(email)
+  mailExcluded.value = next
+}
+function mailIncludeAll() { mailExcluded.value = new Set() }
+function mailExcludeAll() {
+  mailExcluded.value = new Set((mailRecipients.value?.recipients ?? []).map(r => r.email))
+}
+
+const mailRecipientCount = computed(() => {
+  if (mailSegment.value === 'custom') return mailCustomList.value.length
+  const total = mailRecipients.value?.count ?? null
+  return total === null ? null : Math.max(0, total - mailExcluded.value.size)
+})
 
 watch(mailSegment, async (seg) => {
   mailRecipients.value = null
+  mailExcluded.value = new Set()
+  mailListOpen.value = false
   mailError.value = ''
   if (seg === 'custom') return
   try {
@@ -111,11 +131,12 @@ async function sendMail() {
     const res = await api.post('/admin/mail/send', {
       segment: mailSegment.value,
       ...(mailSegment.value === 'custom' ? { emails: mailCustomList.value } : {}),
+      ...(mailExcluded.value.size ? { exclude: [...mailExcluded.value] } : {}),
       subject: mailSubject.value.trim(),
       body: mailBody.value,
     })
     mailResult.value = res.data?.data ?? null
-    mailSubject.value = ''; mailBody.value = ''; mailEmails.value = ''
+    mailSubject.value = ''; mailBody.value = ''; mailEmails.value = ''; mailExcluded.value = new Set()
     loadMailHistory()
   } catch (err) {
     mailError.value = err.response?.data?.error?.message ?? 'Send failed.'
@@ -1795,8 +1816,39 @@ onMounted(() => {
                 </div>
               </template>
               <div v-else-if="mailRecipients" class="mail-hint">
-                {{ mailRecipients.count }} recipient{{ mailRecipients.count === 1 ? '' : 's' }} —
-                {{ mailRecipients.sample.join(', ') }}{{ mailRecipients.count > mailRecipients.sample.length ? '…' : '' }}
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                  <span>
+                    <strong>{{ mailRecipientCount }}</strong> of {{ mailRecipients.count }} recipient{{ mailRecipients.count === 1 ? '' : 's' }}
+                    <template v-if="mailExcluded.size"> · {{ mailExcluded.size }} removed</template>
+                  </span>
+                  <button class="btn btn-ghost btn-sm" type="button" @click="mailListOpen = !mailListOpen">
+                    {{ mailListOpen ? 'Hide list' : 'Choose who gets it' }}
+                  </button>
+                </div>
+
+                <div v-if="!mailListOpen" style="margin-top:4px;">
+                  {{ mailRecipients.sample.join(', ') }}{{ mailRecipients.count > mailRecipients.sample.length ? '…' : '' }}
+                </div>
+
+                <div v-else class="mail-reciplist">
+                  <div class="mail-reciplist-head">
+                    <button class="btn btn-ghost btn-sm" type="button" @click="mailIncludeAll">Select all</button>
+                    <button class="btn btn-ghost btn-sm" type="button" @click="mailExcludeAll">Clear all</button>
+                  </div>
+                  <label
+                    v-for="r in (mailRecipients.recipients || [])"
+                    :key="r.email"
+                    :class="['mail-recip', mailExcluded.has(r.email) ? 'is-out' : '']"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="!mailExcluded.has(r.email)"
+                      @change="toggleMailRecipient(r.email)"
+                    >
+                    <span class="mail-recip-email">{{ r.email }}</span>
+                    <span v-if="r.name" class="mail-recip-name">{{ r.name }}</span>
+                  </label>
+                </div>
               </div>
               <div v-else class="mail-hint">Counting recipients…</div>
 
@@ -2919,6 +2971,16 @@ tr:hover td { background: #1e2129; }
 .mail-input { width: 100%; padding: 9px 12px; background: var(--gm-card, var(--color-bg-card)); border: 1px solid var(--gm-border, var(--color-border)); border-radius: 8px; color: inherit; font-family: inherit; font-size: 13px; }
 .mail-textarea { resize: vertical; line-height: 1.55; }
 .mail-hint { font-size: 11.5px; color: var(--gm-muted); }
+.mail-reciplist { margin-top: 8px; max-height: 260px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-elevated); }
+.mail-reciplist-head { display: flex; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--color-border); position: sticky; top: 0; background: var(--color-bg-elevated); }
+.mail-recip { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; color: var(--color-text-secondary); border-bottom: 1px solid rgba(255,255,255,0.04); }
+.mail-recip:last-child { border-bottom: none; }
+.mail-recip:hover { background: rgba(255,255,255,0.03); }
+.mail-recip input { cursor: pointer; accent-color: var(--color-accent); }
+.mail-recip-email { font-family: "Space Mono", monospace; }
+.mail-recip-name { color: var(--gm-muted); }
+.mail-recip.is-out { opacity: 0.45; }
+.mail-recip.is-out .mail-recip-email { text-decoration: line-through; }
 .mail-error { margin-top: 10px; font-size: 12.5px; color: #f87171; }
 .mail-success { margin-top: 10px; font-size: 12.5px; color: #34d399; }
 .mail-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
