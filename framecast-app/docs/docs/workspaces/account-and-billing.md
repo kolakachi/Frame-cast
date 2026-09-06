@@ -55,6 +55,8 @@ and go much further, while AI video and lip-sync cost more.
 **Agency ($149)**, with credits refilling every month at a better rate per
 credit.
 
+![the plans page showing one-time packs and monthly subscriptions](/img/howto/settings-plans.png)
+
 If you already hold a one-time plan or an AppSumo deal, the plans page offers
 only the packs larger than the one you have, and buying one adds its credits to
 your balance. Once subscribed to a monthly plan, **Change plan or manage

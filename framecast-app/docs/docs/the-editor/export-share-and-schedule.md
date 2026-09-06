@@ -43,8 +43,10 @@ scheduler spells out exactly when the post will go out, and shows that moment
 in your own timezone too when the two differ. Your choice is remembered for
 next time.
 
-Posts can take a minute or two to appear after the scheduled time — the
-platform has to process the video before it goes live.
+![the Schedule Post modal with the date, time and timezone controls](/img/howto/editor-schedule-timezone.png)
+
+Posts go out at the time you set. The upload and the platform's processing
+happen in the minutes beforehand, so the post itself lands on schedule.
 
 Full details — connecting accounts, YouTube title/category/visibility, and the AI-content disclosure — are in [Connect & publish](/export-and-publish/connect-and-publish) and [How the calendar works](/calendar/how-the-calendar-works).
 

@@ -42,19 +42,25 @@ Every other caption setting still applies on top of whichever effect you
 choose — font, size, colours, highlight mode and position all keep working.
 Switching effects never resets them.
 
+Click **View all** under Caption effect to see every option previewed on your
+own text.
+
+![the Caption effects picker showing all sixteen styles](/img/howto/editor-captions.png)
+
 Some effects come with a backdrop panel behind the text (**Stream**, **News
 Bar**). Tick **Backdrop panel behind text** to turn it on, and set its colour
 with the panel colour swatch.
 
 ## Other style options
 
+- **Base style** — Impact, Editorial, or Hacker. This is the underlying look of
+  the text and is separate from the effect above; the effect controls how words
+  arrive, the base style controls how they're set.
 - **Highlight** — Keywords, Word-by-word, Line-by-line, or None.
 - **Position** — Bottom third, Center, or Top third.
 - **Font** — grouped by style (Bold Display, Sans-serif, Serif, Script, Mono, Handwritten).
 - **Text color** and **Highlight color** — pick a swatch (white, yellow, orange, red, green, blue, purple, black) or a custom color.
 - **Text size** — S, M, L, or XL.
-
-![the Captions section with effect, position, and color controls](/img/howto/editor-captions.png)
 
 ## Apply to every scene
 

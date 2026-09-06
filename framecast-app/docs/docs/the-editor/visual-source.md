@@ -54,6 +54,8 @@ saved face straight onto a scene without hunting through every image you've
 used. Scroll the grid to load more, and the search box searches your whole
 library, not just what's on screen.
 
+![the asset library with the Characters chip selected](/img/howto/library-characters-tab.png)
+
 ## Audio (audiogram)
 
 Turn a scene into an audio-reactive visual — great for podcasts and narration.
