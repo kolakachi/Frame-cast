@@ -241,7 +241,10 @@ function startPolling(ids) {
       resultPosts.value = resultPosts.value.map(rp => {
         const fresh = posts.find(p => p.id === rp.id)
         if (!fresh) return rp
-        if (fresh.status === 'pending' || fresh.status === 'processing') allDone = false
+        // 'scheduled' is the server's word for queued-but-not-yet-sent. It was
+        // missing here, so polling declared itself done while the post was
+        // still waiting and the result row never advanced to published.
+        if (['scheduled', 'pending', 'processing'].includes(fresh.status)) allDone = false
         return {
           ...rp,
           status: fresh.status,

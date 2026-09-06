@@ -191,7 +191,10 @@ const stats = computed(() => {
 })
 
 const failedPosts = computed(() => posts.value.filter(p => p.status === 'failed'))
-const hasPending  = computed(() => posts.value.some(p => ['pending','processing'].includes(p.status)))
+// A queued post's status is 'scheduled' — the server never sets 'pending', so
+// this list matched nothing and the poller never started. The calendar then sat
+// on "scheduled" until a manual reload, long after the post had gone out.
+const hasPending  = computed(() => posts.value.some(p => ['scheduled','processing'].includes(p.status)))
 
 // ── Data loading ──────────────────────────────────────────
 async function loadPosts() {
