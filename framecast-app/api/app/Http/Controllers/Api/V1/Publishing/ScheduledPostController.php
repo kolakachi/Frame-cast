@@ -50,6 +50,14 @@ class ScheduledPostController extends Controller
 
     // ── Create / schedule ────────────────────────────────────────────────────
 
+    /**
+     * Fired this far before the scheduled time so the upload and the platform's
+     * transcode are already done when the moment arrives. The adapters park on
+     * MetaGraphHelper::holdUntilScheduled() for whatever is left, so starting
+     * early never publishes early — it only removes the lag.
+     */
+    private const PUBLISH_LEAD_SECONDS = 180;
+
     public function store(Request $request): JsonResponse
     {
         /** @var User $user */
@@ -127,7 +135,7 @@ class ScheduledPostController extends Controller
             // can supersede it — a delayed job cannot be cancelled, so the
             // stale one has to recognise itself and stand down.
             PublishVideoJob::dispatch($post->getKey(), $publishNow ? null : $post->scheduled_at?->toIso8601String())
-                ->delay($publishNow ? 0 : now()->diffInSeconds($post->scheduled_at));
+                ->delay($publishNow ? 0 : max(0, now()->diffInSeconds($post->scheduled_at) - self::PUBLISH_LEAD_SECONDS));
         }
 
         return response()->json(['data' => ['post' => $this->serialize($post)]], 201);
@@ -168,7 +176,7 @@ class ScheduledPostController extends Controller
             // longer matches the post.
             $post->refresh();
             PublishVideoJob::dispatch($post->getKey(), $post->scheduled_at?->toIso8601String())
-                ->delay(now()->diffInSeconds($post->scheduled_at));
+                ->delay(max(0, now()->diffInSeconds($post->scheduled_at) - self::PUBLISH_LEAD_SECONDS));
         }
 
         // Retry a failed post

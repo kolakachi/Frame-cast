@@ -184,7 +184,12 @@ class FacebookAdapter implements PlatformAdapter, SupportsPageSelection, Provide
 
         MetaGraphHelper::throwIfMetaError($upload);
 
-        // 3. Publish — finish phase moves the Reel from staging to PUBLISHED.
+        // 3. Hold until the scheduled moment. The file is already uploaded and
+        //    staged, so the finish call below publishes on time instead of a
+        //    couple of minutes late.
+        MetaGraphHelper::holdUntilScheduled($post);
+
+        // 4. Publish — finish phase moves the Reel from staging to PUBLISHED.
         $finish = Http::post(MetaGraphHelper::graphUrl("{$pageId}/video_reels"), [
             'access_token' => $pageToken,
             'video_id'     => $videoId,

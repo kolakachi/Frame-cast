@@ -30,6 +30,58 @@ return [
     'entries' => [
 
         [
+            'slug'  => '2026-09-06-instagram-and-facebook-publishing',
+            'date'  => '2026-09-06',
+            'tag'   => 'new',
+            'title' => 'Publish and schedule to Instagram and Facebook',
+            'body'  => 'You can now connect an Instagram account or a Facebook Page and send '
+                .'your finished videos straight there as Reels — publish immediately, or pick a '
+                .'date and time and let it go out on its own. That joins YouTube and TikTok, so '
+                .'all four platforms now work the same way from the Schedule button and the '
+                .'Calendar. Connect an account under Channels, and you will approve access on '
+                .'the platform own login screen.',
+        ],
+
+        [
+            'slug'  => '2026-09-06-schedule-in-any-timezone',
+            'date'  => '2026-09-06',
+            'tag'   => 'improved',
+            'title' => 'Choose the timezone when you schedule a post',
+            'body'  => 'The scheduler now asks which timezone you mean, instead of quietly '
+                .'assuming the one your computer is set to. Useful when you are posting for an '
+                .'audience in another country — pick their timezone and set the time you want it '
+                .'to land there. Every timezone is available, each labelled with its current '
+                .'offset, and your choice is remembered. Underneath the picker you will see '
+                .'exactly when the post goes out, shown in your own timezone too when the two '
+                .'differ.',
+        ],
+
+        [
+            'slug'  => '2026-09-05-find-your-characters-faster',
+            'date'  => '2026-09-05',
+            'tag'   => 'improved',
+            'title' => 'Your characters now have their own tab in the asset library',
+            'body'  => 'Open the library from Visual Source and there is a Characters chip beside '
+                .'All, Video and Image. It lists the reference photos of every character in your '
+                .'workspace, so putting a saved face on a scene no longer means scrolling through '
+                .'every image you have ever used. The library also loads more as you scroll, and '
+                .'the search box now searches your whole library rather than only what is on '
+                .'screen — so older uploads are reachable again if you have a lot of them.',
+        ],
+
+        [
+            'slug'  => '2026-09-05-one-time-plans',
+            'date'  => '2026-09-05',
+            'tag'   => 'new',
+            'title' => 'Buy credits once, with no subscription',
+            'body'  => 'Alongside the monthly plans there are now one-time credit packs — pay '
+                .'once, keep the credits, nothing recurring and nothing to cancel. Click Upgrade '
+                .'in Settings to see both side by side, with what each pack is worth in finished '
+                .'videos. If you already hold a one-time plan or an AppSumo deal, you will be '
+                .'offered the larger packs only, and buying one adds its credits to your balance.',
+        ],
+
+        [
             'slug'  => '2026-09-02-captions-match-your-export',
             'date'  => '2026-09-02',
             'tag'   => 'fixed',

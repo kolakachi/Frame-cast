@@ -17,7 +17,12 @@ class PublishVideoJob implements ShouldQueue
     use TracksJobFailure;
 
     public int $tries   = 3;
-    public int $timeout = 300;
+    /**
+     * Generous because the job now starts ahead of the scheduled time: it
+     * uploads, waits out the platform's transcode, then parks until the
+     * moment itself. Lead time plus transcode plus the hold has to fit.
+     */
+    public int $timeout = 900;
 
     public function __construct(
         public readonly int $scheduledPostId,

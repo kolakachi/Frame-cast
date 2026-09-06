@@ -17,6 +17,54 @@ class MetaGraphHelper
     public const TOKEN_URL = 'https://graph.facebook.com/{version}/oauth/access_token';
     public const GRAPH     = 'https://graph.facebook.com/{version}';
 
+    /**
+     * Hold the final publish call until the post's scheduled moment.
+     *
+     * Meta transcodes an uploaded video before it can go live, which took
+     * roughly two minutes on real posts — so a job that started at the
+     * scheduled time published two minutes late. The job is now dispatched
+     * early and does its uploading up front; this parks the last call until
+     * the moment the user actually asked for.
+     *
+     * Re-reads the post first, because the wait is the one window where a
+     * reschedule or cancellation can land after the job has already started.
+     *
+     * @throws RuntimeException when the post was cancelled or moved while we waited
+     */
+    public static function holdUntilScheduled(\App\Models\ScheduledPost $post): void
+    {
+        $target = $post->scheduled_at;
+        if (! $target) {
+            return; // publish-now and retries go immediately
+        }
+
+        $waited = 0;
+        $maxWait = 600; // never park a worker indefinitely
+
+        while (true) {
+            $remaining = now()->diffInSeconds($target, false);
+            if ($remaining <= 0 || $waited >= $maxWait) {
+                break;
+            }
+
+            sleep(min(5, $remaining));
+            $waited += min(5, $remaining);
+
+            // Cheap re-read: catches a cancel or a reschedule that arrived
+            // after this job began staging the upload.
+            $fresh = \App\Models\ScheduledPost::query()
+                ->select(['id', 'status', 'scheduled_at'])
+                ->find($post->getKey());
+
+            if (! $fresh || $fresh->status === 'cancelled') {
+                throw new RuntimeException('This post was cancelled before it published.');
+            }
+            if ($fresh->scheduled_at?->toIso8601String() !== $target->toIso8601String()) {
+                throw new RuntimeException('This post was rescheduled while it was being prepared.');
+            }
+        }
+    }
+
     public static function graphVersion(): string
     {
         return (string) config('services.meta.graph_version', 'v21.0');

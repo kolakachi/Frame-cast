@@ -173,7 +173,12 @@ class InstagramAdapter implements PlatformAdapter, SupportsPageSelection, Provid
         // 2. Poll until processing completes (or fail).
         $this->waitForContainerReady($creationId, $pageToken);
 
-        // 3. Publish.
+        // 3. Hold until the scheduled moment. The upload and Meta's transcode
+        //    have already happened above, so the Reel goes live on time rather
+        //    than a couple of minutes after it.
+        MetaGraphHelper::holdUntilScheduled($post);
+
+        // 4. Publish.
         $publishResponse = Http::post(MetaGraphHelper::graphUrl("{$igUserId}/media_publish"), [
             'creation_id'  => $creationId,
             'access_token' => $pageToken,
