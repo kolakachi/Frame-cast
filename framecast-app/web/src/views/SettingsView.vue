@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
+import { allTimezones, detectedTimezone, zoneLabel } from '../composables/timezones'
 import AppSidebar from '../components/AppSidebar.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import SettingsSkeleton from '../components/skeletons/SettingsSkeleton.vue'
@@ -196,6 +197,15 @@ const autoMusic            = ref(true)
 const watermarkEnabled     = ref(false)
 
 const accountForm = ref({ name: '', timezone: 'UTC' })
+
+// Every zone the browser knows, not the four that were hardcoded here. The
+// saved value is kept in the list even if this browser doesn't recognise it,
+// so opening Settings can never silently rewrite someone's stored timezone.
+const timezoneOptions = computed(() => {
+  const list = allTimezones()
+  const saved = accountForm.value.timezone
+  return saved && !list.includes(saved) ? [saved, ...list] : list
+})
 
 // ── Password set / change ─────────────────────────────────
 const passwordForm = ref({ current: '', next: '', confirm: '' })
@@ -830,10 +840,9 @@ onMounted(() => {
               <div class="settings-row-label"><div class="label-main">Timezone</div></div>
               <div class="settings-row-control">
                 <select v-model="accountForm.timezone" class="settings-select">
-                  <option value="Africa/Lagos">Africa/Lagos (WAT)</option>
-                  <option value="America/New_York">America/New_York</option>
-                  <option value="Europe/London">Europe/London</option>
-                  <option value="UTC">UTC</option>
+                  <option v-for="tz in timezoneOptions" :key="tz" :value="tz">
+                    {{ zoneLabel(tz) }}{{ tz === detectedTimezone ? ' — detected' : '' }}
+                  </option>
                 </select>
               </div>
             </div>

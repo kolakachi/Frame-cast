@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
+import { allTimezones, detectedTimezone, isValidTimezone, wallClockToDate, zoneLabel } from '../composables/timezones'
 
 const router = useRouter()
 
@@ -51,35 +52,55 @@ const whenMode          = ref('schedule') // schedule | now | draft
 const scheduledDate     = ref('')
 const scheduledTime     = ref('09:00')
 
-// The time typed above is read in the browser's own timezone (`new Date`
-// parses a bare "YYYY-MM-DDTHH:mm" as local), which is almost always what the
-// user means — it follows them across travel and DST without anyone updating a
-// setting. It was never shown though, so there was no way to be sure the post
-// would go out when you expected. Named here, with the exact moment spelled
-// out underneath.
-const localTimezone = computed(() => {
+// ── Timezone ──────────────────────────────────────────────
+// The zone is chosen, not inferred. Auto-detect is only ever a guess about
+// intent: someone in Lagos scheduling for a US audience means 9am New York,
+// and a browser-derived zone would silently post that five hours early. The
+// detected zone is the default because it is usually right, but it is offered
+// as a choice, labelled with its offset, and remembered.
+const timezones = computed(() => allTimezones())
+
+const TZ_PREF_KEY = 'wyv_schedule_timezone'
+const selectedTimezone = ref((() => {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'your local time'
+    const saved = localStorage.getItem(TZ_PREF_KEY)
+    if (saved && isValidTimezone(saved)) return saved
   } catch {
-    return 'your local time'
+    // private window — fall through
   }
+  return detectedTimezone
+})())
+
+watch(selectedTimezone, (tz) => {
+  try { localStorage.setItem(TZ_PREF_KEY, tz) } catch { /* private window */ }
 })
 
+const scheduledInstant = computed(() =>
+  wallClockToDate(scheduledDate.value, scheduledTime.value, selectedTimezone.value)
+)
+
+// Spelled out in the viewer's own zone too when it differs, so "09:00 Lagos"
+// doesn't quietly mean 3am where they are.
 const scheduledPreview = computed(() => {
-  if (!scheduledDate.value || !scheduledTime.value) return ''
-  const d = new Date(`${scheduledDate.value}T${scheduledTime.value}`)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleString(undefined, {
+  const d = scheduledInstant.value
+  if (!d) return ''
+  const inChosen = d.toLocaleString(undefined, {
+    timeZone: selectedTimezone.value,
     weekday: 'short', day: 'numeric', month: 'short',
-    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    hour: 'numeric', minute: '2-digit',
   })
+  if (selectedTimezone.value === detectedTimezone) return inChosen
+  const inLocal = d.toLocaleString(undefined, {
+    weekday: 'short', day: 'numeric', month: 'short',
+    hour: 'numeric', minute: '2-digit',
+  })
+  return `${inChosen} — that's ${inLocal} where you are`
 })
 
 // The API rejects anything not after:now, so catch it before they hit save.
 const scheduledInPast = computed(() => {
-  if (!scheduledDate.value || !scheduledTime.value) return false
-  const d = new Date(`${scheduledDate.value}T${scheduledTime.value}`)
-  return !Number.isNaN(d.getTime()) && d.getTime() <= Date.now()
+  const d = scheduledInstant.value
+  return Boolean(d) && d.getTime() <= Date.now()
 })
 
 const PLATFORMS = { youtube: '▶ YouTube', tiktok: '♪ TikTok', instagram: '◈ Instagram', facebook: 'f Facebook' }
@@ -163,8 +184,10 @@ async function submit(opts = {}) {
   saving.value = true
   error.value  = ''
 
+  // Read in the zone the user picked, not the browser's. Sent as UTC, which is
+  // what the API stores and what the delayed job is queued against.
   const scheduledAt = whenMode.value === 'schedule'
-    ? new Date(`${scheduledDate.value}T${scheduledTime.value}`).toISOString()
+    ? (scheduledInstant.value?.toISOString() ?? null)
     : null
 
   try {
@@ -421,12 +444,20 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
                 <input v-model="scheduledDate" class="sp-input" type="date">
                 <input v-model="scheduledTime" class="sp-input" type="time">
               </div>
+              <div v-if="whenMode === 'schedule'" class="sp-tz-row">
+                <label class="sp-tz-label" for="sp-tz">Timezone</label>
+                <select id="sp-tz" v-model="selectedTimezone" class="sp-input sp-tz-select">
+                  <option v-for="tz in timezones" :key="tz" :value="tz">
+                    {{ zoneLabel(tz) }}{{ tz === detectedTimezone ? ' — detected' : '' }}
+                  </option>
+                </select>
+              </div>
               <div v-if="whenMode === 'schedule'" class="sp-tz-note">
                 <template v-if="scheduledInPast">
                   <span class="sp-tz-warn">That time has already passed — pick a later one.</span>
                 </template>
                 <template v-else-if="scheduledPreview">
-                  Publishes <strong>{{ scheduledPreview }}</strong> · times are in your timezone ({{ localTimezone }})
+                  Publishes <strong>{{ scheduledPreview }}</strong>
                 </template>
               </div>
             </div>
@@ -498,6 +529,9 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 .sp-when-tab:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
 .sp-when-tab.active { background: rgba(255,107,53,.1); color: var(--color-accent); border-color: rgba(255,107,53,.3); }
 .sp-datetime-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sp-tz-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.sp-tz-label { flex: none; font-size: 11.5px; color: var(--color-text-muted); }
+.sp-tz-select { flex: 1; min-width: 0; }
 .sp-tz-note { margin-top: 8px; font-size: 11.5px; line-height: 1.5; color: var(--color-text-muted); }
 .sp-tz-note strong { color: var(--color-text-primary); font-weight: 600; }
 .sp-tz-warn { color: #fca5a5; }
