@@ -2,6 +2,7 @@
 import { computed, ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
+import { apiErrorMessage } from '../composables/apiError'
 
 const props = defineProps({
   channels: { type: Array, default: () => [] },
@@ -901,7 +902,7 @@ async function onOneShotPhotoChange(event) {
         })
       }
     } catch (e) {
-      oneShotUploadError.value = e.response?.data?.error?.message ?? `Upload of ${file.name} failed.`
+      oneShotUploadError.value = apiErrorMessage(e, `Upload of ${file.name} failed.`)
     } finally {
       const done = oneShotUploading.value.shift()
       if (done?.url) URL.revokeObjectURL(done.url)
@@ -980,7 +981,7 @@ async function requestOneShotPlan() {
     if (oneShotPlan.value) wizardStep.value = 5
     else wizardCreateError.value = 'Could not build a plan — try rephrasing the prompt.'
   } catch (err) {
-    wizardCreateError.value = err.response?.data?.error?.message ?? 'Could not build a plan. Try again.'
+    wizardCreateError.value = apiErrorMessage(err, 'Could not build a plan. Try again.')
   } finally {
     oneShotPlanLoading.value = false
   }
@@ -1054,7 +1055,7 @@ async function submitOneShot() {
     }
   } catch (err) {
     wizardCreateState.value = 'error'
-    wizardCreateError.value = err.response?.data?.error?.message ?? 'One-shot generation failed.'
+    wizardCreateError.value = apiErrorMessage(err, 'One-shot generation failed.')
   }
 }
 
@@ -1141,7 +1142,7 @@ async function submitWizardProject() {
     }
   } catch (err) {
     wizardCreateState.value = 'error'
-    wizardCreateError.value = err.response?.data?.error?.message ?? 'Project creation failed.'
+    wizardCreateError.value = apiErrorMessage(err, 'Project creation failed.')
   }
 }
 

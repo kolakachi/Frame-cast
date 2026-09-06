@@ -35,6 +35,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
+            // Logged because a 422 is invisible otherwise: nginx access logs
+            // rotate on every deploy, and a customer reporting "The given data
+            // was invalid" carries no field, no route and no workspace. The
+            // failing keys and rule messages are recorded; request VALUES are
+            // not, since they carry prompts and other customer content.
+            \Illuminate\Support\Facades\Log::warning('Validation failed', [
+                'route'        => $request->path(),
+                'method'       => $request->method(),
+                'workspace_id' => $request->user()?->workspace_id,
+                'user_id'      => $request->user()?->getKey(),
+                'fields'       => $exception->errors(),
+            ]);
+
             return response()->json([
                 'error' => [
                     'code' => 'validation_error',
