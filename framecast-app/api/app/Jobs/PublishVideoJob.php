@@ -19,8 +19,21 @@ class PublishVideoJob implements ShouldQueue
     public int $tries   = 3;
     public int $timeout = 300;
 
-    public function __construct(public readonly int $scheduledPostId)
-    {
+    public function __construct(
+        public readonly int $scheduledPostId,
+        /**
+         * The scheduled_at this job was queued against, ISO8601.
+         *
+         * Scheduling rides Laravel's delayed queue, and a delayed job cannot be
+         * cancelled once dispatched. Rescheduling therefore queues a SECOND
+         * job while the first stays pending, so the post would publish at both
+         * the old time and the new one. The job compares this against the
+         * post's current scheduled_at and stands down if it has been
+         * superseded. Null for publish-now and retry, which have no scheduled
+         * time to be superseded by.
+         */
+        public readonly ?string $expectedScheduledAt = null,
+    ) {
         $this->onQueue('default');
     }
 
@@ -31,6 +44,33 @@ class PublishVideoJob implements ShouldQueue
             ->find($this->scheduledPostId);
 
         if (! $post || $post->status === 'cancelled') {
+            return;
+        }
+
+        // Already out the door. Without this a duplicate job would re-run the
+        // whole publish and put a second copy on the customer's account.
+        if ($post->status === 'published') {
+            Log::info('PublishVideoJob: already published, skipping', ['post_id' => $post->getKey()]);
+            return;
+        }
+
+        // Another worker has it in hand. Bounded by time so a job that died
+        // mid-publish doesn't strand the post as permanently unpublishable —
+        // past the window we assume the previous attempt is gone and retry.
+        if ($post->status === 'processing' && $post->updated_at?->gt(now()->subMinutes(15))) {
+            Log::info('PublishVideoJob: another attempt in flight, skipping', ['post_id' => $post->getKey()]);
+            return;
+        }
+
+        // Queued for a time this post no longer holds — it was rescheduled and
+        // a newer job is waiting for the new time.
+        if ($this->expectedScheduledAt !== null
+            && $post->scheduled_at?->toIso8601String() !== $this->expectedScheduledAt) {
+            Log::info('PublishVideoJob: superseded by a reschedule, skipping', [
+                'post_id'  => $post->getKey(),
+                'queued_for' => $this->expectedScheduledAt,
+                'now_set_to' => $post->scheduled_at?->toIso8601String(),
+            ]);
             return;
         }
 

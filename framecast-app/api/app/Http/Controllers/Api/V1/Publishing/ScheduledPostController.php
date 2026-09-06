@@ -123,7 +123,10 @@ class ScheduledPostController extends Controller
         ]);
 
         if ($status === 'scheduled') {
-            PublishVideoJob::dispatch($post->getKey())
+            // The scheduled_at is carried into the job so a later reschedule
+            // can supersede it — a delayed job cannot be cancelled, so the
+            // stale one has to recognise itself and stand down.
+            PublishVideoJob::dispatch($post->getKey(), $publishNow ? null : $post->scheduled_at?->toIso8601String())
                 ->delay($publishNow ? 0 : now()->diffInSeconds($post->scheduled_at));
         }
 
@@ -160,7 +163,11 @@ class ScheduledPostController extends Controller
 
         // Re-queue if rescheduled
         if (isset($validated['scheduled_at']) && $post->status === 'scheduled') {
-            PublishVideoJob::dispatch($post->getKey())
+            // The previously queued job stays pending and will fire at the old
+            // time; it stands down on arrival because the stamp it carries no
+            // longer matches the post.
+            $post->refresh();
+            PublishVideoJob::dispatch($post->getKey(), $post->scheduled_at?->toIso8601String())
                 ->delay(now()->diffInSeconds($post->scheduled_at));
         }
 
