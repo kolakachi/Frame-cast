@@ -44,7 +44,15 @@ Generate a custom image for the scene.
 
 ## Assets
 
-Use a file from your library. Pick or **Change Visual**, or **Open Library** to browse. Non-video assets can be animated with **⚡ Animate this image**.
+Use a file from your library. Pick or **Change Visual**, or **Open Library** to
+browse. Non-video assets can be animated with **⚡ Animate this image**.
+
+The library has filter chips across the top — **All**, **Video**, **Image**, and
+**Characters**. The Characters chip lists the reference photos of every
+[character](/characters/create-a-character) in your workspace, so you can drop a
+saved face straight onto a scene without hunting through every image you've
+used. Scroll the grid to load more, and the search box searches your whole
+library, not just what's on screen.
 
 ## Audio (audiogram)
 
@@ -77,7 +85,12 @@ Animating turns a still image into motion. Open the **Animate** modal from an im
 The live total is shown at the bottom before you click **⚡ Animate**.
 
 :::tip Spokesperson
-The **Spokesperson** tier lip-syncs a character to the scene's voiceover, so you need a generated voice first. Its cost scales with length (≤8s, ≤15s, or longer).
+The **Spokesperson** tier lip-syncs a character to the scene's voiceover, so you
+need a generated voice first. Its cost scales with length (≤8s, ≤15s, or
+longer). Because it makes a face appear to say words it never said, you'll be
+asked to confirm you have the rights and consent to that likeness — the same
+confirmation the character flow takes on a reference photo. It's asked once per
+scene, so re-rendering after a script or voice change won't ask again.
 :::
 
 ## Motion (Ken Burns)

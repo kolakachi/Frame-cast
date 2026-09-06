@@ -34,7 +34,19 @@ Click **🔗 Share publicly** to create a shareable link and copy it to your cli
 
 ## Schedule to social
 
-Click **📅 Schedule** to open the scheduler. Pick the connected accounts, write per-platform captions (with an **AI caption** helper), and choose **Schedule for later**, **Publish now**, or **Save as draft**. Full details — connecting accounts, YouTube title/category/visibility, and the AI-content disclosure — are in [Connect & publish](/export-and-publish/connect-and-publish) and [How the calendar works](/calendar/how-the-calendar-works).
+Click **📅 Schedule** to open the scheduler. Pick the connected accounts, write per-platform captions (with an **AI caption** helper), and choose **Schedule for later**, **Publish now**, or **Save as draft**.
+
+When you schedule for later, set the date, the time, and the **timezone**. It
+defaults to the timezone your browser reports, but you can pick any of them —
+useful when you're posting for an audience in another country. Underneath, the
+scheduler spells out exactly when the post will go out, and shows that moment
+in your own timezone too when the two differ. Your choice is remembered for
+next time.
+
+Posts can take a minute or two to appear after the scheduled time — the
+platform has to process the video before it goes live.
+
+Full details — connecting accounts, YouTube title/category/visibility, and the AI-content disclosure — are in [Connect & publish](/export-and-publish/connect-and-publish) and [How the calendar works](/calendar/how-the-calendar-works).
 
 ## Send for approval
 

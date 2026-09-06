@@ -35,7 +35,31 @@ These accounts are what you pick when you [schedule a post](/the-editor/export-s
 
 ### Plans
 
-On the free plan you can upgrade to a subscription — **Starter ($19)**, **Creator ($39)**, **Pro ($79)**, or **Agency ($149)** — via secure checkout. Once subscribed, **Manage Billing** opens your billing portal.
+Click **Upgrade** to open the plans page, where there are two ways to buy.
+
+**Pay once** — a one-time credit pack with no subscription and nothing to
+cancel:
+
+| Plan | Price | Credits |
+| --- | --- | --- |
+| Starter | $89 | 4,000 (~13 shorts) |
+| Creator | $199 | 12,000 (~40 shorts) |
+| Agency | $399 | 20,000 (~66 shorts) |
+
+Credits are a one-time bucket — there's no monthly refill. When it runs out you
+top up at standard prices. Short counts assume a 30-second video with AI
+visuals at roughly 300 credits; stock-footage shorts cost a fraction of that
+and go much further, while AI video and lip-sync cost more.
+
+**Subscribe monthly** — **Starter ($19)**, **Creator ($39)**, **Pro ($79)**, or
+**Agency ($149)**, with credits refilling every month at a better rate per
+credit.
+
+If you already hold a one-time plan or an AppSumo deal, the plans page offers
+only the packs larger than the one you have, and buying one adds its credits to
+your balance. Once subscribed to a monthly plan, **Change plan or manage
+billing** opens your billing portal — tier changes, card updates and
+cancellation all happen there.
 
 ### Credit top-ups
 
