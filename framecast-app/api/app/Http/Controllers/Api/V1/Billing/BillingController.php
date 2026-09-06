@@ -113,12 +113,18 @@ class BillingController extends Controller
         // abandoned attempt, which is what the banner and the follow-up email
         // key on. Held server-side because the browser cannot be the record —
         // localStorage dies with a cleared cache or a change of device.
-        $workspace->forceFill([
-            'pending_checkout_plan'        => $validated['lifetime'] ?? $validated['plan'] ?? $validated['topup'] ?? null,
-            'pending_checkout_at'          => now(),
-            // A fresh attempt earns a fresh reminder.
-            'pending_checkout_reminded_at' => null,
-        ])->save();
+        // A reminder already sent recently is NOT cleared. The nudge itself
+        // links back here, so clicking it starts a new checkout — and resetting
+        // on that click queued a second, identical email six hours later, right
+        // after the first one promised "you won't get another email about
+        // this". Only an attempt well after the last nudge earns another.
+        $recentlyReminded = $workspace->pending_checkout_reminded_at
+            && $workspace->pending_checkout_reminded_at->gt(now()->subDays(14));
+
+        $workspace->forceFill(array_merge([
+            'pending_checkout_plan' => $validated['lifetime'] ?? $validated['plan'] ?? $validated['topup'] ?? null,
+            'pending_checkout_at'   => now(),
+        ], $recentlyReminded ? [] : ['pending_checkout_reminded_at' => null]))->save();
 
         return response()->json(['data' => ['url' => $url], 'meta' => []]);
     }

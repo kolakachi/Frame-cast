@@ -1,6 +1,6 @@
 <p>Hey {{ $user->name ?: 'there' }},</p>
 
-<p>You started checkout for <strong>{{ $planName }}</strong> the other day but it didn't go through. Your account is still here and everything you've made is untouched.</p>
+<p>You started checkout for <strong>{{ $planName }}</strong> but it didn't go through. Your account is still here and everything you've made is untouched.</p>
 
 <p>If you still want it, you can pick up where you left off:</p>
 
