@@ -51,6 +51,37 @@ const whenMode          = ref('schedule') // schedule | now | draft
 const scheduledDate     = ref('')
 const scheduledTime     = ref('09:00')
 
+// The time typed above is read in the browser's own timezone (`new Date`
+// parses a bare "YYYY-MM-DDTHH:mm" as local), which is almost always what the
+// user means — it follows them across travel and DST without anyone updating a
+// setting. It was never shown though, so there was no way to be sure the post
+// would go out when you expected. Named here, with the exact moment spelled
+// out underneath.
+const localTimezone = computed(() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'your local time'
+  } catch {
+    return 'your local time'
+  }
+})
+
+const scheduledPreview = computed(() => {
+  if (!scheduledDate.value || !scheduledTime.value) return ''
+  const d = new Date(`${scheduledDate.value}T${scheduledTime.value}`)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString(undefined, {
+    weekday: 'short', day: 'numeric', month: 'short',
+    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+  })
+})
+
+// The API rejects anything not after:now, so catch it before they hit save.
+const scheduledInPast = computed(() => {
+  if (!scheduledDate.value || !scheduledTime.value) return false
+  const d = new Date(`${scheduledDate.value}T${scheduledTime.value}`)
+  return !Number.isNaN(d.getTime()) && d.getTime() <= Date.now()
+})
+
 const PLATFORMS = { youtube: '▶ YouTube', tiktok: '♪ TikTok', instagram: '◈ Instagram', facebook: 'f Facebook' }
 const CATEGORIES = ['Education', 'Entertainment', 'People & Blogs', 'News & Politics', 'Science & Technology', 'How-to & Style']
 
@@ -61,7 +92,7 @@ const selectedAccounts = computed(() =>
 const canSubmit = computed(() =>
   selectedAccountIds.value.length > 0 &&
   selectedExportId.value &&
-  (whenMode.value !== 'schedule' || (scheduledDate.value && scheduledTime.value))
+  (whenMode.value !== 'schedule' || (scheduledDate.value && scheduledTime.value && !scheduledInPast.value))
 )
 
 // ── Load ──────────────────────────────────────────────────
@@ -74,8 +105,13 @@ onMounted(async () => {
     accounts.value = (accRes.data?.data?.accounts ?? []).filter(a => a.status === 'active')
     exportJobs.value = expRes?.data?.data?.exports ?? []
 
+    // Local date parts, not toISOString(): that converts to UTC first, so for
+    // anyone offset from UTC the default could land on today — and "today at
+    // 09:00" may already be in the past, which the API rejects as not
+    // after:now.
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1)
-    scheduledDate.value = tomorrow.toISOString().split('T')[0]
+    const pad = (n) => String(n).padStart(2, '0')
+    scheduledDate.value = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`
   } finally {
     loading.value = false
   }
@@ -385,6 +421,14 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
                 <input v-model="scheduledDate" class="sp-input" type="date">
                 <input v-model="scheduledTime" class="sp-input" type="time">
               </div>
+              <div v-if="whenMode === 'schedule'" class="sp-tz-note">
+                <template v-if="scheduledInPast">
+                  <span class="sp-tz-warn">That time has already passed — pick a later one.</span>
+                </template>
+                <template v-else-if="scheduledPreview">
+                  Publishes <strong>{{ scheduledPreview }}</strong> · times are in your timezone ({{ localTimezone }})
+                </template>
+              </div>
             </div>
 
             <div v-if="error" class="sp-error">{{ error }}</div>
@@ -454,6 +498,9 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 .sp-when-tab:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
 .sp-when-tab.active { background: rgba(255,107,53,.1); color: var(--color-accent); border-color: rgba(255,107,53,.3); }
 .sp-datetime-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sp-tz-note { margin-top: 8px; font-size: 11.5px; line-height: 1.5; color: var(--color-text-muted); }
+.sp-tz-note strong { color: var(--color-text-primary); font-weight: 600; }
+.sp-tz-warn { color: #fca5a5; }
 .sp-result { padding: 8px 0; }
 .sp-result-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--color-border); }
 .sp-result-row.success { border-color: rgba(52,211,153,.25); background: rgba(52,211,153,.06); }
