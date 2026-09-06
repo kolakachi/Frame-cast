@@ -13,7 +13,13 @@ return [
         'cutestnavybrown@gmail.com',
         'testa2@gmail.com',
         'testa3@gmail.com',
+        'testa@gmail.com',
         'googletest@wyvstudio.com',
+        // Not customers — they were showing up in the `free` segment and had
+        // to be unticked by hand every time.
+        'hi@kelviq.com',              // our merchant of record, not a user
+        'offeriq1@gmail.com',         // our own account
+        'testingtester@mailinator.com', // disposable address used in testing
     ],
 
     /*
