@@ -365,6 +365,17 @@ function pickMoreFiles(event) {
   event.target.value = ""; // allow re-picking same file
 }
 
+// Primary is simply the first reference — the save sends this array in order
+// and the API takes reference_asset_ids[0] as primary. Until now the only way
+// to change it was to delete the current primary so the next one moved up,
+// which is what a customer asked about and is a destructive answer to a
+// non-destructive question.
+function makePrimaryRef(id) {
+  const picked = existingReferences.value.find((r) => r.id === id);
+  if (!picked) return;
+  existingReferences.value = [picked, ...existingReferences.value.filter((r) => r.id !== id)];
+}
+
 function removeExistingRef(id) {
   existingReferences.value = existingReferences.value.filter((r) => r.id !== id);
 }
@@ -678,6 +689,13 @@ async function confirmDelete() {
                 <img :src="ref.thumbnail_url || ref.storage_url" alt="" />
                 <button type="button" class="cv-ref-x" @click="removeExistingRef(ref.id)">✕</button>
                 <span v-if="existingReferences[0]?.id === ref.id" class="cv-ref-primary">PRIMARY</span>
+                <button
+                  v-else
+                  type="button"
+                  class="cv-ref-make-primary"
+                  title="Use this one as the main reference"
+                  @click="makePrimaryRef(ref.id)"
+                >Make primary</button>
               </div>
               <div v-for="(url, i) in createNewFilePreviews" :key="`new-${i}`" class="cv-ref-tile">
                 <img :src="url" alt="" />
@@ -1177,6 +1195,19 @@ async function confirmDelete() {
   padding: 2px 5px; border-radius: 3px;
 }
 .cv-ref-new { background: rgba(255,255,255,0.15); color: #fff; }
+/* Sits where the PRIMARY badge sits, so the two never appear together and the
+   tile reads the same whichever state it is in. Revealed on hover to keep the
+   grid calm when several references are present. */
+.cv-ref-make-primary {
+  position: absolute; bottom: 4px; left: 4px;
+  background: rgba(0,0,0,0.72); color: #fff; border: 1px solid rgba(255,255,255,0.22);
+  font-size: 8.5px; font-weight: 600; letter-spacing: 0.02em;
+  padding: 2px 5px; border-radius: 3px; cursor: pointer;
+  opacity: 0; transition: opacity .12s;
+}
+.cv-ref-tile:hover .cv-ref-make-primary,
+.cv-ref-make-primary:focus-visible { opacity: 1; }
+.cv-ref-make-primary:hover { background: #ff6b35; color: #0a0a0f; border-color: #ff6b35; }
 .cv-ref-add {
   aspect-ratio: 1;
   border: 1.5px dashed rgba(255,255,255,0.18);
