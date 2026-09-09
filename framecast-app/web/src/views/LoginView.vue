@@ -202,11 +202,13 @@ function resend() {
           </button>
         </form>
 
+        <!-- The free tier is closed while campaigns run, so a signup has to
+             start from a plan. Pointing at /register would show a form that
+             immediately bounces the visitor to pricing — send them there
+             directly, and say what they'll find. -->
         <div class="auth-footer">
           Don't have an account?
-          <router-link class="auth-link" :to="{ name: 'register' }"
-            >Create one</router-link
-          >
+          <a class="auth-link" href="https://wyvstudio.com/#pricing">See plans</a>
         </div>
       </template>
     </div>
