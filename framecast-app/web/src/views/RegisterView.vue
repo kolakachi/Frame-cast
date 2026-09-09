@@ -86,7 +86,17 @@ async function submit() {
 <template>
   <main class="auth-screen auth-bg">
     <div class="auth-card">
-      <template v-if="state === 'sent'">
+      <!-- Hold the form until the signup policy is known. Without this the
+           form paints immediately and someone quick can submit before the
+           redirect fires — which is exactly how a gated signup slipped
+           through as a free account. -->
+      <template v-if="checkingPolicy">
+        <div class="auth-magic-icon auth-magic-icon-pulse">✦</div>
+        <h1 class="auth-title centered">One moment…</h1>
+        <p class="auth-subtitle auth-subtitle-compact centered">Getting your plan ready.</p>
+      </template>
+
+      <template v-else-if="state === 'sent'">
         <div class="auth-magic-icon">✉</div>
         <h1 class="auth-title centered">Check your email</h1>
         <p class="auth-subtitle centered">
