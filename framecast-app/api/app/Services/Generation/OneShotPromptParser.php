@@ -283,7 +283,39 @@ FACTS_BLOCK;
         return $parts;
     }
 
-    public function parse(string $userPrompt, array $urlContexts = [], array $referenceImageUrls = []): array
+    /**
+     * Instruction appended to the system prompt when the video is not in
+     * English.
+     *
+     * One-shot scenes are written straight from this plan — the script text
+     * the parser returns becomes scene.script_text verbatim, and GenerateTTSJob
+     * then voices it. So the plan itself has to be in the target language;
+     * setting the project language without this would hand a German voice an
+     * English script to read.
+     */
+    private function languageBlock(string $language): string
+    {
+        if ($language === '' || $language === 'en') {
+            return '';
+        }
+
+        $names = [
+            'es' => 'Spanish', 'fr' => 'French', 'de' => 'German',
+            'pt' => 'Portuguese', 'it' => 'Italian', 'hi' => 'Hindi',
+            'ja' => 'Japanese', 'ar' => 'Arabic', 'zh' => 'Chinese',
+        ];
+        $name = $names[$language] ?? null;
+        if ($name === null) {
+            return '';
+        }
+
+        return "\n\nLANGUAGE: Write the `script` value in {$name}. It is spoken aloud, "
+            ."so it must read naturally to a native speaker — not a literal translation of English "
+            ."phrasing. Every other key (visual, motion, style, music_mood, voice_gender) stays in "
+            ."English: those describe the shot to an image model, they are never spoken.";
+    }
+
+    public function parse(string $userPrompt, array $urlContexts = [], array $referenceImageUrls = [], string $language = 'en'): array
     {
         $fallback = $this->fallback($userPrompt);
 
@@ -398,7 +430,7 @@ You convert a single user prompt about a short video scene into four channels:
 
 Return STRICT JSON with exactly these seven keys (script, visual, music_mood, motion, voice_gender, style, style_explicit). No prose, no markdown.
 SYS;
-        $systemPrompt .= $this->factsBlock($urlContexts).$this->imagesBlock($referenceImageUrls);
+        $systemPrompt .= $this->factsBlock($urlContexts).$this->imagesBlock($referenceImageUrls).$this->languageBlock($language);
 
         try {
             $response = Http::withToken($apiKey)
@@ -487,7 +519,7 @@ SYS;
         return ['visual_source' => $source, 'animate' => $animate];
     }
 
-    public function parseMultiScene(string $userPrompt, int $sceneCount, array $referenceImageUrls = []): array
+    public function parseMultiScene(string $userPrompt, int $sceneCount, array $referenceImageUrls = [], string $language = 'en'): array
     {
         $sceneCount = max(1, min(8, $sceneCount));
 
@@ -610,7 +642,7 @@ Return STRICT JSON, no markdown:
 
 The scenes array MUST have exactly {$sceneCount} items.
 SYS;
-        $systemPrompt .= $this->factsBlock($urlContexts).$this->imagesBlock($referenceImageUrls);
+        $systemPrompt .= $this->factsBlock($urlContexts).$this->imagesBlock($referenceImageUrls).$this->languageBlock($language);
 
         try {
             $response = Http::withToken($apiKey)

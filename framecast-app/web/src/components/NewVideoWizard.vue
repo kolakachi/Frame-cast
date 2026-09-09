@@ -2,7 +2,7 @@
 import { computed, ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
-import { LANGUAGES } from '../composables/languages'
+import { LANGUAGES, languageLabel } from '../composables/languages'
 import { apiErrorMessage } from '../composables/apiError'
 
 const props = defineProps({
@@ -34,6 +34,10 @@ const wizardSourceType = ref('prompt')
 const wizardCreateState = ref('idle')
 const wizardCreateError = ref('')
 const languageSelections = ref(['en'])
+// The one-shot path never carried a language: a prompt always produced an
+// English script and an English voiceover whatever was picked elsewhere.
+const oneShotLanguage = ref('en')
+const oneShotLangOpen = ref(false)
 const platformTarget = ref('tiktok')
 const aspectRatio = ref('9:16')
 const channelId = ref('')
@@ -304,6 +308,7 @@ watch(channelId, (next, prev) => {
   }
   if (channel.default_language && languageSelections.value.length === 1) {
     languageSelections.value = [channel.default_language]
+    oneShotLanguage.value = channel.default_language
   }
   if (Array.isArray(channel.platform_targets) && channel.platform_targets[0]) {
     platformTarget.value = channel.platform_targets[0]
@@ -951,6 +956,7 @@ async function requestOneShotPlan() {
       ...(oneShotAnimateTouched.value ? { animate: oneShotIsAiVisuals.value && oneShotAnimate.value } : {}),
       animation_tier: oneShotAnimateTier.value,
       scenes_count: oneShotScenesCount.value,
+      language: oneShotLanguage.value,
       ...(oneShotIsAiVisuals.value && sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
       ...(oneShotIsAiVisuals.value && characterIds.length   ? { character_ids: characterIds }            : {}),
     })
@@ -1012,6 +1018,7 @@ async function submitOneShot() {
       animation_tier: oneShotAnimateTier.value,
       ...(oneShotAnimateTier.value === 'spokesperson' ? { consent: oneShotSpokespersonConsent.value } : {}),
       scenes_count: oneShotScenesCount.value,
+      language: oneShotLanguage.value,
       include_music: oneShotIncludeMusic.value,
       include_captions: oneShotIncludeCaptions.value,
       channel_id: channelId.value ? Number(channelId.value) : undefined,
@@ -1327,6 +1334,18 @@ defineExpose({ open })
                 <div v-if="oneShotScenesOpen" class="composer-pill-menu composer-pill-menu--wide">
                   <button v-for="o in ONE_SHOT_SCENE_OPTIONS" :key="o.count" type="button" :class="['composer-pill-option', oneShotScenesCount === o.count ? 'selected' : '']" @click="oneShotScenesCount = o.count; oneShotScenesOpen = false">
                     <span>{{ o.label }}</span><span class="composer-pill-option-sub">{{ o.hint }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Language -->
+              <div class="composer-pill-wrap">
+                <button type="button" class="composer-pill" @click="oneShotLangOpen = !oneShotLangOpen">
+                  <span>🌐 {{ languageLabel(oneShotLanguage) }}</span><span class="composer-pill-caret">▾</span>
+                </button>
+                <div v-if="oneShotLangOpen" class="composer-pill-menu">
+                  <button v-for="l in LANGUAGES" :key="l.value" type="button" :class="['composer-pill-option', oneShotLanguage === l.value ? 'selected' : '']" @click="oneShotLanguage = l.value; oneShotLangOpen = false">
+                    <span>{{ l.label }}</span>
                   </button>
                 </div>
               </div>

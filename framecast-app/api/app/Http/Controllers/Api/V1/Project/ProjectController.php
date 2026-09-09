@@ -851,6 +851,9 @@ class ProjectController extends Controller
             // plan/estimate call 422s the moment the user picks Spokesperson.
             'animation_tier' => ['nullable', 'string', 'in:quick,balanced,premium,seedance_lite,seedance_pro,veo_fast,seedance_25,spokesperson'],
             'scenes_count'   => ['nullable', 'integer', 'min:1', 'max:8'],
+            // The plan is written in the language the video will be in,
+            // so what the user approves is what they get.
+            'language'       => ['nullable', 'string', 'in:en,es,fr,de,pt,it,hi,ja,ar,zh'],
             // Visual source: AI images (default), stock footage, or audiogram.
             'visual_source'  => ['nullable', 'string', 'in:ai_images,stock_video,stock_images,waveform'],
             // References only affect the cost estimate at this stage.
@@ -897,7 +900,7 @@ class ProjectController extends Controller
         }
 
         $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
-            ->parseMultiScene($promptText, $sceneCount, $refUrls);
+            ->parseMultiScene($promptText, $sceneCount, $refUrls, (string) ($validated['language'] ?? 'en'));
         $hints = $parsed['hints'] ?? ['visual_source' => null, 'animate' => null];
 
         // Prompt-led inference with explicit overrides: a pill the user
@@ -1003,6 +1006,10 @@ class ProjectController extends Controller
             // Likeness consent — required when the spokesperson tier is picked,
             // since every scene of the run will make a face appear to speak.
             'consent'                  => ['nullable', 'boolean'],
+            // Every other source type carried a language; the one-shot
+            // path never did, so a prompt always produced an English
+            // script and an English voiceover whatever the user picked.
+            'language'                 => ['nullable', 'string', 'in:en,es,fr,de,pt,it,hi,ja,ar,zh'],
             // Visual source: AI images (default), stock footage, or audiogram.
             'visual_source'            => ['nullable', 'string', 'in:ai_images,stock_video,stock_images,waveform'],
             // 1-8 scenes. 1 = instant demo, 3 = DTC ad shape, 8 = full Reel.
@@ -1162,11 +1169,23 @@ class ProjectController extends Controller
         } else {
             // No approved plan sent — re-parse, letting the planner SEE the
             // reference images (already resolved + workspace-scoped above).
+        // Language: explicit choice first, then the chosen channel's default,
+        // then English. Scoped to the workspace so a channel id from elsewhere
+        // cannot influence it.
+        $oneShotLanguage = 'en';
+        if (! empty($validated['channel_id'])) {
+            $oneShotLanguage = \App\Models\Channel::query()
+                ->where('workspace_id', $user->workspace_id)
+                ->whereKey((int) $validated['channel_id'])
+                ->value('default_language') ?: 'en';
+        }
+
             $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
                 ->parseMultiScene(
                     $promptText,
                     $sceneCount,
                     $referenceAssets->map(fn ($a) => $this->plannerImageUrl($a))->filter()->values()->all(),
+                    $oneShotLanguage,
                 );
         }
 
@@ -1205,6 +1224,10 @@ class ProjectController extends Controller
             'ai_broll_style'      => $parsed['style'],
             'status'              => 'generating',
             'source_type'         => 'prompt',
+            // Falls back to the chosen channel's default before English, so a
+            // German channel produces German videos from a bare prompt without
+            // the user restating it every time.
+            'primary_language'    => $validated['language'] ?? $oneShotLanguage,
             'source_content_raw'  => $promptText,
             // Cheap, no-LLM seed so the assistant knows the theme/style from
             // turn one. A refresh later can enrich it from the actual scenes.
