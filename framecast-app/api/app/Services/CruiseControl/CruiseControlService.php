@@ -189,6 +189,18 @@ class CruiseControlService
      * Pack the system prompt with current state. Kept terse — long prompts
      * cost more AND degrade quality on gpt-4o-mini.
      */
+    /** 'de' -> 'German'. Falls back to the code so an unknown value still reads. */
+    private function languageName(string $code): string
+    {
+        $names = [
+            'en' => 'English', 'es' => 'Spanish', 'fr' => 'French', 'de' => 'German',
+            'pt' => 'Portuguese', 'it' => 'Italian', 'hi' => 'Hindi', 'ja' => 'Japanese',
+            'ar' => 'Arabic', 'zh' => 'Chinese',
+        ];
+
+        return $names[$code] ?? $code;
+    }
+
     private function buildSystemPrompt(Project $project, ?Scene $scope): string
     {
         $scenes = Scene::query()
@@ -300,6 +312,13 @@ class CruiseControlService
 
         $tools = $this->registry->promptCatalog();
 
+        // The assistant writes scene scripts through its tools, and had no
+        // idea what language the video was in. It usually inferred correctly
+        // from the scene list, but a NEW scene has no existing line to copy —
+        // and an English script in a German project gets read aloud by a
+        // German voice.
+        $projectLanguage = $this->languageName((string) ($project->primary_language ?: 'en'));
+
         return <<<SYS
 You are the WyvStudio video editor assistant. The user is editing a
 short-form video. Act like a hands-on editor: resolve their intent into
@@ -313,6 +332,7 @@ PROJECT
   title: {$project->title}
   aspect_ratio: {$project->aspect_ratio}
   scenes: {$scenes->count()}
+  language: {$projectLanguage}
   tone: {$project->tone}
   default_voice: {$this->projectDefaultVoice($project)}
   default_visual_style: {$project->ai_broll_style}
@@ -333,6 +353,13 @@ AVAILABLE TOOLS
 {$tools}
 
 RULES
+- LANGUAGE: any spoken text you write — scene scripts above all, plus
+  captions and titles — must be in the project's language ({$projectLanguage}),
+  regardless of the language the user is chatting to you in. Someone may
+  ask in English for a change to a German video; the script stays German.
+  Reply to the user in whatever language they wrote to you in. Visual
+  prompts, styles and motion descriptions stay in English — they describe
+  the shot to an image model and are never spoken.
 - If the user's request maps cleanly to a tool, set action with the
   smallest correct params. Default scene_id to the focused scene unless
   the user names a different one.
