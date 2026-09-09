@@ -2122,7 +2122,8 @@
             display: block;
             width: 100%;
             height: auto;
-        }
+          aspect-ratio: 16 / 9;
+}
 
         /* Demo VSL fills the demo-box below the browser-chrome bar. */
         .demo-video {
@@ -2130,7 +2131,11 @@
             width: 100%;
             height: auto;
             background: #000;
-        }
+          /* Reserve the box before metadata loads. Without a ratio these are
+     zero-height on first paint, so everything below them — the pricing
+     section included — moves once the video reports its size. */
+  aspect-ratio: 16 / 9;
+}
 
         .mock-row {
             display: flex;
@@ -4163,7 +4168,7 @@
     </section>
 
     <!-- ── PRICING ── -->
-    <section id="pricing" style="padding:100px 24px">
+    <section id="pricing" style="padding:100px 24px; scroll-margin-top: 88px">
         <div class="container" style="text-align:center; max-width:1100px">
             <div class="section-label">Pricing</div>
             <h2 class="section-title">Simple pricing.</h2>
@@ -4984,6 +4989,24 @@
                 ease: 'power2.out'
             });
         });
+    </script>
+
+    <script>
+        // Arriving on /#pricing scrolls before late-loading media has reserved
+        // its space, so the target drifts upward as the page settles. Re-apply
+        // the hash on load, and once more on the next frame, then stop — no
+        // further interference with the reader's own scrolling.
+        (function () {
+            if (!window.location.hash) return;
+            var settle = function () {
+                var el = document.querySelector(window.location.hash);
+                if (el) el.scrollIntoView({ block: 'start' });
+            };
+            window.addEventListener('load', function () {
+                settle();
+                requestAnimationFrame(settle);
+            });
+        })();
     </script>
 </body>
 
