@@ -102,8 +102,15 @@ class GenerateScriptJob implements ShouldQueue
             ], 1400, 0.35, $options);
 
             // The model echoes source text back, so a bad byte in the source
-            // reaches this save even when the extractor was clean.
-            $project->forceFill(['script_text' => \App\Support\Utf8::clean($result['content'])])->save();
+            // reaches this save even when the extractor was clean. stripPreamble
+            // removes the occasional conversational handover ("Here's your
+            // hook, …") that was otherwise stored as part of the script and
+            // shown in the editor.
+            $project->forceFill([
+                'script_text' => \App\Support\ScriptText::stripPreamble(
+                    \App\Support\Utf8::clean($result['content'])
+                ),
+            ])->save();
         }
 
         // Infer a title from the finished script when the user didn't set one —
