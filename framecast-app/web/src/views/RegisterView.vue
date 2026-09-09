@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import api from "../services/api";
 
 const authStore = useAuthStore();
 const route = useRoute();
@@ -29,15 +30,36 @@ const PLAN_LABELS = {
 const pendingPlan = ref("");
 const pendingPlanLabel = computed(() => PLAN_LABELS[pendingPlan.value] ?? "");
 
-onMounted(() => {
+// While campaigns are running the free tier is closed: a signup has to arrive
+// having chosen a plan. Asked of the server rather than hardcoded, so the tier
+// reopens with one env var and no redeploy of this page's logic.
+const checkingPolicy = ref(true);
+
+onMounted(async () => {
   const plan = String(route.query.plan ?? "");
-  if (!PLAN_LABELS[plan]) return;
-  pendingPlan.value = plan;
+  if (PLAN_LABELS[plan]) {
+    pendingPlan.value = plan;
+    try {
+      localStorage.setItem("wyv_pending_plan", plan);
+    } catch {
+      // Private window or storage blocked — the plan is simply forgotten and
+      // the user lands on Settings, where every plan has a button.
+    }
+  }
+
   try {
-    localStorage.setItem("wyv_pending_plan", plan);
+    const { data } = await api.get("/public/signup-policy");
+    // No plan chosen and the gate is on: send them to pick one rather than
+    // showing a form that would create an account they cannot use.
+    if (data?.data?.require_plan && !pendingPlan.value) {
+      window.location.href = "https://wyvstudio.com/#pricing";
+      return;
+    }
   } catch {
-    // Private window or storage blocked — the plan is simply forgotten and the
-    // user lands on Settings, where every plan now has a button.
+    // Policy unreachable — let the signup through rather than stranding
+    // someone behind a check that failed.
+  } finally {
+    checkingPolicy.value = false;
   }
 });
 
@@ -93,6 +115,11 @@ async function submit() {
         <p class="auth-subtitle">
           Set up your WyvStudio workspace. Takes 30 seconds.
         </p>
+
+        <div v-if="pendingPlanLabel" class="auth-plan-note">
+          You're signing up for <strong>{{ pendingPlanLabel }}</strong>. We'll take
+          you to secure checkout right after you confirm your email.
+        </div>
 
         <div v-if="state === 'error'" class="auth-error">
           {{ errorMessage }}

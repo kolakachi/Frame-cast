@@ -518,7 +518,17 @@ class AuthController extends Controller
                 // Give the new workspace its own shareable referral code.
                 app(\App\Services\RewardService::class)->ensureReferralCode($workspace);
 
-                (new CreditService())->grant($workspace->getKey(), 200, 'registration');
+                // Withheld while the registration gate is on — a free credit
+                // bucket is the thing that removes the reason to pay. The
+                // cloned sample project below still lands, so a new account is
+                // never empty: they see finished output without spending.
+                $signupCredits = config('billing.require_plan_on_register')
+                    ? 0
+                    : (int) config('billing.registration_credits', 200);
+
+                if ($signupCredits > 0) {
+                    (new CreditService())->grant($workspace->getKey(), $signupCredits, 'registration');
+                }
 
                 // Day-0 welcome — queued so a slow SMTP doesn't block signup.
                 // Wrapped in try so a misconfigured mail driver can't fail

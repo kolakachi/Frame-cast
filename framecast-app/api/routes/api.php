@@ -68,6 +68,13 @@ Route::prefix('v1')->group(function (): void {
     // Public release notes — powers the marketing /changelog.html page.
     // No auth: a release note contains nothing private.
     Route::get('/public/changelog', [\App\Http\Controllers\Api\V1\System\ChangelogController::class, 'publicIndex']);
+    // Unauthenticated: lets the register page know whether a plan is required
+    // before it will accept a signup, without hardcoding the rule in the SPA.
+    Route::get('/public/signup-policy', function () {
+        return response()->json(['data' => [
+            'require_plan' => (bool) config('billing.require_plan_on_register'),
+        ], 'meta' => []]);
+    });
 
     Route::post('/broadcasting/auth', [BroadcastController::class, 'authenticate'])->middleware('auth.jwt');
 

@@ -143,6 +143,21 @@ button {
   text-align: center;
 }
 
+/* Confirms which plan a signup is for. The free tier is closed while
+   campaigns run, so arriving here always means a plan was chosen — saying so
+   makes the gate read as intentional rather than as a lost free option. */
+.auth-plan-note {
+  margin: 0 0 18px;
+  padding: 11px 14px;
+  border-radius: 9px;
+  background: rgba(255, 107, 53, 0.08);
+  border: 1px solid rgba(255, 107, 53, 0.22);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-text-secondary, #b9c0d2);
+}
+.auth-plan-note strong { color: var(--color-text-primary, #ececf3); font-weight: 600; }
+
 .auth-subtitle {
   font-size: 13px;
   color: var(--color-text-muted);

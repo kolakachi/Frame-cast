@@ -3,6 +3,22 @@
 return [
 
     /*
+     * Registration gate. While marketing campaigns are running, a new signup
+     * must arrive having chosen a plan: /register refuses a visit with no plan
+     * and the free credit grant is withheld, so nothing is usable until a
+     * purchase lands. Flip to false to open the free tier back up — nothing
+     * else has to change.
+     *
+     * Does NOT affect AppSumo activation (its own workspace-creation path) or
+     * anyone who already has an account.
+     */
+    'require_plan_on_register' => (bool) env('REQUIRE_PLAN_ON_REGISTER', true),
+
+    /* Credits granted to a brand-new workspace. Withheld while the gate above
+     * is on: a free bucket is exactly what removes the reason to pay. */
+    'registration_credits' => (int) env('REGISTRATION_CREDITS', 200),
+
+    /*
     |--------------------------------------------------------------------------
     | Billing provider
     |--------------------------------------------------------------------------
