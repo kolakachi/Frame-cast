@@ -19,6 +19,15 @@ return [
     'registration_credits' => (int) env('REGISTRATION_CREDITS', 200),
 
     /*
+     * Accounts that existed before the gate went up are not subject to it.
+     * They signed up under a free tier that was genuinely on offer, so they
+     * keep their credits and are never bounced to checkout at sign-in —
+     * including the ones who started a purchase and decided against it.
+     * Only workspaces created on or after this date can be held at the door.
+     */
+    'gate_from' => env('BILLING_GATE_FROM', '2026-09-09'),
+
+    /*
     |--------------------------------------------------------------------------
     | Billing provider
     |--------------------------------------------------------------------------

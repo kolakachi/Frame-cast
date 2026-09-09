@@ -42,6 +42,21 @@ class BillingController extends Controller
                         'plan' => $workspace->pending_checkout_plan,
                         'at'   => $workspace->pending_checkout_at->toIso8601String(),
                     ] : null,
+                    // Whether sign-in should send them back to Kelviq. Distinct
+                    // from pending_checkout, which only says a purchase was
+                    // started: the reminder banner is fine for everyone, being
+                    // held at the door is not. Requires an unfinished checkout,
+                    // no paid tier, and a workspace created after the gate went
+                    // up — accounts from before it keep the free tier they
+                    // actually signed up for.
+                    'checkout_required' => (bool) (
+                        $workspace->pending_checkout_at
+                        && ($workspace->plan_tier ?? 'free') === 'free'
+                        && $workspace->created_at
+                        && $workspace->created_at->gte(
+                            \Carbon\Carbon::parse((string) config('billing.gate_from', '2026-09-09'))
+                        )
+                    ),
                 ],
             ],
             'meta' => [],
@@ -101,7 +116,11 @@ class BillingController extends Controller
             (string) $identifier,
             $chargePeriod,
             "{$base}/settings?billing=success",
-            "{$base}/settings?billing=cancelled",
+            // Cancelling lands on the plans page, not Settings. Sign-in sends
+            // anyone with an unfinished checkout back to Kelviq, so a dead end
+            // here would be a loop with no way out — on /plans they can pick a
+            // different plan instead.
+            "{$base}/plans?billing=cancelled",
         );
 
         if (! $url) {

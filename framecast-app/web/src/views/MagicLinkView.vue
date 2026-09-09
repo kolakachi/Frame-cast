@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
+import { resumePendingCheckout } from '../composables/resumeCheckout'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,7 +20,7 @@ const MONTHLY_PLANS = ['starter', 'creator', 'pro', 'agency']
  * the dashboard. The stash is cleared either way so a stale choice can't
  * hijack a later sign-in.
  */
-async function resumePendingCheckout() {
+async function resumeStashedPlan() {
   let plan = ''
   try {
     plan = localStorage.getItem('wyv_pending_plan') ?? ''
@@ -67,6 +68,10 @@ onMounted(async () => {
     // instead of dropping them on a dashboard with no memory of what they came
     // to buy. Any failure just falls through to the dashboard, where Settings
     // carries a button for every plan.
+    // Fresh registration: the plan is still in this browser's stash.
+    if (await resumeStashedPlan()) return
+    // Returning sign-in, or a different device: the unfinished checkout is
+    // recorded against the workspace.
     if (await resumePendingCheckout()) return
 
     router.replace({ name: 'dashboard' })

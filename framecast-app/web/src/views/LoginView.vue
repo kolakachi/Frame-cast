@@ -2,6 +2,7 @@
 import { ref, reactive } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import { resumePendingCheckout } from "../composables/resumeCheckout";
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -35,6 +36,9 @@ async function submitPassword() {
   noPasswordSet.value = false;
   try {
     await authStore.login(form.email, form.password);
+    // Started a checkout and never finished it — back to Kelviq rather than a
+    // dashboard they have no credits to use.
+    if (await resumePendingCheckout()) return;
     router.push({ name: "dashboard" });
   } catch (err) {
     state.value = "error";
