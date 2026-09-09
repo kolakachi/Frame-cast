@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
+import { LANGUAGES as LANGUAGE_OPTIONS } from '../composables/languages'
 import AppSidebar from '../components/AppSidebar.vue'
 import GridSkeleton from '../components/skeletons/GridSkeleton.vue'
 import NotifBell from '../components/NotifBell.vue'
@@ -42,18 +43,6 @@ const PLATFORM_OPTIONS = [
   { value: 'facebook', label: 'Facebook', format: '16:9' },
 ]
 
-const LANGUAGE_OPTIONS = [
-  { value: 'en', label: 'English' },
-  { value: 'es', label: 'Spanish' },
-  { value: 'fr', label: 'French' },
-  { value: 'de', label: 'German' },
-  { value: 'pt', label: 'Portuguese' },
-  { value: 'it', label: 'Italian' },
-  { value: 'hi', label: 'Hindi' },
-  { value: 'ja', label: 'Japanese' },
-  { value: 'ar', label: 'Arabic' },
-  { value: 'zh', label: 'Chinese' },
-]
 
 // 5 named gradient classes cycling by channel.id % 5
 const GRAD_CLASSES = ['grad-red', 'grad-amber', 'grad-teal', 'grad-purple', 'grad-blue']

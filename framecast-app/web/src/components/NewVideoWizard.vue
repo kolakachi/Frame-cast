@@ -2,6 +2,7 @@
 import { computed, ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
+import { LANGUAGES } from '../composables/languages'
 import { apiErrorMessage } from '../composables/apiError'
 
 const props = defineProps({
@@ -2070,9 +2071,7 @@ defineExpose({ open })
           <label class="input-label-wrap">
             <span class="input-label">Language</span>
             <select v-model="languageSelections[0]" class="field-input">
-              <option value="en">English (US)</option>
-              <option value="es">Spanish</option>
-              <option value="fr">French</option>
+              <option v-for="lang in LANGUAGES" :key="lang.value" :value="lang.value">{{ lang.label }}</option>
             </select>
           </label>
         </div>

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
+import { languageLabel, localizationTargets } from '../composables/languages'
 import { useAuthStore } from '../stores/auth'
 import AppSidebar from '../components/AppSidebar.vue'
 import GridSkeleton from '../components/skeletons/GridSkeleton.vue'
@@ -53,16 +54,12 @@ const selectedLocalizationLanguages = ref(['es', 'fr', 'de'])
 const selectedVariantIds = ref([])
 let pollTimer = null
 
-const localizationLanguageOptions = [
-  { value: 'es', label: 'Spanish' },
-  { value: 'fr', label: 'French' },
-  { value: 'de', label: 'German' },
-  { value: 'pt', label: 'Portuguese' },
-  { value: 'it', label: 'Italian' },
-  { value: 'hi', label: 'Hindi' },
-  { value: 'ja', label: 'Japanese' },
-  { value: 'ar', label: 'Arabic' },
-]
+// Everything except the language this project is already in — offering the
+// source language back as a localisation target is meaningless. Previously a
+// hardcoded eight that assumed English and had lost Chinese along the way.
+const localizationLanguageOptions = computed(
+  () => localizationTargets(project.value?.primary_language || 'en')
+)
 
 const availableHooks = computed(() => hookOptions.value.slice(0, 5))
 const availableHookCount = computed(() => availableHooks.value.length)
@@ -431,9 +428,7 @@ function changedDimensionText(variant) {
   return pieces.join(' · ')
 }
 
-function languageLabel(language) {
-  return localizationLanguageOptions.find((option) => option.value === language)?.label || language
-}
+
 
 function toggleLocalizationLanguage(language) {
   if (selectedLocalizationLanguages.value.includes(language)) {
