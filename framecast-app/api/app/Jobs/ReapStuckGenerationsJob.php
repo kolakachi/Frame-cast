@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Models\Project;
 use App\Models\Scene;
+use App\Services\Notification\NotificationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -35,6 +37,15 @@ use Illuminate\Support\Facades\Log;
  *     5-min ceiling worst case; 10 min is a generous safety margin.
  *   • Animation: 15 min — Kling 2.1 premium can take 4–5 min; 15 min
  *     covers a slow start + slow upload + room.
+ *   • Finalize: 12 min — see below.
+ *
+ * It also finalizes projects that finished but were never marked done.
+ * finalizeIfNeeded() lives in GenerateTTSJob, the last step of a normal run —
+ * so anything that completes the project AFTER that job has passed leaves it
+ * stuck in `generating` forever. That is not hypothetical: a provider safety
+ * filter rejected one scene's image mid-run, TTS finished with 11 of 12
+ * visuals, the customer regenerated the twelfth by hand an hour later, and
+ * their finished video sat invisible because nothing re-checks completion.
  */
 class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
 {
@@ -45,6 +56,13 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
 
     private const IMAGE_GEN_MAX_MINUTES = 10;
     private const ANIMATION_MAX_MINUTES = 15;
+
+    /**
+     * A project whose work has finished but which was never flipped out of
+     * `generating`. Long enough that a slow-but-healthy run is never cut short,
+     * short enough that nobody sits watching a spinner over a finished video.
+     */
+    private const FINALIZE_STALE_MINUTES = 12;
 
     public int $uniqueFor = 600;
 
@@ -68,12 +86,116 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
                 'animations_cleared'        => $animReaped,
             ]);
         }
+
+        // Run after the sweeps above: a project whose flags were just cleared
+        // becomes eligible in the same pass rather than waiting five minutes.
+        $finalized = $this->finalizeCompletedProjects(
+            $now->subMinutes(self::FINALIZE_STALE_MINUTES)
+        );
+
+        if ($finalized > 0) {
+            Log::info('ReapStuckGenerationsJob: finalized completed projects', [
+                'projects_finalized' => $finalized,
+            ]);
+        }
     }
 
     /**
      * Clear `in_progress` on image-generation scenes whose
      * `generation_started_at` is older than the cutoff.
      */
+    /**
+     * Mark projects done when their work is done but nothing said so.
+     *
+     * Deliberately strict about "done": every scene needs a visual, every
+     * scene with a script needs its voiceover, and nothing may still be in
+     * flight. A project that is genuinely mid-run fails at least one of those
+     * and is left alone — the cost of finalizing too early (a customer opening
+     * a half-built video) is far worse than waiting another five minutes.
+     *
+     * Scenes with no script are not required to have audio: a title card or a
+     * B-roll-only scene never gets a voiceover, and demanding one would strand
+     * exactly the projects this is meant to rescue.
+     */
+    private function finalizeCompletedProjects(CarbonImmutable $cutoff): int
+    {
+        $projects = Project::query()
+            ->where('status', 'generating')
+            ->where('updated_at', '<=', $cutoff)
+            ->limit(50)
+            ->get();
+
+        if ($projects->isEmpty()) {
+            return 0;
+        }
+
+        $notifications = app(NotificationService::class);
+        $finalized = 0;
+
+        foreach ($projects as $project) {
+            $scenes = Scene::query()->where('project_id', $project->getKey())->get();
+
+            // No scenes at all means the run never got started, not that it
+            // finished. Leave it: it is a failure to diagnose, not to hide.
+            if ($scenes->isEmpty()) {
+                continue;
+            }
+
+            $ready = true;
+            foreach ($scenes as $scene) {
+                $img = is_array($scene->image_generation_settings_json)
+                    ? $scene->image_generation_settings_json
+                    : (json_decode((string) $scene->image_generation_settings_json, true) ?: []);
+
+                if (! empty($img['in_progress']) || ! empty($img['animation_in_progress'])) {
+                    $ready = false;
+                    break;
+                }
+
+                if (! $scene->visual_asset_id) {
+                    $ready = false;
+                    break;
+                }
+
+                $voice = is_array($scene->voice_settings_json)
+                    ? $scene->voice_settings_json
+                    : (json_decode((string) $scene->voice_settings_json, true) ?: []);
+
+                if (trim((string) $scene->script_text) !== '' && empty($voice['audio_asset_id'])) {
+                    $ready = false;
+                    break;
+                }
+            }
+
+            if (! $ready) {
+                continue;
+            }
+
+            $project->forceFill(['status' => 'ready_for_review'])->save();
+            $finalized++;
+
+            Log::info('ReapStuckGenerationsJob: project finished but was never marked ready', [
+                'project_id'   => $project->getKey(),
+                'workspace_id' => $project->workspace_id,
+                'scenes'       => $scenes->count(),
+                'stale_since'  => (string) $project->updated_at,
+            ]);
+
+            // Same message the normal path sends, so the customer cannot tell
+            // a rescued project from one that completed cleanly.
+            rescue(fn () => $notifications->create(
+                (int) $project->workspace_id,
+                'Generation complete',
+                'Project #'.$project->getKey().' is ready for review.',
+                'success',
+                $project->created_by_user_id ? (int) $project->created_by_user_id : null,
+                ['project_id' => $project->getKey(), 'status' => 'ready_for_review'],
+            ));
+        }
+
+        return $finalized;
+    }
+
     private function reapImageGenerations(CarbonImmutable $cutoff): int
     {
         // Postgres JSONB lookup: read the started_at out of the JSON column,
