@@ -172,7 +172,9 @@ class KelviqService
 
     private function applySubscription(array $object): void
     {
-        $workspace = $this->resolveWorkspace($object);
+        // Same as lifetime: a monthly plan bought straight from a checkout link
+        // arrives before any account exists.
+        $workspace = $this->resolveWorkspace($object) ?? $this->provisionFromEvent($object);
         if (! $workspace) {
             // Diagnostics are keys and flags only — never the raw body, which
             // carries customer name, email and billing address.
@@ -398,7 +400,10 @@ class KelviqService
      */
     private function applyLifetimePurchase(array $object, string $planId, array $lifetime): void
     {
-        $workspace = $this->resolveWorkspace($object);
+        // A lifetime purchase is often someone's first contact with us — they
+        // buy from the site and have no account yet, so build one rather than
+        // dropping a paid order.
+        $workspace = $this->resolveWorkspace($object) ?? $this->provisionFromEvent($object);
         if (! $workspace) {
             Log::warning('KelviqService: lifetime — no workspace', ['plan' => $planId]);
 
@@ -435,6 +440,94 @@ class KelviqService
      * our metadata.workspace_id → customerId (we pass the workspace id) →
      * stored kelviq_account_id → customer email.
      */
+    /**
+     * Create an account for a purchase that arrived without one.
+     *
+     * Every strategy in resolveWorkspace() needs the workspace to already
+     * exist, which holds only when someone registered before paying. A
+     * customer who buys straight from a checkout link has no account yet, and
+     * before this the purchase resolved to null, logged a warning and returned
+     * 200 — the money taken, nothing granted, and Kelviq with no reason to
+     * retry. Provision from the customer block instead, mirroring registration
+     * (AuthController), and mail a magic link so they can actually get in;
+     * without that they own an account they have never heard of.
+     *
+     * Returns null when the event carries no email to build an account from.
+     */
+    private function provisionFromEvent(array $object): ?Workspace
+    {
+        $email = trim((string) ($object['customer']['email'] ?? ''));
+        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            Log::warning('KelviqService: cannot provision — no usable customer email', [
+                'object_id'     => $object['id'] ?? null,
+                'customer_keys' => is_array($object['customer'] ?? null) ? array_keys($object['customer']) : null,
+            ]);
+
+            return null;
+        }
+
+        $name = trim((string) ($object['customer']['name'] ?? ''));
+
+        try {
+            return DB::transaction(function () use ($email, $name, $object) {
+                // Re-check inside the transaction: two events for one purchase
+                // (checkout.completed then invoice.paid) can land together, and
+                // only one of them may create the account.
+                $existing = User::query()
+                    ->whereRaw('LOWER(email) = ?', [strtolower($email)])
+                    ->with('workspace')
+                    ->first();
+                if ($existing?->workspace) {
+                    return $existing->workspace;
+                }
+
+                $workspace = Workspace::query()->create([
+                    'name'      => \Illuminate\Support\Str::of($email)->before('@')->headline().' Workspace',
+                    'plan_tier' => 'free', // the caller applies the purchased tier
+                    'status'    => 'active',
+                ]);
+
+                $user = User::query()->create([
+                    'workspace_id'  => $workspace->getKey(),
+                    'name'          => $name !== '' ? $name : \Illuminate\Support\Str::of($email)->before('@')->headline()->value(),
+                    'email'         => $email,
+                    'password_hash' => null, // magic link only until they set one
+                    'timezone'      => 'UTC',
+                    'role'          => 'owner',
+                    'status'        => 'active',
+                    'onboarding_step'         => 1,
+                    'onboarding_last_sent_at' => now(),
+                ]);
+
+                $workspace->forceFill([
+                    'owner_user_id'     => $user->getKey(),
+                    'kelviq_account_id' => $object['customer']['id'] ?? null,
+                ])->save();
+
+                rescue(fn () => app(RewardService::class)->ensureReferralCode($workspace));
+
+                Log::info('KelviqService: provisioned account for direct checkout', [
+                    'workspace_id' => $workspace->getKey(),
+                    'user_id'      => $user->getKey(),
+                ]);
+
+                // Queued and rescued: a mail outage must not roll back an
+                // account the customer has already paid for.
+                rescue(fn () => \Illuminate\Support\Facades\Mail::to($user->email)
+                    ->queue(new \App\Mail\Onboarding\OnboardingDay0Welcome($user)));
+
+                return $workspace->fresh();
+            });
+        } catch (\Throwable $e) {
+            report($e);
+            Log::error('KelviqService: provisioning failed for direct checkout', [
+                'object_id' => $object['id'] ?? null,
+            ]);
+
+            return null;
+        }
+    }
+
     private function resolveWorkspace(array $object): ?Workspace
     {
         $wid = $object['metadata']['workspace_id'] ?? null;
