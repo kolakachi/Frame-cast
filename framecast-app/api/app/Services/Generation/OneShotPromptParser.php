@@ -341,7 +341,16 @@ You convert a single user prompt about a short video scene into four channels:
                 shoulder), MOOD, STYLE CUES, and concrete TEXTURAL detail
                 (fabric, weather, surfaces, atmosphere). One flowing block
                 of comma-separated phrases — NOT a list. Do NOT just echo
-                the user's words. NO text-on-image.
+                the user's words.
+                NEVER ask for text in the image — no lettering, signage,
+                labels bearing words, numbers, logos, screens showing UI
+                copy or handwriting — and never a close-up ON text. Image
+                models render text as garbled nonsense, and a macro shot of
+                it is the worst case. When the idea depends on text (a vague
+                label, a headline, a price, a phone screen), carry it through
+                COMPOSITION instead: turn the label away from camera, crop it
+                out, throw it far out of focus, or show the person reacting
+                to it.
                 When the subject is a PERSON, decide gender, approximate age
                 (child / teen / young-adult / adult / senior) and ethnicity
                 from the prompt's context — the product, audience, story or
@@ -581,6 +590,15 @@ Per scene, return:
             detail. One flowing block of comma-separated phrases, not a
             list. Keep visual continuity across scenes (same subject /
             lighting feel where applicable). Do NOT echo the user's words.
+            NEVER ask for text in the image — no lettering, signage,
+            labels bearing words, numbers, logos, screens showing UI copy
+            or handwriting — and never a close-up ON text. Image models
+            render text as garbled nonsense, and a macro shot of it is the
+            worst case. When the idea depends on text (a vague label, a
+            headline, a price, a phone screen), carry it through
+            COMPOSITION instead: turn the label away from camera, crop it
+            out, throw it far out of focus, or show the person reacting to
+            it.
             When the subject is a PERSON, decide gender, approximate age
             (child / teen / young-adult / adult / senior) and ethnicity from
             the prompt's context (product, audience, story, stated details) —
