@@ -20,6 +20,11 @@ use Illuminate\Support\Facades\Log;
  */
 class OneShotPromptParser
 {
+    public function __construct(
+        private readonly \App\Services\Generation\AI\AIGenerationAdapter $ai,
+    ) {
+    }
+
     /**
      * When the prompt contains a URL ("a 5-scene ad for https://acme.com"),
      * fetch the page and return its text so the plan is grounded in the
@@ -270,6 +275,147 @@ FACTS_BLOCK;
      *
      * @return string|array
      */
+    /**
+     * Run one planning completion and return the raw model text, or null when
+     * the call failed and the caller should fall back.
+     *
+     * Two paths, chosen by whether the prompt carries reference images:
+     *
+     *  - No images: routed through AIGenerationAdapter, which sends planning to
+     *    the premium model and records the call against ApiUsageService. These
+     *    calls used to be hand-rolled HTTP with no telemetry, which is why a
+     *    configured model that rejected every request went unnoticed for two
+     *    weeks while character continuity and one-shot generation silently
+     *    degraded.
+     *
+     *  - With images: this is a vision request and the premium endpoint takes
+     *    text only, so it stays on OpenAI. Usage is recorded by hand here so
+     *    the path is no longer invisible.
+     *
+     * @param  list<string>  $referenceImageUrls
+     */
+    private function complete(
+        string $templateKey,
+        string $systemPrompt,
+        string $userPrompt,
+        array $referenceImageUrls,
+        int $maxTokens,
+        float $temperature,
+    ): ?string {
+        if (empty($referenceImageUrls)) {
+            try {
+                $result = $this->ai->generate(
+                    $templateKey,
+                    ['content' => $userPrompt],
+                    $maxTokens,
+                    $temperature,
+                    // The parser composes its own long, dynamic instruction
+                    // (facts, images, language); the template only pins the
+                    // JSON contract, so the real brief goes in front of it.
+                    ['system_prefix' => $systemPrompt, 'operation' => $templateKey],
+                );
+            } catch (\Throwable $e) {
+                Log::warning('OneShotPromptParser: planning call failed', [
+                    'template' => $templateKey,
+                    'error'    => mb_substr($e->getMessage(), 0, 200),
+                ]);
+
+                return null;
+            }
+
+            $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
+            if ($content === '') {
+                Log::warning('OneShotPromptParser: planning returned empty', ['template' => $templateKey]);
+
+                return null;
+            }
+
+            // The premium model will sometimes fence its JSON.
+            if (str_starts_with($content, '```')) {
+                $content = trim((string) preg_replace('/^```[a-z]*\n|\n```$/i', '', $content));
+            }
+
+            return $content;
+        }
+
+        return $this->completeWithVision($templateKey, $systemPrompt, $userPrompt, $referenceImageUrls, $maxTokens, $temperature);
+    }
+
+    /**
+     * Vision path — OpenAI only, since the premium endpoint accepts no images.
+     *
+     * @param  list<string>  $referenceImageUrls
+     */
+    private function completeWithVision(
+        string $templateKey,
+        string $systemPrompt,
+        string $userPrompt,
+        array $referenceImageUrls,
+        int $maxTokens,
+        float $temperature,
+    ): ?string {
+        $apiKey = (string) config('services.openai.api_key');
+        if ($apiKey === '') {
+            return null;
+        }
+
+        $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini');
+        $started = microtime(true);
+
+        try {
+            $response = Http::withToken($apiKey)
+                ->timeout(90)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model' => $model,
+                    ...\App\Support\OpenAiChatParams::tuning($model, $maxTokens, $temperature),
+                    'response_format' => ['type' => 'json_object'],
+                    'messages' => [
+                        ['role' => 'system', 'content' => $systemPrompt],
+                        ['role' => 'user',   'content' => $this->userContent($userPrompt, $referenceImageUrls)],
+                    ],
+                ]);
+        } catch (\Throwable $e) {
+            $this->recordVisionUsage($templateKey, $model, 'failed', [], $started, mb_substr($e->getMessage(), 0, 200));
+            Log::warning('OneShotPromptParser: vision call threw', ['error' => mb_substr($e->getMessage(), 0, 200)]);
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            $this->recordVisionUsage($templateKey, $model, 'failed', [], $started, 'http_'.$response->status());
+            Log::warning('OneShotPromptParser: vision HTTP not successful', [
+                'status' => $response->status(),
+                'body'   => mb_substr($response->body(), 0, 400),
+            ]);
+
+            return null;
+        }
+
+        $json = $response->json();
+        $this->recordVisionUsage($templateKey, $model, 'succeeded', (array) ($json['usage'] ?? []), $started, null);
+
+        $content = trim((string) data_get($json, 'choices.0.message.content', ''));
+
+        return $content !== '' ? $content : null;
+    }
+
+    /** @param array<string,mixed> $usage */
+    private function recordVisionUsage(string $operation, string $model, string $status, array $usage, float $started, ?string $error): void
+    {
+        rescue(fn () => app(\App\Services\ApiUsageService::class)->record([
+            'provider'          => 'openai',
+            'service'           => 'text',
+            'operation'         => $operation,
+            'model'             => $model,
+            'status'            => $status,
+            'prompt_tokens'     => (int) ($usage['prompt_tokens'] ?? 0),
+            'completion_tokens' => (int) ($usage['completion_tokens'] ?? 0),
+            'total_tokens'      => (int) ($usage['total_tokens'] ?? 0),
+            'error_message'     => $error,
+            'metadata_json'     => ['ms' => (int) round((microtime(true) - $started) * 1000), 'vision' => true],
+        ]));
+    }
+
     private function userContent(string $prompt, array $referenceImageUrls)
     {
         if (empty($referenceImageUrls)) {
@@ -442,24 +588,25 @@ SYS;
         $systemPrompt .= $this->factsBlock($urlContexts).$this->imagesBlock($referenceImageUrls).$this->languageBlock($language);
 
         try {
-            $response = Http::withToken($apiKey)
-                ->timeout(60)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model'       => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
-                    ...\App\Support\OpenAiChatParams::tuning($model, 900, 0.4),
-                    'response_format' => ['type' => 'json_object'],
-                    'messages' => [
-                        ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user',   'content' => $this->userContent($userPrompt, $referenceImageUrls)],
-                    ],
-                ]);
+            // Reference images make this a vision call, which the premium
+            // (Replicate/Claude) endpoint cannot take — it accepts text only.
+            // Those keep the OpenAI path; everything else routes, which picks
+            // the premium model AND records API usage. Before this, these
+            // calls were hand-rolled HTTP with no telemetry at all, so when
+            // the configured model started rejecting every request it went
+            // unnoticed for a fortnight.
+            $content = $this->complete(
+                'one_shot_plan',
+                $systemPrompt,
+                $userPrompt,
+                $referenceImageUrls,
+                900,
+                0.4,
+            );
 
-            if (! $response->successful()) {
-                Log::warning('OneShotPromptParser: HTTP not successful', ['status' => $response->status(), 'body' => $response->body()]);
+            if ($content === null) {
                 return $fallback;
             }
-
-            $content = (string) data_get($response->json(), 'choices.0.message.content', '');
             $parsed  = json_decode($content, true);
 
             if (! is_array($parsed)) {
@@ -663,25 +810,20 @@ SYS;
         $systemPrompt .= $this->factsBlock($urlContexts).$this->imagesBlock($referenceImageUrls).$this->languageBlock($language);
 
         try {
-            $response = Http::withToken($apiKey)
-                ->timeout(90)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model'           => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
-                    ...\App\Support\OpenAiChatParams::tuning($model, 2000, 0.5),
-                    'response_format' => ['type' => 'json_object'],
-                    'messages' => [
-                        ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user',   'content' => $this->userContent($userPrompt, $referenceImageUrls)],
-                    ],
-                ]);
+            $content = $this->complete(
+                'one_shot_plan_multi',
+                $systemPrompt,
+                $userPrompt,
+                $referenceImageUrls,
+                2000,
+                0.5,
+            );
 
-            if (! $response->successful()) {
-                Log::warning('OneShotPromptParser: multi-scene HTTP not successful', ['status' => $response->status()]);
-                return $fallback;
+            if ($content === null) {
+                return $this->fallbackMulti($this->fallback($userPrompt), $sceneCount);
             }
 
-            $content = (string) data_get($response->json(), 'choices.0.message.content', '');
-            $parsed  = json_decode($content, true);
+            $parsed = json_decode($content, true);
             if (! is_array($parsed) || ! is_array($parsed['scenes'] ?? null)) {
                 Log::warning('OneShotPromptParser: multi-scene non-JSON or missing scenes');
                 return $fallback;
