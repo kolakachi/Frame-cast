@@ -30,9 +30,18 @@ jobs:
           script_stop: true
           script: |
             set -e
-            echo '==> Pulling latest from GitHub...'
+            echo '==> Syncing to origin/master...'
             cd /opt/framecast/app
-            git pull origin master
+            # fetch + reset, never `git pull`. The server's checkout is
+            # disposable and must simply match origin. A plain pull needs the
+            # two histories to converge, so any force-push upstream leaves the
+            # box stranded on a commit that no longer exists, failing every
+            # subsequent deploy with "Need to specify how to reconcile
+            # divergent branches" until someone fixes it by hand.
+            # Untracked files are left alone, which is what keeps the .env
+            # files on the box safe.
+            git fetch origin master
+            git reset --hard origin/master
 
             cd /opt/framecast/app/framecast-app
 
