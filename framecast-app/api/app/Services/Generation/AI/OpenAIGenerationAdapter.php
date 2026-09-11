@@ -45,10 +45,11 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model' => $model,
                     // GPT-5-family: custom temperature is rejected and
-                    // max_tokens was renamed — probed before migrating Cruise.
-                    ...(str_starts_with($model, 'gpt-5')
-                        ? ['max_completion_tokens' => $maxTokens]
-                        : ['temperature' => $temperature, 'max_tokens' => $maxTokens]),
+                    // max_tokens was renamed. Shared with every other caller
+                    // via OpenAiChatParams so the rule lives in one place —
+                    // it was inlined here while four direct callers built
+                    // their own bodies and silently broke.
+                    ...\App\Support\OpenAiChatParams::tuning($model, $maxTokens, $temperature),
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $this->userMessageContent($userPrompt, $options)],

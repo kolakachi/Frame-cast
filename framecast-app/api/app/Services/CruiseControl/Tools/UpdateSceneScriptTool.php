@@ -122,8 +122,8 @@ class UpdateSceneScriptTool implements CruiseTool
         }
         try {
             $r = Http::withToken($apiKey)->timeout(15)->post('https://api.openai.com/v1/chat/completions', [
-                'model'       => config('services.openai.cheap_model', 'gpt-4o-mini'),
-                'temperature' => 0.5,
+                'model'       => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
+                ...\App\Support\OpenAiChatParams::tuning($model, 900, 0.5),
                 'messages'    => [
                     ['role' => 'system', 'content' => "You rewrite short-video scripts. Output ONLY the new line — no quotes, no preamble. 1-2 sentences max. Preserve the meaning; change only the tone."],
                     ['role' => 'user',   'content' => "Current line: \"{$current}\"\nTone wanted: {$tone}\nRewrite:"],

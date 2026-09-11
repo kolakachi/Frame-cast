@@ -45,8 +45,8 @@ class CharacterBoardService
             $response = Http::withToken($apiKey)
                 ->timeout(25)
                 ->post('https://api.openai.com/v1/chat/completions', [
-                    'model'       => config('services.openai.cheap_model', 'gpt-4o-mini'),
-                    'temperature' => 0.2,
+                    'model'       => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
+                    ...\App\Support\OpenAiChatParams::tuning($model, 300, 0.2),
                     'messages'    => [
                         ['role' => 'system', 'content' => 'You write character sheets for visual continuity. Describe the main person in the image in 1-2 sentences covering: gender, approximate age, hair (color, length, style), EXACT outfit (each garment + color), and notable accessories. Only the description — no preamble. If there is no person, reply exactly: NONE'],
                         ['role' => 'user', 'content' => [

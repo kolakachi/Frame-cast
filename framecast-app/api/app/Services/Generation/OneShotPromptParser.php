@@ -436,8 +436,8 @@ SYS;
             $response = Http::withToken($apiKey)
                 ->timeout(15)
                 ->post('https://api.openai.com/v1/chat/completions', [
-                    'model'       => config('services.openai.cheap_model', 'gpt-4o-mini'),
-                    'temperature' => 0.4,
+                    'model'       => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
+                    ...\App\Support\OpenAiChatParams::tuning($model, 900, 0.4),
                     'response_format' => ['type' => 'json_object'],
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
@@ -648,8 +648,8 @@ SYS;
             $response = Http::withToken($apiKey)
                 ->timeout(30)
                 ->post('https://api.openai.com/v1/chat/completions', [
-                    'model'           => config('services.openai.cheap_model', 'gpt-4o-mini'),
-                    'temperature'     => 0.5,
+                    'model'           => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
+                    ...\App\Support\OpenAiChatParams::tuning($model, 2000, 0.5),
                     'response_format' => ['type' => 'json_object'],
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],

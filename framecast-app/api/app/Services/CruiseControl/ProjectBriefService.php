@@ -97,11 +97,8 @@ SYS;
             $response = Http::withToken($apiKey)
                 ->timeout(20)
                 ->post('https://api.openai.com/v1/chat/completions', [
-                    'model'           => config('services.openai.cheap_model', 'gpt-4o-mini'),
-                    // GPT-5-family rejects custom temperature — omit it there.
-                    ...(str_starts_with((string) config('services.openai.cheap_model', 'gpt-4o-mini'), 'gpt-5')
-                        ? []
-                        : ['temperature' => 0.3]),
+                    'model'           => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
+                    ...\App\Support\OpenAiChatParams::tuning($model, 900, 0.3),
                     'response_format' => ['type' => 'json_object'],
                     'messages' => [
                         ['role' => 'system', 'content' => $system],
