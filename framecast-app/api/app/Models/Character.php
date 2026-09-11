@@ -13,6 +13,11 @@ class Character extends Model
         'name',
         'description',
         'style',
+        'gender',
+        'age_group',
+        'situations',
+        'preview_asset_id',
+        'is_stock',
         'reference_asset_id',
         'reference_asset_ids',
         'consistency_method',
@@ -27,7 +32,9 @@ class Character extends Model
     {
         return [
             'reference_asset_ids' => 'array',
+            'situations' => 'array',
             'is_auto' => 'boolean',
+            'is_stock' => 'boolean',
             'consent_acknowledged_at' => 'datetime',
         ];
     }
