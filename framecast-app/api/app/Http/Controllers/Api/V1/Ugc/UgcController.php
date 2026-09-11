@@ -330,13 +330,39 @@ class UgcController extends Controller
         return $out;
     }
 
-    /** Talking scenes carry the cost; cut-aways are stock or the user's own footage. */
+    /**
+     * What the run will actually cost, priced from the same source of truth the
+     * jobs bill against.
+     *
+     * Quoting only the lip-sync was wrong and measurably so: a two-scene test
+     * quoted 130 and spent 214, because every scene also pays for its voice and
+     * most pay for a picture. A number the user is shown before spending has to
+     * be the number they are charged, or the gate in front of it is theatre.
+     *
+     * @param  list<array<string,mixed>>  $segments
+     */
     private function quoteSegments(array $segments): int
     {
+        $images = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
         $total = 0;
+
         foreach ($segments as $seg) {
+            // Every scene is voiced — the narration runs continuously whether
+            // the picture is on the face or on the product.
+            $total += CreditService::TTS_GEMINI;
+
             if ($seg['kind'] === 'on_camera') {
+                // The character still (reference path), then the lip-sync.
+                $total += $images->referenceGenerationCost(null);
                 $total += CreditService::spokespersonCost((float) $seg['seconds']);
+                continue;
+            }
+
+            // Cut-aways only cost anything when we have to render one. Footage
+            // the customer uploads, and stock, are free — which is the whole
+            // reason cutting away is cheaper than staying on the face.
+            if (($seg['source'] ?? 'stock') === 'generate') {
+                $total += $images->generationCost(null, false);
             }
         }
 

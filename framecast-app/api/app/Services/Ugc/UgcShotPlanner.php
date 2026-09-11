@@ -222,17 +222,29 @@ class UgcShotPlanner
     }
 
     /**
-     * Talking segments carry the cost. B-roll is the customer's own footage or
-     * stock, which is why cutting away is cheaper than staying on the face.
+     * What the plan will cost, counted the same way UgcController quotes it so
+     * the number in the plan matches the number on the spend gate. Talking
+     * segments dominate: each pays for a still, a voice and the lip-sync, while
+     * a cut-away pays for a voice and only renders a picture when asked to.
      *
      * @param  list<array<string,mixed>>  $segments
      */
     private function estimateCredits(array $segments): int
     {
+        $images = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
         $total = 0;
+
         foreach ($segments as $seg) {
+            $total += CreditService::TTS_GEMINI;
+
             if ($seg['kind'] === 'on_camera') {
+                $total += $images->referenceGenerationCost(null);
                 $total += CreditService::spokespersonCost((float) $seg['seconds']);
+                continue;
+            }
+
+            if (($seg['source'] ?? 'stock') === 'generate') {
+                $total += $images->generationCost(null, false);
             }
         }
 
