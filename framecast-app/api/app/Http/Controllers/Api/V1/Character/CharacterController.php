@@ -22,14 +22,57 @@ class CharacterController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $characters = Character::query()
+        $filters = $request->validate([
+            // Stock actors are global rows owned by no workspace. They are
+            // opt-in: the Characters page and the editor's picker ask for a
+            // workspace library and must keep getting exactly that, so only a
+            // caller that says include_stock sees them.
+            'include_stock' => ['sometimes', 'boolean'],
+            'gender'        => ['sometimes', 'nullable', 'string', 'max:32'],
+            'age_group'     => ['sometimes', 'nullable', 'string', 'max:32'],
+            'situation'     => ['sometimes', 'nullable', 'string', 'max:48'],
+            'q'             => ['sometimes', 'nullable', 'string', 'max:120'],
+        ]);
+
+        $includeStock = (bool) ($filters['include_stock'] ?? false);
+
+        $query = Character::query()
             ->with('referenceAsset')
             ->withCount('scenes')
-            ->where('workspace_id', $user->workspace_id)
             ->where('status', 'active')
             // Auto-subjects (Cruise "lock the look") are project-internal and
             // shouldn't clutter the user's named-character library.
-            ->where('is_auto', false)
+            ->where('is_auto', false);
+
+        $query->where(function ($q) use ($user, $includeStock) {
+            $q->where('workspace_id', $user->workspace_id);
+            if ($includeStock) {
+                // Grouped, not chained: a bare orWhere here would escape the
+                // status/is_auto conditions above and leak archived rows.
+                $q->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true));
+            }
+        });
+
+        if (! empty($filters['gender'])) {
+            $query->where('gender', $filters['gender']);
+        }
+        if (! empty($filters['age_group'])) {
+            $query->where('age_group', $filters['age_group']);
+        }
+        if (! empty($filters['situation'])) {
+            // jsonb containment — matches one tag inside the list.
+            $query->whereJsonContains('situations', $filters['situation']);
+        }
+        if (! empty($filters['q'])) {
+            $needle = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $filters['q']).'%';
+            $query->where(fn ($q) => $q->where('name', 'ilike', $needle)
+                ->orWhere('description', 'ilike', $needle));
+        }
+
+        $characters = $query
+            // A workspace's own characters outrank stock: someone who built a
+            // character wants to find it, not scroll past a curated library.
+            ->orderByRaw('CASE WHEN workspace_id IS NULL THEN 1 ELSE 0 END')
             ->orderBy('updated_at', 'desc')
             ->get()
             ->map(fn (Character $c) => $this->serialize($c))
@@ -428,6 +471,11 @@ class CharacterController extends Controller
             'identity_strength'  => $c->identity_strength ?? 'balanced',
             'status'             => $c->status,
             'scenes_count'       => (int) ($c->scenes_count ?? 0),
+            // Actor-library attributes. Stock rows belong to no workspace.
+            'gender'             => $c->gender,
+            'age_group'          => $c->age_group,
+            'situations'         => $c->situations ?? [],
+            'is_stock'           => (bool) $c->is_stock,
             // Primary kept for backward-compat with the editor chip + existing consumers.
             'reference_asset'    => $refs[0] ?? null,
             // Full ordered list of references — first is primary.

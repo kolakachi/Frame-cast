@@ -98,11 +98,13 @@ class UgcController extends Controller
             'consent'       => ['accepted'],
         ]);
 
-        // Only this workspace's characters, and only real ones.
+        // This workspace's own characters, plus the global stock library.
+        // Grouped so the ownership test cannot escape the status filter.
         $characters = Character::query()
             ->whereIn('id', $validated['character_ids'])
-            ->where('workspace_id', $user->workspace_id)
             ->where('status', 'active')
+            ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
+                ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))
             ->get();
 
         if ($characters->count() !== count(array_unique($validated['character_ids']))) {
