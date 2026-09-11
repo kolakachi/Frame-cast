@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\V1\Variant\VariantController;
 use App\Http\Controllers\Api\V1\CaptionPreset\CaptionPresetController;
 use App\Http\Controllers\Api\V1\VoiceProfile\VoiceProfileController;
 use App\Http\Controllers\Api\V1\Character\CharacterController;
+use App\Http\Controllers\Api\V1\Ugc\UgcController;
 use App\Http\Controllers\Api\V1\Workspace\WorkspaceController;
 use App\Http\Controllers\Api\V1\Publishing\SocialAccountController;
 use App\Http\Controllers\Api\V1\Publishing\ScheduledPostController;
@@ -166,6 +167,14 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/fonts', [FontController::class, 'index']);
         Route::get('/visual-styles', [ImageStyleController::class, 'index']);
         Route::get('/image-generation/styles', [ImageStyleController::class, 'index']);
+        // UGC ads — built but not released. 'internal' answers 404 for
+        // everyone outside the team, so a customer who finds the route sees
+        // nothing rather than a locked door.
+        Route::prefix('/ugc')->middleware('internal')->group(function (): void {
+            Route::post('/plan', [UgcController::class, 'plan']);
+            Route::post('/generate', [UgcController::class, 'generate']);
+        });
+
         Route::prefix('/admin')->middleware(['admin', 'admin.ip'])->group(function (): void {
             Route::get('/overview', [AdminController::class, 'overview']);
             Route::get('/users', [AdminController::class, 'users']);
