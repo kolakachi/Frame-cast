@@ -1216,9 +1216,12 @@ class ProjectController extends Controller
             'workspace_id'        => $user->workspace_id,
             'created_by_user_id'  => $user->getKey(),
             'channel_id'          => $validated['channel_id'] ?? null,
-            'name'                => $title,
+            // `name` is not a column and not fillable, so this was silently
+            // discarded and every one-shot project was created untitled.
+            'title'               => $title,
             'aspect_ratio'        => $aspectRatio,
-            'duration_seconds'    => 8 * $sceneCount,
+            // Likewise: the projects column is duration_target_seconds.
+            'duration_target_seconds' => 8 * $sceneCount,
             'visual_type'         => $sceneVisualType,
             'visual_generation_mode' => $generationMode,
             'ai_broll_style'      => $parsed['style'],
