@@ -7,6 +7,7 @@ use App\Models\Scene;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Support\RecordsOpenAiUsage;
 
 /**
  * Builds + maintains the Cruise "project brief": a compact synthesis of the
@@ -23,6 +24,8 @@ use Illuminate\Support\Str;
  */
 class ProjectBriefService
 {
+    use RecordsOpenAiUsage;
+
     public const FIELDS = ['theme', 'topic', 'visual_style', 'tone', 'recurring_subject'];
 
     /**
@@ -93,9 +96,13 @@ Infer from EVIDENCE in the scenes — do not invent. Keep every value short.
 No prose, no markdown.
 SYS;
 
+        $started = microtime(true);
+
         try {
             $response = Http::withToken($apiKey)
-                ->timeout(20)
+                // 20s was sized for gpt-4o-mini; a reasoning model routinely
+                // needs longer before it emits anything.
+                ->timeout(60)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model'           => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
                     ...\App\Support\OpenAiChatParams::tuning($model, 900, 0.3),
@@ -107,11 +114,20 @@ SYS;
                 ]);
 
             if (! $response->successful()) {
-                Log::warning('ProjectBriefService synth failed', ['status' => $response->status()]);
+                $this->recordOpenAiUsage('project_brief', $model, 'failed', [], $started, 'http_'.$response->status());
+                Log::warning('ProjectBriefService synth failed', [
+                    'status' => $response->status(),
+                    'body'   => mb_substr($response->body(), 0, 300),
+                ]);
                 return $existing;
             }
 
-            $parsed = json_decode((string) data_get($response->json(), 'choices.0.message.content', ''), true);
+            $json = $response->json();
+            $this->recordOpenAiUsage('project_brief', $model, 'succeeded', (array) ($json['usage'] ?? []), $started, null, [
+                'project_id' => $project->getKey(),
+            ]);
+
+            $parsed = json_decode((string) data_get($json, 'choices.0.message.content', ''), true);
             if (! is_array($parsed)) {
                 return $existing;
             }

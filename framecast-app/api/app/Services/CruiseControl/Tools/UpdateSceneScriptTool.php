@@ -10,6 +10,7 @@ use App\Services\CreditService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use App\Support\RecordsOpenAiUsage;
 
 /**
  * Change a scene's spoken script. Two modes:
@@ -23,6 +24,8 @@ use RuntimeException;
  */
 class UpdateSceneScriptTool implements CruiseTool
 {
+    use RecordsOpenAiUsage;
+
     public function name(): string { return 'update_scene_script'; }
 
     public function description(): string
@@ -120,6 +123,8 @@ class UpdateSceneScriptTool implements CruiseTool
         if (! $apiKey) {
             throw new RuntimeException('Rewrite needs an OpenAI key.');
         }
+        $started = microtime(true);
+
         try {
             $r = Http::withToken($apiKey)->timeout(60)->post('https://api.openai.com/v1/chat/completions', [
                 'model'       => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
@@ -130,10 +135,18 @@ class UpdateSceneScriptTool implements CruiseTool
                 ],
             ]);
             if (! $r->successful()) {
-                Log::warning('UpdateSceneScript rewrite failed', ['status' => $r->status()]);
+                $this->recordOpenAiUsage('scene_rewrite_tone', $model, 'failed', [], $started, 'http_'.$r->status());
+                Log::warning('UpdateSceneScript rewrite failed', [
+                    'status' => $r->status(),
+                    'body'   => mb_substr($r->body(), 0, 300),
+                ]);
                 throw new RuntimeException('Rewrite failed — try giving me the new text directly.');
             }
-            $text = trim((string) data_get($r->json(), 'choices.0.message.content', ''));
+
+            $json = $r->json();
+            $this->recordOpenAiUsage('scene_rewrite_tone', $model, 'succeeded', (array) ($json['usage'] ?? []), $started);
+
+            $text = trim((string) data_get($json, 'choices.0.message.content', ''));
             $text = trim($text, "\"' \t\n\r\0\x0B");
             if ($text === '') {
                 throw new RuntimeException('Rewrite returned empty — try again.');

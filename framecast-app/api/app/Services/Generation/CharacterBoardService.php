@@ -5,6 +5,7 @@ namespace App\Services\Generation;
 use App\Models\Project;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Support\RecordsOpenAiUsage;
 
 /**
  * Per-project character board (projects.character_board_json): the canonical
@@ -16,6 +17,8 @@ use Illuminate\Support\Facades\Log;
  */
 class CharacterBoardService
 {
+    use RecordsOpenAiUsage;
+
     /** Persist/replace the project's board. */
     public function set(Project $project, string $sheet, string $source): void
     {
@@ -41,6 +44,8 @@ class CharacterBoardService
             return null;
         }
 
+        $started = microtime(true);
+
         try {
             $response = Http::withToken($apiKey)
                 ->timeout(60)
@@ -56,10 +61,18 @@ class CharacterBoardService
                 ]);
 
             if (! $response->successful()) {
-                Log::warning('CharacterBoardService: vision call failed', ['status' => $response->status()]);
+                $this->recordOpenAiUsage('character_board', $model, 'failed', [], $started, 'http_'.$response->status());
+                Log::warning('CharacterBoardService: vision call failed', [
+                    'status' => $response->status(),
+                    'body'   => mb_substr($response->body(), 0, 300),
+                ]);
                 return null;
             }
-            $text = trim((string) data_get($response->json(), 'choices.0.message.content', ''));
+
+            $json = $response->json();
+            $this->recordOpenAiUsage('character_board', $model, 'succeeded', (array) ($json['usage'] ?? []), $started);
+
+            $text = trim((string) data_get($json, 'choices.0.message.content', ''));
             if ($text === '' || strtoupper($text) === 'NONE') {
                 return null;
             }

@@ -6,6 +6,7 @@ use App\Models\Project;
 use App\Models\Scene;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Support\RecordsOpenAiUsage;
 
 /**
  * LLM glue. Takes user intent + project/scene context, returns a
@@ -17,6 +18,8 @@ use Illuminate\Support\Facades\Log;
  */
 class CruiseControlService
 {
+    use RecordsOpenAiUsage;
+
     public function __construct(private CruiseToolRegistry $registry)
     {
     }
@@ -109,11 +112,13 @@ class CruiseControlService
                 // a tool, not deep reasoning, so keep the effort low.
                 $payload['reasoning_effort'] = (string) config('services.openai.cruise_reasoning_effort', 'low');
             }
+            $started = microtime(true);
             $response = Http::withToken($apiKey)
                 ->timeout((int) config('services.openai.cruise_timeout', 60))
                 ->post('https://api.openai.com/v1/chat/completions', $payload);
 
             if (! $response->successful()) {
+                $this->recordOpenAiUsage('cruise_turn', $model, 'failed', [], $started, 'http_'.$response->status());
                 Log::warning('CruiseControl LLM call failed', [
                     'status' => $response->status(),
                     'body'   => mb_substr((string) $response->body(), 0, 500),
@@ -121,7 +126,10 @@ class CruiseControlService
                 return ['reply_to_user' => "I couldn't understand that — try rephrasing.", 'action' => null, 'actions' => []];
             }
 
-            $content = (string) data_get($response->json(), 'choices.0.message.content', '');
+            $json = $response->json();
+            $this->recordOpenAiUsage('cruise_turn', $model, 'succeeded', (array) ($json['usage'] ?? []), $started);
+
+            $content = (string) data_get($json, 'choices.0.message.content', '');
             $parsed  = json_decode($content, true);
 
             if (! is_array($parsed)) {
