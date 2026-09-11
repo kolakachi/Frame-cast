@@ -2,7 +2,7 @@
 
 <p>Earlier this month I made a 30-second supplement ad inside WyvStudio. End-to-end: script, voice, visuals, captions, multi-platform export. No shoot. No editor. ~12 minutes of work.</p>
 
-<p>Here's the ad: <a href="https://app.wyvstudio.com/sample/lqpvjlimilouukmcgsd8bgiduulwci63">watch the 30s sample</a></p>
+<p>Here's the ad: <a href="https://app.wyvstudio.com/sample/bn50pfomvcdd13agrri8l7jfvfgidwub">watch the 30s sample</a></p>
 
 <p>And here's the actual prompt I started with — paste it into a new project and you'll get something in the same shape:</p>
 
