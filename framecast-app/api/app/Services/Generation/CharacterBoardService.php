@@ -43,7 +43,7 @@ class CharacterBoardService
 
         try {
             $response = Http::withToken($apiKey)
-                ->timeout(25)
+                ->timeout(60)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model'       => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
                     ...\App\Support\OpenAiChatParams::tuning($model, 300, 0.2),

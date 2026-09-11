@@ -434,7 +434,7 @@ SYS;
 
         try {
             $response = Http::withToken($apiKey)
-                ->timeout(15)
+                ->timeout(60)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model'       => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
                     ...\App\Support\OpenAiChatParams::tuning($model, 900, 0.4),
@@ -646,7 +646,7 @@ SYS;
 
         try {
             $response = Http::withToken($apiKey)
-                ->timeout(30)
+                ->timeout(90)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model'           => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
                     ...\App\Support\OpenAiChatParams::tuning($model, 2000, 0.5),

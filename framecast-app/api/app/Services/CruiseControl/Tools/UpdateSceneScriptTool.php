@@ -121,7 +121,7 @@ class UpdateSceneScriptTool implements CruiseTool
             throw new RuntimeException('Rewrite needs an OpenAI key.');
         }
         try {
-            $r = Http::withToken($apiKey)->timeout(15)->post('https://api.openai.com/v1/chat/completions', [
+            $r = Http::withToken($apiKey)->timeout(60)->post('https://api.openai.com/v1/chat/completions', [
                 'model'       => $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini'),
                 ...\App\Support\OpenAiChatParams::tuning($model, 900, 0.5),
                 'messages'    => [

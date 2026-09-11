@@ -28,7 +28,13 @@ final class OpenAiChatParams
         if (str_starts_with($model, 'gpt-5')) {
             // Temperature is omitted, not defaulted: sending the default
             // explicitly is also rejected.
-            return ['max_completion_tokens' => $maxTokens];
+            //
+            // The budget is widened because these are reasoning models: the
+            // thinking is billed against max_completion_tokens and emits no
+            // visible text, so a budget sized for the answer alone is spent
+            // before the answer starts and the call returns "" — which reads
+            // as a malformed response rather than as running out of room.
+            return ['max_completion_tokens' => max($maxTokens * 4, 4000)];
         }
 
         return ['temperature' => $temperature, 'max_tokens' => $maxTokens];
