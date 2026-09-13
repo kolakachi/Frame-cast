@@ -132,11 +132,23 @@ class SeedStockActorsCommand extends Command
 
             // No reference image: the person is synthesised from words alone,
             // which is what keeps the library free of any real likeness.
+            // Framing is stated as a proportion, not as "leave space": asked
+            // loosely, the model reads "medium close-up" as dominant and crops
+            // the hair at the top edge. Headlines render at top_ratio 0.10
+            // (UgcHeadline), so anything tighter puts text across a forehead.
+            //
+            // Expression is directed too. Left unsaid, these come back with the
+            // flat stare of a passport photo, which is the wrong first frame
+            // for an ad — the person should look like they are about to tell
+            // you something they are pleased about.
             $prompt = sprintf(
-                'Authentic phone-recorded UGC selfie portrait. %s. Filmed in %s. Eye-level medium close-up, '
-                .'looking into the lens, natural light, casual and lived-in. Ordinary believable person, not a model. '
-                .'No beauty filter, no studio advertising look, no text, no logos, no watermarks. '
-                .'Face unobstructed with space above the head.',
+                'Authentic phone-recorded UGC selfie. %s. Filmed in %s. '
+                .'FRAMING: waist-up, head occupying the middle third of a vertical frame, '
+                .'with the top fifth of the image clear empty space above the head — do not crop the hair. '
+                .'Eye-level, looking into the lens, natural light, casual and lived-in. '
+                .'EXPRESSION: relaxed and warm, a slight genuine smile, mid-sentence as if talking to a friend. '
+                .'Ordinary believable person, not a model. '
+                .'No beauty filter, no studio advertising look, no text, no logos, no watermarks.',
                 $spec['look'],
                 $spec['setting'],
             );
