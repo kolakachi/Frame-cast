@@ -100,6 +100,32 @@ export const useAuthStore = defineStore('auth', {
       return accessToken
     },
 
+    /**
+     * Re-read the signed-in user from the API and merge it into the cached
+     * session.
+     *
+     * The stored user is written at sign-in and only refreshed when the access
+     * token is, so a session that predates a newly added field never sees it.
+     * That is not cosmetic: a route guard reading such a field treats "missing"
+     * as "false" and turns the user away from a page they can use. Callers that
+     * gate on a user flag should ensure it exists before deciding.
+     *
+     * Returns the user, or null when the call fails — the caller decides what
+     * an unknown answer means.
+     */
+    async refreshUser() {
+      try {
+        const response = await api.get('/me')
+        const user = response.data?.data?.user
+        if (!user) return null
+        this.user = { ...(this.user ?? {}), ...user }
+        this.persist()
+        return this.user
+      } catch {
+        return null
+      }
+    },
+
     markOnboarded() {
       if (!this.user) return
       this.user = { ...this.user, preferences: { ...(this.user.preferences ?? {}), onboarded: true } }

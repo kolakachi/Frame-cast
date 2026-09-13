@@ -75,7 +75,7 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach(function (to) {
+router.beforeEach(async function (to) {
   const authStore = useAuthStore()
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
@@ -93,8 +93,17 @@ router.beforeEach(function (to) {
   // Unreleased features. The API answers 404 for anyone outside the team, so
   // the route is turned away here rather than rendering a page whose every
   // request fails.
-  if (to.meta.internalOnly && !authStore.user?.is_internal) {
-    return { name: 'dashboard' }
+  if (to.meta.internalOnly) {
+    // The cached user is written at sign-in and only refreshed with the access
+    // token, so a session older than the flag simply has no `is_internal` — and
+    // treating missing as false locks out the very people the page is for.
+    // Ask the API once when the answer is unknown; a definite false is trusted.
+    if (authStore.user && authStore.user.is_internal === undefined) {
+      await authStore.refreshUser()
+    }
+    if (!authStore.user?.is_internal) {
+      return { name: 'dashboard' }
+    }
   }
 
   // Redirect unonboarded users to the wizard (except the wizard itself,

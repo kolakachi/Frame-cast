@@ -100,6 +100,16 @@ if (_impersonateParam) {
 
 configureApiClient(authStore)
 
+// The cached user is written at sign-in and refreshed only alongside the access
+// token, so a session predating a newly added field never carries it. Anything
+// keyed on such a field — a nav entry, a route guard — then reads "missing" as
+// "off" and hides a feature from the people it belongs to. Re-read once on boot
+// when the answer is unknown; this is after configureApiClient so the request
+// is authenticated.
+if (authStore.isAuthenticated && authStore.user && authStore.user.is_internal === undefined) {
+  authStore.refreshUser()
+}
+
 watch(
   () => authStore.accessToken,
   (token) => {
