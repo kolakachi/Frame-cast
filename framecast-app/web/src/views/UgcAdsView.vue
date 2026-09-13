@@ -60,7 +60,8 @@ const characters = ref([])
 const charsLoading = ref(false)
 const filters = ref({ source: 'stock', gender: '', age_group: '', situation: '', q: '' })
 
-const SITUATIONS = ['airport', 'beach', 'car', 'coffee shop', 'gym', 'kitchen', 'office', 'outdoors', 'snow']
+const SITUATIONS = ['beauty', 'car', 'coffee shop', 'fashion', 'fitness', 'grooming', 'gym',
+  'kitchen', 'living room', 'luxury', 'office', 'outdoors', 'restaurant', 'salon', 'travel', 'bathroom']
 const AGES = [['kid', 'Kid'], ['young_adult', 'Young adult'], ['adult', 'Adult'], ['senior', 'Senior']]
 
 const scriptLength = computed(() => script.value.length)

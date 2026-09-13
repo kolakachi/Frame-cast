@@ -35,6 +35,7 @@ class SeedStockActorsCommand extends Command
 {
     protected $signature = 'ugc:seed-stock-actors
         {--workspace=1 : Workspace billed for the generations}
+        {--set=all : Which casting set: everyday, polished, or all}
         {--limit=0 : Only create this many (0 = all missing)}
         {--dry : Show what would be created without generating}';
 
@@ -46,7 +47,7 @@ class SeedStockActorsCommand extends Command
      *
      * @var list<array{name:string,gender:string,age_group:string,situations:list<string>,look:string,setting:string}>
      */
-    private const ACTORS = [
+    private const EVERYDAY = [
         ['name' => 'Nadia',  'gender' => 'female', 'age_group' => 'young_adult', 'situations' => ['kitchen', 'coffee shop'],
          'look' => 'woman in her late twenties, warm brown skin, dark curly hair loosely tied back, minimal makeup, cream ribbed jumper',
          'setting' => 'a small sunlit kitchen, mug on the counter, soft morning light through a window'],
@@ -86,6 +87,59 @@ class SeedStockActorsCommand extends Command
          'setting' => 'a clean bathroom, mirror and tiled wall behind, soft even light'],
     ];
 
+
+    /**
+     * A second casting set: polished, aspirational presenters for beauty,
+     * fashion, fitness and luxury, where the everyday set reads as wrong for
+     * the product.
+     *
+     * Styled and attractive, deliberately not sexualised — Meta and TikTok both
+     * reject ads on that basis, so a presenter that gets a customer's campaign
+     * refused is worse than no presenter. Fully clothed, confident rather than
+     * suggestive.
+     *
+     * @var list<array{name:string,gender:string,age_group:string,situations:list<string>,look:string,setting:string}>
+     */
+    private const POLISHED = [
+        ['name' => 'Yara',   'gender' => 'female', 'age_group' => 'young_adult', 'situations' => ['beauty', 'bathroom'],
+         'look' => 'strikingly attractive woman in her mid twenties, Middle Eastern, glossy dark waves, flawless dewy makeup, silk camisole and delicate gold necklace',
+         'setting' => 'a vanity mirror ringed with warm bulbs, tidy makeup brushes in frame'],
+        ['name' => 'Sienna', 'gender' => 'female', 'age_group' => 'young_adult', 'situations' => ['fashion', 'luxury'],
+         'look' => 'model-featured woman in her late twenties, fair skin, blonde balayage, sculpted brows, camel wool coat over a white tee',
+         'setting' => 'a marble hotel lobby, soft light, brass and glass behind her'],
+        ['name' => 'Nia',    'gender' => 'female', 'age_group' => 'adult',       'situations' => ['fashion', 'outdoors'],
+         'look' => 'glamorous woman in her early thirties, deep brown skin, sleek jaw-length bob, bold matte lip, gold hoops and a tailored blazer',
+         'setting' => 'a city rooftop at golden hour, skyline soft behind her'],
+        ['name' => 'Camila', 'gender' => 'female', 'age_group' => 'adult',       'situations' => ['fitness', 'gym'],
+         'look' => 'toned athletic woman in her early thirties, Latina, long dark ponytail, sculpted shoulders, fitted sage athleisure set',
+         'setting' => 'a bright modern fitness studio, mirrored wall and daylight'],
+        ['name' => 'Mei',    'gender' => 'female', 'age_group' => 'young_adult', 'situations' => ['beauty', 'bathroom'],
+         'look' => 'radiantly pretty woman in her mid twenties, East Asian, glass-skin complexion, minimal makeup, silk robe over a white top',
+         'setting' => 'a clean white bathroom vanity, skincare bottles neatly arranged'],
+        ['name' => 'Aria',   'gender' => 'female', 'age_group' => 'adult',       'situations' => ['restaurant', 'luxury'],
+         'look' => 'head-turning woman in her mid thirties, mixed heritage, voluminous dark curls, statement earrings, emerald satin blouse',
+         'setting' => 'a candlelit restaurant table, warm bokeh behind'],
+        ['name' => 'Isla',   'gender' => 'female', 'age_group' => 'adult',       'situations' => ['luxury', 'car'],
+         'look' => 'elegant woman in her early forties, silver-blonde sleek hair, refined features, cream tailored blazer and pearl studs',
+         'setting' => 'the drivers seat of a premium car, leather interior, evening light'],
+
+        ['name' => 'Zayn',   'gender' => 'male',   'age_group' => 'young_adult', 'situations' => ['fitness', 'gym'],
+         'look' => 'very handsome man in his mid twenties, South Asian, sharp jawline, styled dark hair, fitted black training tee over an athletic build',
+         'setting' => 'a modern gym floor, equipment blurred behind, cool daylight'],
+        ['name' => 'Theo',   'gender' => 'male',   'age_group' => 'adult',       'situations' => ['restaurant', 'luxury'],
+         'look' => 'leading-man handsome in his mid thirties, fair skin, groomed stubble, swept brown hair, crisp white shirt with the collar open',
+         'setting' => 'a rooftop bar at dusk, warm string lights behind'],
+        ['name' => 'Andre',  'gender' => 'male',   'age_group' => 'adult',       'situations' => ['grooming', 'salon'],
+         'look' => 'striking man in his early thirties, dark brown skin, precise fade and lined beard, slim gold chain, charcoal crew neck',
+         'setting' => 'a stylish barbershop chair, mirrors and warm bulbs behind'],
+        ['name' => 'Rafa',   'gender' => 'male',   'age_group' => 'young_adult', 'situations' => ['outdoors', 'travel'],
+         'look' => 'good-looking man in his late twenties, Latino, tousled dark hair, sun-warmed skin, open linen shirt over a plain tee',
+         'setting' => 'a sunlit poolside terrace, palms and bright sky behind'],
+        ['name' => 'Lucas',  'gender' => 'male',   'age_group' => 'adult',       'situations' => ['luxury', 'office'],
+         'look' => 'distinguished man in his mid forties, Mediterranean, silver at the temples, strong features, navy suit without a tie',
+         'setting' => 'a hotel suite window, city view soft behind him'],
+    ];
+
     public function handle(ImageAdapterFactory $factory, StorageService $storage, CreditService $credits): int
     {
         $workspaceId = (int) $this->option('workspace');
@@ -93,9 +147,22 @@ class SeedStockActorsCommand extends Command
         $dry = (bool) $this->option('dry');
 
         $cost = $factory->referenceGenerationCost(null);
+        $set = (string) $this->option('set');
+        $catalogue = match ($set) {
+            'everyday' => self::EVERYDAY,
+            'polished' => self::POLISHED,
+            'all'      => array_merge(self::EVERYDAY, self::POLISHED),
+            default    => null,
+        };
+        if ($catalogue === null) {
+            $this->error("Unknown set '{$set}'. Use everyday, polished or all.");
+
+            return self::FAILURE;
+        }
+
         $existing = Character::query()->where('is_stock', true)->pluck('name')->map('mb_strtolower')->all();
         $todo = array_values(array_filter(
-            self::ACTORS,
+            $catalogue,
             fn (array $a): bool => ! in_array(mb_strtolower($a['name']), $existing, true),
         ));
         if ($limit > 0) {
