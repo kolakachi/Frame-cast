@@ -93,9 +93,12 @@ class SendAbandonedCheckoutEmailsJob implements ShouldQueue, ShouldBeUnique
             }
 
             $planName = self::PLAN_NAMES[(string) $workspace->pending_checkout_plan] ?? 'a plan';
+            // Already on a paid tier: this was someone reaching for a bigger
+            // plan, not someone who never bought.
+            $isUpgrade = ($workspace->plan_tier ?? 'free') !== 'free';
 
             try {
-                Mail::to($user->email)->send(new AbandonedCheckoutMail($user, $planName));
+                Mail::to($user->email)->send(new AbandonedCheckoutMail($user, $planName, $isUpgrade));
                 Log::info('AbandonedCheckout: nudge sent', [
                     'workspace_id' => $workspace->getKey(),
                     'plan'         => $workspace->pending_checkout_plan,

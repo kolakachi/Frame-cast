@@ -43,6 +43,10 @@ class VerificationController extends Controller
                     'pending_checkout' => $workspace?->pending_checkout_at ? [
                         'plan' => $workspace->pending_checkout_plan,
                         'at'   => $workspace->pending_checkout_at->toIso8601String(),
+                        // Already paying: this was an abandoned upgrade, not a
+                        // failed first purchase. The banner must not tell them
+                        // their account is unchanged — they have one.
+                        'is_upgrade' => ($workspace->plan_tier ?? 'free') !== 'free',
                     ] : null,
                 ],
                 'cruise' => [
@@ -255,6 +259,10 @@ class VerificationController extends Controller
                     'pending_checkout' => $workspace?->pending_checkout_at ? [
                         'plan' => $workspace->pending_checkout_plan,
                         'at'   => $workspace->pending_checkout_at->toIso8601String(),
+                        // Already paying: this was an abandoned upgrade, not a
+                        // failed first purchase. The banner must not tell them
+                        // their account is unchanged — they have one.
+                        'is_upgrade' => ($workspace->plan_tier ?? 'free') !== 'free',
                     ] : null,
                 ],
             ],

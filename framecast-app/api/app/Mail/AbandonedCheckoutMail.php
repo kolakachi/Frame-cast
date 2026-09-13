@@ -25,12 +25,19 @@ class AbandonedCheckoutMail extends Mailable implements ShouldQueue
     public function __construct(
         public readonly User $user,
         public readonly string $planName,
+        // An abandoned UPGRADE is a different situation from an abandoned
+        // first purchase: the reader already paid, already has credits, and
+        // telling them their account is "still here" reads as though their
+        // original payment had failed.
+        public readonly bool $isUpgrade = false,
     ) {
     }
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'Did something go wrong at checkout?');
+        return new Envelope(subject: $this->isUpgrade
+            ? 'Did something go wrong upgrading?'
+            : 'Did something go wrong at checkout?');
     }
 
     public function content(): Content

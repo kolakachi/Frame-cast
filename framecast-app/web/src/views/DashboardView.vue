@@ -513,13 +513,23 @@ onBeforeUnmount(() => {
              complete the purchase or the webhook clears it — a one-shot
              redirect at sign-in left an abandoned attempt with no trace at
              all. Placed above the credit banners: finishing a purchase they
-             already chose beats being told to top up. -->
+             already chose beats being told to top up.
+
+             Paid tiers get different wording: for someone who already bought,
+             "your account is unchanged" reads as though their original payment
+             had failed, which is alarming and wrong. Theirs was an abandoned
+             upgrade. -->
         <div
           v-if="creditsPayload && creditsPayload.pending_checkout"
           class="credit-banner credit-banner-warn"
         >
-          <span>You started a purchase but it didn't go through. Your account is unchanged.</span>
-          <button class="credit-banner-btn" @click="router.push({ name: 'plans' })">Finish checkout →</button>
+          <span v-if="creditsPayload.pending_checkout.is_upgrade">
+            You started an upgrade but it didn't go through. Your current plan and credits are unchanged.
+          </span>
+          <span v-else>You started a purchase but it didn't go through. Your account is unchanged.</span>
+          <button class="credit-banner-btn" @click="router.push({ name: 'plans' })">
+            {{ creditsPayload.pending_checkout.is_upgrade ? 'Finish upgrade →' : 'Finish checkout →' }}
+          </button>
         </div>
 
         <!-- Credit warning banner -->

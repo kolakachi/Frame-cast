@@ -41,6 +41,8 @@ class BillingController extends Controller
                     'pending_checkout' => $workspace->pending_checkout_at ? [
                         'plan' => $workspace->pending_checkout_plan,
                         'at'   => $workspace->pending_checkout_at->toIso8601String(),
+                        // Abandoned upgrade vs abandoned first purchase.
+                        'is_upgrade' => ($workspace->plan_tier ?? 'free') !== 'free',
                     ] : null,
                     // Whether sign-in should send them back to Kelviq. Distinct
                     // from pending_checkout, which only says a purchase was
