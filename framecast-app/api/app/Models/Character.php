@@ -18,6 +18,7 @@ class Character extends Model
         'situations',
         'preview_asset_id',
         'is_stock',
+        'provenance',
         'reference_asset_id',
         'reference_asset_ids',
         'consistency_method',
