@@ -661,7 +661,9 @@ class SceneController extends Controller
         });
 
         if ($asset) {
-            $this->attachCaptionTiming($asset, $transcription);
+            // Same rule as generation: the script we sent to the voice model
+            // decides the caption text, not what the recogniser heard back.
+            $this->attachCaptionTiming($asset, $transcription, (string) $scene->script_text);
         }
 
         $scene->refresh();
@@ -798,7 +800,7 @@ class SceneController extends Controller
         ]);
     }
 
-    private function attachCaptionTiming(Asset $asset, MediaTranscriptionService $transcription): void
+    private function attachCaptionTiming(Asset $asset, MediaTranscriptionService $transcription, string $scriptText = ''): void
     {
         $asset->forceFill([
             'transcription_status' => 'processing',
@@ -810,7 +812,17 @@ class SceneController extends Controller
         try {
             $result = $transcription->transcribeAssetWithTimestamps($asset);
             $words = $result['words'] ?? [];
-            $segments = $result['segments'] ?? [];
+            if (trim($scriptText) !== '') {
+                $words = \App\Services\Media\CaptionAlignment::align(
+                    $scriptText,
+                    $words,
+                    (float) ($asset->duration_seconds ?? 0),
+                );
+            }
+            // Segments come from the same recognition pass and would disagree
+            // with realigned words; the renderer prefers words, so drop them
+            // rather than keep a second, wrong copy of the text.
+            $segments = trim($scriptText) !== '' ? [] : ($result['segments'] ?? []);
 
             $asset->forceFill([
                 'transcript_text' => $result['transcript'],

@@ -198,7 +198,10 @@ class GenerateTTSJob implements ShouldQueue
             });
 
             if ($asset) {
-                $this->attachCaptionTiming($asset, $transcription);
+                // The spoken line is known exactly — it is what we just sent to
+                // the voice model — so it, not the recogniser, decides the
+                // caption text.
+                $this->attachCaptionTiming($asset, $transcription, (string) $scene->script_text);
             }
 
             // One-shot spokesperson: voice is ready — fire the talking-video job
@@ -266,7 +269,7 @@ class GenerateTTSJob implements ShouldQueue
         );
     }
 
-    private function attachCaptionTiming(Asset $asset, MediaTranscriptionService $transcription): void
+    private function attachCaptionTiming(Asset $asset, MediaTranscriptionService $transcription, string $scriptText = ''): void
     {
         $asset->forceFill([
             'transcription_status' => 'processing',
@@ -279,6 +282,21 @@ class GenerateTTSJob implements ShouldQueue
             $result = $transcription->transcribeAssetWithTimestamps($asset);
             $words = $result['words'] ?? [];
             $segments = $result['segments'] ?? [];
+
+            // Recognition is used for timing only. Rendering its words directly
+            // let a dropped word vanish from the captions while the voice still
+            // said it, and let an invented one appear that was never written.
+            if (trim($scriptText) !== '') {
+                $words = \App\Services\Media\CaptionAlignment::align(
+                    $scriptText,
+                    $words,
+                    (float) ($asset->duration_seconds ?? 0),
+                );
+                // Segment text comes from the same recognition pass, so it can
+                // disagree with the realigned words. The renderer prefers
+                // words; drop segments rather than keep a second, wrong copy.
+                $segments = [];
+            }
 
             $metadata = array_merge($asset->metadata_json ?? [], [
                 'transcription_provider' => $result['provider_key'],
