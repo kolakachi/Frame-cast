@@ -94,10 +94,14 @@ class UgcController extends Controller
     public function suggest(Request $request, AIGenerationAdapter $ai): JsonResponse
     {
         $v = $request->validate([
-            'field' => ['required', 'in:product,context'],
+            'field' => ['required', 'in:product,context,available_footage,script,visual_brief,motion_prompt,voice_direction,headline'],
             'product' => ['sometimes', 'nullable', 'string', 'max:200'],
             'context' => ['sometimes', 'nullable', 'string', 'max:1500'],
             'available_footage' => ['sometimes', 'nullable', 'string', 'max:500'],
+            // Per-shot fields need to know which shot they belong to, or the
+            // suggestion describes the ad in general and fits nothing.
+            'shot' => ['sometimes', 'nullable', 'string', 'max:600'],
+            'format' => ['sometimes', 'nullable', 'string', 'max:32'],
         ]);
 
         try {
@@ -106,6 +110,8 @@ class UgcController extends Controller
                 'product' => trim((string) ($v['product'] ?? '')) ?: 'not said yet',
                 'context' => trim((string) ($v['context'] ?? '')) ?: 'not said yet',
                 'available_footage' => trim((string) ($v['available_footage'] ?? '')) ?: 'none mentioned',
+                'shot' => trim((string) ($v['shot'] ?? '')) ?: 'not a specific shot',
+                'format' => trim((string) ($v['format'] ?? '')) ?: 'not chosen yet',
             ], 600, 0.7, ['operation' => 'ugc_brief_suggestion']);
 
             $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));

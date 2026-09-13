@@ -216,8 +216,11 @@ async function previewVoice(character) {
  * Writes into the field rather than showing a suggestion to copy, because the
  * point is to leave them with something to edit, not another decision.
  */
-async function suggest(field) {
-  suggesting.value = field
+async function suggest(field, seg = null, key = null) {
+  // A per-shot suggestion is keyed by field AND shot, so two shots can be
+  // filled independently without both spinners lighting up.
+  const token = seg ? `${field}:${plan.value.segments.indexOf(seg)}` : field
+  suggesting.value = token
   errorMessage.value = ''
   try {
     const { data } = await api.post('/ugc/suggest', {
@@ -225,17 +228,31 @@ async function suggest(field) {
       product: product.value,
       context: context.value,
       available_footage: footageLabels.value,
+      format: plan.value?.format ?? format.value,
+      // Describe the shot so the answer fits it rather than the ad at large.
+      shot: seg
+        ? `${seg.kind}, ${seg.seconds}s` +
+          (seg.script_text ? `, says: ${seg.script_text}` : ', silent') +
+          (seg.visual_brief ? `, shows: ${seg.visual_brief}` : '')
+        : '',
     })
     const text = data?.data?.suggestion ?? ''
     if (!text) return
-    if (field === 'product') product.value = text
-    else context.value = text
+    if (seg) seg[key] = text
+    else if (field === 'product') product.value = text
+    else if (field === 'context') context.value = text
+    else if (field === 'available_footage') footageLabels.value = text
+    else if (field === 'script') script.value = text
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, 'Could not think of one just now — try again.')
   } finally {
     suggesting.value = null
   }
 }
+
+// One reusable label row so every suggestible field looks the same.
+const suggestToken = (field, seg) =>
+  seg ? `${field}:${plan.value.segments.indexOf(seg)}` : field
 
 function setVoice(characterId, key) {
   voiceByCharacter.value = { ...voiceByCharacter.value, [characterId]: key }
@@ -324,12 +341,23 @@ onMounted(() => {
             <label v-if="format === 'reaction'">Target seconds<UiSelect v-model.number="duration" :options="[{ value: 5, label: '5 seconds' }, { value: 10, label: '10 seconds' }]" aria-label="Target seconds" drop="down" /></label>
             <label v-else>Target seconds<input v-model.number="duration" type="number" min="5" :max="format === 'direct_camera' ? 60 : 180" /></label>
             <label>Language<input v-model="language" maxlength="12" placeholder="en" /></label>
-            <label>Available footage (one description per line)<textarea v-model="footageLabels" :placeholder="'My app screen recording\nProduct close-up'" /></label>
+            <label>
+              <span class="ugc-label-row">
+                Available footage (one description per line)
+                <button class="ugc-suggest" type="button" :disabled="suggesting === 'available_footage'" @click="suggest('available_footage')">
+                  {{ suggesting === 'available_footage' ? 'thinking…' : '✨ suggest' }}
+                </button>
+              </span>
+              <textarea v-model="footageLabels" :placeholder="'My app screen recording\nProduct close-up'" />
+            </label>
             <p class="ugc-hint">The director chooses shots only where needed. Reactions use action-directed animation without speech; talking takes use lip-sync. Actual actions still depend on the video model.</p>
           </div>
           <div class="ugc-card">
             <div class="ugc-card-h">
               <span class="ugc-card-t">Exact spoken script (optional)</span>
+              <button class="ugc-suggest" type="button" :disabled="suggesting === 'script'" @click="suggest('script')">
+                {{ suggesting === 'script' ? 'thinking…' : '✨ suggest' }}
+              </button>
               <span class="ugc-card-c">{{ scriptLength }} / {{ MAX_SCRIPT }}</span>
             </div>
             <textarea
@@ -359,11 +387,61 @@ onMounted(() => {
                   {{ seg.kind === 'on_camera' ? 'On camera' : seg.kind === 'reaction' ? 'Silent reaction' : 'Cut-away' }} · {{ seg.seconds }}s
                 </span>
                 <div class="ugc-fields ugc-shot-fields">
-                  <label v-if="seg.kind !== 'reaction'">Spoken words<textarea v-model="seg.script_text" maxlength="1500" /></label>
-                  <label>Shot direction<textarea v-model="seg.visual_brief" maxlength="1000" /></label>
-                  <label v-if="seg.kind === 'reaction'">Physical action<textarea v-model="seg.motion_prompt" maxlength="1000" /></label>
-                  <label v-else>Voice delivery<textarea v-model="seg.voice_direction" maxlength="500" /></label>
-                  <label>Headline (not spoken, stays for this shot)<textarea v-model="seg.headline" maxlength="180" /></label>
+                  <label v-if="seg.kind !== 'reaction'">
+                    <span class="ugc-label-row">
+                      Spoken words
+                      <button class="ugc-suggest" type="button"
+                        :disabled="suggesting === suggestToken('script', seg)"
+                        @click="suggest('script', seg, 'script_text')">
+                        {{ suggesting === suggestToken('script', seg) ? 'thinking…' : '✨ suggest' }}
+                      </button>
+                    </span>
+                    <textarea v-model="seg.script_text" maxlength="1500" />
+                  </label>
+                  <label>
+                    <span class="ugc-label-row">
+                      Shot direction
+                      <button class="ugc-suggest" type="button"
+                        :disabled="suggesting === suggestToken('visual_brief', seg)"
+                        @click="suggest('visual_brief', seg, 'visual_brief')">
+                        {{ suggesting === suggestToken('visual_brief', seg) ? 'thinking…' : '✨ suggest' }}
+                      </button>
+                    </span>
+                    <textarea v-model="seg.visual_brief" maxlength="1000" />
+                  </label>
+                  <label v-if="seg.kind === 'reaction'">
+                    <span class="ugc-label-row">
+                      Physical action
+                      <button class="ugc-suggest" type="button"
+                        :disabled="suggesting === suggestToken('motion_prompt', seg)"
+                        @click="suggest('motion_prompt', seg, 'motion_prompt')">
+                        {{ suggesting === suggestToken('motion_prompt', seg) ? 'thinking…' : '✨ suggest' }}
+                      </button>
+                    </span>
+                    <textarea v-model="seg.motion_prompt" maxlength="1000" />
+                  </label>
+                  <label v-else>
+                    <span class="ugc-label-row">
+                      Voice delivery
+                      <button class="ugc-suggest" type="button"
+                        :disabled="suggesting === suggestToken('voice_direction', seg)"
+                        @click="suggest('voice_direction', seg, 'voice_direction')">
+                        {{ suggesting === suggestToken('voice_direction', seg) ? 'thinking…' : '✨ suggest' }}
+                      </button>
+                    </span>
+                    <textarea v-model="seg.voice_direction" maxlength="500" />
+                  </label>
+                  <label>
+                    <span class="ugc-label-row">
+                      Headline (not spoken, stays for this shot)
+                      <button class="ugc-suggest" type="button"
+                        :disabled="suggesting === suggestToken('headline', seg)"
+                        @click="suggest('headline', seg, 'headline')">
+                        {{ suggesting === suggestToken('headline', seg) ? 'thinking…' : '✨ suggest' }}
+                      </button>
+                    </span>
+                    <textarea v-model="seg.headline" maxlength="180" />
+                  </label>
                   <label v-if="seg.kind === 'reaction'">Seconds<UiSelect v-model.number="seg.seconds" :options="[{ value: 5, label: '5' }, { value: 10, label: '10' }]" aria-label="Reaction seconds" drop="down" /></label>
                   <label v-else>Seconds<input v-model.number="seg.seconds" type="number" min="1" max="60" /></label>
                   <template v-if="seg.kind === 'b_roll'">
@@ -604,7 +682,7 @@ onMounted(() => {
 .ugc-fields audio { width: 100%; }
 .ugc-fields .ugc-check { flex-direction: row; align-items: flex-start; line-height: 1.5; }
 .ugc-check input { width: auto; }
-.ugc-shot-fields { padding: 8px 0; width: 100%; }
+.ugc-shot-fields { padding: 10px 0 12px; width: 100%; gap: 12px; }
 /* The sidebar is fixed-position, so the main column must be offset by its
    width or it renders underneath. --sidebar-width tracks the collapsed state. */
 .ugc-shell { display: flex; min-height: 100vh; background: var(--color-bg-base); }
@@ -624,11 +702,34 @@ onMounted(() => {
 
 .ugc-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; margin-bottom: 14px; }
 .ugc-card-h { display: flex; align-items: center; gap: 8px; padding: 12px 14px 0; }
+.ugc-card-h .ugc-suggest { margin-left: 0; }
+.ugc-card-h .ugc-card-c { margin-left: auto; }
 .ugc-card-t { font-size: 12.5px; font-weight: 500; color: var(--color-text-primary); }
 .ugc-card-c { margin-left: auto; font: 10.5px var(--font-mono); color: var(--color-text-muted); }
 .ugc-card-f { display: flex; align-items: center; gap: 10px; padding: 0 14px 13px; }
 
-.ugc-script { width: 100%; background: none; border: none; color: var(--color-text-primary); resize: vertical; padding: 11px 14px; font-size: 13px; line-height: 1.65; outline: none; min-height: 96px; font-family: inherit; }
+/* Was borderless and flush to the card edges, so it read as a hole in the
+   panel rather than a field, and sat tight under its own header. Inset and
+   bordered to match every other input. */
+.ugc-script {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 10px 14px 4px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  resize: vertical;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  outline: none;
+  min-height: 96px;
+  font-family: inherit;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.ugc-script:hover { border-color: var(--color-border-active); }
+.ugc-script:focus-visible { border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(255,107,53,.16); }
 .ugc-script::placeholder { color: var(--color-text-muted); }
 
 .ugc-reason { padding: 0 14px 8px; font-size: 11.5px; color: var(--color-text-muted); font-style: italic; }
