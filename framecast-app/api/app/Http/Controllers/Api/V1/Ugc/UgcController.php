@@ -89,6 +89,11 @@ class UgcController extends Controller
             'script' => ['present', 'nullable', 'string', 'max:1500'],
             'character_ids' => ['required', 'array', 'min:1', 'max:5'],
             'character_ids.*' => ['required', 'integer', 'distinct'],
+            // Voice belongs to the presenter, not the run. Each take is a
+            // different person, and one shared voice across several characters
+            // makes the lip-sync read as dubbed. Keyed by character id.
+            'voices' => ['sometimes', 'array'],
+            'voices.*' => ['nullable', Rule::in(array_keys(GeminiVoices::VOICES))],
             'aspect_ratio' => ['required', 'in:9:16,1:1,16:9'],
             'language' => ['sometimes', 'string', 'max:12'],
             'voice_key' => ['nullable', Rule::in(array_keys(GeminiVoices::VOICES))],
@@ -173,7 +178,13 @@ class UgcController extends Controller
             'source_content_raw' => $script, 'default_character_id' => $character->id,
             'visual_brief' => ['ugc_format' => $v['format'], 'ugc_estimated_credits' => UgcPlan::quote($segments)],
         ]);
-        $voiceId = $v['voice_key'] ?? GeminiVoices::defaultForGender($character->gender ?? null);
+        // Per character first, then a run-wide key for the single-character
+        // case, then the character's own gender. Picking a female voice for a
+        // male presenter is visible on the lip-sync, so the gender default is
+        // the last resort rather than the first.
+        $voiceId = ($v['voices'][$character->id] ?? null)
+            ?: ($v['voice_key'] ?? null)
+            ?: GeminiVoices::defaultForGender($character->gender ?? null);
         foreach ($segments as $i => $seg) {
             $talking = $seg['kind'] === 'on_camera';
             $actor = $seg['kind'] !== 'b_roll';

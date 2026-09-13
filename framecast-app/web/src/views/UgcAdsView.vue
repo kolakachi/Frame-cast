@@ -20,10 +20,13 @@ const format = ref('auto')
 const duration = ref(30)
 const language = ref('en')
 const footageLabels = ref('')
-const voiceKey = ref('')
+// Keyed by character id. A run-wide voice made three presenters sound like
+// one person dubbed over three faces, which is the opposite of why you cast
+// more than one.
+const voiceByCharacter = ref({})
 const voices = ref([])
-const voicePreviewUrl = ref('')
-const loadingVoice = ref(false)
+const voicePreviewUrl = ref({})   // character id -> sample url
+const loadingVoice = ref(null)   // character id currently loading a sample
 const reviewed = ref(false)
 const consent = ref(false)
 const quoting = ref(false)
@@ -90,8 +93,7 @@ watch([script, product, context, format, duration, language, footageLabels], () 
   plan.value = null
   reviewed.value = false
 }, { flush: 'sync' })
-watch([planFingerprint, selected, aspectRatio, voiceKey], () => { reviewed.value = false }, { deep: true, flush: 'sync' })
-watch(voiceKey, () => { voicePreviewUrl.value = '' })
+watch([planFingerprint, selected, aspectRatio, voiceByCharacter], () => { reviewed.value = false }, { deep: true, flush: 'sync' })
 watch(format, value => {
   if (value === 'reaction' && ![5, 10].includes(duration.value)) duration.value = 5
 }, { flush: 'sync' })
@@ -188,17 +190,28 @@ function selectFootage({ item }) {
   footageShot.value = null
 }
 
-async function previewVoice() {
-  const key = voiceKey.value
-  const profile = voices.value.find(v => v.provider_voice_key === key)
+async function previewVoice(character) {
+  const key = voiceByCharacter.value[character.id]
+  const profile = voices.value.find((v) => v.provider_voice_key === key)
   if (!profile) return
-  loadingVoice.value = true
+  loadingVoice.value = character.id
   try {
     const { data } = await api.post('/voice-profiles/preview', { voice_profile_id: profile.id })
-    if (voiceKey.value === key) voicePreviewUrl.value = data.data.preview_url
+    // Guard against a slow response landing after the choice moved on.
+    if (voiceByCharacter.value[character.id] === key) {
+      voicePreviewUrl.value = { ...voicePreviewUrl.value, [character.id]: data.data.preview_url }
+    }
   } catch (err) {
-    errorMessage.value = apiErrorMessage(err, 'Could not load the voice sample.')
-  } finally { loadingVoice.value = false }
+    errorMessage.value = apiErrorMessage(err, 'Could not load that voice sample.')
+  } finally {
+    loadingVoice.value = null
+  }
+}
+
+function setVoice(characterId, key) {
+  voiceByCharacter.value = { ...voiceByCharacter.value, [characterId]: key }
+  const { [characterId]: _dropped, ...rest } = voicePreviewUrl.value
+  voicePreviewUrl.value = rest
 }
 
 async function generate() {
@@ -212,7 +225,7 @@ async function generate() {
       character_ids: selected.value.map((c) => c.id),
       segments: plan.value.segments,
       aspect_ratio: aspectRatio.value,
-      language: language.value, voice_key: voiceKey.value || null,
+      language: language.value, voices: voiceByCharacter.value,
       consent: consent.value, reviewed: reviewed.value,
       credits_per_character: perCharacter.value,
     })
@@ -260,10 +273,10 @@ onMounted(() => {
         <section class="ugc-build">
           <div class="ugc-card ugc-fields">
             <h2 class="ugc-card-t">Creative brief</h2>
-            <label>Format<select v-model="format" aria-label="Format"><option v-for="[key, label] in formatOptions" :key="key" :value="key">{{ label }}</option></select></label>
+            <label>Format<span class="ugc-select"><select v-model="format" aria-label="Format"><option v-for="[key, label] in formatOptions" :key="key" :value="key">{{ label }}</option></select><span class="ugc-select-caret" aria-hidden="true">⌄</span></span></label>
             <label>Product / app<input v-model="product" maxlength="200" placeholder="What are we showing?" /></label>
             <label>Audience, idea and desired reaction<textarea v-model="context" maxlength="1500" placeholder="e.g. A founder looks worried, then relieved. POV: you almost gave up on your app. Casual selfie, not a polished ad." /></label>
-            <label v-if="format === 'reaction'">Target seconds<select v-model.number="duration" aria-label="Target seconds"><option :value="5">5 seconds</option><option :value="10">10 seconds</option></select></label>
+            <label v-if="format === 'reaction'">Target seconds<span class="ugc-select"><select v-model.number="duration" aria-label="Target seconds"><option :value="5">5 seconds</option><option :value="10">10 seconds</option></select><span class="ugc-select-caret" aria-hidden="true">⌄</span></span></label>
             <label v-else>Target seconds<input v-model.number="duration" type="number" min="5" :max="format === 'direct_camera' ? 60 : 180" /></label>
             <label>Language<input v-model="language" maxlength="12" placeholder="en" /></label>
             <label>Available footage (one description per line)<textarea v-model="footageLabels" :placeholder="'My app screen recording\nProduct close-up'" /></label>
@@ -306,10 +319,10 @@ onMounted(() => {
                   <label v-if="seg.kind === 'reaction'">Physical action<textarea v-model="seg.motion_prompt" maxlength="1000" /></label>
                   <label v-else>Voice delivery<textarea v-model="seg.voice_direction" maxlength="500" /></label>
                   <label>Headline (not spoken, stays for this shot)<textarea v-model="seg.headline" maxlength="180" /></label>
-                  <label v-if="seg.kind === 'reaction'">Seconds<select v-model.number="seg.seconds" aria-label="Reaction seconds"><option :value="5">5</option><option :value="10">10</option></select></label>
+                  <label v-if="seg.kind === 'reaction'">Seconds<span class="ugc-select"><select v-model.number="seg.seconds" aria-label="Reaction seconds"><option :value="5">5</option><option :value="10">10</option></select><span class="ugc-select-caret" aria-hidden="true">⌄</span></span></label>
                   <label v-else>Seconds<input v-model.number="seg.seconds" type="number" min="1" max="60" /></label>
                   <template v-if="seg.kind === 'b_roll'">
-                    <label>Visual source<select v-model="seg.source" @change="seg.asset_id = null"><option value="upload">My footage</option><option value="stock">Imported stock footage</option><option value="generate">Generate illustrative still</option></select></label>
+                    <label>Visual source<span class="ugc-select"><select v-model="seg.source" @change="seg.asset_id = null"><option value="upload">My footage</option><option value="stock">Imported stock footage</option><option value="generate">Generate illustrative still</option></select><span class="ugc-select-caret" aria-hidden="true">⌄</span></span></label>
                     <button v-if="seg.source !== 'generate'" class="ugc-btn" @click="footageShot = i">{{ seg.asset_id ? `Change selected asset #${seg.asset_id}` : 'Select / upload required footage' }}</button>
                     <span v-else class="ugc-hint">An illustrative still, not a real product demonstration.</span>
                   </template>
@@ -333,6 +346,29 @@ onMounted(() => {
               <div class="ugc-ch-m">
                 <div class="ugc-ch-n">{{ c.name }}</div>
                 <div class="ugc-ch-s">{{ (c.situations || []).join(' · ') || c.age_group || '—' }}</div>
+
+                <!-- Voice sits with the person it belongs to, not in Output. -->
+                <div v-if="plan?.format !== 'reaction'" class="ugc-ch-voice">
+                  <div class="ugc-select">
+                    <select
+                      :value="voiceByCharacter[c.id] || ''"
+                      :aria-label="`Voice for ${c.name}`"
+                      @change="setVoice(c.id, $event.target.value)"
+                    >
+                      <option value="">Voice — automatic</option>
+                      <option v-for="v in voices" :key="v.id" :value="v.provider_voice_key">{{ v.name }}</option>
+                    </select>
+                    <span class="ugc-select-caret" aria-hidden="true">⌄</span>
+                  </div>
+                  <button
+                    v-if="voiceByCharacter[c.id]"
+                    class="ugc-btn ugc-btn-sm"
+                    type="button"
+                    :disabled="loadingVoice === c.id"
+                    @click="previewVoice(c)"
+                  >{{ loadingVoice === c.id ? '…' : '▶ Hear' }}</button>
+                  <audio v-if="voicePreviewUrl[c.id]" class="ugc-audio" :src="voicePreviewUrl[c.id]" controls />
+                </div>
               </div>
               <button class="ugc-ch-x" type="button" @click="toggleCharacter(c)">✕</button>
             </div>
@@ -344,12 +380,10 @@ onMounted(() => {
           <div class="ugc-card">
             <div class="ugc-card-h"><span class="ugc-card-t">Output</span></div>
             <div class="ugc-out">
-              <div v-if="plan?.format !== 'reaction'" class="ugc-fields">
-                <label>Voice<select v-model="voiceKey" aria-label="Voice"><option value="">Automatic per character</option><option v-for="v in voices" :key="v.id" :value="v.provider_voice_key">{{ v.name }}</option></select></label>
-                <button v-if="voiceKey" class="ugc-btn" :disabled="loadingVoice" @click="previewVoice">{{ loadingVoice ? 'Loading…' : 'Hear voice sample' }}</button>
-                <audio v-if="voicePreviewUrl" :src="voicePreviewUrl" controls />
-                <span class="ugc-hint">Voice samples are generic, not a rehearsal of this script. Automatic chooses a voice per character.</span>
-              </div>
+              <span v-if="plan?.format !== 'reaction'" class="ugc-hint">
+                Each character has its own voice, set beside them above. Samples are generic,
+                not a rehearsal of this script.
+              </span>
               <div class="ugc-seg-group">
                 <button
                   v-for="r in ['9:16', '1:1', '16:9']"
@@ -597,6 +631,61 @@ onMounted(() => {
 .ugc-btn-primary:hover:not(:disabled) { background: var(--color-accent-hover); }
 .ugc-btn:disabled { opacity: .45; cursor: not-allowed; }
 .ugc-hint { font-size: 11px; color: var(--color-text-muted); }
+
+/* ── Form controls ────────────────────────────────────────────────
+   Browser defaults ignore the palette entirely: a native select paints a
+   light system chrome and its arrow cannot be styled, and inputs keep the
+   platform focus ring. Everything here is reset and rebuilt on the app's
+   tokens so a form does not look like a different application embedded in
+   the page. */
+.ugc-build :where(input[type='text'], input[type='number'], input:not([type]), textarea, select) {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 11px;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.ugc-build :where(input, textarea, select):hover:not(:disabled) { border-color: var(--color-border-active); }
+.ugc-build :where(input, textarea, select):focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(255, 107, 53, .16);
+}
+.ugc-build :where(input, textarea)::placeholder { color: var(--color-text-muted); }
+.ugc-build :where(input, textarea, select):disabled { opacity: .5; cursor: not-allowed; }
+.ugc-build textarea { resize: vertical; min-height: 62px; }
+
+/* Number spinners are unstyleable and read as clutter next to the rest. */
+.ugc-build input[type='number'] { -moz-appearance: textfield; }
+.ugc-build input[type='number']::-webkit-outer-spin-button,
+.ugc-build input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* A select keeps its own arrow no matter what, so the native one is removed
+   and a caret drawn over the control. */
+.ugc-select { position: relative; display: flex; align-items: center; min-width: 0; width: 100%; }
+.ugc-build label > .ugc-select { width: 100%; }
+.ugc-select select { padding-right: 28px; cursor: pointer; }
+.ugc-select-caret {
+  position: absolute; right: 10px; pointer-events: none;
+  color: var(--color-text-muted); font-size: 11px; line-height: 1;
+}
+.ugc-select select option { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+
+/* Labels wrapping a control, as used through the build column. */
+.ugc-build label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--color-text-muted); }
+
+.ugc-ch-voice { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+.ugc-ch-voice .ugc-select { max-width: 190px; }
+.ugc-btn-sm { padding: 5px 9px; font-size: 11px; }
+.ugc-audio { height: 30px; max-width: 100%; margin-top: 4px; }
+.ugc-audio::-webkit-media-controls-panel { background: var(--color-bg-elevated); }
 
 .ugc-stage-h { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .ugc-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: 280px; text-align: center; color: var(--color-text-muted); }
