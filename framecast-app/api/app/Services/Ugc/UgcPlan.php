@@ -32,6 +32,10 @@ final class UgcPlan
         if (! in_array($format, self::FORMATS, true) || ! is_array($raw) || count($raw) < 1 || count($raw) > 12) {
             self::invalid('Choose a supported format with 1–12 shots.');
         }
+        // Headline is validated below but needed above, where a silent cutaway
+        // is only allowed if it carries one.
+        $headlineFor = static fn (array $s): string => trim((string) ($s['headline'] ?? ''));
+
         $out = [];
         foreach ($raw as $seg) {
             if (! is_array($seg)) {
@@ -48,12 +52,26 @@ final class UgcPlan
             if (! is_finite($seconds) || $seconds < 1 || $seconds > 60) {
                 self::invalid('Shots must be between 1 and 60 seconds. Split longer speech into intentional takes.');
             }
+            // A demo cutaway may be silent. Showing a screen recording or a
+            // product shot under a headline, with no voice over it, is the
+            // natural beat of a demo — requiring narration everywhere forced
+            // the director to invent words for a shot that works better
+            // without them. It stays disallowed in direct_camera and story,
+            // where a silent shot is a mistake rather than a choice.
+            $silentCutawayAllowed = $kind === 'b_roll' && $format === 'demo' && $headlineFor($seg) !== '';
+
             if ($kind === 'reaction') {
                 if ($format !== 'reaction' || $text !== '' || ! in_array($seconds, [5.0, 10.0], true) || $motion === '') {
                     self::invalid('A reaction is one silent 5- or 10-second shot with a motion direction.');
                 }
-            } elseif ($text === '' || mb_strlen($text) > 1500 || $format === 'reaction') {
-                self::invalid('Spoken formats need narration in every shot; reactions must be silent.');
+            } elseif ($format === 'reaction') {
+                self::invalid('A reaction has one silent shot; it cannot contain spoken shots.');
+            } elseif ($text === '' && ! $silentCutawayAllowed) {
+                self::invalid($kind === 'b_roll'
+                    ? 'A silent cutaway needs a headline, and only a demo can use one. Add narration or a headline.'
+                    : 'Talking shots need narration.');
+            } elseif (mb_strlen($text) > 1500) {
+                self::invalid('Keep each shot under 1,500 spoken characters.');
             }
             if ($kind !== 'reaction') {
                 $seconds = max($seconds, round(count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY)) / 2.6, 1));
@@ -98,7 +116,9 @@ final class UgcPlan
         $images = app(ImageAdapterFactory::class);
         $total = 0;
         foreach ($segments as $seg) {
-            if ($seg['kind'] !== 'reaction') {
+            // Voice is only synthesised where there are words. A silent demo
+            // cutaway must not be quoted for speech it will never use.
+            if ($seg['kind'] !== 'reaction' && trim((string) $seg['script_text']) !== '') {
                 $total += CreditService::TTS_GEMINI;
             }
             if (in_array($seg['kind'], ['on_camera', 'reaction'], true)) {

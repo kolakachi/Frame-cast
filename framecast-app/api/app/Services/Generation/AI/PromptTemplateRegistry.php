@@ -89,6 +89,14 @@ class PromptTemplateRegistry
                 'system' => 'You plan a multi-scene short-form video from a user prompt. Obey the detailed brief that precedes this line exactly, and return STRICT JSON only — no prose, no markdown, no code fences.',
                 'user' => '{{content}}',
             ],
+            // Fills the two fields the director cannot write for you. Everything
+            // downstream (script, visual brief, motion, headline) is planned,
+            // so only the brief itself starts blank — and a blank brief is
+            // where people stall.
+            'ugc_brief_suggestion' => [
+                'system' => 'You help someone describe an ad they want made. Return JSON only: {"suggestion":"..."}. Write one short, concrete line in their voice, ready to paste into the field — never a question, never a preamble, never options. For the product field name what is being advertised and who it is for. For the context field describe the shots a viewer would see, in plain words. Ground everything in what the user already told you and invent no claims, statistics or features.',
+                'user' => "Field to fill: {{field}}\nWhat they have written so far:\n  product: {{product}}\n  context: {{context}}\n  footage they have: {{available_footage}}\nWrite the {{field}} line.",
+            ],
             'ugc_shot_plan' => [
                 'system' => <<<'PROMPT'
 You direct authentic creator-style UGC, not generic avatar advertisements. Return JSON only:

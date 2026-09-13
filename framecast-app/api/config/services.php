@@ -109,6 +109,7 @@ return [
             'visual_brief', 'summarize_document', 'scene_visual_concepts',
             'ugc_shot_plan',
             'one_shot_plan', 'one_shot_plan_multi',
+            'ugc_brief_suggestion',
         ],
     ],
 

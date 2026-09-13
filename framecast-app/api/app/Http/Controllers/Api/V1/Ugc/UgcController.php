@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\CreditService;
 use App\Services\Generation\TTS\GeminiVoices;
 use App\Services\Ugc\UgcHeadline;
+use App\Services\Generation\AI\AIGenerationAdapter;
 use App\Services\Ugc\UgcPlan;
 use App\Services\Ugc\UgcShotPlanner;
 use Illuminate\Http\JsonResponse;
@@ -79,6 +80,48 @@ class UgcController extends Controller
             'format' => $v['format'], 'segments' => $segments, 'script' => UgcPlan::script($segments),
             'credits_per_character' => UgcPlan::quote($segments), 'warnings' => UgcPlan::warnings($segments),
         ], 'meta' => []]);
+    }
+
+
+    /**
+     * Write one of the two brief fields for someone staring at an empty form.
+     *
+     * Everything downstream is planned for them — script, visual brief, motion,
+     * headline — so the only blank page left is the brief itself, which is
+     * exactly where people stall. Spends no credits: it is a sentence, not a
+     * generation, and charging for it would stop people using it.
+     */
+    public function suggest(Request $request, AIGenerationAdapter $ai): JsonResponse
+    {
+        $v = $request->validate([
+            'field' => ['required', 'in:product,context'],
+            'product' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'context' => ['sometimes', 'nullable', 'string', 'max:1500'],
+            'available_footage' => ['sometimes', 'nullable', 'string', 'max:500'],
+        ]);
+
+        try {
+            $result = $ai->generate('ugc_brief_suggestion', [
+                'field' => $v['field'],
+                'product' => trim((string) ($v['product'] ?? '')) ?: 'not said yet',
+                'context' => trim((string) ($v['context'] ?? '')) ?: 'not said yet',
+                'available_footage' => trim((string) ($v['available_footage'] ?? '')) ?: 'none mentioned',
+            ], 600, 0.7, ['operation' => 'ugc_brief_suggestion']);
+
+            $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
+            $content = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $content);
+            $suggestion = trim((string) (json_decode($content, true)['suggestion'] ?? ''));
+
+            if ($suggestion === '') {
+                return $this->error('suggestion_unavailable', 'Could not think of one just now — try again.', 422);
+            }
+
+            return response()->json(['data' => ['suggestion' => $suggestion], 'meta' => []]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->error('suggestion_unavailable', 'Could not think of one just now — try again.', 422);
+        }
     }
 
     public function generate(Request $request): JsonResponse

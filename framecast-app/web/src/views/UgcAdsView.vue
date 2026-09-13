@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
+import UiSelect from '../components/UiSelect.vue'
 import MediaPickerModal from '../components/MediaPickerModal.vue'
 import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
@@ -26,6 +27,7 @@ const footageLabels = ref('')
 const voiceByCharacter = ref({})
 const voices = ref([])
 const voicePreviewUrl = ref({})   // character id -> sample url
+const suggesting = ref(null)     // which brief field is being written
 const loadingVoice = ref(null)   // character id currently loading a sample
 const reviewed = ref(false)
 const consent = ref(false)
@@ -208,6 +210,33 @@ async function previewVoice(character) {
   }
 }
 
+/**
+ * Fill one of the two brief fields. Everything downstream is planned for the
+ * user, so this is the only blank page left — and it is where people stall.
+ * Writes into the field rather than showing a suggestion to copy, because the
+ * point is to leave them with something to edit, not another decision.
+ */
+async function suggest(field) {
+  suggesting.value = field
+  errorMessage.value = ''
+  try {
+    const { data } = await api.post('/ugc/suggest', {
+      field,
+      product: product.value,
+      context: context.value,
+      available_footage: footageLabels.value,
+    })
+    const text = data?.data?.suggestion ?? ''
+    if (!text) return
+    if (field === 'product') product.value = text
+    else context.value = text
+  } catch (err) {
+    errorMessage.value = apiErrorMessage(err, 'Could not think of one just now — try again.')
+  } finally {
+    suggesting.value = null
+  }
+}
+
 function setVoice(characterId, key) {
   voiceByCharacter.value = { ...voiceByCharacter.value, [characterId]: key }
   const { [characterId]: _dropped, ...rest } = voicePreviewUrl.value
@@ -273,10 +302,26 @@ onMounted(() => {
         <section class="ugc-build">
           <div class="ugc-card ugc-fields">
             <h2 class="ugc-card-t">Creative brief</h2>
-            <label>Format<span class="ugc-select"><select v-model="format" aria-label="Format"><option v-for="[key, label] in formatOptions" :key="key" :value="key">{{ label }}</option></select><span class="ugc-select-caret" aria-hidden="true">⌄</span></span></label>
-            <label>Product / app<input v-model="product" maxlength="200" placeholder="What are we showing?" /></label>
-            <label>Audience, idea and desired reaction<textarea v-model="context" maxlength="1500" placeholder="e.g. A founder looks worried, then relieved. POV: you almost gave up on your app. Casual selfie, not a polished ad." /></label>
-            <label v-if="format === 'reaction'">Target seconds<span class="ugc-select"><select v-model.number="duration" aria-label="Target seconds"><option :value="5">5 seconds</option><option :value="10">10 seconds</option></select><span class="ugc-select-caret" aria-hidden="true">⌄</span></span></label>
+            <label>Format<UiSelect v-model="format" :options="formatOptions.map(([value, label]) => ({ value, label }))" aria-label="Format" drop="down" /></label>
+            <label>
+              <span class="ugc-label-row">
+                Product / app
+                <button class="ugc-suggest" type="button" :disabled="suggesting === 'product'" @click="suggest('product')">
+                  {{ suggesting === 'product' ? 'thinking…' : '✨ suggest' }}
+                </button>
+              </span>
+              <input v-model="product" maxlength="200" placeholder="What are we showing?" />
+            </label>
+            <label>
+              <span class="ugc-label-row">
+                Audience, idea and desired reaction
+                <button class="ugc-suggest" type="button" :disabled="suggesting === 'context'" @click="suggest('context')">
+                  {{ suggesting === 'context' ? 'thinking…' : '✨ suggest' }}
+                </button>
+              </span>
+              <textarea v-model="context" maxlength="1500" placeholder="e.g. A founder looks worried, then relieved. POV: you almost gave up on your app. Casual selfie, not a polished ad." />
+            </label>
+            <label v-if="format === 'reaction'">Target seconds<UiSelect v-model.number="duration" :options="[{ value: 5, label: '5 seconds' }, { value: 10, label: '10 seconds' }]" aria-label="Target seconds" drop="down" /></label>
             <label v-else>Target seconds<input v-model.number="duration" type="number" min="5" :max="format === 'direct_camera' ? 60 : 180" /></label>
             <label>Language<input v-model="language" maxlength="12" placeholder="en" /></label>
             <label>Available footage (one description per line)<textarea v-model="footageLabels" :placeholder="'My app screen recording\nProduct close-up'" /></label>
@@ -319,10 +364,10 @@ onMounted(() => {
                   <label v-if="seg.kind === 'reaction'">Physical action<textarea v-model="seg.motion_prompt" maxlength="1000" /></label>
                   <label v-else>Voice delivery<textarea v-model="seg.voice_direction" maxlength="500" /></label>
                   <label>Headline (not spoken, stays for this shot)<textarea v-model="seg.headline" maxlength="180" /></label>
-                  <label v-if="seg.kind === 'reaction'">Seconds<span class="ugc-select"><select v-model.number="seg.seconds" aria-label="Reaction seconds"><option :value="5">5</option><option :value="10">10</option></select><span class="ugc-select-caret" aria-hidden="true">⌄</span></span></label>
+                  <label v-if="seg.kind === 'reaction'">Seconds<UiSelect v-model.number="seg.seconds" :options="[{ value: 5, label: '5' }, { value: 10, label: '10' }]" aria-label="Reaction seconds" drop="down" /></label>
                   <label v-else>Seconds<input v-model.number="seg.seconds" type="number" min="1" max="60" /></label>
                   <template v-if="seg.kind === 'b_roll'">
-                    <label>Visual source<span class="ugc-select"><select v-model="seg.source" @change="seg.asset_id = null"><option value="upload">My footage</option><option value="stock">Imported stock footage</option><option value="generate">Generate illustrative still</option></select><span class="ugc-select-caret" aria-hidden="true">⌄</span></span></label>
+                    <label>Visual source<UiSelect v-model="seg.source" :options="[{ value: 'upload', label: 'My footage' }, { value: 'stock', label: 'Imported stock footage' }, { value: 'generate', label: 'Generate illustrative still' }]" @update:modelValue="seg.asset_id = null" drop="down" /></label>
                     <button v-if="seg.source !== 'generate'" class="ugc-btn" @click="footageShot = i">{{ seg.asset_id ? `Change selected asset #${seg.asset_id}` : 'Select / upload required footage' }}</button>
                     <span v-else class="ugc-hint">An illustrative still, not a real product demonstration.</span>
                   </template>
@@ -349,17 +394,13 @@ onMounted(() => {
 
                 <!-- Voice sits with the person it belongs to, not in Output. -->
                 <div v-if="plan?.format !== 'reaction'" class="ugc-ch-voice">
-                  <div class="ugc-select">
-                    <select
-                      :value="voiceByCharacter[c.id] || ''"
-                      :aria-label="`Voice for ${c.name}`"
-                      @change="setVoice(c.id, $event.target.value)"
-                    >
-                      <option value="">Voice — automatic</option>
-                      <option v-for="v in voices" :key="v.id" :value="v.provider_voice_key">{{ v.name }}</option>
-                    </select>
-                    <span class="ugc-select-caret" aria-hidden="true">⌄</span>
-                  </div>
+                  <UiSelect
+                    :model-value="voiceByCharacter[c.id] || ''"
+                    :options="[{ value: '', label: 'Voice — automatic' }].concat(voices.map((v) => ({ value: v.provider_voice_key, label: v.name })))"
+                    :aria-label="`Voice for ${c.name}`"
+                    drop="down"
+                    @update:model-value="(val) => setVoice(c.id, val)"
+                  />
                   <button
                     v-if="voiceByCharacter[c.id]"
                     class="ugc-btn ugc-btn-sm"
@@ -638,7 +679,7 @@ onMounted(() => {
    platform focus ring. Everything here is reset and rebuilt on the app's
    tokens so a form does not look like a different application embedded in
    the page. */
-.ugc-build :where(input[type='text'], input[type='number'], input:not([type]), textarea, select) {
+.ugc-build :where(input[type='text'], input[type='number'], input:not([type]), textarea) {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
@@ -653,13 +694,13 @@ onMounted(() => {
   outline: none;
   transition: border-color .12s ease, box-shadow .12s ease;
 }
-.ugc-build :where(input, textarea, select):hover:not(:disabled) { border-color: var(--color-border-active); }
-.ugc-build :where(input, textarea, select):focus-visible {
+.ugc-build :where(input, textarea):hover:not(:disabled) { border-color: var(--color-border-active); }
+.ugc-build :where(input, textarea):focus-visible {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(255, 107, 53, .16);
 }
 .ugc-build :where(input, textarea)::placeholder { color: var(--color-text-muted); }
-.ugc-build :where(input, textarea, select):disabled { opacity: .5; cursor: not-allowed; }
+.ugc-build :where(input, textarea):disabled { opacity: .5; cursor: not-allowed; }
 .ugc-build textarea { resize: vertical; min-height: 62px; }
 
 /* Number spinners are unstyleable and read as clutter next to the rest. */
@@ -667,25 +708,24 @@ onMounted(() => {
 .ugc-build input[type='number']::-webkit-outer-spin-button,
 .ugc-build input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-/* A select keeps its own arrow no matter what, so the native one is removed
-   and a caret drawn over the control. */
-.ugc-select { position: relative; display: flex; align-items: center; min-width: 0; width: 100%; }
-.ugc-build label > .ugc-select { width: 100%; }
-.ugc-select select { padding-right: 28px; cursor: pointer; }
-.ugc-select-caret {
-  position: absolute; right: 10px; pointer-events: none;
-  color: var(--color-text-muted); font-size: 11px; line-height: 1;
-}
-.ugc-select select option { background: var(--color-bg-elevated); color: var(--color-text-primary); }
 
 /* Labels wrapping a control, as used through the build column. */
 .ugc-build label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--color-text-muted); }
 
 .ugc-ch-voice { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
-.ugc-ch-voice .ugc-select { max-width: 190px; }
+.ugc-ch-voice > :first-child { max-width: 200px; }
 .ugc-btn-sm { padding: 5px 9px; font-size: 11px; }
 .ugc-audio { height: 30px; max-width: 100%; margin-top: 4px; }
 .ugc-audio::-webkit-media-controls-panel { background: var(--color-bg-elevated); }
+
+.ugc-label-row { display: flex; align-items: center; gap: 8px; }
+.ugc-suggest {
+  margin-left: auto; background: none; border: none; cursor: pointer;
+  color: var(--color-accent); font: inherit; font-size: 10.5px; padding: 2px 4px;
+  border-radius: 5px; opacity: .85;
+}
+.ugc-suggest:hover:not(:disabled) { opacity: 1; background: rgba(255, 107, 53, .1); }
+.ugc-suggest:disabled { color: var(--color-text-muted); cursor: default; }
 
 .ugc-stage-h { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .ugc-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: 280px; text-align: center; color: var(--color-text-muted); }

@@ -136,4 +136,44 @@ class UgcPlanTest extends TestCase
         $this->assertStringContainsString('Style: Headline,Arial,55.35,', $ass);
         $this->assertStringContainsString('\\pos(540,245.136)', $ass);
     }
+
+    public function test_a_demo_cutaway_may_be_silent_when_it_carries_a_headline(): void
+    {
+        $plan = UgcPlan::normalise([
+            ['kind' => 'on_camera', 'script_text' => 'I found this tool last week.', 'seconds' => 5,
+             'visual_brief' => 'Creator at a desk, phone-camera framing'],
+            ['kind' => 'b_roll', 'script_text' => '', 'seconds' => 6, 'source' => 'upload',
+             'headline' => 'wyvstudio.com', 'visual_brief' => 'Screen recording of the site being used'],
+        ], 'demo');
+
+        $this->assertCount(2, $plan);
+        $this->assertSame('', $plan[1]['script_text'], 'the cutaway stays silent');
+        $this->assertSame('wyvstudio.com', $plan[1]['headline']);
+    }
+
+    public function test_a_silent_cutaway_without_a_headline_is_rejected(): void
+    {
+        $this->expectException(ValidationException::class);
+        UgcPlan::normalise([
+            ['kind' => 'on_camera', 'script_text' => 'Words.', 'seconds' => 4, 'visual_brief' => 'Desk'],
+            ['kind' => 'b_roll', 'script_text' => '', 'seconds' => 5, 'source' => 'upload',
+             'visual_brief' => 'A screen, saying nothing at all'],
+        ], 'demo');
+    }
+
+    public function test_a_silent_shot_is_not_quoted_for_a_voice_it_never_uses(): void
+    {
+        $spoken = UgcPlan::normalise([
+            ['kind' => 'on_camera', 'script_text' => 'A line.', 'seconds' => 4, 'visual_brief' => 'Desk'],
+            ['kind' => 'b_roll', 'script_text' => 'Still talking here.', 'seconds' => 5,
+             'source' => 'upload', 'visual_brief' => 'Screen'],
+        ], 'demo');
+        $silent = UgcPlan::normalise([
+            ['kind' => 'on_camera', 'script_text' => 'A line.', 'seconds' => 4, 'visual_brief' => 'Desk'],
+            ['kind' => 'b_roll', 'script_text' => '', 'seconds' => 5, 'source' => 'upload',
+             'headline' => 'Look', 'visual_brief' => 'Screen'],
+        ], 'demo');
+
+        $this->assertGreaterThan(UgcPlan::quote($silent), UgcPlan::quote($spoken));
+    }
 }
