@@ -5,376 +5,220 @@ namespace App\Http\Controllers\Api\V1\Ugc;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateAIImageJob;
 use App\Jobs\GenerateTTSJob;
+use App\Models\Asset;
 use App\Models\Character;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Models\User;
 use App\Services\CreditService;
 use App\Services\Generation\TTS\GeminiVoices;
+use App\Services\Ugc\UgcHeadline;
+use App\Services\Ugc\UgcPlan;
 use App\Services\Ugc\UgcShotPlanner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
-/**
- * UGC ads — internal only for now (see the 'internal' middleware on the route
- * group).
- *
- * Two endpoints, deliberately separate. `plan` is free and reversible: it
- * returns a shot plan for the UI to render and let the user adjust. `generate`
- * is the one that spends credits, and it takes the plan back as input rather
- * than re-planning, so what the user approved is exactly what gets built.
- *
- * Generation reuses the existing pipeline wholesale. A UGC ad is a normal
- * multi-scene project whose talking scenes carry `planned_spokesperson`;
- * GenerateTalkingVideoJob::maybeDispatchForScene fires the lip-sync itself once
- * that scene's image and voice both exist. Nothing here orchestrates jobs by
- * hand, and the result opens in the ordinary editor.
- */
+/** Internal UGC director. Planning/quoting are reversible; generation executes the reviewed plan. */
 class UgcController extends Controller
 {
-    private const MAX_SCRIPT = 1500;
-    private const MAX_CHARACTERS = 5;
+    public function takes(Request $request): JsonResponse
+    {
+        $projects = Project::query()->where('workspace_id', $request->user()->workspace_id)
+            ->whereNotNull('visual_brief->ugc_format')->with('scenes')->latest('id')->limit(30)->get();
+        $takes = $projects->map(function (Project $project) {
+            $pending = false;
+            $failed = $project->status === 'failed';
+            foreach ($project->scenes as $scene) {
+                $settings = $scene->image_generation_settings_json ?? [];
+                $voice = $scene->voice_settings_json ?? [];
+                $failed = $failed || ! empty($settings['last_error']) || ! empty($settings['animation_last_error']) || ! empty($voice['last_error']);
+                $actor = in_array($settings['ugc_kind'] ?? '', ['on_camera', 'reaction'], true);
+                $pending = $pending || ! $scene->visual_asset_id || ! empty($settings['in_progress']) || ! empty($settings['animation_in_progress'])
+                    || ($actor && empty($settings['animation_video_asset_id']))
+                    || (trim((string) $scene->script_text) !== '' && empty($voice['audio_asset_id']));
+            }
 
-    /**
-     * Plan the shots. Spends nothing.
-     */
+            return ['id' => $project->id, 'character' => $project->title, 'scenes' => $project->scenes->count(),
+                'credits' => data_get($project->visual_brief, 'ugc_estimated_credits', 0),
+                'status' => $failed ? 'needs_attention' : ($pending ? 'generating' : 'ready_for_review')];
+        });
+
+        return response()->json(['data' => ['takes' => $takes], 'meta' => []]);
+    }
+
     public function plan(Request $request, UgcShotPlanner $planner): JsonResponse
     {
-        $validated = $request->validate([
-            'script'           => ['required', 'string', 'max:'.self::MAX_SCRIPT],
-            'product'          => ['sometimes', 'nullable', 'string', 'max:200'],
-            'context'          => ['sometimes', 'nullable', 'string', 'max:300'],
-            'duration_seconds' => ['sometimes', 'integer', 'min:5', 'max:180'],
-            'language'         => ['sometimes', 'string', 'max:12'],
+        $v = $request->validate([
+            'script' => ['nullable', 'string', 'max:1500', 'required_without:context'],
+            'product' => ['nullable', 'string', 'max:200'],
+            'context' => ['nullable', 'string', 'max:1500', 'required_without:script'],
+            'format' => ['required', Rule::in(['auto', ...UgcPlan::FORMATS])],
+            'duration_seconds' => ['required', 'integer', 'min:5', 'max:180'],
+            'language' => ['sometimes', 'string', 'max:12'],
             'available_footage' => ['sometimes', 'array', 'max:20'],
             'available_footage.*' => ['string', 'max:120'],
         ]);
 
-        $plan = $planner->plan(
-            $validated['script'],
-            (string) ($validated['product'] ?? ''),
-            (string) ($validated['context'] ?? ''),
-            (int) ($validated['duration_seconds'] ?? 30),
-            (string) ($validated['language'] ?? 'en'),
-            array_values($validated['available_footage'] ?? []),
-        );
-
-        return response()->json([
-            'data' => [
-                'segments'  => $plan['segments'],
-                'reasoning' => $plan['reasoning'],
-                // Per character, because every selected character generates the
-                // whole plan again.
-                'credits_per_character' => $plan['estimated_credits'],
-            ],
-            'meta' => [],
-        ]);
+        return response()->json(['data' => $planner->plan(
+            (string) ($v['script'] ?? ''), (string) ($v['product'] ?? ''), (string) ($v['context'] ?? ''),
+            $v['duration_seconds'], $v['language'] ?? 'en', $v['available_footage'] ?? [], $v['format'],
+        ), 'meta' => []]);
     }
 
-    /**
-     * Build one project per character from an approved plan and start it.
-     */
+    /** Re-price edits without generating media or charging credits. */
+    public function quote(Request $request): JsonResponse
+    {
+        $v = $request->validate($this->planRules());
+        $segments = UgcPlan::normalise($v['segments'], $v['format']);
+
+        return response()->json(['data' => [
+            'format' => $v['format'], 'segments' => $segments, 'script' => UgcPlan::script($segments),
+            'credits_per_character' => UgcPlan::quote($segments), 'warnings' => UgcPlan::warnings($segments),
+        ], 'meta' => []]);
+    }
+
     public function generate(Request $request): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
-
-        $validated = $request->validate([
-            'script'        => ['required', 'string', 'max:'.self::MAX_SCRIPT],
-            'character_ids' => ['required', 'array', 'min:1', 'max:'.self::MAX_CHARACTERS],
-            'character_ids.*' => ['integer'],
-            'segments'      => ['required', 'array', 'min:1', 'max:24'],
-            'segments.*.kind'         => ['required', 'string', 'in:on_camera,b_roll'],
-            'segments.*.script_text'  => ['required', 'string', 'max:'.self::MAX_SCRIPT],
-            'segments.*.seconds'      => ['sometimes', 'numeric', 'min:0.5', 'max:60'],
-            'segments.*.visual_brief' => ['sometimes', 'nullable', 'string', 'max:400'],
-            'segments.*.source'       => ['sometimes', 'nullable', 'string', 'in:upload,stock,generate'],
-            'aspect_ratio'  => ['sometimes', 'string', 'in:9:16,1:1,16:9'],
-            'language'      => ['sometimes', 'string', 'max:12'],
-            'title'         => ['sometimes', 'nullable', 'string', 'max:120'],
-            // The spokesperson attestation, same as the wizard collects.
-            'consent'       => ['accepted'],
+        $v = $request->validate($this->planRules() + [
+            'script' => ['present', 'nullable', 'string', 'max:1500'],
+            'character_ids' => ['required', 'array', 'min:1', 'max:5'],
+            'character_ids.*' => ['required', 'integer', 'distinct'],
+            'aspect_ratio' => ['required', 'in:9:16,1:1,16:9'],
+            'language' => ['sometimes', 'string', 'max:12'],
+            'voice_key' => ['nullable', Rule::in(array_keys(GeminiVoices::VOICES))],
+            'title' => ['nullable', 'string', 'max:120'],
+            'consent' => ['accepted'], 'reviewed' => ['accepted'],
+            'credits_per_character' => ['required', 'integer', 'min:0'],
         ]);
-
-        // This workspace's own characters, plus the global stock library.
-        // Grouped so the ownership test cannot escape the status filter.
-        $characters = Character::query()
-            ->whereIn('id', $validated['character_ids'])
-            ->where('status', 'active')
+        $segments = UgcPlan::normalise($v['segments'], $v['format']);
+        if (! UgcPlan::sameScript((string) ($v['script'] ?? ''), UgcPlan::script($segments))) {
+            throw ValidationException::withMessages(['script' => 'The script and shot plan differ. Review and re-price the latest plan.']);
+        }
+        $characters = Character::query()->whereIn('id', $v['character_ids'])->where('status', 'active')
             ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
-                ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))
-            ->get();
-
-        if ($characters->count() !== count(array_unique($validated['character_ids']))) {
-            return response()->json([
-                'error' => [
-                    'code'    => 'character_not_found',
-                    'message' => 'One or more of those characters no longer exist in this workspace.',
-                ],
-            ], 422);
+                ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->get();
+        if ($characters->count() !== count($v['character_ids']) || $characters->contains(fn ($c) => ! $c->reference_asset_id)) {
+            throw ValidationException::withMessages(['character_ids' => 'Choose accessible, active characters with reference images.']);
         }
-
-        $missingImage = $characters->filter(fn (Character $c) => ! $c->reference_asset_id);
-        if ($missingImage->isNotEmpty()) {
-            return response()->json([
-                'error' => [
-                    'code'    => 'character_missing_reference',
-                    'message' => 'These characters need a reference image before they can talk: '
-                        .$missingImage->pluck('name')->implode(', ').'.',
-                ],
-            ], 422);
+        $referenceIds = $characters->pluck('reference_asset_id')->unique();
+        $references = Asset::query()->whereIn('id', $referenceIds)->where('asset_type', 'image')
+            ->whereNotNull('storage_url')->where('storage_url', '!=', '')->count();
+        if ($references !== $referenceIds->count()) {
+            throw ValidationException::withMessages(['character_ids' => 'A selected character reference is missing. Repair it before generating a take.']);
         }
-
-        $segments = $this->normaliseSegments($validated['segments']);
-        if ($segments === []) {
-            return response()->json([
-                'error' => ['code' => 'empty_plan', 'message' => 'That plan has no lines to say.'],
-            ], 422);
+        // Resolve media before spending. Stock must be selected/imported into this workspace too.
+        $assets = [];
+        foreach ($segments as $i => $seg) {
+            if ($seg['kind'] !== 'b_roll' || $seg['source'] === 'generate') {
+                continue;
+            }
+            $asset = $seg['asset_id'] ? Asset::query()->where('workspace_id', $user->workspace_id)
+                ->whereKey($seg['asset_id'])->whereIn('asset_type', ['image', 'video'])->first() : null;
+            if (! $asset || ! $asset->storage_url) {
+                throw ValidationException::withMessages(["segments.{$i}.asset_id" => 'Select accessible footage for this shot. Missing footage is never replaced by an AI image.']);
+            }
+            $assets[$asset->id] = $asset;
         }
-
-        // Quote the whole run before spending any of it — a half-funded batch
-        // that dies on character three is worse than one that never starts.
-        $perCharacter = $this->quoteSegments($segments);
+        $perCharacter = UgcPlan::quote($segments);
+        if ($perCharacter !== $v['credits_per_character']) {
+            throw ValidationException::withMessages(['credits_per_character' => 'The estimate changed. Re-price and review the plan before generating.']);
+        }
         $total = $perCharacter * $characters->count();
         $balance = app(CreditService::class)->balance((int) $user->workspace_id);
-
         if ($balance < $total) {
-            return response()->json([
-                'error' => [
-                    'code'    => 'insufficient_credits',
-                    'message' => "This run needs {$total} credits ({$perCharacter} per character) and you have {$balance}.",
-                    'details' => ['required' => $total, 'balance' => $balance, 'per_character' => $perCharacter],
-                ],
-            ], 422);
+            throw ValidationException::withMessages(['credits' => "This run needs an estimated {$total} credits and you have {$balance}."]);
         }
+        // All characters/scene records commit together. No job can see a half-built batch.
+        $projects = DB::transaction(function () use ($user, $characters, $segments, $v, $assets) {
+            return $characters->map(fn ($c) => $this->buildProject($user, $c, $segments, $v, $assets))->all();
+        });
 
-        $language = (string) ($validated['language'] ?? 'en');
-        $aspect   = (string) ($validated['aspect_ratio'] ?? '9:16');
-        $title    = trim((string) ($validated['title'] ?? '')) ?: $this->titleFrom($validated['script']);
-
-        $projects = [];
-        foreach ($characters as $character) {
-            $projects[] = DB::transaction(fn () => $this->buildProject(
-                $user, $character, $segments, $title, $aspect, $language, $validated['script'],
-            ));
-        }
-
-        // Voice runs per project and fans out across its scenes; dispatched
-        // after the transactions so no job can see a half-written project.
-        foreach ($projects as $p) {
-            GenerateTTSJob::dispatch($p['id']);
-        }
-
-        return response()->json([
-            'data' => [
-                'takes' => $projects,
-                'credits_quoted' => $total,
-            ],
-            'meta' => [],
-        ], 201);
+        return response()->json(['data' => ['takes' => $projects, 'credits_quoted' => $total], 'meta' => []], 201);
     }
 
-    /**
-     * One character's take: a project whose scenes alternate between talking
-     * and cut-away exactly as the approved plan says.
-     *
-     * @param  list<array<string,mixed>>  $segments
-     * @return array{id:int,character:string,scenes:int,credits:int}
-     */
-    private function buildProject(
-        User $user,
-        Character $character,
-        array $segments,
-        string $title,
-        string $aspect,
-        string $language,
-        string $script,
-    ): array {
-        $totalSeconds = (int) round(array_sum(array_column($segments, 'seconds')));
-
-        $project = Project::query()->create([
-            'workspace_id'       => $user->workspace_id,
-            'created_by_user_id' => $user->getKey(),
-            'title'              => $title.' — '.$character->name,
-            'aspect_ratio'       => $aspect,
-            'duration_target_seconds' => max(1, $totalSeconds),
-            'status'             => 'generating',
-            'source_type'        => 'script',
-            'primary_language'   => $language,
-            'source_content_raw' => $script,
-            'default_character_id' => $character->getKey(),
-        ]);
-
-        $voiceId = GeminiVoices::defaultForGender($character->gender ?? null);
-        $order = 0;
-
-        foreach ($segments as $seg) {
-            $order++;
-            $isTalking = $seg['kind'] === 'on_camera';
-
-            $scene = Scene::query()->create([
-                'project_id'       => $project->getKey(),
-                'scene_order'      => $order,
-                'scene_type'       => 'narration',
-                'label'            => $isTalking ? "On camera {$order}" : "Cut-away {$order}",
-                'script_text'      => $seg['script_text'],
-                'duration_seconds' => max(1, (int) round($seg['seconds'])),
-                // One voice across every scene, talking or not: the narration
-                // has to sound like the same person while the picture cuts.
-                'voice_settings_json' => [
-                    'voice_id'  => $voiceId,
-                    'provider'  => 'google',
-                    'speed'     => 1.0,
-                    'stability' => 'medium',
-                ],
-                'caption_settings_json' => [
-                    'enabled'         => true,
-                    'style_key'       => 'impact',
-                    'highlight_mode'  => 'keywords',
-                    'position'        => 'bottom_third',
-                    'font'            => 'Bebas Neue',
-                    'highlight_color' => '#ff6b35',
-                ],
-                'visual_type'   => $isTalking ? 'spokesperson' : 'ai_image',
-                'visual_prompt' => $isTalking ? null : ($seg['visual_brief'] ?: null),
-                'status'        => 'draft',
-                'character_id'  => $isTalking ? $character->getKey() : null,
-            ]);
-
-            $imageToken = (string) Str::uuid();
-
-            $scene->forceFill([
-                'image_generation_settings_json' => array_filter([
-                    'in_progress'           => true,
-                    'last_error'            => null,
-                    'needs_visual'          => false,
-                    'generation_token'      => $imageToken,
-                    'generation_started_at' => now()->toIso8601String(),
-                    'reference_asset_ids'   => $isTalking ? [(int) $character->reference_asset_id] : [],
-                    // Lip-sync needs the image AND the voice, so it cannot chain
-                    // off the image the way i2v does. The flag lets whichever
-                    // finishes last fire the talking job.
-                    'planned_spokesperson'  => $isTalking ? true : null,
-                    'spokesperson_consent'  => $isTalking ? [
-                        'at'      => now()->toIso8601String(),
-                        'user_id' => (int) $user->getKey(),
-                    ] : null,
-                    // Where the cut-away picture should come from. 'upload'
-                    // means the customer still has to supply it — the scene is
-                    // built so the editor can show the gap.
-                    'ugc_broll_source'      => $isTalking ? null : ($seg['source'] ?? 'stock'),
-                ], fn ($v) => $v !== null),
-            ])->save();
-
-            GenerateAIImageJob::dispatch(
-                $scene->getKey(),
-                $project->getKey(),
-                'photorealistic',
-                null,
-                'photorealistic',
-                $imageToken,
-            );
-        }
-
+    private function planRules(): array
+    {
         return [
-            'id'        => (int) $project->getKey(),
-            'character' => (string) $character->name,
-            'scenes'    => $order,
-            'credits'   => $this->quoteSegments($segments),
+            'format' => ['required', Rule::in(UgcPlan::FORMATS)],
+            'segments' => ['required', 'array', 'min:1', 'max:12'],
+            'segments.*.kind' => ['required', 'in:on_camera,b_roll,reaction'],
+            'segments.*.script_text' => ['present', 'nullable', 'string', 'max:1500'],
+            'segments.*.seconds' => ['required', 'numeric', 'min:1', 'max:60'],
+            'segments.*.visual_brief' => ['required', 'string', 'max:1000'],
+            'segments.*.voice_direction' => ['nullable', 'string', 'max:500'],
+            'segments.*.motion_prompt' => ['nullable', 'string', 'max:1000'],
+            'segments.*.headline' => ['nullable', 'string', 'max:180'],
+            'segments.*.source' => ['nullable', 'in:upload,stock,generate'],
+            'segments.*.asset_id' => ['nullable', 'integer', 'min:1'],
         ];
     }
 
-    /**
-     * Re-derive the plan server-side. The client sends back what it showed the
-     * user, but the cost and the shape are decided here — a hand-edited request
-     * must not be able to buy a 30-segment run at a 3-segment price.
-     *
-     * @param  list<array<string,mixed>>  $raw
-     * @return list<array<string,mixed>>
-     */
-    private function normaliseSegments(array $raw): array
+    private function buildProject(User $user, Character $character, array $segments, array $v, array $assets): array
     {
-        $out = [];
-        foreach ($raw as $seg) {
-            $text = trim((string) ($seg['script_text'] ?? ''));
-            if ($text === '') {
-                continue;
-            }
-
-            $seconds = (float) ($seg['seconds'] ?? 0);
-            if ($seconds <= 0) {
-                $seconds = max(1.5, round(str_word_count($text) / 2.6, 1));
-            }
-
-            $kind = ($seg['kind'] ?? '') === 'b_roll' ? 'b_roll' : 'on_camera';
-
-            $out[] = [
-                'kind'         => $kind,
-                'script_text'  => $text,
-                'seconds'      => $seconds,
-                'visual_brief' => $kind === 'b_roll' ? trim((string) ($seg['visual_brief'] ?? '')) : '',
-                'source'       => $kind === 'b_roll'
-                    ? (in_array($seg['source'] ?? '', ['upload', 'stock', 'generate'], true) ? $seg['source'] : 'stock')
-                    : null,
-            ];
-        }
-
-        if ($out !== []) {
-            // The opener is the whole ad. Never let an edited payload start on
-            // a cut-away.
-            $out[0]['kind'] = 'on_camera';
-            $out[0]['visual_brief'] = '';
-            $out[0]['source'] = null;
-        }
-
-        return $out;
-    }
-
-    /**
-     * What the run will actually cost, priced from the same source of truth the
-     * jobs bill against.
-     *
-     * Quoting only the lip-sync was wrong and measurably so: a two-scene test
-     * quoted 130 and spent 214, because every scene also pays for its voice and
-     * most pay for a picture. A number the user is shown before spending has to
-     * be the number they are charged, or the gate in front of it is theatre.
-     *
-     * @param  list<array<string,mixed>>  $segments
-     */
-    private function quoteSegments(array $segments): int
-    {
-        $images = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
-        $total = 0;
-
-        foreach ($segments as $seg) {
-            // Every scene is voiced — the narration runs continuously whether
-            // the picture is on the face or on the product.
-            $total += CreditService::TTS_GEMINI;
-
-            if ($seg['kind'] === 'on_camera') {
-                // The character still (reference path), then the lip-sync.
-                $total += $images->referenceGenerationCost(null);
-                $total += CreditService::spokespersonCost((float) $seg['seconds']);
-                continue;
-            }
-
-            // Cut-aways only cost anything when we have to render one. Footage
-            // the customer uploads, and stock, are free — which is the whole
-            // reason cutting away is cheaper than staying on the face.
-            if (($seg['source'] ?? 'stock') === 'generate') {
-                $total += $images->generationCost(null, false);
+        $reaction = $v['format'] === 'reaction';
+        $script = UgcPlan::script($segments);
+        $title = trim((string) ($v['title'] ?? '')) ?: Str::limit($script ?: $segments[0]['headline'], 48, '');
+        $project = Project::query()->create([
+            'workspace_id' => $user->workspace_id, 'created_by_user_id' => $user->id,
+            'title' => $title.' — '.$character->name, 'aspect_ratio' => $v['aspect_ratio'],
+            'duration_target_seconds' => (int) ceil(array_sum(array_column($segments, 'seconds'))),
+            'status' => 'generating',
+            'source_type' => 'script', 'primary_language' => $v['language'] ?? 'en',
+            'source_content_raw' => $script, 'default_character_id' => $character->id,
+            'visual_brief' => ['ugc_format' => $v['format'], 'ugc_estimated_credits' => UgcPlan::quote($segments)],
+        ]);
+        $voiceId = $v['voice_key'] ?? GeminiVoices::defaultForGender($character->gender ?? null);
+        foreach ($segments as $i => $seg) {
+            $talking = $seg['kind'] === 'on_camera';
+            $actor = $seg['kind'] !== 'b_roll';
+            $asset = $assets[$seg['asset_id'] ?? 0] ?? null;
+            $generate = $actor || $seg['source'] === 'generate';
+            $token = $generate ? (string) Str::uuid() : null;
+            $scene = Scene::query()->create([
+                'project_id' => $project->id, 'scene_order' => $i + 1, 'scene_type' => 'narration',
+                'label' => ucfirst(str_replace('_', ' ', $seg['kind'])).' '.($i + 1),
+                'script_text' => $seg['script_text'], 'duration_seconds' => $seg['seconds'],
+                'voice_settings_json' => ['voice_id' => $voiceId, 'provider' => 'google', 'speed' => 1.0,
+                    'voice_prompt' => $seg['voice_direction'], 'enabled' => ! $reaction],
+                'caption_settings_json' => [
+                    'enabled' => ! $reaction, 'style_key' => 'impact', 'highlight_mode' => 'line_by_line',
+                    'position' => 'bottom_third', 'font' => 'Arial', 'highlight_color' => '#ffffff',
+                    'ugc_headline' => UgcHeadline::layout($seg['headline']),
+                ],
+                'visual_type' => $talking ? 'spokesperson' : ($asset ? $asset->asset_type : 'ai_image'),
+                'visual_asset_id' => $asset?->id, 'character_id' => $actor ? $character->id : null,
+                'visual_prompt' => ($actor ? UgcPlan::CAMERA.' ' : '').$seg['visual_brief'],
+                'status' => 'draft',
+                'image_generation_settings_json' => array_filter([
+                    'in_progress' => $generate, 'needs_visual' => false, 'generation_token' => $token,
+                    'generation_started_at' => $generate ? now()->toIso8601String() : null,
+                    'reference_asset_ids' => $actor ? [(int) $character->reference_asset_id] : [],
+                    'planned_spokesperson' => $talking,
+                    'spokesperson_consent' => $talking ? ['at' => now()->toIso8601String(), 'user_id' => $user->id] : null,
+                    'ugc_format' => $v['format'], 'ugc_kind' => $seg['kind'], 'ugc_broll_source' => $seg['source'],
+                    'ugc_motion_prompt' => $seg['motion_prompt'],
+                ], fn ($x) => $x !== null),
+            ]);
+            if ($generate) {
+                GenerateAIImageJob::dispatch(
+                    $scene->id, $project->id, 'photorealistic', null, 'photorealistic', $token,
+                    $reaction ? (int) $seg['seconds'] : null,
+                    $reaction ? $seg['motion_prompt'].' Natural restrained movement, preserve identity and outfit. No speaking, no text or watermark.' : null,
+                    $reaction ? UgcPlan::REACTION_TIER : null,
+                )->afterCommit();
             }
         }
+        if (! $reaction) {
+            GenerateTTSJob::dispatch($project->id)->afterCommit();
+        }
 
-        return $total;
-    }
-
-    private function titleFrom(string $script): string
-    {
-        $first = Str::of($script)->trim()->limit(48, '')->value();
-
-        return $first !== '' ? $first : 'UGC ad';
+        return ['id' => $project->id, 'character' => $character->name,
+            'scenes' => count($segments), 'credits' => UgcPlan::quote($segments), 'status' => 'generating'];
     }
 }

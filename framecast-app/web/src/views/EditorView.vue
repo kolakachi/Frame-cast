@@ -13,6 +13,7 @@ import SchedulePostModal from "../components/SchedulePostModal.vue";
 import UiSelect from "../components/UiSelect.vue";
 import VoiceCloneModal from "../components/VoiceCloneModal.vue";
 import CaptionPreview from "../components/CaptionPreview.vue";
+import UgcHeadline from "../components/UgcHeadline.vue";
 import { CAPTION_ANIMATIONS, animationByKey, panelRowAnimations, syntheticTimedWords } from "../composables/captionPresets";
 import NotifBell from "../components/NotifBell.vue";
 
@@ -2942,6 +2943,7 @@ watch([captionEnabledDraft, captionStyleDraft, captionHighlightDraft, captionPos
 
   const savedCaptions = activeCaptionSettings.value || {};
   const nextSettings = {
+    ...savedCaptions,
     enabled: captionEnabledDraft.value,
     style_key: captionStyleDraft.value,
     highlight_mode: captionHighlightDraft.value,
@@ -5550,6 +5552,17 @@ async function persistVoiceSettings(sceneId, nextSettings) {
   }
 }
 
+async function saveUgcHeadline(event) {
+  const sceneId = Number(event.target.dataset.sceneId);
+  const scene = scenes.value.find(s => s.id === sceneId);
+  if (!scene) return;
+  if (captionSaveTimer) window.clearTimeout(captionSaveTimer);
+  await persistCaptionSettings(sceneId, {
+    ...normalizeCaptionSettings(scene.caption_settings_json),
+    ugc_headline: { text: event.target.value },
+  });
+}
+
 async function persistCaptionSettings(sceneId, nextSettings) {
   captionSaveTimer = null;
   captionSaveState.value = "saving";
@@ -7662,6 +7675,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="preview-watermark">WYVSTUDIO</div>
                 <div class="preview-timer">{{ previewTimer.elapsed }}</div>
+                <UgcHeadline :layout="activeScene?.caption_settings_json?.ugc_headline || {}" :aspect-ratio="project?.aspect_ratio || '9:16'" />
                 <div
                   v-if="captionEnabledDraft && captionHighlightDraft !== 'none' && captionAnimationDraft === 'plain'"
                   class="preview-caption"
@@ -8844,6 +8858,14 @@ onBeforeUnmount(() => {
               </div>
               <div class="panel-section-body">
                 <!-- Preset selector -->
+                <label v-if="activeScene?.caption_settings_json?.ugc_headline" class="control-name" style="display:block;margin-bottom:12px;">
+                  UGC headline · this scene only
+                  <textarea :key="activeScene.id" :data-scene-id="activeScene.id" class="scene-query-input"
+                    :value="activeScene.caption_settings_json.ugc_headline.text" maxlength="180"
+                    :disabled="captionSaveState === 'saving'" @change="saveUgcHeadline"
+                    style="width:100%;min-height:70px;margin-top:6px;" aria-label="UGC headline" />
+                  <span class="panel-scope-hint">Not spoken. Saves when you leave the field; no media regeneration.</span>
+                </label>
                 <div v-if="captionPresets.length > 0" class="preset-row">
                   <UiSelect :modelValue="''" :options="captionPresetOptions" placeholder="Apply a preset…" @update:modelValue="onApplyCaptionPreset" />
                   <button

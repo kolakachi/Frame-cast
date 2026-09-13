@@ -171,7 +171,9 @@ Route::prefix('v1')->group(function (): void {
         // everyone outside the team, so a customer who finds the route sees
         // nothing rather than a locked door.
         Route::prefix('/ugc')->middleware('internal')->group(function (): void {
+            Route::get('/takes', [UgcController::class, 'takes']);
             Route::post('/plan', [UgcController::class, 'plan']);
+            Route::post('/quote', [UgcController::class, 'quote']);
             Route::post('/generate', [UgcController::class, 'generate']);
         });
 

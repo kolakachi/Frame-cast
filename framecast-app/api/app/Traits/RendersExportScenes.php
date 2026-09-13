@@ -160,6 +160,13 @@ trait RendersExportScenes
                 );
             }
 
+            $headline = trim((string) data_get($captionSettings, 'ugc_headline.text', ''));
+            if ($headline !== '') {
+                $headlineFile = sprintf('%s/headline-%03d.ass', $tempDir, $index);
+                file_put_contents($headlineFile, \App\Services\Ugc\UgcHeadline::ass($headline, $dw, $dh, $duration));
+                $cleanupPaths[] = $headlineFile;
+                $tail[] = "subtitles={$headlineFile}";
+            }
             $tailStr = $tail ? ','.implode(',', $tail) : '';
 
             if ($useFit) {

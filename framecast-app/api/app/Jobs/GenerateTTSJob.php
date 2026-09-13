@@ -97,6 +97,10 @@ class GenerateTTSJob implements ShouldQueue
         $done  = 0;
 
         foreach ($scenes as $scene) {
+            // Silent UGC reactions have an independent headline, never a voice read.
+            if (data_get($scene->image_generation_settings_json, 'ugc_kind') === 'reaction') {
+                continue;
+            }
             $existingVoiceSettings = $scene->voice_settings_json ?? [];
             $existingAudioAssetId = (int) data_get($existingVoiceSettings, 'audio_asset_id', 0);
             $voiceIsOutdated = (bool) data_get($existingVoiceSettings, 'is_outdated', false);

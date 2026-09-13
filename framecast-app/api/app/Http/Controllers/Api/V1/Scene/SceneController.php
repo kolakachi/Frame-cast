@@ -213,6 +213,8 @@ class SceneController extends Controller
             'caption_settings_json.highlight_style' => ['sometimes', 'nullable', 'string', 'in:color,underline,plain'],
             'caption_settings_json.panel_color' => ['sometimes', 'nullable', 'string', 'max:64'],
             'caption_settings_json.backdrop' => ['sometimes', 'nullable', 'boolean'],
+            'caption_settings_json.ugc_headline' => ['sometimes', 'nullable', 'array'],
+            'caption_settings_json.ugc_headline.text' => ['sometimes', 'nullable', 'string', 'max:180'],
             'visual_style' => ['sometimes', 'nullable', 'string', 'max:64'],
             'custom_visual_style' => ['sometimes', 'nullable', 'string', 'max:500'],
             'motion_settings_json' => ['sometimes', 'nullable', 'array'],
@@ -258,6 +260,16 @@ class SceneController extends Controller
             }
         }
 
+        if (array_key_exists('caption_settings_json', $validated) && is_array($validated['caption_settings_json'])) {
+            $captions = $validated['caption_settings_json'];
+            if (array_key_exists('ugc_headline', $captions)) {
+                $captions['ugc_headline'] = \App\Services\Ugc\UgcHeadline::layout((string) data_get($captions, 'ugc_headline.text', ''));
+            } elseif (data_get($scene->caption_settings_json, 'ugc_headline')) {
+                // Ordinary caption edits must not erase the independent headline.
+                $captions['ugc_headline'] = $scene->caption_settings_json['ugc_headline'];
+            }
+            $validated['caption_settings_json'] = $captions;
+        }
         $scene->fill($validated);
         $scene->save();
 

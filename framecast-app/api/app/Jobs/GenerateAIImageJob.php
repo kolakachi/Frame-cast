@@ -310,6 +310,7 @@ class GenerateAIImageJob implements ShouldQueue
                 'visual_prompt'                  => $prompt,
                 'visual_style'                   => $this->style,
                 'image_generation_settings_json' => [
+                    ...$this->ugcSettings($scene),
                     'in_progress'    => false,
                     'needs_visual'   => false,
                     'last_error'     => null,
@@ -500,6 +501,7 @@ class GenerateAIImageJob implements ShouldQueue
                         'visual_prompt'                  => $safePrompt,
                         'visual_style'                   => $this->style,
                         'image_generation_settings_json' => [
+                            ...$this->ugcSettings($scene),
                             'in_progress'    => false,
                             'needs_visual'   => false,
                             'last_error'     => null,
@@ -528,7 +530,10 @@ class GenerateAIImageJob implements ShouldQueue
 
                     // Resume safety net (see PipelineStatusService) — only
                     // relevant when no animation is chained behind this image.
-                    if (! $this->chainAnimateTier) {
+                    if ($this->chainAnimateAfterSeconds !== null) {
+                        AnimateSceneJob::dispatch($this->sceneId, $this->projectId,
+                            $this->chainAnimateTier ?? 'quick', $this->chainAnimateAfterSeconds, $this->chainAnimateMotionPrompt);
+                    } else {
                         rescue(fn () => app(\App\Services\Generation\PipelineStatusService::class)->maybeMarkReady($this->projectId));
                     }
 
@@ -657,6 +662,12 @@ class GenerateAIImageJob implements ShouldQueue
             now()->addMinutes(30),
             ['assetId' => $asset->getKey()],
         );
+    }
+
+    private function ugcSettings(Scene $scene): array
+    {
+        return array_filter($scene->image_generation_settings_json ?? [],
+            fn ($key) => str_starts_with($key, 'ugc_'), ARRAY_FILTER_USE_KEY);
     }
 
     private function buildPrompt(Scene $scene, bool $includeCharacterDescription = true): string

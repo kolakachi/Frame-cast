@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
+import MediaPickerModal from '../components/MediaPickerModal.vue'
 import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import { apiErrorMessage } from '../composables/apiError'
@@ -9,24 +10,49 @@ import { apiErrorMessage } from '../composables/apiError'
 const router = useRouter()
 const authStore = useAuthStore()
 
-// Past this, one listen is required before Generate arms. A single take is
-// cheap enough to just try; a batch repeats the same mistake per character,
-// so the wrong read costs several times over. Server-side cost is the source
-// of truth — this only decides whether we insist on a preview first.
-const GATE_CREDITS = 500
 const MAX_SCRIPT = 1500
 const MAX_CHARACTERS = 5
 
 const script = ref('')
+const product = ref('')
+const context = ref('')
+const format = ref('auto')
+const duration = ref(30)
+const language = ref('en')
+const footageLabels = ref('')
+const voiceKey = ref('')
+const voices = ref([])
+const voicePreviewUrl = ref('')
+const loadingVoice = ref(false)
+const reviewed = ref(false)
+const consent = ref(false)
+const quoting = ref(false)
+const quotedFingerprint = ref('')
+const footageShot = ref(null)
+const formatOptions = [
+  ['auto', 'Let the director choose'], ['direct_camera', 'Continuous talking take'],
+  ['demo', 'Product / app demonstration'], ['story', 'Story with deliberate cuts'],
+  ['reaction', 'Silent reaction + headline (5 or 10 seconds)'],
+]
 const selected = ref([])          // chosen characters
 const aspectRatio = ref('9:16')
 const plan = ref(null)            // { segments, reasoning, credits_per_character }
 const planning = ref(false)
 const generating = ref(false)
-const previewed = ref(false)
 const takes = ref([])
 const errorMessage = ref('')
 const balance = ref(null)
+let takesTimer = null
+let disposed = false
+async function loadTakes() {
+  clearTimeout(takesTimer)
+  try {
+    const { data } = await api.get('/ugc/takes')
+    if (!disposed) takes.value = data?.data?.takes ?? []
+  } catch { /* Keep the existing cards; the editor exposes detailed job errors. */ }
+  if (!disposed && takes.value.some(t => t.status === 'generating')) takesTimer = setTimeout(loadTakes, 10000)
+}
+onBeforeUnmount(() => { disposed = true; clearTimeout(takesTimer) })
 
 // ── character picker ─────────────────────────────────────────────────
 const pickerOpen = ref(false)
@@ -42,10 +68,25 @@ const onCameraCount = computed(() =>
   (plan.value?.segments ?? []).filter((s) => s.kind === 'on_camera').length)
 const perCharacter = computed(() => plan.value?.credits_per_character ?? 0)
 const totalCredits = computed(() => perCharacter.value * selected.value.length)
-const gated = computed(() => totalCredits.value > GATE_CREDITS)
-const needsListen = computed(() => gated.value && !previewed.value)
+const planFingerprint = computed(() => JSON.stringify([plan.value?.format, plan.value?.segments]))
+const quoteCurrent = computed(() => !!plan.value && quotedFingerprint.value === planFingerprint.value)
+const missingFootage = computed(() => (plan.value?.segments ?? []).some(s =>
+  s.kind === 'b_roll' && s.source !== 'generate' && !s.asset_id))
 const canGenerate = computed(() =>
-  Boolean(plan.value) && selected.value.length > 0 && !needsListen.value && !generating.value)
+  quoteCurrent.value && selected.value.length > 0 && reviewed.value && consent.value &&
+  !missingFootage.value && !generating.value && !quoting.value && !planning.value)
+
+let inputRevision = 0
+watch([script, product, context, format, duration, language, footageLabels], () => {
+  inputRevision++
+  plan.value = null
+  reviewed.value = false
+}, { flush: 'sync' })
+watch([planFingerprint, selected, aspectRatio, voiceKey], () => { reviewed.value = false }, { deep: true, flush: 'sync' })
+watch(voiceKey, () => { voicePreviewUrl.value = '' })
+watch(format, value => {
+  if (value === 'reaction' && ![5, 10].includes(duration.value)) duration.value = 5
+}, { flush: 'sync' })
 
 async function loadBalance() {
   try {
@@ -85,9 +126,7 @@ function toggleCharacter(c) {
   const i = selected.value.findIndex((x) => x.id === c.id)
   if (i >= 0) selected.value.splice(i, 1)
   else if (selected.value.length < MAX_CHARACTERS) selected.value.push(c)
-  // Adding or removing a character changes the bill, so the preview has to be
-  // re-earned rather than carried over from a cheaper configuration.
-  previewed.value = false
+  reviewed.value = false
 }
 
 const isSelected = (c) => selected.value.some((x) => x.id === c.id)
@@ -99,16 +138,21 @@ function setFilter(key, value) {
 
 // ── planning + generation ────────────────────────────────────────────
 async function makePlan() {
-  if (!script.value.trim()) return
+  if (!script.value.trim() && !context.value.trim()) return
+  const revision = inputRevision
   planning.value = true
   errorMessage.value = ''
-  previewed.value = false
+  reviewed.value = false
   try {
     const { data } = await api.post('/ugc/plan', {
       script: script.value,
-      duration_seconds: 30,
+      product: product.value, context: context.value, format: format.value,
+      duration_seconds: Number(duration.value), language: language.value,
+      available_footage: footageLabels.value.split('\n').map(s => s.trim()).filter(Boolean),
     })
+    if (revision !== inputRevision) return
     plan.value = data?.data ?? null
+    quotedFingerprint.value = planFingerprint.value
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, 'Could not plan the shots.')
   } finally {
@@ -116,10 +160,37 @@ async function makePlan() {
   }
 }
 
-function previewVoices() {
-  // Hearing one read is what the gate is actually for. The audio itself is
-  // generated per scene during the run; this is the deliberate pause.
-  previewed.value = true
+async function reprice() {
+  const fingerprint = planFingerprint.value
+  quoting.value = true
+  errorMessage.value = ''
+  try {
+    const { data } = await api.post('/ugc/quote', { format: plan.value.format, segments: plan.value.segments })
+    if (fingerprint !== planFingerprint.value) return
+    plan.value = { ...plan.value, ...data.data }
+    quotedFingerprint.value = planFingerprint.value
+  } catch (err) {
+    errorMessage.value = apiErrorMessage(err, 'Could not validate the edited plan.')
+  } finally { quoting.value = false }
+}
+
+function selectFootage({ item }) {
+  const seg = plan.value?.segments[footageShot.value]
+  if (seg && item?.id && item._type === 'asset') seg.asset_id = item.id
+  footageShot.value = null
+}
+
+async function previewVoice() {
+  const key = voiceKey.value
+  const profile = voices.value.find(v => v.provider_voice_key === key)
+  if (!profile) return
+  loadingVoice.value = true
+  try {
+    const { data } = await api.post('/voice-profiles/preview', { voice_profile_id: profile.id })
+    if (voiceKey.value === key) voicePreviewUrl.value = data.data.preview_url
+  } catch (err) {
+    errorMessage.value = apiErrorMessage(err, 'Could not load the voice sample.')
+  } finally { loadingVoice.value = false }
 }
 
 async function generate() {
@@ -128,13 +199,18 @@ async function generate() {
   errorMessage.value = ''
   try {
     const { data } = await api.post('/ugc/generate', {
-      script: script.value,
+      script: plan.value.script,
+      format: plan.value.format,
       character_ids: selected.value.map((c) => c.id),
       segments: plan.value.segments,
       aspect_ratio: aspectRatio.value,
-      consent: true,
+      language: language.value, voice_key: voiceKey.value || null,
+      consent: consent.value, reviewed: reviewed.value,
+      credits_per_character: perCharacter.value,
     })
     takes.value = data?.data?.takes ?? []
+    reviewed.value = false
+    loadTakes()
     await loadBalance()
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, 'Could not start the run.')
@@ -151,6 +227,10 @@ onMounted(() => {
     return
   }
   loadBalance()
+  loadTakes()
+  api.get('/voice-profiles').then(({ data }) => {
+    voices.value = (data?.data?.voice_profiles ?? []).filter(v => v.provider === 'google' && !v.is_cloned)
+  }).catch(() => {})
 })
 </script>
 
@@ -170,19 +250,30 @@ onMounted(() => {
       <div class="ugc-body">
         <!-- build column -->
         <section class="ugc-build">
+          <div class="ugc-card ugc-fields">
+            <h2 class="ugc-card-t">Creative brief</h2>
+            <label>Format<select v-model="format" aria-label="Format"><option v-for="[key, label] in formatOptions" :key="key" :value="key">{{ label }}</option></select></label>
+            <label>Product / app<input v-model="product" maxlength="200" placeholder="What are we showing?" /></label>
+            <label>Audience, idea and desired reaction<textarea v-model="context" maxlength="1500" placeholder="e.g. A founder looks worried, then relieved. POV: you almost gave up on your app. Casual selfie, not a polished ad." /></label>
+            <label v-if="format === 'reaction'">Target seconds<select v-model.number="duration" aria-label="Target seconds"><option :value="5">5 seconds</option><option :value="10">10 seconds</option></select></label>
+            <label v-else>Target seconds<input v-model.number="duration" type="number" min="5" :max="format === 'direct_camera' ? 60 : 180" /></label>
+            <label>Language<input v-model="language" maxlength="12" placeholder="en" /></label>
+            <label>Available footage (one description per line)<textarea v-model="footageLabels" :placeholder="'My app screen recording\nProduct close-up'" /></label>
+            <p class="ugc-hint">The director chooses shots only where needed. Reactions use action-directed animation without speech; talking takes use lip-sync. Actual actions still depend on the video model.</p>
+          </div>
           <div class="ugc-card">
             <div class="ugc-card-h">
-              <span class="ugc-card-t">Script</span>
+              <span class="ugc-card-t">Exact spoken script (optional)</span>
               <span class="ugc-card-c">{{ scriptLength }} / {{ MAX_SCRIPT }}</span>
             </div>
             <textarea
               v-model="script"
               class="ugc-script"
               :maxlength="MAX_SCRIPT"
-              placeholder="What should your character say? One continuous take works best."
+              placeholder="Leave empty to write from your brief. For silent reactions, put the idea in the brief above, not here."
             ></textarea>
             <div class="ugc-card-f">
-              <button class="ugc-btn" :disabled="!script.trim() || planning" @click="makePlan">
+              <button class="ugc-btn" :disabled="(!script.trim() && !context.trim()) || planning || generating" @click="makePlan">
                 {{ planning ? 'Planning…' : plan ? 'Re-plan shots' : 'Plan the shots' }}
               </button>
               <span v-if="plan" class="ugc-hint">
@@ -195,15 +286,30 @@ onMounted(() => {
           <div v-if="plan" class="ugc-card">
             <div class="ugc-card-h"><span class="ugc-card-t">Shot plan</span></div>
             <div v-if="plan.reasoning" class="ugc-reason">{{ plan.reasoning }}</div>
+            <p class="ugc-reason">{{ plan.format }} · Edit the directions, then validate the estimate.</p>
             <ol class="ugc-segs">
               <li v-for="(seg, i) in plan.segments" :key="i" class="ugc-seg">
                 <span :class="['ugc-kind', seg.kind === 'on_camera' ? 'on' : 'roll']">
-                  {{ seg.kind === 'on_camera' ? 'On camera' : 'Cut-away' }}
+                  {{ seg.kind === 'on_camera' ? 'On camera' : seg.kind === 'reaction' ? 'Silent reaction' : 'Cut-away' }} · {{ seg.seconds }}s
                 </span>
-                <span class="ugc-seg-text">{{ seg.script_text }}</span>
-                <span v-if="seg.visual_brief" class="ugc-seg-brief">{{ seg.visual_brief }}</span>
+                <div class="ugc-fields ugc-shot-fields">
+                  <label v-if="seg.kind !== 'reaction'">Spoken words<textarea v-model="seg.script_text" maxlength="1500" /></label>
+                  <label>Shot direction<textarea v-model="seg.visual_brief" maxlength="1000" /></label>
+                  <label v-if="seg.kind === 'reaction'">Physical action<textarea v-model="seg.motion_prompt" maxlength="1000" /></label>
+                  <label v-else>Voice delivery<textarea v-model="seg.voice_direction" maxlength="500" /></label>
+                  <label>Headline (not spoken, stays for this shot)<textarea v-model="seg.headline" maxlength="180" /></label>
+                  <label v-if="seg.kind === 'reaction'">Seconds<select v-model.number="seg.seconds" aria-label="Reaction seconds"><option :value="5">5</option><option :value="10">10</option></select></label>
+                  <label v-else>Seconds<input v-model.number="seg.seconds" type="number" min="1" max="60" /></label>
+                  <template v-if="seg.kind === 'b_roll'">
+                    <label>Visual source<select v-model="seg.source" @change="seg.asset_id = null"><option value="upload">My footage</option><option value="stock">Imported stock footage</option><option value="generate">Generate illustrative still</option></select></label>
+                    <button v-if="seg.source !== 'generate'" class="ugc-btn" @click="footageShot = i">{{ seg.asset_id ? `Change selected asset #${seg.asset_id}` : 'Select / upload required footage' }}</button>
+                    <span v-else class="ugc-hint">An illustrative still, not a real product demonstration.</span>
+                  </template>
+                </div>
               </li>
             </ol>
+            <div class="ugc-card-f"><button class="ugc-btn" :disabled="quoting || generating" @click="reprice">{{ quoting ? 'Checking…' : 'Validate & update estimate' }}</button><span v-if="!quoteCurrent" class="ugc-hint">Plan changed. Update estimate.</span></div>
+            <p v-for="warning in plan.warnings" :key="warning" class="ugc-reason">{{ warning }}</p>
           </div>
 
           <div class="ugc-card">
@@ -230,6 +336,12 @@ onMounted(() => {
           <div class="ugc-card">
             <div class="ugc-card-h"><span class="ugc-card-t">Output</span></div>
             <div class="ugc-out">
+              <div v-if="plan?.format !== 'reaction'" class="ugc-fields">
+                <label>Voice<select v-model="voiceKey" aria-label="Voice"><option value="">Automatic per character</option><option v-for="v in voices" :key="v.id" :value="v.provider_voice_key">{{ v.name }}</option></select></label>
+                <button v-if="voiceKey" class="ugc-btn" :disabled="loadingVoice" @click="previewVoice">{{ loadingVoice ? 'Loading…' : 'Hear voice sample' }}</button>
+                <audio v-if="voicePreviewUrl" :src="voicePreviewUrl" controls />
+                <span class="ugc-hint">Voice samples are generic, not a rehearsal of this script. Automatic chooses a voice per character.</span>
+              </div>
               <div class="ugc-seg-group">
                 <button
                   v-for="r in ['9:16', '1:1', '16:9']"
@@ -243,34 +355,23 @@ onMounted(() => {
 
             <div class="ugc-gen">
               <span v-if="!plan || !selected.length" class="ugc-math">
-                Write a script, plan the shots, and pick at least one character.
+                Add a brief, review the shot plan, and pick at least one character.
               </span>
               <span v-else class="ugc-math">
                 {{ selected.length }} take{{ selected.length > 1 ? 's' : '' }} ×
-                {{ perCharacter }} credits = <b>{{ totalCredits }} credits</b>
+                {{ perCharacter }} credits ≈ <b>{{ totalCredits }} credits estimated</b>
               </span>
 
-              <div v-if="plan && selected.length && needsListen" class="ugc-gate">
-                <span class="ugc-gate-i">◉</span>
-                <span class="ugc-gate-t">
-                  This batch spends <b>{{ totalCredits }} credits</b>. Hear one take first — if the
-                  read is wrong, it's wrong {{ selected.length }} times.
-                </span>
-                <button class="ugc-listen" type="button" @click="previewVoices">▶ Preview</button>
-              </div>
-              <div v-else-if="plan && selected.length && gated" class="ugc-gate ok">
-                <span class="ugc-gate-i">✓</span>
-                <span class="ugc-gate-t">Voice checked. Generating spends <b>{{ totalCredits }} credits</b>.</span>
+              <div v-if="plan" class="ugc-fields">
+                <label class="ugc-check"><input v-model="reviewed" type="checkbox" :disabled="!quoteCurrent" /> I reviewed the shots and estimate. Start with one character to check the performance.</label>
+                <label class="ugc-check"><input v-model="consent" type="checkbox" /> I have permission to use these characters and footage for this generated video.</label>
+                <span v-if="missingFootage" class="ugc-hint">Select the required footage before generating.</span>
               </div>
 
               <div class="ugc-gen-row">
                 <button class="ugc-btn ugc-btn-primary" :disabled="!canGenerate" @click="generate">
                   {{ generating ? 'Starting…' : 'Generate takes' }}
                 </button>
-                <span v-if="needsListen" class="ugc-hint">Preview to unlock.</span>
-                <span v-else-if="plan && selected.length && !gated" class="ugc-hint">
-                  Under {{ GATE_CREDITS }} credits — preview optional.
-                </span>
               </div>
             </div>
           </div>
@@ -285,14 +386,14 @@ onMounted(() => {
 
           <div v-if="!takes.length" class="ugc-empty">
             <div class="ugc-empty-i">▢</div>
-            <p>One take per character, generated from the same script. Finish them in the editor.</p>
+            <p>One take per character from the reviewed plan. Inspect motion, voice and text in the editor before exporting.</p>
           </div>
 
           <div v-else class="ugc-takes">
             <div v-for="t in takes" :key="t.id" class="ugc-take">
               <div class="ugc-take-b">
                 <div class="ugc-ch-n">{{ t.character }}</div>
-                <div class="ugc-take-m">{{ t.scenes }} scenes · {{ t.credits }} credits</div>
+                <div class="ugc-take-m">{{ t.scenes }} scenes · {{ t.credits }} estimated credits · {{ t.status === 'ready_for_review' ? 'Ready to review' : t.status === 'needs_attention' ? 'Needs attention — open editor' : 'Generating…' }}</div>
                 <div class="ugc-take-a">
                   <button class="ugc-btn ugc-btn-primary" @click="openEditor(t.id)">Open in editor →</button>
                 </div>
@@ -303,6 +404,7 @@ onMounted(() => {
       </div>
 
       <!-- character picker -->
+      <MediaPickerModal mode="visual" :visible="footageShot !== null" @close="footageShot = null" @select="selectFootage" />
       <div v-if="pickerOpen" class="ugc-scrim" @click.self="pickerOpen = false">
         <div class="ugc-modal">
           <aside class="ugc-m-rail">
@@ -412,6 +514,14 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.ugc-fields { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.ugc-fields label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--color-text-secondary); }
+.ugc-fields input, .ugc-fields textarea, .ugc-fields select { box-sizing: border-box; width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-bg-base); color: var(--color-text-primary); font: inherit; }
+.ugc-fields textarea { min-height: 64px; resize: vertical; }
+.ugc-fields audio { width: 100%; }
+.ugc-fields .ugc-check { flex-direction: row; align-items: flex-start; line-height: 1.5; }
+.ugc-check input { width: auto; }
+.ugc-shot-fields { padding: 8px 0; width: 100%; }
 /* The sidebar is fixed-position, so the main column must be offset by its
    width or it renders underneath. --sidebar-width tracks the collapsed state. */
 .ugc-shell { display: flex; min-height: 100vh; background: var(--color-bg-base); }
