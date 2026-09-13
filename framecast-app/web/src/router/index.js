@@ -17,6 +17,7 @@ import WorkspaceView from '../views/WorkspaceView.vue'
 import ChannelsView from '../views/ChannelsView.vue'
 import ChannelDetailView from '../views/ChannelDetailView.vue'
 import SeriesView from '../views/SeriesView.vue'
+import UgcAdsView from '../views/UgcAdsView.vue'
 import SeriesDetailView from '../views/SeriesDetailView.vue'
 import SeriesCreateView from '../views/SeriesCreateView.vue'
 import VideosView from '../views/VideosView.vue'
@@ -51,6 +52,7 @@ const routes = [
   { path: '/plans', name: 'plans', component: PlansView, meta: { requiresAuth: true } },
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
   { path: '/series', name: 'series', component: SeriesView, meta: { requiresAuth: true } },
+  { path: '/ugc-ads', name: 'ugc-ads', component: UgcAdsView, meta: { requiresAuth: true, internalOnly: true } },
   { path: '/series/new', name: 'series-create', component: SeriesCreateView, meta: { requiresAuth: true } },
   { path: '/series/:seriesId', name: 'series-detail', component: SeriesDetailView, meta: { requiresAuth: true } },
   { path: '/channels', name: 'channels', component: ChannelsView, meta: { requiresAuth: true } },
@@ -85,6 +87,13 @@ router.beforeEach(function (to) {
   }
 
   if (to.meta.adminOnly && !['super_admin', 'platform_admin'].includes(authStore.user?.role)) {
+    return { name: 'dashboard' }
+  }
+
+  // Unreleased features. The API answers 404 for anyone outside the team, so
+  // the route is turned away here rather than rendering a page whose every
+  // request fails.
+  if (to.meta.internalOnly && !authStore.user?.is_internal) {
     return { name: 'dashboard' }
   }
 

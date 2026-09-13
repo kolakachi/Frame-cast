@@ -5,6 +5,7 @@ import FeedbackButton from './FeedbackButton.vue'
 import { useRouter } from "vue-router";
 import { useWorkspaceStore } from "../stores/workspace";
 import { useSidebarStore } from "../stores/sidebar";
+import { useAuthStore } from "../stores/auth";
 
 const props = defineProps({
   user: { type: Object, default: null },
@@ -15,6 +16,10 @@ const props = defineProps({
 const emit = defineEmits(["logout"]);
 
 const sidebarStore = useSidebarStore();
+// UGC Ads is built but unreleased. The API answers 404 for everyone outside
+// the team, so the entry is hidden rather than shown and then refused.
+const authStore = useAuthStore();
+const isInternal = computed(() => Boolean(authStore.user?.is_internal));
 const isCollapsed = computed(() => sidebarStore.collapsed);
 
 const router = useRouter();
@@ -312,6 +317,29 @@ onBeforeUnmount(() => {
           ></path>
         </svg>
         Series
+      </button>
+      <button
+        v-if="isInternal"
+        :class="['nav-item', activePage === 'ugc-ads' ? 'active' : '']"
+        data-tooltip="UGC Ads"
+        type="button"
+        @click="nav('ugc-ads')"
+      >
+        <svg
+          class="nav-icon"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M12 3l1.9 4.6 4.9.4-3.7 3.2 1.1 4.8L12 13.6 7.8 16l1.1-4.8L5.2 8l4.9-.4z"
+          ></path>
+        </svg>
+        UGC Ads
+        <span class="ws-soon-badge">Beta</span>
       </button>
       <button
         :class="['nav-item', activePage === 'calendar' ? 'active' : '']"

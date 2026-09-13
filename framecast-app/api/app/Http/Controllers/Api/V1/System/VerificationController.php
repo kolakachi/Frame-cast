@@ -457,6 +457,11 @@ class VerificationController extends Controller
             // false, "Change password" when true. Boolean (not the hash)
             // so the actual credential never leaves the API.
             'has_password' => ! empty($user->password_hash),
+            // Unreleased features are gated server-side by the `internal`
+            // middleware, which answers 404. The client needs the same answer
+            // so it can hide the nav entry rather than offer a link that
+            // leads nowhere.
+            'is_internal' => \App\Support\InternalAccess::allows($user),
             'preferences' => array_merge($this->defaultPreferences(), $user->preferences_json ?? []),
         ];
     }
