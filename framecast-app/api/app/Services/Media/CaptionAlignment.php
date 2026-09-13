@@ -148,6 +148,19 @@ final class CaptionAlignment
 
             $before = $i > 0 ? (float) $words[$i - 1]['end'] : 0.0;
             $after  = $runEnd + 1 < $count ? (float) $words[$runEnd + 1]['start'] : $duration;
+
+            // Recognition often leaves no gap where it dropped a word: the
+            // neighbours simply abut. Rather than overlap the word that
+            // follows — which double-highlights during playback — borrow the
+            // room from the tail of the word before, taking at most half of it
+            // so the borrowed-from word stays legible.
+            if ($after <= $before && $i > 0) {
+                $need = min(0.25 * ($runEnd - $i + 1), $after - (float) $words[$i - 1]['start']) / 2;
+                if ($need > 0) {
+                    $before = max((float) $words[$i - 1]['start'], $before - $need);
+                    $words[$i - 1]['end'] = $before;
+                }
+            }
             if ($after <= $before) {
                 $after = min($duration, $before + 0.2 * ($runEnd - $i + 1));
             }

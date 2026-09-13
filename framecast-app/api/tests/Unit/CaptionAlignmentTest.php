@@ -88,6 +88,25 @@ class CaptionAlignmentTest extends TestCase
         $this->assertEqualsWithDelta(3.0, end($words)['end'], 0.01, 'spread across the audio');
     }
 
+    public function test_a_recovered_word_does_not_overlap_its_neighbours(): void
+    {
+        // Recognition often leaves no gap where it dropped a word — the words
+        // either side simply abut. Overlapping spans double-highlight during
+        // playback, so room is borrowed from the preceding word instead.
+        $words = CaptionAlignment::align('I used to spend hours', $this->asr([
+            ['I', 0.00, 0.78], ['used', 0.78, 1.16], ['to', 1.16, 1.82], ['hours', 1.82, 2.58],
+        ]), 2.58);
+
+        $this->assertSame(['I', 'used', 'to', 'spend', 'hours'], $this->texts($words));
+        for ($i = 1; $i < count($words); $i++) {
+            $this->assertGreaterThanOrEqual(
+                $words[$i - 1]['end'],
+                $words[$i]['start'],
+                "'{$words[$i]['text']}' must start no earlier than the previous word ends",
+            );
+        }
+    }
+
     public function test_an_empty_script_produces_nothing(): void
     {
         $this->assertSame([], CaptionAlignment::align('   ', $this->asr([['x', 0.0, 1.0]]), 1.0));

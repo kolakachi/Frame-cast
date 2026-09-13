@@ -101,12 +101,13 @@ if (_impersonateParam) {
 configureApiClient(authStore)
 
 // The cached user is written at sign-in and refreshed only alongside the access
-// token, so a session predating a newly added field never carries it. Anything
-// keyed on such a field — a nav entry, a route guard — then reads "missing" as
-// "off" and hides a feature from the people it belongs to. Re-read once on boot
-// when the answer is unknown; this is after configureApiClient so the request
-// is authenticated.
-if (authStore.isAuthenticated && authStore.user && authStore.user.is_internal === undefined) {
+// token, so anything keyed on a user flag — a nav entry, a route guard — can be
+// deciding on a stale copy. Re-reading only when the field was missing was not
+// enough: a session that cached a flag as false during a deploy window kept
+// that answer forever, because the field was present and simply wrong. One
+// authenticated /me per boot is cheap next to being wrong until someone signs
+// out. Placed after configureApiClient so the request carries the token.
+if (authStore.isAuthenticated && authStore.user) {
   authStore.refreshUser()
 }
 
