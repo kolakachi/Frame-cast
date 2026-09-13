@@ -183,4 +183,40 @@ class UgcExecutionTest extends TestCase
         $this->assertSame(['New headline'], $scene->fresh()->caption_settings_json['ugc_headline']['lines']);
         Bus::assertDispatchedTimes(GenerateAIImageJob::class, 1); // Only the initial generation.
     }
+
+    public function test_a_product_photo_is_composited_onto_the_talking_actor(): void
+    {
+        $product = Asset::query()->create(['workspace_id' => 1, 'asset_type' => 'image', 'storage_url' => 'test/jar.png']);
+
+        (new UgcController)->generate($this->request(
+            [$this->shot()], 'direct_camera', ['product_asset_id' => $product->id],
+        ));
+
+        // Actor first, product second — order carries the roles for the adapter.
+        Bus::assertDispatched(GenerateAIImageJob::class, fn ($job) => $job->referenceAssetIds === [10, $product->id]);
+
+        $scene = Scene::query()->firstOrFail();
+        $settings = $scene->image_generation_settings_json;
+        $settings = is_array($settings) ? $settings : (json_decode((string) $settings, true) ?: []);
+        $this->assertSame([10, $product->id], $settings['reference_asset_ids']);
+    }
+
+    public function test_a_product_photo_from_another_workspace_is_refused(): void
+    {
+        $foreign = Asset::query()->create(['workspace_id' => 2, 'asset_type' => 'image', 'storage_url' => 'test/theirs.png']);
+
+        $response = (new UgcController)->generate($this->request(
+            [$this->shot()], 'direct_camera', ['product_asset_id' => $foreign->id],
+        ));
+
+        $this->assertSame(422, $response->getStatusCode());
+        Bus::assertNothingDispatched();
+    }
+
+    public function test_without_a_product_the_actor_reference_is_unchanged(): void
+    {
+        (new UgcController)->generate($this->request([$this->shot()], 'direct_camera'));
+
+        Bus::assertDispatched(GenerateAIImageJob::class, fn ($job) => $job->referenceAssetIds === []);
+    }
 }

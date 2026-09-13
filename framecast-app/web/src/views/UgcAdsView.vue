@@ -34,6 +34,8 @@ const consent = ref(false);
 const quoting = ref(false);
 const quotedFingerprint = ref("");
 const footageShot = ref(null);
+const productPicker = ref(false);
+const productAsset = ref(null);   // { id, thumbnail_url, title }
 const formatOptions = [
   ["auto", "Let the director choose"],
   ["direct_camera", "Continuous talking take"],
@@ -272,6 +274,20 @@ function selectFootage({ item }) {
   footageShot.value = null;
 }
 
+function selectProduct({ item }) {
+  if (item?.id && item._type === "asset") {
+    productAsset.value = {
+      id: item.id,
+      thumbnail_url: item.thumbnail_url || item.storage_url,
+      title: item.title,
+    };
+    // The actor image is rebuilt with the product in it, so a plan approved
+    // before this no longer matches what will be generated.
+    reviewed.value = false;
+  }
+  productPicker.value = false;
+}
+
 async function previewVoice(character) {
   const key = voiceByCharacter.value[character.id];
   const profile = voices.value.find((v) => v.provider_voice_key === key);
@@ -364,6 +380,7 @@ async function generate() {
       aspect_ratio: aspectRatio.value,
       language: language.value,
       voices: voiceByCharacter.value,
+      product_asset_id: productAsset.value?.id ?? null,
       consent: consent.value,
       reviewed: reviewed.value,
       credits_per_character: perCharacter.value,
@@ -512,6 +529,19 @@ onMounted(() => {
                 v-model="footageLabels"
                 :placeholder="'My app screen recording\nProduct close-up'"
               />
+            </label>
+            <label>
+              <span class="ugc-label-row">Product photo (optional)</span>
+              <span class="ugc-product">
+                <img v-if="productAsset" :src="productAsset.thumbnail_url" alt="" class="ugc-product-thumb" />
+                <button class="ugc-btn" type="button" @click="productPicker = true">
+                  {{ productAsset ? 'Change photo' : 'Choose a photo' }}
+                </button>
+                <button v-if="productAsset" class="ugc-btn" type="button" @click="productAsset = null; reviewed = false">
+                  Remove
+                </button>
+              </span>
+              <span class="ugc-hint">Composited onto the actor so they hold or wear your actual product.</span>
             </label>
             <p class="ugc-hint">
               The director chooses shots only where needed. Reactions use
@@ -947,6 +977,12 @@ onMounted(() => {
         :visible="footageShot !== null"
         @close="footageShot = null"
         @select="selectFootage"
+      />
+      <MediaPickerModal
+        mode="visual"
+        :visible="productPicker"
+        @close="productPicker = false"
+        @select="selectProduct"
       />
       <div v-if="pickerOpen" class="ugc-scrim" @click.self="pickerOpen = false">
         <div class="ugc-modal">
@@ -1592,6 +1628,9 @@ onMounted(() => {
   color: var(--color-text-muted);
   cursor: default;
 }
+
+.ugc-product { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ugc-product-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; border: 1px solid var(--color-border); }
 
 .ugc-stage-h {
   display: flex;

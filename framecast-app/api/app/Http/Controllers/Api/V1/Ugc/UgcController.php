@@ -144,12 +144,34 @@ class UgcController extends Controller
             'voices' => ['sometimes', 'array'],
             'voices.*' => ['nullable', Rule::in(array_keys(GeminiVoices::VOICES))],
             'aspect_ratio' => ['required', 'in:9:16,1:1,16:9'],
+            // A photo of the thing being advertised. Composited onto the actor
+            // so they hold or wear the real product rather than one the model
+            // imagined — the difference between a demo of your product and a
+            // demo of a product like yours.
+            'product_asset_id' => ['sometimes', 'nullable', 'integer'],
             'language' => ['sometimes', 'string', 'max:12'],
             'voice_key' => ['nullable', Rule::in(array_keys(GeminiVoices::VOICES))],
             'title' => ['nullable', 'string', 'max:120'],
             'consent' => ['accepted'], 'reviewed' => ['accepted'],
             'credits_per_character' => ['required', 'integer', 'min:0'],
         ]);
+
+        $productAssetId = null;
+        if (! empty($v['product_asset_id'])) {
+            $product = Asset::query()
+                ->whereKey($v['product_asset_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->where('asset_type', 'image')
+                ->first();
+            if (! $product) {
+                return $this->error('product_not_found', 'That product image is not in this workspace.', 422);
+            }
+            $productAssetId = (int) $product->getKey();
+        }
+        // Carry the validated id, never the raw one: buildProject reads $v, and
+        // anything unchecked reaching it would escape the workspace scoping.
+        $v['product_asset_id'] = $productAssetId;
+
         $segments = UgcPlan::normalise($v['segments'], $v['format']);
         if (! UgcPlan::sameScript((string) ($v['script'] ?? ''), UgcPlan::script($segments))) {
             throw ValidationException::withMessages(['script' => 'The script and shot plan differ. Review and re-price the latest plan.']);
@@ -258,7 +280,12 @@ class UgcController extends Controller
                 'image_generation_settings_json' => array_filter([
                     'in_progress' => $generate, 'needs_visual' => false, 'generation_token' => $token,
                     'generation_started_at' => $generate ? now()->toIso8601String() : null,
-                    'reference_asset_ids' => $actor ? [(int) $character->reference_asset_id] : [],
+                    // Actor first, product second: the adapter preserves any
+                    // person's likeness and reproduces any object exactly, so
+                    // the order carries the roles.
+                    'reference_asset_ids' => $actor
+                        ? array_values(array_filter([(int) $character->reference_asset_id, ($v['product_asset_id'] ?? null)]))
+                        : [],
                     'planned_spokesperson' => $talking,
                     'spokesperson_consent' => $talking ? ['at' => now()->toIso8601String(), 'user_id' => $user->id] : null,
                     'ugc_format' => $v['format'], 'ugc_kind' => $seg['kind'], 'ugc_broll_source' => $seg['source'],
@@ -271,6 +298,12 @@ class UgcController extends Controller
                     $reaction ? (int) $seg['seconds'] : null,
                     $reaction ? $seg['motion_prompt'].' Natural restrained movement, preserve identity and outfit. No speaking, no text or watermark.' : null,
                     $reaction ? UgcPlan::REACTION_TIER : null,
+                    null,
+                    // Only where a person appears — a generated cutaway of the
+                    // product alone does not need the actor's face in it.
+                    $actor && ($v['product_asset_id'] ?? null)
+                        ? array_values(array_filter([(int) $character->reference_asset_id, ($v['product_asset_id'] ?? null)]))
+                        : [],
                 )->afterCommit();
             }
         }
