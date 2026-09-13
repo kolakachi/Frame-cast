@@ -155,10 +155,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="app-shell">
-    <AppSidebar active-page="ugc-ads" @logout="authStore.logout()" />
+  <div class="ugc-shell">
+    <AppSidebar :user="authStore.user" active-page="ugc-ads" @logout="authStore.logout()" />
 
-    <main class="app-main">
+    <main class="ugc-main">
       <header class="ugc-top">
         <div class="ugc-crumb">My Workspace / <b>UGC Ads</b></div>
         <span class="ugc-beta">BETA · INTERNAL</span>
@@ -412,6 +412,11 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* The sidebar is fixed-position, so the main column must be offset by its
+   width or it renders underneath. --sidebar-width tracks the collapsed state. */
+.ugc-shell { display: flex; min-height: 100vh; background: var(--color-bg-base); }
+.ugc-main { margin-left: var(--sidebar-width, 220px); flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
 .ugc-top { display: flex; align-items: center; gap: 10px; padding: 14px 22px; border-bottom: 1px solid var(--color-border); }
 .ugc-crumb { font-size: 13px; color: var(--color-text-muted); }
 .ugc-crumb b { color: var(--color-text-primary); font-weight: 500; }
@@ -420,9 +425,9 @@ onMounted(() => {
 
 .ugc-error { margin: 14px 22px 0; padding: 10px 13px; border-radius: 9px; background: rgba(240,112,112,.1); border: 1px solid rgba(240,112,112,.3); color: #f0a0a0; font-size: 12.5px; }
 
-.ugc-body { display: flex; align-items: flex-start; gap: 0; min-height: 0; }
-.ugc-build { width: 480px; flex-shrink: 0; padding: 18px 20px; border-right: 1px solid var(--color-border); }
-.ugc-stage { flex: 1; padding: 18px 22px; min-width: 0; }
+.ugc-body { display: flex; align-items: stretch; gap: 0; flex: 1; min-height: 0; }
+.ugc-build { width: 480px; flex-shrink: 0; padding: 18px 20px; border-right: 1px solid var(--color-border); overflow-y: auto; }
+.ugc-stage { flex: 1; padding: 18px 22px; min-width: 0; overflow-y: auto; }
 
 .ugc-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; margin-bottom: 14px; }
 .ugc-card-h { display: flex; align-items: center; gap: 8px; padding: 12px 14px 0; }
