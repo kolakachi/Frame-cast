@@ -62,7 +62,14 @@ const filters = ref({ source: 'stock', gender: '', age_group: '', situation: '',
 
 const SITUATIONS = ['beauty', 'car', 'coffee shop', 'fashion', 'fitness', 'grooming', 'gym',
   'kitchen', 'living room', 'luxury', 'office', 'outdoors', 'restaurant', 'salon', 'travel', 'bathroom']
-const AGES = [['kid', 'Kid'], ['young_adult', 'Young adult'], ['adult', 'Adult'], ['senior', 'Senior']]
+// No child bracket. Stock actors exist to be animated into endorsing a
+// product, and children presenting advertising is restricted by the CAP
+// code, the FTC and most EU regimes, as well as by Meta's and TikTok's ad
+// policies — so a stock child would mostly produce ads that get refused.
+// A customer who needs their own child on camera still can: they create a
+// character from their own photo, under the likeness attestation they
+// already give.
+const AGES = [['young_adult', 'Young adult'], ['adult', 'Adult'], ['senior', 'Senior']]
 
 const scriptLength = computed(() => script.value.length)
 const onCameraCount = computed(() =>
