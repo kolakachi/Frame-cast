@@ -223,11 +223,11 @@ class PublishVideoJob implements ShouldQueue
             }
         }
 
+        // TikTok is handled by the adapter above (it implements ProvidesPostUrl)
+        // because publish() can only return an upload token, not the video id.
+        // Building a URL from that token produced links that always 404'd.
         return match ($platform) {
             'youtube'   => "https://www.youtube.com/watch?v={$postId}",
-            'tiktok'    => $account?->platform_username
-                ? "https://www.tiktok.com/@{$account->platform_username}/video/{$postId}"
-                : "https://www.tiktok.com/video/{$postId}",
             default     => null,
         };
     }

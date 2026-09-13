@@ -7,13 +7,14 @@ use App\Models\SocialAccount;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
-class TikTokAdapter implements PlatformAdapter
+class TikTokAdapter implements PlatformAdapter, ProvidesPostUrl
 {
     private const AUTH_URL   = 'https://www.tiktok.com/v2/auth/authorize/';
     private const TOKEN_URL  = 'https://open.tiktokapis.com/v2/oauth/token/';
     private const CREATOR_INFO_URL = 'https://open.tiktokapis.com/v2/post/publish/creator_info/query/';
     private const UPLOAD_URL = 'https://open.tiktokapis.com/v2/post/publish/video/init/';
     private const USER_URL   = 'https://open.tiktokapis.com/v2/user/info/';
+    private const STATUS_URL = 'https://open.tiktokapis.com/v2/post/publish/status/fetch/';
 
     private const SCOPES = ['user.info.basic', 'video.publish', 'video.upload'];
 
@@ -132,6 +133,62 @@ class TikTokAdapter implements PlatformAdapter
             ->throw();
 
         return $publishId;
+    }
+
+    /**
+     * Resolve the public URL for a post we just published.
+     *
+     * publish() can only return TikTok's publish_id — an upload token that
+     * looks like `v_pub_file~v2-1.7685075526948374548` and is not the video's
+     * id. Pasting it into tiktok.com/video/<id> produced a link that goes
+     * nowhere; the real post carried a different id entirely.
+     *
+     * The id only exists once TikTok finishes processing, so it has to be read
+     * back from the status endpoint, which returns it under
+     * `publicaly_available_post_id` (TikTok's spelling). Processing is not
+     * instant, so this polls briefly rather than asking once.
+     */
+    public function postUrl(SocialAccount $account, string $postId): ?string
+    {
+        $username = trim((string) $account->platform_username);
+
+        try {
+            // Up to ~20s: TikTok usually finishes within a few seconds, and a
+            // missing link is cosmetic, so this must not hold the job open.
+            foreach ([0, 3, 5, 5, 7] as $wait) {
+                if ($wait > 0) {
+                    sleep($wait);
+                }
+
+                $response = Http::withToken($account->access_token)
+                    ->timeout(15)
+                    ->post(self::STATUS_URL, ['publish_id' => $postId]);
+
+                $data = $response->json('data', []);
+                $ids = $data['publicaly_available_post_id'] ?? [];
+                $videoId = is_array($ids) ? (string) ($ids[0] ?? '') : (string) $ids;
+
+                if ($videoId !== '') {
+                    return $username !== ''
+                        ? "https://www.tiktok.com/@{$username}/video/{$videoId}"
+                        : "https://www.tiktok.com/video/{$videoId}";
+                }
+
+                // FAILED means it will never arrive; anything else is still working.
+                if (($data['status'] ?? '') === 'FAILED') {
+                    break;
+                }
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('TikTokAdapter: post URL lookup failed', [
+                'publish_id' => $postId,
+                'error'      => $e->getMessage(),
+            ]);
+        }
+
+        // Better a profile link than a URL built from an upload token, which
+        // always 404s and looks broken to the person who just posted.
+        return $username !== '' ? "https://www.tiktok.com/@{$username}" : null;
     }
 
     private function fetchUserInfo(string $accessToken, string $openId): array
