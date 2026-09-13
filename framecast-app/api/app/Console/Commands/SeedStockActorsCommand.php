@@ -160,7 +160,11 @@ class SeedStockActorsCommand extends Command
             return self::FAILURE;
         }
 
-        $existing = Character::query()->where('is_stock', true)->pluck('name')->map('mb_strtolower')->all();
+        // map() passes the key as the second argument, which mb_strtolower
+        // reads as an encoding — harmless while the library was empty and
+        // fatal the moment it was not.
+        $existing = Character::query()->where('is_stock', true)->pluck('name')
+            ->map(fn ($n) => mb_strtolower((string) $n))->all();
         $todo = array_values(array_filter(
             $catalogue,
             fn (array $a): bool => ! in_array(mb_strtolower($a['name']), $existing, true),
