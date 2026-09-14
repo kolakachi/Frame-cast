@@ -1,4 +1,6 @@
-{{-- ── DRAFT COPY — edit freely ───────────────────────────────────────── --}}
+{{-- Day 1 for an account that never got through checkout. The activation
+     email that used to occupy this slot asks how their first video went, of
+     someone who was never let in to make one. --}}
 <p>Hey {{ $user->name ?: 'there' }},</p>
 
 @if($planLabel)
@@ -34,4 +36,3 @@ enough to find out whether this works for you.</p>
 read every reply and it genuinely helps.</p>
 
 <p>— Amara<br>Co-founder, WyvStudio</p>
-{{-- ── END DRAFT COPY ─────────────────────────────────────────────────── --}}

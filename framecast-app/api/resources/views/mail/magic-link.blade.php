@@ -1,5 +1,7 @@
 @if($firstRun)
-{{-- ── DRAFT COPY — edit freely ───────────────────────────────────────── --}}
+{{-- First contact. Registration is passwordless, so this is the only mail
+     a new account gets — the greeting lives here rather than competing with
+     the link in a second one. See App\Mail\MagicLinkMail. --}}
 <p>Hey {{ $user->name ?: 'there' }},</p>
 
 <p>Welcome to WyvStudio. I'm Amara, the Co-founder.</p>
@@ -26,7 +28,6 @@ splits it into scenes, generates the voice and visuals, and exports 9:16, 1:1,
 directly.</p>
 
 <p>— Amara<br>Co-founder, WyvStudio</p>
-{{-- ── END DRAFT COPY ─────────────────────────────────────────────────── --}}
 @else
 <p>Hello {{ $user->name ?: $user->email }},</p>
 <p>Use the link below to sign in to WyvStudio. It expires in 15 minutes.</p>
