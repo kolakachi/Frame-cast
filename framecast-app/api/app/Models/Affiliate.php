@@ -7,11 +7,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Affiliate extends Model
 {
-    protected $fillable = ['code', 'name', 'email', 'commission_percent', 'status', 'notes'];
+    protected $fillable = ['code', 'name', 'email', 'commission_percent', 'status', 'notes', 'access_key', 'last_login_at'];
+
+    /** Never serialised to a response — the admin panel asks for it explicitly. */
+    protected $hidden = ['access_key'];
 
     protected function casts(): array
     {
-        return ['commission_percent' => 'decimal:2'];
+        return [
+            'commission_percent' => 'decimal:2',
+            // Encrypted rather than hashed: an operator has to be able to
+            // re-read it to send it on, and regenerating would lock out an
+            // affiliate who had merely misplaced theirs.
+            'access_key' => 'encrypted',
+            'last_login_at' => 'datetime',
+        ];
     }
 
     public function conversions(): HasMany
@@ -62,6 +72,23 @@ class Affiliate extends Model
         // Eight straight collisions means the assumption above is wrong; widen
         // rather than hand back something already in use.
         return $code.bin2hex(random_bytes(3));
+    }
+
+    /**
+     * The portal secret. Longer than the referral code and drawn from the same
+     * unambiguous alphabet, since it also gets read off a screen and retyped.
+     */
+    public static function generateAccessKey(): string
+    {
+        $alphabet = self::CODE_ALPHABET;
+        $max = strlen($alphabet) - 1;
+        $key = '';
+        for ($i = 0; $i < 20; $i++) {
+            $key .= $alphabet[random_int(0, $max)];
+        }
+
+        // Grouped for reading aloud without losing your place.
+        return implode('-', str_split($key, 5));
     }
 
     /** Active affiliate for a code, or null. Codes are matched case-insensitively. */

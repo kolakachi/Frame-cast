@@ -40,6 +40,9 @@ const routes = [
   // AppSumo LTD activation — public (buyer may be logged out or in); not
   // guestOnly so an existing user can attach a license without being bounced.
   { path: '/appsumo/activate', name: 'appsumo-activate', component: AppSumoActivateView, meta: { public: true } },
+  // Affiliates have no user account, so this route stands outside the app
+  // shell and carries its own session.
+  { path: '/affiliates', name: 'affiliate-portal', component: () => import('../views/AffiliatePortalView.vue'), meta: { public: true } },
   { path: '/auth/forgot', name: 'forgot-password', component: ForgotPasswordView, meta: { guestOnly: true } },
   { path: '/auth/reset', name: 'reset-password', component: ResetPasswordView, meta: { guestOnly: true } },
   { path: '/approve/:token', name: 'approval-review', component: ApprovalReviewView, meta: { public: true } },

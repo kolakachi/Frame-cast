@@ -191,6 +191,42 @@ async function voidPayout(a, payout) {
   }
 }
 
+const affiliateKeyShown = ref(false)
+
+const affiliatePortalUrl = computed(() =>
+  `${window.location.origin}/affiliates`)
+
+async function regenerateAffiliateKey(a) {
+  if (a.access_key && !window.confirm(
+    `Issue a new access key for ${a.name}?\n\nTheir current key stops working immediately and they are signed out. Only do this if the old one has gone astray.`,
+  )) return
+  try {
+    const { data } = await api.post(`/admin/affiliates/${a.id}/regenerate-key`, {})
+    const fresh = affiliates.value.find((x) => x.id === a.id)
+    if (fresh) fresh.access_key = data?.data?.access_key
+    affiliateKeyShown.value = true
+  } catch {
+    affiliateError.value = 'Could not issue a new key.'
+  }
+}
+
+async function copyAffiliateSignIn(a) {
+  const text = [
+    `Dashboard: ${affiliatePortalUrl.value}`,
+    `Referral code: ${a.code}`,
+    `Access key: ${a.access_key}`,
+    '',
+    `Your referral link: ${a.link}`,
+  ].join('\n')
+  try {
+    await navigator.clipboard?.writeText(text)
+    affiliateCopied.value = `signin-${a.id}`
+    setTimeout(() => { if (affiliateCopied.value === `signin-${a.id}`) affiliateCopied.value = null }, 1600)
+  } catch {
+    affiliateError.value = 'Could not copy those details.'
+  }
+}
+
 async function copyAffiliateLink(a) {
   try {
     await navigator.clipboard?.writeText(a.link)
@@ -2367,6 +2403,7 @@ onMounted(() => {
                     { key: 'outstanding', label: 'Owed now' },
                     { key: 'all', label: 'All sales' },
                     { key: 'payments', label: 'Payments' },
+                    { key: 'access', label: 'Sign-in details' },
                   ]"
                   :key="t.key"
                   :class="['aff-tab', affiliateTab === t.key ? 'aff-tab-active' : '']"
@@ -2376,6 +2413,48 @@ onMounted(() => {
 
               <div class="table-wrap">
                 <div v-if="affiliateDetailLoading" class="aff-empty">Loading…</div>
+
+                <!-- What we send the affiliate so they can see their own
+                     figures. The key is not the code: the code is public. -->
+                <template v-else-if="affiliateTab === 'access'">
+                  <div class="aff-access">
+                    <div class="aff-access-row">
+                      <span class="metric-label">Dashboard</span>
+                      <code class="aff-code">{{ affiliatePortalUrl }}</code>
+                    </div>
+                    <div class="aff-access-row">
+                      <span class="metric-label">Referral code</span>
+                      <code class="aff-code">{{ affiliateOpen.code }}</code>
+                      <span class="aff-sub">public — appears in their links</span>
+                    </div>
+                    <div class="aff-access-row">
+                      <span class="metric-label">Access key</span>
+                      <!-- Affiliates created before the portal existed have no
+                           key until one is issued. -->
+                      <code v-if="!affiliateOpen.access_key" class="aff-code">not issued yet</code>
+                      <template v-else>
+                        <code class="aff-code">{{ affiliateKeyShown ? affiliateOpen.access_key : '•'.repeat(23) }}</code>
+                        <button class="btn btn-ghost btn-xs" @click="affiliateKeyShown = !affiliateKeyShown">
+                          {{ affiliateKeyShown ? 'Hide' : 'Reveal' }}
+                        </button>
+                      </template>
+                      <span class="aff-sub">private — never put this in a link</span>
+                    </div>
+                    <div class="aff-access-row">
+                      <span class="metric-label">Last signed in</span>
+                      <span>{{ affiliateOpen.last_login_at || 'never' }}</span>
+                    </div>
+                    <div class="aff-access-actions">
+                      <button class="btn btn-primary btn-sm" :disabled="!affiliateOpen.access_key" @click="copyAffiliateSignIn(affiliateOpen)">
+                        {{ affiliateCopied === `signin-${affiliateOpen.id}` ? 'Copied' : 'Copy sign-in details' }}
+                      </button>
+                      <button
+                        :class="['btn', affiliateOpen.access_key ? 'btn-danger' : 'btn-primary', 'btn-sm']"
+                        @click="regenerateAffiliateKey(affiliateOpen)"
+                      >{{ affiliateOpen.access_key ? 'Issue a new key' : 'Issue a key' }}</button>
+                    </div>
+                  </div>
+                </template>
 
                 <template v-else-if="affiliateTab === 'payments'">
                   <table v-if="affiliatePayouts.length">
@@ -3510,6 +3589,11 @@ th.aff-num { text-align: right; }
 .aff-form { display: grid; grid-template-columns: 1.4fr 1.4fr 1fr .7fr auto; gap: 14px; align-items: end; padding: 16px; }
 .aff-form label { display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; color: #9ca3af; }
 .aff-hint { color: #6b7280; font-weight: 400; }
+
+.aff-access { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.aff-access-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.aff-access-row .metric-label { margin-bottom: 0; min-width: 110px; }
+.aff-access-actions { display: flex; gap: 10px; padding-top: 4px; }
 
 .aff-modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.72);

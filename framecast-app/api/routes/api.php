@@ -89,6 +89,14 @@ Route::prefix('v1')->group(function (): void {
     // Records an arrival from ?ref= and returns a cookie. Deliberately public:
     // affiliate traffic has no account yet, and most of it never will at the
     // moment it lands.
+    // Affiliate portal. Public because affiliates have no user account; each
+    // route resolves its own session token and is scoped to that affiliate.
+    Route::post('/affiliate/portal/login', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'login']);
+    Route::post('/affiliate/portal/logout', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'logout']);
+    Route::get('/affiliate/portal/summary', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'summary']);
+    Route::get('/affiliate/portal/daily', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'daily']);
+    Route::get('/affiliate/portal/payouts', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'payouts']);
+
     Route::post('/affiliate/click', function (
         \Illuminate\Http\Request $request,
         \App\Services\Affiliate\AffiliateAttribution $attribution,
@@ -238,6 +246,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/affiliates', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'index']);
             Route::post('/affiliates', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'store']);
             Route::patch('/affiliates/{id}', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'update'])->whereNumber('id');
+            Route::post('/affiliates/{id}/regenerate-key', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'regenerateKey'])->whereNumber('id');
             Route::get('/affiliates/{id}/conversions', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'conversions'])->whereNumber('id');
             Route::get('/affiliates/{id}/statement.csv', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'statement'])->whereNumber('id');
             Route::get('/affiliates/{id}/payouts', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'payouts'])->whereNumber('id');

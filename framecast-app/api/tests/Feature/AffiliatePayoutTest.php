@@ -27,7 +27,12 @@ class AffiliatePayoutTest extends TestCase
         Schema::create('affiliates', function (Blueprint $t) {
             $t->id(); $t->string('code'); $t->string('name'); $t->string('email')->nullable();
             $t->decimal('commission_percent', 5, 2)->default(20); $t->string('status')->default('active');
-            $t->text('notes')->nullable(); $t->timestamps();
+            $t->text('notes')->nullable(); $t->text('access_key')->nullable();
+            $t->timestamp('last_login_at')->nullable(); $t->timestamps();
+        });
+        Schema::create('affiliate_sessions', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('affiliate_id'); $t->string('token_hash');
+            $t->timestamp('expires_at')->nullable(); $t->timestamp('last_seen_at')->nullable(); $t->timestamps();
         });
         Schema::create('affiliate_clicks', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('affiliate_id'); $t->timestamp('clicked_at')->nullable();

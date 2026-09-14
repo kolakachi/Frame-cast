@@ -64,6 +64,11 @@ class AffiliateController extends Controller
                     'sales_count' => (int) $last->sales_count,
                 ] : null,
                 'oldest_unpaid' => $outstanding->min('created_at')?->toDateString(),
+
+                // Shown so they can be sent on. This endpoint is already behind
+                // the admin gate; the key is hidden from every other response.
+                'access_key' => $a->access_key,
+                'last_login_at' => $a->last_login_at?->toDateString(),
             ];
         });
 
@@ -98,9 +103,13 @@ class AffiliateController extends Controller
             'commission_percent' => $v['commission_percent'],
             'notes' => $v['notes'] ?? null,
             'status' => 'active',
+            // Issued up front so there is never an affiliate who cannot sign in.
+            'access_key' => Affiliate::generateAccessKey(),
         ]);
 
-        return response()->json(['data' => ['affiliate' => $affiliate], 'meta' => []], 201);
+        return response()->json(['data' => ['affiliate' => array_merge(
+            $affiliate->toArray(), ['access_key' => $affiliate->access_key],
+        )], 'meta' => []], 201);
     }
 
     public function update(Request $request, int $id): JsonResponse
@@ -118,6 +127,19 @@ class AffiliateController extends Controller
         // Deliberately does not touch existing conversions: a new rate applies
         // to sales from here, not to ones already earned.
         return response()->json(['data' => ['affiliate' => $affiliate->fresh()], 'meta' => []]);
+    }
+
+    /**
+     * Replace the portal key. Signs the affiliate out everywhere, since the
+     * reason to do this is usually that someone else has the old one.
+     */
+    public function regenerateKey(int $id): JsonResponse
+    {
+        $affiliate = Affiliate::query()->findOrFail($id);
+        $affiliate->forceFill(['access_key' => Affiliate::generateAccessKey()])->save();
+        \App\Models\AffiliateSession::query()->where('affiliate_id', $affiliate->getKey())->delete();
+
+        return response()->json(['data' => ['access_key' => $affiliate->access_key], 'meta' => []]);
     }
 
     public function conversions(Request $request, int $id): JsonResponse
