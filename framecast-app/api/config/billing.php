@@ -115,7 +115,10 @@ return [
         |
         | tax_rate_estimate: the share of gross that is tax. Set to 0 where
         | prices are tax-inclusive or tax is not charged.
-        | platform_fee_percent: what the merchant of record keeps.
+        | platform_fee_percent: what the merchant of record (Kelviq) keeps. Not
+        | ours — it never reaches us — which is why anything shown to an
+        | affiliate names Kelviq rather than calling it "a platform fee". To
+        | the person being paid, an unnamed platform is the one paying them.
         |
         | Both are estimates until reconciled against a Kelviq payout report.
         | Conversions record the gross, the basis and the method, so figures

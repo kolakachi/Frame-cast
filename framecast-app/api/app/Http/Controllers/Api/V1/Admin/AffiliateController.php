@@ -360,9 +360,11 @@ class AffiliateController extends Controller
             }
 
             $total = 0.0;
-            $query->chunk(200, function ($rows) use ($out, &$total) {
+            $methods = [];
+            $query->chunk(200, function ($rows) use ($out, &$total, &$methods) {
                 foreach ($rows as $c) {
                     $total += (float) $c->commission_amount;
+                    $methods[$c->basis_method ?: 'gross'] = true;
                     fputcsv($out, [
                         $c->created_at?->toDateString(),
                         $c->order_id,
@@ -385,11 +387,52 @@ class AffiliateController extends Controller
             fputcsv($out, ['', '', '', '', '', '', '', '', 'TOTAL', number_format($total, 2, '.', ''), '']);
             // States the assumption on the document itself, so nobody has to
             // reverse-engineer why the basis is lower than the gross.
+            //
+            // Whose fee it is has to be said out loud. "A platform fee" reads,
+            // to the person being paid, as the platform paying them keeping a
+            // slice — which is exactly the suspicion an unexplained deduction
+            // earns. It is the merchant of record's, we never receive it, and
+            // the document should be the thing that settles that.
             $cfg = (array) config('billing.affiliate_basis', []);
             fputcsv($out, []);
-            fputcsv($out, ['Basis: gross less estimated tax of '
-                .round(((float) ($cfg['tax_rate_estimate'] ?? 0)) * 100, 1).'% and a platform fee of '
-                .round((float) ($cfg['platform_fee_percent'] ?? 0), 1).'%.']);
+
+            if ($methods === ['provider_ex_tax' => true]) {
+                // The only basis with no estimate anywhere in it.
+                fputcsv($out, ['Commission basis: what the customer paid, less the sales tax remitted '
+                    .'to their government. Taken from Kelviq\'s own figures for each order, not estimated.']);
+            } elseif ($methods === ['provider_net' => true]) {
+                // Tax is exact here; the fee is not, and saying otherwise would
+                // overstate what we can actually show them.
+                fputcsv($out, ['Commission basis: what the customer paid, less the sales tax remitted to '
+                    .'their government — taken from Kelviq\'s own figures for each order — and Kelviq\'s '
+                    .'payment processing fee, estimated at '
+                    .round((float) ($cfg['platform_fee_percent'] ?? 0), 1).'%, which Kelviq does not report '
+                    .'per order.']);
+            } elseif ($methods === ['gross' => true] || $methods === ['provider_gross' => true]) {
+                fputcsv($out, ['Commission basis: the full amount the customer paid. Nothing is deducted.']);
+            } else {
+                // Only name a deduction that was actually taken. Listing a
+                // component at 0% describes a subtraction that did not happen,
+                // which invites exactly the question the footer exists to
+                // answer.
+                $tax = round(((float) ($cfg['tax_rate_estimate'] ?? 0)) * 100, 1);
+                $fee = round((float) ($cfg['platform_fee_percent'] ?? 0), 1);
+
+                $parts = [];
+                if ($tax > 0) {
+                    $parts[] = 'sales tax (estimated at '.$tax.'%, remitted to the customer\'s government)';
+                }
+                if ($fee > 0 && ($cfg['method'] ?? 'net') === 'net') {
+                    $parts[] = 'Kelviq\'s payment processing fee (estimated at '.$fee.'%)';
+                }
+
+                fputcsv($out, [$parts === []
+                    ? 'Commission basis: the full amount the customer paid. Nothing is deducted.'
+                    : 'Commission basis: what the customer paid, less '.implode(' and ', $parts).'.']);
+            }
+
+            fputcsv($out, ['Kelviq is our merchant of record and collects the payment. '
+                .'WyvStudio deducts nothing of its own before your commission.']);
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv']);
     }

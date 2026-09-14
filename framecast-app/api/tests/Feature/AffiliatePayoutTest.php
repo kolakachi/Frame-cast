@@ -250,6 +250,97 @@ class AffiliatePayoutTest extends TestCase
         );
     }
 
+    public function test_the_statement_says_whose_fee_was_deducted(): void
+    {
+        // An unnamed "platform fee" reads, to the person being paid, as the
+        // platform paying them keeping a slice.
+        $a = $this->affiliate();
+        $this->sale($a, 21.14);
+
+        ob_start();
+        (new AffiliateController)->statement(Request::create('/s', 'GET', ['unpaid_only' => 1]), $a->getKey())->sendContent();
+        $csv = ob_get_clean();
+
+        $this->assertStringContainsString('Kelviq', $csv);
+        $this->assertStringContainsString('merchant of record', $csv);
+        $this->assertStringContainsString('WyvStudio deducts nothing of its own', $csv);
+        $this->assertStringNotContainsString('a platform fee of', $csv);
+    }
+
+    public function test_a_deduction_of_zero_is_not_listed_as_a_deduction(): void
+    {
+        // Naming a 0% subtraction describes something that did not happen, and
+        // invites exactly the question the footer exists to answer.
+        config(['billing.affiliate_basis' => ['method' => 'net', 'tax_rate_estimate' => 0.0, 'platform_fee_percent' => 0.0]]);
+        $a = $this->affiliate();
+        $this->sale($a, 21.14, ['basis_method' => 'net']);
+
+        $csv = $this->statementFor($a);
+
+        $this->assertStringContainsString('Nothing is deducted', $csv);
+        $this->assertStringNotContainsString('0%', $csv);
+    }
+
+    public function test_on_a_gross_basis_the_statement_promises_no_deduction(): void
+    {
+        config(['billing.affiliate_basis' => ['method' => 'gross', 'tax_rate_estimate' => 0.2, 'platform_fee_percent' => 5.5]]);
+        $a = $this->affiliate();
+        $this->sale($a, 26.70, ['basis_method' => 'gross']);
+
+        $csv = $this->statementFor($a);
+
+        $this->assertStringContainsString('Nothing is deducted', $csv);
+        $this->assertStringNotContainsString('processing fee', $csv);
+    }
+
+    public function test_only_the_deductions_actually_taken_are_named(): void
+    {
+        config(['billing.affiliate_basis' => ['method' => 'net', 'tax_rate_estimate' => 0.0, 'platform_fee_percent' => 5.52]]);
+        $a = $this->affiliate();
+        $this->sale($a, 21.14, ['basis_method' => 'net']);
+
+        $csv = $this->statementFor($a);
+
+        $this->assertStringContainsString('5.5%', $csv);
+        $this->assertStringNotContainsString('sales tax', $csv);
+    }
+
+    private function statementFor(Affiliate $a): string
+    {
+        ob_start();
+        (new AffiliateController)->statement(Request::create('/s', 'GET', ['unpaid_only' => 1]), $a->getKey())->sendContent();
+
+        return (string) ob_get_clean();
+    }
+
+    public function test_an_ex_tax_statement_is_the_one_with_no_estimate_in_it(): void
+    {
+        // Kelviq reports tax per order, so this basis is entirely theirs.
+        $a = $this->affiliate();
+        $this->sale($a, 21.14, ['basis_method' => 'provider_ex_tax']);
+
+        $csv = $this->statementFor($a);
+
+        $this->assertStringContainsString('not estimated', $csv);
+        $this->assertStringNotContainsString('estimated at', $csv);
+        $this->assertStringNotContainsString('processing fee', $csv);
+    }
+
+    public function test_a_net_statement_admits_the_fee_is_our_estimate(): void
+    {
+        // Kelviq's order API does not report what Kelviq keeps. Presenting that
+        // number as though it came from them would be the dishonest part —
+        // deducting a real cost is not.
+        config(['billing.affiliate_basis' => ['method' => 'net', 'tax_rate_estimate' => 0.2, 'platform_fee_percent' => 5.52]]);
+        $a = $this->affiliate();
+        $this->sale($a, 21.14, ['basis_method' => 'provider_net']);
+
+        $csv = $this->statementFor($a);
+
+        $this->assertStringContainsString('estimated at 5.5%', $csv);
+        $this->assertStringContainsString('does not report per order', $csv);
+    }
+
     public function test_a_statement_keeps_naming_its_own_sales_after_later_ones_arrive(): void
     {
         $a = $this->affiliate();

@@ -155,9 +155,27 @@ class AffiliateAttribution
             // What the customer actually bought, before tax: subtotal less
             // discount. No rate, no assumption.
             $exTax = max(0.0, $breakdown['subtotal'] - $breakdown['discount']);
-            $fee = max(0.0, min(100.0, (float) config('billing.affiliate_basis.platform_fee_percent', 0)));
-            $basis = round($exTax * (1 - $fee / 100), 2);
-            $method = 'provider_net';
+            $configured = (string) config('billing.affiliate_basis.method', 'net');
+
+            // The configured basis has to be honoured here too. It was being
+            // ignored, so choosing ex_tax — the one setting where every number
+            // on a statement comes from the provider rather than from an
+            // estimate of ours — still quietly deducted the estimated fee.
+            if ($configured === 'gross') {
+                $basis = round((float) ($breakdown['total'] ?: $orderAmount), 2);
+                $method = 'provider_gross';
+            } elseif ($configured === 'ex_tax') {
+                $basis = round($exTax, 2);
+                $method = 'provider_ex_tax';
+            } else {
+                // Kelviq's order API does not report what Kelviq itself keeps,
+                // so this one figure stays an estimate however good the rest of
+                // the data is.
+                $fee = max(0.0, min(100.0, (float) config('billing.affiliate_basis.platform_fee_percent', 0)));
+                $basis = round($exTax * (1 - $fee / 100), 2);
+                $method = 'provider_net';
+            }
+
             $orderAmount = $breakdown['total'] ?: $orderAmount;
         } else {
             $refunded = false;

@@ -297,8 +297,10 @@ onMounted(async () => {
       </section>
 
       <p class="ap-fineprint">
-        Commission is {{ affiliate.commission_percent }}% of the net — what the customer paid, less
-        sales tax and the payment provider's fee. Refunded orders earn nothing.
+        Commission is {{ affiliate.commission_percent }}% of the net — what the customer paid,
+        less the sales tax remitted to their government and Kelviq's payment processing fee.
+        Kelviq is our merchant of record; WyvStudio deducts nothing of its own before your
+        share. Refunded orders earn nothing.
         Figures update as sales come in; questions go to your usual contact.
       </p>
     </main>
