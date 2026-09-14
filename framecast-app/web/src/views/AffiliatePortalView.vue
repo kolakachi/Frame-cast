@@ -209,6 +209,14 @@ onMounted(async () => {
             <template v-else>no visits yet</template>
           </div>
         </div>
+        <!-- The gross sits beside the commission on purpose: a share of the net
+             does not reconcile with the rate on their agreement unless they can
+             see both numbers. -->
+        <div class="ap-metric">
+          <div class="ap-metric-label">Revenue you sent</div>
+          <div class="ap-metric-value">{{ money(totals.revenue) }}</div>
+          <div class="ap-metric-sub">what your customers paid</div>
+        </div>
         <div class="ap-metric ap-metric-due">
           <div class="ap-metric-label">Owed to you</div>
           <div class="ap-metric-value">{{ money(totals.owed) }}</div>
@@ -259,7 +267,7 @@ onMounted(async () => {
         <div class="ap-table-wrap">
           <table v-if="activeDays.length">
             <thead>
-              <tr><th>Date</th><th class="ap-num">Visits</th><th class="ap-num">Sales</th><th class="ap-num">Conversion</th><th class="ap-num">Commission</th></tr>
+              <tr><th>Date</th><th class="ap-num">Visits</th><th class="ap-num">Sales</th><th class="ap-num">Conversion</th><th class="ap-num">Revenue</th><th class="ap-num">Your commission</th></tr>
             </thead>
             <tbody>
               <tr v-for="d in activeDays" :key="d.date">
@@ -267,6 +275,7 @@ onMounted(async () => {
                 <td class="ap-num">{{ d.clicks }}</td>
                 <td class="ap-num">{{ d.sales }}</td>
                 <td class="ap-num ap-dim">{{ d.clicks ? `${((d.sales / d.clicks) * 100).toFixed(1)}%` : '—' }}</td>
+                <td class="ap-num ap-dim">{{ money(d.revenue) }}</td>
                 <td class="ap-num"><strong>{{ money(d.commission) }}</strong></td>
               </tr>
             </tbody>
@@ -297,6 +306,7 @@ onMounted(async () => {
       </section>
 
       <p class="ap-fineprint">
+        <strong>Revenue you sent</strong> is what your customers paid in total.
         Commission is {{ affiliate.commission_percent }}% of the net — what the customer paid,
         less the sales tax remitted to their government and Kelviq's payment processing fee.
         Kelviq is our merchant of record; WyvStudio deducts nothing of its own before your
@@ -378,7 +388,7 @@ onMounted(async () => {
 }
 .ap-linkbox code { font-size: 12px; color: var(--color-text-secondary, #a1a1b5); word-break: break-all; }
 
-.ap-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.ap-metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
 .ap-metric {
   background: var(--color-bg-card, #17171f); border: 1px solid var(--color-border, #2a2a36);
   border-radius: 12px; padding: 16px;
@@ -433,6 +443,9 @@ th.ap-num { text-align: right; }
   background: #6a6a7c22; color: var(--color-text-muted, #6a6a7c); border: 1px solid #6a6a7c40;
 }
 
+@media (max-width: 1180px) {
+  .ap-metrics { grid-template-columns: repeat(3, 1fr); }
+}
 @media (max-width: 860px) {
   .ap-metrics { grid-template-columns: repeat(2, 1fr); }
   .ap-hello { flex-direction: column; }

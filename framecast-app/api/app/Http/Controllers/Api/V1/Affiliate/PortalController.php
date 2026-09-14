@@ -93,6 +93,17 @@ class PortalController extends Controller
                 'sales' => $live->count(),
                 // Rate is only meaningful once there is traffic to divide by.
                 'conversion_rate' => $clicks > 0 ? round($live->count() / $clicks * 100, 2) : null,
+
+                // What the customers actually paid, shown next to what it
+                // earned. The commission is a share of the net, so without the
+                // gross beside it the percentage on their agreement does not
+                // reconcile with the number in front of them — and an
+                // unexplained gap is what makes a partner suspect one.
+                'revenue' => round((float) $live->sum('gross_amount'), 2)
+                    ?: round((float) $live->sum('order_amount'), 2),
+                'basis' => round((float) $live->sum('basis_amount'), 2)
+                    ?: round((float) $live->sum('order_amount'), 2),
+
                 'earned' => round((float) $live->sum('commission_amount'), 2),
                 'owed' => round((float) $rows->where('payout_status', 'unpaid')->sum('commission_amount'), 2),
                 'paid' => round((float) $rows->where('payout_status', 'paid')->sum('commission_amount'), 2),
@@ -140,7 +151,7 @@ class PortalController extends Controller
             ->where('affiliate_id', $affiliate->getKey())
             ->where('payout_status', '!=', 'void')
             ->whereBetween('created_at', [$from, $to])
-            ->get(['created_at', 'commission_amount'])
+            ->get(['created_at', 'commission_amount', 'gross_amount', 'order_amount'])
             ->groupBy(fn ($c) => CarbonImmutable::parse($c->created_at)->toDateString());
 
         $days = [];
@@ -151,6 +162,7 @@ class PortalController extends Controller
                 'date' => $key,
                 'clicks' => (int) ($clicks[$key] ?? 0),
                 'sales' => $onDay?->count() ?? 0,
+                'revenue' => round((float) ($onDay?->sum(fn ($c) => (float) ($c->gross_amount ?: $c->order_amount)) ?? 0), 2),
                 'commission' => round((float) ($onDay?->sum('commission_amount') ?? 0), 2),
             ];
         }

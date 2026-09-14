@@ -187,6 +187,47 @@ class AffiliatePortalTest extends TestCase
         $this->assertEqualsWithDelta(0.0, $totals['earned'], 0.001);
     }
 
+    public function test_the_affiliate_sees_the_gross_beside_their_commission(): void
+    {
+        // Splitting the net while showing only the net makes the rate on their
+        // agreement fail to reconcile with the figure in front of them.
+        $a = $this->affiliate();
+        AffiliateConversion::query()->create(['affiliate_id' => $a->getKey(), 'order_id' => 'o1',
+            'order_amount' => 199, 'gross_amount' => 199, 'basis_amount' => 188.02,
+            'commission_percent' => 30, 'commission_amount' => 56.41]);
+
+        $totals = (new PortalController)->summary($this->authed($this->signIn($a)))->getData(true)['data']['totals'];
+
+        $this->assertEqualsWithDelta(199.0, $totals['revenue'], 0.001);
+        $this->assertEqualsWithDelta(188.02, $totals['basis'], 0.001);
+        $this->assertEqualsWithDelta(56.41, $totals['earned'], 0.001);
+    }
+
+    public function test_the_daily_series_carries_gross_too(): void
+    {
+        $a = $this->affiliate();
+        AffiliateConversion::query()->create(['affiliate_id' => $a->getKey(), 'order_id' => 'o1',
+            'order_amount' => 199, 'gross_amount' => 199, 'basis_amount' => 188.02,
+            'commission_percent' => 30, 'commission_amount' => 56.41]);
+
+        $days = (new PortalController)->daily($this->authed($this->signIn($a)))->getData(true)['data']['days'];
+        $today = collect($days)->firstWhere('date', now()->toDateString());
+
+        $this->assertEqualsWithDelta(199.0, $today['revenue'], 0.001);
+        $this->assertEqualsWithDelta(56.41, $today['commission'], 0.001);
+    }
+
+    public function test_a_row_written_before_gross_was_recorded_still_reports_a_figure(): void
+    {
+        // Early conversions only carried order_amount.
+        $a = $this->affiliate();
+        AffiliateConversion::query()->create(['affiliate_id' => $a->getKey(), 'order_id' => 'legacy',
+            'order_amount' => 89, 'commission_percent' => 30, 'commission_amount' => 21.14]);
+
+        $totals = (new PortalController)->summary($this->authed($this->signIn($a)))->getData(true)['data']['totals'];
+        $this->assertEqualsWithDelta(89.0, $totals['revenue'], 0.001);
+    }
+
     public function test_no_customer_details_reach_the_affiliate(): void
     {
         // They are entitled to know a sale happened, not who made it.
