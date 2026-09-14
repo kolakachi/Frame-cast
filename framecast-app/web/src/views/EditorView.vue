@@ -1350,7 +1350,7 @@ const animateMotionPrompt = ref("");
 const animateSubmitting = ref(false);
 const animateError = ref("");
 // Credits per short clip; long clip doubles. Mirror the backend cost calc exactly.
-const ANIMATE_TIER_COSTS_5S = { quick: 50, balanced: 35, premium: 100, seedance_lite: 30, seedance_pro: 125, veo_fast: 80, seedance_25: 105, spokesperson: 130 };
+const ANIMATE_TIER_COSTS_5S = { quick: 50, balanced: 35, premium: 100, seedance_lite: 30, seedance_pro: 125, veo_fast: 80, seedance_25: 105, spokesperson: 0 };
 // User-selectable quality per tier — mirrors CreditService::VIDEO_PRICING.
 // Each option: { value (sent as `quality`), label, cr (base-clip credits) }.
 const ANIMATE_QUALITY_OPTIONS = {
@@ -1365,13 +1365,31 @@ const ANIMATE_QUALITY_OPTIONS = {
 };
 const ANIMATE_QUALITY_DEFAULT = { quick: "480p", seedance_lite: "720p", balanced: "768p", seedance_pro: "1080p", premium: "pro", veo_fast: "720p", seedance_25: "480p" };
 const animateQuality = ref("480p");
-// Spokesperson is length-based (Fabric bills per second): ≤8s → 130, ≤15s → 240, longer → 320.
-// Mirror CreditService::spokespersonCost exactly.
+// Lip-sync engines and their per-second credit rate come from the server.
+// This used to be a copy of the pricing formula, which silently disagreed with
+// the server the moment the server's changed.
+const lipsyncEngines = ref([]);
+const lipsyncEngine = ref("");
+const lipsyncMinSeconds = ref(5);
+
+async function loadLipsyncEngines() {
+  try {
+    const { data } = await api.get("/lipsync-engines");
+    lipsyncEngines.value = data?.data?.engines ?? [];
+    lipsyncMinSeconds.value = data?.data?.min_seconds ?? 5;
+    if (!lipsyncEngine.value) lipsyncEngine.value = data?.data?.default ?? "";
+  } catch {
+    // The picker simply doesn't render; the server still applies its default.
+  }
+}
+
 function spokespersonCost(seconds) {
-  const s = Number(seconds) || 8;
-  if (s <= 8) return 130;
-  if (s <= 15) return 240;
-  return 320;
+  const engine =
+    lipsyncEngines.value.find((e) => e.key === lipsyncEngine.value) ||
+    lipsyncEngines.value[0];
+  if (!engine) return 0;
+  const s = Math.max(lipsyncMinSeconds.value, Number(seconds) || lipsyncMinSeconds.value);
+  return Math.ceil(s * engine.credits_per_second);
 }
 // Valid durations per tier — each upstream model accepts only specific values.
 //   Wan 2.5 (quick)         → 5 or 10
@@ -6141,6 +6159,9 @@ async function loadBulkAnimatePreview() {
       duration_seconds: animateDuration.value,
       motion_prompt: animateMotionPrompt.value.trim() || null,
       quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
+      // Only the spokesperson tier has an engine choice; the i2v tiers are a
+      // different pipeline entirely.
+      lipsync_engine: animateTier.value === 'spokesperson' ? (lipsyncEngine.value || undefined) : undefined,
     };
     if (bulkAnimateSelection.value !== null) body.scene_ids = bulkAnimateSelection.value;
     if (bulkAnimateSourceId.value) body.source_asset_id = bulkAnimateSourceId.value;
@@ -6200,6 +6221,9 @@ async function submitBulkAnimate() {
       duration_seconds: animateDuration.value,
       motion_prompt: animateMotionPrompt.value.trim() || null,
       quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
+      // Only the spokesperson tier has an engine choice; the i2v tiers are a
+      // different pipeline entirely.
+      lipsync_engine: animateTier.value === 'spokesperson' ? (lipsyncEngine.value || undefined) : undefined,
       confirm: true,
       ...(animateTier.value === 'spokesperson' ? { consent: spokespersonConsent.value } : {}),
     };
@@ -6238,6 +6262,9 @@ async function submitAnimate() {
       duration_seconds: animateDuration.value,
       motion_prompt: animateMotionPrompt.value.trim() || null,
       quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
+      // Only the spokesperson tier has an engine choice; the i2v tiers are a
+      // different pipeline entirely.
+      lipsync_engine: animateTier.value === 'spokesperson' ? (lipsyncEngine.value || undefined) : undefined,
       ...(animateTier.value === 'spokesperson' ? { consent: spokespersonConsent.value || activeSceneConsented.value } : {}),
     });
     const updated = response.data?.data?.scene;
@@ -6263,7 +6290,10 @@ async function regenerateLipSync() {
   lipSyncRegenerating.value = true;
   animateError.value = "";
   try {
-    const response = await api.post(`/scenes/${scene.id}/animate`, { tier: "spokesperson" });
+    const response = await api.post(`/scenes/${scene.id}/animate`, {
+      tier: "spokesperson",
+      lipsync_engine: lipsyncEngine.value || undefined,
+    });
     const updated = response.data?.data?.scene;
     if (updated) scenes.value = scenes.value.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
     pollSceneUntilVisual(scene.id);
@@ -6875,6 +6905,7 @@ function syncSceneSoundVolume() {
 }
 
 onMounted(() => {
+  loadLipsyncEngines();
   beforeUnloadHandler = (event) => {
     if (
       scriptSaveState.value === "pending" ||
@@ -9838,6 +9869,24 @@ onBeforeUnmount(() => {
                   </span>
                 </button>
               </div>
+            </div>
+          </div>
+
+          <!-- Spokesperson has no quality picker; it has an engine choice,
+               which changes both the output size and the price. -->
+          <div v-if="animateTier === 'spokesperson' && lipsyncEngines.length > 1" class="ap-field">
+            <label class="ap-label">Lip-sync model</label>
+            <div class="anim-duration-row">
+              <button
+                v-for="e in lipsyncEngines"
+                :key="e.key"
+                type="button"
+                :class="['anim-duration-btn', lipsyncEngine === e.key ? 'active' : '']"
+                @click="lipsyncEngine = e.key"
+              >
+                {{ e.label }}
+                <span class="anim-engine-meta">{{ e.output }} · {{ e.credits_per_second }} cr/s</span>
+              </button>
             </div>
           </div>
 
@@ -14437,6 +14486,8 @@ select.preset-select {
 .anim-model-opt-right { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .anim-model-opt-cost { font-size: 12px; font-weight: 700; color: #ff6b35; }
 .anim-model-opt-check { color: #ff6b35; font-size: 13px; }
+
+.anim-engine-meta { display: block; font-size: 10px; opacity: .7; margin-top: 2px; }
 
 .anim-duration-row { display: flex; gap: 6px; }
 .anim-dpill {

@@ -126,6 +126,36 @@ Route::prefix('v1')->group(function (): void {
             ]);
         });
 
+        // Lip-sync engines the spokesperson tier can run on. The editor needs
+        // the per-second rate to price a clip, and shipping the formula to the
+        // client instead left a copy of the pricing in JavaScript that drifted
+        // the moment the server's changed.
+        Route::get('/lipsync-engines', function () {
+            $engines = [];
+            foreach ((array) config('services.lipsync.engines', []) as $key => $engine) {
+                $engines[] = [
+                    'key'    => $key,
+                    'label'  => $engine['label'] ?? $key,
+                    'output' => $engine['output'] ?? null,
+                    // Credits per second, already on the house video peg, so
+                    // the client multiplies by length and nothing else.
+                    'credits_per_second' => (int) ceil(
+                        (float) ($engine['cost_usd_per_second'] ?? 0.14)
+                        / \App\Services\CreditService::VIDEO_COGS_PER_CREDIT
+                    ),
+                ];
+            }
+
+            return response()->json([
+                'data' => [
+                    'engines' => $engines,
+                    'default' => (string) config('services.lipsync.default', 'omni_human'),
+                    'min_seconds' => \App\Services\CreditService::SPOKESPERSON_MIN_SECONDS,
+                ],
+                'meta' => [],
+            ]);
+        });
+
         // Catalog of image styles with sample thumbnail URLs (rendered by
         // `php artisan generate:style-samples` and stored in B2 at
         // style-samples/<key>.jpg). Drives the editor's style picker.
