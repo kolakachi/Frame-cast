@@ -77,6 +77,9 @@ class AuthController extends Controller
             // new workspace; the referrer earns credits when this account
             // first becomes paying. See RewardService.
             'ref' => ['nullable', 'string', 'max:32'],
+            // Affiliate code, distinct from `ref`: that one names a workspace
+            // referring a friend, this one names a marketer taking a cut.
+            'aff' => ['nullable', 'string', 'max:32'],
         ]);
 
         $email = strtolower($validated['email']);
@@ -514,6 +517,15 @@ class AuthController extends Controller
                 ]);
 
                 $workspace->forceFill(['owner_user_id' => $user->getKey()])->save();
+
+                // Stamp the affiliate that sent them, from the request or the
+                // cookie set when they first arrived. Once only — a later visit
+                // through a different link must not move a customer already
+                // earned.
+                rescue(fn () => app(\App\Services\Affiliate\AffiliateAttribution::class)->attributeWorkspace(
+                    $workspace,
+                    $validated['aff'] ?? app(\App\Services\Affiliate\AffiliateAttribution::class)->fromCookie(request()),
+                ), null, false);
 
                 // Give the new workspace its own shareable referral code.
                 app(\App\Services\RewardService::class)->ensureReferralCode($workspace);

@@ -343,10 +343,66 @@ class KelviqService
         }
     }
 
+    /**
+     * Tie a completed sale to the affiliate that produced it.
+     *
+     * Deliberately separate from granting the plan: an affiliate's commission
+     * and a customer's credits are different obligations, and a failure in one
+     * must not take the other with it.
+     */
+    private function recordAffiliateConversion(array $object, ?string $planId): void
+    {
+        rescue(function () use ($object, $planId) {
+            $attribution = app(\App\Services\Affiliate\AffiliateAttribution::class);
+
+            $metadata = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
+            $email = $object['customer']['email'] ?? null;
+            $workspace = $this->resolveWorkspace($object);
+
+            // No cookie here — a webhook is a server calling us, not the buyer's
+            // browser. Metadata and the workspace are what survive that trip,
+            // which is exactly why the code is put into the checkout.
+            [$affiliate, $source] = $attribution->resolveForSale($metadata, $workspace, null);
+            if (! $affiliate) {
+                return;
+            }
+
+            $amount = (float) ($object['amount'] ?? $object['amount_total'] ?? 0);
+            if ($amount <= 0 && isset($object['amount_total_units'])) {
+                $amount = ((int) $object['amount_total_units']) / 100;
+            }
+
+            $conversion = $attribution->recordConversion(
+                $affiliate,
+                $source,
+                $workspace,
+                is_string($email) ? $email : null,
+                (string) ($object['order_id'] ?? $object['id'] ?? ''),
+                $planId,
+                $amount,
+                (string) ($object['currency'] ?? 'USD'),
+            );
+
+            if ($conversion) {
+                Log::info('Affiliate conversion recorded', [
+                    'affiliate_id' => $affiliate->getKey(),
+                    'order_id'     => $conversion->order_id,
+                    'source'       => $source,
+                ]);
+            }
+        }, null, false);
+    }
+
     /** One-time checkout — a lifetime plan, or a credit top-up. */
     private function handleCheckoutCompleted(array $object): void
     {
         $planId = $object['plan']['identifier'] ?? null;
+
+        // Record the commission before anything else can fail. The order and
+        // its amount are both in hand here, and this is the last moment at
+        // which the affiliate is still knowable — afterwards there is only a
+        // workspace, and workspaces change hands, get merged and get deleted.
+        $this->recordAffiliateConversion($object, $planId);
 
         // Lifetime purchase: set the tier permanently and grant its one-time
         // credit bucket. No subscription is created, so nothing renews and
@@ -570,6 +626,7 @@ class KelviqService
         string $chargePeriod,
         string $successUrl,
         ?string $cancelUrl = null,
+        ?string $affiliateCode = null,
     ): ?string {
         $key = (string) config('billing.kelviq.server_api_key', '');
         if ($key === '') {
@@ -581,7 +638,14 @@ class KelviqService
             'chargePeriod'   => $chargePeriod, // MONTHLY | ONE_TIME
             'successUrl'     => $successUrl,
             'customerId'     => (string) $workspaceId,
-            'metadata'       => ['workspace_id' => (string) $workspaceId],
+            // The affiliate code travels with the order so it comes back on
+            // the webhook. This is the only layer that survives a purchase
+            // made without ever registering, which is how direct checkout
+            // works.
+            'metadata'       => array_filter([
+                'workspace_id'   => (string) $workspaceId,
+                'affiliate_code' => $affiliateCode,
+            ]),
         ];
         if ($cancelUrl) {
             $payload['cancelUrl'] = $cancelUrl;

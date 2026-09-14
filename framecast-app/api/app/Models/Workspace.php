@@ -18,6 +18,11 @@ class Workspace extends Model
     use HasFactory;
 
     protected $fillable = [
+        // Which affiliate sent this customer. Kept as the code rather than a
+        // foreign key: it is a historical fact and must outlive the affiliate
+        // row being removed.
+        'affiliate_code',
+        'affiliate_attributed_at',
         'name',
         'owner_user_id',
         'plan_tier',

@@ -86,6 +86,32 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/approve/{token}', [ApprovalController::class, 'publicShow']);
     Route::post('/approve/{token}/decide', [ApprovalController::class, 'publicDecide']);
 
+    // Records an arrival from ?ref= and returns a cookie. Deliberately public:
+    // affiliate traffic has no account yet, and most of it never will at the
+    // moment it lands.
+    Route::post('/affiliate/click', function (
+        \Illuminate\Http\Request $request,
+        \App\Services\Affiliate\AffiliateAttribution $attribution,
+    ) {
+        $validated = $request->validate(['code' => ['required', 'string', 'max:32']]);
+        $code = $attribution->recordClick($request, $validated['code']);
+
+        $response = response()->json(['data' => ['tracked' => $code !== null], 'meta' => []]);
+        if ($code === null) {
+            return $response;
+        }
+
+        // Readable by the SPA so it can forward the code into checkout, hence
+        // httpOnly false; SameSite lax so it survives the trip back from
+        // Kelviq.
+        return $response->cookie(
+            \App\Services\Affiliate\AffiliateAttribution::COOKIE,
+            $code,
+            60 * 24 * \App\Services\Affiliate\AffiliateAttribution::WINDOW_DAYS,
+            '/', null, true, false, false, 'lax',
+        );
+    });
+
     // Public share page for the /sample/<token> cold-DM motion.
     Route::get('/public/projects/{token}', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'show']);
 
@@ -209,6 +235,12 @@ Route::prefix('v1')->group(function (): void {
         });
 
         Route::prefix('/admin')->middleware(['admin', 'admin.ip'])->group(function (): void {
+            Route::get('/affiliates', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'index']);
+            Route::post('/affiliates', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'store']);
+            Route::patch('/affiliates/{id}', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'update'])->whereNumber('id');
+            Route::get('/affiliates/{id}/conversions', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'conversions'])->whereNumber('id');
+            Route::get('/affiliates/{id}/statement.csv', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'statement'])->whereNumber('id');
+            Route::post('/affiliates/{id}/mark-paid', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'markPaid'])->whereNumber('id');
             Route::get('/overview', [AdminController::class, 'overview']);
             Route::get('/users', [AdminController::class, 'users']);
             Route::get('/users/{userId}', [AdminController::class, 'userDetail'])->whereNumber('userId');
