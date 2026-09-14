@@ -160,6 +160,17 @@ class AuthController extends Controller
             }
         }
 
+        // Remember what they came to buy. The browser stash covers the happy
+        // path — register, open the inbox, come back — but dies with a change
+        // of device or a cleared cache, and a follow-up email has no browser to
+        // read. Recorded only for a brand-new account, and only for a plan we
+        // actually sell.
+        if (! $existingByEmail && isset($validated['plan'])
+            && isset(config('billing.kelviq.plan_labels')[$validated['plan']])
+            && $user->workspace) {
+            rescue(fn () => $user->workspace->forceFill(['intended_plan' => $validated['plan']])->save(), null, false);
+        }
+
         // Expire any previous unused tokens for this user
         MagicLinkToken::query()
             ->where('user_id', $user->getKey())

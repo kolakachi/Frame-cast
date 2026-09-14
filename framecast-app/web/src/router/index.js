@@ -53,6 +53,9 @@ const routes = [
   { path: '/workspace', name: 'workspace', component: WorkspaceView, meta: { requiresAuth: true } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true } },
   { path: '/plans', name: 'plans', component: PlansView, meta: { requiresAuth: true } },
+  // Landing point for "finish checkout" email links. Public so a signed-out
+  // click keeps the plan instead of losing it to the login redirect.
+  { path: '/continue', name: 'continue-checkout', component: () => import('../views/ContinueCheckoutView.vue'), meta: { public: true } },
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
   { path: '/series', name: 'series', component: SeriesView, meta: { requiresAuth: true } },
   { path: '/ugc-ads', name: 'ugc-ads', component: UgcAdsView, meta: { requiresAuth: true, internalOnly: true } },

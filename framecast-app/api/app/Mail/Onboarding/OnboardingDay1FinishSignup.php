@@ -27,6 +27,30 @@ class OnboardingDay1FinishSignup extends Mailable implements ShouldQueue
     {
     }
 
+    /**
+     * Where the button goes.
+     *
+     * Straight to checkout when we know what they came to buy — /continue
+     * signs them in if needed and hands them to Kelviq without a plan page in
+     * between. Otherwise the plans page, because there is nothing to check out
+     * yet.
+     */
+    private function callToAction(): array
+    {
+        $base = rtrim((string) config('app.frontend_url', 'https://app.wyvstudio.com'), '/');
+        $workspace = $this->user->workspace;
+        $plan = $workspace?->pending_checkout_plan ?: $workspace?->intended_plan;
+
+        if ($plan && isset(config('billing.kelviq.plan_labels')[$plan])) {
+            return [
+                $base.'/continue?plan='.urlencode($plan),
+                config('billing.kelviq.plan_labels')[$plan],
+            ];
+        }
+
+        return [$base.'/plans', null];
+    }
+
     public function envelope(): Envelope
     {
         return new Envelope(subject: 'Still want to make that video?');
@@ -34,6 +58,12 @@ class OnboardingDay1FinishSignup extends Mailable implements ShouldQueue
 
     public function content(): Content
     {
-        return new Content(view: 'mail.onboarding.day1-finish-signup');
+        [$ctaUrl, $planLabel] = $this->callToAction();
+
+        return new Content(view: 'mail.onboarding.day1-finish-signup', with: [
+            'ctaUrl' => $ctaUrl,
+            'planLabel' => $planLabel,
+            'plansUrl' => rtrim((string) config('app.frontend_url', 'https://app.wyvstudio.com'), '/').'/plans',
+        ]);
     }
 }
