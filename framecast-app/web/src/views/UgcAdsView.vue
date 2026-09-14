@@ -396,8 +396,17 @@ async function generate() {
   }
 }
 
-const openEditor = (id) =>
-  router.push({ name: "project-editor", params: { projectId: id } });
+// A take that is still rendering has scenes without visuals, voice or
+// lip-sync, so the editor shows a half-built project and invites edits that
+// the running jobs will overwrite. Send it to the progress view instead —
+// the same rule VideosView applies to any generating project.
+function openTake(take) {
+  router.push(
+    take.status === "generating"
+      ? { name: "generation-progress", params: { projectId: take.id } }
+      : { name: "project-editor", params: { projectId: take.id } },
+  );
+}
 
 onMounted(() => {
   if (!authStore.user?.is_internal) {
@@ -959,10 +968,11 @@ onMounted(() => {
                 </div>
                 <div class="ugc-take-a">
                   <button
-                    class="ugc-btn ugc-btn-primary"
-                    @click="openEditor(t.id)"
+                    class="ugc-btn"
+                    :class="{ 'ugc-btn-primary': t.status !== 'generating' }"
+                    @click="openTake(t)"
                   >
-                    Open in editor →
+                    {{ t.status === "generating" ? "Watch progress →" : "Open in editor →" }}
                   </button>
                 </div>
               </div>
