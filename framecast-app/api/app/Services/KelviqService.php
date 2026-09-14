@@ -233,6 +233,12 @@ class KelviqService
         $workspace->forceFill($update)->save();
         $this->clearPendingCheckout($workspace);
 
+        // First paid activation. Claimed once inside, because this handler also
+        // runs for every subsequent plan change and webhook redelivery.
+        if (! $cancelled && $status === 'active') {
+            \App\Services\Onboarding\WelcomeMail::sendOnce($workspace);
+        }
+
         // First free -> paid conversion rewards the referrer (idempotent).
         if ($previousTier === 'free' && $tier !== 'free') {
             rescue(fn () => app(RewardService::class)->referralConversion($workspace->fresh()));
@@ -556,6 +562,9 @@ class KelviqService
         }
 
         $this->credits->grant((int) $workspace->getKey(), (int) $lifetime['credits'], 'lifetime_kelviq');
+
+        // After the grant, so the email can quote the bucket they actually have.
+        \App\Services\Onboarding\WelcomeMail::sendOnce($workspace->fresh());
     }
 
     /**
@@ -634,10 +643,9 @@ class KelviqService
                     'user_id'      => $user->getKey(),
                 ]);
 
-                // Queued and rescued: a mail outage must not roll back an
-                // account the customer has already paid for.
-                rescue(fn () => \Illuminate\Support\Facades\Mail::to($user->email)
-                    ->queue(new \App\Mail\Onboarding\OnboardingDay0Welcome($user)));
+                // The welcome is not sent here. Provisioning only means an
+                // account now exists; the caller sends it once the purchased
+                // plan has actually been applied, so the email can describe it.
 
                 return $workspace->fresh();
             });

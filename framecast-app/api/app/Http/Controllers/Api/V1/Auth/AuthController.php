@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Mail\MagicLinkMail;
-use App\Mail\Onboarding\OnboardingDay0Welcome;
 use App\Mail\PasswordResetMail;
 use App\Models\MagicLinkToken;
 use App\Models\PasswordResetToken;
@@ -542,14 +541,11 @@ class AuthController extends Controller
                     (new CreditService())->grant($workspace->getKey(), $signupCredits, 'registration');
                 }
 
-                // Day-0 welcome — queued so a slow SMTP doesn't block signup.
-                // Wrapped in try so a misconfigured mail driver can't fail
-                // the whole transaction.
-                try {
-                    Mail::to($user->email)->queue(new OnboardingDay0Welcome($user));
-                } catch (\Throwable $e) {
-                    report($e);
-                }
+                // No welcome here. It congratulated people who had not bought
+                // anything, pointed them at a dashboard behind a paywall, and
+                // promised free credits a plan-gated signup never receives.
+                // App\Services\Onboarding\WelcomeMail sends it once the
+                // account is actually paid, from whichever route paid it.
 
                 return $user->load('workspace');
             });

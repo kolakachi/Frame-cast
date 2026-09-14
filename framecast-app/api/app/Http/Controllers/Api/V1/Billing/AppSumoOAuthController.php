@@ -80,6 +80,10 @@ class AppSumoOAuthController extends Controller
             return response()->json(['error' => 'license_not_found_or_deactivated'], 409);
         }
 
+        // A licence is a paid account, so the welcome belongs here — this is
+        // the only route in that never touches a Kelviq webhook.
+        \App\Services\Onboarding\WelcomeMail::sendOnce($user->workspace);
+
         // Account is created + provisioned; the SPA logs in with these creds.
         return response()->json(['data' => ['email' => $user->email, 'activated' => true]], 201);
     }
