@@ -104,9 +104,12 @@ class GenerateTalkingVideoJob implements ShouldQueue
         $audioId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
         $audioAsset = $audioId ? Asset::query()->find($audioId) : null;
         $voiceoverSeconds = (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 8);
-        $resolution = (string) config('services.fabric.resolution', '480p');
+        // The engine decides both the bill and what we charge, so the same key
+        // drives the quote, the ledger's COGS and the model that runs.
+        $engineKey = data_get($scene->image_generation_settings_json, 'lipsync_engine');
+        $engineKey = is_string($engineKey) && $engineKey !== '' ? $engineKey : null;
 
-        $cost = CreditService::spokespersonCost($voiceoverSeconds);
+        $cost = CreditService::spokespersonCost($voiceoverSeconds, $engineKey);
         $this->stamp($scene, [
             'animation_in_progress' => true,
             'animation_last_error'  => null,
@@ -123,7 +126,7 @@ class GenerateTalkingVideoJob implements ShouldQueue
                 'project_id'        => $this->projectId,
                 'scene_id'          => $this->sceneId,
                 'user_id'           => $scene->project->created_by_user_id,
-                'upstream_cost_usd' => CreditService::spokespersonCogsUsd($voiceoverSeconds, $resolution),
+                'upstream_cost_usd' => CreditService::spokespersonCogsUsd($voiceoverSeconds, $engineKey),
                 'metadata'          => ['tier' => 'spokesperson', 'seconds' => round($voiceoverSeconds, 1)],
             ],
         );
@@ -156,11 +159,20 @@ class GenerateTalkingVideoJob implements ShouldQueue
             }
 
             // Submit, stash the prediction id for visibility/resume, then poll.
+            // The scene carries the chosen engine when the user picked one in
+            // the editor; otherwise the configured default runs.
+            $engineKey = data_get($scene->image_generation_settings_json, 'lipsync_engine');
             $predictionId = $adapter->start(
                 $this->publicUrl($imageAsset),
                 $this->publicUrl($audioAsset),
+                is_string($engineKey) ? $engineKey : null,
             );
-            $this->stamp($scene, ['animation_prediction_id' => $predictionId]);
+            $this->stamp($scene, [
+                'animation_prediction_id' => $predictionId,
+                // Record what actually ran, so a later look at the scene says
+                // which model produced the clip rather than which is default now.
+                'lipsync_engine_used' => $engineKey ?: (string) config('services.lipsync.default', 'omni_human'),
+            ]);
 
             $videoUrl = $adapter->pollUntilDone($predictionId);
             if ($videoUrl === null) {

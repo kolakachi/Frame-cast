@@ -233,13 +233,14 @@ class CreditService
     }
 
     /**
-     * Credits per second of lip-sync, by the resolution Fabric is configured
-     * to render. Keyed on resolution because the upstream rate is: $0.08/s at
-     * 480p, $0.15/s at 720p. A single rate meant flipping FABRIC_RESOLUTION in
-     * the environment silently started selling below cost, with nothing in the
-     * code to notice.
+     * COGS a single credit is pegged to cover, for video.
+     *
+     * The file header sets this: everything non-video pegs at $0.004 for ~60%
+     * margin, and video is the deliberate exception at $0.005 for ~50%. Named
+     * here because lip-sync now derives its price from a per-second rate
+     * rather than carrying hand-written buckets.
      */
-    public const SPOKESPERSON_PER_SECOND = ['480p' => 24, '720p' => 45];
+    public const VIDEO_COGS_PER_CREDIT = 0.005;
 
     /** Shortest clip we bill for, so a two-word take still covers its own cost. */
     public const SPOKESPERSON_MIN_SECONDS = 5;
@@ -258,21 +259,32 @@ class CreditService
      * margin the bands were meant to hold, now held at every length instead of
      * only the short ones.
      */
-    public static function spokespersonCost(float $seconds, ?string $resolution = null): int
+    public static function spokespersonCost(float $seconds, ?string $engineKey = null): int
     {
-        $resolution ??= (string) config('services.fabric.resolution', '480p');
-        $rate = self::SPOKESPERSON_PER_SECOND[$resolution] ?? self::SPOKESPERSON_PER_SECOND['480p'];
         $billable = max(self::SPOKESPERSON_MIN_SECONDS, $seconds);
+        $cogs = self::spokespersonCogsUsd($billable, $engineKey);
 
-        return (int) ceil($billable * $rate);
+        // The standard video peg. The old buckets followed it up to 15s and
+        // then stopped: 320 credits covers $1.60, while a 30s clip costs $2.40
+        // and a 60s clip — which direct_camera permits — costs $4.80.
+        return (int) ceil($cogs / self::VIDEO_COGS_PER_CREDIT);
     }
 
-    /** Upstream COGS (USD) for a spokesperson clip — Fabric per-second rate × length. */
-    public static function spokespersonCogsUsd(float $seconds, string $resolution = '480p'): float
+    /** Per-second rate the provider charges for an engine. */
+    public static function lipsyncRateUsd(?string $engineKey = null): float
     {
-        $perSecond = $resolution === '720p' ? 0.15 : 0.08;
+        $engines = (array) config('services.lipsync.engines', []);
+        $key = $engineKey && isset($engines[$engineKey])
+            ? $engineKey
+            : (string) config('services.lipsync.default', 'omni_human');
 
-        return round(max(1.0, $seconds) * $perSecond, 4);
+        return (float) ($engines[$key]['cost_usd_per_second'] ?? 0.14);
+    }
+
+    /** Upstream COGS (USD) for a spokesperson clip — the engine's rate × length. */
+    public static function spokespersonCogsUsd(float $seconds, ?string $engineKey = null): float
+    {
+        return round(max(1.0, $seconds) * self::lipsyncRateUsd($engineKey), 4);
     }
 
     /** Resolve a requested video quality to a valid option for the tier (its default if unknown/absent). */

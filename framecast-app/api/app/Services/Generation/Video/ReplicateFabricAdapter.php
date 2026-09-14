@@ -17,7 +17,7 @@ class ReplicateFabricAdapter
 {
     public function providerKey(): string
     {
-        return 'replicate:'.(string) config('services.fabric.model', 'veed/fabric-1.0');
+        return 'replicate:'.(string) self::engine()['model'];
     }
 
     public function configured(): bool
@@ -29,31 +29,47 @@ class ReplicateFabricAdapter
      * Submit the prediction and return its id immediately (so the caller can
      * stash it for resume). Throws on a failed submit.
      */
-    public function start(string $imageUrl, string $audioUrl): string
+    /** Settings for an engine key, falling back to the configured default. */
+    public static function engine(?string $key = null): array
+    {
+        $engines = (array) config('services.lipsync.engines', []);
+        $key = $key && isset($engines[$key]) ? $key : (string) config('services.lipsync.default', 'omni_human');
+
+        return ($engines[$key] ?? null)
+            ?: ($engines['fabric'] ?? ['model' => 'veed/fabric-1.0', 'resolution_key' => 'resolution', 'resolution' => '480p']);
+    }
+
+    /**
+     * @param  string|null  $engineKey  which lip-sync model to run; null uses the default
+     */
+    public function start(string $imageUrl, string $audioUrl, ?string $engineKey = null): string
     {
         $token = (string) config('services.replicate.api_token', '');
         if ($token === '') {
             throw new RuntimeException('Replicate is not configured — talking spokesperson is unavailable.');
         }
-        $model = (string) config('services.fabric.model', 'veed/fabric-1.0');
-        $resolution = (string) config('services.fabric.resolution', '480p');
+
+        $engine = self::engine($engineKey);
+        $model = (string) $engine['model'];
+
+        // Engines differ in whether they take a size at all, so the input is
+        // built from the engine rather than assumed. Sending Fabric's
+        // `resolution` to one that does not accept it is a 422.
+        $input = ['image' => $imageUrl, 'audio' => $audioUrl];
+        if (! empty($engine['resolution_key']) && ! empty($engine['resolution'])) {
+            $input[$engine['resolution_key']] = $engine['resolution'];
+        }
 
         $start = Http::withToken($token)
             ->timeout(30)
-            ->post("https://api.replicate.com/v1/models/{$model}/predictions", [
-                'input' => [
-                    'image'      => $imageUrl,
-                    'audio'      => $audioUrl,
-                    'resolution' => $resolution,
-                ],
-            ]);
+            ->post("https://api.replicate.com/v1/models/{$model}/predictions", ['input' => $input]);
 
         if (! $start->successful()) {
-            throw new RuntimeException("Fabric submit failed ({$start->status()}): ".mb_substr((string) $start->body(), 0, 300));
+            throw new RuntimeException("Lip-sync submit failed ({$start->status()}): ".mb_substr((string) $start->body(), 0, 300));
         }
         $id = (string) $start->json('id');
         if ($id === '') {
-            throw new RuntimeException('Fabric submit returned no prediction id.');
+            throw new RuntimeException('Lip-sync submit returned no prediction id.');
         }
 
         return $id;

@@ -177,25 +177,33 @@ class UgcPlanTest extends TestCase
         $this->assertGreaterThan(UgcPlan::quote($silent), UgcPlan::quote($spoken));
     }
 
-    public function test_lip_sync_is_never_sold_below_what_it_costs(): void
+    public function test_lip_sync_is_priced_on_the_house_peg_at_every_length(): void
     {
-        // Fabric bills per second, so any flat band eventually sells below
-        // cost. A 60-second take is permitted by direct_camera and used to
-        // lose $3.20.
-        $creditUsd = 0.005;
+        // Video pegs one credit to $0.005 of COGS (see the CreditService
+        // header). The old buckets honoured that to 15s and then flattened:
+        // 320 credits covers $1.60 while a 60s clip costs $4.80.
+        foreach (['fabric', 'omni_human'] as $engine) {
+            foreach ([5, 8, 15, 30, 60] as $seconds) {
+                $credits = CreditService::spokespersonCost((float) $seconds, $engine);
+                $cogs = CreditService::spokespersonCogsUsd((float) $seconds, $engine);
 
-        foreach ([5, 8, 15, 20, 30, 45, 60] as $seconds) {
-            foreach (['480p', '720p'] as $resolution) {
-                $charged = CreditService::spokespersonCost((float) $seconds, $resolution) * $creditUsd;
-                $cogs = CreditService::spokespersonCogsUsd((float) $seconds, $resolution);
-
-                $this->assertGreaterThan(
-                    $cogs,
-                    $charged,
-                    "{$seconds}s at {$resolution} is sold at \${$charged} against \${$cogs} of cost",
+                $this->assertEqualsWithDelta(
+                    $cogs / CreditService::VIDEO_COGS_PER_CREDIT,
+                    $credits,
+                    1.0,
+                    "{$engine} at {$seconds}s is off the peg",
                 );
             }
         }
+    }
+
+    public function test_a_dearer_engine_costs_more_than_a_cheaper_one(): void
+    {
+        $this->assertGreaterThan(
+            CreditService::spokespersonCost(20.0, 'fabric'),
+            CreditService::spokespersonCost(20.0, 'omni_human'),
+            'omni-human bills $0.14/s against Fabric\'s $0.08/s at 480p',
+        );
     }
 
     public function test_cost_scales_with_length_instead_of_flattening(): void

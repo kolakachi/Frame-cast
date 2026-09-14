@@ -988,6 +988,10 @@ class SceneController extends Controller
             // (the Wan/Hailuo/Kling/Seedance models only render those two buckets).
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:1000'],
+            // Which lip-sync model renders a spokesperson clip. Ignored by the
+            // other tiers, which are image-to-video and have no such choice.
+            'lipsync_engine'   => ['sometimes', 'nullable', 'string',
+                \Illuminate\Validation\Rule::in(array_keys((array) config('services.lipsync.engines', [])))],
             // User-chosen quality (resolution for i2v / mode for Kling). Resolved
             // against the tier's catalog; an unknown value falls back to default.
             'quality'          => ['sometimes', 'nullable', 'string', 'max:16'],
@@ -1114,6 +1118,14 @@ class SceneController extends Controller
         ])->save();
 
         if ($isSpokesperson) {
+            if (! empty($validated['lipsync_engine'])) {
+                $scene->forceFill([
+                    'image_generation_settings_json' => array_merge(
+                        $scene->image_generation_settings_json ?? [],
+                        ['lipsync_engine' => $validated['lipsync_engine']],
+                    ),
+                ])->save();
+            }
             \App\Jobs\GenerateTalkingVideoJob::dispatch($scene->getKey(), $scene->project_id, $token, $sourceAsset->getKey());
         } else {
             \App\Jobs\AnimateSceneJob::dispatch(
