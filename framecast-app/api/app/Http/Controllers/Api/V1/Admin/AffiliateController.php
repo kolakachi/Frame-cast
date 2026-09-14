@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Affiliate;
 use App\Models\AffiliateConversion;
+use App\Models\AffiliatePayout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -16,6 +18,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * Commission is read from the conversion rows, never recalculated from the
  * affiliate's current rate — a renegotiated percentage must not quietly
  * restate what is owed on sales already made.
+ *
+ * Settlement goes through a payout run rather than a flag per sale, so that
+ * "paid" always names a specific payment covering a specific set of sales.
+ * See the payouts migration for why.
  */
 class AffiliateController extends Controller
 {
@@ -23,6 +29,10 @@ class AffiliateController extends Controller
     {
         $affiliates = Affiliate::query()->withCount('clicks')->orderBy('name')->get()->map(function (Affiliate $a) {
             $rows = AffiliateConversion::query()->where('affiliate_id', $a->getKey())->get();
+            $outstanding = $rows->where('payout_status', 'unpaid');
+            $settled = $rows->where('payout_status', 'paid');
+            $last = AffiliatePayout::query()->where('affiliate_id', $a->getKey())
+                ->where('status', 'paid')->latest('paid_at')->first();
 
             return [
                 'id'      => $a->getKey(),
@@ -35,8 +45,25 @@ class AffiliateController extends Controller
                 'clicks'  => (int) $a->clicks_count,
                 'sales'   => $rows->count(),
                 'revenue' => round((float) $rows->sum('order_amount'), 2),
-                'owed'    => round((float) $rows->where('payout_status', 'unpaid')->sum('commission_amount'), 2),
-                'paid'    => round((float) $rows->where('payout_status', 'paid')->sum('commission_amount'), 2),
+
+                // Outstanding and settled are kept apart at every level. A single
+                // lifetime figure cannot be checked against anything once more
+                // than one payment has been made.
+                'owed'    => round((float) $outstanding->sum('commission_amount'), 2),
+                'owed_sales' => $outstanding->count(),
+                'paid'    => round((float) $settled->sum('commission_amount'), 2),
+                'paid_sales' => $settled->count(),
+
+                // What has come in since the last payment was sent — the number
+                // that answers "did this affiliate earn anything new?".
+                'payouts_count' => AffiliatePayout::query()->where('affiliate_id', $a->getKey())->where('status', 'paid')->count(),
+                'last_payout' => $last ? [
+                    'reference' => $last->reference,
+                    'amount' => round((float) $last->total_amount, 2),
+                    'paid_at' => $last->paid_at?->toDateString(),
+                    'sales_count' => (int) $last->sales_count,
+                ] : null,
+                'oldest_unpaid' => $outstanding->min('created_at')?->toDateString(),
             ];
         });
 
@@ -86,39 +113,205 @@ class AffiliateController extends Controller
         return response()->json(['data' => ['affiliate' => $affiliate->fresh()], 'meta' => []]);
     }
 
-    public function conversions(int $id): JsonResponse
+    public function conversions(Request $request, int $id): JsonResponse
     {
-        $rows = AffiliateConversion::query()->where('affiliate_id', $id)
-            ->orderByDesc('created_at')->limit(500)->get()
-            ->map(fn (AffiliateConversion $c) => [
-                'id' => $c->getKey(),
-                'date' => $c->created_at?->toDateString(),
-                'customer_email' => $c->customer_email,
-                'order_id' => $c->order_id,
-                'plan' => $c->plan,
-                'order_amount' => (float) $c->order_amount,
-                'commission_percent' => (float) $c->commission_percent,
-                'commission_amount' => (float) $c->commission_amount,
-                'attribution_source' => $c->attribution_source,
-                'payout_status' => $c->payout_status,
+        $query = AffiliateConversion::query()->where('affiliate_id', $id);
+
+        // Defaults to everything; the UI narrows to outstanding when the
+        // question is "what do I owe right now".
+        if ($request->string('filter')->toString() === 'unpaid') {
+            $query->where('payout_status', 'unpaid');
+        }
+
+        $rows = $query->orderByDesc('created_at')->limit(500)->get();
+        $references = AffiliatePayout::query()
+            ->whereIn('id', $rows->pluck('payout_id')->filter()->unique())
+            ->pluck('reference', 'id');
+
+        return response()->json(['data' => ['conversions' => $rows->map(fn (AffiliateConversion $c) => [
+            'id' => $c->getKey(),
+            'date' => $c->created_at?->toDateString(),
+            'customer_email' => $c->customer_email,
+            'order_id' => $c->order_id,
+            'plan' => $c->plan,
+            'order_amount' => (float) $c->order_amount,
+            'basis_amount' => (float) ($c->basis_amount ?: $c->order_amount),
+            'commission_percent' => (float) $c->commission_percent,
+            'commission_amount' => (float) $c->commission_amount,
+            'attribution_source' => $c->attribution_source,
+            'payout_status' => $c->payout_status,
+            // Which payment settled it, so a row is traceable to a transfer.
+            'payout_reference' => $c->payout_id ? ($references[$c->payout_id] ?? null) : null,
+        ])], 'meta' => []]);
+    }
+
+    /** Every payment sent to this affiliate, newest first. */
+    public function payouts(int $id): JsonResponse
+    {
+        $rows = AffiliatePayout::query()->where('affiliate_id', $id)
+            ->orderByDesc('created_at')->limit(200)->get()
+            ->map(fn (AffiliatePayout $p) => [
+                'id' => $p->getKey(),
+                'reference' => $p->reference,
+                'paid_at' => $p->paid_at?->toDateString(),
+                'period_start' => $p->period_start?->toDateString(),
+                'period_end' => $p->period_end?->toDateString(),
+                'sales_count' => (int) $p->sales_count,
+                'total_amount' => (float) $p->total_amount,
+                'currency' => $p->currency,
+                'method' => $p->method,
+                'note' => $p->note,
+                'status' => $p->status,
+                'void_reason' => $p->void_reason,
             ]);
 
-        return response()->json(['data' => ['conversions' => $rows], 'meta' => []]);
+        return response()->json(['data' => ['payouts' => $rows], 'meta' => []]);
     }
 
     /**
-     * The statement an affiliate is sent. Streamed so a long history doesn't
-     * have to be held in memory.
+     * Settle what is outstanding as one payment.
+     *
+     * Membership is fixed here, inside the lock, and the statement is rendered
+     * from it afterwards. A sale landing a second later is simply outstanding
+     * again, which is the correct answer rather than an accident.
      */
-    public function statement(Request $request, int $id): StreamedResponse
+    public function createPayout(Request $request, int $id): JsonResponse
+    {
+        $v = $request->validate([
+            'conversion_ids' => ['sometimes', 'array'],
+            'conversion_ids.*' => ['integer'],
+            // Lets a run be cut at a period end rather than at whenever the
+            // button happened to be pressed.
+            'up_to' => ['sometimes', 'nullable', 'date'],
+            'method' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
+        ]);
+
+        $affiliate = Affiliate::query()->findOrFail($id);
+
+        try {
+            $payout = DB::transaction(function () use ($affiliate, $v, $request) {
+                $query = AffiliateConversion::query()
+                    ->where('affiliate_id', $affiliate->getKey())
+                    ->where('payout_status', 'unpaid')
+                    ->lockForUpdate();
+
+                if (! empty($v['conversion_ids'])) {
+                    $query->whereIn('id', $v['conversion_ids']);
+                }
+                if (! empty($v['up_to'])) {
+                    $query->where('created_at', '<=', \Carbon\Carbon::parse($v['up_to'])->endOfDay());
+                }
+
+                $rows = $query->get();
+                if ($rows->isEmpty()) {
+                    throw new \RuntimeException('There is nothing outstanding to pay.');
+                }
+
+                // Summing across currencies would produce a number that is not
+                // an amount in any of them.
+                $currencies = $rows->pluck('currency')->map(fn ($c) => strtoupper((string) $c ?: 'USD'))->unique();
+                if ($currencies->count() > 1) {
+                    throw new \RuntimeException('These sales are in '.$currencies->implode(', ')
+                        .'. Pay each currency as its own run by selecting the rows.');
+                }
+
+                $payout = AffiliatePayout::query()->create([
+                    'affiliate_id' => $affiliate->getKey(),
+                    'reference' => AffiliatePayout::nextReference($affiliate),
+                    'period_start' => $rows->min('created_at')?->toDateString(),
+                    'period_end' => $rows->max('created_at')?->toDateString(),
+                    'sales_count' => $rows->count(),
+                    'total_amount' => round((float) $rows->sum('commission_amount'), 2),
+                    'currency' => $currencies->first(),
+                    'status' => 'paid',
+                    'method' => $v['method'] ?? null,
+                    'note' => $v['note'] ?? null,
+                    'paid_at' => now(),
+                    'created_by_user_id' => $request->user()?->getKey(),
+                ]);
+
+                AffiliateConversion::query()->whereIn('id', $rows->pluck('id'))->update([
+                    'payout_status' => 'paid',
+                    'payout_id' => $payout->getKey(),
+                    'paid_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                return $payout;
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+
+        return response()->json(['data' => ['payout' => [
+            'id' => $payout->getKey(),
+            'reference' => $payout->reference,
+            'sales_count' => (int) $payout->sales_count,
+            'total_amount' => (float) $payout->total_amount,
+        ]], 'meta' => []], 201);
+    }
+
+    /**
+     * Undo a run that should not have been recorded — a mis-click, or a
+     * transfer that failed. The sales return to outstanding; the run stays
+     * visible as void, and its reference is never issued again.
+     */
+    public function voidPayout(Request $request, int $id, int $payoutId): JsonResponse
+    {
+        $v = $request->validate(['reason' => ['required', 'string', 'max:500']]);
+
+        $payout = AffiliatePayout::query()->where('affiliate_id', $id)->findOrFail($payoutId);
+        if ($payout->status === 'void') {
+            return response()->json(['error' => ['message' => 'That payout is already void.']], 422);
+        }
+
+        DB::transaction(function () use ($payout, $v) {
+            AffiliateConversion::query()->where('payout_id', $payout->getKey())->update([
+                'payout_status' => 'unpaid',
+                'payout_id' => null,
+                'paid_at' => null,
+                'updated_at' => now(),
+            ]);
+            $payout->fill(['status' => 'void', 'voided_at' => now(), 'void_reason' => $v['reason']])->save();
+        });
+
+        return response()->json(['data' => ['voided' => $payout->reference], 'meta' => []]);
+    }
+
+    /**
+     * The statement an affiliate is sent.
+     *
+     * With a payout id it renders that run's membership, so re-downloading it
+     * next year produces the same document. Without one it renders what is
+     * outstanding now, as a preview of the next run.
+     */
+    public function statement(Request $request, int $id, ?int $payoutId = null): StreamedResponse
     {
         $affiliate = Affiliate::query()->findOrFail($id);
-        $unpaidOnly = $request->boolean('unpaid_only', false);
+        $payout = $payoutId ? AffiliatePayout::query()->where('affiliate_id', $id)->findOrFail($payoutId) : null;
+        $unpaidOnly = $payout ? false : $request->boolean('unpaid_only', false);
 
-        $filename = Str::slug($affiliate->name).'-statement-'.now()->toDateString().'.csv';
+        $filename = Str::slug($affiliate->name).'-'
+            .($payout ? Str::slug($payout->reference) : 'outstanding-'.now()->toDateString()).'.csv';
 
-        return response()->streamDownload(function () use ($affiliate, $unpaidOnly) {
+        return response()->streamDownload(function () use ($affiliate, $payout, $unpaidOnly) {
             $out = fopen('php://output', 'w');
+
+            fputcsv($out, ['Statement for', $affiliate->name]);
+            if ($payout) {
+                fputcsv($out, ['Payment reference', $payout->reference]);
+                fputcsv($out, ['Paid', $payout->paid_at?->toDateString()]);
+                fputcsv($out, ['Covering sales', $payout->period_start?->toDateString().' to '.$payout->period_end?->toDateString()]);
+                if ($payout->status === 'void') {
+                    fputcsv($out, ['VOID', $payout->void_reason]);
+                }
+            } else {
+                fputcsv($out, ['Outstanding as at', now()->toDateString()]);
+                fputcsv($out, ['Status', 'Not yet paid — this is a preview of the next payment.']);
+            }
+            fputcsv($out, []);
+
             // Gross and basis both appear: an affiliate who sees only the
             // commission cannot check it, and one who sees only the gross will
             // expect a percentage of a number that includes tax.
@@ -129,7 +322,11 @@ class AffiliateController extends Controller
             ]);
 
             $query = AffiliateConversion::query()->where('affiliate_id', $affiliate->getKey())->orderBy('created_at');
-            if ($unpaidOnly) {
+            if ($payout) {
+                // The run's own membership, not a fresh query — that is the
+                // whole point of recording it.
+                $query->where('payout_id', $payout->getKey());
+            } elseif ($unpaidOnly) {
                 $query->where('payout_status', 'unpaid');
             }
 
@@ -166,20 +363,5 @@ class AffiliateController extends Controller
                 .round((float) ($cfg['platform_fee_percent'] ?? 0), 1).'%.']);
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv']);
-    }
-
-    /** Settle what is currently outstanding. */
-    public function markPaid(Request $request, int $id): JsonResponse
-    {
-        $v = $request->validate(['conversion_ids' => ['sometimes', 'array'], 'conversion_ids.*' => ['integer']]);
-
-        $query = AffiliateConversion::query()->where('affiliate_id', $id)->where('payout_status', 'unpaid');
-        if (! empty($v['conversion_ids'])) {
-            $query->whereIn('id', $v['conversion_ids']);
-        }
-
-        $count = $query->update(['payout_status' => 'paid', 'paid_at' => now(), 'updated_at' => now()]);
-
-        return response()->json(['data' => ['marked_paid' => $count], 'meta' => []]);
     }
 }

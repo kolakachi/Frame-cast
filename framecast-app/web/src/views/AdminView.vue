@@ -32,12 +32,31 @@ const activeView = ref('dashboard')
 // ── Affiliates ────────────────────────────────────────────────────
 // Marketers who send traffic for a negotiated cut. They have no account here
 // and never log in — this panel is the whole of their administration.
+//
+// Settlement is a payout run, not a flag: what is outstanding is always "what
+// has come in since the last payment", which stays a checkable number however
+// many times an affiliate has been paid.
 const affiliates = ref([])
 const affiliatesLoading = ref(false)
 const affiliateConversions = ref([])
+const affiliatePayouts = ref([])
 const affiliateOpen = ref(null)
+const affiliateTab = ref('outstanding')
+const affiliateDetailLoading = ref(false)
 const affiliateForm = ref({ name: '', email: '', code: '', commission_percent: 30 })
 const affiliateError = ref('')
+const affiliateCopied = ref(null)
+const affiliateBusy = ref(null)
+const payoutDraft = ref(null)
+
+const affiliateTotals = computed(() => affiliates.value.reduce((t, a) => ({
+  owed: t.owed + (a.owed ?? 0),
+  paid: t.paid + (a.paid ?? 0),
+  sales: t.sales + (a.sales ?? 0),
+  revenue: t.revenue + (a.revenue ?? 0),
+}), { owed: 0, paid: 0, sales: 0, revenue: 0 }))
+
+const affiliateOwing = computed(() => affiliates.value.filter((a) => (a.owed ?? 0) > 0).length)
 
 async function loadAffiliates() {
   affiliatesLoading.value = true
@@ -45,6 +64,12 @@ async function loadAffiliates() {
   try {
     const { data } = await api.get('/admin/affiliates')
     affiliates.value = data?.data?.affiliates ?? []
+    // Keep an open panel pointed at the refreshed row, so the header figures
+    // do not disagree with the table behind it.
+    if (affiliateOpen.value) {
+      const fresh = affiliates.value.find((a) => a.id === affiliateOpen.value.id)
+      if (fresh) affiliateOpen.value = fresh
+    }
   } catch (e) {
     affiliateError.value = e.response?.data?.error?.message ?? 'Could not load affiliates.'
   } finally {
@@ -65,29 +90,54 @@ async function createAffiliate() {
   }
 }
 
-async function openAffiliate(a) {
+async function openAffiliate(a, tab) {
   affiliateOpen.value = a
-  affiliateConversions.value = []
+  if (tab) affiliateTab.value = tab
+  await loadAffiliateDetail()
+}
+
+async function loadAffiliateDetail() {
+  const a = affiliateOpen.value
+  if (!a) return
+  affiliateDetailLoading.value = true
   try {
-    const { data } = await api.get(`/admin/affiliates/${a.id}/conversions`)
-    affiliateConversions.value = data?.data?.conversions ?? []
+    if (affiliateTab.value === 'payments') {
+      const { data } = await api.get(`/admin/affiliates/${a.id}/payouts`)
+      affiliatePayouts.value = data?.data?.payouts ?? []
+    } else {
+      const { data } = await api.get(`/admin/affiliates/${a.id}/conversions`, {
+        params: affiliateTab.value === 'outstanding' ? { filter: 'unpaid' } : {},
+      })
+      affiliateConversions.value = data?.data?.conversions ?? []
+    }
   } catch {
-    affiliateError.value = 'Could not load that affiliate\'s sales.'
+    affiliateError.value = 'Could not load that affiliate’s history.'
+  } finally {
+    affiliateDetailLoading.value = false
   }
+}
+
+function switchAffiliateTab(tab) {
+  affiliateTab.value = tab
+  loadAffiliateDetail()
 }
 
 // Downloaded through the authenticated client, then handed to the browser —
 // a plain link would hit the endpoint without the bearer token.
-async function downloadStatement(a, unpaidOnly) {
+async function downloadStatement(a, { payout = null, unpaidOnly = false } = {}) {
+  affiliateError.value = ''
+  const path = payout
+    ? `/admin/affiliates/${a.id}/payouts/${payout.id}/statement.csv`
+    : `/admin/affiliates/${a.id}/statement.csv`
   try {
-    const res = await api.get(`/admin/affiliates/${a.id}/statement.csv`, {
-      params: unpaidOnly ? { unpaid_only: 1 } : {},
+    const res = await api.get(path, {
+      params: !payout && unpaidOnly ? { unpaid_only: 1 } : {},
       responseType: 'blob',
     })
     const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }))
     const link = document.createElement('a')
     link.href = url
-    link.download = `${a.code}-statement.csv`
+    link.download = payout ? `${a.code}-${payout.reference}.csv` : `${a.code}-outstanding.csv`
     link.click()
     URL.revokeObjectURL(url)
   } catch {
@@ -95,20 +145,62 @@ async function downloadStatement(a, unpaidOnly) {
   }
 }
 
-async function markAffiliatePaid(a) {
-  if (!window.confirm(`Mark $${a.owed.toFixed(2)} as paid to ${a.name}? Do this once the money has actually gone.`)) return
+// The confirm step exists because the money moves outside this system: the
+// button records a payment that has already been sent, and getting that order
+// wrong is what leaves an affiliate unpaid with the ledger saying otherwise.
+function startPayout(a) {
+  payoutDraft.value = { affiliate: a, up_to: '', method: '', note: '' }
+}
+
+async function confirmPayout() {
+  const draft = payoutDraft.value
+  if (!draft) return
+  affiliateBusy.value = draft.affiliate.id
+  affiliateError.value = ''
   try {
-    await api.post(`/admin/affiliates/${a.id}/mark-paid`, {})
+    const { data } = await api.post(`/admin/affiliates/${draft.affiliate.id}/payouts`, {
+      up_to: draft.up_to || null,
+      method: draft.method || null,
+      note: draft.note || null,
+    })
+    const payout = data?.data?.payout
+    payoutDraft.value = null
     await loadAffiliates()
-    if (affiliateOpen.value?.id === a.id) await openAffiliate(a)
-  } catch {
-    affiliateError.value = 'Could not mark those as paid.'
+    if (affiliateOpen.value?.id === draft.affiliate.id) await loadAffiliateDetail()
+    // Hands over the statement immediately: the run has just fixed which sales
+    // it covers, and this is the document that says so.
+    if (payout) await downloadStatement(draft.affiliate, { payout })
+  } catch (e) {
+    affiliateError.value = e.response?.data?.error?.message ?? 'Could not record that payment.'
+  } finally {
+    affiliateBusy.value = null
   }
 }
 
-function copyAffiliateLink(a) {
-  navigator.clipboard?.writeText(a.link)
+async function voidPayout(a, payout) {
+  const reason = window.prompt(
+    `Void ${payout.reference} (${money(payout.total_amount)})?\n\nIts ${payout.sales_count} sale(s) go back to outstanding. Say why:`,
+  )
+  if (!reason) return
+  try {
+    await api.post(`/admin/affiliates/${a.id}/payouts/${payout.id}/void`, { reason })
+    await loadAffiliates()
+    await loadAffiliateDetail()
+  } catch (e) {
+    affiliateError.value = e.response?.data?.error?.message ?? 'Could not void that payment.'
+  }
 }
+
+async function copyAffiliateLink(a) {
+  try {
+    await navigator.clipboard?.writeText(a.link)
+    affiliateCopied.value = a.id
+    setTimeout(() => { if (affiliateCopied.value === a.id) affiliateCopied.value = null }, 1600)
+  } catch {
+    affiliateError.value = 'Could not copy — the link is ' + a.link
+  }
+}
+
 const topbarTitles = {
   dashboard: 'Platform Overview', users: 'Users',
   workspaces: 'Workspaces', videos: 'All Videos',
@@ -2136,92 +2228,281 @@ onMounted(() => {
 
         <!-- ── Plans & Credits ─────────────────────────── -->
         <template v-if="activeView === 'affiliates'">
-          <div class="page-head">
-            <h1 class="page-title">Affiliates</h1>
-            <p class="page-sub">Marketers who send traffic for a negotiated cut. They have no account here — create them, share their link, then export a statement and pay them yourself.</p>
-          </div>
+          <div class="aff-page">
+            <div v-if="affiliateError" class="aff-alert">{{ affiliateError }}</div>
 
-          <div v-if="affiliateError" class="admin-error">{{ affiliateError }}</div>
+            <!-- What is owed right now, before anything else: it is the only
+                 number on this page that needs acting on. -->
+            <div class="aff-metrics">
+              <div class="metric-card yellow">
+                <div class="metric-label">Owed now</div>
+                <div class="metric-value">{{ money(affiliateTotals.owed) }}</div>
+                <div class="metric-sub">{{ affiliateOwing }} affiliate{{ affiliateOwing === 1 ? '' : 's' }} awaiting payment</div>
+              </div>
+              <div class="metric-card green">
+                <div class="metric-label">Paid to date</div>
+                <div class="metric-value">{{ money(affiliateTotals.paid) }}</div>
+                <div class="metric-sub">across all completed payouts</div>
+              </div>
+              <div class="metric-card blue">
+                <div class="metric-label">Attributed revenue</div>
+                <div class="metric-value">{{ money(affiliateTotals.revenue) }}</div>
+                <div class="metric-sub">{{ affiliateTotals.sales }} sale{{ affiliateTotals.sales === 1 ? '' : 's' }} from affiliate links</div>
+              </div>
+              <div class="metric-card purple">
+                <div class="metric-label">Affiliates</div>
+                <div class="metric-value">{{ affiliates.length }}</div>
+                <div class="metric-sub">no accounts — administered here</div>
+              </div>
+            </div>
 
-          <div class="card" style="margin-bottom:18px">
-            <div class="card-head"><h2 class="card-title">Add an affiliate</h2></div>
-            <div class="aff-form">
-              <label>Name<input v-model="affiliateForm.name" placeholder="Jane Marketer" /></label>
-              <label>Email<input v-model="affiliateForm.email" placeholder="jane@example.com" /></label>
-              <label>Code <span class="aff-hint">optional</span><input v-model="affiliateForm.code" placeholder="jane" /></label>
-              <label>Commission %<input v-model.number="affiliateForm.commission_percent" type="number" min="0" max="100" step="0.5" /></label>
-              <button class="btn-primary" :disabled="!affiliateForm.name" @click="createAffiliate">Create</button>
+            <div class="section">
+              <div class="section-header">
+                <div class="section-title">Affiliates</div>
+                <div class="section-actions">
+                  <span class="meta-count">Paid out by us, by hand — nothing here moves money</span>
+                  <button class="btn btn-ghost btn-sm" :disabled="affiliatesLoading" @click="loadAffiliates">
+                    {{ affiliatesLoading ? 'Loading…' : 'Refresh' }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <div v-if="affiliatesLoading && !affiliates.length" class="aff-empty">Loading…</div>
+                <table v-else-if="affiliates.length">
+                  <thead>
+                    <tr>
+                      <th>Affiliate</th>
+                      <th>Referral link</th>
+                      <th class="aff-num">Rate</th>
+                      <th class="aff-num">Clicks</th>
+                      <th class="aff-num">Sales</th>
+                      <th class="aff-num">Revenue</th>
+                      <th class="aff-num">Owed now</th>
+                      <th class="aff-num">Paid to date</th>
+                      <th>Last payment</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="a in affiliates" :key="a.id" :class="['aff-row', affiliateOpen?.id === a.id ? 'aff-row-open' : '']">
+                      <td>
+                        <div class="aff-name">
+                          <strong>{{ a.name }}</strong>
+                          <span v-if="a.status !== 'active'" class="aff-pill aff-pill-muted">paused</span>
+                        </div>
+                        <div class="aff-sub">{{ a.email || 'no email on file' }}</div>
+                      </td>
+                      <td>
+                        <div class="aff-link">
+                          <code class="aff-code">?ref={{ a.code }}</code>
+                          <button class="btn btn-ghost btn-xs" @click="copyAffiliateLink(a)">
+                            {{ affiliateCopied === a.id ? 'Copied' : 'Copy' }}
+                          </button>
+                        </div>
+                      </td>
+                      <td class="aff-num">{{ a.commission_percent }}%</td>
+                      <td class="aff-num aff-dim">{{ a.clicks }}</td>
+                      <td class="aff-num">{{ a.sales }}</td>
+                      <td class="aff-num aff-dim">{{ money(a.revenue) }}</td>
+
+                      <!-- Owed is what has accrued since the last payment, so it
+                           stays checkable no matter how many have been sent. -->
+                      <td class="aff-num">
+                        <span :class="['aff-owed', a.owed > 0 ? 'aff-owed-due' : '']">{{ money(a.owed) }}</span>
+                        <div v-if="a.owed > 0" class="aff-sub">
+                          {{ a.owed_sales }} sale{{ a.owed_sales === 1 ? '' : 's' }}<template v-if="a.oldest_unpaid"> since {{ a.oldest_unpaid }}</template>
+                        </div>
+                      </td>
+                      <td class="aff-num aff-dim">
+                        {{ money(a.paid) }}
+                        <div v-if="a.payouts_count" class="aff-sub">{{ a.payouts_count }} payment{{ a.payouts_count === 1 ? '' : 's' }}</div>
+                      </td>
+                      <td>
+                        <template v-if="a.last_payout">
+                          <code class="aff-ref">{{ a.last_payout.reference }}</code>
+                          <div class="aff-sub">{{ money(a.last_payout.amount) }} · {{ a.last_payout.paid_at }}</div>
+                        </template>
+                        <span v-else class="aff-sub">never paid</span>
+                      </td>
+                      <td class="aff-actions">
+                        <button
+                          v-if="a.owed > 0"
+                          class="btn btn-pay btn-sm"
+                          :disabled="affiliateBusy === a.id"
+                          @click="startPayout(a)"
+                        >Pay {{ money(a.owed) }}</button>
+                        <button class="btn btn-ghost btn-sm" @click="openAffiliate(a, 'outstanding')">
+                          {{ affiliateOpen?.id === a.id ? 'Viewing' : 'Open' }}
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div v-else class="aff-empty">
+                  No affiliates yet. Add one below, then send them their link.
+                </div>
+              </div>
+            </div>
+
+            <!-- Per-affiliate history. Sales and payments are separate tabs
+                 because they answer different questions: what was earned, and
+                 what has actually been sent. -->
+            <div v-if="affiliateOpen" class="section">
+              <div class="section-header">
+                <div class="section-title">{{ affiliateOpen.name }}</div>
+                <div class="section-actions">
+                  <button
+                    v-if="affiliateOpen.owed > 0"
+                    class="btn btn-ghost btn-sm"
+                    @click="downloadStatement(affiliateOpen, { unpaidOnly: true })"
+                  >Preview statement</button>
+                  <button class="btn btn-ghost btn-sm" @click="affiliateOpen = null">Close</button>
+                </div>
+              </div>
+
+              <div class="aff-tabs">
+                <button
+                  v-for="t in [
+                    { key: 'outstanding', label: 'Owed now' },
+                    { key: 'all', label: 'All sales' },
+                    { key: 'payments', label: 'Payments' },
+                  ]"
+                  :key="t.key"
+                  :class="['aff-tab', affiliateTab === t.key ? 'aff-tab-active' : '']"
+                  @click="switchAffiliateTab(t.key)"
+                >{{ t.label }}</button>
+              </div>
+
+              <div class="table-wrap">
+                <div v-if="affiliateDetailLoading" class="aff-empty">Loading…</div>
+
+                <template v-else-if="affiliateTab === 'payments'">
+                  <table v-if="affiliatePayouts.length">
+                    <thead>
+                      <tr>
+                        <th>Reference</th><th>Sent</th><th>Covering sales</th>
+                        <th class="aff-num">Sales</th><th class="aff-num">Amount</th>
+                        <th>How</th><th>Note</th><th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="p in affiliatePayouts" :key="p.id" :class="p.status === 'void' ? 'aff-void' : ''">
+                        <td>
+                          <code class="aff-ref">{{ p.reference }}</code>
+                          <span v-if="p.status === 'void'" class="aff-pill aff-pill-void">void</span>
+                        </td>
+                        <td>{{ p.paid_at || '—' }}</td>
+                        <td class="aff-sub">{{ p.period_start }} → {{ p.period_end }}</td>
+                        <td class="aff-num">{{ p.sales_count }}</td>
+                        <td class="aff-num"><strong>{{ money(p.total_amount) }}</strong></td>
+                        <td class="aff-sub">{{ p.method || '—' }}</td>
+                        <td class="aff-sub">{{ p.status === 'void' ? p.void_reason : (p.note || '—') }}</td>
+                        <td class="aff-actions">
+                          <button class="btn btn-ghost btn-xs" @click="downloadStatement(affiliateOpen, { payout: p })">CSV</button>
+                          <button v-if="p.status !== 'void'" class="btn btn-danger btn-xs" @click="voidPayout(affiliateOpen, p)">Void</button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div v-else class="aff-empty">No payments sent yet.</div>
+                </template>
+
+                <template v-else>
+                  <table v-if="affiliateConversions.length">
+                    <thead>
+                      <tr>
+                        <th>Date</th><th>Customer</th><th>Plan</th>
+                        <th class="aff-num">Customer paid</th><th class="aff-num">Basis</th><th class="aff-num">Commission</th>
+                        <th>Attribution</th><th>Settled by</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="c in affiliateConversions" :key="c.id">
+                        <td>{{ c.date }}</td>
+                        <td>{{ c.customer_email || '—' }}</td>
+                        <td>{{ c.plan || '—' }}</td>
+                        <td class="aff-num aff-dim">{{ money(c.order_amount) }}</td>
+                        <td class="aff-num aff-dim">{{ money(c.basis_amount) }}</td>
+                        <td class="aff-num"><strong>{{ money(c.commission_amount) }}</strong></td>
+                        <td class="aff-sub">{{ c.attribution_source }}</td>
+                        <td>
+                          <code v-if="c.payout_reference" class="aff-ref">{{ c.payout_reference }}</code>
+                          <span v-else class="aff-pill aff-pill-due">owed</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div v-else class="aff-empty">
+                    {{ affiliateTab === 'outstanding' ? 'Nothing outstanding — everything earned has been paid.' : 'No sales recorded yet.' }}
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-header">
+                <div class="section-title">Add an affiliate</div>
+                <div class="section-actions">
+                  <span class="meta-count">They never log in — their link is all they get</span>
+                </div>
+              </div>
+              <div class="aff-form">
+                <label>Name<input v-model="affiliateForm.name" class="search-input" placeholder="Jane Marketer" /></label>
+                <label>Email<input v-model="affiliateForm.email" class="search-input" placeholder="jane@example.com" /></label>
+                <label>
+                  Code <span class="aff-hint">optional — appears in their link</span>
+                  <input v-model="affiliateForm.code" class="search-input" placeholder="jane" />
+                </label>
+                <label>Commission %<input v-model.number="affiliateForm.commission_percent" class="search-input" type="number" min="0" max="100" step="0.5" /></label>
+                <button class="btn btn-primary" :disabled="!affiliateForm.name" @click="createAffiliate">Create affiliate</button>
+              </div>
             </div>
           </div>
 
-          <div class="card">
-            <div class="card-head">
-              <h2 class="card-title">Affiliates</h2>
-              <button class="btn-ghost" @click="loadAffiliates">Refresh</button>
-            </div>
-            <div v-if="affiliatesLoading" class="admin-muted">Loading…</div>
-            <table v-else-if="affiliates.length" class="admin-table">
-              <thead>
-                <tr>
-                  <th>Name</th><th>Link</th><th class="num">Rate</th><th class="num">Clicks</th>
-                  <th class="num">Sales</th><th class="num">Revenue</th><th class="num">Owed</th><th class="num">Paid</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="a in affiliates" :key="a.id">
-                  <td>
-                    <strong>{{ a.name }}</strong>
-                    <div class="admin-muted">{{ a.email || '—' }}</div>
-                  </td>
-                  <td>
-                    <code class="aff-code">{{ a.code }}</code>
-                    <button class="btn-ghost btn-xs" @click="copyAffiliateLink(a)">copy link</button>
-                  </td>
-                  <td class="num">{{ a.commission_percent }}%</td>
-                  <td class="num">{{ a.clicks }}</td>
-                  <td class="num">{{ a.sales }}</td>
-                  <td class="num">${{ a.revenue.toFixed(2) }}</td>
-                  <td class="num"><strong>${{ a.owed.toFixed(2) }}</strong></td>
-                  <td class="num admin-muted">${{ a.paid.toFixed(2) }}</td>
-                  <td class="num aff-actions">
-                    <button class="btn-ghost btn-xs" @click="openAffiliate(a)">Sales</button>
-                    <button class="btn-ghost btn-xs" @click="downloadStatement(a, true)">CSV (unpaid)</button>
-                    <button class="btn-ghost btn-xs" @click="downloadStatement(a, false)">CSV (all)</button>
-                    <button v-if="a.owed > 0" class="btn-primary btn-xs" @click="markAffiliatePaid(a)">Mark paid</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="admin-muted">No affiliates yet.</div>
-          </div>
+          <!-- Recording a payment, not sending one. The wording has to keep
+               that straight or the ledger drifts from the bank. -->
+          <div v-if="payoutDraft" class="aff-modal-overlay" @click.self="payoutDraft = null">
+            <div class="aff-modal">
+              <div class="aff-modal-head">
+                <div class="section-title">Record payment to {{ payoutDraft.affiliate.name }}</div>
+              </div>
+              <div class="aff-modal-body">
+                <div class="aff-modal-total">
+                  <div>
+                    <div class="metric-label">Amount</div>
+                    <div class="metric-value">{{ money(payoutDraft.affiliate.owed) }}</div>
+                  </div>
+                  <div class="aff-modal-total-sub">
+                    covering {{ payoutDraft.affiliate.owed_sales }} sale{{ payoutDraft.affiliate.owed_sales === 1 ? '' : 's' }}<template v-if="payoutDraft.affiliate.oldest_unpaid"><br />since {{ payoutDraft.affiliate.oldest_unpaid }}</template>
+                  </div>
+                </div>
 
-          <div v-if="affiliateOpen" class="card" style="margin-top:18px">
-            <div class="card-head">
-              <h2 class="card-title">{{ affiliateOpen.name }} — sales</h2>
-              <button class="btn-ghost" @click="affiliateOpen = null">Close</button>
+                <p class="aff-modal-note">
+                  This records money you have already sent. The sales it covers are fixed
+                  now — anything arriving afterwards stays owed and goes on the next payment.
+                </p>
+
+                <label class="aff-field">
+                  Only sales up to <span class="aff-hint">optional — leave blank for everything owed</span>
+                  <input v-model="payoutDraft.up_to" class="search-input" type="date" />
+                </label>
+                <label class="aff-field">
+                  How it was sent <span class="aff-hint">optional</span>
+                  <input v-model="payoutDraft.method" class="search-input" placeholder="Wise, PayPal, bank transfer…" />
+                </label>
+                <label class="aff-field">
+                  Note <span class="aff-hint">optional</span>
+                  <input v-model="payoutDraft.note" class="search-input" placeholder="Transfer ref, agreed adjustment…" />
+                </label>
+              </div>
+              <div class="aff-modal-foot">
+                <button class="btn btn-ghost" @click="payoutDraft = null">Cancel</button>
+                <button class="btn btn-pay" :disabled="affiliateBusy === payoutDraft.affiliate.id" @click="confirmPayout">
+                  {{ affiliateBusy === payoutDraft.affiliate.id ? 'Recording…' : 'Record payment & download statement' }}
+                </button>
+              </div>
             </div>
-            <table v-if="affiliateConversions.length" class="admin-table">
-              <thead>
-                <tr>
-                  <th>Date</th><th>Customer</th><th>Plan</th>
-                  <th class="num">Paid</th><th class="num">Basis</th><th class="num">Commission</th>
-                  <th>Attribution</th><th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="c in affiliateConversions" :key="c.id">
-                  <td>{{ c.date }}</td>
-                  <td>{{ c.customer_email || '—' }}</td>
-                  <td>{{ c.plan || '—' }}</td>
-                  <td class="num">${{ Number(c.order_amount).toFixed(2) }}</td>
-                  <td class="num admin-muted">${{ Number(c.commission_amount / (c.commission_percent / 100)).toFixed(2) }}</td>
-                  <td class="num"><strong>${{ Number(c.commission_amount).toFixed(2) }}</strong></td>
-                  <td class="admin-muted">{{ c.attribution_source }}</td>
-                  <td>{{ c.payout_status }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="admin-muted">No sales recorded yet.</div>
           </div>
         </template>
 
@@ -3165,12 +3446,101 @@ tr:hover td { background: #1e2129; }
 .mail-dossier pre { white-space: pre-wrap; margin: 0; font-family: inherit; line-height: 1.55; }
 .mail-history-detail { background: var(--gm-card, rgba(255,255,255,.02)); padding: 14px 16px !important; border-radius: 8px; }
 
-.aff-form { display: grid; grid-template-columns: 1.4fr 1.4fr 1fr .7fr auto; gap: 12px; align-items: end; padding: 14px; }
-.aff-form label { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--color-text-muted); }
-.aff-form input { background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 8px; padding: 8px 10px; color: var(--color-text-primary); font: inherit; font-size: 12.5px; outline: none; }
-.aff-form input:focus-visible { border-color: var(--color-accent); }
-.aff-hint { opacity: .6; }
-.aff-code { background: var(--color-bg-elevated); padding: 2px 6px; border-radius: 5px; font-size: 11px; }
-.aff-actions { white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; }
+/* Affiliates.
+   Money owed has to read differently from money already sent, at a glance and
+   without reading the column header — everything here serves that. */
+.aff-page { display: flex; flex-direction: column; gap: 20px; }
+.aff-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.aff-alert {
+  padding: 11px 14px; border-radius: 8px; font-size: 12.5px;
+  background: #ef44441a; border: 1px solid #ef444440; color: #fca5a5;
+}
+.aff-empty { padding: 28px 16px; text-align: center; font-size: 12.5px; color: #6b7280; }
+
+.aff-row td { transition: background .15s; }
+.aff-row-open td { background: #1e2129; }
+.aff-row-open td:first-child { box-shadow: inset 2px 0 0 #7c3aed; }
+.aff-name { display: flex; align-items: center; gap: 7px; }
+.aff-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
+.aff-dim { color: #9ca3af; }
+.aff-num { text-align: right; font-variant-numeric: tabular-nums; }
+th.aff-num { text-align: right; }
+
+.aff-link { display: flex; align-items: center; gap: 7px; }
+.aff-code, .aff-ref {
+  background: #1e2129; border: 1px solid #2a2d38; padding: 3px 7px;
+  border-radius: 5px; font-size: 11px; font-family: "Space Mono", monospace; color: #c9cad4;
+}
+.aff-ref { color: #a5b4fc; }
+
+/* Outstanding is the one figure on the page that asks for an action, so it is
+   the only one that carries colour. Zero stays quiet. */
+.aff-owed { font-weight: 600; color: #6b7280; }
+.aff-owed-due { color: #f59e0b; font-size: 14px; }
+
+.aff-pill {
+  display: inline-block; padding: 2px 7px; border-radius: 999px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
+}
+.aff-pill-due { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b40; }
+.aff-pill-void { background: #6b728022; color: #9ca3af; border: 1px solid #6b728040; margin-left: 6px; }
+.aff-pill-muted { background: #6b728022; color: #9ca3af; border: 1px solid #6b728040; }
+.aff-void td { opacity: .5; }
+.aff-void .aff-ref { text-decoration: line-through; }
+
+.aff-actions { white-space: nowrap; text-align: right; }
+.aff-actions .btn + .btn { margin-left: 6px; }
+
+/* Paying is the consequential button here, so it is the only filled one. */
+.btn-primary { background: #6366f1; color: #fff; border: 1px solid #6366f1; font-weight: 600; }
+.btn-primary:hover:not(:disabled) { background: #4f52d3; border-color: #4f52d3; }
+.btn-pay { background: #10b981; color: #04241a; border: 1px solid #10b981; font-weight: 700; }
+.btn-pay:hover:not(:disabled) { background: #34d399; border-color: #34d399; }
+.btn-pay:disabled { background: #10b98133; color: #10b981; border-color: #10b98144; }
+
+.aff-tabs { display: flex; gap: 6px; padding: 12px 16px; border-bottom: 1px solid #2a2d38; }
+.aff-tab {
+  padding: 6px 13px; border-radius: 7px; font-size: 12px; font-weight: 600;
+  background: transparent; border: 1px solid #2a2d38; color: #6b7280;
+  cursor: pointer; transition: all .15s;
+}
+.aff-tab:hover { color: #e4e6ef; border-color: #6b7280; }
+.aff-tab-active { background: #7c3aed22; border-color: #7c3aed; color: #a78bfa; }
+
+.aff-form { display: grid; grid-template-columns: 1.4fr 1.4fr 1fr .7fr auto; gap: 14px; align-items: end; padding: 16px; }
+.aff-form label { display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; color: #9ca3af; }
+.aff-hint { color: #6b7280; font-weight: 400; }
+
+.aff-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.72);
+  display: flex; align-items: center; justify-content: center; z-index: 200; padding: 20px;
+}
+.aff-modal {
+  background: #161920; border: 1px solid #2a2d38; border-radius: 12px;
+  width: 100%; max-width: 460px; max-height: 90vh; overflow: auto;
+}
+.aff-modal-head { padding: 16px 20px; border-bottom: 1px solid #2a2d38; }
+.aff-modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+.aff-modal-total {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 16px; background: #1e2129; border: 1px solid #2a2d38; border-radius: 9px;
+}
+.aff-modal-total .metric-value { color: #10b981; }
+.aff-modal-total-sub { font-size: 11.5px; color: #6b7280; text-align: right; line-height: 1.5; }
+.aff-modal-note { font-size: 11.5px; color: #9ca3af; line-height: 1.6; margin: 0; }
+.aff-field { display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; color: #9ca3af; }
+/* The shared input carries a fixed width and content-box sizing, so both have
+   to be overridden or it runs past the container. */
+.aff-field .search-input, .aff-form .search-input { width: 100%; box-sizing: border-box; }
+.aff-modal-foot {
+  padding: 14px 20px; border-top: 1px solid #2a2d38;
+  display: flex; gap: 10px; justify-content: flex-end;
+}
+
+@media (max-width: 1100px) {
+  .aff-metrics { grid-template-columns: repeat(2, 1fr); }
+  .aff-form { grid-template-columns: 1fr 1fr; }
+}
+
 .btn-xs { padding: 4px 8px; font-size: 11px; }
 </style>

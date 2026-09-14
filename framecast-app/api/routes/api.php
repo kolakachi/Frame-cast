@@ -240,7 +240,10 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/affiliates/{id}', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'update'])->whereNumber('id');
             Route::get('/affiliates/{id}/conversions', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'conversions'])->whereNumber('id');
             Route::get('/affiliates/{id}/statement.csv', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'statement'])->whereNumber('id');
-            Route::post('/affiliates/{id}/mark-paid', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'markPaid'])->whereNumber('id');
+            Route::get('/affiliates/{id}/payouts', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'payouts'])->whereNumber('id');
+            Route::post('/affiliates/{id}/payouts', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'createPayout'])->whereNumber('id');
+            Route::get('/affiliates/{id}/payouts/{payoutId}/statement.csv', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'statement'])->whereNumber('id')->whereNumber('payoutId');
+            Route::post('/affiliates/{id}/payouts/{payoutId}/void', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'voidPayout'])->whereNumber('id')->whereNumber('payoutId');
             Route::get('/overview', [AdminController::class, 'overview']);
             Route::get('/users', [AdminController::class, 'users']);
             Route::get('/users/{userId}', [AdminController::class, 'userDetail'])->whereNumber('userId');

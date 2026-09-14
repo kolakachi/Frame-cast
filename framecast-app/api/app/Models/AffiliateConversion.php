@@ -10,7 +10,7 @@ class AffiliateConversion extends Model
     protected $fillable = [
         'affiliate_id', 'workspace_id', 'customer_email', 'order_id', 'plan',
         'order_amount', 'gross_amount', 'basis_amount', 'basis_method', 'currency', 'commission_percent', 'commission_amount',
-        'attribution_source', 'payout_status', 'paid_at',
+        'attribution_source', 'payout_status', 'payout_id', 'paid_at',
     ];
 
     protected function casts(): array
