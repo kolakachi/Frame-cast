@@ -4,7 +4,7 @@ import { createApp } from 'vue'
 import * as Sentry from '@sentry/vue'
 import App from './App.vue'
 import router from './router'
-import { configureApiClient, setApiAccessToken } from './services/api'
+import api, { configureApiClient, setApiAccessToken } from './services/api'
 import { disconnectEcho, initEcho } from './services/echo'
 import { useAuthStore } from './stores/auth'
 import './style.css'
@@ -110,6 +110,30 @@ configureApiClient(authStore)
 if (authStore.isAuthenticated && authStore.user) {
   authStore.refreshUser()
 }
+
+// Affiliate arrival. The marketing site cannot set a cookie the app will read
+// — different host, so it would be third-party and blocked by default — and it
+// cannot call the API either, since CORS admits only this origin. It therefore
+// puts the code in the URL, and this is where it becomes durable: the POST is
+// same-origin, so the cookie it sets is first-party and survives.
+;(function captureAffiliate() {
+  try {
+    const code = new URLSearchParams(window.location.search).get('aff')
+    if (!code || !/^[A-Za-z0-9_-]{1,32}$/.test(code)) return
+
+    // Sent before anything else so a visitor who bounces immediately is still
+    // counted; the response carries the cookie the checkout later reads.
+    api.post('/affiliate/click', { code }).catch(() => {})
+
+    // Kept out of the URL bar so it is not carried into a shared link or a
+    // screenshot, and does not end up attributing someone else's visit.
+    const url = new URL(window.location.href)
+    url.searchParams.delete('aff')
+    window.history.replaceState({}, '', url.toString())
+  } catch {
+    // Never let attribution break a page load.
+  }
+})()
 
 watch(
   () => authStore.accessToken,
