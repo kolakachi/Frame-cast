@@ -104,32 +104,6 @@ return [
             env('KELVIQ_PLAN_LIFETIME_AGENCY',  'wyvstudio-lifetime-agency')  => ['tier' => 'lifetime_agency',  'credits' => 20000],
         ],
 
-        /*
-        | What an affiliate's percentage is applied to.
-        |
-        | Kelviq reports one figure on checkout.completed — the gross total,
-        | tax included, with no breakdown — so the taxable and net portions
-        | cannot be read from the webhook. These two settings state the
-        | assumption explicitly rather than leaving it implied by whichever
-        | field happened to be used.
-        |
-        | tax_rate_estimate: the share of gross that is tax. Set to 0 where
-        | prices are tax-inclusive or tax is not charged.
-        | platform_fee_percent: what the merchant of record (Kelviq) keeps. Not
-        | ours — it never reaches us — which is why anything shown to an
-        | affiliate names Kelviq rather than calling it "a platform fee". To
-        | the person being paid, an unnamed platform is the one paying them.
-        |
-        | Both are estimates until reconciled against a Kelviq payout report.
-        | Conversions record the gross, the basis and the method, so figures
-        | can be restated if the assumption turns out wrong.
-        */
-        'affiliate_basis' => [
-            'method' => env('AFFILIATE_BASIS', 'net'), // gross | ex_tax | net
-            'tax_rate_estimate' => (float) env('AFFILIATE_TAX_RATE', 0.20),
-            'platform_fee_percent' => (float) env('AFFILIATE_PLATFORM_FEE', 5.0),
-        ],
-
         'lifetime_packs' => [
             ['key' => 'lifetime_starter', 'name' => 'Starter',  'credits' => 4000,  'price_usd' => 89],
             ['key' => 'lifetime_creator', 'name' => 'Creator',  'credits' => 12000, 'price_usd' => 199],
@@ -144,5 +118,36 @@ return [
             ['key' => 'large',  'credits' => 2500, 'price_usd' => 36],
             ['key' => 'xl',     'credits' => 5000, 'price_usd' => 70],
         ],
+    ],
+
+    /*
+    | What an affiliate's percentage is applied to.
+    |
+    | Top level, not under `kelviq`: every reader asks for
+    | billing.affiliate_basis, and nested here it silently resolved to null —
+    | so the defaults applied, tax and fee both came out 0, and commission was
+    | paid on the full gross while each row was stamped `net`.
+    |
+    | Kelviq reports one figure on checkout.completed — the gross total,
+    | tax included, with no breakdown — so the taxable and net portions
+    | cannot be read from the webhook. These two settings state the
+    | assumption explicitly rather than leaving it implied by whichever
+    | field happened to be used.
+    |
+    | tax_rate_estimate: the share of gross that is tax. Set to 0 where
+    | prices are tax-inclusive or tax is not charged.
+    | platform_fee_percent: what the merchant of record (Kelviq) keeps. Not
+    | ours — it never reaches us — which is why anything shown to an
+    | affiliate names Kelviq rather than calling it "a platform fee". To
+    | the person being paid, an unnamed platform is the one paying them.
+    |
+    | Both are estimates until reconciled against a Kelviq payout report.
+    | Conversions record the gross, the basis and the method, so figures
+    | can be restated if the assumption turns out wrong.
+    */
+    'affiliate_basis' => [
+        'method' => env('AFFILIATE_BASIS', 'net'), // gross | ex_tax | net
+        'tax_rate_estimate' => (float) env('AFFILIATE_TAX_RATE', 0.20),
+        'platform_fee_percent' => (float) env('AFFILIATE_PLATFORM_FEE', 5.0),
     ],
 ];

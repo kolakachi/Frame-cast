@@ -49,6 +49,28 @@ class AffiliateAttributionTest extends TestCase
         ));
     }
 
+    public function test_the_basis_settings_are_readable_at_the_path_the_code_asks_for(): void
+    {
+        // Deliberately reads the shipped config rather than injecting a value.
+        // The key sat one level too deep for a while: every other test passed,
+        // because config([...]) creates the key it writes, while production
+        // resolved null, fell back to the defaults, and paid commission on the
+        // full gross with each row stamped "net".
+        $cfg = config('billing.affiliate_basis');
+
+        $this->assertIsArray($cfg, 'billing.affiliate_basis must resolve — the code reads it at this exact path.');
+        foreach (['method', 'tax_rate_estimate', 'platform_fee_percent'] as $key) {
+            $this->assertArrayHasKey($key, $cfg);
+        }
+        $this->assertContains($cfg['method'], ['gross', 'ex_tax', 'net']);
+
+        // And the deduction actually happens on a net basis.
+        if ($cfg['method'] === 'net' && $cfg['platform_fee_percent'] > 0) {
+            [$basis] = AffiliateAttribution::commissionBasis(100.0);
+            $this->assertLessThan(100.0, $basis, 'A net basis that equals gross means nothing is being deducted.');
+        }
+    }
+
     public function test_a_sale_with_no_account_is_still_attributed_from_checkout_metadata(): void
     {
         // The direct-purchase path: no registration ever happened, so the only
