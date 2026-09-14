@@ -28,6 +28,87 @@ function modalCancel()  { const r = modal.value.resolve; modal.value.open = fals
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 const activeView = ref('dashboard')
+
+// ── Affiliates ────────────────────────────────────────────────────
+// Marketers who send traffic for a negotiated cut. They have no account here
+// and never log in — this panel is the whole of their administration.
+const affiliates = ref([])
+const affiliatesLoading = ref(false)
+const affiliateConversions = ref([])
+const affiliateOpen = ref(null)
+const affiliateForm = ref({ name: '', email: '', code: '', commission_percent: 30 })
+const affiliateError = ref('')
+
+async function loadAffiliates() {
+  affiliatesLoading.value = true
+  affiliateError.value = ''
+  try {
+    const { data } = await api.get('/admin/affiliates')
+    affiliates.value = data?.data?.affiliates ?? []
+  } catch (e) {
+    affiliateError.value = e.response?.data?.error?.message ?? 'Could not load affiliates.'
+  } finally {
+    affiliatesLoading.value = false
+  }
+}
+
+async function createAffiliate() {
+  affiliateError.value = ''
+  try {
+    await api.post('/admin/affiliates', affiliateForm.value)
+    affiliateForm.value = { name: '', email: '', code: '', commission_percent: 30 }
+    await loadAffiliates()
+  } catch (e) {
+    affiliateError.value = e.response?.data?.error?.message
+      ?? Object.values(e.response?.data?.errors ?? {})[0]?.[0]
+      ?? 'Could not create that affiliate.'
+  }
+}
+
+async function openAffiliate(a) {
+  affiliateOpen.value = a
+  affiliateConversions.value = []
+  try {
+    const { data } = await api.get(`/admin/affiliates/${a.id}/conversions`)
+    affiliateConversions.value = data?.data?.conversions ?? []
+  } catch {
+    affiliateError.value = 'Could not load that affiliate\'s sales.'
+  }
+}
+
+// Downloaded through the authenticated client, then handed to the browser —
+// a plain link would hit the endpoint without the bearer token.
+async function downloadStatement(a, unpaidOnly) {
+  try {
+    const res = await api.get(`/admin/affiliates/${a.id}/statement.csv`, {
+      params: unpaidOnly ? { unpaid_only: 1 } : {},
+      responseType: 'blob',
+    })
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${a.code}-statement.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch {
+    affiliateError.value = 'Could not build that statement.'
+  }
+}
+
+async function markAffiliatePaid(a) {
+  if (!window.confirm(`Mark $${a.owed.toFixed(2)} as paid to ${a.name}? Do this once the money has actually gone.`)) return
+  try {
+    await api.post(`/admin/affiliates/${a.id}/mark-paid`, {})
+    await loadAffiliates()
+    if (affiliateOpen.value?.id === a.id) await openAffiliate(a)
+  } catch {
+    affiliateError.value = 'Could not mark those as paid.'
+  }
+}
+
+function copyAffiliateLink(a) {
+  navigator.clipboard?.writeText(a.link)
+}
 const topbarTitles = {
   dashboard: 'Platform Overview', users: 'Users',
   workspaces: 'Workspaces', videos: 'All Videos',
@@ -789,6 +870,7 @@ function navigate(view) {
   if (view === 'sfx') loadSfxList()
   if (view === 'dashboard' && !dashData.value) { loadDashboard(); loadSpendChart() }
   if (view === 'users') loadUsers()
+  if (view === 'affiliates') loadAffiliates()
   if (view === 'workspaces') loadWorkspaces()
   if (view === 'videos') loadVideos()
   if (view === 'jobs') loadJobs()
@@ -870,6 +952,10 @@ onMounted(() => {
         <button :class="['nav-item', activeView === 'sfx' ? 'active' : '']" @click="navigate('sfx')">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
           SFX Library
+        </button>
+        <button :class="['nav-item', activeView === 'affiliates' ? 'active' : '']" @click="navigate('affiliates')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          Affiliates
         </button>
         <div class="nav-section-label">System</div>
         <button :class="['nav-item', activeView === 'jobs' ? 'active' : '']" @click="navigate('jobs')">
@@ -2049,6 +2135,96 @@ onMounted(() => {
         </template>
 
         <!-- ── Plans & Credits ─────────────────────────── -->
+        <template v-if="activeView === 'affiliates'">
+          <div class="page-head">
+            <h1 class="page-title">Affiliates</h1>
+            <p class="page-sub">Marketers who send traffic for a negotiated cut. They have no account here — create them, share their link, then export a statement and pay them yourself.</p>
+          </div>
+
+          <div v-if="affiliateError" class="admin-error">{{ affiliateError }}</div>
+
+          <div class="card" style="margin-bottom:18px">
+            <div class="card-head"><h2 class="card-title">Add an affiliate</h2></div>
+            <div class="aff-form">
+              <label>Name<input v-model="affiliateForm.name" placeholder="Jane Marketer" /></label>
+              <label>Email<input v-model="affiliateForm.email" placeholder="jane@example.com" /></label>
+              <label>Code <span class="aff-hint">optional</span><input v-model="affiliateForm.code" placeholder="jane" /></label>
+              <label>Commission %<input v-model.number="affiliateForm.commission_percent" type="number" min="0" max="100" step="0.5" /></label>
+              <button class="btn-primary" :disabled="!affiliateForm.name" @click="createAffiliate">Create</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <h2 class="card-title">Affiliates</h2>
+              <button class="btn-ghost" @click="loadAffiliates">Refresh</button>
+            </div>
+            <div v-if="affiliatesLoading" class="admin-muted">Loading…</div>
+            <table v-else-if="affiliates.length" class="admin-table">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Link</th><th class="num">Rate</th><th class="num">Clicks</th>
+                  <th class="num">Sales</th><th class="num">Revenue</th><th class="num">Owed</th><th class="num">Paid</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="a in affiliates" :key="a.id">
+                  <td>
+                    <strong>{{ a.name }}</strong>
+                    <div class="admin-muted">{{ a.email || '—' }}</div>
+                  </td>
+                  <td>
+                    <code class="aff-code">{{ a.code }}</code>
+                    <button class="btn-ghost btn-xs" @click="copyAffiliateLink(a)">copy link</button>
+                  </td>
+                  <td class="num">{{ a.commission_percent }}%</td>
+                  <td class="num">{{ a.clicks }}</td>
+                  <td class="num">{{ a.sales }}</td>
+                  <td class="num">${{ a.revenue.toFixed(2) }}</td>
+                  <td class="num"><strong>${{ a.owed.toFixed(2) }}</strong></td>
+                  <td class="num admin-muted">${{ a.paid.toFixed(2) }}</td>
+                  <td class="num aff-actions">
+                    <button class="btn-ghost btn-xs" @click="openAffiliate(a)">Sales</button>
+                    <button class="btn-ghost btn-xs" @click="downloadStatement(a, true)">CSV (unpaid)</button>
+                    <button class="btn-ghost btn-xs" @click="downloadStatement(a, false)">CSV (all)</button>
+                    <button v-if="a.owed > 0" class="btn-primary btn-xs" @click="markAffiliatePaid(a)">Mark paid</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-else class="admin-muted">No affiliates yet.</div>
+          </div>
+
+          <div v-if="affiliateOpen" class="card" style="margin-top:18px">
+            <div class="card-head">
+              <h2 class="card-title">{{ affiliateOpen.name }} — sales</h2>
+              <button class="btn-ghost" @click="affiliateOpen = null">Close</button>
+            </div>
+            <table v-if="affiliateConversions.length" class="admin-table">
+              <thead>
+                <tr>
+                  <th>Date</th><th>Customer</th><th>Plan</th>
+                  <th class="num">Paid</th><th class="num">Basis</th><th class="num">Commission</th>
+                  <th>Attribution</th><th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="c in affiliateConversions" :key="c.id">
+                  <td>{{ c.date }}</td>
+                  <td>{{ c.customer_email || '—' }}</td>
+                  <td>{{ c.plan || '—' }}</td>
+                  <td class="num">${{ Number(c.order_amount).toFixed(2) }}</td>
+                  <td class="num admin-muted">${{ Number(c.commission_amount / (c.commission_percent / 100)).toFixed(2) }}</td>
+                  <td class="num"><strong>${{ Number(c.commission_amount).toFixed(2) }}</strong></td>
+                  <td class="admin-muted">{{ c.attribution_source }}</td>
+                  <td>{{ c.payout_status }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-else class="admin-muted">No sales recorded yet.</div>
+          </div>
+        </template>
+
         <template v-if="activeView === 'plans'">
           <div class="plans-page">
           <div class="gm-section-title">Plans &amp; Credits</div>
@@ -2988,4 +3164,13 @@ tr:hover td { background: #1e2129; }
 .mail-dossier { margin-top: 8px; padding: 10px 12px; background: var(--gm-card, rgba(255,255,255,.03)); border: 1px solid var(--gm-border, #2a2a36); border-radius: 8px; font-size: 11px; color: var(--gm-muted); }
 .mail-dossier pre { white-space: pre-wrap; margin: 0; font-family: inherit; line-height: 1.55; }
 .mail-history-detail { background: var(--gm-card, rgba(255,255,255,.02)); padding: 14px 16px !important; border-radius: 8px; }
+
+.aff-form { display: grid; grid-template-columns: 1.4fr 1.4fr 1fr .7fr auto; gap: 12px; align-items: end; padding: 14px; }
+.aff-form label { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--color-text-muted); }
+.aff-form input { background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 8px; padding: 8px 10px; color: var(--color-text-primary); font: inherit; font-size: 12.5px; outline: none; }
+.aff-form input:focus-visible { border-color: var(--color-accent); }
+.aff-hint { opacity: .6; }
+.aff-code { background: var(--color-bg-elevated); padding: 2px 6px; border-radius: 5px; font-size: 11px; }
+.aff-actions { white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; }
+.btn-xs { padding: 4px 8px; font-size: 11px; }
 </style>

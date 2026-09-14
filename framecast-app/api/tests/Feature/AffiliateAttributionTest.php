@@ -158,4 +158,39 @@ class AffiliateAttributionTest extends TestCase
         $this->assertSame(202.98, $basis);
         $this->assertSame('gross', $method);
     }
+
+    public function test_the_providers_own_figures_remove_the_tax_guess(): void
+    {
+        config(['billing.affiliate_basis' => ['method' => 'net', 'tax_rate_estimate' => 0.20, 'platform_fee_percent' => 5.52]]);
+        $a = $this->affiliate(['commission_percent' => 30]);
+
+        // Michael's real order, as the orders API reports it.
+        app(AffiliateAttribution::class)->recordConversion(
+            $a, 'checkout_metadata', null, 'buyer@example.com', 'ORD-REAL', 'lifetime_creator',
+            202.98, 'USD',
+            ['subtotal' => 199.00, 'discount' => 29.85, 'tax' => 33.83, 'total' => 202.98, 'refunded' => 0.0],
+        );
+
+        $row = AffiliateConversion::query()->where('order_id', 'ORD-REAL')->firstOrFail();
+        $this->assertSame('provider_net', $row->basis_method);
+        $this->assertSame('202.98', (string) $row->gross_amount);
+        // 199.00 - 29.85 = 169.15, less Kelviq's 5.52% = 159.81 — the figure
+        // the payout screen actually shows.
+        $this->assertEqualsWithDelta(159.81, (float) $row->basis_amount, 0.02);
+        $this->assertEqualsWithDelta(47.94, (float) $row->commission_amount, 0.02);
+    }
+
+    public function test_a_refunded_sale_owes_nothing(): void
+    {
+        $a = $this->affiliate();
+
+        app(AffiliateAttribution::class)->recordConversion(
+            $a, 'workspace', null, 'buyer@example.com', 'ORD-REFUND', 'lifetime_creator',
+            202.98, 'USD',
+            ['subtotal' => 199.00, 'discount' => 0.0, 'tax' => 33.83, 'total' => 202.98, 'refunded' => 202.98],
+        );
+
+        $row = AffiliateConversion::query()->where('order_id', 'ORD-REFUND')->firstOrFail();
+        $this->assertSame('void', $row->payout_status, 'a reversed sale must not be owed');
+    }
 }

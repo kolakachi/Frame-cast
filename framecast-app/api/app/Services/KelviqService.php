@@ -367,20 +367,29 @@ class KelviqService
                 return;
             }
 
+            $orderId = (string) ($object['order_id'] ?? $object['id'] ?? '');
+
             $amount = (float) ($object['amount'] ?? $object['amount_total'] ?? 0);
             if ($amount <= 0 && isset($object['amount_total_units'])) {
                 $amount = ((int) $object['amount_total_units']) / 100;
             }
+
+            // Ask Kelviq what the sale actually was. The webhook gives one
+            // gross figure, so tax otherwise has to be guessed from a
+            // configured rate — correct for a British buyer at 20% and wrong
+            // for everyone else. Null falls back to that estimate.
+            $breakdown = $this->fetchOrderBreakdown($orderId);
 
             $conversion = $attribution->recordConversion(
                 $affiliate,
                 $source,
                 $workspace,
                 is_string($email) ? $email : null,
-                (string) ($object['order_id'] ?? $object['id'] ?? ''),
+                $orderId,
                 $planId,
                 $amount,
                 (string) ($object['currency'] ?? 'USD'),
+                $breakdown,
             );
 
             if ($conversion) {
@@ -391,6 +400,64 @@ class KelviqService
                 ]);
             }
         }, null, false);
+    }
+
+    /**
+     * Fetch an order's real money breakdown.
+     *
+     * The webhook carries only the gross total, so tax had to be estimated
+     * from configuration — which is right for a British buyer at 20% and wrong
+     * for everyone else. The orders endpoint returns the actual subtotal,
+     * discount and tax for that specific sale, plus whether it has since been
+     * refunded.
+     *
+     * Returns null on any failure: an affiliate conversion recorded on the
+     * gross is worse than none at all, but it is better than losing the sale
+     * entirely, so the caller falls back to the estimate.
+     *
+     * @return array{subtotal: float, discount: float, tax: float, total: float, refunded: float}|null
+     */
+    public function fetchOrderBreakdown(string $orderId): ?array
+    {
+        $key = (string) config('billing.kelviq.server_api_key', '');
+        if ($key === '' || $orderId === '') {
+            return null;
+        }
+
+        $base = rtrim((string) config('billing.kelviq.api_base'), '/');
+
+        try {
+            $response = Http::withToken($key)->timeout(20)->get("{$base}/orders/{$orderId}/");
+            if (! $response->successful()) {
+                Log::info('KelviqService: order breakdown unavailable', [
+                    'order_id' => $orderId,
+                    'status'   => $response->status(),
+                ]);
+
+                return null;
+            }
+
+            $o = $response->json();
+            if (! is_array($o) || ! isset($o['amountSubtotal'])) {
+                return null;
+            }
+
+            return [
+                'subtotal' => (float) ($o['amountSubtotal'] ?? 0),
+                'discount' => (float) ($o['amountDiscount'] ?? 0),
+                'tax'      => (float) ($o['amountTax'] ?? 0),
+                'total'    => (float) ($o['amountTotal'] ?? 0),
+                // Units, not currency — the API reports refunds in minor units.
+                'refunded' => ((int) ($o['refundedTotalUnits'] ?? 0)) / 100,
+            ];
+        } catch (\Throwable $e) {
+            Log::info('KelviqService: order lookup failed', [
+                'order_id' => $orderId,
+                'error'    => mb_substr($e->getMessage(), 0, 160),
+            ]);
+
+            return null;
+        }
     }
 
     /** One-time checkout — a lifetime plan, or a credit top-up. */

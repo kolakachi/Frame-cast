@@ -132,13 +132,37 @@ class AffiliateAttribution
         ?string $plan,
         float $orderAmount,
         string $currency = 'USD',
+        /**
+         * The provider's real figures for this order, when they could be
+         * fetched. Removes every assumption; null keeps the estimate.
+         *
+         * @var array{subtotal: float, discount: float, tax: float, total: float, refunded: float}|null
+         */
+        ?array $breakdown = null,
     ): ?AffiliateConversion {
         if ($orderId && AffiliateConversion::query()->where('order_id', $orderId)->exists()) {
             return null;
         }
 
         $percent = (float) $affiliate->commission_percent;
-        [$basis, $method] = self::commissionBasis($orderAmount);
+
+        if ($breakdown) {
+            // A sale already reversed owes nobody. Recorded as void rather
+            // than skipped, so the click still shows in the affiliate's
+            // history and the absence can be explained.
+            $refunded = ($breakdown['refunded'] ?? 0) > 0;
+
+            // What the customer actually bought, before tax: subtotal less
+            // discount. No rate, no assumption.
+            $exTax = max(0.0, $breakdown['subtotal'] - $breakdown['discount']);
+            $fee = max(0.0, min(100.0, (float) config('billing.affiliate_basis.platform_fee_percent', 0)));
+            $basis = round($exTax * (1 - $fee / 100), 2);
+            $method = 'provider_net';
+            $orderAmount = $breakdown['total'] ?: $orderAmount;
+        } else {
+            $refunded = false;
+            [$basis, $method] = self::commissionBasis($orderAmount);
+        }
 
         try {
             return AffiliateConversion::query()->create([
@@ -161,7 +185,7 @@ class AffiliateAttribution
                 // fee, and neither is revenue to split.
                 'commission_amount'  => round($basis * $percent / 100, 2),
                 'attribution_source' => $attributionSource,
-                'payout_status'      => 'unpaid',
+                'payout_status'      => $refunded ? 'void' : 'unpaid',
             ]);
         } catch (\Throwable $e) {
             // A lost commission row is worse than a noisy log.
