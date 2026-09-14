@@ -51,12 +51,13 @@ const payoutDraft = ref(null)
 
 const affiliateTotals = computed(() => affiliates.value.reduce((t, a) => ({
   owed: t.owed + (a.owed ?? 0),
+  available: t.available + (a.available ?? 0),
   paid: t.paid + (a.paid ?? 0),
   sales: t.sales + (a.sales ?? 0),
   revenue: t.revenue + (a.revenue ?? 0),
-}), { owed: 0, paid: 0, sales: 0, revenue: 0 }))
+}), { owed: 0, available: 0, paid: 0, sales: 0, revenue: 0 }))
 
-const affiliateOwing = computed(() => affiliates.value.filter((a) => (a.owed ?? 0) > 0).length)
+const affiliateOwing = computed(() => affiliates.value.filter((a) => (a.available ?? 0) > 0).length)
 
 async function loadAffiliates() {
   affiliatesLoading.value = true
@@ -101,7 +102,9 @@ async function loadAffiliateDetail() {
   if (!a) return
   affiliateDetailLoading.value = true
   try {
-    if (affiliateTab.value === 'payments') {
+    if (affiliateTab.value === 'bank') {
+      await loadAffiliateBank()
+    } else if (affiliateTab.value === 'payments') {
       const { data } = await api.get(`/admin/affiliates/${a.id}/payouts`)
       affiliatePayouts.value = data?.data?.payouts ?? []
     } else {
@@ -192,6 +195,77 @@ async function voidPayout(a, payout) {
 }
 
 const affiliateKeyShown = ref(false)
+const affiliateBank = ref(null)
+const affiliateBankShown = ref(false)
+const affiliateBankLoading = ref(false)
+const payoutStatusDraft = ref(null)
+
+async function loadAffiliateBank() {
+  const a = affiliateOpen.value
+  if (!a) return
+  affiliateBankLoading.value = true
+  affiliateBankShown.value = false
+  try {
+    const { data } = await api.get(`/admin/affiliates/${a.id}/payment-details`)
+    affiliateBank.value = data?.data?.payment_details ?? null
+  } catch {
+    affiliateError.value = 'Could not load those payment details.'
+  } finally {
+    affiliateBankLoading.value = false
+  }
+}
+
+async function setBankStatus(status) {
+  const a = affiliateOpen.value
+  if (!a) return
+  let reason = null
+  if (status === 'rejected') {
+    reason = window.prompt('Why are these details rejected? The affiliate sees this.')
+    if (!reason) return
+  }
+  try {
+    await api.post(`/admin/affiliates/${a.id}/payment-details/verify`, { status, reason })
+    await loadAffiliateBank()
+    await loadAffiliates()
+  } catch (e) {
+    affiliateError.value = e.response?.data?.error?.message ?? 'Could not update that.'
+  }
+}
+
+function startPayoutStatus(p) {
+  payoutStatusDraft.value = {
+    payout: p,
+    status: p.status === 'void' ? 'paid' : p.status,
+    payment_reference: p.payment_reference ?? '',
+    fx_rate: p.fx_rate ?? '',
+    failure_reason: p.failure_reason ?? '',
+  }
+}
+
+async function savePayoutStatus() {
+  const d = payoutStatusDraft.value
+  if (!d) return
+  try {
+    await api.post(`/admin/affiliates/${affiliateOpen.value.id}/payouts/${d.payout.id}/status`, {
+      status: d.status,
+      payment_reference: d.payment_reference || null,
+      fx_rate: d.fx_rate === '' ? null : Number(d.fx_rate),
+      failure_reason: d.status === 'failed' ? d.failure_reason : null,
+    })
+    payoutStatusDraft.value = null
+    await loadAffiliateDetail()
+    await loadAffiliates()
+  } catch (e) {
+    affiliateError.value = e.response?.data?.error?.message
+      ?? Object.values(e.response?.data?.errors ?? {})[0]?.[0]
+      ?? 'Could not update that payment.'
+  }
+}
+
+function naira(n) {
+  if (n === null || n === undefined) return '—'
+  return `₦${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 
 const affiliatePortalUrl = computed(() =>
   `${window.location.origin}/affiliates`)
@@ -2271,8 +2345,8 @@ onMounted(() => {
                  number on this page that needs acting on. -->
             <div class="aff-metrics">
               <div class="metric-card yellow">
-                <div class="metric-label">Owed now</div>
-                <div class="metric-value">{{ money(affiliateTotals.owed) }}</div>
+                <div class="metric-label">Ready to pay</div>
+                <div class="metric-value">{{ money(affiliateTotals.available) }}</div>
                 <div class="metric-sub">{{ affiliateOwing }} affiliate{{ affiliateOwing === 1 ? '' : 's' }} awaiting payment</div>
               </div>
               <div class="metric-card green">
@@ -2314,7 +2388,8 @@ onMounted(() => {
                       <th class="aff-num">Clicks</th>
                       <th class="aff-num">Sales</th>
                       <th class="aff-num">Revenue</th>
-                      <th class="aff-num">Owed now</th>
+                      <th class="aff-num">Ready</th>
+                      <th class="aff-num">Held</th>
                       <th class="aff-num">Paid to date</th>
                       <th>Last payment</th>
                       <th></th>
@@ -2344,11 +2419,15 @@ onMounted(() => {
 
                       <!-- Owed is what has accrued since the last payment, so it
                            stays checkable no matter how many have been sent. -->
+                      <!-- Ready is what has cleared the refund window; held is
+                           what has not. Paying the second is a clawback. -->
                       <td class="aff-num">
-                        <span :class="['aff-owed', a.owed > 0 ? 'aff-owed-due' : '']">{{ money(a.owed) }}</span>
-                        <div v-if="a.owed > 0" class="aff-sub">
-                          {{ a.owed_sales }} sale{{ a.owed_sales === 1 ? '' : 's' }}<template v-if="a.oldest_unpaid"> since {{ a.oldest_unpaid }}</template>
-                        </div>
+                        <span :class="['aff-owed', a.available > 0 ? 'aff-owed-due' : '']">{{ money(a.available) }}</span>
+                        <div v-if="a.payout_blocked_reason" class="aff-sub">{{ a.payout_blocked_reason }}</div>
+                      </td>
+                      <td class="aff-num aff-dim">
+                        {{ money(a.maturing) }}
+                        <div v-if="a.next_matures_at" class="aff-sub">clears {{ a.next_matures_at }}</div>
                       </td>
                       <td class="aff-num aff-dim">
                         {{ money(a.paid) }}
@@ -2363,11 +2442,12 @@ onMounted(() => {
                       </td>
                       <td class="aff-actions">
                         <button
-                          v-if="a.owed > 0"
+                          v-if="a.available > 0"
                           class="btn btn-pay btn-sm"
-                          :disabled="affiliateBusy === a.id"
+                          :disabled="affiliateBusy === a.id || !!a.payout_blocked_reason"
+                          :title="a.payout_blocked_reason || ''"
                           @click="startPayout(a)"
-                        >Pay {{ money(a.owed) }}</button>
+                        >Pay {{ money(a.available) }}</button>
                         <button class="btn btn-ghost btn-sm" @click="openAffiliate(a, 'outstanding')">
                           {{ affiliateOpen?.id === a.id ? 'Viewing' : 'Open' }}
                         </button>
@@ -2403,6 +2483,7 @@ onMounted(() => {
                     { key: 'outstanding', label: 'Owed now' },
                     { key: 'all', label: 'All sales' },
                     { key: 'payments', label: 'Payments' },
+                    { key: 'bank', label: 'Bank account' },
                     { key: 'access', label: 'Sign-in details' },
                   ]"
                   :key="t.key"
@@ -2413,6 +2494,72 @@ onMounted(() => {
 
               <div class="table-wrap">
                 <div v-if="affiliateDetailLoading" class="aff-empty">Loading…</div>
+
+                <!-- Where the money goes, and whether it has been checked.
+                     A payout run refuses anyone not verified here. -->
+                <template v-else-if="affiliateTab === 'bank'">
+                  <div v-if="affiliateBankLoading" class="aff-empty">Loading…</div>
+                  <div v-else-if="!affiliateBank" class="aff-empty">
+                    No account on file. The affiliate adds this themselves from their dashboard.
+                  </div>
+                  <div v-else class="aff-access">
+                    <div class="aff-access-row">
+                      <span class="metric-label">Status</span>
+                      <span :class="['aff-pill', {
+                        verified: 'aff-pill-ok', unverified: 'aff-pill-due', rejected: 'aff-pill-bad',
+                      }[affiliateBank.status] ?? 'aff-pill-muted']">{{ affiliateBank.status }}</span>
+                      <span v-if="affiliateBank.verified_at" class="aff-sub">since {{ affiliateBank.verified_at }}</span>
+                    </div>
+                    <div class="aff-access-row">
+                      <span class="metric-label">Account name</span>
+                      <span>{{ affiliateBank.account_name }}</span>
+                    </div>
+                    <div class="aff-access-row">
+                      <span class="metric-label">Bank</span>
+                      <span>{{ affiliateBank.bank_name }}</span>
+                      <span v-if="affiliateBank.bank_code" class="aff-sub">code {{ affiliateBank.bank_code }}</span>
+                    </div>
+                    <div class="aff-access-row">
+                      <!-- Hidden by default: this screen is often open while
+                           something else is being read over a shoulder. -->
+                      <span class="metric-label">Account number</span>
+                      <code class="aff-code">{{ affiliateBankShown ? affiliateBank.account_number : '••••••••' }}</code>
+                      <button class="btn btn-ghost btn-xs" @click="affiliateBankShown = !affiliateBankShown">
+                        {{ affiliateBankShown ? 'Hide' : 'Reveal' }}
+                      </button>
+                    </div>
+                    <div class="aff-access-row">
+                      <span class="metric-label">Paid in</span>
+                      <span>{{ affiliateBank.payout_currency }} · {{ affiliateBank.country }}</span>
+                    </div>
+                    <div v-if="affiliateBank.rejected_reason" class="aff-access-row">
+                      <span class="metric-label">Rejected</span>
+                      <span class="aff-sub">{{ affiliateBank.rejected_reason }}</span>
+                    </div>
+                    <div class="aff-access-row">
+                      <span class="metric-label">Submitted</span>
+                      <span class="aff-sub">{{ affiliateBank.submitted_at || '—' }}</span>
+                    </div>
+
+                    <div class="aff-access-actions">
+                      <button
+                        v-if="affiliateBank.status !== 'verified'"
+                        class="btn btn-pay btn-sm"
+                        @click="setBankStatus('verified')"
+                      >Verify this account</button>
+                      <button
+                        v-if="affiliateBank.status !== 'rejected'"
+                        class="btn btn-danger btn-sm"
+                        @click="setBankStatus('rejected')"
+                      >Reject</button>
+                      <button
+                        v-if="affiliateBank.status === 'verified'"
+                        class="btn btn-ghost btn-sm"
+                        @click="setBankStatus('unverified')"
+                      >Withdraw verification</button>
+                    </div>
+                  </div>
+                </template>
 
                 <!-- What we send the affiliate so they can see their own
                      figures. The key is not the code: the code is public. -->
@@ -2461,8 +2608,9 @@ onMounted(() => {
                     <thead>
                       <tr>
                         <th>Reference</th><th>Sent</th><th>Covering sales</th>
-                        <th class="aff-num">Sales</th><th class="aff-num">Amount</th>
-                        <th>How</th><th>Note</th><th></th>
+                        <th class="aff-num">Sales</th><th class="aff-num">Commission</th>
+                        <th class="aff-num">Rate</th><th class="aff-num">Paid</th>
+                        <th>Status</th><th></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2474,10 +2622,20 @@ onMounted(() => {
                         <td>{{ p.paid_at || '—' }}</td>
                         <td class="aff-sub">{{ p.period_start }} → {{ p.period_end }}</td>
                         <td class="aff-num">{{ p.sales_count }}</td>
-                        <td class="aff-num"><strong>{{ money(p.total_amount) }}</strong></td>
-                        <td class="aff-sub">{{ p.method || '—' }}</td>
-                        <td class="aff-sub">{{ p.status === 'void' ? p.void_reason : (p.note || '—') }}</td>
+                        <td class="aff-num">{{ money(p.total_amount) }}</td>
+                        <td class="aff-num aff-dim">{{ p.fx_rate ? Number(p.fx_rate).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—' }}</td>
+                        <td class="aff-num"><strong>{{ naira(p.payout_amount) }}</strong></td>
+                        <td>
+                          <span :class="['aff-pill', {
+                            paid: 'aff-pill-ok', processing: 'aff-pill-due', pending: 'aff-pill-due',
+                            failed: 'aff-pill-bad', void: 'aff-pill-muted',
+                          }[p.status] ?? 'aff-pill-muted']">{{ p.status }}</span>
+                          <div v-if="p.payment_reference" class="aff-sub">{{ p.payment_reference }}</div>
+                          <div v-if="p.failure_reason" class="aff-sub">{{ p.failure_reason }}</div>
+                          <div v-else-if="p.status === 'void'" class="aff-sub">{{ p.void_reason }}</div>
+                        </td>
                         <td class="aff-actions">
+                          <button v-if="p.status !== 'void'" class="btn btn-ghost btn-xs" @click="startPayoutStatus(p)">Status</button>
                           <button class="btn btn-ghost btn-xs" @click="downloadStatement(affiliateOpen, { payout: p })">CSV</button>
                           <button v-if="p.status !== 'void'" class="btn btn-danger btn-xs" @click="voidPayout(affiliateOpen, p)">Void</button>
                         </td>
@@ -2539,6 +2697,58 @@ onMounted(() => {
             </div>
           </div>
 
+          <!-- A transfer is not instantaneous and does not always succeed. A
+               run stuck on "paid" when the money never arrived is how someone
+               is told they were paid and finds nothing. -->
+          <div v-if="payoutStatusDraft" class="aff-modal-overlay" @click.self="payoutStatusDraft = null">
+            <div class="aff-modal">
+              <div class="aff-modal-head">
+                <div class="section-title">{{ payoutStatusDraft.payout.reference }}</div>
+              </div>
+              <div class="aff-modal-body">
+                <div class="aff-modal-total">
+                  <div>
+                    <div class="metric-label">Commission</div>
+                    <div class="metric-value">{{ money(payoutStatusDraft.payout.total_amount) }}</div>
+                  </div>
+                  <div class="aff-modal-total-sub">
+                    {{ naira(payoutStatusDraft.payout.payout_amount) }}<br />
+                    at {{ payoutStatusDraft.payout.fx_rate ? Number(payoutStatusDraft.payout.fx_rate).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—' }}
+                  </div>
+                </div>
+
+                <label class="aff-field">
+                  Status
+                  <select v-model="payoutStatusDraft.status" class="search-input">
+                    <option value="pending">Pending — not sent yet</option>
+                    <option value="processing">Processing — with the bank</option>
+                    <option value="paid">Paid — money has landed</option>
+                    <option value="failed">Failed — it bounced</option>
+                  </select>
+                </label>
+
+                <label class="aff-field">
+                  Bank reference <span class="aff-hint">optional — what reconciles this to a statement</span>
+                  <input v-model="payoutStatusDraft.payment_reference" class="search-input" placeholder="GTB-99182" />
+                </label>
+
+                <label class="aff-field">
+                  Rate actually used <span class="aff-hint">optional — restates the naira figure with it</span>
+                  <input v-model="payoutStatusDraft.fx_rate" class="search-input" type="number" step="0.000001" min="0" />
+                </label>
+
+                <label v-if="payoutStatusDraft.status === 'failed'" class="aff-field">
+                  What went wrong <span class="aff-hint">the affiliate sees this</span>
+                  <input v-model="payoutStatusDraft.failure_reason" class="search-input" placeholder="Account name mismatch" />
+                </label>
+              </div>
+              <div class="aff-modal-foot">
+                <button class="btn btn-ghost" @click="payoutStatusDraft = null">Cancel</button>
+                <button class="btn btn-primary" @click="savePayoutStatus">Save</button>
+              </div>
+            </div>
+          </div>
+
           <!-- Recording a payment, not sending one. The wording has to keep
                that straight or the ledger drifts from the bank. -->
           <div v-if="payoutDraft" class="aff-modal-overlay" @click.self="payoutDraft = null">
@@ -2550,10 +2760,10 @@ onMounted(() => {
                 <div class="aff-modal-total">
                   <div>
                     <div class="metric-label">Amount</div>
-                    <div class="metric-value">{{ money(payoutDraft.affiliate.owed) }}</div>
+                    <div class="metric-value">{{ money(payoutDraft.affiliate.available) }}</div>
                   </div>
                   <div class="aff-modal-total-sub">
-                    covering {{ payoutDraft.affiliate.owed_sales }} sale{{ payoutDraft.affiliate.owed_sales === 1 ? '' : 's' }}<template v-if="payoutDraft.affiliate.oldest_unpaid"><br />since {{ payoutDraft.affiliate.oldest_unpaid }}</template>
+                    covering {{ payoutDraft.affiliate.available_count ?? payoutDraft.affiliate.owed_sales }} matured sale(s)<template v-if="payoutDraft.affiliate.oldest_unpaid"><br />since {{ payoutDraft.affiliate.oldest_unpaid }}</template>
                   </div>
                 </div>
 
@@ -3562,6 +3772,10 @@ th.aff-num { text-align: right; }
   font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
 }
 .aff-pill-due { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b40; }
+.aff-pill-ok { background: #10b98122; color: #34d399; border: 1px solid #10b98140; }
+.aff-pill-bad { background: #ef444422; color: #fca5a5; border: 1px solid #ef444440; }
+.aff-pill-muted { background: #6b728022; color: #9ca3af; border: 1px solid #6b728040; }
+.aff-field select.search-input { cursor: pointer; }
 .aff-pill-void { background: #6b728022; color: #9ca3af; border: 1px solid #6b728040; margin-left: 6px; }
 .aff-pill-muted { background: #6b728022; color: #9ca3af; border: 1px solid #6b728040; }
 .aff-void td { opacity: .5; }
