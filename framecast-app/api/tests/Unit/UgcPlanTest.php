@@ -176,4 +176,33 @@ class UgcPlanTest extends TestCase
 
         $this->assertGreaterThan(UgcPlan::quote($silent), UgcPlan::quote($spoken));
     }
+
+    public function test_lip_sync_is_never_sold_below_what_it_costs(): void
+    {
+        // Fabric bills per second, so any flat band eventually sells below
+        // cost. A 60-second take is permitted by direct_camera and used to
+        // lose $3.20.
+        $creditUsd = 0.005;
+
+        foreach ([5, 8, 15, 20, 30, 45, 60] as $seconds) {
+            foreach (['480p', '720p'] as $resolution) {
+                $charged = CreditService::spokespersonCost((float) $seconds, $resolution) * $creditUsd;
+                $cogs = CreditService::spokespersonCogsUsd((float) $seconds, $resolution);
+
+                $this->assertGreaterThan(
+                    $cogs,
+                    $charged,
+                    "{$seconds}s at {$resolution} is sold at \${$charged} against \${$cogs} of cost",
+                );
+            }
+        }
+    }
+
+    public function test_cost_scales_with_length_instead_of_flattening(): void
+    {
+        $short = CreditService::spokespersonCost(10.0, '480p');
+        $long = CreditService::spokespersonCost(40.0, '480p');
+
+        $this->assertGreaterThan($short * 3, $long, 'four times the length must cost about four times as much');
+    }
 }

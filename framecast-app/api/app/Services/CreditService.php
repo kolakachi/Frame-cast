@@ -132,11 +132,10 @@ class CreditService
     // which keeps the universal ×2 long-clip rule honest.
     public const VIDEO_VEO_FAST      = 80;   // Veo 3.1 Fast @720p, 4s (~$0.40) — 50%
     public const VIDEO_SEEDANCE_25   = 105;  // Seedance 2.5 @480p, 5s (~$0.514) — 51%
-    // Spokesperson (VEED Fabric) is LENGTH-BASED — Fabric bills per second
-    // ($0.08/s @ 480p), so a flat charge loses money on long clips. Buckets
-    // hold ~50% margin across lengths (see spokespersonCost). The constant is
-    // the ≤8s base, used as the pre-flight/estimate default.
-    public const VIDEO_SPOKESPERSON  = 130;  // ≤8s base — VEED Fabric 1.0 480p (image+audio lip-sync)
+    // Spokesperson (VEED Fabric) is PER-SECOND — Fabric bills per second, so
+    // any flat charge sells long clips below cost (see spokespersonCost). The
+    // constant is the 5s minimum, used as the pre-flight/estimate default.
+    public const VIDEO_SPOKESPERSON  = 120;  // 5s minimum — VEED Fabric 1.0 480p (image+audio lip-sync); real cost is per second, see spokespersonCost()
 
     // User-selectable quality per video tier. Each option = credits (~40–55%
     // margin) + base-clip COGS at that resolution/mode (CREDIT_CALIBRATION.md
@@ -234,21 +233,38 @@ class CreditService
     }
 
     /**
-     * Length-based credit cost for a spokesperson (Fabric lip-sync) clip — its
-     * length follows the voiceover, and Fabric bills per second, so a flat
-     * charge loses money on long clips. Buckets hold ~50% margin
-     * (CREDIT_CALIBRATION.md §11): ≤8s → 130, ≤15s → 240, longer → 320.
+     * Credits per second of lip-sync, by the resolution Fabric is configured
+     * to render. Keyed on resolution because the upstream rate is: $0.08/s at
+     * 480p, $0.15/s at 720p. A single rate meant flipping FABRIC_RESOLUTION in
+     * the environment silently started selling below cost, with nothing in the
+     * code to notice.
      */
-    public static function spokespersonCost(float $seconds): int
-    {
-        if ($seconds <= 8.0) {
-            return 130;
-        }
-        if ($seconds <= 15.0) {
-            return 240;
-        }
+    public const SPOKESPERSON_PER_SECOND = ['480p' => 24, '720p' => 45];
 
-        return 320;
+    /** Shortest clip we bill for, so a two-word take still covers its own cost. */
+    public const SPOKESPERSON_MIN_SECONDS = 5;
+
+    /**
+     * Per-second credit cost for a spokesperson (Fabric lip-sync) clip.
+     *
+     * This was three flat bands — 130 up to 8s, 240 up to 15s, 320 beyond —
+     * and the last one was unbounded while the upstream bill is not. Fabric
+     * charges $0.08 per second at 480p, so anything over about twenty seconds
+     * was sold below cost: a 30-second take lost $0.80 and a 60-second take,
+     * which direct_camera explicitly permits, lost $3.20. At 720p every length
+     * lost money.
+     *
+     * 24 credits a second is $0.12 against $0.08 of COGS — the same ~50%
+     * margin the bands were meant to hold, now held at every length instead of
+     * only the short ones.
+     */
+    public static function spokespersonCost(float $seconds, ?string $resolution = null): int
+    {
+        $resolution ??= (string) config('services.fabric.resolution', '480p');
+        $rate = self::SPOKESPERSON_PER_SECOND[$resolution] ?? self::SPOKESPERSON_PER_SECOND['480p'];
+        $billable = max(self::SPOKESPERSON_MIN_SECONDS, $seconds);
+
+        return (int) ceil($billable * $rate);
     }
 
     /** Upstream COGS (USD) for a spokesperson clip — Fabric per-second rate × length. */
