@@ -71,7 +71,8 @@ async function submit() {
     await authStore.requestMagicLink(
       form.email,
       form.name,
-      form.password || null
+      form.password || null,
+      pendingPlan.value || null
     );
     state.value = "sent";
   } catch (err) {

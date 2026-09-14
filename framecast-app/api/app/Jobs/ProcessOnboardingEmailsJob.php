@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Mail\Onboarding\OnboardingDay14WinBack;
 use App\Mail\Onboarding\OnboardingDay1Activation;
+use App\Mail\Onboarding\OnboardingDay1FinishSignup;
 use App\Mail\Onboarding\OnboardingDay3CaseStudy;
 use App\Mail\Onboarding\OnboardingDay7Upgrade;
 use App\Models\User;
@@ -20,10 +21,15 @@ use Illuminate\Support\Facades\Mail;
 /**
  * Hourly scanner for the day-1/3/7/14 onboarding emails.
  *
- * Day-0 is sent inline from AuthController at signup — this job only handles
- * the delayed steps. Each step has a minimum age threshold (in hours since
- * signup). When a user crosses the threshold AND is still at the prior step,
- * they get the email and advance one step.
+ * Day-0 is the welcome, sent on payment by App\Services\Onboarding\WelcomeMail
+ * — this job only handles the delayed steps. Each step has a minimum age
+ * threshold (in hours since signup). When a user crosses the threshold AND is
+ * still at the prior step, they get the email and advance one step.
+ *
+ * Paid and unpaid get different mail at the same slots. The activation and
+ * case-study emails are written for someone using the product; sent to an
+ * account that never picked a plan they ask about work the person was never
+ * let in to do, which reads as not paying attention.
  *
  * The day-7 upgrade nudge is suppressed for already-paid workspaces — those
  * users skip straight to step 5 (sequence complete, no win-back either).
@@ -89,7 +95,11 @@ class ProcessOnboardingEmailsJob implements ShouldQueue, ShouldBeUnique
             }
 
             $mailable = match ($nextStep) {
-                2 => new OnboardingDay1Activation($user),
+                // Never got through checkout: tell them what they have not seen
+                // yet, rather than asking how the video went.
+                2 => $isPaid ? new OnboardingDay1Activation($user) : new OnboardingDay1FinishSignup($user),
+                // The case study is the right email either way — it shows the
+                // output — so it is not branched.
                 3 => new OnboardingDay3CaseStudy($user),
                 4 => new OnboardingDay7Upgrade($user),
                 5 => new OnboardingDay14WinBack($user),

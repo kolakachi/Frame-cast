@@ -80,6 +80,24 @@ return [
         // Priced ABOVE the AppSumo tiers ($49/$139/$299) so their deal stays
         // the best available, which their agreement requires — and a direct
         // sale still nets several times more after their revenue share.
+        /*
+        | How a chosen plan is named back to the customer.
+        |
+        | Server-side on purpose: the register page passes a plan *key*, and
+        | the label is looked up here. Rendering a display string supplied by
+        | the client would let anyone put arbitrary text — a different price,
+        | say — into an email that arrives from us.
+        */
+        'plan_labels' => [
+            'lifetime_starter' => 'Starter — $89 one-time, 4,000 credits',
+            'lifetime_creator' => 'Creator — $199 one-time, 12,000 credits',
+            'lifetime_agency'  => 'Agency — $399 one-time, 20,000 credits',
+            'starter' => 'Starter — $19/month',
+            'creator' => 'Creator — $39/month',
+            'pro'     => 'Pro — $79/month',
+            'agency'  => 'Agency — $149/month',
+        ],
+
         'lifetime_plans' => [
             env('KELVIQ_PLAN_LIFETIME_STARTER', 'wyvstudio-lifetime-starter') => ['tier' => 'lifetime_starter', 'credits' => 4000],
             env('KELVIQ_PLAN_LIFETIME_CREATOR', 'wyvstudio-lifetime-creator') => ['tier' => 'lifetime_creator', 'credits' => 12000],

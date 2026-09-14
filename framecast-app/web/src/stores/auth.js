@@ -62,11 +62,14 @@ export const useAuthStore = defineStore('auth', {
       useWorkspaceStore().clear()
     },
 
-    async requestMagicLink(email, name = null, password = null) {
+    async requestMagicLink(email, name = null, password = null, plan = null) {
       await api.post('/auth/magic-link', {
         email,
         ...(name ? { name } : {}),
         ...(password ? { password } : {}),
+        // Passed so the sign-in email can name the plan they picked. The key
+        // only — the wording comes from the server.
+        ...(plan ? { plan } : {}),
       })
     },
 

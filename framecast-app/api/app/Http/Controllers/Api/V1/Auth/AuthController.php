@@ -79,6 +79,10 @@ class AuthController extends Controller
             // Affiliate code, distinct from `ref`: that one names a workspace
             // referring a friend, this one names a marketer taking a cut.
             'aff' => ['nullable', 'string', 'max:32'],
+            // Plan chosen on the pricing page. A key only — the label shown in
+            // the email is looked up server-side, so the client cannot put its
+            // own text (a different price, say) into a mail sent by us.
+            'plan' => ['nullable', 'string', 'max:64'],
         ]);
 
         $email = strtolower($validated['email']);
@@ -179,7 +183,14 @@ class AuthController extends Controller
         );
 
         try {
-            Mail::to($user->email)->send(new MagicLinkMail($user, $magicLink));
+            // A brand-new account gets the welcome folded into this mail
+            // rather than a second one alongside it — see MagicLinkMail.
+            Mail::to($user->email)->send(new MagicLinkMail(
+                $user,
+                $magicLink,
+                firstRun: ! $existingByEmail,
+                planLabel: config('billing.kelviq.plan_labels')[$validated['plan'] ?? ''] ?? null,
+            ));
         } catch (\Throwable $e) {
             // Loud-log: this is the path that silently ate the Resend
             // transport failure (class-not-found from the missing
