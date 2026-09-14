@@ -12,53 +12,18 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\BuildsAffiliateSchema;
 use Tests\TestCase;
 
 /** Deliberately uses a fresh in-memory DB, never the configured application database. */
 class AffiliatePortalTest extends TestCase
 {
+    use BuildsAffiliateSchema;
+
     protected function setUp(): void
     {
         parent::setUp();
-        config(['database.default' => 'portal_test', 'database.connections.portal_test' => [
-            'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '', 'foreign_key_constraints' => false,
-        ]]);
-        DB::purge('portal_test');
-
-        Schema::create('affiliates', function (Blueprint $t) {
-            $t->id(); $t->string('code'); $t->string('name'); $t->string('email')->nullable();
-            $t->decimal('commission_percent', 5, 2)->default(20); $t->string('status')->default('active');
-            $t->text('notes')->nullable(); $t->text('access_key')->nullable();
-            $t->timestamp('last_login_at')->nullable(); $t->timestamps();
-        });
-        Schema::create('affiliate_sessions', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('affiliate_id'); $t->string('token_hash');
-            $t->timestamp('expires_at')->nullable(); $t->timestamp('last_seen_at')->nullable(); $t->timestamps();
-        });
-        Schema::create('affiliate_clicks', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('affiliate_id'); $t->timestamp('clicked_at')->nullable();
-            $t->string('landing_path')->nullable(); $t->string('referer')->nullable();
-            $t->string('visitor_hash')->nullable(); $t->timestamps();
-        });
-        Schema::create('affiliate_conversions', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('affiliate_id'); $t->unsignedBigInteger('workspace_id')->nullable();
-            $t->string('customer_email')->nullable(); $t->string('order_id')->nullable(); $t->string('plan')->nullable();
-            $t->decimal('order_amount', 10, 2)->default(0); $t->string('currency')->default('USD');
-            $t->decimal('gross_amount', 10, 2)->default(0); $t->decimal('basis_amount', 10, 2)->default(0);
-            $t->string('basis_method')->default('gross');
-            $t->decimal('commission_percent', 5, 2); $t->decimal('commission_amount', 10, 2);
-            $t->string('attribution_source')->default('workspace'); $t->string('payout_status')->default('unpaid');
-            $t->unsignedBigInteger('payout_id')->nullable(); $t->timestamp('paid_at')->nullable(); $t->timestamps();
-        });
-        Schema::create('affiliate_payouts', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('affiliate_id'); $t->string('reference');
-            $t->date('period_start')->nullable(); $t->date('period_end')->nullable();
-            $t->unsignedInteger('sales_count')->default(0); $t->decimal('total_amount', 12, 2)->default(0);
-            $t->string('currency')->default('USD'); $t->string('status')->default('paid');
-            $t->string('method')->nullable(); $t->text('note')->nullable();
-            $t->timestamp('paid_at')->nullable(); $t->timestamp('voided_at')->nullable();
-            $t->text('void_reason')->nullable(); $t->unsignedBigInteger('created_by_user_id')->nullable(); $t->timestamps();
-        });
+        $this->bootAffiliateSchema('portal_test');
         RateLimiter::clear('aff-portal:marcus|127.0.0.1');
     }
 

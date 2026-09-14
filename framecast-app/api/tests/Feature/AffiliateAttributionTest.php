@@ -9,37 +9,17 @@ use App\Services\Affiliate\AffiliateAttribution;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\BuildsAffiliateSchema;
 use Tests\TestCase;
 
 class AffiliateAttributionTest extends TestCase
 {
+    use BuildsAffiliateSchema;
+
     protected function setUp(): void
     {
         parent::setUp();
-        config(['database.default' => 'aff_test', 'database.connections.aff_test' => [
-            'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '', 'foreign_key_constraints' => false,
-        ]]);
-        DB::purge('aff_test');
-
-        Schema::create('affiliates', function (Blueprint $t) {
-            $t->id(); $t->string('code'); $t->string('name'); $t->string('email')->nullable();
-            $t->decimal('commission_percent', 5, 2)->default(20); $t->string('status')->default('active');
-            $t->text('notes')->nullable(); $t->timestamps();
-        });
-        Schema::create('affiliate_conversions', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('affiliate_id'); $t->unsignedBigInteger('workspace_id')->nullable();
-            $t->string('customer_email')->nullable(); $t->string('order_id')->nullable(); $t->string('plan')->nullable();
-            $t->decimal('order_amount', 10, 2)->default(0); $t->string('currency')->default('USD');
-            $t->decimal('gross_amount', 10, 2)->default(0); $t->decimal('basis_amount', 10, 2)->default(0);
-            $t->string('basis_method')->default('gross');
-            $t->decimal('commission_percent', 5, 2); $t->decimal('commission_amount', 10, 2);
-            $t->string('attribution_source')->default('workspace'); $t->string('payout_status')->default('unpaid');
-            $t->timestamp('paid_at')->nullable(); $t->timestamps();
-        });
-        Schema::create('workspaces', function (Blueprint $t) {
-            $t->id(); $t->string('name')->nullable(); $t->string('affiliate_code')->nullable();
-            $t->timestamp('affiliate_attributed_at')->nullable(); $t->timestamps();
-        });
+        $this->bootAffiliateSchema('aff_test');
     }
 
     private function affiliate(array $o = []): Affiliate

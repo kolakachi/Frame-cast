@@ -12,6 +12,8 @@ class AffiliatePayout extends Model
         'affiliate_id', 'reference', 'period_start', 'period_end', 'sales_count',
         'total_amount', 'currency', 'status', 'method', 'note', 'paid_at',
         'voided_at', 'void_reason', 'created_by_user_id',
+        'payout_currency', 'payout_amount', 'fx_rate', 'fx_source', 'fx_captured_at',
+        'payment_reference', 'failure_reason',
     ];
 
     protected function casts(): array
@@ -20,6 +22,9 @@ class AffiliatePayout extends Model
             'period_start' => 'date',
             'period_end' => 'date',
             'total_amount' => 'decimal:2',
+            'payout_amount' => 'decimal:2',
+            'fx_rate' => 'decimal:6',
+            'fx_captured_at' => 'datetime',
             'paid_at' => 'datetime',
             'voided_at' => 'datetime',
         ];

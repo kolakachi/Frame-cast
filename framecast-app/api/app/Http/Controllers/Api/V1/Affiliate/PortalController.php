@@ -7,6 +7,9 @@ use App\Models\Affiliate;
 use App\Models\AffiliateClick;
 use App\Models\AffiliateConversion;
 use App\Models\AffiliatePayout;
+use App\Models\AffiliatePaymentDetail;
+use App\Services\Affiliate\ExchangeRateService;
+use App\Services\Affiliate\PayoutEligibility;
 use App\Models\AffiliateSession;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -86,6 +89,9 @@ class PortalController extends Controller
         $lastPayout = AffiliatePayout::query()->where('affiliate_id', $affiliate->getKey())
             ->where('status', 'paid')->latest('paid_at')->first();
 
+        $eligibility = PayoutEligibility::summarise($affiliate);
+        $fx = app(ExchangeRateService::class)->current();
+
         return response()->json(['data' => [
             'affiliate' => $this->profile($affiliate),
             'totals' => [
@@ -108,6 +114,42 @@ class PortalController extends Controller
                 'owed' => round((float) $rows->where('payout_status', 'unpaid')->sum('commission_amount'), 2),
                 'paid' => round((float) $rows->where('payout_status', 'paid')->sum('commission_amount'), 2),
             ],
+
+            // Owed splits in two once a hold exists. A single figure either
+            // overstates what is coming or understates what was earned, and a
+            // number that drops without explanation reads as a mistake.
+            'balance' => [
+                'available' => $eligibility['available'],
+                'available_count' => $eligibility['available_count'],
+                'maturing' => $eligibility['maturing'],
+                'maturing_count' => $eligibility['maturing_count'],
+                'next_matures_at' => $eligibility['next_matures_at'],
+                'hold_days' => (int) config('affiliates.hold_days', 21),
+                'blocked_reason' => $eligibility['blocked_reason'],
+            ],
+
+            'schedule' => [
+                'cycle_days' => (int) config('affiliates.cycle_days', 14),
+                'next_payout_date' => PayoutEligibility::nextPayoutDate($affiliate),
+                'minimum' => $eligibility['minimum'],
+                'payout_currency' => (string) config('affiliates.payout_currency', 'NGN'),
+                'commission_currency' => (string) config('affiliates.commission_currency', 'USD'),
+            ],
+
+            'fx' => $fx,
+
+            // Spelled out rather than left for them to multiply, so the figure
+            // on the dashboard and the figure in the bank have a visible link.
+            'estimate' => [
+                'commission' => $eligibility['available'],
+                'rate' => $fx['rate'],
+                'payout' => $fx['rate'] ? round($eligibility['available'] * $fx['rate'], 2) : null,
+                // Never a promise: the rate moves, and the one that counts is
+                // the one captured when the transfer is made.
+                'is_estimate' => true,
+            ],
+
+            'payment_details' => $this->detailPayload($affiliate),
             'last_payout' => $lastPayout ? [
                 'reference' => $lastPayout->reference,
                 'amount' => round((float) $lastPayout->total_amount, 2),
@@ -190,10 +232,86 @@ class PortalController extends Controller
                 'sales_count' => (int) $p->sales_count,
                 'total_amount' => (float) $p->total_amount,
                 'currency' => $p->currency,
+                'payout_amount' => $p->payout_amount !== null ? (float) $p->payout_amount : null,
+                'payout_currency' => $p->payout_currency,
+                'fx_rate' => $p->fx_rate !== null ? (float) $p->fx_rate : null,
+                'fx_source' => $p->fx_source,
+                'payment_reference' => $p->payment_reference,
                 'status' => $p->status,
+                'failure_reason' => $p->failure_reason,
             ]);
 
         return response()->json(['data' => ['payouts' => $rows], 'meta' => []]);
+    }
+
+    /**
+     * Save or replace the account their money goes to.
+     *
+     * Editing returns the row to unverified — see the model. Verification
+     * checked specific digits, and carrying approval across a change would let
+     * a verified payout be redirected to an account nobody looked at.
+     */
+    public function savePaymentDetails(Request $request): JsonResponse
+    {
+        $affiliate = $this->affiliate($request);
+        if (! $affiliate) {
+            return $this->unauthenticated();
+        }
+
+        $v = $request->validate([
+            'account_name' => ['required', 'string', 'max:120'],
+            'bank_name' => ['required', 'string', 'max:120'],
+            // Digits and spaces only: an account number with letters in it is
+            // a typo, and this is the one field nobody gets to re-check later.
+            'account_number' => ['required', 'string', 'max:34', 'regex:/^[0-9 -]+$/'],
+            'bank_code' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'country' => ['sometimes', 'string', 'size:2'],
+            'payout_currency' => ['sometimes', 'string', 'size:3'],
+        ]);
+
+        $number = preg_replace('/[^0-9]/', '', $v['account_number']);
+        if (strlen($number) < 6) {
+            return response()->json(['error' => ['message' => 'That account number looks too short.']], 422);
+        }
+
+        $detail = AffiliatePaymentDetail::query()->firstOrNew(['affiliate_id' => $affiliate->getKey()]);
+        $detail->applySubmission([
+            'affiliate_id' => $affiliate->getKey(),
+            'account_name' => $v['account_name'],
+            'bank_name' => $v['bank_name'],
+            'account_number' => $number,
+            'account_number_last4' => substr($number, -4),
+            'bank_code' => $v['bank_code'] ?? null,
+            'country' => strtoupper($v['country'] ?? 'NG'),
+            'payout_currency' => strtoupper($v['payout_currency'] ?? (string) config('affiliates.payout_currency', 'NGN')),
+        ]);
+
+        return response()->json(['data' => ['payment_details' => $this->detailPayload($affiliate->fresh())], 'meta' => []]);
+    }
+
+    /**
+     * What the owner is shown back. Never the full number — they typed it, and
+     * echoing it puts it in a browser cache and a screenshot for no gain.
+     */
+    private function detailPayload(Affiliate $affiliate): ?array
+    {
+        $d = AffiliatePaymentDetail::query()->where('affiliate_id', $affiliate->getKey())->first();
+        if (! $d) {
+            return null;
+        }
+
+        return [
+            'account_name' => $d->account_name,
+            'bank_name' => $d->bank_name,
+            'account_number_masked' => $d->masked(),
+            'bank_code' => $d->bank_code,
+            'country' => $d->country,
+            'payout_currency' => $d->payout_currency,
+            'status' => $d->status,
+            'verified_at' => $d->verified_at?->toDateString(),
+            'rejected_reason' => $d->rejected_reason,
+            'submitted_at' => $d->submitted_at?->toDateString(),
+        ];
     }
 
     private function profile(Affiliate $a): array

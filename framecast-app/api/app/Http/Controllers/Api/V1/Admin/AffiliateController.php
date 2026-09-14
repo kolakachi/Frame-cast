@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Affiliate;
 use App\Models\AffiliateConversion;
+use App\Models\AffiliatePaymentDetail;
 use App\Models\AffiliatePayout;
+use App\Services\Affiliate\ExchangeRateService;
+use App\Services\Affiliate\PayoutEligibility;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +36,7 @@ class AffiliateController extends Controller
             $settled = $rows->where('payout_status', 'paid');
             $last = AffiliatePayout::query()->where('affiliate_id', $a->getKey())
                 ->where('status', 'paid')->latest('paid_at')->first();
+            $eligibility = PayoutEligibility::summarise($a);
 
             return [
                 'id'      => $a->getKey(),
@@ -60,10 +64,21 @@ class AffiliateController extends Controller
                 'last_payout' => $last ? [
                     'reference' => $last->reference,
                     'amount' => round((float) $last->total_amount, 2),
+                    'payout_amount' => $last->payout_amount !== null ? (float) $last->payout_amount : null,
+                    'payout_currency' => $last->payout_currency,
                     'paid_at' => $last->paid_at?->toDateString(),
                     'sales_count' => (int) $last->sales_count,
                 ] : null,
                 'oldest_unpaid' => $outstanding->min('created_at')?->toDateString(),
+
+                // Owed is not the same as payable once a hold exists, and the
+                // difference is what determines whether a run can go out.
+                'available' => $eligibility['available'],
+                'maturing' => $eligibility['maturing'],
+                'next_matures_at' => $eligibility['next_matures_at'],
+                'details_status' => $eligibility['details_status'],
+                'payout_blocked_reason' => $eligibility['blocked_reason'],
+                'next_payout_date' => PayoutEligibility::nextPayoutDate($a),
 
                 // Shown so they can be sent on. This endpoint is already behind
                 // the admin gate; the key is hidden from every other response.
@@ -174,6 +189,97 @@ class AffiliateController extends Controller
         ])], 'meta' => []]);
     }
 
+    /**
+     * The account we would send money to, with the number in the clear.
+     *
+     * Admin-only and deliberately its own endpoint: the affiliate listing must
+     * never carry a bank number, so it is fetched when someone is actually
+     * about to make a transfer rather than shipped with every page load.
+     */
+    public function paymentDetails(int $id): JsonResponse
+    {
+        $d = AffiliatePaymentDetail::query()->where('affiliate_id', $id)->first();
+        if (! $d) {
+            return response()->json(['data' => ['payment_details' => null], 'meta' => []]);
+        }
+
+        return response()->json(['data' => ['payment_details' => [
+            'id' => $d->getKey(),
+            'account_name' => $d->account_name,
+            'bank_name' => $d->bank_name,
+            'account_number' => $d->account_number,
+            'bank_code' => $d->bank_code,
+            'country' => $d->country,
+            'payout_currency' => $d->payout_currency,
+            'status' => $d->status,
+            'verified_at' => $d->verified_at?->toDateString(),
+            'rejected_reason' => $d->rejected_reason,
+            'submitted_at' => $d->submitted_at?->toDateString(),
+        ]], 'meta' => []]);
+    }
+
+    /** Approve or reject the account, which is what unblocks a payout run. */
+    public function verifyPaymentDetails(Request $request, int $id): JsonResponse
+    {
+        $v = $request->validate([
+            'status' => ['required', 'in:verified,rejected,unverified'],
+            'reason' => ['required_if:status,rejected', 'nullable', 'string', 'max:500'],
+        ]);
+
+        $d = AffiliatePaymentDetail::query()->where('affiliate_id', $id)->firstOrFail();
+        $d->forceFill([
+            'status' => $v['status'],
+            'verified_at' => $v['status'] === 'verified' ? now() : null,
+            'verified_by_user_id' => $v['status'] === 'verified' ? $request->user()?->getKey() : null,
+            'rejected_reason' => $v['status'] === 'rejected' ? $v['reason'] : null,
+        ])->save();
+
+        return response()->json(['data' => ['status' => $d->status], 'meta' => []]);
+    }
+
+    /**
+     * Move a payment along its lifecycle.
+     *
+     * "Paid" is not the only true state: a transfer can be sitting with the
+     * bank, or can bounce. A run stuck on "paid" when the money never arrived
+     * is how an affiliate gets told they were paid and finds nothing.
+     */
+    public function updatePayoutStatus(Request $request, int $id, int $payoutId): JsonResponse
+    {
+        $v = $request->validate([
+            'status' => ['required', 'in:pending,processing,paid,failed'],
+            'payment_reference' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'failure_reason' => ['required_if:status,failed', 'nullable', 'string', 'max:500'],
+            'fx_rate' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+        ]);
+
+        $payout = AffiliatePayout::query()->where('affiliate_id', $id)->findOrFail($payoutId);
+        if ($payout->status === 'void') {
+            return response()->json(['error' => ['message' => 'That payout is void.']], 422);
+        }
+
+        $update = [
+            'status' => $v['status'],
+            'failure_reason' => $v['status'] === 'failed' ? $v['failure_reason'] : null,
+            'paid_at' => $v['status'] === 'paid' ? ($payout->paid_at ?? now()) : $payout->paid_at,
+        ];
+        if (array_key_exists('payment_reference', $v)) {
+            $update['payment_reference'] = $v['payment_reference'];
+        }
+        // A corrected rate restates the naira figure with it, so the two can
+        // never disagree on a statement.
+        if (! empty($v['fx_rate'])) {
+            $update['fx_rate'] = (float) $v['fx_rate'];
+            $update['payout_amount'] = round((float) $payout->total_amount * (float) $v['fx_rate'], 2);
+            $update['fx_source'] = 'entered at payout';
+            $update['fx_captured_at'] = now();
+        }
+
+        $payout->forceFill($update)->save();
+
+        return response()->json(['data' => ['status' => $payout->status], 'meta' => []]);
+    }
+
     /** Every payment sent to this affiliate, newest first. */
     public function payouts(int $id): JsonResponse
     {
@@ -188,10 +294,16 @@ class AffiliateController extends Controller
                 'sales_count' => (int) $p->sales_count,
                 'total_amount' => (float) $p->total_amount,
                 'currency' => $p->currency,
+                'payout_amount' => $p->payout_amount !== null ? (float) $p->payout_amount : null,
+                'payout_currency' => $p->payout_currency,
+                'fx_rate' => $p->fx_rate !== null ? (float) $p->fx_rate : null,
+                'fx_source' => $p->fx_source,
+                'payment_reference' => $p->payment_reference,
                 'method' => $p->method,
                 'note' => $p->note,
                 'status' => $p->status,
                 'void_reason' => $p->void_reason,
+                'failure_reason' => $p->failure_reason,
             ]);
 
         return response()->json(['data' => ['payouts' => $rows], 'meta' => []]);
@@ -214,16 +326,22 @@ class AffiliateController extends Controller
             'up_to' => ['sometimes', 'nullable', 'date'],
             'method' => ['sometimes', 'nullable', 'string', 'max:32'],
             'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            // The rate actually achieved on the transfer. Left out, the live
+            // rate is recorded instead — but the one you got is the one that
+            // belongs on the statement.
+            'fx_rate' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'payment_reference' => ['sometimes', 'nullable', 'string', 'max:120'],
+            // Deliberate override of the details/minimum gate.
+            'force' => ['sometimes', 'boolean'],
         ]);
 
         $affiliate = Affiliate::query()->findOrFail($id);
 
         try {
             $payout = DB::transaction(function () use ($affiliate, $v, $request) {
-                $query = AffiliateConversion::query()
-                    ->where('affiliate_id', $affiliate->getKey())
-                    ->where('payout_status', 'unpaid')
-                    ->lockForUpdate();
+                // Only what has cleared the refund window. Paying inside it is
+                // how a payout becomes a clawback conversation.
+                $query = PayoutEligibility::matured((int) $affiliate->getKey())->lockForUpdate();
 
                 if (! empty($v['conversion_ids'])) {
                     $query->whereIn('id', $v['conversion_ids']);
@@ -234,7 +352,21 @@ class AffiliateController extends Controller
 
                 $rows = $query->get();
                 if ($rows->isEmpty()) {
-                    throw new \RuntimeException('There is nothing outstanding to pay.');
+                    $held = PayoutEligibility::maturing((int) $affiliate->getKey())->count();
+                    throw new \RuntimeException($held > 0
+                        ? "Nothing has matured yet — {$held} commission(s) are still inside the "
+                            .config('affiliates.hold_days', 21).'-day refund window.'
+                        : 'There is nothing outstanding to pay.');
+                }
+
+                // Money needs somewhere to go, and somewhere we have checked.
+                $status = PayoutEligibility::summarise($affiliate);
+                if (! $status['details_ok'] && ! ($v['force'] ?? false)) {
+                    throw new \RuntimeException($status['blocked_reason'] ?? 'Payment details are not ready.');
+                }
+                if (! $status['meets_minimum'] && ! ($v['force'] ?? false)) {
+                    throw new \RuntimeException('Below the minimum payout of '
+                        .number_format((float) config('affiliates.minimum_payout', 0), 2).'.');
                 }
 
                 // Summing across currencies would produce a number that is not
@@ -245,16 +377,43 @@ class AffiliateController extends Controller
                         .'. Pay each currency as its own run by selecting the rows.');
                 }
 
+                $total = round((float) $rows->sum('commission_amount'), 2);
+
+                // The rate is frozen here, with the run. A statement reprinted
+                // next year has to show the arithmetic that was performed, not
+                // today's rate applied to last year's total.
+                $live = app(ExchangeRateService::class)->current();
+                $rate = isset($v['fx_rate']) && (float) $v['fx_rate'] > 0
+                    ? (float) $v['fx_rate']
+                    : $live['rate'];
+                // A stale rate is still better than none, but it goes onto the
+                // record saying so — this figure is what someone gets paid on.
+                $source = isset($v['fx_rate']) && (float) $v['fx_rate'] > 0
+                    ? 'entered at payout'
+                    : $live['source'].(($live['stale'] ?? false) ? ' (stale)' : '');
+
+                $payoutCurrency = (string) config('affiliates.payout_currency', 'NGN');
+
                 $payout = AffiliatePayout::query()->create([
                     'affiliate_id' => $affiliate->getKey(),
                     'reference' => AffiliatePayout::nextReference($affiliate),
                     'period_start' => $rows->min('created_at')?->toDateString(),
                     'period_end' => $rows->max('created_at')?->toDateString(),
                     'sales_count' => $rows->count(),
-                    'total_amount' => round((float) $rows->sum('commission_amount'), 2),
+                    'total_amount' => $total,
                     'currency' => $currencies->first(),
+
+                    'payout_currency' => $payoutCurrency,
+                    // Null rather than a guess when no rate could be had —
+                    // an invented number here is one somebody gets paid on.
+                    'payout_amount' => $rate ? round($total * $rate, 2) : null,
+                    'fx_rate' => $rate,
+                    'fx_source' => $rate ? $source : null,
+                    'fx_captured_at' => $rate ? now() : null,
+
                     'status' => 'paid',
                     'method' => $v['method'] ?? null,
+                    'payment_reference' => $v['payment_reference'] ?? null,
                     'note' => $v['note'] ?? null,
                     'paid_at' => now(),
                     'created_by_user_id' => $request->user()?->getKey(),
@@ -278,6 +437,9 @@ class AffiliateController extends Controller
             'reference' => $payout->reference,
             'sales_count' => (int) $payout->sales_count,
             'total_amount' => (float) $payout->total_amount,
+            'payout_amount' => $payout->payout_amount !== null ? (float) $payout->payout_amount : null,
+            'payout_currency' => $payout->payout_currency,
+            'fx_rate' => $payout->fx_rate !== null ? (float) $payout->fx_rate : null,
         ]], 'meta' => []], 201);
     }
 

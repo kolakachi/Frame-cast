@@ -204,6 +204,10 @@ class AffiliateAttribution
                 'commission_amount'  => round($basis * $percent / 100, 2),
                 'attribution_source' => $attributionSource,
                 'payout_status'      => $refunded ? 'void' : 'unpaid',
+                // Stamped per row rather than derived at payout time: changing
+                // the hold policy later must not move money an affiliate has
+                // already been told is on its way.
+                'eligible_at'        => now()->addDays((int) config('affiliates.hold_days', 21)),
             ]);
         } catch (\Throwable $e) {
             // A lost commission row is worse than a noisy log.

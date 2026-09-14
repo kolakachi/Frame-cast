@@ -96,6 +96,7 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/affiliate/portal/summary', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'summary']);
     Route::get('/affiliate/portal/daily', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'daily']);
     Route::get('/affiliate/portal/payouts', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'payouts']);
+    Route::post('/affiliate/portal/payment-details', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'savePaymentDetails']);
 
     Route::post('/affiliate/click', function (
         \Illuminate\Http\Request $request,
@@ -250,6 +251,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/affiliates/{id}/conversions', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'conversions'])->whereNumber('id');
             Route::get('/affiliates/{id}/statement.csv', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'statement'])->whereNumber('id');
             Route::get('/affiliates/{id}/payouts', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'payouts'])->whereNumber('id');
+            Route::get('/affiliates/{id}/payment-details', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'paymentDetails'])->whereNumber('id');
+            Route::post('/affiliates/{id}/payment-details/verify', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'verifyPaymentDetails'])->whereNumber('id');
+            Route::post('/affiliates/{id}/payouts/{payoutId}/status', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'updatePayoutStatus'])->whereNumber('id')->whereNumber('payoutId');
             Route::post('/affiliates/{id}/payouts', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'createPayout'])->whereNumber('id');
             Route::get('/affiliates/{id}/payouts/{payoutId}/statement.csv', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'statement'])->whereNumber('id')->whereNumber('payoutId');
             Route::post('/affiliates/{id}/payouts/{payoutId}/void', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'voidPayout'])->whereNumber('id')->whereNumber('payoutId');

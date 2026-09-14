@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Affiliate extends Model
 {
@@ -32,6 +33,16 @@ class Affiliate extends Model
     public function clicks(): HasMany
     {
         return $this->hasMany(AffiliateClick::class);
+    }
+
+    public function payouts(): HasMany
+    {
+        return $this->hasMany(AffiliatePayout::class);
+    }
+
+    public function paymentDetail(): HasOne
+    {
+        return $this->hasOne(AffiliatePaymentDetail::class);
     }
 
     /**
