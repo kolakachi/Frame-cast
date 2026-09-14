@@ -30,6 +30,8 @@ class AffiliateAttributionTest extends TestCase
             $t->id(); $t->unsignedBigInteger('affiliate_id'); $t->unsignedBigInteger('workspace_id')->nullable();
             $t->string('customer_email')->nullable(); $t->string('order_id')->nullable(); $t->string('plan')->nullable();
             $t->decimal('order_amount', 10, 2)->default(0); $t->string('currency')->default('USD');
+            $t->decimal('gross_amount', 10, 2)->default(0); $t->decimal('basis_amount', 10, 2)->default(0);
+            $t->string('basis_method')->default('gross');
             $t->decimal('commission_percent', 5, 2); $t->decimal('commission_amount', 10, 2);
             $t->string('attribution_source')->default('workspace'); $t->string('payout_status')->default('unpaid');
             $t->timestamp('paid_at')->nullable(); $t->timestamps();
@@ -82,7 +84,13 @@ class AffiliateAttributionTest extends TestCase
 
         $row = AffiliateConversion::query()->where('order_id', 'ORD-1')->firstOrFail();
         $this->assertSame('30.00', (string) $row->commission_percent);
-        $this->assertSame('59.70', (string) $row->commission_amount);
+        // On the basis, not the gross — the gross includes tax.
+        $this->assertSame('199.00', (string) $row->gross_amount);
+        $this->assertEqualsWithDelta(
+            (float) $row->basis_amount * 0.30,
+            (float) $row->commission_amount,
+            0.01,
+        );
     }
 
     public function test_a_repeated_webhook_cannot_pay_twice(): void
@@ -121,5 +129,33 @@ class AffiliateAttributionTest extends TestCase
 
         [$nobody] = $attribution->resolveForSale(['affiliate_code' => 'nobody'], null, null);
         $this->assertNull($nobody);
+    }
+
+    public function test_commission_is_not_taken_on_tax_or_the_platform_fee(): void
+    {
+        // Kelviq reports one gross figure with tax included. A real order:
+        // $199.00 less a $29.85 discount plus $33.83 of tax = $202.98.
+        config(['billing.affiliate_basis' => [
+            'method' => 'net', 'tax_rate_estimate' => 0.20, 'platform_fee_percent' => 5.0,
+        ]]);
+
+        [$basis, $method] = AffiliateAttribution::commissionBasis(202.98);
+
+        $this->assertSame('net', $method);
+        $this->assertLessThan(202.98, $basis, 'tax and fees must come out first');
+        $this->assertEqualsWithDelta(160.69, $basis, 0.05, '202.98 ex 20% tax, less a 5% fee');
+
+        // What the mistake was worth on one order.
+        $this->assertEqualsWithDelta(12.69, (202.98 - $basis) * 0.30, 0.05);
+    }
+
+    public function test_the_basis_can_be_set_to_gross_where_that_is_the_deal(): void
+    {
+        config(['billing.affiliate_basis' => ['method' => 'gross']]);
+
+        [$basis, $method] = AffiliateAttribution::commissionBasis(202.98);
+
+        $this->assertSame(202.98, $basis);
+        $this->assertSame('gross', $method);
     }
 }

@@ -119,7 +119,14 @@ class AffiliateController extends Controller
 
         return response()->streamDownload(function () use ($affiliate, $unpaidOnly) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Date', 'Order', 'Plan', 'Customer', 'Order amount', 'Currency', 'Rate %', 'Commission', 'Status']);
+            // Gross and basis both appear: an affiliate who sees only the
+            // commission cannot check it, and one who sees only the gross will
+            // expect a percentage of a number that includes tax.
+            fputcsv($out, [
+                'Date', 'Order', 'Plan', 'Customer',
+                'Customer paid (gross)', 'Commission basis', 'Basis method',
+                'Currency', 'Rate %', 'Commission', 'Status',
+            ]);
 
             $query = AffiliateConversion::query()->where('affiliate_id', $affiliate->getKey())->orderBy('created_at');
             if ($unpaidOnly) {
@@ -137,7 +144,9 @@ class AffiliateController extends Controller
                         // The buyer's address is the affiliate's evidence that a
                         // sale is real, and they already know they sent them.
                         $c->customer_email,
-                        number_format((float) $c->order_amount, 2, '.', ''),
+                        number_format((float) ($c->gross_amount ?: $c->order_amount), 2, '.', ''),
+                        number_format((float) ($c->basis_amount ?: $c->order_amount), 2, '.', ''),
+                        $c->basis_method ?: 'gross',
                         $c->currency,
                         number_format((float) $c->commission_percent, 2, '.', ''),
                         number_format((float) $c->commission_amount, 2, '.', ''),
@@ -147,7 +156,14 @@ class AffiliateController extends Controller
             });
 
             fputcsv($out, []);
-            fputcsv($out, ['', '', '', '', '', '', 'TOTAL', number_format($total, 2, '.', ''), '']);
+            fputcsv($out, ['', '', '', '', '', '', '', '', 'TOTAL', number_format($total, 2, '.', ''), '']);
+            // States the assumption on the document itself, so nobody has to
+            // reverse-engineer why the basis is lower than the gross.
+            $cfg = (array) config('billing.affiliate_basis', []);
+            fputcsv($out, []);
+            fputcsv($out, ['Basis: gross less estimated tax of '
+                .round(((float) ($cfg['tax_rate_estimate'] ?? 0)) * 100, 1).'% and a platform fee of '
+                .round((float) ($cfg['platform_fee_percent'] ?? 0), 1).'%.']);
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv']);
     }

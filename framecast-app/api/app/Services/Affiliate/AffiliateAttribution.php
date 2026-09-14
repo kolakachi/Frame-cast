@@ -138,6 +138,7 @@ class AffiliateAttribution
         }
 
         $percent = (float) $affiliate->commission_percent;
+        [$basis, $method] = self::commissionBasis($orderAmount);
 
         try {
             return AffiliateConversion::query()->create([
@@ -146,12 +147,19 @@ class AffiliateAttribution
                 'customer_email'     => $customerEmail,
                 'order_id'           => $orderId,
                 'plan'               => $plan,
+                // Kept for continuity; equals the gross the provider reported.
                 'order_amount'       => round($orderAmount, 2),
+                'gross_amount'       => round($orderAmount, 2),
+                'basis_amount'       => $basis,
+                'basis_method'       => $method,
                 'currency'           => $currency,
                 // Copied, not referenced: renegotiating a rate must not
                 // restate what is already owed.
                 'commission_percent' => $percent,
-                'commission_amount'  => round($orderAmount * $percent / 100, 2),
+                // On the basis, not the gross. A share of gross is a share of
+                // tax remitted to a government and of the merchant of record's
+                // fee, and neither is revenue to split.
+                'commission_amount'  => round($basis * $percent / 100, 2),
                 'attribution_source' => $attributionSource,
                 'payout_status'      => 'unpaid',
             ]);
@@ -165,6 +173,40 @@ class AffiliateAttribution
 
             return null;
         }
+    }
+
+    /**
+     * Reduce a gross charge to the amount a commission is fairly taken from.
+     *
+     * The provider reports one number with tax included and no breakdown, so
+     * the tax and fee shares are assumptions from configuration rather than
+     * facts from the payload. The method is returned alongside the figure and
+     * stored with the conversion, so a statement can show its working and be
+     * restated if the assumption is wrong.
+     *
+     * @return array{0: float, 1: string}
+     */
+    public static function commissionBasis(float $gross): array
+    {
+        $cfg = (array) config('billing.affiliate_basis', []);
+        $method = (string) ($cfg['method'] ?? 'net');
+
+        if ($method === 'gross' || $gross <= 0) {
+            return [round(max(0, $gross), 2), 'gross'];
+        }
+
+        // Tax is added on top (tax_behavior EXCLUSIVE), so it is a share of the
+        // total rather than of the price before it.
+        $taxRate = max(0.0, min(0.9, (float) ($cfg['tax_rate_estimate'] ?? 0.0)));
+        $exTax = $gross / (1 + $taxRate);
+
+        if ($method === 'ex_tax') {
+            return [round($exTax, 2), 'ex_tax'];
+        }
+
+        $fee = max(0.0, min(100.0, (float) ($cfg['platform_fee_percent'] ?? 0.0)));
+
+        return [round($exTax * (1 - $fee / 100), 2), 'net'];
     }
 
     /** Coarse visitor fingerprint — enough to spot self-clicking, not to identify anyone. */

@@ -9,7 +9,7 @@ class AffiliateConversion extends Model
 {
     protected $fillable = [
         'affiliate_id', 'workspace_id', 'customer_email', 'order_id', 'plan',
-        'order_amount', 'currency', 'commission_percent', 'commission_amount',
+        'order_amount', 'gross_amount', 'basis_amount', 'basis_method', 'currency', 'commission_percent', 'commission_amount',
         'attribution_source', 'payout_status', 'paid_at',
     ];
 
@@ -17,6 +17,8 @@ class AffiliateConversion extends Model
     {
         return [
             'order_amount' => 'decimal:2',
+            'gross_amount' => 'decimal:2',
+            'basis_amount' => 'decimal:2',
             'commission_percent' => 'decimal:2',
             'commission_amount' => 'decimal:2',
             'paid_at' => 'datetime',
