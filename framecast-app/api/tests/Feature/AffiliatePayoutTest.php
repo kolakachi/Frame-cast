@@ -79,6 +79,61 @@ class AffiliatePayoutTest extends TestCase
         return $request;
     }
 
+    public function test_a_generated_code_carries_nothing_about_the_affiliate(): void
+    {
+        $request = Request::create('/affiliates', 'POST', [
+            'name' => 'Marcus Ilunga', 'email' => 'marcus@growthloop.io', 'commission_percent' => 30,
+        ]);
+        $code = (new AffiliateController)->store($request)->getData(true)['data']['affiliate']['code'];
+
+        $this->assertMatchesRegularExpression('/^[a-hjkmnp-z2-9]{8}$/', $code);
+        foreach (['marcus', 'ilunga', 'growthloop'] as $fragment) {
+            $this->assertStringNotContainsString($fragment, $code);
+        }
+        // Look-alikes are excluded because these get read aloud and retyped.
+        $this->assertSame(0, preg_match('/[01ilo]/', $code));
+    }
+
+    public function test_two_affiliates_sharing_a_name_get_distinct_references(): void
+    {
+        $a = Affiliate::query()->create(['code' => Affiliate::generateCode(), 'name' => 'Marcus', 'commission_percent' => 30, 'status' => 'active']);
+        $b = Affiliate::query()->create(['code' => Affiliate::generateCode(), 'name' => 'Marcus', 'commission_percent' => 30, 'status' => 'active']);
+        $this->sale($a, 10.00);
+        $this->sale($b, 10.00);
+
+        $controller = new AffiliateController;
+        $controller->createPayout($this->request(), $a->getKey());
+        $controller->createPayout($this->request(), $b->getKey());
+
+        $references = AffiliatePayout::query()->orderBy('id')->pluck('reference')->all();
+        $this->assertCount(2, array_unique($references));
+        $this->assertStringStartsWith('MARCUS-', $references[0]);
+    }
+
+    public function test_generated_codes_do_not_repeat(): void
+    {
+        $codes = [];
+        for ($i = 0; $i < 60; $i++) {
+            $codes[] = Affiliate::generateCode();
+            Affiliate::query()->create(['code' => end($codes), 'name' => 'A'.$i, 'commission_percent' => 20, 'status' => 'active']);
+        }
+        $this->assertCount(60, array_unique($codes));
+    }
+
+    public function test_a_requested_code_is_still_honoured_but_normalised(): void
+    {
+        // Kept for a negotiated vanity link; the case is flattened so it cannot
+        // collide with an existing code that only differs by case.
+        $request = Request::create('/affiliates', 'POST', [
+            'name' => 'Dana', 'code' => 'TheBrief', 'commission_percent' => 25,
+        ]);
+        $this->assertSame('thebrief', (new AffiliateController)->store($request)->getData(true)['data']['affiliate']['code']);
+
+        $clash = Request::create('/affiliates', 'POST', ['name' => 'Other', 'code' => 'THEBRIEF', 'commission_percent' => 25]);
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        (new AffiliateController)->store($clash);
+    }
+
     public function test_paying_moves_only_what_existed_at_the_time_and_leaves_later_sales_outstanding(): void
     {
         // The failure this whole design exists to prevent: a sale arriving

@@ -2451,8 +2451,8 @@ onMounted(() => {
                 <label>Name<input v-model="affiliateForm.name" class="search-input" placeholder="Jane Marketer" /></label>
                 <label>Email<input v-model="affiliateForm.email" class="search-input" placeholder="jane@example.com" /></label>
                 <label>
-                  Code <span class="aff-hint">optional — appears in their link</span>
-                  <input v-model="affiliateForm.code" class="search-input" placeholder="jane" />
+                  Code <span class="aff-hint">optional — generated if left blank</span>
+                  <input v-model="affiliateForm.code" class="search-input" placeholder="auto" />
                 </label>
                 <label>Commission %<input v-model.number="affiliateForm.commission_percent" class="search-input" type="number" min="0" max="100" step="0.5" /></label>
                 <button class="btn btn-primary" :disabled="!affiliateForm.name" @click="createAffiliate">Create affiliate</button>

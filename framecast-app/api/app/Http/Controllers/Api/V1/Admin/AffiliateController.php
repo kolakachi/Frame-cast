@@ -72,6 +72,13 @@ class AffiliateController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        // Lowercased before the uniqueness check, not after: lookups are
+        // case-insensitive, so "JANE" and "jane" are one code, and validating
+        // the raw string would let the second one through to a 500 on the index.
+        if ($request->filled('code')) {
+            $request->merge(['code' => Str::lower(trim((string) $request->input('code')))]);
+        }
+
         $v = $request->validate([
             'name'  => ['required', 'string', 'max:120'],
             'email' => ['nullable', 'email', 'max:190'],
@@ -80,9 +87,9 @@ class AffiliateController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        // A readable code beats a random one: an affiliate has to type it into
-        // their own posts, and a typo is a lost sale.
-        $code = $v['code'] ?? Str::lower(Str::slug($v['name']).'-'.Str::random(4));
+        // Generated unless one was asked for by name — see Affiliate::generateCode
+        // for why the default carries nothing about the affiliate.
+        $code = isset($v['code']) && $v['code'] !== '' ? $v['code'] : Affiliate::generateCode();
 
         $affiliate = Affiliate::query()->create([
             'code' => $code,
