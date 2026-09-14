@@ -20,6 +20,15 @@ const lastPayout = ref(null)
 const days = ref([])
 const payouts = ref([])
 const form = ref({ code: '', key: '' })
+const balance = ref(null)
+const schedule = ref(null)
+const fx = ref(null)
+const estimate = ref(null)
+const paymentDetails = ref(null)
+const detailsForm = ref({ account_name: '', bank_name: '', account_number: '', bank_code: '', country: 'NG' })
+const detailsOpen = ref(false)
+const detailsSaving = ref(false)
+const detailsError = ref('')
 const error = ref('')
 const loading = ref(false)
 const booting = ref(true)
@@ -100,6 +109,11 @@ async function load() {
     affiliate.value = summary.data.data.affiliate
     totals.value = summary.data.data.totals
     lastPayout.value = summary.data.data.last_payout
+    balance.value = summary.data.data.balance
+    schedule.value = summary.data.data.schedule
+    fx.value = summary.data.data.fx
+    estimate.value = summary.data.data.estimate
+    paymentDetails.value = summary.data.data.payment_details
     days.value = daily.data.data.days
     payouts.value = paid.data.data.payouts
   } catch (e) {
@@ -132,6 +146,54 @@ async function copyLink() {
     error.value = `Could not copy — your link is ${affiliate.value.link}`
   }
 }
+
+function naira(n) {
+  if (n === null || n === undefined) return '—'
+  return `₦${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function rateLabel(n) {
+  if (!n) return '—'
+  return Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function openDetails() {
+  // Prefilled with everything except the account number: we never send it back,
+  // so an edit retypes it, which is also a second chance to catch a typo in the
+  // one field nobody gets to check later.
+  detailsForm.value = {
+    account_name: paymentDetails.value?.account_name ?? '',
+    bank_name: paymentDetails.value?.bank_name ?? '',
+    account_number: '',
+    bank_code: paymentDetails.value?.bank_code ?? '',
+    country: paymentDetails.value?.country ?? 'NG',
+  }
+  detailsError.value = ''
+  detailsOpen.value = true
+}
+
+async function saveDetails() {
+  detailsSaving.value = true
+  detailsError.value = ''
+  try {
+    const { data } = await portal.post('/payment-details', detailsForm.value, authHeader())
+    paymentDetails.value = data.data.payment_details
+    detailsOpen.value = false
+    await load()
+  } catch (e) {
+    detailsError.value = e.response?.data?.error?.message
+      ?? Object.values(e.response?.data?.errors ?? {})[0]?.[0]
+      ?? 'Could not save those details.'
+  } finally {
+    detailsSaving.value = false
+  }
+}
+
+const detailsBadge = computed(() => ({
+  verified: { text: 'Verified', cls: 'ap-badge-ok' },
+  unverified: { text: 'Awaiting verification', cls: 'ap-badge-wait' },
+  rejected: { text: 'Rejected', cls: 'ap-badge-bad' },
+}[paymentDetails.value?.status] ?? { text: 'Not added', cls: 'ap-badge-wait' }))
 
 onMounted(async () => {
   try {
@@ -218,9 +280,22 @@ onMounted(async () => {
           <div class="ap-metric-sub">what your customers paid</div>
         </div>
         <div class="ap-metric ap-metric-due">
-          <div class="ap-metric-label">Owed to you</div>
-          <div class="ap-metric-value">{{ money(totals.owed) }}</div>
-          <div class="ap-metric-sub">on the next payment</div>
+          <div class="ap-metric-label">Ready to pay</div>
+          <div class="ap-metric-value">{{ money(balance?.available ?? 0) }}</div>
+          <div class="ap-metric-sub">
+            <template v-if="estimate?.payout !== null && estimate?.payout !== undefined">≈ {{ naira(estimate.payout) }}</template>
+            <template v-else>rate unavailable</template>
+          </div>
+        </div>
+        <!-- Held and ready are separate figures. One number would either
+             overstate what is coming or understate what was earned. -->
+        <div class="ap-metric">
+          <div class="ap-metric-label">Still maturing</div>
+          <div class="ap-metric-value">{{ money(balance?.maturing ?? 0) }}</div>
+          <div class="ap-metric-sub">
+            <template v-if="balance?.next_matures_at">next clears {{ balance.next_matures_at }}</template>
+            <template v-else>nothing on hold</template>
+          </div>
         </div>
         <div class="ap-metric">
           <div class="ap-metric-label">Paid to you</div>
@@ -231,6 +306,80 @@ onMounted(async () => {
           </div>
         </div>
       </section>
+
+      <div class="ap-split">
+        <!-- Payment details -->
+        <section class="ap-card">
+          <div class="ap-card-head">
+            <h2>Where your money goes</h2>
+            <span :class="['ap-badge', detailsBadge.cls]">{{ detailsBadge.text }}</span>
+          </div>
+          <div class="ap-pad">
+            <template v-if="paymentDetails">
+              <dl class="ap-kv">
+                <dt>Account name</dt><dd>{{ paymentDetails.account_name }}</dd>
+                <dt>Bank</dt><dd>{{ paymentDetails.bank_name }}</dd>
+                <dt>Account number</dt><dd class="ap-mono">{{ paymentDetails.account_number_masked }}</dd>
+                <dt>Paid in</dt><dd>{{ paymentDetails.payout_currency }}</dd>
+              </dl>
+              <p v-if="paymentDetails.status === 'rejected'" class="ap-error">
+                {{ paymentDetails.rejected_reason || 'These details were rejected. Please check and resubmit.' }}
+              </p>
+              <p v-else-if="paymentDetails.status !== 'verified'" class="ap-muted">
+                We check new details before the first transfer. Nothing is needed from you.
+              </p>
+              <button class="ap-btn ap-btn-ghost" @click="openDetails">Update details</button>
+            </template>
+            <template v-else>
+              <p class="ap-muted">
+                We need somewhere to send your commission. Add your account and we'll
+                verify it before the first payment.
+              </p>
+              <button class="ap-btn ap-btn-primary" @click="openDetails">Add payment details</button>
+            </template>
+          </div>
+        </section>
+
+        <!-- Schedule and rate -->
+        <section class="ap-card">
+          <div class="ap-card-head"><h2>When you get paid</h2></div>
+          <div class="ap-pad">
+            <dl class="ap-kv">
+              <dt>Schedule</dt><dd>Every {{ schedule?.cycle_days ?? 14 }} days</dd>
+              <dt>Next payment</dt><dd>{{ schedule?.next_payout_date ?? '—' }}</dd>
+              <dt>Paid in</dt><dd>{{ schedule?.payout_currency ?? 'NGN' }}</dd>
+              <dt>Hold period</dt><dd>{{ balance?.hold_days ?? 21 }} days after each sale</dd>
+              <dt v-if="schedule?.minimum">Minimum</dt>
+              <dd v-if="schedule?.minimum">{{ money(schedule.minimum) }}</dd>
+            </dl>
+
+            <!-- The arithmetic, shown rather than left to be trusted. -->
+            <div class="ap-rate">
+              <div class="ap-rate-head">
+                <span>{{ fx?.pair ?? 'USD/NGN' }}</span>
+                <span class="ap-mono">{{ rateLabel(fx?.rate) }}</span>
+              </div>
+              <div class="ap-rate-sub">
+                <template v-if="fx?.rate">
+                  {{ fx.source }}<template v-if="fx.spread_percent"> less {{ fx.spread_percent }}%</template>
+                  <template v-if="fx.fetched_at"> · {{ new Date(fx.fetched_at).toLocaleDateString() }}</template>
+                  <template v-if="fx.stale"> · last known rate</template>
+                </template>
+                <template v-else>Rate unavailable right now.</template>
+              </div>
+              <div v-if="estimate?.payout !== null && estimate?.payout !== undefined" class="ap-rate-calc">
+                {{ money(estimate.commission) }} × {{ rateLabel(estimate.rate) }} ≈ <strong>{{ naira(estimate.payout) }}</strong>
+              </div>
+              <p class="ap-fineprint">
+                An estimate. The rate that counts is the one on the day your transfer is made,
+                and it is recorded on the payment.
+              </p>
+            </div>
+
+            <p v-if="balance?.blocked_reason" class="ap-notice">{{ balance.blocked_reason }}</p>
+          </div>
+        </section>
+      </div>
 
       <section class="ap-card">
         <div class="ap-card-head">
@@ -289,15 +438,24 @@ onMounted(async () => {
         <div class="ap-table-wrap">
           <table v-if="payouts.length">
             <thead>
-              <tr><th>Reference</th><th>Sent</th><th>Covering</th><th class="ap-num">Sales</th><th class="ap-num">Amount</th></tr>
+              <tr><th>Reference</th><th>Sent</th><th>Covering</th><th class="ap-num">Commission</th><th class="ap-num">Rate</th><th class="ap-num">Paid</th><th>Status</th></tr>
             </thead>
             <tbody>
               <tr v-for="p in payouts" :key="p.reference" :class="p.status === 'void' ? 'ap-void' : ''">
-                <td><code>{{ p.reference }}</code><span v-if="p.status === 'void'" class="ap-pill">void</span></td>
+                <td><code>{{ p.reference }}</code></td>
                 <td>{{ p.paid_at || '—' }}</td>
                 <td class="ap-dim">{{ p.period_start }} → {{ p.period_end }}</td>
-                <td class="ap-num">{{ p.sales_count }}</td>
-                <td class="ap-num"><strong>{{ money(p.total_amount) }}</strong></td>
+                <td class="ap-num">{{ money(p.total_amount) }}</td>
+                <td class="ap-num ap-dim ap-mono">{{ rateLabel(p.fx_rate) }}</td>
+                <td class="ap-num"><strong>{{ p.payout_amount !== null ? naira(p.payout_amount) : '—' }}</strong></td>
+                <td>
+                  <span :class="['ap-badge', {
+                    paid: 'ap-badge-ok', processing: 'ap-badge-wait', pending: 'ap-badge-wait',
+                    failed: 'ap-badge-bad', void: 'ap-badge-muted',
+                  }[p.status] ?? 'ap-badge-muted']">{{ p.status }}</span>
+                  <div v-if="p.payment_reference" class="ap-sub ap-mono">{{ p.payment_reference }}</div>
+                  <div v-if="p.failure_reason" class="ap-sub">{{ p.failure_reason }}</div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -306,6 +464,13 @@ onMounted(async () => {
       </section>
 
       <p class="ap-fineprint">
+        Approved commissions are paid every {{ schedule?.cycle_days ?? 14 }} days in Nigerian Naira (₦),
+        subject to the applicable payout terms, commission approval, and valid payment details.
+        Where commissions are earned in foreign currencies, the applicable platform payout
+        exchange rate will be used to calculate the final Naira amount.
+        A commission becomes approved {{ balance?.hold_days ?? 21 }} days after the sale, once it is
+        past our refund window; a refunded sale earns nothing.
+        <br /><br />
         <strong>Revenue you sent</strong> is what your customers paid in total.
         Commission is {{ affiliate.commission_percent }}% of the net — what the customer paid,
         less the sales tax remitted to their government and Kelviq's payment processing fee.
@@ -314,6 +479,52 @@ onMounted(async () => {
         Figures update as sales come in; questions go to your usual contact.
       </p>
     </main>
+
+    <!-- Payment details. Kept behind a click because it is the one place on
+         this page where a typo costs someone money. -->
+    <div v-if="detailsOpen" class="ap-modal-overlay" @click.self="detailsOpen = false">
+      <form class="ap-modal" @submit.prevent="saveDetails">
+        <div class="ap-modal-head">
+          <h2>{{ paymentDetails ? 'Update payment details' : 'Add payment details' }}</h2>
+        </div>
+        <div class="ap-modal-body">
+          <p class="ap-muted">
+            The account must be in your own name. We verify new details before the
+            first transfer, and any change needs checking again.
+          </p>
+          <label>
+            Account name
+            <input v-model="detailsForm.account_name" required maxlength="120" placeholder="As it appears on the account" />
+          </label>
+          <label>
+            Bank
+            <input v-model="detailsForm.bank_name" required maxlength="120" placeholder="e.g. GTBank" />
+          </label>
+          <label>
+            Account number
+            <input
+              v-model="detailsForm.account_number"
+              required
+              inputmode="numeric"
+              maxlength="34"
+              :placeholder="paymentDetails ? `Currently ${paymentDetails.account_number_masked} — retype in full` : '10-digit NUBAN'"
+            />
+          </label>
+          <label>
+            Bank code <span class="ap-hint">optional</span>
+            <input v-model="detailsForm.bank_code" maxlength="32" placeholder="Sort code or bank code" />
+          </label>
+
+          <div v-if="detailsError" class="ap-error">{{ detailsError }}</div>
+        </div>
+        <div class="ap-modal-foot">
+          <button type="button" class="ap-btn ap-btn-ghost" @click="detailsOpen = false">Cancel</button>
+          <button type="submit" class="ap-btn ap-btn-primary" :disabled="detailsSaving">
+            {{ detailsSaving ? 'Saving…' : 'Save details' }}
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>
 
@@ -388,7 +599,11 @@ onMounted(async () => {
 }
 .ap-linkbox code { font-size: 12px; color: var(--color-text-secondary, #a1a1b5); word-break: break-all; }
 
-.ap-metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+/* Auto-fit rather than a fixed count: the card set has grown twice, and a
+   pinned column count orphans the last one every time. */
+/* 148px so all six fit the 1040px column: six cards plus five 14px gaps
+   leaves ~153px each, and a larger minimum orphans the last card. */
+.ap-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 14px; }
 .ap-metric {
   background: var(--color-bg-card, #17171f); border: 1px solid var(--color-border, #2a2a36);
   border-radius: 12px; padding: 16px;
@@ -443,11 +658,73 @@ th.ap-num { text-align: right; }
   background: #6a6a7c22; color: var(--color-text-muted, #6a6a7c); border: 1px solid #6a6a7c40;
 }
 
+.ap-split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.ap-pad { padding: 18px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.ap-pad .ap-btn { align-self: flex-start; }
+
+.ap-kv { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin: 0; width: 100%; font-size: 13px; }
+.ap-kv dt { color: var(--color-text-muted, #6a6a7c); font-size: 12px; }
+.ap-kv dd { margin: 0; text-align: right; }
+.ap-mono { font-family: "Space Mono", ui-monospace, monospace; font-size: 12px; }
+
+.ap-badge {
+  display: inline-block;
+  padding: 3px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .4px; white-space: nowrap;
+}
+.ap-table-wrap .ap-badge + .ap-sub { margin-top: 4px; }
+.ap-badge-ok { background: #10b98122; color: #34d399; border: 1px solid #10b98140; }
+.ap-badge-wait { background: #f59e0b22; color: #fbbf24; border: 1px solid #f59e0b40; }
+.ap-badge-bad { background: #ef444422; color: #fca5a5; border: 1px solid #ef444440; }
+.ap-badge-muted { background: #6a6a7c22; color: #9ca3af; border: 1px solid #6a6a7c40; }
+
+.ap-rate {
+  width: 100%; background: var(--color-bg-elevated, #1d1d28);
+  border: 1px solid var(--color-border, #2a2a36); border-radius: 10px; padding: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.ap-rate-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; font-size: 14px; }
+.ap-rate-sub { font-size: 11px; color: var(--color-text-muted, #6a6a7c); }
+.ap-rate-calc {
+  font-size: 13px; padding-top: 10px;
+  border-top: 1px solid var(--color-border, #2a2a36);
+  font-variant-numeric: tabular-nums;
+}
+.ap-rate-calc strong { color: var(--color-accent, #ff6b35); }
+
+.ap-notice {
+  width: 100%; margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 12px;
+  background: #f59e0b1a; border: 1px solid #f59e0b40; color: #fbbf24;
+}
+
+.ap-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.74); z-index: 200;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.ap-modal {
+  background: var(--color-bg-card, #17171f); border: 1px solid var(--color-border, #2a2a36);
+  border-radius: 12px; width: 100%; max-width: 440px; max-height: 90vh; overflow: auto;
+}
+.ap-modal-head { padding: 16px 20px; border-bottom: 1px solid var(--color-border, #2a2a36); }
+.ap-modal-head h2 { font-size: 15px; margin: 0; }
+.ap-modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 13px; }
+.ap-modal-body label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--color-text-secondary, #a1a1b5); }
+.ap-modal-body input {
+  background: var(--color-bg-elevated, #1d1d28); border: 1px solid var(--color-border, #2a2a36);
+  border-radius: 9px; padding: 10px 12px; font: inherit; font-size: 14px;
+  color: var(--color-text-primary, #ececf3); outline: none; width: 100%; box-sizing: border-box;
+}
+.ap-modal-body input:focus-visible { border-color: var(--color-accent, #ff6b35); }
+.ap-hint { color: var(--color-text-muted, #6a6a7c); }
+.ap-modal-foot {
+  padding: 14px 20px; border-top: 1px solid var(--color-border, #2a2a36);
+  display: flex; gap: 10px; justify-content: flex-end;
+}
+
 @media (max-width: 1180px) {
-  .ap-metrics { grid-template-columns: repeat(3, 1fr); }
+  .ap-split { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
-  .ap-metrics { grid-template-columns: repeat(2, 1fr); }
   .ap-hello { flex-direction: column; }
 }
 </style>
