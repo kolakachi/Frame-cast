@@ -959,7 +959,9 @@ onMounted(() => {
                   <div class="connect-card-detail">
                     <template v-if="accountForPlatform(plat.key)">
                       {{ accountForPlatform(plat.key).platform_display_name || accountForPlatform(plat.key).platform_username }}
-                      <span v-if="accountForPlatform(plat.key).status === 'expired'" style="color:#fbbf24"> · Token expired</span>
+                      <!-- Only a connection we know is dead. A lapsed access
+                           token renews itself and is not worth mentioning. -->
+                      <span v-if="accountForPlatform(plat.key).status === 'expired'" style="color:#fbbf24"> · Reconnect needed</span>
                     </template>
                     <template v-else>{{ plat.note }}</template>
                   </div>

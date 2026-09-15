@@ -267,7 +267,16 @@ class SocialAccountController extends Controller
             'platform_username'    => $account->platform_username,
             'platform_display_name'=> $account->platform_display_name,
             'platform_avatar_url'  => $account->platform_avatar_url,
-            'status'               => $account->isTokenExpired() ? 'expired' : $account->status,
+            // A lapsed access token is not a lapsed connection. Google's last
+            // an hour and TikTok's a day, and both renew silently from a
+            // refresh token that survives months — so reporting 'expired' here
+            // told healthy accounts to reconnect, which is the one action that
+            // actually costs the user something. Only the stored status, set
+            // when a refresh genuinely fails, means the connection is gone.
+            'status'               => $account->status,
+            // Surfaced separately so the UI can show "reconnecting…" rather
+            // than "expired" if it wants to say anything at all.
+            'token_stale'          => $account->isTokenExpired(),
             'connected_at'         => $account->created_at?->toIso8601String(),
             'platform_meta'        => $account->platform_meta,
         ];

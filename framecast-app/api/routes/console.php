@@ -1,5 +1,7 @@
 <?php
 
+use App\Jobs\RefreshSocialTokensJob;
+
 use App\Jobs\DetectAbusePatternsJob;
 use App\Jobs\ProcessOnboardingEmailsJob;
 use App\Jobs\SendAbandonedCheckoutEmailsJob;
@@ -32,6 +34,12 @@ Schedule::job(new SendAbandonedCheckoutEmailsJob())->hourly()->name('send-abando
 // crashed worker, dropped Reverb event, or silent-save quirk doesn't leave
 // scenes spinning forever. Runs every 5 min; thresholds are 10 min for image
 // gen and 15 min for animation (both well above worst-case real run times).
+// Publishing tokens are short-lived by design — Google's last an hour, TikTok's
+// a day — and were only refreshed at the moment of posting. Keeping them warm
+// here means Settings can show the truth, and a revoked connection surfaces on
+// a quiet hour instead of as a failed scheduled post.
+Schedule::job(new RefreshSocialTokensJob())->hourly()->name('refresh-social-tokens')->withoutOverlapping();
+
 Schedule::job(new ReapStuckGenerationsJob())->everyFiveMinutes()->name('reap-stuck-generations')->withoutOverlapping();
 
 // Billing webhook logs carry raw provider payloads, which include customer
