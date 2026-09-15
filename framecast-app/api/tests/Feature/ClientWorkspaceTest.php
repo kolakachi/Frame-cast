@@ -20,7 +20,7 @@ class ClientWorkspaceTest extends TestCase
         parent::setUp();
         config(['database.default' => 'cw_test', 'database.connections.cw_test' => [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '', 'foreign_key_constraints' => false,
-        ], 'workspaces.client_tiers' => ['agency', 'lifetime_agency'], 'workspaces.max_clients' => 3]);
+        ], 'workspaces.client_tiers' => ['agency', 'lifetime_agency', 'appsumo_agency'], 'workspaces.max_clients' => 3]);
         DB::purge('cw_test');
 
         Schema::create('workspaces', function (Blueprint $t) {
@@ -39,9 +39,14 @@ class ClientWorkspaceTest extends TestCase
         Schema::create('projects', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('workspace_id')->nullable(); $t->timestamps();
         });
+        // The ledger write is rescued, so a missing column fails silently —
+        // mirror the real columns or these assertions test nothing.
         Schema::create('credit_ledger', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('workspace_id'); $t->string('operation');
-            $t->integer('credits'); $t->integer('balance_after')->nullable();
+            $t->id(); $t->unsignedBigInteger('workspace_id');
+            $t->unsignedBigInteger('user_id')->nullable(); $t->unsignedBigInteger('project_id')->nullable();
+            $t->unsignedBigInteger('scene_id')->nullable();
+            $t->string('operation'); $t->integer('credits'); $t->integer('balance_after')->nullable();
+            $t->decimal('upstream_cost_usd', 12, 6)->nullable();
             $t->json('metadata')->nullable(); $t->timestamps();
         });
     }
@@ -113,9 +118,37 @@ class ClientWorkspaceTest extends TestCase
         $this->assertSame(0, (int) $client->fresh()->credits_topup);
     }
 
+    public function test_the_ledger_names_the_client_that_spent(): void
+    {
+        // "Which of my clients burned the pool this month" is the first thing a
+        // shared pool invites, and it is unanswerable if only the agency is
+        // recorded.
+        $a = $this->agency(credits: 20000);
+        $this->ctrl()->store($this->req($this->userFor($a), ['name' => 'Acme']));
+        $client = Workspace::query()->where('name', 'Acme')->firstOrFail();
+
+        app(CreditService::class)->deduct((int) $client->getKey(), 500, 'render');
+
+        $row = DB::table('credit_ledger')->where('operation', 'render')->firstOrFail();
+        $this->assertSame((int) $a->getKey(), (int) $row->workspace_id, 'the money moved on the agency');
+        $this->assertSame((int) $client->getKey(),
+            (int) (json_decode((string) $row->metadata, true)['spent_by_workspace_id'] ?? 0),
+            'and the client is named');
+    }
+
+    public function test_an_ordinary_workspace_ledger_gains_no_extra_field(): void
+    {
+        $a = $this->agency(credits: 5000);
+        app(CreditService::class)->deduct((int) $a->getKey(), 100, 'render');
+
+        $row = DB::table('credit_ledger')->where('operation', 'render')->firstOrFail();
+        $meta = json_decode((string) $row->metadata, true);
+        $this->assertArrayNotHasKey('spent_by_workspace_id', (array) $meta);
+    }
+
     public function test_tiers_below_agency_cannot_create_clients(): void
     {
-        foreach (['free', 'starter', 'creator', 'pro', 'lifetime_creator', 'appsumo_agency'] as $tier) {
+        foreach (['free', 'starter', 'creator', 'pro', 'lifetime_creator', 'appsumo_creator'] as $tier) {
             $a = $this->agency($tier);
             $res = $this->ctrl()->store($this->req($this->userFor($a), ['name' => 'Acme']));
             $this->assertSame(403, $res->status(), "{$tier} must not own clients");
@@ -124,7 +157,7 @@ class ClientWorkspaceTest extends TestCase
 
     public function test_both_agency_tiers_can(): void
     {
-        foreach (['agency', 'lifetime_agency'] as $tier) {
+        foreach (['agency', 'lifetime_agency', 'appsumo_agency'] as $tier) {
             $a = $this->agency($tier);
             $this->assertSame(201, $this->ctrl()->store($this->req($this->userFor($a), ['name' => 'C-'.$tier]))->status());
         }

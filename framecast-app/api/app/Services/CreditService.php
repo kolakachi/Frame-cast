@@ -507,6 +507,11 @@ class CreditService
         // then decrement. Without this, two concurrent deductions (e.g. Cruise
         // "Apply all") both read the same balance, both pass the check, and
         // overdraw — the credit leak. The lock serialises them.
+        // The money moves on the agency's balance, but the record has to name
+        // the client that spent it — "which of my clients burned the pool this
+        // month" is the first question a shared pool invites, and it is
+        // unanswerable once the spender has been overwritten.
+        $spentBy = $workspaceId;
         $workspaceId = $this->poolId($workspaceId);
 
         $charged = DB::transaction(function () use ($workspaceId, $amount): bool {
@@ -550,7 +555,7 @@ class CreditService
 
         // Best-effort ledger write — never let a logging failure mask a
         // successful deduction.
-        rescue(function () use ($workspaceId, $amount, $operation, $context) {
+        rescue(function () use ($workspaceId, $spentBy, $amount, $operation, $context) {
             CreditLedgerEntry::query()->create([
                 'workspace_id'  => $workspaceId,
                 'user_id'       => isset($context['user_id'])    ? (int) $context['user_id']    : null,
@@ -562,7 +567,12 @@ class CreditService
                 // Real upstream provider cost in USD, when the caller knows it.
                 // Unblocks data-driven recalibration (CREDIT_CALIBRATION.md §2).
                 'upstream_cost_usd' => isset($context['upstream_cost_usd']) ? (float) $context['upstream_cost_usd'] : null,
-                'metadata'      => is_array($context['metadata'] ?? null) ? $context['metadata'] : null,
+                'metadata'      => array_filter(array_merge(
+                    is_array($context['metadata'] ?? null) ? $context['metadata'] : [],
+                    // Only when they differ, so an ordinary workspace's ledger
+                    // does not carry a field that always repeats its own id.
+                    $spentBy !== $workspaceId ? ['spent_by_workspace_id' => $spentBy] : [],
+                ), fn ($v) => $v !== null && $v !== []) ?: null,
             ]);
         }, null, false);
 
@@ -580,6 +590,7 @@ class CreditService
      */
     public function grant(int $workspaceId, int $amount, string $reason = ''): void
     {
+        $grantedVia = $workspaceId;
         $workspaceId = $this->poolId($workspaceId);
 
         Workspace::where('id', $workspaceId)->increment('credits_topup', $amount);
@@ -594,7 +605,8 @@ class CreditService
                 'operation'     => mb_substr('grant:'.($reason !== '' ? $reason : 'unspecified'), 0, 64),
                 'credits'       => -$amount, // negative = credit going INTO the workspace
                 'balance_after' => $this->balance($workspaceId),
-                'metadata'      => ['reason' => $reason],
+                'metadata'      => ['reason' => $reason]
+                    + ($grantedVia !== $workspaceId ? ['granted_via_workspace_id' => $grantedVia] : []),
             ]);
         }, null, false);
     }

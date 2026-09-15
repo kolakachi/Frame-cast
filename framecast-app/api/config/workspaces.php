@@ -10,13 +10,13 @@ return [
     | Agency mean more than a larger credit allowance, so it is deliberately the
     | top of the range.
     |
-    | appsumo_agency is not on this list. That is a decision, not an oversight:
-    | add it here the moment you want LTD agency holders included, which is one
-    | line and no code.
+    | All three agency tiers are the same product to the customer, however they
+    | arrived at it — monthly, one-time here, or an AppSumo licence — so they
+    | are all listed.
     */
     'client_tiers' => array_filter(array_map('trim', explode(',', (string) env(
         'WORKSPACE_CLIENT_TIERS',
-        'agency,lifetime_agency',
+        'agency,lifetime_agency,appsumo_agency',
     )))),
 
     // A guard rather than a product limit: an agency that has quietly created
