@@ -539,6 +539,7 @@ class KelviqService
             return;
         }
 
+        $previousTier = (string) $workspace->plan_tier;
         $already = $workspace->plan_source === 'lifetime' && $workspace->plan_tier === $lifetime['tier'];
 
         // A purchase must never cost someone access they already had.
@@ -578,6 +579,27 @@ class KelviqService
             ]);
 
             return;
+        }
+
+        // Moving between our own one-time packs replaces the bucket rather than
+        // stacking on it. Upgrading is a swap: you end on what the new tier
+        // gives, not on the new tier plus whatever was left of the old one —
+        // which would hand a barely-used Creator holder more credits than
+        // someone who bought Agency outright, for the same money.
+        //
+        // Only the previous pack's own allocation is removed. Anything else in
+        // the balance — top-up packs bought separately, an admin grant — was
+        // paid for on its own terms and stays. Clamped to the balance, so a
+        // customer who has already spent past the old allocation is not pushed
+        // negative by upgrading.
+        $previous = self::lifetimeBucket((string) $previousTier);
+        if ($previous > 0) {
+            $take = min($previous, (int) $workspace->fresh()->credits_topup);
+            if ($take > 0) {
+                $this->credits->deduct((int) $workspace->getKey(), $take, 'lifetime_upgrade_swap', [
+                    'metadata' => ['from' => $previousTier, 'to' => $lifetime['tier'], 'replaced' => $take],
+                ]);
+            }
         }
 
         $this->credits->grant((int) $workspace->getKey(), (int) $lifetime['credits'], 'lifetime_kelviq');
@@ -676,6 +698,24 @@ class KelviqService
 
             return null;
         }
+    }
+
+    /**
+     * What one of our own one-time packs granted, by tier.
+     *
+     * Deliberately blind to AppSumo tiers: those credits were bought from
+     * AppSumo, not from us, and replacing them because someone later buys a
+     * pack here would take away something we never sold them.
+     */
+    private static function lifetimeBucket(string $tier): int
+    {
+        foreach ((array) config('billing.kelviq.lifetime_plans') as $plan) {
+            if (($plan['tier'] ?? null) === $tier) {
+                return (int) ($plan['credits'] ?? 0);
+            }
+        }
+
+        return 0;
     }
 
     /**

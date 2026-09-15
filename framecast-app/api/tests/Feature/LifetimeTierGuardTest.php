@@ -152,6 +152,78 @@ class LifetimeTierGuardTest extends TestCase
         $this->assertSame(29549, (int) $w->fresh()->credits_topup, 'unspent credits carry over');
     }
 
+    // ── upgrading swaps the bucket, it does not stack ───────────────
+
+    public function test_upgrading_lands_on_the_new_bucket_not_the_sum(): void
+    {
+        // Michael's case: barely-used Creator moving to Agency. Stacking would
+        // give him 31,402 for the same money an Agency buyer pays for 20,000.
+        config(['billing.kelviq.lifetime_plans' => [
+            'p-creator' => ['tier' => 'lifetime_creator', 'credits' => 12000],
+            'p-agency'  => ['tier' => 'lifetime_agency',  'credits' => 20000],
+        ]]);
+        $w = $this->ws(['plan_tier' => 'lifetime_creator', 'plan_source' => 'lifetime', 'credits_topup' => 11402]);
+
+        $this->buyLifetime($w, 'lifetime_agency', 20000);
+
+        $this->assertSame(20000, (int) $w->fresh()->credits_topup);
+        $this->assertSame('lifetime_agency', $w->fresh()->plan_tier);
+    }
+
+    public function test_credits_bought_separately_survive_the_swap(): void
+    {
+        // Only the old pack's own allocation is replaced. A top-up was paid for
+        // on its own terms and is not ours to take back.
+        config(['billing.kelviq.lifetime_plans' => [
+            'p-creator' => ['tier' => 'lifetime_creator', 'credits' => 12000],
+            'p-agency'  => ['tier' => 'lifetime_agency',  'credits' => 20000],
+        ]]);
+        // 12,000 pack + 5,000 top-up, 2,000 spent.
+        $w = $this->ws(['plan_tier' => 'lifetime_creator', 'plan_source' => 'lifetime', 'credits_topup' => 15000]);
+
+        $this->buyLifetime($w, 'lifetime_agency', 20000);
+
+        $this->assertSame(23000, (int) $w->fresh()->credits_topup, 'the 3,000 top-up remnant stays');
+    }
+
+    public function test_someone_who_overspent_the_old_pack_is_not_pushed_negative(): void
+    {
+        config(['billing.kelviq.lifetime_plans' => [
+            'p-creator' => ['tier' => 'lifetime_creator', 'credits' => 12000],
+            'p-agency'  => ['tier' => 'lifetime_agency',  'credits' => 20000],
+        ]]);
+        $w = $this->ws(['plan_tier' => 'lifetime_creator', 'plan_source' => 'lifetime', 'credits_topup' => 900]);
+
+        $this->buyLifetime($w, 'lifetime_agency', 20000);
+
+        $this->assertSame(20000, (int) $w->fresh()->credits_topup);
+    }
+
+    public function test_an_appsumo_bucket_is_never_taken_back(): void
+    {
+        // Those credits were bought from AppSumo, not from us.
+        config(['billing.kelviq.lifetime_plans' => [
+            'p-agency' => ['tier' => 'lifetime_agency', 'credits' => 20000],
+        ]]);
+        $w = $this->ws(['plan_tier' => 'appsumo_creator', 'plan_source' => 'appsumo', 'credits_topup' => 11448]);
+
+        $this->buyLifetime($w, 'lifetime_agency', 20000);
+
+        $this->assertSame(31448, (int) $w->fresh()->credits_topup);
+    }
+
+    public function test_a_first_time_buyer_is_unaffected(): void
+    {
+        config(['billing.kelviq.lifetime_plans' => [
+            'p-agency' => ['tier' => 'lifetime_agency', 'credits' => 20000],
+        ]]);
+        $w = $this->ws(['plan_tier' => 'free', 'plan_source' => null, 'credits_topup' => 0]);
+
+        $this->buyLifetime($w, 'lifetime_agency', 20000);
+
+        $this->assertSame(20000, (int) $w->fresh()->credits_topup);
+    }
+
     public function test_the_same_pack_twice_does_not_grant_twice(): void
     {
         $w = $this->ws(['plan_tier' => 'lifetime_creator', 'plan_source' => 'lifetime', 'credits_topup' => 12000]);
