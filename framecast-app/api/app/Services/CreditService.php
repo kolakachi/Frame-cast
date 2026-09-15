@@ -456,9 +456,24 @@ class CreditService
         return (string) ($workspace?->plan_tier ?? 'free');
     }
 
-    public function balance(int $workspaceId): int
+    /**
+     * Credits always belong to the agency, never to a client workspace.
+     *
+     * Resolving here rather than at every call site means the 200-odd places
+     * that ask about credits never learn that sub-accounts exist — and cannot
+     * get it wrong one at a time.
+     */
+    private function poolId(int $workspaceId): int
     {
         $workspace = Workspace::find($workspaceId);
+
+        return $workspace ? $workspace->creditRootId() : $workspaceId;
+    }
+
+    public function balance(int $workspaceId): int
+    {
+        $workspace = Workspace::find($this->poolId($workspaceId));
+
         return $workspace ? $workspace->creditsBalance() : 0;
     }
 
@@ -492,6 +507,8 @@ class CreditService
         // then decrement. Without this, two concurrent deductions (e.g. Cruise
         // "Apply all") both read the same balance, both pass the check, and
         // overdraw — the credit leak. The lock serialises them.
+        $workspaceId = $this->poolId($workspaceId);
+
         $charged = DB::transaction(function () use ($workspaceId, $amount): bool {
             $workspace = Workspace::query()->whereKey($workspaceId)->lockForUpdate()->first();
             if (! $workspace || $workspace->creditsBalance() < $amount) {
@@ -563,6 +580,8 @@ class CreditService
      */
     public function grant(int $workspaceId, int $amount, string $reason = ''): void
     {
+        $workspaceId = $this->poolId($workspaceId);
+
         Workspace::where('id', $workspaceId)->increment('credits_topup', $amount);
 
         if ($reason === 'registration') {

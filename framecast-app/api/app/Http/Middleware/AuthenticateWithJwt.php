@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\User;
+use App\Models\Workspace;
 use App\Services\Auth\JwtService;
 use App\Services\WorkspaceUsageService;
 use Closure;
@@ -32,14 +33,32 @@ class AuthenticateWithJwt
             return $this->unauthorized('Invalid access token.');
         }
 
-        $user = User::query()
-            ->with('workspace')
-            ->whereKey($claims['user_id'])
-            ->where('workspace_id', $claims['workspace_id'])
-            ->first();
+        $user = User::query()->with('workspace')->whereKey($claims['user_id'])->first();
 
         if (! $user) {
             return $this->unauthorized('User session is no longer valid.');
+        }
+
+        // The token names the workspace being acted in, which is the user's own
+        // or — for an agency — one of its client workspaces. This equality used
+        // to be the whole tenant boundary, so widening it is the one place a
+        // mistake becomes a cross-tenant leak: a client workspace is accepted
+        // ONLY when its parent is this user's own workspace.
+        $active = (int) ($claims['workspace_id'] ?? 0);
+        if ($active !== (int) $user->workspace_id && ! $this->ownsClient($user, $active)) {
+            return $this->unauthorized('User session is no longer valid.');
+        }
+
+        // Every controller reads $user->workspace_id to scope its queries. Point
+        // it at the active workspace so all of them follow the switch without
+        // being touched — and sync it as original so a later save() of this
+        // model cannot write the borrowed id over the user's real home.
+        if ($active !== (int) $user->workspace_id) {
+            $user->setRawAttributes(
+                array_merge($user->getAttributes(), ['workspace_id' => $active]),
+                true,
+            );
+            $user->setRelation('workspace', Workspace::find($active));
         }
 
         if (
@@ -76,6 +95,25 @@ class AuthenticateWithJwt
         }, null, false);
 
         return $next($request);
+    }
+
+    /**
+     * Whether this workspace is a client of the user's own.
+     *
+     * One level only, by design: the parent must be exactly the user's
+     * workspace. No recursion, no "descendant of", nothing that could widen
+     * quietly if the schema grows a level later.
+     */
+    private function ownsClient(User $user, int $workspaceId): bool
+    {
+        if ($workspaceId <= 0 || ! $user->workspace_id) {
+            return false;
+        }
+
+        return Workspace::query()
+            ->whereKey($workspaceId)
+            ->where('parent_workspace_id', $user->workspace_id)
+            ->exists();
     }
 
     private function unauthorized(string $message): JsonResponse

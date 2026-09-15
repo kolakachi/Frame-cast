@@ -66,6 +66,42 @@ class Workspace extends Model
         return max(0, (int) $this->credits_monthly + (int) $this->credits_topup);
     }
 
+    /** The agency this client workspace belongs to, if it is one. */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_workspace_id');
+    }
+
+    /** Client workspaces this agency owns. */
+    public function children(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_workspace_id');
+    }
+
+    /**
+     * Whose credits this workspace spends.
+     *
+     * A client workspace has no balance of its own — the agency bought the
+     * credits and every child draws on that one pool. Returning the parent here
+     * means the whole credit path stays unaware that sub-accounts exist.
+     */
+    public function creditRoot(): self
+    {
+        return $this->parent_workspace_id ? ($this->parent ?? $this) : $this;
+    }
+
+    public function creditRootId(): int
+    {
+        return (int) ($this->parent_workspace_id ?: $this->getKey());
+    }
+
+    /** Tiers that may own client workspaces. */
+    public function canOwnClients(): bool
+    {
+        return in_array((string) $this->plan_tier, (array) config('workspaces.client_tiers', []), true)
+            && ! $this->parent_workspace_id;   // a client cannot have clients
+    }
+
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_user_id');

@@ -129,6 +129,14 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/public/projects/{token}', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'show']);
 
     Route::middleware('auth.jwt')->group(function (): void {
+        // Client workspaces. An agency works for several clients, each kept
+        // apart, all spending the agency's one pool of credits.
+        Route::get('/workspaces/clients', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'index']);
+        Route::post('/workspaces/clients', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'store']);
+        Route::patch('/workspaces/clients/{id}', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'update'])->whereNumber('id');
+        Route::delete('/workspaces/clients/{id}', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'destroy'])->whereNumber('id');
+        Route::post('/workspaces/switch/{id}', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'switch'])->whereNumber('id');
+
         Route::get('/billing/status', [BillingController::class, 'status']);
         Route::post('/billing/portal', [BillingController::class, 'portal']);
         // Kelviq (MOR) hosted checkout — returns a checkoutUrl to redirect to.
