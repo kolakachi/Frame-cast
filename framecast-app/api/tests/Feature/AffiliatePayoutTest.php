@@ -52,6 +52,62 @@ class AffiliatePayoutTest extends TestCase
         return $request;
     }
 
+    public function test_a_new_affiliate_is_emailed_their_link_and_key(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+
+        (new AffiliateController)->store(Request::create('/affiliates', 'POST', [
+            'name' => 'Marcus', 'email' => 'marcus@growthloop.io', 'commission_percent' => 30,
+        ]));
+
+        \Illuminate\Support\Facades\Mail::assertQueued(
+            \App\Mail\Affiliate\AffiliateWelcomeMail::class,
+            fn ($m) => $m->hasTo('marcus@growthloop.io'),
+        );
+    }
+
+    public function test_an_affiliate_with_no_email_is_created_without_one(): void
+    {
+        // Their details stay copyable from admin; a missing address is not a
+        // reason to refuse to create them.
+        \Illuminate\Support\Facades\Mail::fake();
+
+        $response = (new AffiliateController)->store(Request::create('/affiliates', 'POST', [
+            'name' => 'Marcus', 'commission_percent' => 30,
+        ]));
+
+        $this->assertSame(201, $response->status());
+        \Illuminate\Support\Facades\Mail::assertNothingQueued();
+    }
+
+    public function test_reissuing_a_key_tells_the_affiliate_the_new_one(): void
+    {
+        // Otherwise a reissue is indistinguishable from locking them out.
+        $a = Affiliate::query()->create(['code' => 'marcus', 'name' => 'Marcus',
+            'email' => 'marcus@growthloop.io', 'commission_percent' => 30,
+            'status' => 'active', 'access_key' => Affiliate::generateAccessKey()]);
+        \Illuminate\Support\Facades\Mail::fake();
+
+        (new AffiliateController)->regenerateKey($a->getKey());
+
+        \Illuminate\Support\Facades\Mail::assertQueued(\App\Mail\Affiliate\AffiliateWelcomeMail::class);
+    }
+
+    public function test_the_welcome_carries_the_link_the_key_and_the_terms(): void
+    {
+        $a = Affiliate::query()->create(['code' => 'k7m2xq9p', 'name' => 'Marcus',
+            'email' => 'm@x.test', 'commission_percent' => 30, 'status' => 'active']);
+
+        $body = (new \App\Mail\Affiliate\AffiliateWelcomeMail($a, 'abcde-fghij-klmno-pqrst'))->render();
+
+        $this->assertStringContainsString('?ref=k7m2xq9p', $body);
+        $this->assertStringContainsString('abcde-fghij-klmno-pqrst', $body);
+        $this->assertStringContainsString('/affiliates', $body);
+        $this->assertStringContainsString('21 days', $body);   // the hold
+        $this->assertStringContainsString('14 days', $body);   // the cycle
+        $this->assertStringContainsString('NGN', $body);
+    }
+
     public function test_a_generated_code_carries_nothing_about_the_affiliate(): void
     {
         $request = Request::create('/affiliates', 'POST', [

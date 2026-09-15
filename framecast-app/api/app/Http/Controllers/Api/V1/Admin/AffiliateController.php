@@ -122,8 +122,17 @@ class AffiliateController extends Controller
             'access_key' => Affiliate::generateAccessKey(),
         ]);
 
+        // Send it rather than making someone retype it. Rescued because a mail
+        // outage must not lose an affiliate we have already created — the
+        // details stay copyable from the Sign-in details tab either way.
+        if ($affiliate->email) {
+            rescue(fn () => \Illuminate\Support\Facades\Mail::to($affiliate->email)
+                ->queue(new \App\Mail\Affiliate\AffiliateWelcomeMail($affiliate, (string) $affiliate->access_key)));
+        }
+
         return response()->json(['data' => ['affiliate' => array_merge(
-            $affiliate->toArray(), ['access_key' => $affiliate->access_key],
+            $affiliate->toArray(),
+            ['access_key' => $affiliate->access_key, 'welcome_sent' => (bool) $affiliate->email],
         )], 'meta' => []], 201);
     }
 
@@ -154,7 +163,16 @@ class AffiliateController extends Controller
         $affiliate->forceFill(['access_key' => Affiliate::generateAccessKey()])->save();
         \App\Models\AffiliateSession::query()->where('affiliate_id', $affiliate->getKey())->delete();
 
-        return response()->json(['data' => ['access_key' => $affiliate->access_key], 'meta' => []]);
+        // A new key nobody told them about just locks them out.
+        if ($affiliate->email) {
+            rescue(fn () => \Illuminate\Support\Facades\Mail::to($affiliate->email)
+                ->queue(new \App\Mail\Affiliate\AffiliateWelcomeMail($affiliate, (string) $affiliate->access_key)));
+        }
+
+        return response()->json(['data' => [
+            'access_key' => $affiliate->access_key,
+            'emailed' => (bool) $affiliate->email,
+        ], 'meta' => []]);
     }
 
     public function conversions(Request $request, int $id): JsonResponse

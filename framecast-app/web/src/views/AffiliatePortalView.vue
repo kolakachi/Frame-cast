@@ -238,7 +238,15 @@ onMounted(async () => {
         <button class="ap-btn ap-btn-primary" type="submit" :disabled="loading">
           {{ loading ? 'Checking…' : 'Sign in' }}
         </button>
-        <p class="ap-fineprint">Lost your key? Reply to the email we sent and we will issue a new one.</p>
+        <!-- Two audiences reach this page now that it is linked publicly: an
+             affiliate who mislaid their key, and someone who clicked out of
+             curiosity. The second one is a lead, not a dead end. -->
+        <p class="ap-fineprint">
+          Lost your key? Reply to the email we sent and we will issue a new one.
+          <br />
+          Not an affiliate yet? We run a referral share for marketers — email
+          <a href="mailto:hello@wyvstudio.com">hello@wyvstudio.com</a> and tell us about your audience.
+        </p>
       </form>
     </main>
 
@@ -570,6 +578,7 @@ onMounted(async () => {
 .ap-muted { color: var(--color-text-secondary, #a1a1b5); font-size: 12.5px; line-height: 1.6; margin: 0; }
 .ap-dim { color: var(--color-text-muted, #6a6a7c); }
 .ap-fineprint { color: var(--color-text-muted, #6a6a7c); font-size: 11.5px; line-height: 1.7; margin: 0; }
+.ap-fineprint a { color: var(--color-accent, #ff6b35); }
 .ap-error {
   padding: 10px 13px; border-radius: 8px; font-size: 12.5px;
   background: #ef44441a; border: 1px solid #ef444440; color: #fca5a5;
