@@ -385,7 +385,15 @@ async function loadMailHistory() {
 
 const mailLog = ref([])
 const mailLogCounts = ref({})
+const mailLogOpened = ref(0)
+const mailLogMailables = ref([])
 const mailLogSearch = ref('')
+const mailLogStatus = ref('')
+const mailLogType = ref('')
+const mailLogOpenedOnly = ref('')
+const mailLogPage = ref(1)
+const mailLogPerPage = ref(50)
+const mailLogPagination = ref({})
 const mailLogLoading = ref(false)
 const mailLogHint = ref(false)
 
@@ -393,16 +401,33 @@ async function loadMailLog() {
   mailLogLoading.value = true
   try {
     const { data } = await api.get('/admin/mail/log', {
-      params: { email: mailLogSearch.value || undefined, limit: 100 },
+      params: {
+        search: mailLogSearch.value || undefined,
+        status: mailLogStatus.value || undefined,
+        mailable: mailLogType.value || undefined,
+        opened: mailLogOpenedOnly.value || undefined,
+        page: mailLogPage.value,
+        per_page: mailLogPerPage.value,
+      },
     })
     mailLog.value = data?.data?.entries ?? []
     mailLogCounts.value = data?.data?.counts ?? {}
+    mailLogOpened.value = data?.data?.opened_total ?? 0
+    mailLogMailables.value = data?.data?.mailables ?? []
+    mailLogPagination.value = data?.data?.pagination ?? {}
     mailLogHint.value = Boolean(data?.data?.open_tracking_hint)
   } catch {
     mailLog.value = []
   } finally {
     mailLogLoading.value = false
   }
+}
+
+// Any filter change starts again from page one — staying on page 7 of a
+// narrower result set shows an empty table and reads as "no results".
+function filterMailLog() {
+  mailLogPage.value = 1
+  loadMailLog()
 }
 
 function shortTime(iso) {
@@ -2248,16 +2273,37 @@ onMounted(() => {
                  magic link that bounced becomes visible. -->
             <div class="gm-section-title" style="margin-top:34px;">Delivery</div>
             <div class="mail-log-bar">
+              <!-- One box over recipient, subject and mailable: you rarely know
+                   which of the three you remember. -->
               <input
                 v-model="mailLogSearch"
                 class="search-input"
-                placeholder="Filter by email…"
-                @keyup.enter="loadMailLog"
+                placeholder="Search email, subject or type…"
+                @keyup.enter="filterMailLog"
               />
-              <button class="btn btn-ghost btn-sm" type="button" :disabled="mailLogLoading" @click="loadMailLog">
-                {{ mailLogLoading ? 'Loading…' : 'Refresh' }}
+              <select v-model="mailLogStatus" class="filter-select" @change="filterMailLog">
+                <option value="">Any status</option>
+                <option value="sent">Sent</option>
+                <option value="delivered">Delivered</option>
+                <option value="opened">Opened</option>
+                <option value="bounced">Bounced</option>
+                <option value="complained">Complained</option>
+                <option value="failed">Failed</option>
+              </select>
+              <select v-model="mailLogType" class="filter-select" @change="filterMailLog">
+                <option value="">Any type</option>
+                <option v-for="m in mailLogMailables" :key="m" :value="m">{{ m }}</option>
+              </select>
+              <select v-model="mailLogOpenedOnly" class="filter-select" @change="filterMailLog">
+                <option value="">Opened or not</option>
+                <option value="yes">Opened</option>
+                <option value="no">Never opened</option>
+              </select>
+              <button class="btn btn-ghost btn-sm" type="button" :disabled="mailLogLoading" @click="filterMailLog">
+                {{ mailLogLoading ? 'Loading…' : 'Search' }}
               </button>
               <span class="mail-log-counts">
+                <span v-if="mailLogOpened" class="aff-pill aff-pill-ok">opened {{ mailLogOpened }}</span>
                 <span v-for="(n, k) in mailLogCounts" :key="k" :class="['aff-pill', {
                   delivered: 'aff-pill-ok', opened: 'aff-pill-ok', sent: 'aff-pill-muted',
                   bounced: 'aff-pill-bad', failed: 'aff-pill-bad', complained: 'aff-pill-bad',
@@ -2298,11 +2344,27 @@ onMounted(() => {
                 </tr>
               </tbody>
             </table>
+            <div v-if="mailLog.length" class="mail-log-bar">
+              <select v-model.number="mailLogPerPage" class="filter-select" @change="filterMailLog">
+                <option :value="25">25 per page</option>
+                <option :value="50">50 per page</option>
+                <option :value="100">100 per page</option>
+                <option :value="200">200 per page</option>
+              </select>
+              <span class="pg-info">
+                {{ mailLogPagination.from ?? 0 }}–{{ mailLogPagination.to ?? 0 }} of {{ mailLogPagination.total ?? 0 }}
+              </span>
+              <div class="pg-controls">
+                <button :disabled="mailLogPage <= 1" @click="mailLogPage--; loadMailLog()">‹</button>
+                <span>{{ mailLogPage }} / {{ mailLogPagination.last_page ?? 1 }}</span>
+                <button :disabled="mailLogPage >= (mailLogPagination.last_page ?? 1)" @click="mailLogPage++; loadMailLog()">›</button>
+              </div>
+            </div>
 
             <div class="gm-section-title" style="margin-top:34px;">Sent by hand</div>
             <div v-if="!mailHistory.length" class="mail-hint" style="padding:14px 0;">Nothing sent yet.</div>
             <table v-else class="gm-table">
-              <thead><tr><th>When</th><th>By</th><th>To</th><th>Subject</th></tr></thead>
+              <thead><tr><th>When</th><th>By</th><th>To</th><th>Subject</th><th>Opened</th></tr></thead>
               <tbody>
                 <template v-for="m in mailHistory" :key="m.id">
                   <tr class="gm-row-click" @click="mailHistoryOpen = mailHistoryOpen === m.id ? null : m.id">
@@ -2313,9 +2375,21 @@ onMounted(() => {
                       <span class="cell-sub"> · {{ m.recipients.length }} recipient{{ m.recipients.length === 1 ? '' : 's' }}</span>
                     </td>
                     <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ m.subject }}</td>
+                    <!-- Null for anything sent before the mail log existed.
+                         Shown as "—", never as zero opens, which would read as
+                         nobody having opened it. -->
+                    <td class="cell-muted" style="white-space:nowrap;">
+                      <template v-if="m.stats">
+                        <strong>{{ m.stats.opened }}</strong> / {{ m.stats.delivered }}
+                        <span v-if="m.stats.bounced" class="aff-sub" style="color:#fca5a5">
+                          {{ m.stats.bounced }} bounced
+                        </span>
+                      </template>
+                      <template v-else>—</template>
+                    </td>
                   </tr>
                   <tr v-if="mailHistoryOpen === m.id">
-                    <td colspan="4" class="mail-history-detail">
+                    <td colspan="5" class="mail-history-detail">
                       <div v-if="m.segment !== 'custom'" class="mail-hint" style="margin-bottom:8px;">To: {{ m.recipients.join(', ') }}</div>
                       <div v-if="m.body" style="white-space:pre-wrap;font-size:12.5px;line-height:1.6;">{{ m.body }}</div>
                       <div v-else class="mail-hint">Message text wasn't stored for this send (sent before body logging).</div>

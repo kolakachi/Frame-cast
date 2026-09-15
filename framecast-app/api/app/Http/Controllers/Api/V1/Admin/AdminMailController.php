@@ -273,20 +273,49 @@ class AdminMailController extends Controller
     public function log(Request $request): JsonResponse
     {
         $v = $request->validate([
-            'email' => ['sometimes', 'nullable', 'string', 'max:190'],
+            'search' => ['sometimes', 'nullable', 'string', 'max:190'],
+            'email' => ['sometimes', 'nullable', 'string', 'max:190'],   // kept: older callers
             'status' => ['sometimes', 'nullable', 'string', 'max:20'],
-            'limit' => ['sometimes', 'integer', 'min:1', 'max:200'],
+            'mailable' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'opened' => ['sometimes', 'nullable', 'in:yes,no'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:10', 'max:200'],
         ]);
 
         $query = \App\Models\MailLogEntry::query()->orderByDesc('sent_at');
-        if (! empty($v['email'])) {
-            $query->whereRaw('LOWER(email) like ?', ['%'.mb_strtolower($v['email']).'%']);
+
+        // One box, three things worth searching: who it went to, what it said,
+        // and the name of whatever sent it.
+        $search = trim((string) ($v['search'] ?? $v['email'] ?? ''));
+        if ($search !== '') {
+            $like = '%'.mb_strtolower($search).'%';
+            $query->where(function ($q) use ($like) {
+                $q->whereRaw('LOWER(email) like ?', [$like])
+                    ->orWhereRaw('LOWER(coalesce(subject, \'\')) like ?', [$like])
+                    ->orWhereRaw('LOWER(coalesce(mailable, \'\')) like ?', [$like]);
+            });
         }
         if (! empty($v['status'])) {
             $query->where('status', $v['status']);
         }
+        if (! empty($v['mailable'])) {
+            $query->where('mailable', $v['mailable']);
+        }
+        if (! empty($v['opened'])) {
+            $v['opened'] === 'yes'
+                ? $query->whereNotNull('first_opened_at')
+                : $query->whereNull('first_opened_at');
+        }
 
-        $rows = $query->limit($v['limit'] ?? 100)->get()->map(fn ($m) => [
+        // Counts and the type list come from the filtered set minus paging, so
+        // the totals above the table describe what the table is showing.
+        $counts = (clone $query)->reorder()->selectRaw('status, count(*) as n')
+            ->groupBy('status')->pluck('n', 'status');
+        $opened = (clone $query)->reorder()->whereNotNull('first_opened_at')->count();
+
+        $page = $query->paginate($v['per_page'] ?? 50, ['*'], 'page', $v['page'] ?? 1);
+
+        $rows = collect($page->items())->map(fn ($m) => [
             'id' => $m->id,
             'email' => $m->email,
             'mailable' => $m->mailable,
@@ -299,17 +328,26 @@ class AdminMailController extends Controller
             'failure_reason' => $m->failure_reason,
         ]);
 
-        // Counts over the same filter, so the headline agrees with the list.
-        $counts = (clone $query)->reorder()->selectRaw('status, count(*) as n')
-            ->groupBy('status')->pluck('n', 'status');
-
         return response()->json(['data' => [
             'entries' => $rows,
             'counts' => $counts,
+            'opened_total' => $opened,
+            // Every mailable we have actually sent, so the filter offers real
+            // options rather than a hardcoded list that drifts.
+            'mailables' => \App\Models\MailLogEntry::query()->whereNotNull('mailable')
+                ->distinct()->orderBy('mailable')->pluck('mailable'),
+            'pagination' => [
+                'page' => $page->currentPage(),
+                'per_page' => $page->perPage(),
+                'total' => $page->total(),
+                'last_page' => $page->lastPage(),
+                'from' => $page->firstItem(),
+                'to' => $page->lastItem(),
+            ],
             // Opens only arrive when open tracking is on for the sending
             // domain in Resend; zero here with delivered mail present usually
             // means the setting, not the readers.
-            'open_tracking_hint' => ($counts['opened'] ?? 0) === 0 && ($counts['delivered'] ?? 0) > 0,
+            'open_tracking_hint' => $opened === 0 && ($counts['delivered'] ?? 0) > 0,
         ]]);
     }
 
@@ -322,15 +360,47 @@ class AdminMailController extends Controller
             ->orderByDesc('id')
             ->limit(100)
             ->get()
-            ->map(fn (AdminAuditLog $log) => [
-                'id'         => $log->id,
-                'sent_at'    => $log->created_at?->toIso8601String(),
-                'sent_by'    => $log->admin?->email,
-                'segment'    => $log->payload_json['segment'] ?? null,
-                'subject'    => $log->payload_json['subject'] ?? null,
-                'body'       => $log->payload_json['body'] ?? null,   // sends before body-logging show null
-                'recipients' => $log->payload_json['recipients'] ?? [],
-            ]);
+            ->map(function (AdminAuditLog $log) {
+                $subject = $log->payload_json['subject'] ?? null;
+                $recipients = $log->payload_json['recipients'] ?? [];
+
+                // How the broadcast actually landed. Matched on subject and
+                // recipients rather than an id, because the audit row predates
+                // the mail log and the two were never linked; a re-used subject
+                // is narrowed by the send window either way.
+                $stats = null;
+                if ($subject && $log->created_at) {
+                    $rows = \App\Models\MailLogEntry::query()
+                        ->where('subject', mb_substr($subject, 0, 255))
+                        ->whereBetween('sent_at', [
+                            $log->created_at->copy()->subMinutes(5),
+                            $log->created_at->copy()->addHours(6),
+                        ])->get(['status', 'first_opened_at']);
+
+                    if ($rows->isNotEmpty()) {
+                        $stats = [
+                            'sent' => $rows->count(),
+                            'delivered' => $rows->whereIn('status', ['delivered', 'opened'])->count(),
+                            'opened' => $rows->whereNotNull('first_opened_at')->count(),
+                            'bounced' => $rows->whereIn('status', ['bounced', 'failed'])->count(),
+                        ];
+                    }
+                }
+
+                return [
+                    'id'         => $log->id,
+                    'sent_at'    => $log->created_at?->toIso8601String(),
+                    'sent_by'    => $log->admin?->email,
+                    'segment'    => $log->payload_json['segment'] ?? null,
+                    'subject'    => $subject,
+                    'body'       => $log->payload_json['body'] ?? null,   // sends before body-logging show null
+                    'recipients' => $recipients,
+                    // Null for anything sent before the mail log existed —
+                    // shown as "—" rather than as zero opens, which would read
+                    // as nobody having read it.
+                    'stats'      => $stats,
+                ];
+            });
 
         return response()->json(['data' => ['sends' => $rows]]);
     }

@@ -74,6 +74,91 @@ class MailLogTest extends TestCase
         ], $data)];
     }
 
+    // ── the admin log endpoint ──────────────────────────────────────
+
+    private function adminGet(array $params = [])
+    {
+        // The controller is exercised directly: the route sits behind admin
+        // auth and IP allowlisting, neither of which is what these assert.
+        $request = \Illuminate\Http\Request::create('/log', 'GET', $params);
+
+        return (new \App\Http\Controllers\Api\V1\Admin\AdminMailController)
+            ->log($request)->getData(true)['data'];
+    }
+
+    public function test_the_log_paginates_rather_than_returning_everything(): void
+    {
+        for ($i = 0; $i < 60; $i++) {
+            $this->entry(['email' => "user{$i}@acme.test", 'sent_at' => now()->subMinutes($i)]);
+        }
+
+        $first = $this->adminGet(['per_page' => 25, 'page' => 1]);
+        $this->assertCount(25, $first['entries']);
+        $this->assertSame(60, $first['pagination']['total']);
+        $this->assertSame(3, $first['pagination']['last_page']);
+
+        $last = $this->adminGet(['per_page' => 25, 'page' => 3]);
+        $this->assertCount(10, $last['entries']);
+        // Newest first, so page three holds the oldest.
+        $this->assertNotSame($first['entries'][0]['id'], $last['entries'][0]['id']);
+    }
+
+    public function test_one_search_box_covers_recipient_subject_and_type(): void
+    {
+        $this->entry(['email' => 'ada@acme.test', 'subject' => 'Your sign-in link', 'mailable' => 'MagicLinkMail']);
+        $this->entry(['email' => 'grace@other.test', 'subject' => 'Welcome to WyvStudio', 'mailable' => 'OnboardingDay0Welcome']);
+
+        $this->assertCount(1, $this->adminGet(['search' => 'grace'])['entries']);
+        $this->assertCount(1, $this->adminGet(['search' => 'sign-in'])['entries']);
+        $this->assertCount(1, $this->adminGet(['search' => 'Day0'])['entries']);
+        $this->assertCount(2, $this->adminGet(['search' => 'test'])['entries']);
+    }
+
+    public function test_filtering_by_status_and_type_narrows_the_list(): void
+    {
+        $this->entry(['status' => 'bounced', 'mailable' => 'MagicLinkMail']);
+        $this->entry(['status' => 'delivered', 'mailable' => 'MagicLinkMail']);
+        $this->entry(['status' => 'delivered', 'mailable' => 'AdminDirectMail']);
+
+        $this->assertCount(1, $this->adminGet(['status' => 'bounced'])['entries']);
+        $this->assertCount(2, $this->adminGet(['status' => 'delivered'])['entries']);
+        $this->assertCount(2, $this->adminGet(['mailable' => 'MagicLinkMail'])['entries']);
+        $this->assertCount(1, $this->adminGet(['status' => 'delivered', 'mailable' => 'MagicLinkMail'])['entries']);
+    }
+
+    public function test_opened_can_be_filtered_in_both_directions(): void
+    {
+        $this->entry(['first_opened_at' => now(), 'open_count' => 2, 'status' => 'opened']);
+        $this->entry();
+        $this->entry();
+
+        $this->assertCount(1, $this->adminGet(['opened' => 'yes'])['entries']);
+        $this->assertCount(2, $this->adminGet(['opened' => 'no'])['entries']);
+        $this->assertSame(1, $this->adminGet()['opened_total']);
+    }
+
+    public function test_the_counts_describe_the_filtered_set_not_the_whole_table(): void
+    {
+        // A headline that disagrees with the rows under it is worse than none.
+        $this->entry(['email' => 'ada@acme.test', 'status' => 'bounced']);
+        $this->entry(['email' => 'ada@acme.test', 'status' => 'delivered']);
+        $this->entry(['email' => 'someone@else.test', 'status' => 'delivered']);
+
+        $filtered = $this->adminGet(['search' => 'ada']);
+        $this->assertSame(1, $filtered['counts']['bounced'] ?? 0);
+        $this->assertSame(1, $filtered['counts']['delivered'] ?? 0);
+        $this->assertSame(2, $filtered['pagination']['total']);
+    }
+
+    public function test_the_type_filter_offers_only_types_we_have_actually_sent(): void
+    {
+        $this->entry(['mailable' => 'MagicLinkMail']);
+        $this->entry(['mailable' => 'AdminDirectMail']);
+        $this->entry(['mailable' => 'MagicLinkMail']);
+
+        $this->assertSame(['AdminDirectMail', 'MagicLinkMail'], $this->adminGet()['mailables']);
+    }
+
     public function test_an_unsigned_webhook_is_refused(): void
     {
         // Unverified delivery state is worse than none: anyone could mark a
