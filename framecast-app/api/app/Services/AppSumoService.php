@@ -302,12 +302,36 @@ class AppSumoService
         }
         $target = (int) (config('appsumo.tiers')[$license->appsumo_tier]['credits'] ?? 0);
 
-        $workspace->forceFill([
+        // A licence event must never walk back a purchase made since.
+        //
+        // AppSumo sends `purchase`/`activate` on re-activation and re-keys the
+        // licence on any tier change, and each of those lands here. Writing the
+        // licence tier unconditionally meant an LTD holder who had since bought
+        // a lifetime pack was silently returned to their AppSumo tier — the
+        // money kept, the thing they bought quietly removed, with nothing in
+        // the logs that reads as a problem.
+        //
+        // The credit delta below still runs either way: those credits are owed
+        // on the licence regardless of what else the workspace has bought.
+        $purchasedSince = $workspace->plan_source === 'lifetime';
+
+        $workspace->forceFill($purchasedSince ? [
+            'plan_status' => 'active',
+            'status'      => 'active',
+        ] : [
             'plan_tier'   => $license->tier ?? $workspace->plan_tier,
             'plan_source' => 'appsumo',
             'plan_status' => 'active',
             'status'      => 'active',
         ])->save();
+
+        if ($purchasedSince) {
+            Log::info('AppSumo: licence event kept a later purchase intact', [
+                'workspace_id' => $workspace->getKey(),
+                'kept_tier'    => $workspace->plan_tier,
+                'licence_tier' => $license->tier,
+            ]);
+        }
 
         $delta = $target - (int) $license->granted_credits;
         if ($delta > 0) {

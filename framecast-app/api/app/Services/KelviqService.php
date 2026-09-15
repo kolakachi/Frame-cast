@@ -541,14 +541,33 @@ class KelviqService
 
         $already = $workspace->plan_source === 'lifetime' && $workspace->plan_tier === $lifetime['tier'];
 
-        $workspace->forceFill([
-            'plan_tier'       => $lifetime['tier'],
+        // A purchase must never cost someone access they already had.
+        //
+        // The plans page only offers packs above the tier a customer holds, but
+        // that is a filter in the browser — this endpoint accepts any pack. An
+        // appsumo_agency holder buying lifetime_starter would otherwise be
+        // written down to starter by the very act of paying us.
+        //
+        // Credits are granted either way below: they bought the bucket and the
+        // bucket is additive. Only the tier, which drives feature access, is
+        // held at the higher of the two.
+        $keepTier = self::tierRank((string) $workspace->plan_tier) > self::tierRank($lifetime['tier']);
+
+        $workspace->forceFill(array_merge([
             'plan_source'     => 'lifetime',
             'plan_status'     => 'active',
             'status'          => 'active',
             'plan_renews_at'  => null,
             'credits_monthly' => 0,
-        ])->save();
+        ], $keepTier ? [] : ['plan_tier' => $lifetime['tier']]))->save();
+
+        if ($keepTier) {
+            Log::info('KelviqService: kept the higher tier through a lifetime purchase', [
+                'workspace_id' => $workspace->getKey(),
+                'kept'         => $workspace->plan_tier,
+                'purchased'    => $lifetime['tier'],
+            ]);
+        }
 
         $this->clearPendingCheckout($workspace);
 
@@ -657,6 +676,24 @@ class KelviqService
 
             return null;
         }
+    }
+
+    /**
+     * Where a tier sits, across both namespaces.
+     *
+     * appsumo_creator and lifetime_creator buy the same access, so they rank
+     * the same; the suffix is what carries the meaning. Anything unrecognised
+     * ranks lowest, which makes an unknown tier lose to a known one rather
+     * than silently outranking it.
+     */
+    private static function tierRank(string $tier): int
+    {
+        return match (true) {
+            str_ends_with($tier, '_agency')  => 3,
+            str_ends_with($tier, '_creator') => 2,
+            str_ends_with($tier, '_starter') => 1,
+            default                          => 0,
+        };
     }
 
     private function resolveWorkspace(array $object): ?Workspace
