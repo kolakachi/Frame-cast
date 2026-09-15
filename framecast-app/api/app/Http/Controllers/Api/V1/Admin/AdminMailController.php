@@ -354,12 +354,18 @@ class AdminMailController extends Controller
     /** Previously sent mail, straight from the audit log — one source of truth. */
     public function history(Request $request): JsonResponse
     {
-        $rows = AdminAuditLog::query()
+        $v = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:5', 'max:100'],
+        ]);
+
+        $page = AdminAuditLog::query()
             ->where('action', 'admin_mail_sent')
             ->with('admin:id,email')
             ->orderByDesc('id')
-            ->limit(100)
-            ->get()
+            ->paginate($v['per_page'] ?? 20, ['*'], 'page', $v['page'] ?? 1);
+
+        $rows = collect($page->items())
             ->map(function (AdminAuditLog $log) {
                 $subject = $log->payload_json['subject'] ?? null;
                 $recipients = $log->payload_json['recipients'] ?? [];
@@ -402,7 +408,17 @@ class AdminMailController extends Controller
                 ];
             });
 
-        return response()->json(['data' => ['sends' => $rows]]);
+        return response()->json(['data' => [
+            'sends' => $rows,
+            'pagination' => [
+                'page' => $page->currentPage(),
+                'per_page' => $page->perPage(),
+                'total' => $page->total(),
+                'last_page' => $page->lastPage(),
+                'from' => $page->firstItem(),
+                'to' => $page->lastItem(),
+            ],
+        ]]);
     }
 
     /** @return \Illuminate\Support\Collection<int,User> */

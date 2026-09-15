@@ -376,10 +376,17 @@ watch(mailSegment, async (seg) => {
 
 const mailHistory = ref([])
 const mailHistoryOpen = ref(null)   // expanded send id
+const mailHistoryPage = ref(1)
+const mailHistoryPerPage = ref(20)
+const mailHistoryPagination = ref({})
+
 async function loadMailHistory() {
   try {
-    const res = await api.get('/admin/mail/history')
+    const res = await api.get('/admin/mail/history', {
+      params: { page: mailHistoryPage.value, per_page: mailHistoryPerPage.value },
+    })
     mailHistory.value = res.data?.data?.sends ?? []
+    mailHistoryPagination.value = res.data?.data?.pagination ?? {}
   } catch { mailHistory.value = [] }
 }
 
@@ -2152,6 +2159,7 @@ onMounted(() => {
         <!-- ── Admin Email ────────────────────────────────────────────────── -->
         <template v-if="activeView === 'mail'">
           <div class="mail-page">
+            <div class="mail-compose">
             <div class="gm-section-title">Send email</div>
             <p style="font-size:12px;color:var(--gm-muted);margin-bottom:18px">
               Sends from <strong>hello@wyvstudio.com</strong>. Broadcasts skip internal accounts and
@@ -2269,6 +2277,8 @@ onMounted(() => {
               </div>
             </div>
 
+            </div><!-- /.mail-compose -->
+
             <!-- Every send, not just broadcasts — this is where an automated
                  magic link that bounced becomes visible. -->
             <div class="gm-section-title" style="margin-top:34px;">Delivery</div>
@@ -2303,7 +2313,6 @@ onMounted(() => {
                 {{ mailLogLoading ? 'Loading…' : 'Search' }}
               </button>
               <span class="mail-log-counts">
-                <span v-if="mailLogOpened" class="aff-pill aff-pill-ok">opened {{ mailLogOpened }}</span>
                 <span v-for="(n, k) in mailLogCounts" :key="k" :class="['aff-pill', {
                   delivered: 'aff-pill-ok', opened: 'aff-pill-ok', sent: 'aff-pill-muted',
                   bounced: 'aff-pill-bad', failed: 'aff-pill-bad', complained: 'aff-pill-bad',
@@ -2314,7 +2323,7 @@ onMounted(() => {
               Mail is being delivered but no opens are recorded — open tracking is switched on
               per sending domain in Resend, and is off until you enable it there.
             </div>
-            <div v-if="!mailLog.length" class="mail-hint" style="padding:14px 0;">
+            <div v-if="!mailLog.length" class="gm-empty">
               Nothing logged yet. Sends are recorded from here on.
             </div>
             <table v-else class="gm-table">
@@ -2362,7 +2371,7 @@ onMounted(() => {
             </div>
 
             <div class="gm-section-title" style="margin-top:34px;">Sent by hand</div>
-            <div v-if="!mailHistory.length" class="mail-hint" style="padding:14px 0;">Nothing sent yet.</div>
+            <div v-if="!mailHistory.length" class="gm-empty">Nothing sent yet.</div>
             <table v-else class="gm-table">
               <thead><tr><th>When</th><th>By</th><th>To</th><th>Subject</th><th>Opened</th></tr></thead>
               <tbody>
@@ -2398,6 +2407,21 @@ onMounted(() => {
                 </template>
               </tbody>
             </table>
+            <div v-if="mailHistory.length" class="mail-log-bar">
+              <select v-model.number="mailHistoryPerPage" class="filter-select" @change="mailHistoryPage = 1; loadMailHistory()">
+                <option :value="10">10 per page</option>
+                <option :value="20">20 per page</option>
+                <option :value="50">50 per page</option>
+              </select>
+              <span class="pg-info">
+                {{ mailHistoryPagination.from ?? 0 }}–{{ mailHistoryPagination.to ?? 0 }} of {{ mailHistoryPagination.total ?? 0 }}
+              </span>
+              <div class="pg-controls">
+                <button :disabled="mailHistoryPage <= 1" @click="mailHistoryPage--; loadMailHistory()">‹</button>
+                <span>{{ mailHistoryPage }} / {{ mailHistoryPagination.last_page ?? 1 }}</span>
+                <button :disabled="mailHistoryPage >= (mailHistoryPagination.last_page ?? 1)" @click="mailHistoryPage++; loadMailHistory()">›</button>
+              </div>
+            </div>
           </div>
         </template>
 
@@ -3919,7 +3943,10 @@ tr:hover td { background: #1e2129; }
 .mod-term { background: rgba(248,113,113,.12); color: #f87171; padding: 2px 7px; border-radius: 5px; font-size: 12px; }
 .mod-tier { margin-left: 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--gm-muted); }
 :deep(.mod-mark), .mod-mark { background: rgba(248,113,113,.25); color: inherit; border-radius: 3px; padding: 0 2px; }
-.mail-page { max-width: 720px; }
+/* The composer wants a readable measure; the tables underneath want the
+   page. Constrain the form, not the whole view. */
+.mail-page { max-width: none; }
+.mail-compose { max-width: 720px; }
 .mail-form { display: flex; flex-direction: column; gap: 6px; }
 .mail-label { font-size: 12px; font-weight: 600; margin-top: 14px; }
 .mail-input { width: 100%; padding: 9px 12px; background: var(--gm-card, var(--color-bg-card)); border: 1px solid var(--gm-border, var(--color-border)); border-radius: 8px; color: inherit; font-family: inherit; font-size: 13px; }
@@ -3932,6 +3959,31 @@ tr:hover td { background: #1e2129; }
 .mail-recip:hover { background: rgba(255,255,255,0.03); }
 .mail-recip input { cursor: pointer; accent-color: var(--color-accent); }
 .mail-draft-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -4px 0 4px; }
+/* Used by the mail and moderation tables, and never defined — they fell
+   through to the bare global table rules, which draw row underlines and
+   nothing else, so the table had no edge and ran into the page. */
+.gm-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  background: #161920; border: 1px solid #2a2d38; border-radius: 10px;
+  overflow: hidden;
+}
+.gm-table th {
+  background: #1a1d24; border-bottom: 1px solid #2a2d38;
+  padding: 10px 14px; text-align: left; white-space: nowrap;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .5px;
+  text-transform: uppercase; color: #6b7280;
+}
+.gm-table td { padding: 11px 14px; border-bottom: 1px solid #23262f; font-size: 12.5px; vertical-align: top; }
+.gm-table tbody tr:last-child td { border-bottom: none; }
+.gm-table tbody tr:hover td { background: #1b1e26; }
+/* The expanded body row is a continuation of the row above, not a new one. */
+.gm-table tr.gm-row-click { cursor: pointer; }
+.gm-table .mail-history-detail { background: #12151b; }
+.gm-empty {
+  background: #161920; border: 1px solid #2a2d38; border-radius: 10px;
+  padding: 26px 16px; text-align: center; color: #6b7280; font-size: 12.5px;
+}
+
 .mail-log-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0 12px; }
 .mail-log-counts { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
 .mail-recip-email { font-family: "Space Mono", monospace; }
