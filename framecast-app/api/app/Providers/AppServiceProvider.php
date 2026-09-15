@@ -15,6 +15,9 @@ use App\Services\Generation\Visual\PexelsVisualProviderAdapter;
 use App\Services\Generation\Visual\PixabayVisualProviderAdapter;
 use App\Services\Generation\Visual\RoundRobinVisualProviderAdapter;
 use App\Services\Generation\Visual\VisualProviderAdapter;
+use App\Listeners\RecordSentMail;
+use Illuminate\Mail\Events\MessageSent;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
@@ -61,5 +64,10 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->isProduction()) {
             URL::forceScheme('https');
         }
+
+        // Every outgoing email is recorded. Bound to the framework event
+        // rather than to each call site, so a mailable added later is covered
+        // without anyone remembering to cover it.
+        Event::listen(MessageSent::class, RecordSentMail::class);
     }
 }

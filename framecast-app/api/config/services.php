@@ -26,6 +26,9 @@ return [
 
     'resend' => [
         'key' => env('RESEND_KEY'),
+        // Signs the delivery webhook. Without it the endpoint refuses
+        // everything, because unverified delivery state is worse than none.
+        'webhook_secret' => env('RESEND_WEBHOOK_SECRET'),
     ],
 
     'slack' => [

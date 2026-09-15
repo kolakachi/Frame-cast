@@ -86,9 +86,10 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/approve/{token}', [ApprovalController::class, 'publicShow']);
     Route::post('/approve/{token}/decide', [ApprovalController::class, 'publicDecide']);
 
-    // Records an arrival from ?ref= and returns a cookie. Deliberately public:
-    // affiliate traffic has no account yet, and most of it never will at the
-    // moment it lands.
+    // Delivery events from Resend. Public because it is called by them, and
+    // verified by signature rather than by session.
+    Route::post('/webhooks/resend', \App\Http\Controllers\Api\V1\Webhooks\ResendWebhookController::class);
+
     // Affiliate portal. Public because affiliates have no user account; each
     // route resolves its own session token and is scoped to that affiliate.
     Route::post('/affiliate/portal/login', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'login']);
@@ -98,6 +99,9 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/affiliate/portal/payouts', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'payouts']);
     Route::post('/affiliate/portal/payment-details', [\App\Http\Controllers\Api\V1\Affiliate\PortalController::class, 'savePaymentDetails']);
 
+    // Records an arrival from ?ref= and returns a cookie. Deliberately public:
+    // affiliate traffic has no account yet, and most of it never will at the
+    // moment it lands.
     Route::post('/affiliate/click', function (
         \Illuminate\Http\Request $request,
         \App\Services\Affiliate\AffiliateAttribution $attribution,
