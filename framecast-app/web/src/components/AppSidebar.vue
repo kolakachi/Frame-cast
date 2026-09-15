@@ -24,6 +24,22 @@ const isCollapsed = computed(() => sidebarStore.collapsed);
 
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
+
+// The agency first, then its clients — the order an agency thinks in.
+const switchTargets = computed(() => {
+  const a = workspaceStore.agency;
+  return a ? [a, ...(workspaceStore.clients ?? [])] : (workspaceStore.clients ?? []);
+});
+const activeWorkspaceId = computed(() => props.user?.workspace_id ?? null);
+
+async function switchWorkspace(id) {
+  if (id === activeWorkspaceId.value) return;
+  await workspaceStore.switchTo(id);
+}
+
+function goClients() {
+  router.push({ name: "settings", query: { section: "clients" } });
+}
 const showWsPopover = ref(false);
 const showUserPopover = ref(false);
 const isAdmin = computed(() =>
@@ -86,6 +102,9 @@ function handleOutsideClick(e) {
 }
 
 onMounted(() => {
+  // Agencies only: the endpoint answers 403 for everyone else and the
+  // switcher never appears.
+  workspaceStore.loadClients();
   sidebarStore.applyStored();
   document.addEventListener("click", handleOutsideClick);
   // Load when we have no workspace OR the loaded one belongs to a different
@@ -176,6 +195,33 @@ onBeforeUnmount(() => {
         >
           <path d="M9 18l6-6-6-6"></path>
         </svg>
+      </div>
+
+      <!-- Client workspaces. Only agencies see this; for everyone else the
+           endpoint answers 403 and the list stays empty. -->
+      <div v-if="workspaceStore.canOwnClients" class="ws-clients">
+        <div class="ws-clients-h">Workspaces</div>
+        <button
+          v-for="w in switchTargets"
+          :key="w.id"
+          :class="['ws-client', w.id === activeWorkspaceId ? 'current' : '']"
+          type="button"
+          :disabled="workspaceStore.switching"
+          @click="switchWorkspace(w.id)"
+        >
+          <span class="ws-client-dot">{{ (w.client_label || w.name)[0]?.toUpperCase() }}</span>
+          <span class="ws-client-n">{{ w.client_label || w.name }}</span>
+          <span v-if="w.is_agency" class="ws-client-tag">agency</span>
+          <span v-else-if="w.id === activeWorkspaceId" class="ws-client-tag">here</span>
+        </button>
+        <button class="ws-client ws-client-add" type="button" @click="goClients">
+          <span class="ws-client-dot">+</span>
+          <span class="ws-client-n">Manage clients</span>
+        </button>
+        <!-- One balance, stated once: a per-client figure would be a fiction. -->
+        <div v-if="workspaceStore.sharedCredits !== null" class="ws-clients-pool">
+          {{ workspaceStore.sharedCredits.toLocaleString() }} credits shared across all
+        </div>
       </div>
 
       <!-- Usage mini-bar -->
@@ -669,6 +715,36 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
 }
+.ws-clients { border-top: 1px solid var(--color-border, #2a2a36); padding: 10px 8px 8px; }
+.ws-clients-h {
+  font-size: 10px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  color: var(--color-text-muted, #6a6a7c); padding: 0 6px 6px;
+}
+.ws-client {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 7px 6px; border-radius: 8px; border: none; background: none;
+  color: var(--color-text-secondary, #a1a1b5); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.ws-client:hover:not(:disabled) { background: var(--color-bg-elevated, #1d1d28); color: var(--color-text-primary, #ececf3); }
+.ws-client:disabled { opacity: .5; cursor: progress; }
+.ws-client.current { color: var(--color-text-primary, #ececf3); font-weight: 600; }
+.ws-client-dot {
+  width: 20px; height: 20px; border-radius: 6px; flex: none; display: grid; place-items: center;
+  background: var(--color-bg-elevated, #1d1d28); font-size: 10px; font-weight: 700;
+  border: 1px solid var(--color-border, #2a2a36);
+}
+.ws-client.current .ws-client-dot { border-color: var(--color-accent, #ff6b35); color: var(--color-accent, #ff6b35); }
+.ws-client-n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-client-tag {
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--color-text-muted, #6a6a7c);
+}
+.ws-client-add { color: var(--color-text-muted, #6a6a7c); }
+.ws-clients-pool {
+  font-size: 10.5px; color: var(--color-text-muted, #6a6a7c);
+  padding: 7px 6px 0; border-top: 1px solid var(--color-border, #2a2a36); margin-top: 6px;
+}
+
 .ws-name {
   font-size: 12px;
   font-weight: 600;

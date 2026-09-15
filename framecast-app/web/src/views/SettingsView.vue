@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useWorkspaceStore } from '../stores/workspace'
 import api from '../services/api'
 import { allTimezones, detectedTimezone, zoneLabel } from '../composables/timezones'
 import AppSidebar from '../components/AppSidebar.vue'
@@ -339,6 +340,37 @@ const activeBrandKit = computed(() =>
 // ── Active nav ────────────────────────────────────────────
 const activeSection = ref('brand')
 
+// ── Client workspaces (agencies only) ─────────────────────
+const workspaceStore = useWorkspaceStore()
+const newClientName = ref('')
+const clientBusy = ref(false)
+const clientError = ref('')
+
+async function addClient() {
+  const name = newClientName.value.trim()
+  if (!name || clientBusy.value) return
+  clientBusy.value = true
+  clientError.value = ''
+  try {
+    await workspaceStore.createClient(name)
+    newClientName.value = ''
+  } catch (e) {
+    clientError.value = e.response?.data?.error?.message ?? 'Could not create that workspace.'
+  } finally {
+    clientBusy.value = false
+  }
+}
+
+async function removeClient(w) {
+  // Archive rather than delete, so this is a reversible answer to a mis-click.
+  if (!window.confirm(`Archive ${w.client_label || w.name}? Its work is kept and can be restored.`)) return
+  try {
+    await workspaceStore.archiveClient(w.id)
+  } catch {
+    clientError.value = 'Could not archive that workspace.'
+  }
+}
+
 // ── Connected Accounts ────────────────────────────────────
 const socialAccounts    = ref([])
 const socialLoading     = ref(false)
@@ -672,6 +704,7 @@ onMounted(() => {
   if (route.query.section) {
     activeSection.value = route.query.section
     if (activeSection.value === 'usage') loadCreditHistory()
+    if (activeSection.value === 'clients') workspaceStore.loadClients()
   }
   loadSettings()
   loadBillingStatus()
@@ -697,6 +730,7 @@ onMounted(() => {
             <div :class="['settings-tab', activeSection === 'brand'    ? 'active' : '']" @click="activeSection = 'brand'">Brand Kits</div>
             <div :class="['settings-tab', activeSection === 'account'  ? 'active' : '']" @click="activeSection = 'account'">Account</div>
             <div :class="['settings-tab', activeSection === 'accounts' ? 'active' : '']" @click="activeSection = 'accounts'">Connected Accounts</div>
+            <div v-if="workspaceStore.canOwnClients" :class="['settings-tab', activeSection === 'clients' ? 'active' : '']" @click="activeSection = 'clients'">Client Workspaces</div>
             <div :class="['settings-tab', activeSection === 'usage'    ? 'active' : '']" @click="activeSection = 'usage'; loadCreditHistory()">Usage and Billing</div>
           </div>
         </div>
@@ -705,6 +739,51 @@ onMounted(() => {
         <div class="surface-card settings-content-card">
 
           <!-- Brand Kits -->
+          <div v-if="activeSection === 'clients'">
+            <div class="settings-section-title">Client Workspaces</div>
+            <div class="settings-section-desc">
+              A separate space for each client — their own projects, characters and brand.
+              Credits are not split: every workspace draws on your one balance of
+              {{ (workspaceStore.sharedCredits ?? 0).toLocaleString() }}.
+            </div>
+
+            <div class="cw-add">
+              <input
+                v-model="newClientName"
+                class="settings-input"
+                maxlength="120"
+                placeholder="Client name — e.g. Acme Skincare"
+                @keyup.enter="addClient"
+              />
+              <button class="btn btn-primary" :disabled="!newClientName.trim() || clientBusy" @click="addClient">
+                {{ clientBusy ? 'Creating…' : 'Add client' }}
+              </button>
+            </div>
+            <div v-if="clientError" class="cw-error">{{ clientError }}</div>
+
+            <div class="cw-list">
+              <div v-for="w in [workspaceStore.agency, ...(workspaceStore.clients ?? [])].filter(Boolean)" :key="w.id" class="cw-row">
+                <div class="cw-dot">{{ (w.client_label || w.name)[0]?.toUpperCase() }}</div>
+                <div class="cw-meta">
+                  <div class="cw-name">
+                    {{ w.client_label || w.name }}
+                    <span v-if="w.is_agency" class="cw-tag">your agency</span>
+                    <span v-else-if="w.id === authStore.user?.workspace_id" class="cw-tag cw-tag-here">you are here</span>
+                  </div>
+                  <div class="cw-sub">{{ w.projects }} project{{ w.projects === 1 ? '' : 's' }} · added {{ w.created_at }}</div>
+                </div>
+                <div class="cw-actions">
+                  <button v-if="w.id !== user?.workspace_id" class="btn btn-ghost btn-sm" @click="workspaceStore.switchTo(w.id)">Open</button>
+                  <button v-if="!w.is_agency" class="btn btn-ghost btn-sm" @click="removeClient(w)">Archive</button>
+                </div>
+              </div>
+            </div>
+            <p class="settings-hint">
+              Archiving hides a client and keeps its work. Switching reloads the app, because
+              everything on screen belongs to one workspace at a time.
+            </p>
+          </div>
+
           <div v-if="activeSection === 'brand'">
             <div class="section-title">Brand Kit Defaults</div>
             <div class="settings-section-desc">Reusable color, font, and voice presets applied across channels and series.</div>
@@ -1313,6 +1392,32 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* Client workspaces */
+.cw-add { display: flex; gap: 10px; margin: 14px 0 6px; flex-wrap: wrap; }
+.cw-add .settings-input { flex: 1; min-width: 220px; }
+.cw-error { color: #fca5a5; font-size: 12.5px; margin-bottom: 8px; }
+.cw-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.cw-row {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  background: var(--color-bg-card, #17171f); border: 1px solid var(--color-border, #2a2a36);
+  border-radius: 10px;
+}
+.cw-dot {
+  width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center;
+  background: var(--color-bg-elevated, #1d1d28); border: 1px solid var(--color-border, #2a2a36);
+  font-weight: 700; font-size: 13px;
+}
+.cw-meta { flex: 1; min-width: 0; }
+.cw-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.cw-sub { font-size: 11.5px; color: var(--color-text-muted, #6a6a7c); margin-top: 2px; }
+.cw-tag {
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--color-text-muted, #6a6a7c); border: 1px solid var(--color-border, #2a2a36);
+  padding: 2px 7px; border-radius: 99px;
+}
+.cw-tag-here { color: var(--color-accent, #ff6b35); border-color: #ff6b3555; }
+.cw-actions { display: flex; gap: 8px; }
+
 .page-pick-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; max-height: 320px; overflow-y: auto; }
 .page-pick { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #25252f; background: #14141c; color: #ececf3; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: .15s; }
 .page-pick:hover:not(:disabled) { border-color: rgba(255,107,53,.5); background: rgba(255,107,53,.06); }

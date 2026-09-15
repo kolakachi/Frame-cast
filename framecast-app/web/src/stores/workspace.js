@@ -1,11 +1,19 @@
 import { defineStore } from 'pinia'
-import api from '../services/api'
+import api, { setApiAccessToken } from '../services/api'
+import { useAuthStore } from './auth'
 
 export const useWorkspaceStore = defineStore('workspace', {
   state: () => ({
     workspace: null,
     usage: null,
     loading: false,
+    // The agency and its client workspaces, once fetched. Null means we have
+    // not asked; an empty clients array means we asked and there are none.
+    clients: null,
+    agency: null,
+    canOwnClients: false,
+    sharedCredits: null,
+    switching: false,
   }),
 
   getters: {
@@ -44,10 +52,64 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.workspace = res.data.data.workspace
     },
 
+    async loadClients() {
+      try {
+        const { data } = await api.get('/workspaces/clients')
+        this.agency = data.data.agency
+        this.clients = data.data.clients
+        this.canOwnClients = Boolean(data.data.can_own_clients)
+        this.sharedCredits = data.data.shared_credits
+      } catch {
+        // An agency-only endpoint answers 403 for everyone else; the switcher
+        // simply does not appear.
+        this.clients = []
+        this.canOwnClients = false
+      }
+    },
+
+    async createClient(name) {
+      const { data } = await api.post('/workspaces/clients', { name })
+      await this.loadClients()
+      return data.data.client
+    },
+
+    async archiveClient(id) {
+      await api.delete(`/workspaces/clients/${id}`)
+      await this.loadClients()
+    },
+
+    /**
+     * Move into another workspace.
+     *
+     * The new token carries a different workspace, so everything held in
+     * memory is about to describe the wrong account. A full reload is the
+     * honest way to do that: the alternative is hunting down every store and
+     * cached list, and missing one means showing one client's work under
+     * another client's name.
+     */
+    async switchTo(id) {
+      if (this.switching) return
+      this.switching = true
+      try {
+        const { data } = await api.post(`/workspaces/switch/${id}`)
+        const auth = useAuthStore()
+        auth.setSession({ accessToken: data.data.access_token, user: auth.user })
+        setApiAccessToken(data.data.access_token)
+        window.location.assign('/dashboard')
+      } catch (e) {
+        this.switching = false
+        throw e
+      }
+    },
+
     clear() {
       this.workspace = null
       this.usage = null
       this.loading = false
+      this.clients = null
+      this.agency = null
+      this.canOwnClients = false
+      this.sharedCredits = null
     },
   },
 })
