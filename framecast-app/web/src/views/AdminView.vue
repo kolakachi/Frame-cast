@@ -383,15 +383,62 @@ async function loadMailHistory() {
   } catch { mailHistory.value = [] }
 }
 
+const mailLog = ref([])
+const mailLogCounts = ref({})
+const mailLogSearch = ref('')
+const mailLogLoading = ref(false)
+const mailLogHint = ref(false)
+
+async function loadMailLog() {
+  mailLogLoading.value = true
+  try {
+    const { data } = await api.get('/admin/mail/log', {
+      params: { email: mailLogSearch.value || undefined, limit: 100 },
+    })
+    mailLog.value = data?.data?.entries ?? []
+    mailLogCounts.value = data?.data?.counts ?? {}
+    mailLogHint.value = Boolean(data?.data?.open_tracking_hint)
+  } catch {
+    mailLog.value = []
+  } finally {
+    mailLogLoading.value = false
+  }
+}
+
+function shortTime(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+}
+
 const mailDrafting = ref(false)
 const mailDossier = ref('')
-async function draftFromUsage() {
-  if (mailDrafting.value || mailCustomList.value.length !== 1) return
+const mailInstruction = ref('')
+
+// One address means the draft can use that person's real usage. A segment
+// means it must not: a broadcast that names a project only one recipient has
+// reads as a mistake to everyone else.
+const mailDraftAudience = computed(() => {
+  if (mailSegment.value === 'custom') {
+    return mailCustomList.value.length === 1
+      ? { email: mailCustomList.value[0], label: mailCustomList.value[0] }
+      : null
+  }
+  return { segment: mailSegment.value, label: `the ${mailSegment.value} segment` }
+})
+
+async function draftMail() {
+  const audience = mailDraftAudience.value
+  if (mailDrafting.value || !audience) return
   mailDrafting.value = true
   mailError.value = ''
   mailDossier.value = ''
   try {
-    const res = await api.get('/admin/mail/draft', { params: { email: mailCustomList.value[0] } })
+    const res = await api.post('/admin/mail/draft', {
+      ...(audience.email ? { email: audience.email } : {}),
+      ...(audience.segment ? { segment: audience.segment } : {}),
+      instruction: mailInstruction.value.trim() || null,
+    })
     const d = res.data?.data
     mailSubject.value = d.subject
     mailBody.value = d.body
@@ -400,6 +447,9 @@ async function draftFromUsage() {
     mailError.value = err.response?.data?.error?.message ?? 'Draft failed.'
   } finally { mailDrafting.value = false }
 }
+
+// Kept so the existing feedback-ask button still works with no instruction.
+const draftFromUsage = draftMail
 
 async function sendMail() {
   if (mailSending.value) return
@@ -1082,7 +1132,7 @@ function navigate(view) {
   if (view === 'billing') { loadBillingChart(); loadAudit() }
   if (view === 'storage') loadStorage()
   if (view === 'moderation') loadModeration()
-  if (view === 'mail') loadMailHistory()
+  if (view === 'mail') { loadMailHistory(); loadMailLog() }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2140,6 +2190,35 @@ onMounted(() => {
               </div>
               <div v-else class="mail-hint">Counting recipients…</div>
 
+              <!-- Say what you want; the draft is written from what we
+                   already know about the audience. Its own button, because
+                   drafting is a separate act from sending and the result is
+                   meant to be edited, not accepted. -->
+              <label class="mail-label">What should this email do?</label>
+              <textarea
+                v-model="mailInstruction"
+                class="mail-input mail-textarea"
+                rows="3"
+                maxlength="2000"
+                placeholder="e.g. Ask why they haven't exported anything yet and offer to get on a call — friendly, short, no upsell."
+              ></textarea>
+              <div class="mail-draft-row">
+                <button
+                  class="btn btn-ghost btn-sm"
+                  type="button"
+                  :disabled="mailDrafting || !mailDraftAudience"
+                  @click="draftMail"
+                >{{ mailDrafting ? 'Drafting…' : 'Draft it' }}</button>
+                <span class="mail-hint">
+                  <template v-if="mailDraftAudience">
+                    Written from what we know about {{ mailDraftAudience.label }}. Edit anything below.
+                  </template>
+                  <template v-else>
+                    Pick one recipient, or a segment, to draft from.
+                  </template>
+                </span>
+              </div>
+
               <label class="mail-label">Subject</label>
               <input v-model="mailSubject" class="mail-input" maxlength="200" placeholder="Subject line" />
 
@@ -2165,7 +2244,62 @@ onMounted(() => {
               </div>
             </div>
 
-            <div class="gm-section-title" style="margin-top:34px;">Sent</div>
+            <!-- Every send, not just broadcasts — this is where an automated
+                 magic link that bounced becomes visible. -->
+            <div class="gm-section-title" style="margin-top:34px;">Delivery</div>
+            <div class="mail-log-bar">
+              <input
+                v-model="mailLogSearch"
+                class="search-input"
+                placeholder="Filter by email…"
+                @keyup.enter="loadMailLog"
+              />
+              <button class="btn btn-ghost btn-sm" type="button" :disabled="mailLogLoading" @click="loadMailLog">
+                {{ mailLogLoading ? 'Loading…' : 'Refresh' }}
+              </button>
+              <span class="mail-log-counts">
+                <span v-for="(n, k) in mailLogCounts" :key="k" :class="['aff-pill', {
+                  delivered: 'aff-pill-ok', opened: 'aff-pill-ok', sent: 'aff-pill-muted',
+                  bounced: 'aff-pill-bad', failed: 'aff-pill-bad', complained: 'aff-pill-bad',
+                }[k] ?? 'aff-pill-muted']">{{ k }} {{ n }}</span>
+              </span>
+            </div>
+            <div v-if="mailLogHint" class="mail-hint" style="padding:6px 0 10px;">
+              Mail is being delivered but no opens are recorded — open tracking is switched on
+              per sending domain in Resend, and is off until you enable it there.
+            </div>
+            <div v-if="!mailLog.length" class="mail-hint" style="padding:14px 0;">
+              Nothing logged yet. Sends are recorded from here on.
+            </div>
+            <table v-else class="gm-table">
+              <thead><tr><th>Sent</th><th>To</th><th>Email</th><th>Status</th><th>Opened</th></tr></thead>
+              <tbody>
+                <tr v-for="m in mailLog" :key="m.id">
+                  <td class="cell-muted" style="white-space:nowrap;">{{ shortTime(m.sent_at) }}</td>
+                  <td>{{ m.email }}</td>
+                  <td>
+                    <div>{{ m.subject || '—' }}</div>
+                    <div v-if="m.mailable" class="aff-sub">{{ m.mailable }}</div>
+                  </td>
+                  <td>
+                    <span :class="['aff-pill', {
+                      delivered: 'aff-pill-ok', opened: 'aff-pill-ok', sent: 'aff-pill-muted',
+                      bounced: 'aff-pill-bad', failed: 'aff-pill-bad', complained: 'aff-pill-bad',
+                    }[m.status] ?? 'aff-pill-muted']">{{ m.status }}</span>
+                    <div v-if="m.failure_reason" class="aff-sub">{{ m.failure_reason }}</div>
+                  </td>
+                  <td class="cell-muted">
+                    <template v-if="m.first_opened_at">
+                      {{ shortTime(m.first_opened_at) }}
+                      <span v-if="m.open_count > 1" class="aff-sub">{{ m.open_count }}×</span>
+                    </template>
+                    <template v-else>—</template>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="gm-section-title" style="margin-top:34px;">Sent by hand</div>
             <div v-if="!mailHistory.length" class="mail-hint" style="padding:14px 0;">Nothing sent yet.</div>
             <table v-else class="gm-table">
               <thead><tr><th>When</th><th>By</th><th>To</th><th>Subject</th></tr></thead>
@@ -3723,6 +3857,9 @@ tr:hover td { background: #1e2129; }
 .mail-recip:last-child { border-bottom: none; }
 .mail-recip:hover { background: rgba(255,255,255,0.03); }
 .mail-recip input { cursor: pointer; accent-color: var(--color-accent); }
+.mail-draft-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -4px 0 4px; }
+.mail-log-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0 12px; }
+.mail-log-counts { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
 .mail-recip-email { font-family: "Space Mono", monospace; }
 .mail-recip-name { color: var(--gm-muted); }
 .mail-recip.is-out { opacity: 0.45; }

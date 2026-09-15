@@ -283,6 +283,10 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/mail/send', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'send']);
             Route::get('/mail/history', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'history']);
             Route::get('/mail/draft', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'draft']);
+            // POST too: an instruction can run to a paragraph, which does not
+            // belong in a query string.
+            Route::post('/mail/draft', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'draft']);
+            Route::get('/mail/log', [\App\Http\Controllers\Api\V1\Admin\AdminMailController::class, 'log']);
 
             // Trust & Safety — moderation events triage
             Route::get('/moderation/events', [\App\Http\Controllers\Api\V1\Admin\AdminModerationController::class, 'index']);

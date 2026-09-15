@@ -114,24 +114,55 @@ class AdminMailController extends Controller
      * invented activity. The admin reviews and edits before sending; nothing
      * is sent from here.
      */
+    /**
+     * Turn a sentence about what you want into a subject and a body.
+     *
+     * Two shapes. Given one address it writes from that person's actual usage,
+     * which is what makes the result worth sending. Given a segment it writes
+     * from a description of the group — never from one member's details, since
+     * a broadcast that names a project only one recipient has is worse than a
+     * generic one.
+     */
     public function draft(Request $request): JsonResponse
     {
-        $validated = $request->validate(['email' => ['required', 'email']]);
+        $validated = $request->validate([
+            'email' => ['sometimes', 'nullable', 'email'],
+            'segment' => ['sometimes', 'nullable', Rule::in(self::SEGMENTS)],
+            'instruction' => ['sometimes', 'nullable', 'string', 'max:2000'],
+        ]);
 
-        $user = User::query()->where('email', $validated['email'])->first();
-        if (! $user) {
-            return $this->error('not_found', 'No user with that email.', 404);
+        $instruction = trim((string) ($validated['instruction'] ?? ''));
+        $email = $validated['email'] ?? null;
+        $segment = $validated['segment'] ?? null;
+        $user = null;
+
+        if ($email) {
+            $user = User::query()->where('email', $email)->first();
+            if (! $user) {
+                return $this->error('not_found', 'No user with that email.', 404);
+            }
+            $dossier = $this->buildDossier($user);
+        } elseif ($segment && $segment !== 'custom') {
+            $dossier = $this->buildSegmentDossier($segment);
+        } else {
+            return $this->error('no_audience', 'Pick a recipient or a segment first.', 422);
         }
 
-        $dossier = $this->buildDossier($user);
+        // Without an instruction this stays the feedback-ask it has always
+        // been, so the existing button keeps working unchanged.
+        $template = $instruction !== '' ? 'admin_composed_email' : 'admin_feedback_email';
+        $inputs = ['dossier' => $dossier, 'sender_name' => 'Amara'];
+        if ($instruction !== '') {
+            $inputs['instruction'] = $instruction;
+        }
 
         try {
             $result = app(\App\Services\Generation\AI\AIGenerationAdapter::class)->generate(
-                'admin_feedback_email',
-                ['dossier' => $dossier, 'sender_name' => 'Amara'],
-                600,
+                $template,
+                $inputs,
+                900,
                 0.5,
-                ['usage_context' => ['workspace_id' => $user->workspace_id, 'operation' => 'admin_feedback_email']],
+                ['usage_context' => ['workspace_id' => $user?->workspace_id, 'operation' => $template]],
             );
             $parsed = json_decode((string) $result['content'], true);
         } catch (\Throwable $e) {
@@ -151,6 +182,41 @@ class AdminMailController extends Controller
             'body'    => (string) $parsed['body'],
             'dossier' => $dossier,
         ]]);
+    }
+
+    /**
+     * What is true of a group, for a broadcast.
+     *
+     * Deliberately aggregate. Drafting a segment email from one member's
+     * dossier produces a letter that reads as personal to exactly one person
+     * and as a mistake to everyone else.
+     */
+    private function buildSegmentDossier(string $segment): string
+    {
+        $users = $this->resolveSegment($segment, []);
+        $ids = $users->pluck('workspace_id')->filter()->unique();
+
+        $exports = \App\Models\ExportJob::query()->whereIn('workspace_id', $ids)
+            ->where('status', 'completed')->count();
+        $projects = \App\Models\Project::query()->whereIn('workspace_id', $ids)->count();
+        $neverBuilt = $ids->count() - \App\Models\Project::query()->whereIn('workspace_id', $ids)
+            ->distinct()->count('workspace_id');
+        $newest = $users->max('created_at');
+        $oldest = $users->min('created_at');
+
+        $tiers = \App\Models\Workspace::query()->whereIn('id', $ids)
+            ->selectRaw('coalesce(plan_tier, \'free\') as tier, count(*) as n')
+            ->groupBy('tier')->pluck('n', 'tier');
+
+        return implode("\n", array_filter([
+            'Audience: the "'.$segment.'" segment — '.$users->count().' recipients.',
+            'Plans: '.($tiers->map(fn ($n, $t) => "{$t}: {$n}")->implode(', ') ?: 'unknown'),
+            "Between them: {$projects} projects and {$exports} completed exports.",
+            $neverBuilt > 0 ? "{$neverBuilt} of them have never created a project." : null,
+            $oldest ? 'Joined between '.\Carbon\Carbon::parse($oldest)->format('M j').' and '
+                .\Carbon\Carbon::parse($newest)->format('M j').'.' : null,
+            'This email goes to all of them, so write nothing that is only true of one person.',
+        ]));
     }
 
     /** Hard facts about one user's product usage, as plain text for the model AND the admin. */
@@ -195,6 +261,56 @@ class AdminMailController extends Controller
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * What actually happened to the mail we sent.
+     *
+     * Separate from history(), which lists admin broadcasts. This is the
+     * per-recipient record: every send, whether it was delivered, and whether
+     * it was opened — including the automated mail nobody composed.
+     */
+    public function log(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'email' => ['sometimes', 'nullable', 'string', 'max:190'],
+            'status' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:200'],
+        ]);
+
+        $query = \App\Models\MailLogEntry::query()->orderByDesc('sent_at');
+        if (! empty($v['email'])) {
+            $query->whereRaw('LOWER(email) like ?', ['%'.mb_strtolower($v['email']).'%']);
+        }
+        if (! empty($v['status'])) {
+            $query->where('status', $v['status']);
+        }
+
+        $rows = $query->limit($v['limit'] ?? 100)->get()->map(fn ($m) => [
+            'id' => $m->id,
+            'email' => $m->email,
+            'mailable' => $m->mailable,
+            'subject' => $m->subject,
+            'status' => $m->status,
+            'sent_at' => $m->sent_at?->toIso8601String(),
+            'delivered_at' => $m->delivered_at?->toIso8601String(),
+            'first_opened_at' => $m->first_opened_at?->toIso8601String(),
+            'open_count' => (int) $m->open_count,
+            'failure_reason' => $m->failure_reason,
+        ]);
+
+        // Counts over the same filter, so the headline agrees with the list.
+        $counts = (clone $query)->reorder()->selectRaw('status, count(*) as n')
+            ->groupBy('status')->pluck('n', 'status');
+
+        return response()->json(['data' => [
+            'entries' => $rows,
+            'counts' => $counts,
+            // Opens only arrive when open tracking is on for the sending
+            // domain in Resend; zero here with delivered mail present usually
+            // means the setting, not the readers.
+            'open_tracking_hint' => ($counts['opened'] ?? 0) === 0 && ($counts['delivered'] ?? 0) > 0,
+        ]]);
     }
 
     /** Previously sent mail, straight from the audit log — one source of truth. */
