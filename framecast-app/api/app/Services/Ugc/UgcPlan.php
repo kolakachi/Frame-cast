@@ -88,10 +88,17 @@ final class UgcPlan
             if (mb_strlen($headline) > 180 || mb_strlen($motion) > 1000 || mb_strlen($delivery) > 500) {
                 self::invalid('Shorten the headline (180), motion (1,000) or voice direction (500 characters).');
             }
+            // Delivery pace. Clamped rather than rejected: a slider that
+            // refuses the value it just produced is a worse experience than
+            // one that quietly stays inside what the voice can actually do,
+            // and outside this range TTS stops sounding human.
+            $speed = round(max(0.5, min(2.0, (float) ($seg['speed'] ?? 1.0))), 2);
+
             $out[] = [
                 'kind' => $kind, 'script_text' => $text, 'seconds' => $seconds,
                 'visual_brief' => $brief, 'motion_prompt' => $motion,
-                'voice_direction' => $delivery, 'headline' => $headline, 'source' => $source,
+                'voice_direction' => $delivery, 'speed' => $speed,
+                'headline' => $headline, 'source' => $source,
                 'asset_id' => $kind === 'b_roll' && $source !== 'generate' ? ((int) ($seg['asset_id'] ?? 0) ?: null) : null,
             ];
         }

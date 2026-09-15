@@ -712,6 +712,24 @@ onMounted(() => {
                     </span>
                     <textarea v-model="seg.voice_direction" maxlength="500" />
                   </label>
+                  <!-- Pace belongs with delivery, not with the script: it is
+                       how the line is said, the same as the direction above. -->
+                  <label class="ugc-speed">
+                    <span class="ugc-label-row">
+                      Pace
+                      <span class="ugc-speed-value">{{ Number(seg.speed ?? 1).toFixed(2) }}×</span>
+                    </span>
+                    <input
+                      v-model.number="seg.speed"
+                      type="range"
+                      min="0.5"
+                      max="2"
+                      step="0.05"
+                    />
+                    <span class="ugc-speed-scale">
+                      <span>slower</span><span>natural</span><span>faster</span>
+                    </span>
+                  </label>
                   <label>
                     <span class="ugc-label-row">
                       Headline (not spoken, stays for this shot)
@@ -1611,6 +1629,22 @@ onMounted(() => {
 }
 .ugc-audio::-webkit-media-controls-panel {
   background: var(--color-bg-elevated);
+}
+
+.ugc-speed { gap: 6px; }
+.ugc-speed input[type="range"] {
+  width: 100%; accent-color: var(--color-accent, #ff6b35);
+  cursor: pointer; margin: 2px 0 0;
+}
+.ugc-speed-value {
+  font-family: "Space Mono", ui-monospace, monospace; font-size: 11.5px;
+  color: var(--color-accent, #ff6b35); font-weight: 600;
+}
+/* The scale is what makes a bare slider legible — 1.35× means nothing on its
+   own, and nobody wants to drag it to find out. */
+.ugc-speed-scale {
+  display: flex; justify-content: space-between;
+  font-size: 10px; color: var(--color-text-muted, #6a6a7c);
 }
 
 .ugc-label-row {

@@ -76,7 +76,8 @@ class UgcExecutionTest extends TestCase
     {
         return array_replace(['kind' => 'on_camera', 'script_text' => 'Here is the idea.', 'seconds' => 5,
             'visual_brief' => 'Kitchen selfie, casual sweater, window light.', 'headline' => 'One useful idea',
-            'voice_direction' => 'Warm and curious.', 'motion_prompt' => '', 'source' => null], $changes);
+            'voice_direction' => 'Warm and curious.', 'motion_prompt' => '', 'source' => null,
+            'speed' => 1.0], $changes);
     }
 
     public function test_reaction_dispatches_directed_animation_chain_without_tts(): void
@@ -139,6 +140,31 @@ class UgcExecutionTest extends TestCase
         }
         $this->assertSame(0, Project::query()->count());
         Bus::assertNothingDispatched();
+    }
+
+    public function test_pace_reaches_the_voice_settings(): void
+    {
+        (new UgcController)->generate($this->request([$this->shot(['speed' => 1.35])], 'direct_camera'));
+
+        $this->assertEqualsWithDelta(1.35, Scene::query()->firstOrFail()->voice_settings_json['speed'], 0.001);
+    }
+
+    public function test_pace_defaults_to_natural_when_not_set(): void
+    {
+        (new UgcController)->generate($this->request([$this->shot()], 'direct_camera'));
+
+        $this->assertEqualsWithDelta(1.0, Scene::query()->firstOrFail()->voice_settings_json['speed'], 0.001);
+    }
+
+    public function test_an_out_of_range_pace_is_clamped_rather_than_refused(): void
+    {
+        // A slider that rejects the value it just produced is worse than one
+        // that stays inside what the voice can actually do.
+        $normal = UgcPlan::normalise([$this->shot(['speed' => 9])], 'direct_camera');
+        $this->assertEqualsWithDelta(2.0, $normal[0]['speed'], 0.001);
+
+        $slow = UgcPlan::normalise([$this->shot(['speed' => 0.01])], 'direct_camera');
+        $this->assertEqualsWithDelta(0.5, $slow[0]['speed'], 0.001);
     }
 
     public function test_talking_take_preserves_voice_and_camera_direction(): void

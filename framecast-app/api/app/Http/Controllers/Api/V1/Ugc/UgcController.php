@@ -228,6 +228,7 @@ class UgcController extends Controller
             'segments.*.seconds' => ['required', 'numeric', 'min:1', 'max:60'],
             'segments.*.visual_brief' => ['required', 'string', 'max:1000'],
             'segments.*.voice_direction' => ['nullable', 'string', 'max:500'],
+            'segments.*.speed' => ['nullable', 'numeric', 'min:0.5', 'max:2'],
             'segments.*.motion_prompt' => ['nullable', 'string', 'max:1000'],
             'segments.*.headline' => ['nullable', 'string', 'max:180'],
             'segments.*.source' => ['nullable', 'in:upload,stock,generate'],
@@ -266,7 +267,8 @@ class UgcController extends Controller
                 'project_id' => $project->id, 'scene_order' => $i + 1, 'scene_type' => 'narration',
                 'label' => ucfirst(str_replace('_', ' ', $seg['kind'])).' '.($i + 1),
                 'script_text' => $seg['script_text'], 'duration_seconds' => $seg['seconds'],
-                'voice_settings_json' => ['voice_id' => $voiceId, 'provider' => 'google', 'speed' => 1.0,
+                'voice_settings_json' => ['voice_id' => $voiceId, 'provider' => 'google',
+                    'speed' => $seg['speed'] ?? 1.0,
                     'voice_prompt' => $seg['voice_direction'], 'enabled' => ! $reaction],
                 'caption_settings_json' => [
                     'enabled' => ! $reaction, 'style_key' => 'impact', 'highlight_mode' => 'line_by_line',
