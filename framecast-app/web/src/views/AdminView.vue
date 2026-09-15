@@ -3722,7 +3722,12 @@ tr:hover td { background: #1e2129; }
   border: 1px solid #2a2d38; border-radius: 8px;
   padding: 12px 12px 0; overflow: hidden;
 }
-.chart-bar-wrap { flex: 1; display: flex; align-items: flex-end; min-width: 0; }
+/* height:100% matters. The wrapper is a flex item under align-items:flex-end,
+   so without it the cross size is content-based — and a percentage height on
+   the bar inside then has no definite parent to resolve against, collapses to
+   auto, and min-height:2px wins. Every bar renders as the same 2px sliver
+   however much was actually spent. */
+.chart-bar-wrap { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 0; }
 .chart-bar {
   width: 100%; border-radius: 3px 3px 0 0;
   background: #7c3aed; opacity: .75; transition: opacity .15s;
