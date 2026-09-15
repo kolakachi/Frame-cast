@@ -2250,7 +2250,7 @@ onMounted(() => {
               <label class="mail-label">Message</label>
               <textarea v-model="mailBody" class="mail-input mail-textarea" rows="12"
                 placeholder="Plain text. Blank line = new paragraph. Use {name} to insert the customer's first name."></textarea>
-              <div class="mail-hint">Plain text only — links are sent as written. <code v-pre>{name}</code> becomes each recipient's first name ("there" if unknown).</div>
+              <div class="mail-hint">Plain text. Any <code v-pre>https://</code> link becomes clickable; a blank line starts a new paragraph. <code v-pre>{name}</code> becomes each recipient's first name ("there" if unknown).</div>
 
               <div v-if="mailError" class="mail-error">{{ mailError }}</div>
               <div v-if="mailResult" class="mail-success">

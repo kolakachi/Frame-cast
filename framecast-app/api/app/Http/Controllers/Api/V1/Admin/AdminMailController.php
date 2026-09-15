@@ -450,7 +450,64 @@ class AdminMailController extends Controller
 
         $safe = e($body);
         $safe = str_replace(['{name}', '&#123;name&#125;'], e($first), $safe);
+        $safe = $this->linkify($safe);
 
-        return '<p>'.str_replace("\n\n", '</p><p>', nl2br($safe)).'</p>';
+        // Paragraphs are split before nl2br, not after. nl2br inserts its tag
+        // *between* the two newlines, so the blank-line split never matched
+        // and every message came out as one paragraph of <br> — which the
+        // composer's own hint promises it is not.
+        $paragraphs = preg_split("/\n\s*\n/", $safe) ?: [$safe];
+
+        return implode('', array_map(
+            fn (string $p) => '<p>'.nl2br(trim($p)).'</p>',
+            array_filter($paragraphs, fn (string $p) => trim($p) !== ''),
+        )) ?: '<p></p>';
+    }
+
+    /**
+     * Turn bare URLs into links.
+     *
+     * Runs on text that has already been escaped, so the only markup in the
+     * output is the anchors added here — a URL containing a quote or an angle
+     * bracket arrives as an entity and cannot break out of the attribute.
+     *
+     * Deliberately narrow: http and https only. Accepting arbitrary schemes
+     * would let a composed email carry javascript: or data:, and a link in a
+     * message that came from us is exactly the one a recipient trusts.
+     */
+    private function linkify(string $escaped): string
+    {
+        return (string) preg_replace_callback(
+            // Stops at whitespace or an entity, so a URL at the end of a
+            // sentence does not swallow the full stop that follows it.
+            '~\bhttps?://[^\s<>"\']+~i',
+            function (array $m): string {
+                $url = $m[0];
+
+                // Trailing punctuation belongs to the sentence, not the link:
+                // "see https://x.test/page." should not link the full stop.
+                // Brackets only count as trailing when unbalanced, so
+                // Wikipedia-style URLs survive.
+                $trail = '';
+                while ($url !== '' && str_contains('.,;:!?', substr($url, -1))) {
+                    $trail = substr($url, -1).$trail;
+                    $url = substr($url, 0, -1);
+                }
+                while (str_ends_with($url, ')') && substr_count($url, '(') < substr_count($url, ')')) {
+                    $trail = ')'.$trail;
+                    $url = substr($url, 0, -1);
+                }
+
+                if ($url === '') {
+                    return $trail;
+                }
+
+                // Already escaped, so this is safe in both the attribute and
+                // the text. Shown in full: a recipient deciding whether to
+                // trust a link needs to see where it goes.
+                return '<a href="'.$url.'">'.$url.'</a>'.$trail;
+            },
+            $escaped,
+        );
     }
 }
