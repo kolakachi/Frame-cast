@@ -244,6 +244,9 @@ class ClientWorkspaceController extends Controller
         // grouped query that every database can run — the earlier version had
         // to aggregate in PHP because the spender lived inside jsonb and only
         // Postgres could reach it in SQL.
+        $childIds = Workspace::query()->where('parent_workspace_id', $home->getKey())->pluck('id')->all();
+        $ledgerScope = array_merge([(int) $home->getKey()], array_map('intval', $childIds));
+
         $rows = [];
         foreach (
             DB::table('credit_ledger')
@@ -252,9 +255,12 @@ class ClientWorkspaceController extends Controller
                 ->selectRaw('COUNT(*) AS operations')
                 ->selectRaw('COUNT(DISTINCT project_id) AS projects')
                 ->selectRaw('MAX(created_at) AS last_at')
-                ->where('workspace_id', $home->getKey())
-                ->where('operation', 'not like', 'grant:%')
+                // A funded client's charges sit on its own row, not the
+                // agency's, so scoping to the agency alone would have left
+                // every funded client out of the agency's own report.
+                ->whereIn('workspace_id', $ledgerScope)
                 ->where('created_at', '>=', $since)
+                ->tap(fn ($q) => CreditService::onlySpend($q))
                 ->groupBy('ws')
                 ->get() as $row
         ) {

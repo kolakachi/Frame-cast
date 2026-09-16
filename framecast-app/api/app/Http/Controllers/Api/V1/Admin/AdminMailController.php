@@ -442,6 +442,11 @@ class AdminMailController extends Controller
             // banned) workspaces.
             ->where('users.email', 'not like', '%@wyvstudio.com')
             ->whereNotIn('users.email', (array) config('admin.internal_emails', []))
+            // Nor to somebody else's client. They were invited into an agency's
+            // workspace; a broadcast from us about plans and features would be
+            // a product pitch to a person who never bought anything, and it
+            // would tell them their agency's supplier's name.
+            ->whereNotIn('users.role', array_keys(\App\Models\User::CLIENT_SEATS))
             ->where(fn ($w) => $w->whereNull('workspaces.status')->orWhere('workspaces.status', '!=', 'suspended'));
 
         match ($segment) {

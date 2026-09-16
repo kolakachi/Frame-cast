@@ -160,7 +160,33 @@ class WorkspaceUsageService
      */
     public function summaryForWorkspace(Workspace $workspace): array
     {
-        return $this->buildSummary((int) $workspace->getKey(), (string) ($workspace->plan_tier ?: 'studio'));
+        $summary = $this->buildSummary((int) $workspace->getKey(), (string) ($workspace->plan_tier ?: 'studio'));
+
+        // A client workspace copies its agency's plan_tier so that feature
+        // gating matches, which had the side effect of quoting the agency's
+        // allowance back to the client: an Enterprise agency's client was told
+        // it had 50,000 credits a month. It has no plan and no allowance — it
+        // spends what the agency gave it, or the agency's own balance.
+        if ($workspace->parent_workspace_id) {
+            $summary['plan'] = 'Client workspace';
+            $summary['credits_monthly'] = 0;
+
+            if ($workspace->isFunded()) {
+                $summary['credits_balance'] = (int) $workspace->creditsBalance();
+                $summary['credits_topup'] = (int) $workspace->credits_topup;
+                $summary['credits_source'] = 'allocated';
+            } else {
+                // Deliberately not the agency's balance. A client being shown
+                // how much its agency holds is both misleading and none of its
+                // business; null says "not yours to count" where 0 would read
+                // as "you have run out".
+                $summary['credits_balance'] = null;
+                $summary['credits_topup'] = 0;
+                $summary['credits_source'] = 'agency';
+            }
+        }
+
+        return $summary;
     }
 
     /**

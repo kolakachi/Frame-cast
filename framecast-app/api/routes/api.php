@@ -281,6 +281,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/users/{userId}', [AdminController::class, 'userDetail'])->whereNumber('userId');
             Route::post('/users/{userId}/impersonate', [AdminController::class, 'impersonate'])->whereNumber('userId');
             Route::get('/workspaces', [AdminController::class, 'workspaces']);
+            // Client sub-accounts and their members, kept out of the users
+            // and workspaces lists so neither count is overstated.
+            Route::get('/client-workspaces', [AdminController::class, 'clientWorkspaces']);
             Route::patch('/workspaces/{workspaceId}/plan', [AdminController::class, 'updateWorkspacePlan'])->whereNumber('workspaceId');
             Route::patch('/workspaces/{workspaceId}/status', [AdminController::class, 'updateWorkspaceStatus'])->whereNumber('workspaceId');
             Route::get('/workspaces/{workspaceId}/credit-ledger', [AdminController::class, 'workspaceCreditLedger'])->whereNumber('workspaceId');

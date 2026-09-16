@@ -32,11 +32,19 @@ class VerificationController extends Controller
                 'user'    => $this->serializeUser($user),
                 'usage'   => $this->usageService->summaryForUser($user),
                 'credits' => [
-                    'balance'          => $workspace ? $workspace->creditsBalance() : 0,
+                    // A pooled client has no balance to report. creditsBalance()
+                    // reads its own columns, which are zero, so this used to say
+                    // "0 credits" to a client that could generate all day — while
+                    // plan_monthly_allocation below quoted the AGENCY's plan and
+                    // promised it 50,000 a month. Both numbers were fiction.
+                    'balance'          => $this->clientCredits($workspace)['balance'],
                     'credits_monthly'  => (int) ($workspace?->credits_monthly ?? 0),
                     'credits_topup'    => (int) ($workspace?->credits_topup ?? 0),
                     'billing_renews_at'=> $workspace?->billing_renews_at?->toIso8601String(),
-                    'plan_monthly_allocation' => CreditService::PLAN_CREDITS[$workspace?->plan_tier ?? 'free'] ?? 0,
+                    'plan_monthly_allocation' => $this->clientCredits($workspace)['allocation'],
+                    // 'agency' | 'allocated' | null — lets the dashboard say where
+                    // the credits come from instead of implying a plan.
+                    'credits_source'   => $this->clientCredits($workspace)['source'],
                     // Checkout started, never completed. Surfaced here rather
                     // than via /billing/status so the dashboard banner costs no
                     // extra request. Cleared by the webhook on any purchase.
@@ -248,11 +256,19 @@ class VerificationController extends Controller
                 'user'    => $this->serializeUser($freshUser),
                 'usage'   => $this->usageService->summaryForUser($freshUser),
                 'credits' => [
-                    'balance'          => $workspace ? $workspace->creditsBalance() : 0,
+                    // A pooled client has no balance to report. creditsBalance()
+                    // reads its own columns, which are zero, so this used to say
+                    // "0 credits" to a client that could generate all day — while
+                    // plan_monthly_allocation below quoted the AGENCY's plan and
+                    // promised it 50,000 a month. Both numbers were fiction.
+                    'balance'          => $this->clientCredits($workspace)['balance'],
                     'credits_monthly'  => (int) ($workspace?->credits_monthly ?? 0),
                     'credits_topup'    => (int) ($workspace?->credits_topup ?? 0),
                     'billing_renews_at'=> $workspace?->billing_renews_at?->toIso8601String(),
-                    'plan_monthly_allocation' => CreditService::PLAN_CREDITS[$workspace?->plan_tier ?? 'free'] ?? 0,
+                    'plan_monthly_allocation' => $this->clientCredits($workspace)['allocation'],
+                    // 'agency' | 'allocated' | null — lets the dashboard say where
+                    // the credits come from instead of implying a plan.
+                    'credits_source'   => $this->clientCredits($workspace)['source'],
                     // Checkout started, never completed. Surfaced here rather
                     // than via /billing/status so the dashboard banner costs no
                     // extra request. Cleared by the webhook on any purchase.
@@ -478,6 +494,37 @@ class VerificationController extends Controller
             'watermark_enabled' => false,
             'onboarded' => false,
         ];
+    }
+
+
+    /**
+     * Credit figures that are true for the workspace being asked about.
+     *
+     * A client workspace inherits its agency's plan_tier so feature gating
+     * matches, which made both credit numbers wrong at once: the balance read
+     * its own empty columns, and the allowance read the agency's plan.
+     *
+     * @return array{balance: int|null, allocation: int, source: string|null}
+     */
+    private function clientCredits(?\App\Models\Workspace $workspace): array
+    {
+        if (! $workspace) {
+            return ['balance' => 0, 'allocation' => 0, 'source' => null];
+        }
+
+        if (! $workspace->parent_workspace_id) {
+            return [
+                'balance' => (int) $workspace->creditsBalance(),
+                'allocation' => CreditService::PLAN_CREDITS[$workspace->plan_tier ?? 'free'] ?? 0,
+                'source' => null,
+            ];
+        }
+
+        // Funded: its allocation is real and its own. Pooled: null, because the
+        // agency's balance is neither its business nor its limit.
+        return $workspace->isFunded()
+            ? ['balance' => (int) $workspace->creditsBalance(), 'allocation' => 0, 'source' => 'allocated']
+            : ['balance' => null, 'allocation' => 0, 'source' => 'agency'];
     }
 
 }

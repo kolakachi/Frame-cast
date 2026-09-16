@@ -595,12 +595,19 @@ onBeforeUnmount(() => {
             <div class="stat-value">{{ queuedRenders }}</div>
             <div class="stat-change">{{ queuedRenders > 0 ? 'Generation in progress' : 'Queue is empty' }}</div>
           </div>
-          <div :class="['stat-card', creditsPayload && creditsPayload.balance <= 0 ? 'stat-card-danger' : creditsPayload && creditsPayload.plan_monthly_allocation > 0 && (creditsPayload.credits_monthly / creditsPayload.plan_monthly_allocation) <= 0.2 ? 'stat-card-warn' : '']">
+          <!-- A pooled client workspace reports a null balance: its agency pays,
+               and neither "0" nor the agency's figure would be true of it. -->
+          <div :class="['stat-card', creditsPayload && creditsPayload.balance !== null && creditsPayload.balance <= 0 ? 'stat-card-danger' : creditsPayload && creditsPayload.plan_monthly_allocation > 0 && (creditsPayload.credits_monthly / creditsPayload.plan_monthly_allocation) <= 0.2 ? 'stat-card-warn' : '']">
             <div class="stat-label">Credits Remaining</div>
-            <div class="stat-value">{{ creditsPayload ? creditsPayload.balance.toLocaleString() : '—' }}</div>
+            <div class="stat-value">
+              {{ creditsPayload && creditsPayload.balance !== null ? creditsPayload.balance.toLocaleString() : '—' }}
+            </div>
             <div class="stat-change">
               <template v-if="!creditsPayload">Loading…</template>
+              <template v-else-if="creditsPayload.credits_source === 'agency'">Provided by your agency</template>
+              <template v-else-if="creditsPayload.balance <= 0 && creditsPayload.credits_source === 'allocated'">Out of credits — ask your agency for more</template>
               <template v-else-if="creditsPayload.balance <= 0">No credits — upgrade to continue</template>
+              <template v-else-if="creditsPayload.credits_source === 'allocated'">Allocated by your agency</template>
               <template v-else-if="creditsPayload.plan_monthly_allocation > 0">of {{ creditsPayload.plan_monthly_allocation.toLocaleString() }} this month</template>
               <template v-else>Free tier — {{ creditsPayload.balance }} remaining</template>
             </div>

@@ -42,7 +42,8 @@ class ClientWorkspaceTest extends TestCase
             $t->timestamps();
         });
         Schema::create('projects', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable(); $t->timestamps();
+            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
+            $t->string('primary_language')->nullable(); $t->timestamps();
         });
         // The ledger write is rescued, so a missing column fails silently —
         // mirror the real columns or these assertions test nothing.
@@ -54,6 +55,27 @@ class ClientWorkspaceTest extends TestCase
             $t->string('operation'); $t->integer('credits'); $t->integer('balance_after')->nullable();
             $t->decimal('upstream_cost_usd', 12, 6)->nullable();
             $t->json('metadata')->nullable(); $t->timestamps();
+        });
+        Schema::create('scenes', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('project_id')->nullable();
+            $t->float('duration_seconds')->default(0); $t->timestamps();
+        });
+        Schema::create('export_jobs', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('project_id')->nullable();
+            $t->string('status')->nullable(); $t->timestamp('completed_at')->nullable(); $t->timestamps();
+        });
+        Schema::create('channels', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
+            $t->string('status')->nullable(); $t->timestamps();
+        });
+        Schema::create('voice_profiles', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
+            $t->boolean('is_cloned')->default(false); $t->timestamps();
+        });
+        Schema::create('assets', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
+            $t->string('status')->nullable(); $t->unsignedBigInteger('size_bytes')->nullable();
+            $t->timestamps();
         });
         Schema::create('brand_kits', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('workspace_id');
@@ -683,6 +705,118 @@ class ClientWorkspaceTest extends TestCase
         $this->assertArrayNotHasKey('viewers', $row, 'a hundred members must not ride inside the list');
         $this->assertSame('pooled', $row['funding_mode']);
         $this->assertNull($row['credits'], 'a pooled client has no balance of its own');
+    }
+
+
+    public function test_funding_a_client_is_not_the_client_spending(): void
+    {
+        // The bug this pins: adding 250 credits to a client showed up as 250
+        // spent this month, so an agency was told a client it had just topped
+        // up had already burned the money.
+        $a = $this->agency(credits: 20000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+
+        $this->ctrl()->fund($this->req($u, ['amount' => 250]), (int) $client->getKey());
+
+        $this->assertSame(0, app(CreditService::class)->spentThisMonth((int) $client->getKey()));
+
+        $body = $this->ctrl()->index($this->req($u, [], 'GET'))->getData(true)['data'];
+        $row = collect($body['clients'])->firstWhere('id', (int) $client->getKey());
+        $this->assertSame(0, $row['spent_this_month'], 'funding is a transfer, not a charge');
+        $this->assertSame(250, $row['credits'], 'and it did arrive');
+    }
+
+    public function test_taking_credits_back_is_not_spend_either(): void
+    {
+        $a = $this->agency(credits: 9000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        $this->ctrl()->fund($this->req($u, ['amount' => 1000]), (int) $client->getKey());
+        $this->ctrl()->fund($this->req($u, ['amount' => -400]), (int) $client->getKey());
+
+        $this->assertSame(0, app(CreditService::class)->spentThisMonth((int) $client->getKey()));
+    }
+
+    public function test_real_work_still_counts_as_spend_alongside_funding(): void
+    {
+        // The fix must not suppress the number it was meant to correct.
+        $a = $this->agency(credits: 9000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        $this->ctrl()->fund($this->req($u, ['amount' => 1000]), (int) $client->getKey());
+        app(CreditService::class)->deduct((int) $client->getKey(), 120, 'render');
+
+        $this->assertSame(120, app(CreditService::class)->spentThisMonth((int) $client->getKey()));
+    }
+
+    public function test_a_pooled_client_is_not_shown_the_agencys_balance(): void
+    {
+        // setUp pins the tier list to the agency tiers; this one is about
+        // an enterprise agency, so it has to be allowed to own clients.
+        config(['workspaces.client_tiers' => ['agency', 'enterprise']]);
+        // A client inherits its agency's plan_tier for feature gating, which
+        // was quoting the agency's allowance back at it: an Enterprise agency's
+        // client was told it had 50,000 credits a month.
+        $a = $this->agency('enterprise', credits: 50000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+
+        $summary = app(\App\Services\WorkspaceUsageService::class)->summaryForWorkspace($client->fresh());
+
+        $this->assertNull($summary['credits_balance'], 'not ours to count');
+        $this->assertSame(0, $summary['credits_monthly']);
+        $this->assertSame('agency', $summary['credits_source']);
+        $this->assertSame('Client workspace', $summary['plan']);
+    }
+
+    public function test_a_funded_client_is_shown_its_own_balance(): void
+    {
+        // setUp pins the tier list to the agency tiers; this one is about
+        // an enterprise agency, so it has to be allowed to own clients.
+        config(['workspaces.client_tiers' => ['agency', 'enterprise']]);
+        $a = $this->agency('enterprise', credits: 50000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        $this->ctrl()->fund($this->req($u, ['amount' => 800]), (int) $client->getKey());
+
+        $summary = app(\App\Services\WorkspaceUsageService::class)->summaryForWorkspace($client->fresh());
+
+        $this->assertSame(800, $summary['credits_balance']);
+        $this->assertSame('allocated', $summary['credits_source']);
+    }
+
+
+    public function test_a_funded_clients_cap_still_fires(): void
+    {
+        // A funded client's charges land on its own row with no
+        // spent_by_workspace_id, so a query matching only the pooled shape saw
+        // nothing and the ceiling never applied.
+        $a = $this->agency(credits: 20000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        $this->ctrl()->fund($this->req($u, ['amount' => 5000]), (int) $client->getKey());
+        $client->fresh()->forceFill(['monthly_credit_cap' => 300])->save();
+
+        $credits = app(CreditService::class);
+        $this->assertTrue($credits->deduct((int) $client->getKey(), 300, 'render'));
+        $this->assertFalse($credits->deduct((int) $client->getKey(), 1, 'render'), 'capped, despite having 4,700 left');
+        $this->assertSame(300, $credits->spentThisMonth((int) $client->getKey()));
+    }
+
+    public function test_a_funded_clients_spend_reaches_the_agency_report(): void
+    {
+        $a = $this->agency(credits: 20000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        $this->ctrl()->fund($this->req($u, ['amount' => 2000]), (int) $client->getKey());
+        app(CreditService::class)->deduct((int) $client->getKey(), 450, 'render');
+
+        $body = $this->ctrl()->usage($this->req($u, [], 'GET'))->getData(true)['data'];
+        $row = collect($body['usage'])->firstWhere('workspace_id', (int) $client->getKey());
+
+        $this->assertSame(450, $row['credits'], 'a funded client is still the agency\'s client');
+        $this->assertSame(450, $body['total'], 'and funding itself is not in the total');
     }
 
 }

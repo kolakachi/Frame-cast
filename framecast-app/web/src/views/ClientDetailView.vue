@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
+import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { useAuthStore } from "../stores/auth";
 import { useWorkspaceStore } from "../stores/workspace";
 
@@ -21,6 +22,27 @@ const SEATS = [
   { value: "client_admin", label: "Admin", hint: "Full run of this workspace." },
 ];
 const seatLabel = (r) => SEATS.find((s) => s.value === r)?.label ?? "View only";
+
+// One dialog serves both destructive actions; the browser's confirm() box
+// cannot be styled, cannot say what it is about, and looks like a warning
+// from the browser rather than from the product.
+const confirmState = ref(null);
+const confirmPending = ref(false);
+
+function ask(config) {
+  confirmState.value = config;
+}
+
+async function confirmYes() {
+  if (!confirmState.value || confirmPending.value) return;
+  confirmPending.value = true;
+  try {
+    await confirmState.value.run();
+    confirmState.value = null;
+  } finally {
+    confirmPending.value = false;
+  }
+}
 
 // ── Credits ────────────────────────────────────────────────────────────
 const fundAmount = ref("");
@@ -42,13 +64,21 @@ async function move(sign) {
   }
 }
 
-async function repool() {
-  if (!window.confirm("Return this client's remaining credits and put it back on your shared balance?")) return;
-  try {
-    await workspaceStore.unfundClient(clientId.value);
-  } catch {
-    fundError.value = "Could not move that client back to the shared balance.";
-  }
+function repool() {
+  const left = (client.value?.credits ?? 0).toLocaleString();
+  ask({
+    title: "Back to the shared balance?",
+    message: `${left} unspent credits return to your balance, and this client starts drawing on it instead. Nothing it has already made is affected.`,
+    confirmLabel: "Move to shared",
+    destructive: false,
+    run: async () => {
+      try {
+        await workspaceStore.unfundClient(clientId.value);
+      } catch {
+        fundError.value = "Could not move that client back to the shared balance.";
+      }
+    },
+  });
 }
 
 // ── Cap ────────────────────────────────────────────────────────────────
@@ -119,14 +149,21 @@ async function changeRole(m, role) {
   }
 }
 
-async function remove(m) {
-  if (!window.confirm(`Remove ${m.email}'s access to this workspace?`)) return;
-  try {
-    await workspaceStore.removeViewer(clientId.value, m.id);
-    await loadMembers(pagination.value.current_page);
-  } catch {
-    memberError.value = "Could not remove that person.";
-  }
+function remove(m) {
+  ask({
+    title: "Remove access?",
+    message: `${m.email} will be signed out and will no longer see this workspace. Their work stays where it is, and you can invite them again later.`,
+    confirmLabel: "Remove access",
+    destructive: true,
+    run: async () => {
+      try {
+        await workspaceStore.removeViewer(clientId.value, m.id);
+        await loadMembers(pagination.value.current_page);
+      } catch {
+        memberError.value = "Could not remove that person.";
+      }
+    },
+  });
 }
 
 onMounted(async () => {
@@ -261,6 +298,17 @@ onMounted(async () => {
       </div>
       <div v-else class="body"><div class="empty">Loading…</div></div>
     </div>
+
+    <ConfirmDialog
+      :open="!!confirmState"
+      :title="confirmState?.title ?? ''"
+      :message="confirmState?.message ?? ''"
+      :confirm-label="confirmState?.confirmLabel ?? 'Confirm'"
+      :destructive="confirmState?.destructive ?? false"
+      :pending="confirmPending"
+      @close="confirmPending || (confirmState = null)"
+      @confirm="confirmYes"
+    />
   </div>
 </template>
 

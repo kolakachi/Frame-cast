@@ -465,6 +465,15 @@ class CreditService
      * get it wrong one at a time.
      */
     /**
+     * Operations that move credits rather than consume them.
+     *
+     * Funding a client debits the agency and credits the client; neither side
+     * has spent anything, and counting either as spend told an agency that a
+     * client it had just topped up had already burned the money.
+     */
+    public const NON_SPEND_PREFIXES = ['grant:', 'transfer:'];
+
+    /**
      * Move credits between an agency and one of its clients.
      *
      * A positive amount funds the client, a negative one takes credits back.
@@ -547,7 +556,7 @@ class CreditService
             CreditLedgerEntry::query()->create([
                 'workspace_id' => $agency->getKey(),
                 'spent_by_workspace_id' => $client->getKey(),
-                'operation' => $amount > 0 ? 'client_funding' : 'grant:client_refund',
+                'operation' => $amount > 0 ? 'transfer:client_funding' : 'transfer:client_reclaim',
                 'credits' => abs($amount),
                 'balance_after' => $this->balance((int) $agency->getKey()),
                 'metadata' => ['client_workspace_id' => (int) $client->getKey(), 'direction' => $amount > 0 ? 'out' : 'in'],
@@ -556,7 +565,7 @@ class CreditService
             ]);
             CreditLedgerEntry::query()->create([
                 'workspace_id' => $client->getKey(),
-                'operation' => $amount > 0 ? 'grant:agency_funding' : 'agency_reclaim',
+                'operation' => $amount > 0 ? 'transfer:agency_funding' : 'transfer:agency_reclaim',
                 'credits' => abs($amount),
                 'balance_after' => (int) $client->fresh()->creditsBalance(),
                 'metadata' => ['agency_workspace_id' => (int) $agency->getKey(), 'direction' => $amount > 0 ? 'in' : 'out'],
@@ -568,6 +577,16 @@ class CreditService
         return [true, 'ok'];
     }
 
+    /** Narrow a credit_ledger query to charges that actually consumed credits. */
+    public static function onlySpend(\Illuminate\Database\Query\Builder $query): \Illuminate\Database\Query\Builder
+    {
+        foreach (self::NON_SPEND_PREFIXES as $prefix) {
+            $query->where('operation', 'not like', $prefix.'%');
+        }
+
+        return $query;
+    }
+
     /**
      * Whether this charge would take a client past the ceiling its agency set.
      *
@@ -577,12 +596,18 @@ class CreditService
      */
     private function wouldBreachCap(int $spentBy, int $poolId, int $amount): bool
     {
-        if ($spentBy === $poolId) {
+        $client = Workspace::query()->whereKey($spentBy)->first();
+
+        // Having a parent is what makes a workspace a client, and only a client
+        // has a ceiling. Asking instead whether the spender differed from the
+        // pool looked equivalent and was not: a funded client IS its own pool,
+        // so that test skipped the check for exactly the clients most likely to
+        // have a ceiling set on them.
+        if (! $client || ! $client->parent_workspace_id) {
             return false;
         }
 
-        $client = Workspace::query()->whereKey($spentBy)->first();
-        $cap = $client?->monthly_credit_cap;
+        $cap = $client->monthly_credit_cap;
         if (! $cap) {
             return false;
         }
@@ -601,12 +626,16 @@ class CreditService
     {
         $poolId ??= $this->poolId($clientWorkspaceId);
 
-        return (int) DB::table('credit_ledger')
-            ->where('workspace_id', $poolId)
-            ->where('spent_by_workspace_id', $clientWorkspaceId)
-            ->where('operation', 'not like', 'grant:%')
-            ->where('created_at', '>=', now()->startOfMonth())
-            ->sum('credits');
+        // Two row shapes mean the same thing, and only matching one of them
+        // meant a funded client's spend was invisible — so its cap could never
+        // fire. A pooled client's charge lands on the agency with the client in
+        // spent_by_workspace_id; a funded client's lands on itself with that
+        // column null, because there is no one else it could have been.
+        $q = DB::table('credit_ledger')
+            ->whereRaw('COALESCE(spent_by_workspace_id, workspace_id) = ?', [$clientWorkspaceId])
+            ->where('created_at', '>=', now()->startOfMonth());
+
+        return (int) self::onlySpend($q)->sum('credits');
     }
 
     private function poolId(int $workspaceId): int

@@ -31,8 +31,8 @@ class AdminController extends Controller
         return response()->json([
             'data' => [
                 'summary' => [
-                    'total_users' => User::query()->count(),
-                    'active_users' => User::query()->where('status', 'active')->count(),
+                    'total_users' => User::query()->whereNotIn('role', array_keys(User::CLIENT_SEATS))->count(),
+                    'active_users' => User::query()->whereNotIn('role', array_keys(User::CLIENT_SEATS))->where('status', 'active')->count(),
                     'total_workspaces' => Workspace::query()->count(),
                     'total_projects' => Project::query()->count(),
                     'exports_today' => ExportJob::query()->where('status', 'completed')->whereDate('completed_at', today())->count(),
@@ -84,7 +84,12 @@ class AdminController extends Controller
             ->groupBy('projects.workspace_id')
             ->pluck('cnt', 'projects.workspace_id');
 
+        // Client seats are people an agency invited into its own client
+        // workspace. They are not our customers: counting them inflates the
+        // user list, and mailing them would be writing to somebody else's
+        // client about a product they did not buy.
         $query = User::query()
+            ->whereNotIn('role', array_keys(User::CLIENT_SEATS))
             ->with('workspace:id,name,plan_tier,status')
             ->when($validated['search'] ?? null, function ($q, $s): void {
                 $q->where(function ($q) use ($s): void {
@@ -796,6 +801,76 @@ class AdminController extends Controller
             ->sortByDesc('spend_month_usd')
             ->values()
             ->all();
+    }
+
+    /**
+     * Every client workspace across every agency, with who is in them.
+     *
+     * Kept out of the users and workspaces lists on purpose — a client seat is
+     * somebody else's customer's colleague, and mixing them in overstated both
+     * counts — so this is where they are actually inspectable.
+     */
+    public function clientWorkspaces(Request $request): JsonResponse
+    {
+        $perPage = in_array((int) $request->query('per_page'), [20, 50, 100], true)
+            ? (int) $request->query('per_page') : 50;
+        $search = trim((string) $request->query('search', ''));
+
+        $paginator = Workspace::query()
+            ->whereNotNull('parent_workspace_id')
+            ->with('parent:id,name,plan_tier')
+            ->withCount(['projects'])
+            ->when($search !== '', fn ($q) => $q->where(function ($w) use ($search): void {
+                $w->where('name', 'like', "%{$search}%")->orWhere('client_label', 'like', "%{$search}%");
+            }))
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', max(1, (int) $request->query('page', 1)));
+
+        $ids = collect($paginator->items())->pluck('id');
+        $members = User::query()
+            ->whereIn('workspace_id', $ids)
+            ->whereIn('role', array_keys(User::CLIENT_SEATS))
+            ->get(['id', 'workspace_id', 'email', 'role', 'last_seen_at'])
+            ->groupBy('workspace_id');
+
+        $spend = DB::table('credit_ledger')
+            ->selectRaw('spent_by_workspace_id, SUM(credits) AS credits')
+            ->whereIn('spent_by_workspace_id', $ids)
+            ->where('created_at', '>=', now()->startOfMonth())
+            ->tap(fn ($q) => CreditService::onlySpend($q))
+            ->groupBy('spent_by_workspace_id')
+            ->pluck('credits', 'spent_by_workspace_id');
+
+        return response()->json([
+            'data' => [
+                'clients' => collect($paginator->items())->map(fn (Workspace $w): array => [
+                    'id' => (int) $w->getKey(),
+                    'name' => $w->client_label ?: $w->name,
+                    'agency_id' => (int) $w->parent_workspace_id,
+                    'agency_name' => $w->parent?->name,
+                    'agency_tier' => $w->parent?->plan_tier,
+                    'funding_mode' => (string) ($w->funding_mode ?: Workspace::FUNDING_POOLED),
+                    'credits' => $w->isFunded() ? (int) $w->creditsBalance() : null,
+                    'monthly_credit_cap' => $w->monthly_credit_cap ? (int) $w->monthly_credit_cap : null,
+                    'spent_this_month' => (int) ($spend[$w->getKey()] ?? 0),
+                    'projects_count' => (int) ($w->projects_count ?? 0),
+                    'status' => $w->status,
+                    'created_at' => $w->created_at?->toIso8601String(),
+                    'members' => ($members[$w->getKey()] ?? collect())->map(fn (User $u): array => [
+                        'id' => (int) $u->getKey(),
+                        'email' => $u->email,
+                        'role' => $u->role,
+                        'last_seen_at' => $u->last_seen_at?->toIso8601String(),
+                    ])->values()->all(),
+                ])->all(),
+            ],
+            'meta' => ['pagination' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ]],
+        ]);
     }
 
     private function serializeWorkspace(Workspace $workspace): array
