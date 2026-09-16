@@ -49,6 +49,18 @@ if (posthogKey) {
       // Don't capture form fields, password inputs, or any text content from
       // <textarea> / <input> — we want event names, not user content.
       autocapture: { dom_event_allowlist: ['click', 'submit'] },
+      // Web vitals off, network timing kept. PostHog bundles Google's
+      // web-vitals, and its soft-navigation / bfcache path throws
+      // "Cannot read properties of undefined (reading 'startTime')" inside
+      // reportAllChanges — third-party code we cannot patch. The throw is
+      // harmless (it happens in an observer callback and breaks nothing) but
+      // it is uncaught, so it lands in the console of anyone debugging and
+      // would be noise in browser error reporting later.
+      //
+      // Nothing we use depends on it: pageviews, autocapture, pageleave and
+      // session replay are all unaffected. Set web_vitals back to true if
+      // Core Web Vitals dashboards ever become something we act on.
+      capture_performance: { web_vitals: false, network_timing: true },
       // Session replay — the richest zero-ask feedback there is. Recording
       // only actually starts if "Record user sessions" is ALSO enabled in the
       // PostHog project settings; this side masks every input and anything
