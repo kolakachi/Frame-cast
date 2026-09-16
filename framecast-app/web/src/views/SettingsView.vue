@@ -784,7 +784,10 @@ onMounted(() => {
         <!-- ── Right pane ── -->
         <div class="surface-card settings-content-card">
 
-          <!-- Brand Kits -->
+          <!-- One chain for the whole right pane. Usage and Billing is its
+               final v-else, so a branch that opens its own v-if instead of
+               joining here renders *alongside* billing rather than instead of
+               it — which is exactly what Client Workspaces did. -->
           <div v-if="activeSection === 'clients'">
             <div class="settings-section-title">Client Workspaces</div>
             <div class="settings-section-desc">
@@ -878,7 +881,7 @@ onMounted(() => {
             </p>
           </div>
 
-          <div v-if="activeSection === 'brand'">
+          <div v-else-if="activeSection === 'brand'">
             <div class="section-title">Brand Kit Defaults</div>
             <div class="settings-section-desc">Reusable color, font, and voice presets applied across channels and series.</div>
 
