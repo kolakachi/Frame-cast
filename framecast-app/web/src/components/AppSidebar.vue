@@ -40,9 +40,6 @@ async function switchWorkspace(id) {
   await workspaceStore.switchTo(id);
 }
 
-function goClients() {
-  router.push({ name: "clients" });
-}
 const showWsPopover = ref(false);
 const showUserPopover = ref(false);
 const isAdmin = computed(() =>
@@ -226,10 +223,6 @@ onBeforeUnmount(() => {
           <span v-if="w.is_agency" class="ws-client-tag">agency</span>
           <span v-else-if="w.id === activeWorkspaceId" class="ws-client-tag">here</span>
         </button>
-        <button class="ws-client ws-client-add" type="button" @click="goClients">
-          <span class="ws-client-dot">+</span>
-          <span class="ws-client-n">Manage clients</span>
-        </button>
         <!-- One balance, stated once: a per-client figure would be a fiction. -->
         <div v-if="workspaceStore.sharedCredits !== null" class="ws-clients-pool">
           {{ workspaceStore.sharedCredits.toLocaleString() }} credits shared across all
@@ -329,6 +322,33 @@ onBeforeUnmount(() => {
           <rect x="14" y="14" width="7" height="7" rx="1"></rect>
         </svg>
         Dashboard
+      </button>
+      <!-- Only agencies and enterprise can own client workspaces, so only they
+           are shown the door to them. canOwnClients comes from the server. -->
+      <button
+        v-if="workspaceStore.canOwnClients"
+        :class="['nav-item', activePage === 'clients' || activePage === 'client-detail' ? 'active' : '']"
+        data-tooltip="Clients"
+        type="button"
+        @click="nav('clients')"
+      >
+        <svg
+          class="nav-icon"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"></path>
+          <circle cx="10" cy="7.5" r="3.5"></circle>
+          <path d="M20 20v-1.5a3.5 3.5 0 0 0-2.6-3.4M15.4 4.6a3.5 3.5 0 0 1 0 5.8"></path>
+        </svg>
+        Clients
+        <span v-if="(workspaceStore.clients ?? []).length" class="nav-count">{{
+          (workspaceStore.clients ?? []).length
+        }}</span>
       </button>
       <button
         :class="['nav-item', activePage === 'channels' ? 'active' : '']"

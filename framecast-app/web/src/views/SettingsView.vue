@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { useWorkspaceStore } from '../stores/workspace'
 import api from '../services/api'
 import { allTimezones, detectedTimezone, zoneLabel } from '../composables/timezones'
 import AppSidebar from '../components/AppSidebar.vue'
@@ -340,116 +339,6 @@ const activeBrandKit = computed(() =>
 // ── Active nav ────────────────────────────────────────────
 const activeSection = ref('brand')
 
-// ── Client workspaces (agencies only) ─────────────────────
-const workspaceStore = useWorkspaceStore()
-const newClientName = ref('')
-// A workspace with no spend in the window is a real answer, not a missing one.
-const EMPTY_SPEND = { credits: 0, operations: 0, projects: 0, share_percent: 0 }
-function clientSpend(id) {
-  return workspaceStore.clientUsage?.[id] ?? EMPTY_SPEND
-}
-
-// Which client row has its invite box open, and what is being typed into it.
-const inviteOpenFor = ref(null)
-const inviteEmail = ref('')
-const inviteRole = ref('client')
-const inviteBusy = ref(false)
-const inviteError = ref('')
-
-// What each seat may do, in the agency's words rather than the code's.
-const SEATS = [
-  { value: 'client',        label: 'View only', hint: 'Watch and approve. Cannot change anything.' },
-  { value: 'client_editor', label: 'Edit',      hint: 'Make and change videos. Spends your credits.' },
-  { value: 'client_admin',  label: 'Admin',     hint: 'Full run of this workspace.' },
-]
-const seatLabel = (r) => SEATS.find((s) => s.value === r)?.label ?? 'View only'
-
-function toggleInvite(id) {
-  inviteOpenFor.value = inviteOpenFor.value === id ? null : id
-  inviteEmail.value = ''
-  inviteRole.value = 'client'
-  inviteError.value = ''
-}
-
-async function sendInvite(w) {
-  const email = inviteEmail.value.trim()
-  if (!email || inviteBusy.value) return
-  inviteBusy.value = true
-  inviteError.value = ''
-  try {
-    await workspaceStore.inviteViewer(w.id, email, inviteRole.value)
-    inviteEmail.value = ''
-    inviteOpenFor.value = null
-  } catch (e) {
-    inviteError.value = e.response?.data?.error?.message ?? 'Could not send that invite.'
-  } finally {
-    inviteBusy.value = false
-  }
-}
-
-async function revokeViewer(w, viewer) {
-  if (!window.confirm(`Remove ${viewer.email}'s access to ${w.client_label || w.name}?`)) return
-  try {
-    await workspaceStore.removeViewer(w.id, viewer.id)
-  } catch {
-    inviteError.value = 'Could not remove that person.'
-  }
-}
-
-// Which client's ceiling is being edited, and the value being typed.
-const capOpenFor = ref(null)
-const capValue = ref('')
-
-function toggleCap(w) {
-  capOpenFor.value = capOpenFor.value === w.id ? null : w.id
-  capValue.value = w.monthly_credit_cap ?? ''
-}
-
-async function saveCap(w) {
-  const raw = String(capValue.value).trim()
-  const cap = raw === '' ? null : Math.max(1, parseInt(raw, 10) || 0)
-  try {
-    await workspaceStore.setCap(w.id, cap)
-    capOpenFor.value = null
-  } catch {
-    inviteError.value = 'Could not save that cap.'
-  }
-}
-
-// Percentage of the ceiling used, clamped so an over-cap client still renders.
-function capPct(w) {
-  if (!w.monthly_credit_cap) return 0
-  return Math.min(100, Math.round(((w.spent_this_month ?? 0) / w.monthly_credit_cap) * 100))
-}
-
-const clientBusy = ref(false)
-const clientError = ref('')
-
-async function addClient() {
-  const name = newClientName.value.trim()
-  if (!name || clientBusy.value) return
-  clientBusy.value = true
-  clientError.value = ''
-  try {
-    await workspaceStore.createClient(name)
-    newClientName.value = ''
-  } catch (e) {
-    clientError.value = e.response?.data?.error?.message ?? 'Could not create that workspace.'
-  } finally {
-    clientBusy.value = false
-  }
-}
-
-async function removeClient(w) {
-  // Archive rather than delete, so this is a reversible answer to a mis-click.
-  if (!window.confirm(`Archive ${w.client_label || w.name}? Its work is kept and can be restored.`)) return
-  try {
-    await workspaceStore.archiveClient(w.id)
-  } catch {
-    clientError.value = 'Could not archive that workspace.'
-  }
-}
-
 // ── Connected Accounts ────────────────────────────────────
 const socialAccounts    = ref([])
 const socialLoading     = ref(false)
@@ -783,10 +672,6 @@ onMounted(() => {
   if (route.query.section) {
     activeSection.value = route.query.section
     if (activeSection.value === 'usage') loadCreditHistory()
-    if (activeSection.value === 'clients') {
-      workspaceStore.loadClients()
-      workspaceStore.loadClientUsage(workspaceStore.clientUsageDays)
-    }
   }
   loadSettings()
   loadBillingStatus()
@@ -812,7 +697,6 @@ onMounted(() => {
             <div :class="['settings-tab', activeSection === 'brand'    ? 'active' : '']" @click="activeSection = 'brand'">Brand Kits</div>
             <div :class="['settings-tab', activeSection === 'account'  ? 'active' : '']" @click="activeSection = 'account'">Account</div>
             <div :class="['settings-tab', activeSection === 'accounts' ? 'active' : '']" @click="activeSection = 'accounts'">Connected Accounts</div>
-            <div v-if="workspaceStore.canOwnClients" :class="['settings-tab', activeSection === 'clients' ? 'active' : '']" @click="activeSection = 'clients'">Client Workspaces</div>
             <div :class="['settings-tab', activeSection === 'usage'    ? 'active' : '']" @click="activeSection = 'usage'; loadCreditHistory()">Usage and Billing</div>
           </div>
         </div>
@@ -824,16 +708,7 @@ onMounted(() => {
                final v-else, so a branch that opens its own v-if instead of
                joining here renders *alongside* billing rather than instead of
                it — which is exactly what Client Workspaces did. -->
-          <div v-if="activeSection === 'clients'">
-            <div class="settings-section-title">Client Workspaces</div>
-            <div class="settings-section-desc">
-              Client workspaces have their own area now — a hundred people on one client
-              was never going to fit inside a settings tab.
-            </div>
-            <router-link class="btn btn-primary" :to="{ name: 'clients' }">Open Clients →</router-link>
-          </div>
-
-          <div v-else-if="activeSection === 'brand'">
+          <div v-if="activeSection === 'brand'">
             <div class="section-title">Brand Kit Defaults</div>
             <div class="settings-section-desc">Reusable color, font, and voice presets applied across channels and series.</div>
 
@@ -1442,119 +1317,11 @@ onMounted(() => {
 
 <style scoped>
 /* Client workspaces */
-.cw-add { display: flex; gap: 10px; margin: 14px 0 6px; flex-wrap: wrap; }
-.cw-add .settings-input { flex: 1; min-width: 220px; }
-.cw-error { color: #fca5a5; font-size: 12.5px; margin-bottom: 8px; }
-.cw-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.cw-row {
-  /* Wrapping is load-bearing, not a nicety: the invited-clients block below is
-     a 100%-basis flex child, and without wrap it cannot take its own line — it
-     squeezes the name column to one word per line and pushes the invite field
-     out through the right edge of the card. */
-  display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px;
-  background: var(--color-bg-card, #17171f); border: 1px solid var(--color-border, #2a2a36);
-  border-radius: 10px;
-}
-.cw-dot {
-  width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center;
-  background: var(--color-bg-elevated, #1d1d28); border: 1px solid var(--color-border, #2a2a36);
-  font-weight: 700; font-size: 13px;
-}
-.cw-meta { flex: 1 1 200px; min-width: 0; }
-.cw-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-.cw-sub { font-size: 11.5px; color: var(--color-text-muted, #6a6a7c); margin-top: 2px; }
-.cw-tag {
-  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
-  color: var(--color-text-muted, #6a6a7c); border: 1px solid var(--color-border, #2a2a36);
-  padding: 2px 7px; border-radius: 99px;
-}
-.cw-tag-here { color: var(--color-accent, #ff6b35); border-color: #ff6b3555; }
-.cw-actions { display: flex; gap: 8px; flex: 0 0 auto; flex-wrap: wrap; }
 
-/* Spend window picker. */
-.cw-window { display: flex; align-items: center; gap: 6px; margin: 14px 0 2px; flex-wrap: wrap; }
-.cw-window-label { font-size: 11.5px; color: var(--color-text-muted, #6a6a7c); margin-right: 2px; }
-.cw-window-btn {
-  padding: 3px 9px; border-radius: 6px; font-size: 11.5px; cursor: pointer;
-  border: 1px solid var(--color-border, #23232d);
-  background: var(--color-bg-card, #17171e);
-  color: var(--color-text-secondary, #a8a9b4);
-}
-.cw-window-btn.active {
-  border-color: #ff6b3555; background: rgba(255, 107, 53, 0.12);
-  color: var(--color-accent, #ff6b35);
-}
 
-/* Right-aligned figure per row. Tabular so the column reads as a column. */
-.cw-spend { text-align: right; flex: 0 0 auto; margin-right: 4px; }
-.cw-spend-n {
-  font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
-  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
-}
-.cw-spend-l { font-size: 10.5px; color: var(--color-text-muted, #6a6a7c); margin-top: 1px; white-space: nowrap; }
 
-/* Invited clients, listed under the workspace they can see. */
-.cw-cap {
-  flex: 1 0 100%;
-  order: 4;
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.cw-cap-line { display: flex; align-items: center; gap: 8px; }
-.cw-cap-text { font-size: 11.5px; color: var(--color-text-secondary, #a8a9b4); }
-.cw-cap-warn {
-  font-size: 10px; padding: 1px 6px; border-radius: 4px;
-  background: rgba(224, 176, 74, 0.14); color: #e0b04a;
-  border: 1px solid rgba(224, 176, 74, 0.3);
-}
-.cw-cap-bar {
-  height: 4px; border-radius: 2px; overflow: hidden;
-  background: var(--color-bg-sunken, #0d0d12);
-  border: 1px solid var(--color-border, #23232d);
-}
-.cw-cap-fill { height: 100%; background: var(--color-accent, #ff6b35); transition: width 0.2s ease; }
-.cw-cap-fill.hot { background: #e0b04a; }
-.cw-cap-none { font-size: 11px; color: var(--color-text-muted, #6a6a7c); }
-.cw-cap-edit { display: flex; gap: 8px; flex-wrap: wrap; }
-.cw-cap-edit .settings-input { flex: 1; min-width: 200px; }
 
-.cw-viewers {
-  flex: 1 0 100%;
-  /* Always the last thing in the row. The narrow layout gives the spend figure
-     its own line via order:3, which would otherwise print the credits below
-     the invite box instead of beside the client it belongs to. */
-  order: 5;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--color-border, #23232d);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.cw-viewer { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.cw-viewer-mail { color: var(--color-text-secondary, #a8a9b4); }
-.cw-viewer-seen { font-size: 10.5px; color: var(--color-text-muted, #6a6a7c); }
-.cw-viewer-x {
-  margin-left: auto; cursor: pointer; background: none; border: none;
-  color: var(--color-text-muted, #6a6a7c); font-size: 12px; padding: 2px 6px; border-radius: 5px;
-}
-.cw-viewer-x:hover { color: #fca5a5; background: rgba(224, 104, 95, 0.12); }
-.cw-invite { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
-.cw-invite .settings-input { flex: 1; min-width: 180px; }
-.cw-invite-role { flex: 0 0 auto !important; min-width: 120px !important; }
-.cw-invite-hint { flex: 1 0 100%; font-size: 11px; color: var(--color-text-muted, #6a6a7c); }
-.cw-viewer-role {
-  font-size: 10px; padding: 1px 6px; border-radius: 4px;
-  border: 1px solid var(--color-border, #2a2a36);
-  color: var(--color-text-secondary, #a8a9b4); white-space: nowrap;
-}
 
-@media (max-width: 860px) {
-  .cw-spend { text-align: left; margin: 6px 0 0; order: 3; flex: 1 0 100%; }
-  .cw-spend-l { display: inline; }
-}
 
 .page-pick-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; max-height: 320px; overflow-y: auto; }
 .page-pick { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #25252f; background: #14141c; color: #ececf3; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: .15s; }
