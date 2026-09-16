@@ -54,13 +54,13 @@ class ClientViewerAccessTest extends TestCase
     }
 
     /** @return array{0: User, 1: Workspace} */
-    private function viewer(): array
+    private function viewer(string $role = User::ROLE_CLIENT_VIEWER): array
     {
         $agency = Workspace::query()->create(['name' => 'Northstar', 'plan_tier' => 'agency', 'status' => 'active']);
         $client = Workspace::query()->create(['name' => 'Acme', 'plan_tier' => 'agency', 'status' => 'active']);
         $client->forceFill(['parent_workspace_id' => $agency->getKey()])->save();
 
-        $u = User::query()->create(['email' => 'ops@acme.test', 'name' => 'Ops', 'role' => User::ROLE_CLIENT_VIEWER, 'status' => 'active']);
+        $u = User::query()->create(['email' => 'ops@acme.test', 'name' => 'Ops', 'role' => $role, 'status' => 'active']);
         $u->forceFill(['workspace_id' => $client->getKey()])->save();
 
         return [$u->fresh(), $client->fresh()];
@@ -145,4 +145,55 @@ class ClientViewerAccessTest extends TestCase
         $this->assertSame(200, $this->guard($owner->fresh(), 'POST', 'api/v1/projects'));
         $this->assertSame(200, $this->guard($owner->fresh(), 'GET', 'api/v1/workspaces/clients'));
     }
+
+    // ── Editor and admin seats ──────────────────────────────────────────
+
+    public function test_an_editor_can_make_and_change_videos(): void
+    {
+        // The inverse of the viewer rule: everything that is not the agency's
+        // own business. Enumerating every endpoint that makes a video would be
+        // a list nobody keeps correct, and the first one forgotten is a paid-
+        // for feature the customer cannot use.
+        [$u] = $this->viewer(User::ROLE_CLIENT_EDITOR);
+
+        $this->assertSame(200, $this->guard($u, 'POST', 'api/v1/projects'));
+        $this->assertSame(200, $this->guard($u, 'PATCH', 'api/v1/scenes/9'));
+        $this->assertSame(200, $this->guard($u, 'POST', 'api/v1/exports'));
+        $this->assertSame(200, $this->guard($u, 'DELETE', 'api/v1/projects/3'));
+    }
+
+    public function test_an_admin_can_too(): void
+    {
+        [$u] = $this->viewer(User::ROLE_CLIENT_ADMIN);
+        $this->assertSame(200, $this->guard($u, 'POST', 'api/v1/projects'));
+    }
+
+    public function test_no_seat_reaches_the_agency_however_senior(): void
+    {
+        // The boundary that does not move with the seat. Admin is admin OF a
+        // client workspace, not of the agency that owns it.
+        foreach ([User::ROLE_CLIENT_VIEWER, User::ROLE_CLIENT_EDITOR, User::ROLE_CLIENT_ADMIN] as $role) {
+            [$u] = $this->viewer($role);
+
+            $this->assertSame(403, $this->guard($u, 'GET', 'api/v1/workspaces/clients'), $role);
+            $this->assertSame(403, $this->guard($u, 'GET', 'api/v1/workspaces/clients/usage'), $role);
+            $this->assertSame(403, $this->guard($u, 'GET', 'api/v1/admin/workspaces'), $role);
+            $this->assertSame(403, $this->guard($u, 'POST', 'api/v1/billing/checkout'), $role);
+        }
+    }
+
+    public function test_every_seat_keeps_its_own_account(): void
+    {
+        foreach ([User::ROLE_CLIENT_VIEWER, User::ROLE_CLIENT_EDITOR, User::ROLE_CLIENT_ADMIN] as $role) {
+            [$u] = $this->viewer($role);
+            $this->assertSame(200, $this->guard($u, 'PATCH', 'api/v1/me'), $role);
+        }
+    }
+
+    public function test_a_viewer_is_still_refused_what_an_editor_may_do(): void
+    {
+        [$u] = $this->viewer(User::ROLE_CLIENT_VIEWER);
+        $this->assertSame(403, $this->guard($u, 'POST', 'api/v1/projects'));
+    }
+
 }

@@ -82,7 +82,7 @@ class AuthenticateWithJwt
             ], 403);
         }
 
-        if ($user->isClientViewer() && ($deny = $this->denyClientViewer($request, $user, $active))) {
+        if ($user->isClientSeat() && ($deny = $this->denyClientSeat($request, $user, $active))) {
             return $deny;
         }
 
@@ -102,18 +102,24 @@ class AuthenticateWithJwt
     }
 
     /**
-     * What a client viewer may do, stated as what it may NOT.
+     * What a client seat may do, stated as what it may NOT.
      *
-     * This role exists so an agency can show a client their own videos without
-     * handing over the agency's credit balance. The permission model is
-     * therefore fail-closed: safe methods pass, and every other method is
-     * refused unless it appears in the allowlist below. A new endpoint added
-     * next year is denied by default rather than quietly granted, which is the
-     * only property that makes a read-only role stay read-only.
+     * An agency hands out three seats on a client workspace: viewer reads and
+     * approves, editor also makes and changes videos, admin also runs the
+     * workspace. Every one of them spends the agency's credits rather than
+     * their own, so the boundary that never moves is the agency itself — no
+     * seat sees the roster, the switcher, billing or admin, whatever its
+     * level.
+     *
+     * Inside that boundary the model inverts by seat. A viewer is fail-closed:
+     * safe methods, plus a named few. An editor is the opposite — everything
+     * except the agency surfaces — because enumerating every endpoint that
+     * makes a video would be a list nobody could keep correct, and the first
+     * one forgotten would be a feature the customer paid for and cannot use.
      *
      * @return JsonResponse|null  a refusal, or null to allow
      */
-    private function denyClientViewer(Request $request, User $user, int $active): ?JsonResponse
+    private function denyClientSeat(Request $request, User $user, int $active): ?JsonResponse
     {
         // Pinned to the workspace they were invited to. A client is never an
         // agency, so the switching path that exists for agencies is not merely
@@ -123,12 +129,12 @@ class AuthenticateWithJwt
             return $this->unauthorized('User session is no longer valid.');
         }
 
-        // Agency-only surfaces, refused whatever the method. `homeWorkspace()`
-        // resolves a child to its parent, so without this a client listing
-        // clients would be handed the agency's whole roster.
+        // Agency-only surfaces, refused at every seat and whatever the method.
+        // `homeWorkspace()` resolves a child to its parent, so without this a
+        // client listing clients would be handed the agency's whole roster.
         foreach (['api/v1/workspaces/clients*', 'api/v1/workspaces/switch/*', 'api/v1/admin/*', 'api/v1/billing/*'] as $pattern) {
             if ($request->is($pattern)) {
-                return $this->forbiddenForClient();
+                return $this->forbiddenForClient($user);
             }
         }
 
@@ -141,29 +147,38 @@ class AuthenticateWithJwt
         // touches nothing the agency owns — and it is what "skip" on the
         // onboarding screen calls, so refusing it trapped every invited client
         // on that page behind a 403 with no way forward.
-        $allowed = [
-            'api/v1/me',
-            'api/v1/auth/logout',
-            'api/v1/auth/refresh',
-            'api/v1/feedback',
-            'api/v1/approvals/*/decide',
-        ];
-
-        foreach ($allowed as $pattern) {
+        foreach (['api/v1/me', 'api/v1/auth/logout', 'api/v1/auth/refresh', 'api/v1/feedback'] as $pattern) {
             if ($request->is($pattern)) {
                 return null;
             }
         }
 
-        return $this->forbiddenForClient();
+        // Editor and above: anything that is not the agency's own business.
+        if ($user->clientSeatLevel() >= User::CLIENT_SEATS[User::ROLE_CLIENT_EDITOR]) {
+            return null;
+        }
+
+        // Viewer: deciding on a video put in front of them, and nothing else.
+        if ($request->is('api/v1/approvals/*/decide')) {
+            return null;
+        }
+
+        return $this->forbiddenForClient($user);
     }
 
-    private function forbiddenForClient(): JsonResponse
+    private function forbiddenForClient(User $user): JsonResponse
     {
+        // Two different refusals wearing one status code: a viewer is being
+        // told their seat is read-only, an editor that the thing they reached
+        // for belongs to the agency and not to them.
+        $readOnly = $user->clientSeatLevel() < User::CLIENT_SEATS[User::ROLE_CLIENT_EDITOR];
+
         return response()->json([
             'error' => [
-                'code' => 'client_viewer_read_only',
-                'message' => 'Your access to this workspace is view-and-approve only. Ask the agency that invited you to make this change.',
+                'code' => $readOnly ? 'client_seat_read_only' : 'client_seat_forbidden',
+                'message' => $readOnly
+                    ? 'Your access to this workspace is view-and-approve only. Ask the agency that invited you to make this change.'
+                    : 'That belongs to the agency that invited you, not to this workspace.',
             ],
         ], 403);
     }

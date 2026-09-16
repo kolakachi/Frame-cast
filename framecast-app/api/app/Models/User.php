@@ -18,7 +18,23 @@ class User extends Authenticatable
      *
      * @var list<string>
      */
+    /**
+     * Seats an agency can hand out on one of its client workspaces.
+     *
+     * Ordered, and the order is the permission model: a seat may do everything
+     * the seat below it may. 'client' keeps its original spelling because it
+     * was already issued before the other two existed, and renaming a role
+     * string silently demotes everyone holding it.
+     */
     public const ROLE_CLIENT_VIEWER = 'client';
+    public const ROLE_CLIENT_EDITOR = 'client_editor';
+    public const ROLE_CLIENT_ADMIN = 'client_admin';
+
+    public const CLIENT_SEATS = [
+        self::ROLE_CLIENT_VIEWER => 0,
+        self::ROLE_CLIENT_EDITOR => 1,
+        self::ROLE_CLIENT_ADMIN => 2,
+    ];
 
     protected $fillable = [
         'workspace_id',
@@ -84,14 +100,26 @@ class User extends Authenticatable
     }
 
     /**
-     * A client of an agency, invited to watch their own workspace.
+     * Anyone holding a seat on an agency's client workspace.
      *
      * They sign in like anyone else and see one workspace — the one they were
-     * invited to — but they are not a seat on the agency's team: the credits
-     * belong to the agency, so a client who could spend them would be spending
-     * someone else's money. Enforced in AuthenticateWithJwt, which refuses
-     * every unsafe method this role has not been explicitly given.
+     * invited to — but they never see the agency above it. What they may do
+     * inside it depends on the seat; that the credits being spent are the
+     * agency's does not, which is why every seat is pinned to one workspace
+     * and refused the agency's own surfaces in AuthenticateWithJwt.
      */
+    public function isClientSeat(): bool
+    {
+        return array_key_exists((string) $this->role, self::CLIENT_SEATS);
+    }
+
+    /** 0 viewer, 1 editor, 2 admin. -1 when this user holds no client seat. */
+    public function clientSeatLevel(): int
+    {
+        return self::CLIENT_SEATS[(string) $this->role] ?? -1;
+    }
+
+    /** Kept for readers that only care about the read-only case. */
     public function isClientViewer(): bool
     {
         return $this->role === self::ROLE_CLIENT_VIEWER;

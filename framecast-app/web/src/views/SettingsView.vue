@@ -352,12 +352,22 @@ function clientSpend(id) {
 // Which client row has its invite box open, and what is being typed into it.
 const inviteOpenFor = ref(null)
 const inviteEmail = ref('')
+const inviteRole = ref('client')
 const inviteBusy = ref(false)
 const inviteError = ref('')
+
+// What each seat may do, in the agency's words rather than the code's.
+const SEATS = [
+  { value: 'client',        label: 'View only', hint: 'Watch and approve. Cannot change anything.' },
+  { value: 'client_editor', label: 'Edit',      hint: 'Make and change videos. Spends your credits.' },
+  { value: 'client_admin',  label: 'Admin',     hint: 'Full run of this workspace.' },
+]
+const seatLabel = (r) => SEATS.find((s) => s.value === r)?.label ?? 'View only'
 
 function toggleInvite(id) {
   inviteOpenFor.value = inviteOpenFor.value === id ? null : id
   inviteEmail.value = ''
+  inviteRole.value = 'client'
   inviteError.value = ''
 }
 
@@ -367,7 +377,7 @@ async function sendInvite(w) {
   inviteBusy.value = true
   inviteError.value = ''
   try {
-    await workspaceStore.inviteViewer(w.id, email)
+    await workspaceStore.inviteViewer(w.id, email, inviteRole.value)
     inviteEmail.value = ''
     inviteOpenFor.value = null
   } catch (e) {
@@ -851,6 +861,7 @@ onMounted(() => {
                 <div v-if="!w.is_agency && (w.viewers?.length || inviteOpenFor === w.id)" class="cw-viewers">
                   <div v-for="v in w.viewers ?? []" :key="v.id" class="cw-viewer">
                     <span class="cw-viewer-mail">{{ v.email }}</span>
+                    <span class="cw-viewer-role">{{ seatLabel(v.role) }}</span>
                     <span class="cw-viewer-seen">{{ v.last_seen_at ? 'signed in' : 'not signed in yet' }}</span>
                     <button class="cw-viewer-x" title="Remove access" @click="revokeViewer(w, v)">&#10005;</button>
                   </div>
@@ -860,12 +871,16 @@ onMounted(() => {
                       v-model="inviteEmail"
                       class="settings-input"
                       type="email"
-                      placeholder="client@example.com"
+                      placeholder="teammate@example.com"
                       @keyup.enter="sendInvite(w)"
                     />
+                    <select v-model="inviteRole" class="settings-input cw-invite-role">
+                      <option v-for="s in SEATS" :key="s.value" :value="s.value">{{ s.label }}</option>
+                    </select>
                     <button class="btn btn-primary btn-sm" :disabled="!inviteEmail.trim() || inviteBusy" @click="sendInvite(w)">
                       {{ inviteBusy ? 'Sending…' : 'Send invite' }}
                     </button>
+                    <div class="cw-invite-hint">{{ SEATS.find((s) => s.value === inviteRole)?.hint }}</div>
                   </div>
                   <div v-if="inviteError && inviteOpenFor === w.id" class="cw-error">{{ inviteError }}</div>
                 </div>
@@ -876,8 +891,9 @@ onMounted(() => {
               everything on screen belongs to one workspace at a time.
               Spend is what each workspace drew from the shared pool — it is a record of
               where the credits went, not a separate balance.
-              An invited client can watch their own workspace and approve what you send
-              them. They cannot spend your credits or change a video.
+              Invite people to a client workspace at the level you want: view only,
+              edit, or admin. Every seat draws on your one balance and none of them
+              can see your other clients.
             </p>
           </div>
 
@@ -1563,8 +1579,15 @@ onMounted(() => {
   color: var(--color-text-muted, #6a6a7c); font-size: 12px; padding: 2px 6px; border-radius: 5px;
 }
 .cw-viewer-x:hover { color: #fca5a5; background: rgba(224, 104, 95, 0.12); }
-.cw-invite { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.cw-invite { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
 .cw-invite .settings-input { flex: 1; min-width: 180px; }
+.cw-invite-role { flex: 0 0 auto !important; min-width: 120px !important; }
+.cw-invite-hint { flex: 1 0 100%; font-size: 11px; color: var(--color-text-muted, #6a6a7c); }
+.cw-viewer-role {
+  font-size: 10px; padding: 1px 6px; border-radius: 4px;
+  border: 1px solid var(--color-border, #2a2a36);
+  color: var(--color-text-secondary, #a8a9b4); white-space: nowrap;
+}
 
 @media (max-width: 860px) {
   .cw-spend { text-align: left; margin: 6px 0 0; order: 3; flex: 1 0 100%; }

@@ -343,7 +343,12 @@ class ClientWorkspaceController extends Controller
         $v = $request->validate([
             'email' => ['required', 'email:rfc', 'max:255'],
             'name'  => ['sometimes', 'nullable', 'string', 'max:160'],
+            // Defaults to the most restrictive seat. An invite that silently
+            // granted more than the agency meant to give is the one mistake
+            // here that spends their money.
+            'role'  => ['sometimes', \Illuminate\Validation\Rule::in(array_keys(User::CLIENT_SEATS))],
         ]);
+        $seat = $v['role'] ?? User::ROLE_CLIENT_VIEWER;
 
         $email = mb_strtolower(trim($v['email']));
         $existing = User::query()->where('email', $email)->first();
@@ -351,7 +356,7 @@ class ClientWorkspaceController extends Controller
         // An address that already has a WyvStudio account of its own must not
         // be moved into someone else's workspace. Silently re-pointing it would
         // take that person's own work away from them.
-        if ($existing && ! ($existing->isClientViewer() && (int) $existing->workspace_id === (int) $client->getKey())) {
+        if ($existing && ! ($existing->isClientSeat() && (int) $existing->workspace_id === (int) $client->getKey())) {
             return $this->error(
                 'email_in_use',
                 'That address already has a WyvStudio account. Ask them to use a different one for client access.',
@@ -364,9 +369,15 @@ class ClientWorkspaceController extends Controller
             'name'         => $v['name'] ?? \Illuminate\Support\Str::of($email)->before('@')->headline()->value(),
             'email'        => $email,
             'timezone'     => 'UTC',
-            'role'         => User::ROLE_CLIENT_VIEWER,
+            'role'         => $seat,
             'status'       => 'active',
         ]);
+
+        // Re-inviting somebody who already holds a seat is how an agency
+        // changes their level, so the new one has to stick.
+        if ($existing && $existing->role !== $seat) {
+            $user->forceFill(['role' => $seat])->save();
+        }
 
         $agency = $this->homeWorkspace($request->user());
         $link = $this->issueInviteLink($user);
@@ -399,7 +410,7 @@ class ClientWorkspaceController extends Controller
         $user = User::query()
             ->whereKey($userId)
             ->where('workspace_id', $client->getKey())
-            ->where('role', User::ROLE_CLIENT_VIEWER)
+            ->whereIn('role', array_keys(User::CLIENT_SEATS))
             ->first();
 
         if (! $user) {
@@ -449,6 +460,7 @@ class ClientWorkspaceController extends Controller
             'id'            => (int) $user->getKey(),
             'name'          => $user->name,
             'email'         => $user->email,
+            'role'          => $user->role,
             'last_seen_at'  => $user->last_seen_at?->toIso8601String(),
             'invited_at'    => $user->created_at?->toDateString(),
         ];
@@ -488,7 +500,7 @@ class ClientWorkspaceController extends Controller
             // agency's own row — it is not a client of itself.
             'viewers' => $isAgency ? [] : User::query()
                 ->where('workspace_id', $w->getKey())
-                ->where('role', User::ROLE_CLIENT_VIEWER)
+                ->whereIn('role', array_keys(User::CLIENT_SEATS))
                 ->orderBy('email')
                 ->get()
                 ->map(fn (User $u) => $this->shapeViewer($u))

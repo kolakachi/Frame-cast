@@ -107,8 +107,8 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
 
-    async inviteViewer(clientId, email) {
-      const { data } = await api.post(`/workspaces/clients/${clientId}/viewers`, { email })
+    async inviteViewer(clientId, email, role = 'client') {
+      const { data } = await api.post(`/workspaces/clients/${clientId}/viewers`, { email, role })
       await this.loadClients()
       return data.data.viewer
     },
