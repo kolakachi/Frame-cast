@@ -828,8 +828,10 @@ onMounted(() => {
             <div class="settings-section-title">Client Workspaces</div>
             <div class="settings-section-desc">
               A separate space for each client — their own projects, characters and brand.
-              Credits are not split: every workspace draws on your one balance of
-              {{ (workspaceStore.sharedCredits ?? 0).toLocaleString() }}.
+              Credits are never split or assigned: every workspace spends from your one
+              balance of {{ (workspaceStore.sharedCredits ?? 0).toLocaleString() }}, so
+              there is only ever one answer to how many you have left. Set a monthly cap
+              on a client to stop it drawing more than its share.
             </div>
 
             <div class="cw-window">
@@ -868,10 +870,13 @@ onMounted(() => {
                   </div>
                   <div class="cw-sub">{{ w.projects }} project{{ w.projects === 1 ? '' : 's' }} · added {{ w.created_at }}</div>
                 </div>
+                <!-- Spend, not a balance. Labelled "credits" this sat exactly
+                     where a balance would and read as one, so every client
+                     looked broke. No workspace here holds credits of its own. -->
                 <div class="cw-spend" :title="`${clientSpend(w.id).operations} charged operations`">
                   <div class="cw-spend-n">{{ clientSpend(w.id).credits.toLocaleString() }}</div>
                   <div class="cw-spend-l">
-                    credits
+                    spent · {{ workspaceStore.clientUsageDays }}d
                     <template v-if="clientSpend(w.id).share_percent > 0">· {{ clientSpend(w.id).share_percent }}%</template>
                   </div>
                 </div>
@@ -888,7 +893,10 @@ onMounted(() => {
 
                 <!-- Monthly ceiling. Credits still come from the one pool; the
                      cap only stops a single client draining it. -->
-                <div v-if="!w.is_agency && (w.monthly_credit_cap || capOpenFor === w.id)" class="cw-cap">
+                <div v-if="!w.is_agency" class="cw-cap">
+                  <div v-if="!w.monthly_credit_cap && capOpenFor !== w.id" class="cw-cap-none">
+                    No monthly cap — draws on the shared balance
+                  </div>
                   <div v-if="w.monthly_credit_cap" class="cw-cap-line">
                     <span class="cw-cap-text">
                       {{ (w.spent_this_month ?? 0).toLocaleString() }} /
@@ -1635,6 +1643,7 @@ onMounted(() => {
 }
 .cw-cap-fill { height: 100%; background: var(--color-accent, #ff6b35); transition: width 0.2s ease; }
 .cw-cap-fill.hot { background: #e0b04a; }
+.cw-cap-none { font-size: 11px; color: var(--color-text-muted, #6a6a7c); }
 .cw-cap-edit { display: flex; gap: 8px; flex-wrap: wrap; }
 .cw-cap-edit .settings-input { flex: 1; min-width: 200px; }
 
