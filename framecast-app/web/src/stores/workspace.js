@@ -13,6 +13,10 @@ export const useWorkspaceStore = defineStore('workspace', {
     agency: null,
     canOwnClients: false,
     sharedCredits: null,
+    // Per-client spend for the window below, keyed by workspace id. Null until
+    // asked, so "no spend yet" and "not loaded" stay different answers.
+    clientUsage: null,
+    clientUsageDays: 30,
     switching: false,
   }),
 
@@ -65,6 +69,33 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.clients = []
         this.canOwnClients = false
       }
+    },
+
+    /**
+     * Who spent the shared pool. The balance is one number for the whole
+     * agency; this is the only place that says which client it went on.
+     */
+    async loadClientUsage(days = 30) {
+      try {
+        const { data } = await api.get('/workspaces/clients/usage', { params: { days } })
+        const byId = {}
+        for (const row of data.data.usage ?? []) byId[row.workspace_id] = row
+        this.clientUsage = byId
+        this.clientUsageDays = data.data.days ?? days
+      } catch {
+        this.clientUsage = {}
+      }
+    },
+
+    async inviteViewer(clientId, email) {
+      const { data } = await api.post(`/workspaces/clients/${clientId}/viewers`, { email })
+      await this.loadClients()
+      return data.data.viewer
+    },
+
+    async removeViewer(clientId, userId) {
+      await api.delete(`/workspaces/clients/${clientId}/viewers/${userId}`)
+      await this.loadClients()
     },
 
     async createClient(name) {

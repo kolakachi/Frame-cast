@@ -807,6 +807,14 @@ class AdminController extends Controller
             'plan_tier' => $workspace->plan_tier,
             'status' => $workspace->status,
             'created_at' => $workspace->created_at?->toIso8601String(),
+            // A client sub-account inherits its agency's tier and holds no
+            // credits of its own. Without these two fields it reads here as a
+            // separate Agency customer sitting at zero, which is wrong twice:
+            // it inflates the customer count and it looks like a billing fault.
+            'parent_workspace_id' => $workspace->parent_workspace_id
+                ? (int) $workspace->parent_workspace_id
+                : null,
+            'client_label' => $workspace->client_label,
         ];
     }
 

@@ -343,6 +343,49 @@ const activeSection = ref('brand')
 // ── Client workspaces (agencies only) ─────────────────────
 const workspaceStore = useWorkspaceStore()
 const newClientName = ref('')
+// A workspace with no spend in the window is a real answer, not a missing one.
+const EMPTY_SPEND = { credits: 0, operations: 0, projects: 0, share_percent: 0 }
+function clientSpend(id) {
+  return workspaceStore.clientUsage?.[id] ?? EMPTY_SPEND
+}
+
+// Which client row has its invite box open, and what is being typed into it.
+const inviteOpenFor = ref(null)
+const inviteEmail = ref('')
+const inviteBusy = ref(false)
+const inviteError = ref('')
+
+function toggleInvite(id) {
+  inviteOpenFor.value = inviteOpenFor.value === id ? null : id
+  inviteEmail.value = ''
+  inviteError.value = ''
+}
+
+async function sendInvite(w) {
+  const email = inviteEmail.value.trim()
+  if (!email || inviteBusy.value) return
+  inviteBusy.value = true
+  inviteError.value = ''
+  try {
+    await workspaceStore.inviteViewer(w.id, email)
+    inviteEmail.value = ''
+    inviteOpenFor.value = null
+  } catch (e) {
+    inviteError.value = e.response?.data?.error?.message ?? 'Could not send that invite.'
+  } finally {
+    inviteBusy.value = false
+  }
+}
+
+async function revokeViewer(w, viewer) {
+  if (!window.confirm(`Remove ${viewer.email}'s access to ${w.client_label || w.name}?`)) return
+  try {
+    await workspaceStore.removeViewer(w.id, viewer.id)
+  } catch {
+    inviteError.value = 'Could not remove that person.'
+  }
+}
+
 const clientBusy = ref(false)
 const clientError = ref('')
 
@@ -704,7 +747,10 @@ onMounted(() => {
   if (route.query.section) {
     activeSection.value = route.query.section
     if (activeSection.value === 'usage') loadCreditHistory()
-    if (activeSection.value === 'clients') workspaceStore.loadClients()
+    if (activeSection.value === 'clients') {
+      workspaceStore.loadClients()
+      workspaceStore.loadClientUsage(workspaceStore.clientUsageDays)
+    }
   }
   loadSettings()
   loadBillingStatus()
@@ -747,6 +793,17 @@ onMounted(() => {
               {{ (workspaceStore.sharedCredits ?? 0).toLocaleString() }}.
             </div>
 
+            <div class="cw-window">
+              <span class="cw-window-label">Spend over the last</span>
+              <button
+                v-for="d in [7, 30, 90]"
+                :key="d"
+                type="button"
+                :class="['cw-window-btn', workspaceStore.clientUsageDays === d ? 'active' : '']"
+                @click="workspaceStore.loadClientUsage(d)"
+              >{{ d }} days</button>
+            </div>
+
             <div class="cw-add">
               <input
                 v-model="newClientName"
@@ -772,15 +829,52 @@ onMounted(() => {
                   </div>
                   <div class="cw-sub">{{ w.projects }} project{{ w.projects === 1 ? '' : 's' }} · added {{ w.created_at }}</div>
                 </div>
+                <div class="cw-spend" :title="`${clientSpend(w.id).operations} charged operations`">
+                  <div class="cw-spend-n">{{ clientSpend(w.id).credits.toLocaleString() }}</div>
+                  <div class="cw-spend-l">
+                    credits
+                    <template v-if="clientSpend(w.id).share_percent > 0">· {{ clientSpend(w.id).share_percent }}%</template>
+                  </div>
+                </div>
                 <div class="cw-actions">
                   <button v-if="w.id !== user?.workspace_id" class="btn btn-ghost btn-sm" @click="workspaceStore.switchTo(w.id)">Open</button>
+                  <button v-if="!w.is_agency" class="btn btn-ghost btn-sm" @click="toggleInvite(w.id)">
+                    {{ inviteOpenFor === w.id ? 'Cancel' : 'Invite client' }}
+                  </button>
                   <button v-if="!w.is_agency" class="btn btn-ghost btn-sm" @click="removeClient(w)">Archive</button>
+                </div>
+
+                <!-- People the agency has let in to watch this workspace. -->
+                <div v-if="!w.is_agency && (w.viewers?.length || inviteOpenFor === w.id)" class="cw-viewers">
+                  <div v-for="v in w.viewers ?? []" :key="v.id" class="cw-viewer">
+                    <span class="cw-viewer-mail">{{ v.email }}</span>
+                    <span class="cw-viewer-seen">{{ v.last_seen_at ? 'signed in' : 'not signed in yet' }}</span>
+                    <button class="cw-viewer-x" title="Remove access" @click="revokeViewer(w, v)">&#10005;</button>
+                  </div>
+
+                  <div v-if="inviteOpenFor === w.id" class="cw-invite">
+                    <input
+                      v-model="inviteEmail"
+                      class="settings-input"
+                      type="email"
+                      placeholder="client@example.com"
+                      @keyup.enter="sendInvite(w)"
+                    />
+                    <button class="btn btn-primary btn-sm" :disabled="!inviteEmail.trim() || inviteBusy" @click="sendInvite(w)">
+                      {{ inviteBusy ? 'Sending…' : 'Send invite' }}
+                    </button>
+                  </div>
+                  <div v-if="inviteError && inviteOpenFor === w.id" class="cw-error">{{ inviteError }}</div>
                 </div>
               </div>
             </div>
             <p class="settings-hint">
               Archiving hides a client and keeps its work. Switching reloads the app, because
               everything on screen belongs to one workspace at a time.
+              Spend is what each workspace drew from the shared pool — it is a record of
+              where the credits went, not a separate balance.
+              An invited client can watch their own workspace and approve what you send
+              them. They cannot spend your credits or change a video.
             </p>
           </div>
 
@@ -1417,6 +1511,55 @@ onMounted(() => {
 }
 .cw-tag-here { color: var(--color-accent, #ff6b35); border-color: #ff6b3555; }
 .cw-actions { display: flex; gap: 8px; }
+
+/* Spend window picker. */
+.cw-window { display: flex; align-items: center; gap: 6px; margin: 14px 0 2px; flex-wrap: wrap; }
+.cw-window-label { font-size: 11.5px; color: var(--color-text-muted, #6a6a7c); margin-right: 2px; }
+.cw-window-btn {
+  padding: 3px 9px; border-radius: 6px; font-size: 11.5px; cursor: pointer;
+  border: 1px solid var(--color-border, #23232d);
+  background: var(--color-bg-card, #17171e);
+  color: var(--color-text-secondary, #a8a9b4);
+}
+.cw-window-btn.active {
+  border-color: #ff6b3555; background: rgba(255, 107, 53, 0.12);
+  color: var(--color-accent, #ff6b35);
+}
+
+/* Right-aligned figure per row. Tabular so the column reads as a column. */
+.cw-spend { text-align: right; flex: 0 0 auto; margin-right: 4px; }
+.cw-spend-n {
+  font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+}
+.cw-spend-l { font-size: 10.5px; color: var(--color-text-muted, #6a6a7c); margin-top: 1px; white-space: nowrap; }
+
+/* Invited clients, listed under the workspace they can see. */
+.cw-viewers {
+  flex: 1 0 100%;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border, #23232d);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cw-viewer { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.cw-viewer-mail { color: var(--color-text-secondary, #a8a9b4); }
+.cw-viewer-seen { font-size: 10.5px; color: var(--color-text-muted, #6a6a7c); }
+.cw-viewer-x {
+  margin-left: auto; cursor: pointer; background: none; border: none;
+  color: var(--color-text-muted, #6a6a7c); font-size: 12px; padding: 2px 6px; border-radius: 5px;
+}
+.cw-viewer-x:hover { color: #fca5a5; background: rgba(224, 104, 95, 0.12); }
+.cw-invite { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.cw-invite .settings-input { flex: 1; min-width: 180px; }
+
+@media (max-width: 860px) {
+  .cw-row { flex-wrap: wrap; }
+  .cw-spend { text-align: left; margin: 6px 0 0; order: 3; flex: 1 0 100%; }
+  .cw-spend-l { display: inline; }
+}
 
 .page-pick-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; max-height: 320px; overflow-y: auto; }
 .page-pick { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #25252f; background: #14141c; color: #ececf3; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: .15s; }

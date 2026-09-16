@@ -82,6 +82,10 @@ class AuthenticateWithJwt
             ], 403);
         }
 
+        if ($user->isClientViewer() && ($deny = $this->denyClientViewer($request, $user, $active))) {
+            return $deny;
+        }
+
         $request->setUserResolver(fn (): User => $user);
 
         // Bump last_seen_at, throttled to once per 5 minutes per user.
@@ -95,6 +99,68 @@ class AuthenticateWithJwt
         }, null, false);
 
         return $next($request);
+    }
+
+    /**
+     * What a client viewer may do, stated as what it may NOT.
+     *
+     * This role exists so an agency can show a client their own videos without
+     * handing over the agency's credit balance. The permission model is
+     * therefore fail-closed: safe methods pass, and every other method is
+     * refused unless it appears in the allowlist below. A new endpoint added
+     * next year is denied by default rather than quietly granted, which is the
+     * only property that makes a read-only role stay read-only.
+     *
+     * @return JsonResponse|null  a refusal, or null to allow
+     */
+    private function denyClientViewer(Request $request, User $user, int $active): ?JsonResponse
+    {
+        // Pinned to the workspace they were invited to. A client is never an
+        // agency, so the switching path that exists for agencies is not merely
+        // unnecessary here — it is the one thing that would let a client read
+        // a different client's work.
+        if ($active !== (int) $user->workspace_id) {
+            return $this->unauthorized('User session is no longer valid.');
+        }
+
+        // Agency-only surfaces, refused whatever the method. `homeWorkspace()`
+        // resolves a child to its parent, so without this a client listing
+        // clients would be handed the agency's whole roster.
+        foreach (['api/v1/workspaces/clients*', 'api/v1/workspaces/switch/*', 'api/v1/admin/*', 'api/v1/billing/*'] as $pattern) {
+            if ($request->is($pattern)) {
+                return $this->forbiddenForClient();
+            }
+        }
+
+        if (in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true)) {
+            return null;
+        }
+
+        // The only writes a client is invited to make: sign out, decide on a
+        // video put in front of them, and tell us something is wrong.
+        $allowed = [
+            'api/v1/auth/logout',
+            'api/v1/feedback',
+            'api/v1/approvals/*/decide',
+        ];
+
+        foreach ($allowed as $pattern) {
+            if ($request->is($pattern)) {
+                return null;
+            }
+        }
+
+        return $this->forbiddenForClient();
+    }
+
+    private function forbiddenForClient(): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'client_viewer_read_only',
+                'message' => 'Your access to this workspace is view-and-approve only. Ask the agency that invited you to make this change.',
+            ],
+        ], 403);
     }
 
     /**

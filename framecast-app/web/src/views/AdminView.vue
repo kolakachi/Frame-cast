@@ -735,6 +735,11 @@ const panelSpendMax = computed(() => {
 // ── Workspaces ────────────────────────────────────────────────────────────────
 const wsLoading = ref(false)
 const wsData = ref([])
+
+// Client sub-accounts share their agency's pool, so counting them as customers
+// overstates the book. Named on the page rather than filtered out, because the
+// rows themselves are still real workspaces worth seeing.
+const wsClientCount = computed(() => wsData.value.filter((w) => w.parent_workspace_id).length)
 const wsPagination = ref({})
 const wsSearch = ref('')
 const wsStatus = ref('')
@@ -1528,7 +1533,10 @@ onMounted(() => {
             <div class="section-header">
               <div class="section-title">All Workspaces</div>
               <div class="section-actions">
-                <span class="meta-count">{{ wsPagination.total ?? 0 }} workspaces</span>
+                <span class="meta-count">
+                  {{ wsPagination.total ?? 0 }} workspaces
+                  <template v-if="wsClientCount > 0">· {{ wsClientCount }} on this page are client sub-accounts</template>
+                </span>
               </div>
             </div>
             <div class="filters">
@@ -1557,8 +1565,17 @@ onMounted(() => {
                 </thead>
                 <tbody>
                   <!-- API workspace fields: id, name, plan_tier, status, users_count, projects_count, exports_count, spend_month_usd, budget_pct -->
-                  <tr v-for="ws in wsData" :key="ws.id">
-                    <td><strong>{{ ws.name }}</strong></td>
+                  <tr v-for="ws in wsData" :key="ws.id" :class="ws.parent_workspace_id ? 'ws-client-row' : ''">
+                    <td>
+                      <strong>{{ ws.name }}</strong>
+                      <!-- A client inherits its agency's tier and holds no credits.
+                           Unlabelled it reads as a separate customer at zero balance. -->
+                      <span
+                        v-if="ws.parent_workspace_id"
+                        class="badge badge-client"
+                        :title="`Client sub-account of workspace ${ws.parent_workspace_id} — spends the agency's pooled credits`"
+                      >client of #{{ ws.parent_workspace_id }}</span>
+                    </td>
                     <td>
                       <select :value="ws.plan_tier" class="inline-select" :disabled="wsSaving === ws.id" @change="updateWsPlan(ws, $event.target.value)">
                         <option value="free">Free</option>
@@ -3687,6 +3704,21 @@ tr:hover td { background: #1e2129; }
   display: inline-flex; align-items: center; gap: 4px;
   padding: 3px 8px; border-radius: 5px;
   font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.badge-client {
+  margin-left: 7px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid rgba(155, 127, 212, 0.4);
+  background: rgba(155, 127, 212, 0.14);
+  color: #c3b0e8;
+  white-space: nowrap;
+}
+.ws-client-row > td:first-child { padding-left: 22px; position: relative; }
+.ws-client-row > td:first-child::before {
+  content: "";
+  position: absolute; left: 8px; top: 50%; width: 7px; height: 1px;
+  background: rgba(155, 127, 212, 0.5);
 }
 .badge-green { background: #10b98120; color: #10b981; }
 .badge-red { background: #ef444420; color: #ef4444; }

@@ -12,11 +12,12 @@ return [
     |
     | All three agency tiers are the same product to the customer, however they
     | arrived at it — monthly, one-time here, or an AppSumo licence — so they
-    | are all listed.
+    | are all listed. Enterprise sits above all of them; an enterprise customer
+    | that could not keep its clients apart would be the odd one out.
     */
     'client_tiers' => array_filter(array_map('trim', explode(',', (string) env(
         'WORKSPACE_CLIENT_TIERS',
-        'agency,lifetime_agency,appsumo_agency',
+        'agency,lifetime_agency,appsumo_agency,enterprise',
     )))),
 
     // A guard rather than a product limit: an agency that has quietly created

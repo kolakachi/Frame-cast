@@ -135,6 +135,9 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/workspaces/clients', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'store']);
         Route::patch('/workspaces/clients/{id}', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'update'])->whereNumber('id');
         Route::delete('/workspaces/clients/{id}', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'destroy'])->whereNumber('id');
+        Route::post('/workspaces/clients/{id}/viewers', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'inviteViewer'])->whereNumber('id');
+        Route::delete('/workspaces/clients/{id}/viewers/{userId}', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'removeViewer'])->whereNumber('id')->whereNumber('userId');
+        Route::get('/workspaces/clients/usage', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'usage']);
         Route::post('/workspaces/switch/{id}', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'switch'])->whereNumber('id');
 
         Route::get('/billing/status', [BillingController::class, 'status']);
@@ -425,6 +428,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/', [ApprovalController::class, 'index']);
             Route::post('/', [ApprovalController::class, 'store']);
             Route::delete('/{approvalId}', [ApprovalController::class, 'revoke'])->whereNumber('approvalId');
+            // Decide while signed in. The public token route still exists for
+            // reviewers who were only ever sent a link.
+            Route::post('/{approvalId}/decide', [ApprovalController::class, 'decide'])->whereNumber('approvalId');
         });
 
         Route::prefix('/scenes')->group(function (): void {

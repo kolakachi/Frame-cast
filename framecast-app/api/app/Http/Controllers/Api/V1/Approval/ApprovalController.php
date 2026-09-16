@@ -164,6 +164,50 @@ class ApprovalController extends Controller
         if ($approval->isExpired()) {
             return $this->error('expired', 'This approval link has expired.', 410);
         }
+
+        return $this->applyDecision($approval, $validated);
+    }
+
+    /**
+     * Decide while signed in.
+     *
+     * A client invited to their workspace sees everything waiting on them in
+     * one place, rather than hunting through their inbox for the link that
+     * matches the video. Same decision, same record — only the way in differs,
+     * so the workspace scope here is doing the job the token does there.
+     */
+    public function decide(Request $request, int $approvalId): JsonResponse
+    {
+        $validated = $request->validate([
+            'decision' => ['required', Rule::in(['approved', 'rejected'])],
+            'comment'  => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $user = $request->user();
+
+        $approval = Approval::query()
+            ->whereKey($approvalId)
+            ->where('workspace_id', $user->workspace_id)
+            ->first();
+
+        if (! $approval) {
+            return $this->error('not_found', 'Approval not found.', 404);
+        }
+        if ($approval->isExpired()) {
+            return $this->error('expired', 'This approval has expired.', 410);
+        }
+
+        // Signed in, so we know who decided without asking them to type it.
+        $validated['reviewer_name'] = $user->name ?: $user->email;
+
+        return $this->applyDecision($approval, $validated);
+    }
+
+    /**
+     * @param  array{decision: string, comment?: string|null, reviewer_name?: string|null}  $validated
+     */
+    private function applyDecision(Approval $approval, array $validated): JsonResponse
+    {
         if (in_array($approval->status, ['approved', 'rejected'], true)) {
             return $this->error('already_decided', 'This approval has already been reviewed.', 422);
         }

@@ -34,7 +34,10 @@ class ClientWorkspaceTest extends TestCase
         });
         Schema::create('users', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
-            $t->string('email')->nullable(); $t->string('role')->nullable(); $t->timestamps();
+            $t->string('email')->nullable(); $t->string('role')->nullable();
+            $t->string('name')->nullable(); $t->string('timezone')->nullable();
+            $t->string('status')->nullable(); $t->timestamp('last_seen_at')->nullable();
+            $t->timestamps();
         });
         Schema::create('projects', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('workspace_id')->nullable(); $t->timestamps();
@@ -48,6 +51,25 @@ class ClientWorkspaceTest extends TestCase
             $t->string('operation'); $t->integer('credits'); $t->integer('balance_after')->nullable();
             $t->decimal('upstream_cost_usd', 12, 6)->nullable();
             $t->json('metadata')->nullable(); $t->timestamps();
+        });
+        Schema::create('brand_kits', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('workspace_id');
+            $t->string('name')->nullable();
+            $t->string('primary_color')->nullable(); $t->string('secondary_color')->nullable();
+            $t->string('accent_color')->nullable();
+            $t->string('font_primary')->nullable(); $t->string('font_secondary')->nullable();
+            $t->unsignedBigInteger('logo_asset_id')->nullable();
+            $t->string('default_caption_style')->nullable();
+            $t->unsignedBigInteger('default_voice_profile_id')->nullable();
+            $t->timestamps();
+        });
+        Schema::create('magic_link_tokens', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('user_id'); $t->string('email')->nullable();
+            $t->string('token_hash'); $t->timestamp('expires_at')->nullable();
+            $t->timestamp('created_at')->nullable();
+        });
+        Schema::create('auth_sessions', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('user_id')->nullable(); $t->timestamps();
         });
     }
 
@@ -235,4 +257,179 @@ class ClientWorkspaceTest extends TestCase
         $this->assertSame('archived', $client->fresh()->status);
         $this->assertNotNull(Workspace::find($client->getKey()), 'still there');
     }
+
+    // ── Per-client spend ────────────────────────────────────────────────
+
+    public function test_usage_says_which_client_spent_the_pool(): void
+    {
+        $a = $this->agency(credits: 20000);
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+        $this->ctrl()->store($this->req($u, ['name' => 'Borealis']));
+        $acme = Workspace::query()->where('name', 'Acme')->firstOrFail();
+        $bor  = Workspace::query()->where('name', 'Borealis')->firstOrFail();
+
+        $credits = app(CreditService::class);
+        $credits->deduct((int) $acme->getKey(), 300, 'render');
+        $credits->deduct((int) $bor->getKey(), 100, 'render');
+        $credits->deduct((int) $a->getKey(), 600, 'render');
+
+        $res = $this->ctrl()->usage($this->req($u, [], 'GET'));
+        $body = $res->getData(true)['data'];
+
+        $by = collect($body['usage'])->keyBy('workspace_id');
+        $this->assertSame(1000, $body['total']);
+        $this->assertSame(300, $by[(int) $acme->getKey()]['credits']);
+        $this->assertSame(100, $by[(int) $bor->getKey()]['credits']);
+        $this->assertSame(600, $by[(int) $a->getKey()]['credits'], 'the agency\'s own spend is its own row');
+        $this->assertEquals(30, $by[(int) $acme->getKey()]['share_percent']);
+    }
+
+    public function test_usage_leaves_grants_out_of_a_client_s_spend(): void
+    {
+        // A top-up is the agency buying credits; folding it in would net a
+        // client's usage against money that had nothing to do with them.
+        $a = $this->agency(credits: 5000);
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+        $acme = Workspace::query()->where('name', 'Acme')->firstOrFail();
+
+        $credits = app(CreditService::class);
+        $credits->deduct((int) $acme->getKey(), 250, 'render');
+        $credits->grant((int) $a->getKey(), 10000, 'top_up');
+
+        $body = $this->ctrl()->usage($this->req($u, [], 'GET'))->getData(true)['data'];
+        $this->assertSame(250, $body['total']);
+    }
+
+    public function test_usage_counts_nothing_before_anyone_spends(): void
+    {
+        $a = $this->agency();
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+
+        $body = $this->ctrl()->usage($this->req($u, [], 'GET'))->getData(true)['data'];
+        $this->assertSame(0, $body['total']);
+        // Every workspace still appears, at zero — a missing row reads as a bug.
+        $this->assertCount(2, $body['usage']);
+        $this->assertEquals(0, $body['usage'][0]['share_percent']);
+    }
+
+    // ── Seeding ─────────────────────────────────────────────────────────
+
+    public function test_a_new_client_inherits_the_agency_brand(): void
+    {
+        $a = $this->agency();
+        \App\Models\BrandKit::query()->create([
+            'workspace_id' => $a->getKey(), 'name' => 'Northstar',
+            'primary_color' => '#112233', 'font_primary' => 'Satoshi',
+            'logo_asset_id' => 99, 'default_voice_profile_id' => 77,
+        ]);
+
+        $this->ctrl()->store($this->req($this->userFor($a), ['name' => 'Acme']));
+        $client = Workspace::query()->where('name', 'Acme')->firstOrFail();
+
+        $kit = \App\Models\BrandKit::query()->where('workspace_id', $client->getKey())->firstOrFail();
+        $this->assertSame('#112233', $kit->primary_color);
+        $this->assertSame('Satoshi', $kit->font_primary);
+        $this->assertSame('Acme', $kit->name);
+        // Assets and voices are workspace-scoped; copying the ids would leave
+        // the client pointing at rows it may not read.
+        $this->assertNull($kit->logo_asset_id);
+        $this->assertNull($kit->default_voice_profile_id);
+    }
+
+    // ── Client viewers ──────────────────────────────────────────────────
+
+    public function test_an_agency_can_invite_a_client_to_watch_one_workspace(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $a = $this->agency();
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+        $client = Workspace::query()->where('name', 'Acme')->firstOrFail();
+
+        $res = $this->ctrl()->inviteViewer(
+            $this->req($u, ['email' => 'ops@acme.test']),
+            (int) $client->getKey(),
+        );
+
+        $this->assertSame(201, $res->status());
+        $viewer = User::query()->where('email', 'ops@acme.test')->firstOrFail();
+        $this->assertSame(User::ROLE_CLIENT_VIEWER, $viewer->role);
+        $this->assertSame((int) $client->getKey(), (int) $viewer->workspace_id);
+        \Illuminate\Support\Facades\Mail::assertSent(\App\Mail\Workspace\ClientViewerInvite::class);
+    }
+
+    public function test_inviting_an_address_that_already_has_an_account_is_refused(): void
+    {
+        // Re-pointing it would take that person's own workspace away from them.
+        \Illuminate\Support\Facades\Mail::fake();
+        $a = $this->agency();
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+        $client = Workspace::query()->where('name', 'Acme')->firstOrFail();
+
+        $res = $this->ctrl()->inviteViewer(
+            $this->req($u, ['email' => $u->email]),
+            (int) $client->getKey(),
+        );
+
+        $this->assertSame(422, $res->status());
+        $this->assertSame('email_in_use', $res->getData(true)['error']['code']);
+    }
+
+    public function test_an_agency_cannot_invite_into_someone_else_s_client(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $mine = $this->agency();
+        $theirs = $this->agency();
+        $other = Workspace::query()->create(['name' => 'Not mine', 'status' => 'active']);
+        $other->forceFill(['parent_workspace_id' => $theirs->getKey()])->save();
+
+        $res = $this->ctrl()->inviteViewer(
+            $this->req($this->userFor($mine), ['email' => 'x@y.test']),
+            (int) $other->getKey(),
+        );
+
+        $this->assertSame(404, $res->status());
+        $this->assertNull(User::query()->where('email', 'x@y.test')->first());
+    }
+
+    public function test_removing_a_viewer_kills_their_sessions_too(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $a = $this->agency();
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+        $client = Workspace::query()->where('name', 'Acme')->firstOrFail();
+        $this->ctrl()->inviteViewer($this->req($u, ['email' => 'ops@acme.test']), (int) $client->getKey());
+        $viewer = User::query()->where('email', 'ops@acme.test')->firstOrFail();
+        DB::table('auth_sessions')->insert(['user_id' => $viewer->getKey()]);
+
+        $res = $this->ctrl()->removeViewer($this->req($u, [], 'DELETE'), (int) $client->getKey(), (int) $viewer->getKey());
+
+        $this->assertSame(200, $res->status());
+        $this->assertNull(User::query()->where('email', 'ops@acme.test')->first());
+        $this->assertSame(0, DB::table('auth_sessions')->where('user_id', $viewer->getKey())->count());
+        $this->assertNotNull(Workspace::query()->find($client->getKey()), 'the workspace survives');
+    }
+
+
+    public function test_the_shipped_config_lets_enterprise_own_clients(): void
+    {
+        // Reads the file rather than the value injected in setUp: the tier list
+        // that matters is the one that ships, and the last bug here was a
+        // config key that every reader agreed on and nobody actually loaded.
+        $shipped = require __DIR__.'/../../config/workspaces.php';
+
+        $this->assertContains('enterprise', $shipped['client_tiers']);
+        foreach (['agency', 'lifetime_agency', 'appsumo_agency'] as $tier) {
+            $this->assertContains($tier, $shipped['client_tiers'], "{$tier} lost client access");
+        }
+
+        config(['workspaces.client_tiers' => $shipped['client_tiers']]);
+        $this->assertTrue($this->agency('enterprise')->canOwnClients());
+    }
+
 }
