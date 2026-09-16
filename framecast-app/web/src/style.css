@@ -407,3 +407,29 @@ button,
 input {
   font: inherit;
 }
+
+
+/* ── Phones ────────────────────────────────────────────────────────────────
+   The sidebar goes off-canvas below 860px and a fixed burger takes its place
+   at the top left. Every view lays its content out from the very top, so
+   without this the burger sits on top of the first heading.
+
+   !important because each view's .main is a scoped style, and a scoped
+   selector outranks a global one. One rule here reaches all seventeen; the
+   alternative is editing seventeen files and missing one.
+   -------------------------------------------------------------------------- */
+@media (max-width: 860px) {
+  .main,
+  .ugc-main,
+  .ap-main {
+    padding-top: 58px !important;
+  }
+
+  /* A finished video is the thing customers came for — never let it overflow
+     the screen it is being watched on. */
+  video,
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+}

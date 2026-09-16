@@ -25,6 +25,9 @@ const isCollapsed = computed(() => sidebarStore.collapsed);
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 
+// Off-canvas state. Only meaningful under 860px; above it the rail is static.
+const mobileOpen = ref(false);
+
 // The agency first, then its clients — the order an agency thinks in.
 const switchTargets = computed(() => {
   const a = workspaceStore.agency;
@@ -122,7 +125,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <nav :class="['sidebar', isCollapsed ? 'collapsed' : '']">
+  <button class="sidebar-burger" type="button" aria-label="Open navigation" @click.stop="mobileOpen = true">☰</button>
+  <button v-if="mobileOpen" class="sidebar-scrim" type="button" aria-label="Close navigation" @click="mobileOpen = false"></button>
+
+  <nav :class="['sidebar', isCollapsed ? 'collapsed' : '', mobileOpen ? 'mobile-open' : '']">
     <div class="sidebar-logo">
       <svg width="28" height="28" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;border-radius:7px">
         <rect width="64" height="64" rx="14" fill="#ff6b35"/>
@@ -633,6 +639,32 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* Below 860px the rail becomes an overlay.
+   --sidebar-width goes to 0 (set inline by the sidebar store, which beats a
+   stylesheet), so the seventeen views that offset by it reclaim the whole
+   screen. Without this a 390px phone gave the app about 170px to work in —
+   which is why a customer could not scroll a list or watch a finished video. */
+@media (max-width: 860px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    box-shadow: 0 0 40px rgba(0, 0, 0, .6);
+    width: 264px;
+  }
+  .sidebar.mobile-open { transform: translateX(0); }
+  .sidebar-scrim { position: fixed; inset: 0; z-index: 99; background: rgba(0,0,0,.55); border: none; padding: 0; }
+  .sidebar-burger { display: grid; }
+}
+@media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
+
+/* The only way back to navigation once the rail is off-canvas. */
+.sidebar-burger {
+  display: none; position: fixed; top: 10px; left: 10px; z-index: 98;
+  width: 40px; height: 40px; place-items: center; border-radius: 10px;
+  background: var(--color-bg-panel); border: 1px solid var(--color-border);
+  color: var(--color-text-primary); font-size: 17px; cursor: pointer;
+}
+
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
