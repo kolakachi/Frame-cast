@@ -60,6 +60,10 @@ const planColors = {
   appsumo_starter: "#34d399",
   appsumo_creator: "#60a5fa",
   appsumo_agency: "#f59e0b",
+  // Kelviq one-time tiers — same product, same colors.
+  lifetime_starter: "#34d399",
+  lifetime_creator: "#60a5fa",
+  lifetime_agency: "#f59e0b",
   // legacy tier aliases
   studio: "#7c3aed",
   scale: "#0ea5e9",
@@ -154,7 +158,9 @@ onBeforeUnmount(() => {
       </div>
       <div class="ws-info">
         <div class="ws-name">{{ workspaceStore.workspaceName }}</div>
-        <div class="ws-plan">{{ workspaceStore.planLabel }} Plan</div>
+        <!-- Nothing at all while the plan is unknown. Printing "Free Plan"
+             here contradicted the billing panel for every paying customer. -->
+        <div v-if="workspaceStore.planLabel" class="ws-plan">{{ workspaceStore.planLabel }} Plan</div>
       </div>
       <svg
         class="ws-caret"
@@ -186,7 +192,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="ws-popover-info">
           <div class="ws-popover-name">{{ workspaceStore.workspaceName }}</div>
-          <div class="ws-popover-plan" :style="{ color: planColor }">
+          <div v-if="workspaceStore.planLabel" class="ws-popover-plan" :style="{ color: planColor }">
             {{ workspaceStore.planLabel }} Plan
           </div>
         </div>

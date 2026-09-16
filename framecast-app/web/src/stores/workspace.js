@@ -17,22 +17,38 @@ export const useWorkspaceStore = defineStore('workspace', {
     // asked, so "no spend yet" and "not loaded" stay different answers.
     clientUsage: null,
     clientUsageDays: 30,
+    loadFailed: false,
     switching: false,
   }),
 
   getters: {
+    /**
+     * The plan to show, or null when we do not yet know.
+     *
+     * Null matters: this used to fall back to 'Free', so a workspace that had
+     * not loaded — or whose fetch 404'd — told a paying customer they were on
+     * the free plan, directly contradicting the billing panel one click away.
+     * Not knowing and being free are different facts and must render
+     * differently.
+     */
     planLabel: (state) => {
       const labels = {
         free: 'Free', starter: 'Starter', creator: 'Creator', pro: 'Pro',
         agency: 'Agency', enterprise: 'Enterprise',
         // AppSumo lifetime-deal tiers
         appsumo_starter: 'Starter (Lifetime)', appsumo_creator: 'Creator (Lifetime)', appsumo_agency: 'Agency (Lifetime)',
+        // Bought one-time through Kelviq. Their absence here was why a
+        // lifetime customer's sidebar read 'Free Plan'.
+        lifetime_starter: 'Starter (Lifetime)', lifetime_creator: 'Creator (Lifetime)', lifetime_agency: 'Agency (Lifetime)',
         // legacy tier aliases
         studio: 'Studio', scale: 'Scale',
       }
-      return labels[state.workspace?.plan_tier] ?? 'Free'
+      const tier = state.workspace?.plan_tier
+      if (!tier) return null
+      // An unrecognised tier is still not free — name it rather than lie.
+      return labels[tier] ?? tier.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     },
-    planTier: (state) => state.workspace?.plan_tier ?? 'free',
+    planTier: (state) => state.workspace?.plan_tier ?? null,
     workspaceName: (state) => state.workspace?.name ?? 'My Workspace',
   },
 
@@ -42,10 +58,14 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.loading = true
       try {
         const res = await api.get(`/workspaces/${workspaceId}`)
+        this.loadFailed = false
         this.workspace = res.data.data.workspace
         this.usage = res.data.data.usage ?? null
       } catch {
-        // silent — sidebar falls back to defaults
+        // Kept quiet on purpose — a sidebar is not the place to shout about a
+        // failed fetch — but recorded, so the getters can decline to name a
+        // plan instead of guessing at one.
+        this.loadFailed = true
       } finally {
         this.loading = false
       }
