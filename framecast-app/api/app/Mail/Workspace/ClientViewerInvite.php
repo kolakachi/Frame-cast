@@ -34,7 +34,7 @@ class ClientViewerInvite extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: sprintf('%s invited you to review your videos', $this->agencyName),
+            subject: sprintf('%s invited you to WyvStudio', $this->agencyName),
         );
     }
 

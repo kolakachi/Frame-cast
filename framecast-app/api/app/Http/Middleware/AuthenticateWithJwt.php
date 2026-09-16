@@ -136,10 +136,15 @@ class AuthenticateWithJwt
             return null;
         }
 
-        // The only writes a client is invited to make: sign out, decide on a
-        // video put in front of them, and tell us something is wrong.
+        // A person's own account is always their own, whatever they may do in
+        // the workspace. PATCH /me carries name, timezone and preferences and
+        // touches nothing the agency owns — and it is what "skip" on the
+        // onboarding screen calls, so refusing it trapped every invited client
+        // on that page behind a 403 with no way forward.
         $allowed = [
+            'api/v1/me',
             'api/v1/auth/logout',
+            'api/v1/auth/refresh',
             'api/v1/feedback',
             'api/v1/approvals/*/decide',
         ];

@@ -106,6 +106,16 @@ class ClientViewerAccessTest extends TestCase
         $this->assertSame(200, $this->guard($u, 'POST', 'api/v1/feedback'));
     }
 
+    public function test_a_client_viewer_can_still_manage_their_own_account(): void
+    {
+        // Their name, timezone and preferences are theirs, not the agency's.
+        // Refusing PATCH /me trapped invited clients on the onboarding screen:
+        // "skip" writes preferences.onboarded and got a 403 with no way on.
+        [$u] = $this->viewer();
+        $this->assertSame(200, $this->guard($u, 'PATCH', 'api/v1/me'));
+        $this->assertSame(200, $this->guard($u, 'GET', 'api/v1/me'));
+    }
+
     public function test_a_client_viewer_cannot_see_the_agency_roster(): void
     {
         // homeWorkspace() resolves a child to its parent, so without the block
