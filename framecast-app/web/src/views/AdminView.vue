@@ -739,7 +739,16 @@ const wsData = ref([])
 // Tiers come from the server. Hardcoding them here is how the dropdown ended
 // up offering studio and scale while every lifetime_* and appsumo_* tier —
 // the ones most paying customers are on — could not be set at all.
-const planTiers = ref([])
+// Seeded, not empty. When this was populated only from the response and the
+// server did not send the list, every Plan dropdown in the table rendered
+// blank — worse than a stale list, because a workspace's current tier stopped
+// being visible at all.
+const PLAN_TIER_FALLBACK = [
+  'free', 'starter', 'creator', 'pro', 'agency', 'enterprise',
+  'lifetime_starter', 'lifetime_creator', 'lifetime_agency',
+  'appsumo_starter', 'appsumo_creator', 'appsumo_agency',
+]
+const planTiers = ref([...PLAN_TIER_FALLBACK])
 
 // Client sub-accounts. Deliberately their own view: they are kept out of the
 // users and workspaces lists so neither count is overstated, which leaves this
@@ -792,7 +801,8 @@ async function loadWorkspaces() {
       params: { search: wsSearch.value || undefined, status: wsStatus.value || undefined, plan: wsPlan.value || undefined, page: wsPage.value, per_page: wsPerPage.value },
     })
     wsData.value = res.data.data?.workspaces ?? []
-    planTiers.value = res.data.meta?.plan_tiers ?? []
+    const served = res.data.meta?.plan_tiers
+    planTiers.value = Array.isArray(served) && served.length ? served : PLAN_TIER_FALLBACK
     wsPagination.value = res.data.meta?.pagination ?? {}
   } finally {
     wsLoading.value = false
@@ -1671,6 +1681,9 @@ onMounted(() => {
                     </td>
                     <td>
                       <select :value="ws.plan_tier" class="inline-select" :disabled="wsSaving === ws.id" @change="updateWsPlan(ws, $event.target.value)">
+                        <option v-if="ws.plan_tier && !planTiers.includes(ws.plan_tier)" :value="ws.plan_tier">
+                          {{ planLabel(ws.plan_tier) }}
+                        </option>
                         <option v-for="t in planTiers" :key="t" :value="t">{{ planLabel(t) }}</option>
                       </select>
                     </td>

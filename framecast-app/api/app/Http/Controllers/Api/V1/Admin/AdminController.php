@@ -424,6 +424,9 @@ class AdminController extends Controller
                 })->all(),
             ],
             'meta' => [
+                // Rendered by the client, so a new tier is assignable the day it
+                // exists rather than the day somebody remembers the dropdown.
+                'plan_tiers' => self::assignableTiers(),
                 'pagination' => [
                     'current_page' => $paginator->currentPage(),
                     'last_page' => $paginator->lastPage(),
