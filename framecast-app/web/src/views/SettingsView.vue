@@ -1495,7 +1495,11 @@ onMounted(() => {
 .cw-error { color: #fca5a5; font-size: 12.5px; margin-bottom: 8px; }
 .cw-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .cw-row {
-  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  /* Wrapping is load-bearing, not a nicety: the invited-clients block below is
+     a 100%-basis flex child, and without wrap it cannot take its own line — it
+     squeezes the name column to one word per line and pushes the invite field
+     out through the right edge of the card. */
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px;
   background: var(--color-bg-card, #17171f); border: 1px solid var(--color-border, #2a2a36);
   border-radius: 10px;
 }
@@ -1504,7 +1508,7 @@ onMounted(() => {
   background: var(--color-bg-elevated, #1d1d28); border: 1px solid var(--color-border, #2a2a36);
   font-weight: 700; font-size: 13px;
 }
-.cw-meta { flex: 1; min-width: 0; }
+.cw-meta { flex: 1 1 200px; min-width: 0; }
 .cw-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .cw-sub { font-size: 11.5px; color: var(--color-text-muted, #6a6a7c); margin-top: 2px; }
 .cw-tag {
@@ -1513,7 +1517,7 @@ onMounted(() => {
   padding: 2px 7px; border-radius: 99px;
 }
 .cw-tag-here { color: var(--color-accent, #ff6b35); border-color: #ff6b3555; }
-.cw-actions { display: flex; gap: 8px; }
+.cw-actions { display: flex; gap: 8px; flex: 0 0 auto; flex-wrap: wrap; }
 
 /* Spend window picker. */
 .cw-window { display: flex; align-items: center; gap: 6px; margin: 14px 0 2px; flex-wrap: wrap; }
@@ -1540,6 +1544,10 @@ onMounted(() => {
 /* Invited clients, listed under the workspace they can see. */
 .cw-viewers {
   flex: 1 0 100%;
+  /* Always the last thing in the row. The narrow layout gives the spend figure
+     its own line via order:3, which would otherwise print the credits below
+     the invite box instead of beside the client it belongs to. */
+  order: 5;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--color-border, #23232d);
@@ -1559,7 +1567,6 @@ onMounted(() => {
 .cw-invite .settings-input { flex: 1; min-width: 180px; }
 
 @media (max-width: 860px) {
-  .cw-row { flex-wrap: wrap; }
   .cw-spend { text-align: left; margin: 6px 0 0; order: 3; flex: 1 0 100%; }
   .cw-spend-l { display: inline; }
 }
