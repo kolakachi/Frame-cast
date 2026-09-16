@@ -656,6 +656,8 @@ async function loadUsers() {
       params: { search: usersSearch.value || undefined, status: usersStatus.value || undefined, plan: usersPlan.value || undefined, page: usersPage.value, per_page: usersPerPage.value },
     })
     usersData.value = res.data.data?.users ?? []
+    const servedTiers = res.data.meta?.plan_tiers
+    if (Array.isArray(servedTiers) && servedTiers.length) planTiers.value = servedTiers
     usersPagination.value = res.data.meta?.pagination ?? {}
   } finally {
     usersLoading.value = false
@@ -757,6 +759,26 @@ const clientData = ref([])
 const clientSearch = ref('')
 const clientPagination = ref({ current_page: 1, last_page: 1, total: 0 })
 const clientsLoading = ref(false)
+// Which client's people are open. Members used to be stacked inside a table
+// cell, which turned one client with a dozen colleagues into a dozen lines of
+// a row and made the table impossible to scan.
+const clientExpanded = ref(new Set())
+
+function toggleClient(id) {
+  const next = new Set(clientExpanded.value)
+  next.has(id) ? next.delete(id) : next.add(id)
+  clientExpanded.value = next
+}
+
+const SEAT_LABEL = { client: 'View', client_editor: 'Edit', client_admin: 'Admin' }
+const seatName = (r) => SEAT_LABEL[r] ?? r
+
+// "2 Edit · 1 View" — the shape of a team, readable without opening it.
+function seatSummary(members) {
+  const counts = {}
+  for (const m of members ?? []) counts[m.role] = (counts[m.role] ?? 0) + 1
+  return Object.entries(counts).map(([r, n]) => `${n} ${seatName(r)}`).join(' · ')
+}
 
 async function loadClientWorkspaces(page = 1) {
   clientsLoading.value = true
@@ -1273,12 +1295,17 @@ onMounted(() => {
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           Users
         </button>
-        <button :class="['nav-item', activeView === 'client-workspaces' ? 'active' : '']" @click="navigate('client-workspaces')">
-          Client Workspaces
-        </button>
         <button :class="['nav-item', activeView === 'workspaces' ? 'active' : '']" @click="navigate('workspaces')">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
           Workspaces
+        </button>
+        <!-- Below Workspaces and with a nested icon on purpose: a client
+             sub-account is somebody else's customer's workspace, and the two
+             lists count different things. -->
+        <button :class="['nav-item', activeView === 'client-workspaces' ? 'active' : '']" @click="navigate('client-workspaces')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v10a3 3 0 003 3h3M4 4h0m6 13h10m-10 0v-2m0 2v2m10-7v10a1 1 0 01-1 1h-8a1 1 0 01-1-1v-10a1 1 0 011-1h8a1 1 0 011 1z"/></svg>
+          Client Workspaces
+          <span v-if="clientPagination.total" class="nav-count">{{ clientPagination.total }}</span>
         </button>
         <div class="nav-section-label">Content</div>
         <button :class="['nav-item', activeView === 'videos' ? 'active' : '']" @click="navigate('videos')">
@@ -1510,10 +1537,7 @@ onMounted(() => {
               </select>
               <select v-model="usersPlan" class="filter-select" @change="usersFilter">
                 <option value="">All Plans</option>
-                <option value="free">Free</option>
-                <option value="studio">Studio</option>
-                <option value="scale">Scale</option>
-                <option value="enterprise">Enterprise</option>
+                <option v-for="t in planTiers" :key="t" :value="t">{{ planLabel(t) }}</option>
               </select>
             </div>
             <div class="table-wrap">
@@ -1602,27 +1626,55 @@ onMounted(() => {
                 <tbody>
                   <tr v-if="clientsLoading"><td colspan="7" class="empty-cell">Loading…</td></tr>
                   <tr v-else-if="!clientData.length"><td colspan="7" class="empty-cell">No client workspaces yet.</td></tr>
-                  <tr v-for="c in clientData" v-else :key="c.id">
-                    <td>
-                      <strong>{{ c.name }}</strong>
-                      <span class="badge badge-client">{{ c.funding_mode }}</span>
-                    </td>
-                    <td>
-                      {{ c.agency_name }}
-                      <div class="cell-sub">#{{ c.agency_id }} · {{ c.agency_tier }}</div>
-                    </td>
-                    <td>{{ c.credits === null ? 'pooled' : c.credits.toLocaleString() }}</td>
-                    <td>{{ c.monthly_credit_cap ? c.monthly_credit_cap.toLocaleString() : '—' }}</td>
-                    <td>{{ (c.spent_this_month ?? 0).toLocaleString() }}</td>
-                    <td>{{ c.projects_count }}</td>
-                    <td>
-                      <span v-if="!c.members.length" class="cell-sub">none</span>
-                      <div v-for="m in c.members" v-else :key="m.id" class="cell-sub">
-                        {{ m.email }} · {{ m.role.replace('client_', '').replace('client', 'viewer') }}
-                        <template v-if="!m.last_seen_at"> · never signed in</template>
-                      </div>
-                    </td>
-                  </tr>
+                  <template v-for="c in clientData" v-else :key="c.id">
+                    <tr :class="['cw-parent', clientExpanded.has(c.id) ? 'is-open' : '']" @click="toggleClient(c.id)">
+                      <td>
+                        <svg :class="['cw-caret', clientExpanded.has(c.id) ? 'open' : '']"
+                             width="11" height="11" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="m9 6 6 6-6 6" />
+                        </svg>
+                        <strong>{{ c.name }}</strong>
+                        <span :class="['badge', c.funding_mode === 'funded' ? 'badge-funded' : 'badge-client']">
+                          {{ c.funding_mode }}
+                        </span>
+                      </td>
+                      <td>
+                        {{ c.agency_name }}
+                        <div class="cell-sub">#{{ c.agency_id }} · {{ c.agency_tier }}</div>
+                      </td>
+                      <td>{{ c.credits === null ? '—' : c.credits.toLocaleString() }}</td>
+                      <td>{{ c.monthly_credit_cap ? c.monthly_credit_cap.toLocaleString() : '—' }}</td>
+                      <td>{{ (c.spent_this_month ?? 0).toLocaleString() }}</td>
+                      <td>{{ c.projects_count }}</td>
+                      <td>
+                        <template v-if="c.members.length">
+                          <strong>{{ c.members.length }}</strong>
+                          <div class="cell-sub">{{ seatSummary(c.members) }}</div>
+                        </template>
+                        <span v-else class="cell-sub">none</span>
+                      </td>
+                    </tr>
+                    <tr v-if="clientExpanded.has(c.id)" class="cw-detail">
+                      <td colspan="7">
+                        <div v-if="!c.members.length" class="cw-detail-empty">
+                          Nobody has been invited to this workspace.
+                        </div>
+                        <table v-else class="cw-members">
+                          <tbody>
+                            <tr v-for="m in c.members" :key="m.id">
+                              <td class="cwm-mail">{{ m.email }}</td>
+                              <td class="cwm-role"><span class="badge badge-seat">{{ seatName(m.role) }}</span></td>
+                              <td class="cwm-seen">
+                                <span v-if="m.last_seen_at">last seen {{ new Date(m.last_seen_at).toLocaleDateString() }}</span>
+                                <span v-else class="cwm-never">never signed in</span>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
             </div>
@@ -3808,6 +3860,57 @@ tr:hover td { background: #1e2129; }
   padding: 3px 8px; border-radius: 5px;
   font-size: 11px; font-weight: 600; white-space: nowrap;
 }
+.nav-count {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--color-text-muted, #6f7080);
+}
+.badge-funded {
+  margin-left: 7px; font-size: 10px; padding: 2px 6px; white-space: nowrap;
+  border: 1px solid rgba(106, 208, 157, 0.38);
+  background: rgba(106, 208, 157, 0.12);
+  color: #6ad09d;
+}
+.badge-seat {
+  font-size: 10px; padding: 2px 7px; white-space: nowrap;
+  border: 1px solid var(--color-border, #23232d);
+  background: var(--color-bg-elevated, #1d1d26);
+  color: var(--color-text-secondary, #a8a9b4);
+}
+
+/* A client row opens to show its people, rather than stacking them inside a
+   cell and pushing every other row off the screen. */
+.cw-parent { cursor: pointer; }
+.cw-parent:hover { background: rgba(255, 255, 255, 0.025); }
+.cw-parent.is-open > td { border-bottom-color: transparent; }
+.cw-caret {
+  color: var(--color-text-muted, #6f7080);
+  margin-right: 7px;
+  vertical-align: -1px;
+  transition: transform .15s ease;
+}
+.cw-caret.open { transform: rotate(90deg); }
+.cw-detail > td {
+  padding: 2px 0 12px 30px !important;
+  background: rgba(255, 255, 255, 0.022);
+  box-shadow: inset 3px 0 0 var(--color-border-active, #34343f);
+}
+.cw-detail-empty { padding: 10px 0; font-size: 12px; color: var(--color-text-muted, #6f7080); }
+.cw-members { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.cw-members td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--color-border, #23232d); font-size: 12.5px; }
+.cw-members tr:last-child td { border-bottom: none; }
+.cwm-mail {
+  width: 34%; color: var(--color-text-secondary, #a8a9b4);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cwm-role { width: 96px; }
+.cwm-seen { font-size: 11px; color: var(--color-text-muted, #6f7080); }
+.cwm-never { color: #e0b04a; }
+
 .badge-client {
   margin-left: 7px;
   font-size: 10px;
