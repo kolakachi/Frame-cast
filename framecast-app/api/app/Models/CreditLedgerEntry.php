@@ -11,6 +11,7 @@ class CreditLedgerEntry extends Model
 
     protected $fillable = [
         'workspace_id',
+        'spent_by_workspace_id',
         'user_id',
         'project_id',
         'scene_id',

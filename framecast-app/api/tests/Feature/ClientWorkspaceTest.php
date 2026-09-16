@@ -30,7 +30,8 @@ class ClientWorkspaceTest extends TestCase
             $t->string('plan_tier')->nullable(); $t->string('plan_source')->nullable();
             $t->string('plan_status')->nullable(); $t->string('status')->nullable();
             $t->integer('credits_monthly')->default(0); $t->integer('credits_topup')->default(0);
-            $t->integer('credits_free_granted')->default(0); $t->timestamps();
+            $t->integer('credits_free_granted')->default(0);
+            $t->unsignedInteger('monthly_credit_cap')->nullable(); $t->timestamps();
         });
         Schema::create('users', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
@@ -46,6 +47,7 @@ class ClientWorkspaceTest extends TestCase
         // mirror the real columns or these assertions test nothing.
         Schema::create('credit_ledger', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('workspace_id');
+            $t->unsignedBigInteger('spent_by_workspace_id')->nullable();
             $t->unsignedBigInteger('user_id')->nullable(); $t->unsignedBigInteger('project_id')->nullable();
             $t->unsignedBigInteger('scene_id')->nullable();
             $t->string('operation'); $t->integer('credits'); $t->integer('balance_after')->nullable();
@@ -430,6 +432,97 @@ class ClientWorkspaceTest extends TestCase
 
         config(['workspaces.client_tiers' => $shipped['client_tiers']]);
         $this->assertTrue($this->agency('enterprise')->canOwnClients());
+    }
+
+
+    // ── Spend caps ──────────────────────────────────────────────────────
+
+    public function test_a_client_is_stopped_at_the_cap_its_agency_set(): void
+    {
+        $a = $this->agency(credits: 20000);
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+        $client = Workspace::query()->where('name', 'Acme')->firstOrFail();
+        $client->forceFill(['monthly_credit_cap' => 1000])->save();
+
+        $credits = app(CreditService::class);
+        $this->assertTrue($credits->deduct((int) $client->getKey(), 600, 'render'));
+        $this->assertTrue($credits->deduct((int) $client->getKey(), 400, 'render'));
+        // 1,000 spent against a 1,000 ceiling: the next one cannot land.
+        $this->assertFalse($credits->deduct((int) $client->getKey(), 1, 'render'));
+
+        // And the agency kept the credits it was not allowed to spend.
+        $this->assertSame(19000, $credits->balance((int) $a->getKey()));
+    }
+
+    public function test_a_cap_does_not_stop_the_agency_itself(): void
+    {
+        // A ceiling an agency could set on itself and then be blocked by is a
+        // support ticket, not a feature.
+        $a = $this->agency(credits: 5000);
+        $a->forceFill(['monthly_credit_cap' => 10])->save();
+
+        $this->assertTrue(app(CreditService::class)->deduct((int) $a->getKey(), 900, 'render'));
+    }
+
+    public function test_a_client_with_no_cap_spends_to_the_pool(): void
+    {
+        $a = $this->agency(credits: 3000);
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+        $client = Workspace::query()->where('name', 'Acme')->firstOrFail();
+
+        $credits = app(CreditService::class);
+        $this->assertTrue($credits->deduct((int) $client->getKey(), 2900, 'render'));
+        $this->assertFalse($credits->deduct((int) $client->getKey(), 200, 'render'), 'stopped by the balance, not a cap');
+    }
+
+    public function test_a_grant_does_not_buy_a_client_more_room_under_its_cap(): void
+    {
+        // Netting a top-up against usage would quietly raise the ceiling by
+        // whatever the agency happened to buy that month.
+        $a = $this->agency(credits: 20000);
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+        $client = Workspace::query()->where('name', 'Acme')->firstOrFail();
+        $client->forceFill(['monthly_credit_cap' => 500])->save();
+
+        $credits = app(CreditService::class);
+        $this->assertTrue($credits->deduct((int) $client->getKey(), 500, 'render'));
+        $credits->grant((int) $a->getKey(), 10000, 'top_up');
+
+        $this->assertFalse($credits->deduct((int) $client->getKey(), 1, 'render'));
+    }
+
+    public function test_the_cap_and_this_months_spend_reach_the_clients_screen(): void
+    {
+        $a = $this->agency(credits: 20000);
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+        $client = Workspace::query()->where('name', 'Acme')->firstOrFail();
+        $client->forceFill(['monthly_credit_cap' => 2000])->save();
+        app(CreditService::class)->deduct((int) $client->getKey(), 340, 'render');
+
+        $body = $this->ctrl()->index($this->req($u, [], 'GET'))->getData(true)['data'];
+        $row = collect($body['clients'])->firstWhere('id', (int) $client->getKey());
+
+        $this->assertSame(2000, $row['monthly_credit_cap']);
+        $this->assertSame(340, $row['spent_this_month']);
+        $this->assertSame(0, $body['agency']['spent_this_month'], 'the agency row is not a client of itself');
+    }
+
+    public function test_an_agency_can_set_and_clear_a_cap(): void
+    {
+        $a = $this->agency();
+        $u = $this->userFor($a);
+        $this->ctrl()->store($this->req($u, ['name' => 'Acme']));
+        $client = Workspace::query()->where('name', 'Acme')->firstOrFail();
+
+        $this->ctrl()->update($this->req($u, ['monthly_credit_cap' => 750], 'PATCH'), (int) $client->getKey());
+        $this->assertSame(750, (int) $client->fresh()->monthly_credit_cap);
+
+        $this->ctrl()->update($this->req($u, ['monthly_credit_cap' => null], 'PATCH'), (int) $client->getKey());
+        $this->assertNull($client->fresh()->monthly_credit_cap);
     }
 
 }

@@ -396,6 +396,32 @@ async function revokeViewer(w, viewer) {
   }
 }
 
+// Which client's ceiling is being edited, and the value being typed.
+const capOpenFor = ref(null)
+const capValue = ref('')
+
+function toggleCap(w) {
+  capOpenFor.value = capOpenFor.value === w.id ? null : w.id
+  capValue.value = w.monthly_credit_cap ?? ''
+}
+
+async function saveCap(w) {
+  const raw = String(capValue.value).trim()
+  const cap = raw === '' ? null : Math.max(1, parseInt(raw, 10) || 0)
+  try {
+    await workspaceStore.setCap(w.id, cap)
+    capOpenFor.value = null
+  } catch {
+    inviteError.value = 'Could not save that cap.'
+  }
+}
+
+// Percentage of the ceiling used, clamped so an over-cap client still renders.
+function capPct(w) {
+  if (!w.monthly_credit_cap) return 0
+  return Math.min(100, Math.round(((w.spent_this_month ?? 0) / w.monthly_credit_cap) * 100))
+}
+
 const clientBusy = ref(false)
 const clientError = ref('')
 
@@ -851,10 +877,39 @@ onMounted(() => {
                 </div>
                 <div class="cw-actions">
                   <button v-if="w.id !== user?.workspace_id" class="btn btn-ghost btn-sm" @click="workspaceStore.switchTo(w.id)">Open</button>
+                  <button v-if="!w.is_agency" class="btn btn-ghost btn-sm" @click="toggleCap(w)">
+                    {{ capOpenFor === w.id ? 'Cancel' : (w.monthly_credit_cap ? 'Edit cap' : 'Set cap') }}
+                  </button>
                   <button v-if="!w.is_agency" class="btn btn-ghost btn-sm" @click="toggleInvite(w.id)">
-                    {{ inviteOpenFor === w.id ? 'Cancel' : 'Invite client' }}
+                    {{ inviteOpenFor === w.id ? 'Cancel' : 'Invite' }}
                   </button>
                   <button v-if="!w.is_agency" class="btn btn-ghost btn-sm" @click="removeClient(w)">Archive</button>
+                </div>
+
+                <!-- Monthly ceiling. Credits still come from the one pool; the
+                     cap only stops a single client draining it. -->
+                <div v-if="!w.is_agency && (w.monthly_credit_cap || capOpenFor === w.id)" class="cw-cap">
+                  <div v-if="w.monthly_credit_cap" class="cw-cap-line">
+                    <span class="cw-cap-text">
+                      {{ (w.spent_this_month ?? 0).toLocaleString() }} /
+                      {{ w.monthly_credit_cap.toLocaleString() }} credits this month
+                    </span>
+                    <span v-if="capPct(w) >= 90" class="cw-cap-warn">near cap</span>
+                  </div>
+                  <div v-if="w.monthly_credit_cap" class="cw-cap-bar">
+                    <div class="cw-cap-fill" :class="capPct(w) >= 90 ? 'hot' : ''" :style="{ width: capPct(w) + '%' }"></div>
+                  </div>
+                  <div v-if="capOpenFor === w.id" class="cw-cap-edit">
+                    <input
+                      v-model="capValue"
+                      class="settings-input"
+                      type="number"
+                      min="1"
+                      placeholder="Credits per month — blank for no cap"
+                      @keyup.enter="saveCap(w)"
+                    />
+                    <button class="btn btn-primary btn-sm" @click="saveCap(w)">Save</button>
+                  </div>
                 </div>
 
                 <!-- People the agency has let in to watch this workspace. -->
@@ -1558,6 +1613,31 @@ onMounted(() => {
 .cw-spend-l { font-size: 10.5px; color: var(--color-text-muted, #6a6a7c); margin-top: 1px; white-space: nowrap; }
 
 /* Invited clients, listed under the workspace they can see. */
+.cw-cap {
+  flex: 1 0 100%;
+  order: 4;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cw-cap-line { display: flex; align-items: center; gap: 8px; }
+.cw-cap-text { font-size: 11.5px; color: var(--color-text-secondary, #a8a9b4); }
+.cw-cap-warn {
+  font-size: 10px; padding: 1px 6px; border-radius: 4px;
+  background: rgba(224, 176, 74, 0.14); color: #e0b04a;
+  border: 1px solid rgba(224, 176, 74, 0.3);
+}
+.cw-cap-bar {
+  height: 4px; border-radius: 2px; overflow: hidden;
+  background: var(--color-bg-sunken, #0d0d12);
+  border: 1px solid var(--color-border, #23232d);
+}
+.cw-cap-fill { height: 100%; background: var(--color-accent, #ff6b35); transition: width 0.2s ease; }
+.cw-cap-fill.hot { background: #e0b04a; }
+.cw-cap-edit { display: flex; gap: 8px; flex-wrap: wrap; }
+.cw-cap-edit .settings-input { flex: 1; min-width: 200px; }
+
 .cw-viewers {
   flex: 1 0 100%;
   /* Always the last thing in the row. The narrow layout gives the spend figure

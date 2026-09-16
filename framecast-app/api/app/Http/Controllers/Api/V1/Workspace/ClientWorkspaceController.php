@@ -143,6 +143,9 @@ class ClientWorkspaceController extends Controller
         $v = $request->validate([
             'name' => ['sometimes', 'string', 'max:120'],
             'client_label' => ['sometimes', 'nullable', 'string', 'max:120'],
+            // Null clears it. A ceiling of zero would mean "this client may do
+            // nothing", which is what archiving is for.
+            'monthly_credit_cap' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:10000000'],
         ]);
         $client->forceFill($v)->save();
 
@@ -237,39 +240,31 @@ class ClientWorkspaceController extends Controller
         $days = max(1, min(365, $days));
         $since = now()->subDays($days);
 
-        // Aggregated in PHP rather than in SQL. The client id lives inside a
-        // json column, and every database spells that extraction differently;
-        // one grouped query here would be Postgres-only and would quietly
-        // return nothing the first time it ran anywhere else. The scan is
-        // bounded — one agency's deductions over at most a year — and chunked
-        // so a busy pool cannot pull its whole ledger into memory.
+        // Now a real indexed column rather than a json field, so this is one
+        // grouped query that every database can run — the earlier version had
+        // to aggregate in PHP because the spender lived inside jsonb and only
+        // Postgres could reach it in SQL.
         $rows = [];
-        DB::table('credit_ledger')
-            ->select(['workspace_id', 'credits', 'project_id', 'metadata', 'created_at'])
-            ->where('workspace_id', $home->getKey())
-            ->where('operation', 'not like', 'grant:%')
-            ->where('created_at', '>=', $since)
-            ->orderBy('id')
-            ->chunk(1000, function ($chunk) use (&$rows, $home): void {
-                foreach ($chunk as $row) {
-                    $meta = is_string($row->metadata) ? json_decode($row->metadata, true) : (array) $row->metadata;
-                    // Absent means the agency spent it on its own account.
-                    $ws = (int) ($meta['spent_by_workspace_id'] ?? $row->workspace_id ?: $home->getKey());
-
-                    if (! isset($rows[$ws])) {
-                        $rows[$ws] = ['credits' => 0, 'operations' => 0, 'projects' => [], 'last_at' => null];
-                    }
-                    $rows[$ws]['credits'] += (int) $row->credits;
-                    $rows[$ws]['operations']++;
-                    if ($row->project_id !== null) {
-                        $rows[$ws]['projects'][(int) $row->project_id] = true;
-                    }
-                    $at = (string) $row->created_at;
-                    if ($rows[$ws]['last_at'] === null || $at > $rows[$ws]['last_at']) {
-                        $rows[$ws]['last_at'] = $at;
-                    }
-                }
-            });
+        foreach (
+            DB::table('credit_ledger')
+                ->selectRaw('COALESCE(spent_by_workspace_id, workspace_id) AS ws')
+                ->selectRaw('SUM(credits) AS credits')
+                ->selectRaw('COUNT(*) AS operations')
+                ->selectRaw('COUNT(DISTINCT project_id) AS projects')
+                ->selectRaw('MAX(created_at) AS last_at')
+                ->where('workspace_id', $home->getKey())
+                ->where('operation', 'not like', 'grant:%')
+                ->where('created_at', '>=', $since)
+                ->groupBy('ws')
+                ->get() as $row
+        ) {
+            $rows[(int) $row->ws] = [
+                'credits'    => (int) $row->credits,
+                'operations' => (int) $row->operations,
+                'projects'   => (int) $row->projects,
+                'last_at'    => $row->last_at ? (string) $row->last_at : null,
+            ];
+        }
 
         $ids = [(int) $home->getKey()];
         foreach (Workspace::query()->where('parent_workspace_id', $home->getKey())
@@ -287,7 +282,7 @@ class ClientWorkspaceController extends Controller
                 'workspace_id' => $id,
                 'credits'      => $credits,
                 'operations'   => (int) ($r['operations'] ?? 0),
-                'projects'     => count($r['projects'] ?? []),
+                'projects'     => (int) ($r['projects'] ?? 0),
                 'last_at'      => $r['last_at'] ?? null,
             ];
         }
@@ -302,7 +297,7 @@ class ClientWorkspaceController extends Controller
                     'workspace_id' => (int) $id,
                     'credits'      => $credits,
                     'operations'   => (int) $r['operations'],
-                    'projects'     => count($r['projects']),
+                    'projects'     => (int) $r['projects'],
                     'last_at'      => $r['last_at'],
                     'archived'     => true,
                 ];
@@ -496,6 +491,12 @@ class ClientWorkspaceController extends Controller
             'status' => $w->status,
             'projects' => DB::table('projects')->where('workspace_id', $w->getKey())->count(),
             'created_at' => $w->created_at?->toDateString(),
+            // The ceiling and how close this client is to it. Null cap means
+            // no ceiling — the agency's balance is the only limit.
+            'monthly_credit_cap' => $w->monthly_credit_cap ? (int) $w->monthly_credit_cap : null,
+            'spent_this_month' => $isAgency
+                ? 0
+                : app(CreditService::class)->spentThisMonth((int) $w->getKey(), (int) ($w->parent_workspace_id ?: $w->getKey())),
             // Who the agency has let in to watch this one. Empty for the
             // agency's own row — it is not a client of itself.
             'viewers' => $isAgency ? [] : User::query()

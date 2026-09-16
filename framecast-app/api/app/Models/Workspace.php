@@ -33,6 +33,7 @@ class Workspace extends Model
         'status',
         'credits_monthly',
         'credits_topup',
+        'monthly_credit_cap',
         'credits_free_granted',
         'billing_renews_at',
         'daily_streak_count',

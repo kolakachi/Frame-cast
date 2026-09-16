@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CreditLedgerEntry;
 use App\Models\Workspace;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class CreditService
 {
@@ -463,6 +464,47 @@ class CreditService
      * that ask about credits never learn that sub-accounts exist — and cannot
      * get it wrong one at a time.
      */
+    /**
+     * Whether this charge would take a client past the ceiling its agency set.
+     *
+     * Only clients have ceilings. The agency's own spending is not capped by
+     * anything except the balance — a limit an agency could set on itself and
+     * then be stopped by is a support ticket, not a feature.
+     */
+    private function wouldBreachCap(int $spentBy, int $poolId, int $amount): bool
+    {
+        if ($spentBy === $poolId) {
+            return false;
+        }
+
+        $client = Workspace::query()->whereKey($spentBy)->first();
+        $cap = $client?->monthly_credit_cap;
+        if (! $cap) {
+            return false;
+        }
+
+        return $this->spentThisMonth($spentBy, $poolId) + $amount > (int) $cap;
+    }
+
+    /**
+     * What a client has drawn from the pool since the month began.
+     *
+     * Grants are excluded — they are the agency buying credits, and netting a
+     * top-up against a client's usage would quietly raise that client's
+     * ceiling by however much the agency happened to buy.
+     */
+    public function spentThisMonth(int $clientWorkspaceId, ?int $poolId = null): int
+    {
+        $poolId ??= $this->poolId($clientWorkspaceId);
+
+        return (int) DB::table('credit_ledger')
+            ->where('workspace_id', $poolId)
+            ->where('spent_by_workspace_id', $clientWorkspaceId)
+            ->where('operation', 'not like', 'grant:%')
+            ->where('created_at', '>=', now()->startOfMonth())
+            ->sum('credits');
+    }
+
     private function poolId(int $workspaceId): int
     {
         $workspace = Workspace::find($workspaceId);
@@ -514,9 +556,20 @@ class CreditService
         $spentBy = $workspaceId;
         $workspaceId = $this->poolId($workspaceId);
 
-        $charged = DB::transaction(function () use ($workspaceId, $amount): bool {
+        $capped = false;
+        $charged = DB::transaction(function () use ($workspaceId, $spentBy, $amount, &$capped): bool {
             $workspace = Workspace::query()->whereKey($workspaceId)->lockForUpdate()->first();
             if (! $workspace || $workspace->creditsBalance() < $amount) {
+                return false;
+            }
+
+            // Checked under the same lock as the balance, and for the same
+            // reason: two generations started together would otherwise both
+            // read the month's spend before either had written to it, and both
+            // slip past a ceiling neither was under.
+            if ($this->wouldBreachCap($spentBy, $workspaceId, $amount)) {
+                $capped = true;
+
                 return false;
             }
 
@@ -534,6 +587,17 @@ class CreditService
 
             return true;
         });
+
+        if ($capped) {
+            Log::info('CreditService: refused by the client spend cap', [
+                'client_workspace_id' => $spentBy,
+                'pool_workspace_id'   => $workspaceId,
+                'amount'              => $amount,
+                'operation'           => $operation,
+            ]);
+
+            return false;
+        }
 
         if (! $charged) {
             // The single strongest top-up-intent signal in the product: a user
@@ -558,6 +622,9 @@ class CreditService
         rescue(function () use ($workspaceId, $spentBy, $amount, $operation, $context) {
             CreditLedgerEntry::query()->create([
                 'workspace_id'  => $workspaceId,
+                // Indexed, unlike the metadata copy below, because a per-client
+                // ceiling has to be summed before every charge.
+                'spent_by_workspace_id' => $spentBy !== $workspaceId ? $spentBy : null,
                 'user_id'       => isset($context['user_id'])    ? (int) $context['user_id']    : null,
                 'project_id'    => isset($context['project_id']) ? (int) $context['project_id'] : null,
                 'scene_id'      => isset($context['scene_id'])   ? (int) $context['scene_id']   : null,

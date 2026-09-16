@@ -113,6 +113,11 @@ export const useWorkspaceStore = defineStore('workspace', {
       return data.data.viewer
     },
 
+    async setCap(clientId, cap) {
+      await api.patch(`/workspaces/clients/${clientId}`, { monthly_credit_cap: cap })
+      await this.loadClients()
+    },
+
     async removeViewer(clientId, userId) {
       await api.delete(`/workspaces/clients/${clientId}/viewers/${userId}`)
       await this.loadClients()
