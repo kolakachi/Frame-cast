@@ -33,7 +33,7 @@ class AdminController extends Controller
                 'summary' => [
                     'total_users' => User::query()->whereNotIn('role', array_keys(User::CLIENT_SEATS))->count(),
                     'active_users' => User::query()->whereNotIn('role', array_keys(User::CLIENT_SEATS))->where('status', 'active')->count(),
-                    'total_workspaces' => Workspace::query()->count(),
+                    'total_workspaces' => Workspace::query()->whereNull('parent_workspace_id')->count(),
                     'total_projects' => Project::query()->count(),
                     'exports_today' => ExportJob::query()->where('status', 'completed')->whereDate('completed_at', today())->count(),
                     'exports_month' => ExportJob::query()->where('status', 'completed')->where('completed_at', '>=', $monthStart)->count(),
@@ -398,6 +398,10 @@ class AdminController extends Controller
             ->pluck('spend', 'workspace_id');
 
         $paginator = Workspace::query()
+            // Our customers only. A client sub-account belongs to one of them
+            // and has its own screen; listing it here mixed two different
+            // things in one table and made the workspace count read high.
+            ->whereNull('parent_workspace_id')
             ->withCount(['users', 'projects'])
             ->when($validated['search'] ?? null, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->when($validated['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
