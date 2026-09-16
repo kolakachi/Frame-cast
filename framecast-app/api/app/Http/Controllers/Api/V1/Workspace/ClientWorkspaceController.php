@@ -461,6 +461,135 @@ class ClientWorkspaceController extends Controller
         ];
     }
 
+    /**
+     * Fund a client, or take credits back.
+     *
+     * Positive adds, negative reclaims. Funding a pooled client is what turns
+     * it funded — the agency does not choose a mode and then move money, it
+     * moves money and the mode follows, because a funded client with nothing
+     * in it is only a client that cannot work.
+     */
+    public function fund(Request $request, int $id): JsonResponse
+    {
+        $client = $this->ownedClient($request, $id);
+        if (! $client) {
+            return $this->error('not_found', 'Client workspace not found.', 404);
+        }
+
+        $v = $request->validate([
+            'amount' => ['required', 'integer', 'not_in:0', 'min:-10000000', 'max:10000000'],
+        ]);
+
+        $agency = $this->homeWorkspace($request->user());
+        if (! $agency) {
+            return $this->error('workspace_not_found', 'Workspace not found.', 404);
+        }
+
+        [$moved, $why] = app(CreditService::class)
+            ->transferToClient($agency, $client, (int) $v['amount']);
+
+        if (! $moved) {
+            return $this->error($why, match ($why) {
+                'agency_short' => 'Your balance does not cover that. Top up, or move a smaller amount.',
+                'client_empty' => 'That client has no credits left to take back.',
+                'not_your_client' => 'That client workspace is not yours.',
+                default => 'Those credits could not be moved.',
+            }, 422);
+        }
+
+        $client = $client->fresh();
+
+        // First money in makes it funded; emptying it by hand does not make it
+        // pooled again, because "spend the agency's balance instead" is a
+        // decision the agency should have to state rather than fall into.
+        if ((int) $v['amount'] > 0 && ! $client->isFunded()) {
+            $client->forceFill(['funding_mode' => Workspace::FUNDING_FUNDED])->save();
+        }
+
+        return response()->json(['data' => ['client' => $this->shape($client->fresh(), false)], 'meta' => []]);
+    }
+
+    /** Put a client back on the shared pool, returning whatever it still holds. */
+    public function unfund(Request $request, int $id): JsonResponse
+    {
+        $client = $this->ownedClient($request, $id);
+        if (! $client) {
+            return $this->error('not_found', 'Client workspace not found.', 404);
+        }
+
+        $agency = $this->homeWorkspace($request->user());
+        $remaining = (int) $client->credits_topup;
+        if ($remaining > 0 && $agency) {
+            app(CreditService::class)->transferToClient($agency, $client, -$remaining);
+        }
+
+        $client->forceFill(['funding_mode' => Workspace::FUNDING_POOLED])->save();
+
+        return response()->json(['data' => ['client' => $this->shape($client->fresh(), false)], 'meta' => []]);
+    }
+
+    /** Change what somebody may do, without making them accept a new invite. */
+    public function updateViewer(Request $request, int $id, int $userId): JsonResponse
+    {
+        $client = $this->ownedClient($request, $id);
+        if (! $client) {
+            return $this->error('not_found', 'Client workspace not found.', 404);
+        }
+
+        $v = $request->validate([
+            'role' => ['required', \Illuminate\Validation\Rule::in(array_keys(User::CLIENT_SEATS))],
+        ]);
+
+        $user = User::query()->whereKey($userId)
+            ->where('workspace_id', $client->getKey())
+            ->whereIn('role', array_keys(User::CLIENT_SEATS))
+            ->first();
+
+        if (! $user) {
+            return $this->error('not_found', 'That person does not have access to this workspace.', 404);
+        }
+
+        $user->forceFill(['role' => $v['role']])->save();
+
+        return response()->json(['data' => ['viewer' => $this->shapeViewer($user->fresh())], 'meta' => []]);
+    }
+
+    /**
+     * The people on one client workspace, paged.
+     *
+     * Separate from the client list because a client with a hundred members
+     * cannot be rendered inside a row of another list, and because searching a
+     * hundred addresses is not something the browser should be doing.
+     */
+    public function viewers(Request $request, int $id): JsonResponse
+    {
+        $client = $this->ownedClient($request, $id);
+        if (! $client) {
+            return $this->error('not_found', 'Client workspace not found.', 404);
+        }
+
+        $q = trim((string) $request->query('q', ''));
+        $perPage = min(100, max(10, (int) $request->query('per_page', 25)));
+
+        $paginator = User::query()
+            ->where('workspace_id', $client->getKey())
+            ->whereIn('role', array_keys(User::CLIENT_SEATS))
+            ->when($q !== '', fn ($query) => $query->where(function ($w) use ($q): void {
+                $w->where('email', 'like', "%{$q}%")->orWhere('name', 'like', "%{$q}%");
+            }))
+            ->orderBy('email')
+            ->paginate($perPage, ['*'], 'page', max(1, (int) $request->query('page', 1)));
+
+        return response()->json(['data' => [
+            'viewers' => collect($paginator->items())->map(fn (User $u) => $this->shapeViewer($u))->all(),
+        ], 'meta' => ['pagination' => [
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+        ]]]);
+    }
+
     private function homeWorkspace(User $user): ?Workspace
     {
         $active = Workspace::find($user->workspace_id);
@@ -497,15 +626,16 @@ class ClientWorkspaceController extends Controller
             'spent_this_month' => $isAgency
                 ? 0
                 : app(CreditService::class)->spentThisMonth((int) $w->getKey(), (int) ($w->parent_workspace_id ?: $w->getKey())),
-            // Who the agency has let in to watch this one. Empty for the
-            // agency's own row — it is not a client of itself.
-            'viewers' => $isAgency ? [] : User::query()
+            // A count, not the list. A client with a hundred members would
+            // otherwise put a hundred rows inside one row of this list.
+            'members' => $isAgency ? 0 : User::query()
                 ->where('workspace_id', $w->getKey())
                 ->whereIn('role', array_keys(User::CLIENT_SEATS))
-                ->orderBy('email')
-                ->get()
-                ->map(fn (User $u) => $this->shapeViewer($u))
-                ->all(),
+                ->count(),
+            'funding_mode' => $isAgency ? null : (string) ($w->funding_mode ?: Workspace::FUNDING_POOLED),
+            // Only a funded client has a balance of its own; a pooled one
+            // reports null rather than zero, which would read as "spent out".
+            'credits' => $w->isFunded() ? (int) $w->creditsBalance() : null,
         ];
     }
 

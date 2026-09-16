@@ -34,6 +34,7 @@ class Workspace extends Model
         'credits_monthly',
         'credits_topup',
         'monthly_credit_cap',
+        'funding_mode',
         'credits_free_granted',
         'billing_renews_at',
         'daily_streak_count',
@@ -86,13 +87,43 @@ class Workspace extends Model
      * credits and every child draws on that one pool. Returning the parent here
      * means the whole credit path stays unaware that sub-accounts exist.
      */
+    public const FUNDING_POOLED = 'pooled';
+    public const FUNDING_FUNDED = 'funded';
+
+    /**
+     * A client the agency has handed its own credits to.
+     *
+     * Funded and pooled differ in one thing only — which workspace a charge
+     * resolves to — so a funded client keeps its balance in credits_topup like
+     * anybody else and every existing query still works on it.
+     */
+    public function isFunded(): bool
+    {
+        return $this->parent_workspace_id && $this->funding_mode === self::FUNDING_FUNDED;
+    }
+
+    /**
+     * Whose balance pays for this workspace's work.
+     *
+     * A pooled client resolves up to its agency. A funded one stops here: its
+     * allocation is the limit, and falling back to the agency would make the
+     * allocation a suggestion rather than a budget.
+     */
     public function creditRoot(): self
     {
+        if ($this->isFunded()) {
+            return $this;
+        }
+
         return $this->parent_workspace_id ? ($this->parent ?? $this) : $this;
     }
 
     public function creditRootId(): int
     {
+        if ($this->isFunded()) {
+            return (int) $this->getKey();
+        }
+
         return (int) ($this->parent_workspace_id ?: $this->getKey());
     }
 

@@ -12,6 +12,7 @@ export const useWorkspaceStore = defineStore('workspace', {
     clients: null,
     agency: null,
     canOwnClients: false,
+    maxClients: 50,
     sharedCredits: null,
     // Per-client spend for the window below, keyed by workspace id. Null until
     // asked, so "no spend yet" and "not loaded" stay different answers.
@@ -82,6 +83,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.agency = data.data.agency
         this.clients = data.data.clients
         this.canOwnClients = Boolean(data.data.can_own_clients)
+        this.maxClients = data.data.max_clients ?? 50
         this.sharedCredits = data.data.shared_credits
       } catch {
         // An agency-only endpoint answers 403 for everyone else; the switcher
@@ -111,6 +113,26 @@ export const useWorkspaceStore = defineStore('workspace', {
       const { data } = await api.post(`/workspaces/clients/${clientId}/viewers`, { email, role })
       await this.loadClients()
       return data.data.viewer
+    },
+
+    async fundClient(clientId, amount) {
+      const { data } = await api.post(`/workspaces/clients/${clientId}/credits`, { amount })
+      await this.loadClients()
+      return data.data.client
+    },
+
+    async unfundClient(clientId) {
+      await api.delete(`/workspaces/clients/${clientId}/credits`)
+      await this.loadClients()
+    },
+
+    async loadViewers(clientId, { page = 1, q = '' } = {}) {
+      const { data } = await api.get(`/workspaces/clients/${clientId}/viewers`, { params: { page, q } })
+      return { viewers: data.data.viewers, pagination: data.meta.pagination }
+    },
+
+    async setViewerRole(clientId, userId, role) {
+      await api.patch(`/workspaces/clients/${clientId}/viewers/${userId}`, { role })
     },
 
     async setCap(clientId, cap) {

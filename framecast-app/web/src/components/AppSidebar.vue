@@ -41,7 +41,7 @@ async function switchWorkspace(id) {
 }
 
 function goClients() {
-  router.push({ name: "settings", query: { section: "clients" } });
+  router.push({ name: "clients" });
 }
 const showWsPopover = ref(false);
 const showUserPopover = ref(false);

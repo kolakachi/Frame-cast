@@ -465,6 +465,110 @@ class CreditService
      * get it wrong one at a time.
      */
     /**
+     * Move credits between an agency and one of its clients.
+     *
+     * A positive amount funds the client, a negative one takes credits back.
+     * Both sides move inside one transaction with both rows locked, because the
+     * failure this guards against is the interesting one: crediting the client
+     * without debiting the agency mints credits out of nothing, and the reverse
+     * destroys credits a customer paid for.
+     *
+     * Locks are taken in id order. Two agencies moving credits to each other is
+     * impossible, but an agency and a client both being touched by concurrent
+     * requests is not, and a consistent order is what stops that deadlocking.
+     *
+     * @return array{0: bool, 1: string}  whether it moved, and why not
+     */
+    public function transferToClient(Workspace $agency, Workspace $client, int $amount): array
+    {
+        if ($amount === 0) {
+            return [false, 'nothing_to_move'];
+        }
+
+        if ((int) $client->parent_workspace_id !== (int) $agency->getKey()) {
+            return [false, 'not_your_client'];
+        }
+
+        $ids = [(int) $agency->getKey(), (int) $client->getKey()];
+        sort($ids);
+
+        $reason = 'ok';
+        $moved = DB::transaction(function () use ($ids, $agency, $client, $amount, &$reason): bool {
+            $locked = Workspace::query()->whereIn('id', $ids)->lockForUpdate()->get()->keyBy('id');
+            $a = $locked[$agency->getKey()] ?? null;
+            $c = $locked[$client->getKey()] ?? null;
+            if (! $a || ! $c) {
+                $reason = 'not_found';
+
+                return false;
+            }
+
+            if ($amount > 0) {
+                if ($a->creditsBalance() < $amount) {
+                    $reason = 'agency_short';
+
+                    return false;
+                }
+                // Funding always comes out of the agency's one-time bucket, so
+                // a monthly allowance cannot be quietly converted into a
+                // client balance that outlives the month it belonged to.
+                $fromTopup = min($amount, (int) $a->credits_topup);
+                $fromMonthly = $amount - $fromTopup;
+                if ($fromTopup > 0) {
+                    $a->decrement('credits_topup', $fromTopup);
+                }
+                if ($fromMonthly > 0) {
+                    $a->decrement('credits_monthly', $fromMonthly);
+                }
+                $c->increment('credits_topup', $amount);
+            } else {
+                $take = min(-$amount, (int) $c->credits_topup);
+                if ($take <= 0) {
+                    $reason = 'client_empty';
+
+                    return false;
+                }
+                $c->decrement('credits_topup', $take);
+                $a->increment('credits_topup', $take);
+                $amount = -$take;
+            }
+
+            return true;
+        });
+
+        if (! $moved) {
+            return [false, $reason];
+        }
+
+        // Two rows, one on each side, so the movement reads correctly from
+        // either workspace's history rather than appearing from nowhere.
+        rescue(function () use ($agency, $client, $amount): void {
+            $now = now();
+            CreditLedgerEntry::query()->create([
+                'workspace_id' => $agency->getKey(),
+                'spent_by_workspace_id' => $client->getKey(),
+                'operation' => $amount > 0 ? 'client_funding' : 'grant:client_refund',
+                'credits' => abs($amount),
+                'balance_after' => $this->balance((int) $agency->getKey()),
+                'metadata' => ['client_workspace_id' => (int) $client->getKey(), 'direction' => $amount > 0 ? 'out' : 'in'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            CreditLedgerEntry::query()->create([
+                'workspace_id' => $client->getKey(),
+                'operation' => $amount > 0 ? 'grant:agency_funding' : 'agency_reclaim',
+                'credits' => abs($amount),
+                'balance_after' => (int) $client->fresh()->creditsBalance(),
+                'metadata' => ['agency_workspace_id' => (int) $agency->getKey(), 'direction' => $amount > 0 ? 'in' : 'out'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }, null, false);
+
+        return [true, 'ok'];
+    }
+
+    /**
      * Whether this charge would take a client past the ceiling its agency set.
      *
      * Only clients have ceilings. The agency's own spending is not capped by

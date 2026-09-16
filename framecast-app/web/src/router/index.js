@@ -61,6 +61,10 @@ const routes = [
   { path: '/ugc-ads', name: 'ugc-ads', component: UgcAdsView, meta: { requiresAuth: true, internalOnly: true } },
   { path: '/series/new', name: 'series-create', component: SeriesCreateView, meta: { requiresAuth: true } },
   { path: '/series/:seriesId', name: 'series-detail', component: SeriesDetailView, meta: { requiresAuth: true } },
+  // Agency client management. Its own area rather than a settings tab: a
+  // client can have a hundred members, which no accordion can hold.
+  { path: '/clients', name: 'clients', component: () => import('../views/ClientsView.vue'), meta: { requiresAuth: true } },
+  { path: '/clients/:id', name: 'client-detail', component: () => import('../views/ClientDetailView.vue'), meta: { requiresAuth: true } },
   { path: '/channels', name: 'channels', component: ChannelsView, meta: { requiresAuth: true } },
   { path: '/channels/:channelId', name: 'channel-detail', component: ChannelDetailView, meta: { requiresAuth: true } },
   { path: '/videos', name: 'videos', component: VideosView, meta: { requiresAuth: true } },

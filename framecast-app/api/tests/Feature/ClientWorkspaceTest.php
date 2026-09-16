@@ -31,7 +31,8 @@ class ClientWorkspaceTest extends TestCase
             $t->string('plan_status')->nullable(); $t->string('status')->nullable();
             $t->integer('credits_monthly')->default(0); $t->integer('credits_topup')->default(0);
             $t->integer('credits_free_granted')->default(0);
-            $t->unsignedInteger('monthly_credit_cap')->nullable(); $t->timestamps();
+            $t->unsignedInteger('monthly_credit_cap')->nullable();
+            $t->string('funding_mode')->default('pooled'); $t->timestamps();
         });
         Schema::create('users', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
@@ -523,6 +524,165 @@ class ClientWorkspaceTest extends TestCase
 
         $this->ctrl()->update($this->req($u, ['monthly_credit_cap' => null], 'PATCH'), (int) $client->getKey());
         $this->assertNull($client->fresh()->monthly_credit_cap);
+    }
+
+
+    // ── Funding a client ────────────────────────────────────────────────
+
+    private function client(Workspace $a, User $u, string $name = 'Acme'): Workspace
+    {
+        $this->ctrl()->store($this->req($u, ['name' => $name]));
+
+        return Workspace::query()->where('name', $name)->firstOrFail();
+    }
+
+    public function test_funding_a_client_moves_credits_off_the_agency(): void
+    {
+        $a = $this->agency(credits: 20000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+
+        $res = $this->ctrl()->fund($this->req($u, ['amount' => 2000]), (int) $client->getKey());
+
+        $this->assertSame(200, $res->status());
+        $this->assertSame(18000, (int) $a->fresh()->credits_topup, 'the agency paid for it');
+        $this->assertSame(2000, (int) $client->fresh()->credits_topup);
+        $this->assertSame('funded', $client->fresh()->funding_mode);
+    }
+
+    public function test_a_funded_client_spends_its_own_and_stops_there(): void
+    {
+        // The whole point of funding rather than pooling: the allocation is
+        // the limit, not a suggestion.
+        $a = $this->agency(credits: 20000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        $this->ctrl()->fund($this->req($u, ['amount' => 1000]), (int) $client->getKey());
+
+        $credits = app(CreditService::class);
+        $this->assertSame(1000, $credits->balance((int) $client->getKey()), 'its own balance, not the pool');
+        $this->assertTrue($credits->deduct((int) $client->getKey(), 900, 'render'));
+        $this->assertFalse($credits->deduct((int) $client->getKey(), 200, 'render'), 'no falling back to the agency');
+
+        $this->assertSame(19000, (int) $a->fresh()->credits_topup, 'the agency was never touched');
+    }
+
+    public function test_credits_can_be_taken_back(): void
+    {
+        $a = $this->agency(credits: 5000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        $this->ctrl()->fund($this->req($u, ['amount' => 2000]), (int) $client->getKey());
+
+        $this->ctrl()->fund($this->req($u, ['amount' => -500]), (int) $client->getKey());
+
+        $this->assertSame(1500, (int) $client->fresh()->credits_topup);
+        $this->assertSame(3500, (int) $a->fresh()->credits_topup);
+    }
+
+    public function test_an_agency_cannot_fund_beyond_its_balance(): void
+    {
+        // Crediting the client without debiting the agency would mint credits.
+        $a = $this->agency(credits: 100);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+
+        $res = $this->ctrl()->fund($this->req($u, ['amount' => 5000]), (int) $client->getKey());
+
+        $this->assertSame(422, $res->status());
+        $this->assertSame('agency_short', $res->getData(true)['error']['code']);
+        $this->assertSame(100, (int) $a->fresh()->credits_topup);
+        $this->assertSame(0, (int) $client->fresh()->credits_topup);
+    }
+
+    public function test_unfunding_returns_what_is_left_and_repools(): void
+    {
+        $a = $this->agency(credits: 5000);
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        $this->ctrl()->fund($this->req($u, ['amount' => 2000]), (int) $client->getKey());
+        app(CreditService::class)->deduct((int) $client->getKey(), 500, 'render');
+
+        $this->ctrl()->unfund($this->req($u, [], 'DELETE'), (int) $client->getKey());
+
+        $this->assertSame('pooled', $client->fresh()->funding_mode);
+        $this->assertSame(0, (int) $client->fresh()->credits_topup);
+        $this->assertSame(4500, (int) $a->fresh()->credits_topup, 'the unspent 1,500 came home');
+        // And it is back on the pool.
+        $this->assertSame(4500, app(CreditService::class)->balance((int) $client->getKey()));
+    }
+
+    public function test_an_agency_cannot_fund_someone_else_s_client(): void
+    {
+        $mine = $this->agency(credits: 9000);
+        $theirs = $this->agency(credits: 9000);
+        $other = Workspace::query()->create(['name' => 'Not mine', 'status' => 'active']);
+        $other->forceFill(['parent_workspace_id' => $theirs->getKey()])->save();
+
+        $res = $this->ctrl()->fund($this->req($this->userFor($mine), ['amount' => 100]), (int) $other->getKey());
+
+        $this->assertSame(404, $res->status());
+        $this->assertSame(0, (int) $other->fresh()->credits_topup);
+    }
+
+    // ── Editing access ──────────────────────────────────────────────────
+
+    public function test_a_seat_can_be_changed_without_a_new_invite(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $a = $this->agency();
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        $this->ctrl()->inviteViewer($this->req($u, ['email' => 'ops@acme.test']), (int) $client->getKey());
+        $seat = User::query()->where('email', 'ops@acme.test')->firstOrFail();
+        $this->assertSame(User::ROLE_CLIENT_VIEWER, $seat->role);
+
+        $res = $this->ctrl()->updateViewer(
+            $this->req($u, ['role' => User::ROLE_CLIENT_ADMIN], 'PATCH'),
+            (int) $client->getKey(),
+            (int) $seat->getKey(),
+        );
+
+        $this->assertSame(200, $res->status());
+        $this->assertSame(User::ROLE_CLIENT_ADMIN, $seat->fresh()->role);
+    }
+
+    public function test_members_are_paged_and_searchable(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $a = $this->agency();
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        foreach (range(1, 30) as $n) {
+            $this->ctrl()->inviteViewer($this->req($u, ['email' => "person{$n}@acme.test"]), (int) $client->getKey());
+        }
+
+        $first = $this->ctrl()->viewers($this->req($u, [], 'GET'), (int) $client->getKey())->getData(true);
+        $this->assertCount(25, $first['data']['viewers']);
+        $this->assertSame(30, $first['meta']['pagination']['total']);
+
+        $req = Request::create('/v', 'GET', ['q' => 'person7@']);
+        $req->setUserResolver(fn () => $u);
+        $found = $this->ctrl()->viewers($req, (int) $client->getKey())->getData(true);
+        $this->assertCount(1, $found['data']['viewers']);
+        $this->assertSame('person7@acme.test', $found['data']['viewers'][0]['email']);
+    }
+
+    public function test_the_client_list_carries_a_member_count_not_the_members(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $a = $this->agency();
+        $u = $this->userFor($a);
+        $client = $this->client($a, $u);
+        $this->ctrl()->inviteViewer($this->req($u, ['email' => 'ops@acme.test']), (int) $client->getKey());
+
+        $body = $this->ctrl()->index($this->req($u, [], 'GET'))->getData(true)['data'];
+        $row = collect($body['clients'])->firstWhere('id', (int) $client->getKey());
+
+        $this->assertSame(1, $row['members']);
+        $this->assertArrayNotHasKey('viewers', $row, 'a hundred members must not ride inside the list');
+        $this->assertSame('pooled', $row['funding_mode']);
+        $this->assertNull($row['credits'], 'a pooled client has no balance of its own');
     }
 
 }
