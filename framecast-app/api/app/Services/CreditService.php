@@ -553,11 +553,17 @@ class CreditService
         // either workspace's history rather than appearing from nowhere.
         rescue(function () use ($agency, $client, $amount): void {
             $now = now();
+
+            // Sign convention, shared with deduct() and grant(): positive means
+            // credits LEFT this workspace, negative means they arrived. Writing
+            // abs() on both sides of a transfer said the credits left both
+            // workspaces at once, which is only invisible for as long as nobody
+            // reconstructs a balance from the ledger.
             CreditLedgerEntry::query()->create([
                 'workspace_id' => $agency->getKey(),
                 'spent_by_workspace_id' => $client->getKey(),
                 'operation' => $amount > 0 ? 'transfer:client_funding' : 'transfer:client_reclaim',
-                'credits' => abs($amount),
+                'credits' => $amount,
                 'balance_after' => $this->balance((int) $agency->getKey()),
                 'metadata' => ['client_workspace_id' => (int) $client->getKey(), 'direction' => $amount > 0 ? 'out' : 'in'],
                 'created_at' => $now,
@@ -566,7 +572,7 @@ class CreditService
             CreditLedgerEntry::query()->create([
                 'workspace_id' => $client->getKey(),
                 'operation' => $amount > 0 ? 'transfer:agency_funding' : 'transfer:agency_reclaim',
-                'credits' => abs($amount),
+                'credits' => -$amount,
                 'balance_after' => (int) $client->fresh()->creditsBalance(),
                 'metadata' => ['agency_workspace_id' => (int) $agency->getKey(), 'direction' => $amount > 0 ? 'in' : 'out'],
                 'created_at' => $now,
@@ -631,8 +637,16 @@ class CreditService
         // fire. A pooled client's charge lands on the agency with the client in
         // spent_by_workspace_id; a funded client's lands on itself with that
         // column null, because there is no one else it could have been.
+        // Written as an OR rather than COALESCE(...) = ? on purpose: a function
+        // over the columns cannot use credit_ledger_pool_client_idx, and this
+        // runs under a row lock before every charge a capped client makes.
         $q = DB::table('credit_ledger')
-            ->whereRaw('COALESCE(spent_by_workspace_id, workspace_id) = ?', [$clientWorkspaceId])
+            ->where(function ($w) use ($clientWorkspaceId): void {
+                $w->where('spent_by_workspace_id', $clientWorkspaceId)
+                    ->orWhere(fn ($f) => $f
+                        ->where('workspace_id', $clientWorkspaceId)
+                        ->whereNull('spent_by_workspace_id'));
+            })
             ->where('created_at', '>=', now()->startOfMonth());
 
         return (int) self::onlySpend($q)->sum('credits');

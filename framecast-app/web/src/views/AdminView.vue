@@ -313,7 +313,7 @@ async function copyAffiliateLink(a) {
 
 const topbarTitles = {
   dashboard: 'Platform Overview', users: 'Users',
-  workspaces: 'Workspaces', videos: 'All Videos',
+  workspaces: 'Workspaces', 'client-workspaces': 'Client Workspaces', videos: 'All Videos',
   jobs: 'Queue & Jobs', billing: 'Billing & Spend', audit: 'Audit Log',
   failures: 'Job Failures', storage: 'Storage',
   moderation: 'Trust & Safety',
@@ -736,6 +736,43 @@ const panelSpendMax = computed(() => {
 const wsLoading = ref(false)
 const wsData = ref([])
 
+// Tiers come from the server. Hardcoding them here is how the dropdown ended
+// up offering studio and scale while every lifetime_* and appsumo_* tier —
+// the ones most paying customers are on — could not be set at all.
+const planTiers = ref([])
+
+// Client sub-accounts. Deliberately their own view: they are kept out of the
+// users and workspaces lists so neither count is overstated, which leaves this
+// as the only place they can be looked at.
+const clientData = ref([])
+const clientSearch = ref('')
+const clientPagination = ref({ current_page: 1, last_page: 1, total: 0 })
+const clientsLoading = ref(false)
+
+async function loadClientWorkspaces(page = 1) {
+  clientsLoading.value = true
+  try {
+    const res = await api.get('/admin/client-workspaces', {
+      params: { page, search: clientSearch.value.trim(), per_page: 50 },
+    })
+    clientData.value = res.data.data?.clients ?? []
+    clientPagination.value = res.data.meta?.pagination ?? { current_page: 1, last_page: 1, total: 0 }
+  } catch {
+    clientData.value = []
+  } finally {
+    clientsLoading.value = false
+  }
+}
+
+let clientSearchTimer = null
+function clientFilter() {
+  clearTimeout(clientSearchTimer)
+  clientSearchTimer = setTimeout(() => loadClientWorkspaces(1), 250)
+}
+const planLabel = (t) => String(t)
+  .replace('appsumo_', 'AppSumo ')
+  .replace('lifetime_', 'Lifetime ')
+  .replace(/^\w/, (c) => c.toUpperCase())
 // Client sub-accounts share their agency's pool, so counting them as customers
 // overstates the book. Named on the page rather than filtered out, because the
 // rows themselves are still real workspaces worth seeing.
@@ -755,6 +792,7 @@ async function loadWorkspaces() {
       params: { search: wsSearch.value || undefined, status: wsStatus.value || undefined, plan: wsPlan.value || undefined, page: wsPage.value, per_page: wsPerPage.value },
     })
     wsData.value = res.data.data?.workspaces ?? []
+    planTiers.value = res.data.meta?.plan_tiers ?? []
     wsPagination.value = res.data.meta?.pagination ?? {}
   } finally {
     wsLoading.value = false
@@ -1161,6 +1199,7 @@ function navigate(view) {
   if (view === 'users') loadUsers()
   if (view === 'affiliates') loadAffiliates()
   if (view === 'workspaces') loadWorkspaces()
+  if (view === 'client-workspaces') loadClientWorkspaces()
   if (view === 'videos') loadVideos()
   if (view === 'jobs') loadJobs()
   if (view === 'audit') loadAudit()
@@ -1223,6 +1262,9 @@ onMounted(() => {
         <button :class="['nav-item', activeView === 'users' ? 'active' : '']" @click="navigate('users')">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           Users
+        </button>
+        <button :class="['nav-item', activeView === 'client-workspaces' ? 'active' : '']" @click="navigate('client-workspaces')">
+          Client Workspaces
         </button>
         <button :class="['nav-item', activeView === 'workspaces' ? 'active' : '']" @click="navigate('workspaces')">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
@@ -1528,6 +1570,60 @@ onMounted(() => {
         </template>
 
         <!-- ═══ WORKSPACES ═══ -->
+        <template v-if="activeView === 'client-workspaces'">
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Client Workspaces</div>
+              <div class="section-actions">
+                <span class="meta-count">{{ clientPagination.total ?? 0 }} across all agencies</span>
+              </div>
+            </div>
+            <div class="filters">
+              <input v-model="clientSearch" class="search-input" placeholder="Search client…" @input="clientFilter" />
+            </div>
+            <div class="table-wrap">
+              <table class="gm-table">
+                <thead>
+                  <tr>
+                    <th>Client</th><th>Agency</th><th>Credits</th><th>Cap</th>
+                    <th>Spent (month)</th><th>Projects</th><th>People</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="clientsLoading"><td colspan="7" class="empty-cell">Loading…</td></tr>
+                  <tr v-else-if="!clientData.length"><td colspan="7" class="empty-cell">No client workspaces yet.</td></tr>
+                  <tr v-for="c in clientData" v-else :key="c.id">
+                    <td>
+                      <strong>{{ c.name }}</strong>
+                      <span class="badge badge-client">{{ c.funding_mode }}</span>
+                    </td>
+                    <td>
+                      {{ c.agency_name }}
+                      <div class="cell-sub">#{{ c.agency_id }} · {{ c.agency_tier }}</div>
+                    </td>
+                    <td>{{ c.credits === null ? 'pooled' : c.credits.toLocaleString() }}</td>
+                    <td>{{ c.monthly_credit_cap ? c.monthly_credit_cap.toLocaleString() : '—' }}</td>
+                    <td>{{ (c.spent_this_month ?? 0).toLocaleString() }}</td>
+                    <td>{{ c.projects_count }}</td>
+                    <td>
+                      <span v-if="!c.members.length" class="cell-sub">none</span>
+                      <div v-for="m in c.members" v-else :key="m.id" class="cell-sub">
+                        {{ m.email }} · {{ m.role.replace('client_', '').replace('client', 'viewer') }}
+                        <template v-if="!m.last_seen_at"> · never signed in</template>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="clientPagination.last_page > 1" class="pagination">
+              <button class="btn btn-ghost btn-sm" :disabled="clientPagination.current_page <= 1" @click="loadClientWorkspaces(clientPagination.current_page - 1)">Previous</button>
+              <span class="meta-count">Page {{ clientPagination.current_page }} of {{ clientPagination.last_page }}</span>
+              <button class="btn btn-ghost btn-sm" :disabled="clientPagination.current_page >= clientPagination.last_page" @click="loadClientWorkspaces(clientPagination.current_page + 1)">Next</button>
+            </div>
+          </div>
+        </template>
+
         <template v-if="activeView === 'workspaces'">
           <div class="section">
             <div class="section-header">
@@ -1543,10 +1639,7 @@ onMounted(() => {
               <input v-model="wsSearch" class="search-input" placeholder="Search workspace…" @input="wsFilter" />
               <select v-model="wsPlan" class="filter-select" @change="wsFilter">
                 <option value="">All Plans</option>
-                <option value="free">Free</option>
-                <option value="studio">Studio</option>
-                <option value="scale">Scale</option>
-                <option value="enterprise">Enterprise</option>
+                <option v-for="t in planTiers" :key="t" :value="t">{{ planLabel(t) }}</option>
               </select>
               <select v-model="wsStatus" class="filter-select" @change="wsFilter">
                 <option value="">All Status</option>
@@ -1578,10 +1671,7 @@ onMounted(() => {
                     </td>
                     <td>
                       <select :value="ws.plan_tier" class="inline-select" :disabled="wsSaving === ws.id" @change="updateWsPlan(ws, $event.target.value)">
-                        <option value="free">Free</option>
-                        <option value="studio">Studio</option>
-                        <option value="scale">Scale</option>
-                        <option value="enterprise">Enterprise</option>
+                        <option v-for="t in planTiers" :key="t" :value="t">{{ planLabel(t) }}</option>
                       </select>
                     </td>
                     <td>

@@ -126,6 +126,9 @@ class AdminController extends Controller
                 })->all(),
             ],
             'meta' => [
+                // Rendered by the client so a new tier appears in admin the day
+                // it exists, rather than the day somebody remembers to add it.
+                'plan_tiers' => self::assignableTiers(),
                 'pagination' => [
                     'current_page' => $paginator->currentPage(),
                     'last_page' => $paginator->lastPage(),
@@ -439,7 +442,10 @@ class AdminController extends Controller
         $admin = $request->user();
 
         $validated = $request->validate([
-            'plan_tier' => ['required', 'string', Rule::in(array_keys(WorkspaceUsageService::plans()))],
+            // PLAN_LIMITS, not plans(): the latter lists only the eight
+            // subscription tiers, so admin could not set any appsumo_* or
+            // lifetime_* tier — which is what most paying customers are on.
+            'plan_tier' => ['required', 'string', Rule::in(self::assignableTiers())],
         ]);
 
         $workspace = Workspace::query()->find($workspaceId);
@@ -871,6 +877,25 @@ class AdminController extends Controller
                 'total' => $paginator->total(),
             ]],
         ]);
+    }
+
+    /**
+     * Every tier the application will gate on, so admin can set any of them.
+     *
+     * Ordered for a dropdown rather than alphabetically: subscriptions, then
+     * the one-time buckets, then the legacy aliases nobody should pick.
+     */
+    public static function assignableTiers(): array
+    {
+        $known = array_keys((array) (new \ReflectionClass(CreditService::class))->getConstant('PLAN_LIMITS'));
+        $order = ['free', 'starter', 'creator', 'pro', 'agency', 'enterprise',
+            'lifetime_starter', 'lifetime_creator', 'lifetime_agency',
+            'appsumo_starter', 'appsumo_creator', 'appsumo_agency'];
+
+        $sorted = array_values(array_intersect($order, $known));
+
+        // Anything in the code we forgot to order still has to be selectable.
+        return array_values(array_unique(array_merge($sorted, array_diff($known, $sorted))));
     }
 
     private function serializeWorkspace(Workspace $workspace): array
