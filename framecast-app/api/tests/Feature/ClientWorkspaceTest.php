@@ -819,4 +819,22 @@ class ClientWorkspaceTest extends TestCase
         $this->assertSame(450, $body['total'], 'and funding itself is not in the total');
     }
 
+
+    public function test_a_failed_ledger_write_is_loud_but_never_costs_the_credits(): void
+    {
+        // Both halves matter. The grant must stand — a logging failure must not
+        // cost a customer credits they paid for — and it must no longer be
+        // silent, which is why a lost purchase went unnoticed for fifteen days.
+        \Illuminate\Support\Facades\Log::spy();
+
+        $a = $this->agency(credits: 1000);
+        \Illuminate\Support\Facades\Schema::drop('credit_ledger');   // make every ledger write fail
+
+        app(CreditService::class)->grant((int) $a->getKey(), 500, 'topup_kelviq');
+
+        $this->assertSame(1500, (int) $a->fresh()->credits_topup, 'the credits still arrived');
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('error')
+            ->withArgs(fn (string $m) => str_contains($m, 'ledger write failed'));
+    }
+
 }

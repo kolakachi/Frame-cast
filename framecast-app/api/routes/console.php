@@ -56,3 +56,33 @@ Schedule::call(function (): void {
 // pattern_alert events, and email a single digest to the configured admin
 // address if any new alerts landed. Runs once per day at 09:00 UTC.
 Schedule::job(new DetectAbusePatternsJob())->dailyAt('09:00')->name('detect-abuse-patterns')->withoutOverlapping();
+
+// Reconcile credit balances against the ledger, and say something only when
+// they disagree. The ledger is written best-effort — every write wrapped in
+// rescue() so a logging failure can never cost a customer their generation —
+// so it can fall behind silently, and did: a customer's 5,000-credit purchase
+// reached their balance and never reached their history, and nothing noticed
+// for fifteen days.
+//
+// Read-only and quick. Runs before the abuse digest so a bad night shows up in
+// the morning rather than the following one.
+Schedule::call(function (): void {
+    // Run it as the command would, but capture what it printed so the alert
+    // carries the finding rather than just the fact that there was one.
+    $exit = \Illuminate\Support\Facades\Artisan::call('credits:verify');
+    $report = trim(\Illuminate\Support\Facades\Artisan::output());
+
+    if ($exit === 0) {
+        return;   // consistent; say nothing
+    }
+
+    \Illuminate\Support\Facades\Log::error('credits:verify found a discrepancy', ['report' => $report]);
+
+    $email = (string) config('moderation.digest_email', 'hello@wyvstudio.com');
+    if ($email === '') {
+        return;
+    }
+
+    rescue(fn () => \Illuminate\Support\Facades\Mail::to($email)
+        ->queue(new \App\Mail\CreditLedgerAlert($report)), null, false);
+})->dailyAt('08:30')->name('verify-credit-ledger')->withoutOverlapping();

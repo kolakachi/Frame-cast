@@ -578,9 +578,37 @@ class CreditService
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
-        }, null, false);
+        }, $this->ledgerWriteFailed('transferToClient', [
+            'agency_workspace_id' => (int) $agency->getKey(),
+            'client_workspace_id' => (int) $client->getKey(),
+            'amount' => $amount,
+        ]), false);
 
         return [true, 'ok'];
+    }
+
+    /**
+     * What to do when a ledger write fails.
+     *
+     * The write stays best-effort — a logging failure must never cost a
+     * customer the generation they already paid for — but it stops being
+     * silent. Passing $report = false to rescue() swallowed the exception AND
+     * suppressed the report, so when a customer's 5,000-credit purchase
+     * reached their balance and not their history, there was nothing at all to
+     * read afterwards. Fifteen days later the only evidence was the
+     * discrepancy itself.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function ledgerWriteFailed(string $where, array $context): callable
+    {
+        return function (\Throwable $e) use ($where, $context): void {
+            Log::error("CreditService: ledger write failed in {$where} — the credits moved, the record did not", [
+                ...$context,
+                'exception' => get_class($e),
+                'message'   => $e->getMessage(),
+            ]);
+        };
     }
 
     /** Narrow a credit_ledger query to charges that actually consumed credits. */
@@ -788,7 +816,12 @@ class CreditService
                     $spentBy !== $workspaceId ? ['spent_by_workspace_id' => $spentBy] : [],
                 ), fn ($v) => $v !== null && $v !== []) ?: null,
             ]);
-        }, null, false);
+        }, $this->ledgerWriteFailed('deduct', [
+            'workspace_id' => $workspaceId,
+            'spent_by_workspace_id' => $spentBy,
+            'amount' => $amount,
+            'operation' => $operation,
+        ]), false);
 
         return true;
     }
@@ -822,7 +855,11 @@ class CreditService
                 'metadata'      => ['reason' => $reason]
                     + ($grantedVia !== $workspaceId ? ['granted_via_workspace_id' => $grantedVia] : []),
             ]);
-        }, null, false);
+        }, $this->ledgerWriteFailed('grant', [
+            'workspace_id' => $workspaceId,
+            'amount' => $amount,
+            'reason' => $reason,
+        ]), false);
     }
 
     /**
@@ -847,7 +884,11 @@ class CreditService
                 'balance_after' => $this->balance($workspaceId),
                 'metadata'      => ['refund_of' => $operation],
             ]);
-        }, null, false);
+        }, $this->ledgerWriteFailed('refund', [
+            'workspace_id' => $workspaceId,
+            'amount' => $amount,
+            'operation' => $operation,
+        ]), false);
     }
 
     /**
