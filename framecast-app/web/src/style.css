@@ -419,10 +419,26 @@ input {
    alternative is editing seventeen files and missing one.
    -------------------------------------------------------------------------- */
 @media (max-width: 860px) {
+  /* Clear the two fixed bars of the phone shell. !important because these
+     live in each view's own scoped block, which otherwise outranks anything
+     global. The bottom value carries the tab bar plus the home indicator, or
+     content ends underneath both. */
   .main,
   .ugc-main,
   .ap-main {
-    padding-top: 58px !important;
+    padding-top: calc(52px + env(safe-area-inset-top)) !important;
+    padding-bottom: calc(56px + env(safe-area-inset-bottom)) !important;
+  }
+
+  /* The view topbars duplicate the phone app bar: each one repeats the screen
+     name as a breadcrumb and carries a New Video button the Create tab already
+     offers. Hidden, never removed — this is one media query away from the
+     desktop layout that still needs them.
+
+     !important because these rules live in each view's scoped block, and a
+     [data-v-…] attribute selector outranks a bare class from here. */
+  .topbar {
+    display: none !important;
   }
 
   /* A finished video is the thing customers came for — never let it overflow

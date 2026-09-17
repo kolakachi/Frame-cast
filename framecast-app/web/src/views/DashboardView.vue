@@ -65,7 +65,7 @@ const totalProjects = ref(0)
 const lastPage = ref(1)
 const filterChannelId = ref(null)
 const queuePage = ref(1)
-const queuePerPage = ref(10)
+const queuePerPage = ref(5)
 const totalQueueRows = ref(0)
 const queueLastPage = ref(1)
 
@@ -90,6 +90,14 @@ const selectedChannel = computed(() =>
 )
 function openWizard(initialSourceType = 'prompt', presetChannelId = null) {
   wizardRef.value?.open(initialSourceType, presetChannelId)
+}
+
+// The phone shell's Create tab has no route of its own — it asks whoever owns
+// the wizard to open it. The dashboard does, so it listens here. An event
+// rather than a shared store because there is exactly one listener and the tab
+// bar should not need to know what a wizard is.
+function onCreateRequested() {
+  openWizard()
 }
 
 function formatNotifTime(value) {
@@ -471,6 +479,7 @@ watch(
 )
 
 onMounted(async () => {
+  window.addEventListener('wyv:new-video', onCreateRequested)
   try {
     await loadMe()
     maybeOpenWizardFromRoute()
@@ -481,6 +490,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('wyv:new-video', onCreateRequested)
   unsubscribeWorkspaceNotifications()
   stopDashboardPolling()
 })
@@ -828,7 +838,7 @@ onBeforeUnmount(() => {
 
         <!-- Render queue -->
         <div class="dash-section">
-          <div class="section-hd">
+          <div class="section-hd section-hd-queue">
             <div class="section-hd-left">
               <div class="eyebrow">Background work</div>
               <div class="section-title">Render Queue</div>
@@ -861,11 +871,11 @@ onBeforeUnmount(() => {
                   class="queue-row"
                   @click="openProject({ id: row.id, status: row.projectStatus })"
                 >
-                  <td class="queue-primary">{{ row.project }}</td>
-                  <td class="queue-muted">{{ row.channel }}</td>
-                  <td>{{ row.variants }}</td>
-                  <td><span :class="`project-status status-${row.status} queue-status`">{{ row.statusLabel }}</span></td>
-                  <td>
+                  <td class="queue-primary" data-label="Project">{{ row.project }}</td>
+                  <td class="queue-muted" data-label="Channel">{{ row.channel }}</td>
+                  <td data-label="Variants">{{ row.variants }}</td>
+                  <td data-label="Status"><span :class="`project-status status-${row.status} queue-status`">{{ row.statusLabel }}</span></td>
+                  <td data-label="Progress">
                     <div class="queue-progress-cell">
                       <div class="progress-bar">
                         <div :class="`progress-fill status-${row.status}`" :style="{ width: `${row.progress}%` }"></div>
@@ -1118,6 +1128,144 @@ onBeforeUnmount(() => {
 /* Queue */
 .surface-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; }
 .queue-wrap { overflow: hidden; }
+
+/* ── Phone layout, following mobile-shell-mockup.html ──────────────────
+   The mockup's dashboard is four things: a credit line, a 2x2 stat grid, a
+   rail of what you were editing, and channels as rows. Everything here bends
+   the existing markup toward that rather than replacing it, so there is one
+   dashboard to maintain and not two. */
+@media (max-width: 860px) {
+  /* Create, New Series, New Channel and Upload Asset all live behind the
+     Create tab now. Hidden rather than deleted: desktop still shows them. */
+  .quick-actions { display: none; }
+
+  /* ONLY the queue heading stacks. Applying this to .section-hd put every
+     "View all →" on its own full-width line, including the sections that were
+     already right — the queue is the one with a toolbar beside the title. */
+  .section-hd-queue { flex-direction: column; align-items: stretch; gap: 8px; }
+  .section-hd-queue .section-hd-left { width: 100%; }
+  .section-hd-queue .section-title { white-space: nowrap; }
+  .section-hd-queue .projects-toolbar {
+    width: 100%; justify-content: flex-start; align-items: center;
+    gap: 10px; flex-wrap: nowrap;
+  }
+  .section-hd-queue .projects-summary { margin-left: auto; white-space: nowrap; }
+  /* Two class names deep on purpose: .field-input is declared further down the
+     file and sets 9px/12px padding, so a single-class rule here loses to it and
+     the select stays desktop-sized. */
+  .section-hd-queue .page-size-control .page-size-select {
+    padding: 5px 8px; min-width: 58px; font-size: 12.5px;
+  }
+
+  /* Four numbers in four full-width cards cost about 540px of scrolling to
+     say very little. The mockup pairs them. */
+  .stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-card { padding: 13px; border-radius: 10px; }
+  .stat-label { font-size: 9px; letter-spacing: 0.12em; margin-bottom: 7px; }
+  .stat-value { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .stat-change { font-size: 11.5px; margin-top: 2px; }
+
+  /* Channels become rows. A five-channel account was scrolling past five
+     hero cards, each repeating platform, language and format — detail that
+     belongs on the channel, not in a list of them. */
+  .channel-grid { display: flex; flex-direction: column; gap: 0;
+    border: 1px solid var(--color-border); border-radius: 10px; overflow: hidden; }
+  .channel-card {
+    flex-direction: row; align-items: center; gap: 11px;
+    border: none; border-bottom: 1px solid var(--color-border);
+    border-radius: 0; padding: 10px 12px; min-height: 44px;
+  }
+  .channel-card:last-of-type { border-bottom: none; }
+  .channel-card:hover { transform: none; box-shadow: none; }
+  .channel-cover {
+    flex: 0 0 34px; width: 34px; height: 34px;
+    border-radius: 9px; display: grid; place-items: center;
+  }
+  .channel-icon { font-size: 13px; }
+  .channel-body { flex: 1; min-width: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+  .channel-name { font-size: 13px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .channel-desc {
+    font-size: 11.5px; color: var(--color-text-muted); margin: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Platform / language / format and the brand-kit line are why each card was
+     ~230px tall. The row keeps the name and what it is for. */
+  .channel-stats, .channel-footer { display: none; }
+
+  .channel-card-new {
+    flex-direction: row; align-items: center; gap: 11px;
+    border: none; border-top: 1px solid var(--color-border);
+    border-radius: 0; padding: 10px 12px; min-height: 44px;
+    font-size: 13px; color: var(--color-text-secondary);
+  }
+  .channel-new-icon { flex: 0 0 34px; width: 34px; height: 34px; margin: 0;
+    display: grid; place-items: center; font-size: 17px; }
+
+  /* The rail already scrolls. The mockup's card is narrower, so a second one
+     is visibly there to swipe to rather than hidden past the edge. */
+  .continue-strip { scroll-snap-type: x mandatory; }
+  .continue-strip::-webkit-scrollbar { display: none; }
+  .continue-card { width: 150px; scroll-snap-align: start; }
+  .continue-card:hover { transform: none; }
+  .continue-thumb { height: 132px; }
+}
+
+/* The render queue on a phone.
+   Five columns cannot fit 390px, and the wrapper clipped rather than scrolled,
+   so Status and Progress were simply unreachable — the two columns somebody
+   checking on their phone actually came for. Rather than make the table scroll
+   sideways, which nobody does, each row becomes a card that states its own
+   labels. */
+@media (max-width: 860px) {
+  .queue-table,
+  .queue-table tbody,
+  .queue-table tr,
+  .queue-table td { display: block; width: 100%; }
+
+  .queue-table thead { display: none; }
+
+  .queue-table tbody tr {
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    background: var(--color-bg-card);
+  }
+  .queue-table tbody tr:last-child { margin-bottom: 0; }
+
+  .queue-table td {
+    padding: 4px 0;
+    border-bottom: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .queue-table td::before {
+    content: attr(data-label);
+    flex: 0 0 74px;
+    font-family: "Space Mono", monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+  /* The project name leads the card rather than being one field among five. */
+  .queue-table td.queue-primary {
+    font-size: 14px;
+    font-weight: 600;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .queue-table td.queue-primary::before { display: none; }
+
+  .queue-progress-cell { flex: 1; display: flex; }
+  .queue-progress-cell .progress-bar { flex: 1; }
+  /* Always visible: there is no hover on a touch screen, so a delete that
+     only appears on hover is a delete that does not exist. */
+  .queue-delete-btn { opacity: 1 !important; pointer-events: auto !important; flex: 0 0 auto; }
+}
 .queue-table { width: 100%; border-collapse: collapse; }
 .queue-table th, .queue-table td { padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--color-border); font-size: 13px; }
 .queue-table th { font-size: 10px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.08em; font-family: "Space Mono", monospace; }
@@ -1197,5 +1345,9 @@ onBeforeUnmount(() => {
 
 
 @media (max-width: 980px) { .stats-row { grid-template-columns: 1fr 1fr; } .form-grid { grid-template-columns: 1fr; } .section-header { align-items: flex-start; flex-direction: column; } .projects-toolbar { margin-left: 0; flex-wrap: wrap; } .pagination-row { justify-content: space-between; } }
-@media (max-width: 800px) { .sidebar { display: none; } .main { margin-left: 0; } .topbar { height: auto; padding: 12px; gap: 10px; align-items: flex-start; flex-direction: column; } .stats-row { grid-template-columns: 1fr; } .empty-actions { flex-direction: column; } .projects-toolbar { width: 100%; justify-content: space-between; } .projects-summary { width: 100%; } }
+/* Note: .stats-row is deliberately absent here. It used to drop to a single
+   column, which came after the 860px block above and quietly undid it —
+   four numbers, four full-width cards, half a screen of scrolling. The 2x2
+   grid from the mockup governs every phone width now. */
+@media (max-width: 800px) { .main { margin-left: 0; } .topbar { height: auto; padding: 12px; gap: 10px; align-items: flex-start; flex-direction: column; } .empty-actions { flex-direction: column; } .projects-toolbar { width: 100%; justify-content: space-between; } .projects-summary { width: 100%; } }
 </style>

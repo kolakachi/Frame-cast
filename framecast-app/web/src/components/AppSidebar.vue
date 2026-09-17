@@ -1,10 +1,11 @@
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import WhatsNew from './WhatsNew.vue'
+import NotifBell from './NotifBell.vue'
 import FeedbackButton from './FeedbackButton.vue'
 import { useRouter } from "vue-router";
 import { useWorkspaceStore } from "../stores/workspace";
-import { useSidebarStore } from "../stores/sidebar";
+import { useSidebarStore, isMobileViewport } from "../stores/sidebar";
 import { useAuthStore } from "../stores/auth";
 
 const props = defineProps({
@@ -27,6 +28,51 @@ const workspaceStore = useWorkspaceStore();
 
 // Off-canvas state. Only meaningful under 860px; above it the rail is static.
 const mobileOpen = ref(false);
+
+// Whether the phone shell is showing. Reactive rather than read once, because
+// rotating a phone and dragging a desktop window narrow both cross the line,
+// and DOM gated on a stale value is DOM that never appears.
+const isMobile = ref(isMobileViewport());
+const mq = typeof window !== "undefined" ? window.matchMedia("(max-width: 860px)") : null;
+function onViewport(e) {
+  isMobile.value = e.matches;
+  if (!e.matches) mobileOpen.value = false;   // a drawer left open on resize traps the page
+}
+
+// The five destinations the mockup puts in the bottom bar. Create is the middle
+// one and deliberately not a route — it opens the same wizard the desktop
+// header button does, so there is one way to make a video, not two.
+const TABS = [
+  { key: "dashboard", label: "Home",     to: "dashboard" },
+  { key: "videos",    label: "Videos",   to: "videos" },
+  { key: "create",    label: "Create",   action: "create" },
+  { key: "calendar",  label: "Calendar", to: "calendar" },
+  { key: "jobs",      label: "Jobs",     to: "jobs" },
+];
+
+function tabTap(tab) {
+  mobileOpen.value = false;
+  if (tab.action === "create") {
+    // The dashboard owns the wizard; anywhere else, go there and open it.
+    window.dispatchEvent(new CustomEvent("wyv:new-video"));
+    if (props.activePage !== "dashboard") router.push({ name: "dashboard" });
+    return;
+  }
+  router.push({ name: tab.to });
+}
+
+const screenTitle = computed(() => {
+  const named = {
+    dashboard: "Dashboard", videos: "Videos", calendar: "Calendar", jobs: "Jobs",
+    channels: "Channels", series: "Series", clients: "Clients", settings: "Settings",
+    characters: "Characters", voices: "Voices", "asset-library": "Assets",
+    editor: "Editor", "project-editor": "Editor", "project-variants": "Variants",
+    "generation-progress": "Generating", "client-detail": "Client",
+  };
+  // Falling back to the product name told you nothing about where you were —
+  // every unmapped screen read "WyvStudio".
+  return named[props.activePage] ?? "WyvStudio";
+});
 
 // The agency first, then its clients — the order an agency thinks in.
 const switchTargets = computed(() => {
@@ -111,6 +157,7 @@ onMounted(() => {
   workspaceStore.loadClients();
   sidebarStore.applyStored();
   document.addEventListener("click", handleOutsideClick);
+  mq?.addEventListener("change", onViewport);
   // Load when we have no workspace OR the loaded one belongs to a different
   // user (e.g. after logging out and back in as someone else) — comparing the
   // id avoids showing the previous account's workspace name/plan.
@@ -121,12 +168,28 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  mq?.removeEventListener("change", onViewport);
   document.removeEventListener("click", handleOutsideClick);
 });
 </script>
 
 <template>
-  <button class="sidebar-burger" type="button" aria-label="Open navigation" @click.stop="mobileOpen = true">☰</button>
+  <!-- ── Phone shell ──────────────────────────────────────────────────────
+       App bar and bottom tabs, rendered only under 860px. Desktop never sees
+       this DOM at all, which is why the whole thing cannot regress the wide
+       layout: there is nothing to regress. -->
+  <header v-if="isMobile" class="mshell-bar">
+    <button class="mshell-icon" type="button" aria-label="Open navigation" @click.stop="mobileOpen = true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+        <path d="M4 7h16M4 12h16M4 17h16" />
+      </svg>
+    </button>
+    <span class="mshell-title">{{ screenTitle }}</span>
+    <span v-if="workspaceStore.usage?.credits_balance !== null && workspaceStore.usage?.credits_balance !== undefined"
+          class="mshell-credits">{{ workspaceStore.usage.credits_balance.toLocaleString() }}</span>
+    <NotifBell />
+  </header>
+
   <button v-if="mobileOpen" class="sidebar-scrim" type="button" aria-label="Close navigation" @click="mobileOpen = false"></button>
 
   <nav :class="['sidebar', isCollapsed ? 'collapsed' : '', mobileOpen ? 'mobile-open' : '']">
@@ -662,6 +725,32 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </nav>
+
+  <!-- The five destinations from the mockup. Create sits in the middle and is
+       an action rather than a route: it opens the same wizard the desktop
+       header button does, so a video is made one way, not two. -->
+  <nav v-if="isMobile" class="mshell-tabs">
+    <button
+      v-for="t in TABS"
+      :key="t.key"
+      type="button"
+      :class="['mshell-tab', t.key === 'create' ? 'is-create' : '', activePage === t.key ? 'is-on' : '']"
+      @click="tabTap(t)"
+    >
+      <span v-if="t.key === 'create'" class="mshell-fab">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </span>
+      <svg v-else width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <template v-if="t.key === 'dashboard'"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></template>
+        <template v-else-if="t.key === 'videos'"><path d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.902L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></template>
+        <template v-else-if="t.key === 'calendar'"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></template>
+        <template v-else><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></template>
+      </svg>
+      <span class="mshell-tab-l">{{ t.label }}</span>
+    </button>
+  </nav>
 </template>
 
 <style scoped>
@@ -670,6 +759,52 @@ onBeforeUnmount(() => {
    stylesheet), so the seventeen views that offset by it reclaim the whole
    screen. Without this a 390px phone gave the app about 170px to work in —
    which is why a customer could not scroll a list or watch a finished video. */
+/* ── Phone shell ───────────────────────────────────────────────────────
+   A fixed app bar and a fixed bottom tab bar, both only under 860px. The old
+   floating burger was a button hovering over content with nothing to anchor
+   it; this gives the screen a top and a bottom the way a phone app has. */
+.mshell-bar {
+  position: fixed; inset: 0 0 auto 0; z-index: 97; height: 52px;
+  display: flex; align-items: center; gap: 4px; padding: 0 6px;
+  background: var(--color-bg-panel); border-bottom: 1px solid var(--color-border);
+  padding-top: env(safe-area-inset-top);
+  height: calc(52px + env(safe-area-inset-top));
+}
+.mshell-icon {
+  width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center;
+  border: none; background: none; color: var(--color-text-secondary);
+  border-radius: 10px; cursor: pointer;
+}
+.mshell-icon:active { background: var(--color-bg-card); }
+.mshell-title {
+  font-size: 15px; font-weight: 600; letter-spacing: -.01em; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mshell-credits {
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  font-size: 11.5px; color: var(--color-text-muted); padding-right: 8px;
+}
+
+.mshell-tabs {
+  position: fixed; inset: auto 0 0 0; z-index: 97;
+  display: flex; background: var(--color-bg-panel);
+  border-top: 1px solid var(--color-border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.mshell-tab {
+  flex: 1; min-height: 56px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 3px;
+  border: none; background: none; cursor: pointer;
+  color: var(--color-text-muted); font-size: 10.5px;
+}
+.mshell-tab.is-on { color: var(--color-accent); }
+.mshell-tab-l { line-height: 1; }
+.mshell-fab {
+  width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
+  background: var(--color-accent); color: #fff; margin-bottom: 1px;
+}
+.mshell-tab.is-create .mshell-tab-l { color: var(--color-text-secondary); }
+
 @media (max-width: 860px) {
   .sidebar {
     transform: translateX(-100%);
@@ -679,7 +814,6 @@ onBeforeUnmount(() => {
   }
   .sidebar.mobile-open { transform: translateX(0); }
   .sidebar-scrim { position: fixed; inset: 0; z-index: 99; background: rgba(0,0,0,.55); border: none; padding: 0; }
-  .sidebar-burger { display: grid; }
 }
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 

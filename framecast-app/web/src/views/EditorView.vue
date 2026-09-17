@@ -1717,6 +1717,7 @@ watch(playProgress, () => {
   if (!isPreviewPlaying.value) captionClock.value = currentCaptionSeconds();
 });
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', onViewportResize);
   if (captionClockRaf) cancelAnimationFrame(captionClockRaf);
 });
 const CAPTION_SIZE_MAP = { small: "13px", medium: "17px", large: "23px", xlarge: "30px" };
@@ -2424,10 +2425,31 @@ const activeSceneIndex = computed(() =>
 );
 // Preview box matches the project's real aspect ratio (was locked to 9:16).
 // Fit within a 480×480 bounding box so the layout stays stable across ratios.
+// The preview box is an inline style, so it beats every stylesheet — a media
+// query cannot shrink it. On a phone the player is a sticky header with the
+// scene list scrolling beneath, so its size has to come from the viewport
+// rather than a fixed 480px box that leaves no room for anything else.
+// On a phone the right-hand panel — assistant AND every config section — is
+// a bottom sheet rather than a column stacked below fifteen scenes, which is
+// where the grid put it and where nobody would ever scroll to find it.
+const mobilePanelOpen = ref(false);
+
+const viewport = ref({
+  w: typeof window !== "undefined" ? window.innerWidth : 1440,
+  h: typeof window !== "undefined" ? window.innerHeight : 900,
+});
+function onViewportResize() {
+  viewport.value = { w: window.innerWidth, h: window.innerHeight };
+}
+
 const previewContainerStyle = computed(() => {
   const ratio = project.value?.aspect_ratio || "9:16";
   const [w, h] = { "9:16": [9, 16], "16:9": [16, 9], "1:1": [1, 1] }[ratio] || [9, 16];
-  const box = 480;
+  const isPhone = viewport.value.w <= 860;
+  // Roughly a third of the screen, and never wider than it.
+  const box = isPhone
+    ? Math.max(170, Math.min(260, Math.round(viewport.value.h * 0.28), viewport.value.w - 80))
+    : 480;
   const scale = box / Math.max(w, h);
   return { width: `${Math.round(w * scale)}px`, height: `${Math.round(h * scale)}px` };
 });
@@ -6905,6 +6927,7 @@ function syncSceneSoundVolume() {
 }
 
 onMounted(() => {
+  window.addEventListener('resize', onViewportResize);
   loadLipsyncEngines();
   beforeUnloadHandler = (event) => {
     if (
@@ -7077,6 +7100,11 @@ onBeforeUnmount(() => {
                 <span v-if="shareCopiedToast" class="export-share-copied">{{ shareCopiedToast }}</span>
               </template>
             </div>
+            <!-- Phone only: the way into the settings sheet. Desktop has the
+                 panel on screen permanently and needs no button. -->
+            <button class="btn btn-ghost btn-mobile-config" type="button" @click="mobilePanelOpen = true">
+              Config
+            </button>
             <button :class="['btn btn-ghost btn-timeline-toggle', timelineOpen ? 'active' : '']" type="button" @click="timelineOpen = !timelineOpen">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="11" height="4" rx="1"/><rect x="3" y="17" width="15" height="4" rx="1"/></svg>
               Timeline
@@ -7773,7 +7801,20 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="editor-right">
+          <button
+            v-if="mobilePanelOpen"
+            class="editor-sheet-scrim"
+            type="button"
+            aria-label="Close panel"
+            @click="mobilePanelOpen = false"
+          ></button>
+          <div :class="['editor-right', mobilePanelOpen ? 'sheet-open' : '']">
+            <!-- Sheet chrome, phone only: a grab handle and a way out. -->
+            <div class="editor-sheet-head">
+              <span class="editor-sheet-grab"></span>
+              <b>Settings</b>
+              <button type="button" @click="mobilePanelOpen = false">Done</button>
+            </div>
             <!-- Cruise Control rail toggle. Flips between Config (the
                  existing accordion) and Assistant (chat-driven editing,
                  Phase 1B). Brand orange accent — see spec/CRUISE_CONTROL_PLAN.md. -->
@@ -11940,6 +11981,10 @@ button {
   border-color: var(--purple);
 }
 
+.editor-sheet-head,
+.editor-sheet-scrim,
+.btn-mobile-config { display: none; }
+
 .editor-canvas {
   flex: 1;
   display: flex;
@@ -14626,17 +14671,161 @@ select.preset-select {
     flex-wrap: wrap;
   }
 
+  /* .editor is display:flex in its base rule but the 1180px block above turns
+     it into `grid: 320px 1fr`, and at 390px BOTH queries apply — so down here
+     it is a grid. Reading only the base rule and deleting this as a no-op put
+     the 320px column back and squeezed the scene list to a ribbon.
+     Both properties are set so it collapses to one column either way. */
   .editor {
     grid-template-columns: 1fr;
+    flex-direction: column;
+    min-height: 0;
   }
 
-  .editor-sidebar {
-    width: auto;
+  /* The scene list comes first in the DOM because on desktop it is a left
+     rail beside the player. Stacked into one column that ordering puts the
+     player below every scene — fifteen of them on a real project — so the
+     editor opened on the one thing you cannot see. The player goes first and
+     stays there while the scenes scroll under it. */
+  /* The export bar, which is the whole reason the mockup has one.
+     Every view topbar is hidden globally on phones because it repeats the app
+     bar — but the editor's carries Export, Download, Open and Variants, and
+     hiding it took away the only way to get a video out on a phone. It comes
+     back here, pinned above the tab bar, with just the actions. */
+  .topbar {
+    display: flex !important;
+    position: fixed;
+    inset: auto 0 calc(56px + env(safe-area-inset-bottom)) 0;
+    z-index: 96;
+    height: auto;
+    padding: 9px 12px calc(9px + 0px);
+    background: var(--color-bg-panel, #111117);
+    border-top: 1px solid var(--color-border);
+    border-bottom: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+  /* The title is already in the app bar. */
+  .topbar-left { display: none; }
+
+  /* Trim the bar to what the mockup has: the export action and the things
+     you would reach for beside it. Timeline is frame-level work that needs a
+     wide screen, Back to Dashboard is what the Home tab is for, and the bell
+     is already in the app bar — three of the five buttons were noise, and
+     they pushed Export off the edge. */
+  .topbar-right .btn-timeline-toggle,
+  .topbar-right .btn-back { display: none !important; }
+  .btn-mobile-config { display: inline-flex !important; }
+  .editor-sheet-head { display: flex; }
+  .editor-sheet-scrim { display: block; }
+
+  /* ── Settings sheet ──────────────────────────────────────────────────
+     The mockup reaches config and the assistant through a bottom sheet. The
+     app already has both in .editor-right; on a phone the grid had stacked
+     it below every scene, so it existed but nobody would find it. Same
+     markup, presented the way the mockup presents it. */
+  .editor-right {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 120;
+    width: auto !important;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    border-left: 0;
+    border-top: 1px solid var(--color-border-active, #34343f);
+    border-radius: 16px 16px 0 0;
+    background: var(--color-bg-panel, #111117);
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow-y: auto;
+    /* Shown/hidden rather than slid. The transform toggle would not apply —
+       correct selector, correct nesting, served CSS, even !important — and
+       rather than ship a Config button that opens nothing, this uses a
+       mechanism that demonstrably works. The slide can come back once the
+       specificity puzzle is understood. */
+    display: none;
+  }
+  .editor-right.sheet-open { display: flex; }
+
+  .editor-sheet-scrim {
+    position: fixed; inset: 0; z-index: 119;
+    background: rgba(0, 0, 0, .55); border: none; padding: 0;
+  }
+  .editor-sheet-head {
+    position: sticky; top: 0; z-index: 1;
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 14px 12px;
+    background: var(--color-bg-panel, #111117);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .editor-sheet-head b { font-size: 15px; font-weight: 600; }
+  .editor-sheet-head button {
+    margin-left: auto; background: none; border: none; cursor: pointer;
+    color: var(--color-text-muted); font: inherit; font-size: 13px;
+    min-height: 34px; padding: 0 6px;
+  }
+  .editor-sheet-grab {
+    position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 4px; border-radius: 2px;
+    background: var(--color-border-active, #34343f);
+  }
+  .topbar-right {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .topbar-right::-webkit-scrollbar { display: none; }
+  .topbar-right .btn { flex: 0 0 auto; min-height: 40px; white-space: nowrap; }
+  /* Export is the one that matters; let it take the room. */
+  .topbar-right .btn-primary { flex: 1 1 auto; justify-content: center; }
+
+  /* Clear BOTH bottom bars, not just the tab bar. */
+  .main { padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important; }
+
+  /* The preview carries its height as an inline style, but it is a flex child
+     of the canvas — default flex-shrink let it collapse to 0 while keeping its
+     161px width, so the player rendered as a 21px sliver. */
+  .preview-container {
+    flex: 0 0 auto;
   }
 
   .editor-canvas {
-    min-height: 520px;
-    padding: 24px 16px;
+    order: -1;
+    /* The stage is the player AND its controls — the mockup's stagewrap — so
+       it has to be tall enough for both or the transport buttons hang out of
+       the box and paint over scene 1. 560px from the 1180px block is far too
+       tall for a phone; 0 collapses the grid row. This tracks the preview,
+       which is itself derived from viewport height, plus the control stack.
+       align-self:start stops the grid stretching it to the row instead. */
+    min-height: calc(28vh + 118px) !important;
+    align-self: start;
+    /* flex:1 from the base rule made the player absorb the column and then
+       clip itself to a sliver. It should be exactly as tall as the preview. */
+    flex: 0 0 auto;
+    position: sticky;
+    top: calc(52px + env(safe-area-inset-top));
+    z-index: 4;
+    min-height: 0;
+    padding: 10px 12px;
+    /* No max-height and no overflow:hidden — capping the box never shrank its
+       contents (they spilled over the scene list), and hiding the overflow
+       made the row collapse instead. previewContainerStyle sizes the player. */
+    background: var(--color-bg, #0a0a0f);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .editor-sidebar {
+    /* 320px is the desktop rail. `auto` let it keep that intrinsic width and
+       run 77px off the side of the phone; it has to be told the screen. */
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+    order: 0;
+    border-right: none;
   }
 }
 .xfb-backdrop { position: fixed; inset: 0; z-index: 300; background: rgba(5,5,10,.6); display: flex; align-items: center; justify-content: center; padding: 20px; }
