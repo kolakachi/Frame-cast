@@ -1721,7 +1721,6 @@ watch(playProgress, () => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onViewportResize);
   window.visualViewport?.removeEventListener('resize', onViewportResize);
-  setAppLock(false);
   if (captionClockRaf) cancelAnimationFrame(captionClockRaf);
 });
 const CAPTION_SIZE_MAP = { small: "13px", medium: "17px", large: "23px", xlarge: "30px" };
@@ -2461,25 +2460,19 @@ function onViewportResize() {
   syncAppHeight();
 }
 
-// iOS Safari's 100dvh does not reliably equal what you can actually see: with
-// the toolbars expanded it still reported the taller value, so the editor came
-// out ~120px longer than the screen and the dock sat that far below the fold
-// with bare page under it. innerHeight is what's really visible, so the shell
-// is sized from that and the document itself is locked — a page that can't
-// scroll can't drift out from under its own fixed furniture.
+// iOS Safari's 100dvh does not reliably equal what you can actually see, so
+// the shell is sized from the visual viewport instead. It's a min-height, not a
+// height, and the page still scrolls: when the measurement is wrong the content
+// is reachable rather than stranded past the bottom of a locked page. The dock
+// is fixed on top of all that, so it's on screen either way.
 function syncAppHeight() {
   if (typeof window === "undefined") return;
   const h = window.visualViewport?.height ?? window.innerHeight;
   document.documentElement.style.setProperty("--wyv-app-h", `${Math.round(h)}px`);
 }
 
-function setAppLock(on) {
-  if (typeof document === "undefined") return;
-  document.documentElement.classList.toggle("wyv-app-lock", on);
-}
 
 const isPhone = computed(() => viewport.value.w <= 860);
-watch(isPhone, (on) => setAppLock(on), { immediate: true });
 
 const previewContainerStyle = computed(() => {
   const ratio = project.value?.aspect_ratio || "9:16";
@@ -10507,17 +10500,6 @@ onBeforeUnmount(() => {
   </main>
 </template>
 
-<style>
-/* Not scoped: the editor locks the document itself on phones so the shell
-   can't scroll out from under its own fixed bar and dock. */
-html.wyv-app-lock,
-html.wyv-app-lock body {
-  height: 100%;
-  overflow: hidden;
-  overscroll-behavior: none;
-}
-</style>
-
 <style scoped>
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap");
 /* Caption fonts. The animated presets need the heavy cuts (Montserrat
@@ -14942,12 +14924,19 @@ select.preset-select {
      scrolling version put the player in a sticky box of a computed pixel
      height and pushed the scene list below it — which is why the frame was
      small and the page grew a bar for every job. */
+  /* A definite height so flex can hand the frame exactly the room that's
+     left, but overflow stays visible and the document stays unlocked: if the
+     height ever over-reports — which is the iOS bug this started as — the
+     content below the fold is still reachable by scrolling, and the dock is
+     fixed to the viewport so it can't go missing either way. */
   .main {
     height: var(--wyv-app-h, 100dvh);
+    min-height: var(--wyv-app-h, 100dvh);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    padding-bottom: 0 !important;
+    overflow: visible;
+    /* Room for the fixed dock, so the last of the content clears it. */
+    padding-bottom: calc(67px + env(safe-area-inset-bottom)) !important;
   }
 
   /* .editor-body sits between .main and .editor; without this it kept its
@@ -14980,7 +14969,7 @@ select.preset-select {
     background: var(--color-bg, #0a0a0f);
   }
 
-  /* The frame takes the room the canvas has, keeping 9:16. */
+  /* The frame keeps 9:16 and takes the room the canvas has left. */
   .preview-container {
     flex: 1 1 auto;
     min-height: 0;
@@ -14997,7 +14986,7 @@ select.preset-select {
   .editor-sidebar {
     position: fixed;
     inset: auto 0 0 0;
-    z-index: 120;
+    z-index: 125;
     width: auto;
     height: 62vh;
     border-right: none;
@@ -15014,7 +15003,7 @@ select.preset-select {
   .editor-right {
     position: fixed;
     inset: auto 0 0 0;
-    z-index: 120;
+    z-index: 125;
     width: auto;
     grid-column: auto;
     height: 62vh;
@@ -15089,7 +15078,7 @@ select.preset-select {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 110;
+    z-index: 120;
     border: 0;
     padding: 0;
     background: rgba(0, 0, 0, .5);
@@ -15097,6 +15086,9 @@ select.preset-select {
 
   /* ── Bar ─────────────────────────────────────────────────────────── */
   .ed-bar {
+    position: sticky;
+    top: 0;
+    z-index: 110;
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -15171,7 +15163,7 @@ select.preset-select {
   .ed-projsheet {
     position: fixed;
     inset: auto 0 0 0;
-    z-index: 120;
+    z-index: 125;
     height: 62vh;
     border-top: 1px solid var(--color-border-active, #34343f);
     border-radius: 16px 16px 0 0;
@@ -15256,15 +15248,15 @@ select.preset-select {
      and on a real phone the export bar plus tab bar plus Safari's chrome
      came to three stacked rows. */
   .ed-dock {
-    flex: 0 0 auto;
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 115;
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--color-border);
     background: var(--color-bg-panel, #111117);
-    position: relative;
-    z-index: 1;
   }
   .ed-dbtn {
     flex: 1;
