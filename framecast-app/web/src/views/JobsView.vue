@@ -647,5 +647,22 @@ td { padding: 15px 20px; border-bottom: 1px solid var(--color-border); vertical-
 .empty-text { font-size: 13px; color: var(--color-text-muted); max-width: 360px; margin: 0 auto; line-height: 1.6; }
 
 @media (max-width: 900px) { .hide-md { display: none !important; } td, th { padding: 12px 14px; } }
-@media (max-width: 800px) { .main { margin-left: 0; } }
+
+/* ── Phone ─────────────────────────────────────────────────────────────
+   860 to match the shell; at 800 there was a band where the app bar was up
+   but the content was still indented for a sidebar that wasn't there. */
+@media (max-width: 860px) {
+  .main { margin-left: 0; }
+
+  /* Even with the hide-md columns gone the table wants ~556px, and
+     .table-wrap's overflow:hidden clipped the rest — the status badge was
+     cut in half with no way to reach it. Scroll the table instead. */
+  .table-wrap { overflow-x: auto; }
+  .jobs-table { min-width: 520px; }
+
+  .filter-row,
+  .chip-row { overflow-x: auto; scrollbar-width: none; }
+  .filter-row::-webkit-scrollbar,
+  .chip-row::-webkit-scrollbar { display: none; }
+}
 </style>

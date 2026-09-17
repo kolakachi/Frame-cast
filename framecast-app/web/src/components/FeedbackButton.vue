@@ -66,4 +66,21 @@ async function send() {
 .fb-send { align-self: flex-end; background: #ff6b35; color: #fff; border: none; border-radius: 7px; padding: 7px 16px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; }
 .fb-send:disabled { opacity: .5; cursor: default; }
 .sidebar.collapsed .fb-label { display: none; }
+
+/* ── Phone ─────────────────────────────────────────────────────────────
+   The popover is anchored at left:210px so it sits beside the 220px desktop
+   rail. On a phone there is no rail: it ran 70px off the right edge with the
+   Send button clipped, and bottom:18px put it under the tab bar. It becomes
+   a sheet across the width, above the drawer it's opened from. */
+@media (max-width: 860px) {
+  .fb-pop {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 310;
+  }
+  .fb-input { min-height: 96px; font-size: 16px; }
+  .fb-send { align-self: stretch; min-height: 44px; }
+}
 </style>
