@@ -11,6 +11,14 @@ final class UgcPlan
 {
     public const FORMATS = ['direct_camera', 'demo', 'story', 'reaction'];
 
+    /**
+     * What a shot's visual is doing for the words it serves. Stored so that a
+     * rewrite can re-derive the visual from the new sentence while keeping the
+     * relationship the director chose — the visual moves with the meaning
+     * instead of being left pointed at words that are no longer there.
+     */
+    public const ANCHOR_ROLES = ['establish', 'demonstrate', 'prove', 'illustrate', 'contrast', 'react'];
+
     public const REACTION_TIER = 'quick';
 
     public const CAMERA = 'Authentic phone-recorded UGC. Eye-level medium close-up, eyes toward the lens, natural window light, casual lived-in setting. Preserve the reference person, outfit and setting across shots. No beauty filter, studio advertising look, text, logos or watermarks. Keep the face unobstructed and leave space above the head for a headline.';
@@ -83,6 +91,18 @@ final class UgcPlan
             if ($kind === 'b_roll' && ! in_array($source, ['upload', 'stock', 'generate'], true)) {
                 self::invalid('Choose upload, stock or generate for each cutaway.');
             }
+            // The sentence, claim or beat this shot's visual answers. It
+            // defaults to the shot's own words, which is the common case; a
+            // cutaway proving a claim made two shots earlier is the case worth
+            // recording, and only the director can say so.
+            $anchor = trim((string) ($seg['anchor'] ?? '')) ?: $text;
+            $role = $seg['anchor_role'] ?? '';
+            if (! in_array($role, self::ANCHOR_ROLES, true)) {
+                $role = $kind === 'reaction' ? 'react' : ($kind === 'b_roll' ? 'illustrate' : 'establish');
+            }
+            if (mb_strlen($anchor) > 400) {
+                self::invalid('Keep each shot\'s anchor under 400 characters — it names the beat, it does not repeat the script.');
+            }
             $headline = trim((string) ($seg['headline'] ?? ''));
             $delivery = trim((string) ($seg['voice_direction'] ?? '')) ?: self::DELIVERY;
             if (mb_strlen($headline) > 180 || mb_strlen($motion) > 1000 || mb_strlen($delivery) > 500) {
@@ -98,6 +118,7 @@ final class UgcPlan
                 'kind' => $kind, 'script_text' => $text, 'seconds' => $seconds,
                 'visual_brief' => $brief, 'motion_prompt' => $motion,
                 'voice_direction' => $delivery, 'speed' => $speed,
+                'anchor' => $anchor, 'anchor_role' => $role,
                 'headline' => $headline, 'source' => $source,
                 'asset_id' => $kind === 'b_roll' && $source !== 'generate' ? ((int) ($seg['asset_id'] ?? 0) ?: null) : null,
             ];
@@ -116,6 +137,49 @@ final class UgcPlan
         }
 
         return $out;
+    }
+
+    /**
+     * Which shots are still serving words that exist, and which are pointed at
+     * a sentence the script no longer contains.
+     *
+     * This is the whole point of storing an anchor. `seconds` already
+     * re-derives itself from the new word count on every edit, so a rewrite
+     * silently produced correctly-timed shots whose visual was chosen for
+     * different words. Now the mismatch is visible and can be re-derived
+     * instead of shipping quietly.
+     *
+     * @param  array<int, array<string, mixed>>  $segments
+     * @return array<int, array<string, mixed>>  the same shots, each with `stale`
+     */
+    public static function reanchor(array $segments, string $newScript): array
+    {
+        $haystack = self::flatten($newScript);
+
+        foreach ($segments as $i => $seg) {
+            $anchor = self::flatten((string) ($seg['anchor'] ?? ''));
+            // An anchor that was never words — a silent reaction beat — can't be
+            // checked against the script and is never stale on its account.
+            $checkable = $anchor !== '' && ($seg['kind'] ?? '') !== 'reaction';
+            $segments[$i]['stale'] = $checkable && ! str_contains($haystack, $anchor);
+        }
+
+        return $segments;
+    }
+
+    /** @param array<int, array<string, mixed>> $segments */
+    public static function staleCount(array $segments): int
+    {
+        return count(array_filter($segments, fn ($s) => ! empty($s['stale'])));
+    }
+
+    /** Compare on words alone: punctuation and casing are not meaning changes. */
+    private static function flatten(string $text): string
+    {
+        $text = mb_strtolower(trim($text));
+        $text = (string) preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $text);
+
+        return trim((string) preg_replace('/\s+/u', ' ', $text));
     }
 
     public static function quote(array $segments): int
@@ -148,6 +212,12 @@ final class UgcPlan
             if ($seg['kind'] === 'b_roll' && $seg['source'] !== 'generate' && ! $seg['asset_id']) {
                 $warnings[] = 'Shot '.($i + 1).' needs selected '.$seg['source'].' footage before generation. It will not be replaced with an AI image.';
             }
+        }
+        $stale = self::staleCount($segments);
+        if ($stale > 0) {
+            $warnings[] = $stale === 1
+                ? 'One shot is still directed at a line the script no longer contains. Re-derive it before generating, or its visual answers words nobody hears.'
+                : "{$stale} shots are still directed at lines the script no longer contains. Re-derive them before generating, or their visuals answer words nobody hears.";
         }
         if (count($segments) > 1) {
             $warnings[] = 'Speech is recorded per shot. Choose direct-to-camera for an uninterrupted performance.';

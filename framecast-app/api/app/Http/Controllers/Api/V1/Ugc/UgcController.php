@@ -75,10 +75,16 @@ class UgcController extends Controller
     {
         $v = $request->validate($this->planRules());
         $segments = UgcPlan::normalise($v['segments'], $v['format']);
+        // Re-pricing is the moment to notice that an edit left a shot pointed
+        // at a sentence the script no longer contains. The script is the shots'
+        // own words joined, so editing any shot's line can strand a cutaway
+        // anchored to it — including the edited shot's own visual direction.
+        $segments = UgcPlan::reanchor($segments, UgcPlan::script($segments));
 
         return response()->json(['data' => [
             'format' => $v['format'], 'segments' => $segments, 'script' => UgcPlan::script($segments),
             'credits_per_character' => UgcPlan::quote($segments), 'warnings' => UgcPlan::warnings($segments),
+            'stale_shots' => UgcPlan::staleCount($segments),
         ], 'meta' => []]);
     }
 
@@ -230,6 +236,8 @@ class UgcController extends Controller
             'segments.*.voice_direction' => ['nullable', 'string', 'max:500'],
             'segments.*.speed' => ['nullable', 'numeric', 'min:0.5', 'max:2'],
             'segments.*.motion_prompt' => ['nullable', 'string', 'max:1000'],
+            'segments.*.anchor' => ['nullable', 'string', 'max:400'],
+            'segments.*.anchor_role' => ['nullable', Rule::in(UgcPlan::ANCHOR_ROLES)],
             'segments.*.headline' => ['nullable', 'string', 'max:180'],
             'segments.*.source' => ['nullable', 'in:upload,stock,generate'],
             'segments.*.asset_id' => ['nullable', 'integer', 'min:1'],
@@ -288,6 +296,12 @@ class UgcController extends Controller
                     'reference_asset_ids' => $actor
                         ? array_values(array_filter([(int) $character->reference_asset_id, ($v['product_asset_id'] ?? null)]))
                         : [],
+                    // Carried onto the scene so a later rewrite in the editor
+                    // can tell what this visual was chosen to answer. Without
+                    // it the anchor dies at the planning step and the editor is
+                    // back to guessing.
+                    'ugc_anchor' => $seg['anchor'],
+                    'ugc_anchor_role' => $seg['anchor_role'],
                     'planned_spokesperson' => $talking,
                     'spokesperson_consent' => $talking ? ['at' => now()->toIso8601String(), 'user_id' => $user->id] : null,
                     'ugc_format' => $v['format'], 'ugc_kind' => $seg['kind'], 'ugc_broll_source' => $seg['source'],
