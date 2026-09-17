@@ -606,4 +606,39 @@ onMounted(load)
 .modal-sm { max-width: 420px; }
 .confirm-text { font-size: 14px; color: var(--color-text-secondary); line-height: 1.6; margin: 0; }
 .confirm-text strong { color: var(--color-text-primary); }
+
+/* ── Phone ───────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .main { margin-left: 0; padding: 16px 14px; }
+
+  /* The hero is title-and-description against a right-aligned episode count.
+     At this width the count sat on top of the description's last line. */
+  .series-hero {
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .hero-stats { gap: 20px; }
+  .stat { text-align: left; }
+  .stat-val { font-size: 22px; }
+
+  .page-title { font-size: 19px; }
+
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 0 0 auto; }
+
+  /* The three action buttons held their width and squeezed the title into
+     three lines, so they move onto a row of their own. */
+  .episode-row {
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 12px 13px;
+  }
+  .ep-info { flex: 1 1 100%; order: 2; }
+  .ep-num { order: 1; }
+  .ep-actions { order: 4; margin-left: auto; }
+  .status-badge { order: 3; }
+  .ep-actions button { min-width: 38px; min-height: 38px; }
+}
 </style>

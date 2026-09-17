@@ -933,4 +933,68 @@ input[type=range] { width: 100%; accent-color: var(--color-accent); }
 .consist-row { display: flex; align-items: flex-start; gap: 7px; line-height: 1.4; }
 .consist-row.done { color: var(--color-text-secondary); }
 .consist-row.pending { color: var(--color-text-muted); opacity: 0.5; }
+
+/* ── Phone ─────────────────────────────────────────────────────────────
+   The wizard is three columns — a 230px step rail, the form, and a 256px
+   live preview — side by side in a non-scrolling row. At 430px that left
+   the form about 60px wide, reading one character per line, with the
+   preview hanging off the right edge. One column, and the two side panels
+   change shape rather than disappear: the rail becomes a progress strip,
+   the preview moves under the form where it can be scrolled to. */
+@media (max-width: 860px) {
+  .main { margin-left: 0; }
+
+  .page-body {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  /* Step rail → a scrolling strip of steps across the top. */
+  .step-rail {
+    width: auto;
+    flex-direction: row;
+    gap: 6px;
+    padding: 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .step-rail::-webkit-scrollbar { display: none; }
+  .rail-title { display: none; }
+  .step-item {
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 11px;
+    border-color: var(--color-border);
+  }
+  /* Only the step you're on needs to explain itself; the rest are markers. */
+  .step-item .step-desc { display: none; }
+  .step-item .step-name { white-space: nowrap; font-size: 12.5px; }
+  .step-item:not(.active) .step-info { display: none; }
+
+  .form-area { padding: 18px 14px 28px; overflow: visible; }
+  .step-panel { max-width: none; }
+
+  .field-grid-2 { grid-template-columns: 1fr; gap: 0; }
+  .vs-grid { grid-template-columns: repeat(2, 1fr); }
+  .palette-grid { grid-template-columns: repeat(5, 1fr); }
+
+  /* Step counter above, the actions full width under it. */
+  .form-actions {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .form-actions .btn { flex: 1 1 auto; min-height: 44px; justify-content: center; }
+
+  /* Preview moves below the form — still there, no longer stealing width. */
+  .preview-panel {
+    width: auto;
+    border-left: 0;
+    border-top: 1px solid var(--color-border);
+    padding: 18px 14px calc(18px + env(safe-area-inset-bottom));
+    overflow: visible;
+  }
+}
 </style>

@@ -125,5 +125,17 @@ onMounted(loadSeries)
 .series-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; flex-shrink: 0; }
 .series-eps { font-size: 11px; color: var(--color-text-muted); font-family: 'Space Mono', monospace; white-space: nowrap; }
 .btn-sm { padding: 5px 12px; font-size: 11px; }
+
+/* ── Phone ───────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .main { margin-left: 0; padding: 16px 14px; }
+
+  /* "+ New Series" was wrapping to two lines beside the heading; on its own
+     row it fits, at a height a finger can hit. */
+  .page-header { flex-direction: column; gap: 12px; margin-bottom: 20px; }
+  .page-header .btn-primary { min-height: 44px; }
+
+  .series-card { flex-wrap: wrap; padding: 14px; gap: 10px 12px; }
+}
 </style>
 
