@@ -1960,23 +1960,49 @@ const CAPTION_POSITION_OPTIONS = [
   { value: "center", label: "Center" },
   { value: "top_third", label: "Top third" },
 ];
-const CRUISE_IMAGE_MODEL_OPTIONS = [
-  { value: "", label: "Let me pick per turn" },
-  { value: "nano-banana-pro", label: "nano-banana-pro · 35 cr · best identity (default for refs)" },
-  { value: "nano-banana", label: "nano-banana · 10 cr · Google fast" },
-  { value: "gpt-image-1", label: "gpt-image-1 · 16 cr · photoreal" },
-  { value: "gpt-image-2", label: "gpt-image-2 · 43 cr · OpenAI refs" },
-  { value: "flux-schnell", label: "flux-schnell · 1 cr · fastest" },
-  { value: "sdxl-lightning", label: "sdxl-lightning · 1 cr · stylish" },
+// Model and tier lists carry their description only. The price beside each
+// one comes from /credit-costs at runtime — typed in, every one of the five
+// animation tiers had drifted: quick advertised 60 credits and charged 50,
+// seedance lite advertised 100 and charged 30, seedance pro 200 against 125,
+// premium 240 against 100.
+const CRUISE_IMAGE_MODELS = [
+  { value: "nano-banana-pro", note: "best identity (default for refs)" },
+  { value: "nano-banana", note: "Google fast" },
+  { value: "gpt-image-1", note: "photoreal" },
+  { value: "gpt-image-2", note: "OpenAI refs" },
+  { value: "flux-schnell", note: "fastest" },
+  { value: "sdxl-lightning", note: "stylish" },
 ];
-const CRUISE_ANIMATION_TIER_OPTIONS = [
-  { value: "", label: "Let me pick per turn" },
-  { value: "quick", label: "quick · Wan 2.5 · 60 cr" },
-  { value: "seedance_lite", label: "seedance lite · 100 cr" },
-  { value: "balanced", label: "balanced · Hailuo · 120 cr" },
-  { value: "seedance_pro", label: "seedance pro · 200 cr" },
-  { value: "premium", label: "premium · Kling · 240 cr" },
+const CRUISE_ANIMATION_TIERS = [
+  { value: "quick", label: "quick · Wan 2.5" },
+  { value: "seedance_lite", label: "seedance lite" },
+  { value: "balanced", label: "balanced · Hailuo" },
+  { value: "seedance_pro", label: "seedance pro" },
+  { value: "premium", label: "premium · Kling" },
 ];
+
+/** "· 35 cr" when the server has told us, nothing at all when it has not. */
+function crSuffix(credits) {
+  return Number.isFinite(credits) ? ` · ${credits} cr` : "";
+}
+
+const CRUISE_IMAGE_MODEL_OPTIONS = computed(() => [
+  { value: "", label: "Let me pick per turn" },
+  ...CRUISE_IMAGE_MODELS.map((m) => ({
+    value: m.value,
+    label: `${m.value}${crSuffix(creditCosts.value.image_models?.[m.value]?.credits)} · ${m.note}`,
+  })),
+]);
+const CRUISE_ANIMATION_TIER_OPTIONS = computed(() => [
+  { value: "", label: "Let me pick per turn" },
+  ...CRUISE_ANIMATION_TIERS.map((t) => {
+    const tier = creditCosts.value.video_tiers?.[t.value];
+    return {
+      value: t.value,
+      label: `${t.label}${crSuffix(tier?.credits)}${tier?.quality ? ` · ${tier.quality}` : ""}`,
+    };
+  }),
+]);
 const CRUISE_VISUAL_SOURCE_OPTIONS = [
   { value: "auto", label: "Auto — assistant decides" },
   { value: "ai_image", label: "AI image" },

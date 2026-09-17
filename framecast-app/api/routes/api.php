@@ -187,10 +187,36 @@ Route::prefix('v1')->group(function (): void {
         // on one line and "Generate music (5 cr)" on the next, while the server
         // charged 2.
         Route::get('/credit-costs', function () {
+            $images = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+            $imageModels = [];
+            foreach (['nano-banana-pro', 'nano-banana', 'gpt-image-1', 'gpt-image-2', 'flux-schnell', 'sdxl-lightning'] as $key) {
+                $imageModels[$key] = [
+                    'credits' => $images->costFor($key),
+                    // What it costs when a character reference is attached —
+                    // a different number for four of the six.
+                    'credits_with_reference' => $images->referenceGenerationCost($key),
+                ];
+            }
+
+            // A tier's price depends on the quality it runs at and doubles past
+            // ten seconds, so the label gets the tier's own default quality and
+            // says what that default is.
+            $videoTiers = [];
+            foreach (\App\Services\CreditService::VIDEO_PRICING as $tier => $cfg) {
+                $quality = \App\Services\CreditService::videoQuality($tier, null);
+                $videoTiers[$tier] = [
+                    'quality' => $quality,
+                    'credits' => \App\Services\CreditService::animationCost($tier, $quality, 5),
+                    'credits_10s_plus' => \App\Services\CreditService::animationCost($tier, $quality, 10),
+                ];
+            }
+
             return response()->json(['data' => ['costs' => [
                 'ai_music' => \App\Services\CreditService::AI_MUSIC,
                 'tts'      => \App\Services\CreditService::TTS_GEMINI,
                 'tts_clone' => \App\Services\CreditService::TTS_CLONE,
+                'image_models' => $imageModels,
+                'video_tiers'  => $videoTiers,
             ]], 'meta' => []]);
         });
 
