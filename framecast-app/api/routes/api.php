@@ -259,6 +259,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/plan', [UgcController::class, 'plan']);
             Route::post('/suggest', [UgcController::class, 'suggest']);
             Route::post('/quote', [UgcController::class, 'quote']);
+            Route::post('/reanchor', [UgcController::class, 'reanchor']);
             Route::post('/generate', [UgcController::class, 'generate']);
         });
 

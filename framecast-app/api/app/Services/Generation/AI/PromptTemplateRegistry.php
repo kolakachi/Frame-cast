@@ -119,6 +119,16 @@ For b_roll only, source must be upload (real app screens, dashboards, customer p
 PROMPT,
                 'user' => "Direct this UGC take.\nRequested format: {{format}}\nProduct: {{product}}\nBrief / audience / goal: {{context}}\nTarget length: {{duration}} seconds (reaction clips support 5 or 10).\nLanguage: {{language}}\nAvailable footage labels: {{available_footage}}\nExact spoken script (empty means write from brief):\n{{script_text}}",
             ],
+            'ugc_shot_reanchor' => [
+                'system' => <<<'PROMPT'
+You repair shots whose script moved out from under them. Return JSON only:
+{"shots":[{"index":0,"anchor":"the sentence from the CURRENT script this shot now serves, copied verbatim","visual_brief":"setting, framing, lighting, outfit and starting expression","motion_prompt":"physical beats, reaction shots only","headline":"on-screen text, or empty"}]}
+Each shot below was directed to answer a sentence that is no longer in the script. Its role says what the visual was doing for that sentence: establish (set the scene), demonstrate (show the thing working), prove (evidence for a claim), illustrate (a generic picture of the idea), contrast (the before, or the alternative), react (a wordless response. Keep the role. Find the sentence in the CURRENT script that now plays the part the old one did, and rewrite the visual to answer THAT sentence in the same way.
+Return one object per shot you were given, with its index unchanged. Never change the spoken script, the shot's kind, its duration or its source. If the script no longer contains anything that role can answer, keep the role, anchor to the nearest sentence that shot sits under, and say so plainly in the visual_brief rather than inventing a claim.
+Keep the same person, outfit, location and framing language the other shots use. No baked-in text, logos or watermarks. Never invent app screens, product evidence, statistics or brand packaging. Headlines stay under 180 characters.
+PROMPT,
+                'user' => "Format: {{format}}\nCurrent script, in full:\n{{script}}\n\nShots to repair (JSON):\n{{shots_json}}",
+            ],
             'hook_options' => [
                 'system' => 'Generate hook options for a short-form video. Return JSON only in this shape: {"hooks":[{"text":"..."}]} with 3 to 10 options.',
                 'user' => "Generate 3-10 scroll-stopping hook options from this script, matching the niche and goal.\nNiche playbook (match this hook style): {{niche_guidance}}\nGoal: {{content_goal}}\nLanguage: {{language}}\nScript:\n{{script_text}}",

@@ -44,4 +44,70 @@ class UgcShotPlanner
             throw ValidationException::withMessages(['plan' => 'The director could not produce a valid plan. No credits were spent. Try again or simplify the brief. Reaction clips need a visual brief, not a spoken script.']);
         }
     }
+
+    /**
+     * Rewrite the visual direction of shots the script has moved out from under,
+     * keeping the role each one was playing.
+     *
+     * Only visual_brief, motion_prompt, headline and the anchor itself change.
+     * The spoken words, the kind, the duration and the footage source are the
+     * user's, and a repair that edited them would be a rewrite wearing a
+     * repair's clothes.
+     *
+     * @param  array<int, array<string, mixed>>  $segments
+     * @return array<int, array<string, mixed>>
+     */
+    public function reanchor(array $segments, string $format): array
+    {
+        $segments = UgcPlan::reanchor($segments, UgcPlan::script($segments));
+        $stale = array_keys(array_filter($segments, fn ($s) => ! empty($s['stale'])));
+        if ($stale === []) {
+            return $segments;
+        }
+
+        $payload = array_map(fn (int $i) => [
+            'index' => $i,
+            'kind' => $segments[$i]['kind'],
+            'role' => $segments[$i]['anchor_role'],
+            'lost_anchor' => $segments[$i]['anchor'],
+            'spoken_here' => $segments[$i]['script_text'],
+            'current_visual_brief' => $segments[$i]['visual_brief'],
+        ], $stale);
+
+        try {
+            $result = $this->ai->generate('ugc_shot_reanchor', [
+                'format' => $format,
+                'script' => UgcPlan::script($segments),
+                'shots_json' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+            ], 2000, 0.3, ['operation' => 'ugc_shot_reanchor']);
+
+            $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
+            $content = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $content);
+            $shots = json_decode($content, true, 16, JSON_THROW_ON_ERROR)['shots'] ?? [];
+
+            foreach ($shots as $shot) {
+                $i = (int) ($shot['index'] ?? -1);
+                // Only the shots we asked about, and only the fields we allow.
+                if (! in_array($i, $stale, true)) {
+                    continue;
+                }
+                foreach (['anchor', 'visual_brief', 'motion_prompt', 'headline'] as $field) {
+                    if (array_key_exists($field, $shot) && is_string($shot[$field])) {
+                        $segments[$i][$field] = trim($shot[$field]);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('UGC re-anchor produced nothing usable', ['error' => mb_substr($e->getMessage(), 0, 200)]);
+            throw ValidationException::withMessages([
+                'segments' => 'Could not re-direct those shots just now. No credits were spent and nothing was changed — try again, or edit the visual direction yourself.',
+            ]);
+        }
+
+        // Back through the same gate as any other plan, then re-checked: a
+        // repair that left a shot stale has not repaired it.
+        $segments = UgcPlan::normalise($segments, $format);
+
+        return UgcPlan::reanchor($segments, UgcPlan::script($segments));
+    }
 }

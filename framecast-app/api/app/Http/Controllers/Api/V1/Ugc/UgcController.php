@@ -70,6 +70,24 @@ class UgcController extends Controller
         ), 'meta' => []]);
     }
 
+    /**
+     * Re-direct the shots a script edit stranded. Reversible and free: no media
+     * is made and no credits move, so a user can re-run it until the direction
+     * reads right.
+     */
+    public function reanchor(Request $request, UgcShotPlanner $planner): JsonResponse
+    {
+        $v = $request->validate($this->planRules());
+        $segments = UgcPlan::normalise($v['segments'], $v['format']);
+        $segments = $planner->reanchor($segments, $v['format']);
+
+        return response()->json(['data' => [
+            'format' => $v['format'], 'segments' => $segments, 'script' => UgcPlan::script($segments),
+            'credits_per_character' => UgcPlan::quote($segments), 'warnings' => UgcPlan::warnings($segments),
+            'stale_shots' => UgcPlan::staleCount($segments),
+        ], 'meta' => []]);
+    }
+
     /** Re-price edits without generating media or charging credits. */
     public function quote(Request $request): JsonResponse
     {
