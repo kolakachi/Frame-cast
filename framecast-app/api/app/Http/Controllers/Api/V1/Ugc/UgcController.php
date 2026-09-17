@@ -236,7 +236,7 @@ class UgcController extends Controller
             'segments.*.voice_direction' => ['nullable', 'string', 'max:500'],
             'segments.*.speed' => ['nullable', 'numeric', 'min:0.5', 'max:2'],
             'segments.*.motion_prompt' => ['nullable', 'string', 'max:1000'],
-            'segments.*.anchor' => ['nullable', 'string', 'max:400'],
+            'segments.*.anchor' => ['nullable', 'string', 'max:1500'],
             'segments.*.anchor_role' => ['nullable', Rule::in(UgcPlan::ANCHOR_ROLES)],
             'segments.*.headline' => ['nullable', 'string', 'max:180'],
             'segments.*.source' => ['nullable', 'in:upload,stock,generate'],

@@ -100,8 +100,12 @@ final class UgcPlan
             if (! in_array($role, self::ANCHOR_ROLES, true)) {
                 $role = $kind === 'reaction' ? 'react' : ($kind === 'b_roll' ? 'illustrate' : 'establish');
             }
-            if (mb_strlen($anchor) > 400) {
-                self::invalid('Keep each shot\'s anchor under 400 characters — it names the beat, it does not repeat the script.');
+            // The same ceiling as the spoken line, because for most shots the
+            // anchor IS the spoken line. A 60-second direct-to-camera take runs
+            // past any tighter limit, and rejecting a valid plan over a field
+            // the director never typed is the worst way to find that out.
+            if (mb_strlen($anchor) > 1500) {
+                self::invalid('Keep each shot\'s anchor under 1,500 characters.');
             }
             $headline = trim((string) ($seg['headline'] ?? ''));
             $delivery = trim((string) ($seg['voice_direction'] ?? '')) ?: self::DELIVERY;
