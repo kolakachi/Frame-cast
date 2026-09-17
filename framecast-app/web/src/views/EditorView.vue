@@ -5,6 +5,7 @@ import api from "../services/api";
 import { getEcho } from "../services/echo";
 import { useAuthStore } from "../stores/auth";
 import { useSidebarStore } from "../stores/sidebar";
+import { useWorkspaceStore } from "../stores/workspace";
 import AppSidebar from "../components/AppSidebar.vue";
 import EditorSkeleton from "../components/skeletons/EditorSkeleton.vue";
 import EditorTimeline from "../components/EditorTimeline.vue";
@@ -18,6 +19,7 @@ import { CAPTION_ANIMATIONS, animationByKey, panelRowAnimations, syntheticTimedW
 import NotifBell from "../components/NotifBell.vue";
 
 const route = useRoute();
+const workspaceStore = useWorkspaceStore();
 const router = useRouter();
 const authStore = useAuthStore();
 const sidebarStore = useSidebarStore();
@@ -1718,6 +1720,8 @@ watch(playProgress, () => {
 });
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onViewportResize);
+  window.visualViewport?.removeEventListener('resize', onViewportResize);
+  setAppLock(false);
   if (captionClockRaf) cancelAnimationFrame(captionClockRaf);
 });
 const CAPTION_SIZE_MAP = { small: "13px", medium: "17px", large: "23px", xlarge: "30px" };
@@ -2454,9 +2458,28 @@ const viewport = ref({
 });
 function onViewportResize() {
   viewport.value = { w: window.innerWidth, h: window.innerHeight };
+  syncAppHeight();
+}
+
+// iOS Safari's 100dvh does not reliably equal what you can actually see: with
+// the toolbars expanded it still reported the taller value, so the editor came
+// out ~120px longer than the screen and the dock sat that far below the fold
+// with bare page under it. innerHeight is what's really visible, so the shell
+// is sized from that and the document itself is locked — a page that can't
+// scroll can't drift out from under its own fixed furniture.
+function syncAppHeight() {
+  if (typeof window === "undefined") return;
+  const h = window.visualViewport?.height ?? window.innerHeight;
+  document.documentElement.style.setProperty("--wyv-app-h", `${Math.round(h)}px`);
+}
+
+function setAppLock(on) {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.toggle("wyv-app-lock", on);
 }
 
 const isPhone = computed(() => viewport.value.w <= 860);
+watch(isPhone, (on) => setAppLock(on), { immediate: true });
 
 const previewContainerStyle = computed(() => {
   const ratio = project.value?.aspect_ratio || "9:16";
@@ -2474,6 +2497,20 @@ const previewContainerStyle = computed(() => {
 const projectTitle = computed(
   () => project.value?.title || `Project #${projectId.value}`
 );
+
+// The phone bar carries one status word where the desktop has a whole pill of
+// export detail. Export state wins when there is one — it's what you came back
+// to check — otherwise the project's own readiness.
+const mobileStatus = computed(() => {
+  const job = latestExportJob.value;
+  if (job) {
+    if (job.status === 'completed') return { text: 'Ready', tone: 'ok' };
+    if (job.status === 'failed') return { text: 'Failed', tone: 'bad' };
+    return { text: exportStatusCopy(job).replace('Export ', ''), tone: 'busy' };
+  }
+  if (!scenes.value.length) return null;
+  return { text: 'Draft', tone: 'idle' };
+});
 const editingTitle = ref(false);
 const titleDraft = ref('');
 const titleSaving = ref(false);
@@ -6992,6 +7029,8 @@ function syncSceneSoundVolume() {
 
 onMounted(() => {
   window.addEventListener('resize', onViewportResize);
+  window.visualViewport?.addEventListener('resize', onViewportResize);
+  syncAppHeight();
   loadLipsyncEngines();
   beforeUnloadHandler = (event) => {
     if (
@@ -7118,6 +7157,33 @@ onBeforeUnmount(() => {
       <AppSidebar :user="mePayload" active-page="editor" @logout="logout" />
 
       <div :class="['main', timelineOpen ? 'sidebar-collapsed' : '']">
+        <!-- Phone bar, from mobile-editor-v3.html: back, project, status,
+             credits, and the ⋮ that opens everything this screen can't fit.
+             The app's generic mobile bar stands down on these routes. -->
+        <header v-if="isPhone" class="ed-bar">
+          <button class="ed-ib" type="button" aria-label="Back to dashboard" @click="router.push({ name: 'dashboard' })">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M12.5 4L6.5 10l6 6" />
+            </svg>
+          </button>
+          <span class="ed-bar-title">{{ projectTitle }}</span>
+          <span v-if="mobileStatus" :class="['ed-bar-status', `is-${mobileStatus.tone}`]">{{ mobileStatus.text }}</span>
+          <span class="ed-bar-sp"></span>
+          <span v-if="workspaceStore.usage?.credits_balance != null" class="ed-bar-credits">
+            {{ workspaceStore.usage.credits_balance.toLocaleString() }}
+          </span>
+          <button
+            :class="['ed-ib', mobileSheet === 'project' ? 'is-on' : '']"
+            type="button"
+            aria-label="Project actions"
+            @click="toggleSheet('project')"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor">
+              <circle cx="10" cy="4.4" r="1.5" /><circle cx="10" cy="10" r="1.5" /><circle cx="10" cy="15.6" r="1.5" />
+            </svg>
+          </button>
+        </header>
+
         <header class="topbar">
           <div class="topbar-left">
             <div class="topbar-title">Editor</div>
@@ -7914,6 +7980,82 @@ onBeforeUnmount(() => {
               Export
             </button>
           </nav>
+
+
+          <!-- Project sheet — the ⋮ from the bar. Everything the desktop
+               topbar carries that a 430px bar can't: the export's own links,
+               scheduling, approval, sharing, variants, and the timeline that
+               genuinely needs a wider screen. -->
+          <div v-if="isPhone" :class="['ed-projsheet', mobileSheet === 'project' ? 'sheet-open' : '']">
+            <div class="editor-sheet-head">
+              <span class="editor-sheet-grab"></span>
+              <b>Project</b>
+              <button type="button" @click="mobileSheet = null">Done</button>
+            </div>
+            <div class="ed-projsheet-body">
+              <template v-if="latestExportDownloadUrl">
+                <a
+                  class="ed-prow"
+                  :href="latestExportDownloadUrl"
+                  target="_blank"
+                  rel="noopener"
+                  @click="trackVideoDownloaded('open'); mobileSheet = null"
+                >
+                  <span class="ed-prow-ic">↗</span>
+                  <span class="ed-prow-b"><b>Open in new tab</b></span>
+                  <span class="ed-prow-rt">›</span>
+                </a>
+                <a
+                  class="ed-prow"
+                  :href="latestExportDownloadUrl"
+                  :download="latestExportJob?.file_name || 'export.mp4'"
+                  @click="trackVideoDownloaded('download'); mobileSheet = null"
+                >
+                  <span class="ed-prow-ic">↓</span>
+                  <span class="ed-prow-b"><b>Download</b><span>MP4 · {{ latestExportJob?.file_name || '1080p' }}</span></span>
+                  <span class="ed-prow-rt">›</span>
+                </a>
+                <button class="ed-prow" type="button" @click="mobileSheet = null; scheduleModalOpen = true">
+                  <span class="ed-prow-ic">🗓</span>
+                  <span class="ed-prow-b"><b>Schedule</b><span>Post to a connected channel</span></span>
+                  <span class="ed-prow-rt">›</span>
+                </button>
+                <button class="ed-prow" type="button" @click="mobileSheet = null; approvalModalOpen = true">
+                  <span class="ed-prow-ic">✎</span>
+                  <span class="ed-prow-b"><b>Send for approval</b></span>
+                  <span class="ed-prow-rt">›</span>
+                </button>
+                <button class="ed-prow" type="button" :disabled="shareTogglePending" @click="toggleShareLink">
+                  <span class="ed-prow-ic">🔗</span>
+                  <span class="ed-prow-b">
+                    <b>{{ project?.is_shared ? 'Copy share link' : 'Share publicly' }}</b>
+                    <span v-if="shareCopiedToast">{{ shareCopiedToast }}</span>
+                  </span>
+                  <span class="ed-prow-rt">{{ shareTogglePending ? '…' : '›' }}</span>
+                </button>
+              </template>
+              <!-- Nothing to open, schedule or share until there is a render. -->
+              <div v-else class="ed-prow-empty">
+                Export the video to open, download, schedule, share or send it for approval.
+              </div>
+
+              <div class="ed-prow-lbl">Manage</div>
+              <button
+                class="ed-prow"
+                type="button"
+                @click="mobileSheet = null; router.push({ name: 'project-variants', params: { projectId: projectId } })"
+              >
+                <span class="ed-prow-ic">⧉</span>
+                <span class="ed-prow-b"><b>Variants</b><span>Other cuts of this project</span></span>
+                <span class="ed-prow-rt">›</span>
+              </button>
+              <div class="ed-prow is-disabled">
+                <span class="ed-prow-ic">◨</span>
+                <span class="ed-prow-b"><b>Timeline</b><span>Needs a wider screen</span></span>
+                <span class="ed-prow-rt">desktop</span>
+              </div>
+            </div>
+          </div>
 
           <button
             v-if="mobileSheet"
@@ -10365,6 +10507,17 @@ onBeforeUnmount(() => {
   </main>
 </template>
 
+<style>
+/* Not scoped: the editor locks the document itself on phones so the shell
+   can't scroll out from under its own fixed bar and dock. */
+html.wyv-app-lock,
+html.wyv-app-lock body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+</style>
+
 <style scoped>
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap");
 /* Caption fonts. The animated presets need the heavy cuts (Montserrat
@@ -12094,6 +12247,7 @@ button {
 
 .editor-sheet-head,
 .editor-sheet-scrim,
+.ed-projsheet,
 .btn-mobile-config { display: none; }
 
 .editor-canvas {
@@ -14789,7 +14943,7 @@ select.preset-select {
      height and pushed the scene list below it — which is why the frame was
      small and the page grew a bar for every job. */
   .main {
-    height: 100dvh;
+    height: var(--wyv-app-h, 100dvh);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -14939,6 +15093,161 @@ select.preset-select {
     border: 0;
     padding: 0;
     background: rgba(0, 0, 0, .5);
+  }
+
+  /* ── Bar ─────────────────────────────────────────────────────────── */
+  .ed-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px 6px;
+    padding-top: calc(3px + env(safe-area-inset-top));
+    background: var(--color-bg-panel, #111117);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .ed-ib {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 11px;
+    background: none;
+    color: var(--color-text-secondary, #a8a9b4);
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+  .ed-ib svg { width: 19px; height: 19px; }
+  .ed-ib:active,
+  .ed-ib.is-on { background: var(--color-bg-card, #17171f); color: var(--color-text-primary, #f2f2f5); }
+
+  .ed-bar-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ed-bar-status {
+    flex: 0 0 auto;
+    margin-left: 8px;
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 10px;
+  }
+  .ed-bar-status.is-ok { color: var(--color-success, #34d399); background: var(--color-success-soft, rgba(52,211,153,.12)); }
+  .ed-bar-status.is-bad { color: var(--color-danger, #f87171); background: var(--color-danger-soft, rgba(248,113,113,.12)); }
+  .ed-bar-status.is-busy { color: var(--color-accent, #ff6b35); background: rgba(255,107,53,.12); }
+  .ed-bar-status.is-idle { color: var(--color-text-muted, #7c7d89); background: var(--color-bg-card, #17171f); }
+  .ed-bar-sp { flex: 1; }
+  .ed-bar-credits {
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 11.5px;
+    color: var(--color-text-muted, #7c7d89);
+    padding-right: 4px;
+  }
+
+  /* The shell bar is gone here, so nothing needs reserving at the top. */
+  .main { padding-top: 0 !important; }
+
+  /* The resume-failed banner is a sibling of .editor-body, so it lands above
+     the bar unless told otherwise. It reads as a notice under the project
+     name, not as the first thing on the screen. */
+  .resume-failed-banner {
+    flex: 0 0 auto;
+    margin: 0;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    padding: 8px 12px;
+    font-size: 12.5px;
+  }
+
+  /* ── Project sheet ──────────────────────────────────────────────────── */
+  .ed-projsheet {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 120;
+    height: 62vh;
+    border-top: 1px solid var(--color-border-active, #34343f);
+    border-radius: 16px 16px 0 0;
+    background: var(--color-bg-panel, #111117);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .ed-projsheet.sheet-open { display: flex; }
+  .ed-projsheet-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 12px calc(16px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ed-prow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 58px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-bg-card, #17171f);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .ed-prow:active { border-color: var(--color-border-active, #34343f); }
+  .ed-prow.is-disabled,
+  .ed-prow:disabled { opacity: .5; cursor: default; }
+  .ed-prow-ic {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: var(--color-bg-panel, #111117);
+    font-size: 15px;
+  }
+  .ed-prow-b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ed-prow-b b { font-size: 15px; font-weight: 600; }
+  .ed-prow-b span {
+    font-size: 12px;
+    color: var(--color-text-muted, #7c7d89);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ed-prow-rt {
+    flex: 0 0 auto;
+    font-size: 13px;
+    color: var(--color-text-muted, #7c7d89);
+  }
+  .ed-prow-lbl {
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted, #7c7d89);
+    padding: 8px 2px 0;
+  }
+  .ed-prow-empty {
+    padding: 14px 12px;
+    border: 1px dashed var(--color-border);
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text-muted, #7c7d89);
   }
 
   /* ── Dock ───────────────────────────────────────────────────────────

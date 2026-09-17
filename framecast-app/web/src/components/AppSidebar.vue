@@ -64,9 +64,10 @@ function tabTap(tab) {
 // The editor is a fixed-height app with its own dock (Scenes/Config/
 // Assistant/Export) — stacking the global tabs under it cost a row of screen
 // and gave two bottom bars at once.
-const hideTabs = computed(() =>
+const isEditorScreen = computed(() =>
   ['editor', 'project-editor'].includes(props.activePage)
 );
+const hideTabs = isEditorScreen;
 
 const screenTitle = computed(() => {
   const named = {
@@ -185,7 +186,7 @@ onBeforeUnmount(() => {
        App bar and bottom tabs, rendered only under 860px. Desktop never sees
        this DOM at all, which is why the whole thing cannot regress the wide
        layout: there is nothing to regress. -->
-  <header v-if="isMobile" class="mshell-bar">
+  <header v-if="isMobile && !isEditorScreen" class="mshell-bar">
     <button class="mshell-icon" type="button" aria-label="Open navigation" @click.stop="mobileOpen = true">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
         <path d="M4 7h16M4 12h16M4 17h16" />
