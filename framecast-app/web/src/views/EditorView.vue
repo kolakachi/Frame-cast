@@ -5200,8 +5200,23 @@ function togglePanel(name) {
 }
 
 function toggleAddScene(position) {
-  addScenePanelPosition.value =
-    addScenePanelPosition.value === position ? "" : position;
+  const opening = addScenePanelPosition.value !== position;
+  addScenePanelPosition.value = opening ? position : "";
+
+  // The add panel opens at the top of the scene list. In the phone sheet the
+  // list is usually scrolled somewhere down it, so opening the panel put it
+  // out of sight and "+ Add" looked like it did nothing.
+  if (!opening) return;
+  nextTick(() => {
+    const list = document.querySelector('.scene-list');
+    const panel = list?.querySelector('.add-scene-panel.open');
+    if (!list || !panel) return;
+    if (position === 'top') {
+      list.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
 }
 
 function closeAddScene() {

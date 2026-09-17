@@ -425,7 +425,8 @@ input {
      content ends underneath both. */
   .main,
   .ugc-main,
-  .ap-main {
+  .ap-main,
+  .cal-main {
     padding-top: calc(52px + env(safe-area-inset-top)) !important;
     padding-bottom: calc(56px + env(safe-area-inset-bottom)) !important;
   }
@@ -447,5 +448,20 @@ input {
   img {
     max-width: 100%;
     height: auto;
+  }
+
+  /* iOS Safari zooms the page in whenever a focused control's text is under
+     16px, and it does not zoom back out when the field is left — you end up
+     stranded at 1.3x with the layout off screen. 16px on every control is the
+     only thing that prevents the zoom in the first place; the alternative,
+     user-scalable=no, takes pinch-zoom away from everyone.
+
+     !important for the same reason as .topbar above: the sizes being overridden
+     are set in each view's scoped block, and a [data-v-…] selector outranks a
+     bare element selector from here. */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
   }
 }

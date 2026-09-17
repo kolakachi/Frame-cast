@@ -53,6 +53,46 @@ const popoverStyle  = ref({})
 const scheduleOpen     = ref(false)
 const scheduleExportId = ref(null)
 
+// ── Phone layout ──────────────────────────────────────────────────────
+// The month grid is seven columns of stacked post chips: at 430px that's 61px
+// a column, so it scrolled sideways and the chips were unreadable. On a phone
+// the month becomes a grid of dates with status dots and the day you pick
+// opens as an agenda underneath — mobile-shell-mockup.html.
+const isPhone = ref(typeof window !== 'undefined' && window.innerWidth <= 860)
+function onCalResize() { isPhone.value = window.innerWidth <= 860 }
+
+const selectedDay = ref(new Date())
+
+// Week view is hour rows across seven columns; there is no honest phone form of
+// it, so the toggle offers Month and Posts and week stays a desktop view.
+watch(isPhone, (phone) => {
+  if (phone && viewMode.value === 'week') viewMode.value = 'month'
+})
+
+const DOT_COLOR = {
+  published: '#34d399',
+  scheduled: '#60a5fa',
+  pending: '#fb923c',
+  processing: '#fb923c',
+  failed: '#f87171',
+  draft: '#6a6a7c',
+}
+function dayDots(date) {
+  // Three at most, in the order they'd be read: what went out, what's queued,
+  // what broke. A fourth dot on a 40px cell is noise.
+  const seen = []
+  for (const post of postsForDate(date)) {
+    const c = DOT_COLOR[post.status] || DOT_COLOR.draft
+    if (!seen.includes(c)) seen.push(c)
+  }
+  return seen.slice(0, 3)
+}
+function isSelectedDay(date) { return dateKey(date) === dateKey(selectedDay.value) }
+const selectedDayPosts = computed(() => postsForDate(selectedDay.value))
+const selectedDayLabel = computed(
+  () => selectedDay.value.toLocaleString('en', { weekday: 'long', month: 'short', day: 'numeric' })
+)
+
 // Auto-refresh
 const pollTimer = ref(null)
 
@@ -226,11 +266,15 @@ function startPollIfNeeded() {
 watch(hasPending, val => { if (val) startPollIfNeeded() })
 watch(currentDate, loadPosts)
 onMounted(async () => {
+  window.addEventListener('resize', onCalResize)
   const res = await api.get('/me').catch(() => null)
   mePayload.value = res?.data?.data?.user ?? null
   loadPosts()
 })
-onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
+onUnmounted(() => {
+  window.removeEventListener('resize', onCalResize)
+  if (pollTimer.value) clearInterval(pollTimer.value)
+})
 
 // ── Edit post modal ───────────────────────────────────────
 const editPost = ref(null)
@@ -353,7 +397,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 
         <div class="cal-view-toggle">
           <button :class="['vtog-btn', viewMode === 'month' ? 'active' : '']" @click="viewMode = 'month'">Month</button>
-          <button :class="['vtog-btn', viewMode === 'week'  ? 'active' : '']" @click="viewMode = 'week'">Week</button>
+          <button v-if="!isPhone" :class="['vtog-btn', viewMode === 'week'  ? 'active' : '']" @click="viewMode = 'week'">Week</button>
           <button :class="['vtog-btn', viewMode === 'list'  ? 'active' : '']" @click="viewMode = 'list'">Posts</button>
         </div>
 
@@ -371,7 +415,7 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
           <option v-for="s in allSeries" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
 
-        <NotifBell style="margin-left:auto" />
+        <NotifBell v-if="!isPhone" style="margin-left:auto" />
       </div>
 
       <!-- Failed banner -->
@@ -389,8 +433,55 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
         <div v-if="stats.failed" class="cal-stat"><div class="cal-stat-dot" style="background:#f87171"></div><strong>{{ stats.failed }}</strong> failed</div>
       </div>
 
-      <!-- ── Month view ── -->
-      <div v-if="viewMode === 'month'" class="cal-body">
+      <!-- ── Month view, phone ── -->
+      <div v-if="viewMode === 'month' && isPhone" class="cal-body calm">
+        <div class="calm-grid">
+          <div v-for="d in ['S','M','T','W','T','F','S']" :key="d" class="calm-dw">{{ d }}</div>
+          <button
+            v-for="(day, i) in calendarDays" :key="i"
+            :class="['calm-day', day.otherMonth ? 'out' : '', isToday(day.date) ? 'today' : '']"
+            :aria-pressed="String(!day.otherMonth && isSelectedDay(day.date))"
+            type="button"
+            @click="selectedDay = day.date"
+          >
+            <span>{{ day.date.getDate() }}</span>
+            <span class="calm-dots">
+              <i v-for="(c, di) in dayDots(day.date)" :key="di" :style="{ background: c }"></i>
+            </span>
+          </button>
+        </div>
+
+        <div class="calm-legend">
+          <span><i style="background:#34d399"></i>Published</span>
+          <span><i style="background:#60a5fa"></i>Scheduled</span>
+          <span><i style="background:#f87171"></i>Failed</span>
+          <span><i style="background:#6a6a7c"></i>Draft</span>
+        </div>
+
+        <div class="calm-agenda-hd">{{ selectedDayLabel }}</div>
+        <div v-if="selectedDayPosts.length" class="calm-agenda">
+          <button
+            v-for="post in selectedDayPosts" :key="post.id"
+            class="calm-ag"
+            type="button"
+            @click="selectPost(post, $event)"
+          >
+            <span class="calm-ag-bar" :style="{ background: DOT_COLOR[post.status] || DOT_COLOR.draft }"></span>
+            <span class="calm-ag-t">
+              <b>{{ post.project_title || 'Post' }}</b>
+              <span>{{ postPlatformIcon(post.platform) }} {{ formatTime(postDate(post)) }} · {{ STATUS_LABELS[post.status] || post.status }}</span>
+            </span>
+            <span class="calm-ag-chev">›</span>
+          </button>
+        </div>
+        <div v-else class="calm-empty">
+          <b>Nothing on {{ selectedDayLabel }}</b>
+          <p>Schedule a video and it shows up here.</p>
+        </div>
+      </div>
+
+      <!-- ── Month view, desktop ── -->
+      <div v-else-if="viewMode === 'month'" class="cal-body">
         <div class="cal-day-headers">
           <div v-for="d in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']" :key="d" class="cal-day-header">{{ d }}</div>
         </div>
@@ -729,4 +820,194 @@ const STATUS_COLORS = { scheduled: 'blue', published: 'green', failed: 'red', dr
 .btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
 .btn-primary:hover { opacity: .9; }
 .btn-sm { padding: 4px 10px; font-size: 11px; }
+/* ── Phone ─────────────────────────────────────────────────────────────
+   The desktop calendar is a seven-column grid of stacked post chips inside a
+   220px-offset main column. At 430px that came out as a sideways-scrolling
+   sliver with a dead margin where the sidebar would be. Here the month is a
+   grid of dates carrying status dots, and the selected day opens as an agenda
+   below it — mobile-shell-mockup.html. */
+@media (max-width: 860px) {
+  .cal-main {
+    margin-left: 0;
+    overflow: visible;
+  }
+
+  /* The phone shell already names the screen and shows credits. What's left
+     is the month, the way through it, and the filters. */
+  .cal-topbar {
+    padding: 10px 12px;
+    gap: 8px;
+    row-gap: 10px;
+  }
+  .cal-topbar-title { display: none; }
+  .cal-nav { order: -1; width: 100%; gap: 8px; }
+  .cal-period-label { min-width: 0; flex: 1; text-align: left; font-size: 15px; }
+  .cal-nav-btn { width: 34px; height: 34px; }
+  .cal-today-btn { width: auto; }
+  .cal-view-toggle { flex: 1; }
+  .vtog-btn { flex: 1; padding: 8px 10px; font-size: 12.5px; }
+  .cal-platform-filter { gap: 6px; }
+  .plat-filter-btn { width: 34px; height: 34px; }
+  .cal-series-filter { flex: 1 0 100%; }
+
+  .cal-stats-bar {
+    gap: 14px;
+    padding: 8px 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .cal-stats-bar::-webkit-scrollbar { display: none; }
+  .cal-stat { flex: 0 0 auto; }
+
+  .calm { padding: 12px; }
+
+  .calm-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+  }
+  .calm-dw {
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 9px;
+    letter-spacing: .06em;
+    color: var(--color-text-muted);
+    text-align: center;
+    padding-bottom: 6px;
+  }
+  .calm-day {
+    aspect-ratio: 1;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+  }
+  .calm-day.out { color: var(--color-text-muted); opacity: .4; }
+  .calm-day.today { background: var(--color-bg-card); }
+  .calm-day[aria-pressed="true"] {
+    border-color: var(--color-accent);
+    background: rgba(255, 107, 53, .1);
+    color: var(--color-accent);
+  }
+  /* Reserved whether or not there are dots, so the dates don't jump as you
+     move through the month. */
+  .calm-dots { display: flex; gap: 2px; height: 5px; }
+  .calm-dots i { width: 5px; height: 5px; border-radius: 50%; display: block; }
+
+  .calm-legend {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 12px 0 16px;
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+  .calm-legend span { display: flex; align-items: center; gap: 5px; }
+  .calm-legend i { width: 6px; height: 6px; border-radius: 50%; display: block; }
+
+  .calm-agenda-hd {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .calm-agenda {
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .calm-ag {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    min-height: 58px;
+    padding: 12px 13px;
+    border: 0;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-card);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .calm-ag:last-child { border-bottom: none; }
+  .calm-ag-bar { width: 3px; align-self: stretch; border-radius: 2px; flex: 0 0 3px; }
+  .calm-ag-t { flex: 1; min-width: 0; }
+  .calm-ag-t b {
+    display: block;
+    font-size: 13px;
+    font-weight: 550;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .calm-ag-t span {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  }
+  .calm-ag-chev { color: var(--color-text-muted); }
+
+  .calm-empty {
+    text-align: center;
+    padding: 28px 16px;
+    border: 1px dashed var(--color-border-active);
+    border-radius: 14px;
+    background: var(--color-bg-card);
+  }
+  .calm-empty b { font-size: 13.5px; }
+  .calm-empty p { color: var(--color-text-muted); font-size: 12.5px; margin: 6px 0 0; }
+
+  /* ── Posts list: a table of five columns becomes one card per post ── */
+  .cal-list-body { padding: 0 12px 12px; }
+
+  /* One scrolling row of filters rather than two wrapped lines in a panel. */
+  .list-filter-bar {
+    gap: 6px;
+    padding: 10px 0;
+    background: none;
+    border-bottom: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .list-filter-bar::-webkit-scrollbar { display: none; }
+  .list-filter-tab {
+    flex: 0 0 auto;
+    min-height: 36px;
+    border-color: var(--color-border);
+  }
+
+  .list-table { padding: 0; }
+  /* Column headings for columns that no longer exist. */
+  .list-row.list-header { display: none; }
+  .list-row {
+    display: grid;
+    grid-template-areas:
+      "status platform"
+      "title  title"
+      "date   actions";
+    grid-template-columns: auto 1fr;
+    gap: 8px 10px;
+    align-items: center;
+    padding: 12px;
+    margin-bottom: 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-bg-card);
+  }
+  .list-col-status { grid-area: status; }
+  .list-col-platform { grid-area: platform; justify-self: end; }
+  .list-col-title { grid-area: title; min-width: 0; }
+  .list-col-date { grid-area: date; font-size: 12px; color: var(--color-text-muted); }
+  .list-col-actions { grid-area: actions; justify-self: end; display: flex; gap: 6px; flex-wrap: wrap; }
+  .list-action-btn { min-height: 34px; }
+}
 </style>
