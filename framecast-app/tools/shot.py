@@ -186,7 +186,9 @@ def main():
              # buttons here are more reliably identified by their label than by
              # nth-of-type in a deeply nested panel.
              "const el = q.startsWith('text=')"
-             " ? [...document.querySelectorAll('button,a,[role=button]')]"
+             # Tabs and chips are often plain divs with a click handler, so
+             # they have to be in the candidate set too.
+             " ? [...document.querySelectorAll('button,a,[role=button],[class*=tab],[class*=chip]')]"
              "     .find(n => n.textContent.trim() === q.slice(5))"
              " : document.querySelector(q);"
              "if (!el) return 'MISSING'; el.click(); return 'ok' })()"})

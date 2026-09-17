@@ -1741,6 +1741,57 @@ onMounted(() => {
   .brand-font-grid { grid-template-columns: 1fr; }
 }
 
+/* ── Phone ─────────────────────────────────────────────────────────────
+   Two things break at this width: the nav is a four-item column that costs
+   250px at the top of every visit, and every settings row is a 180px label
+   beside its control, which left inputs about 160px wide — enough to show
+   "kolakachi@gmai…" and "At least 8 charac…". */
+@media (max-width: 860px) {
+  .settings-shell { gap: 14px; margin-top: 14px; }
+  /* A grid item won't shrink below its content, so the scrolling tab row
+     widened the whole page instead of scrolling inside its card. */
+  .settings-shell > * { min-width: 0; }
+
+  /* The nav becomes one scrolling row of tabs. */
+  .settings-menu { padding: 10px 12px; }
+  .settings-menu-title { display: none; }
+  .settings-nav {
+    display: flex;
+    gap: 6px;
+    margin-top: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .settings-nav::-webkit-scrollbar { display: none; }
+  .settings-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 9px 13px;
+    border: 1px solid var(--color-border, #2a2a36);
+  }
+
+  .settings-content-card { padding: 14px; }
+
+  /* Label above control, both full width. Toggle rows keep their own
+     layout — a switch belongs beside its label, not under it. */
+  .settings-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .settings-row-label { width: auto; }
+  .settings-row-control > .btn,
+  .settings-row-control > button { width: 100%; }
+
+  .brand-kit-grid { grid-template-columns: 1fr 1fr; }
+
+  /* Tables: the timestamp column was taking a third of the width to say the
+     same year four hundred times. */
+  .credit-summary-grid { grid-template-columns: 1fr 1fr; }
+  .topup-grid { grid-template-columns: 1fr 1fr; }
+}
+
+
 /* GDPR delete modal + danger row */
 .danger-row {
   border: 1px solid rgba(220, 80, 80, 0.25);
