@@ -564,7 +564,9 @@ onMounted(loadData)
 @media (max-width: 760px) {
   .main { margin-left: 0; }
   .content { padding: 16px; }
-  .stats-row { grid-template-columns: 1fr; }
+  /* Four full-width cards put the channels — the reason for the page — some
+     800px down. Two up, two across, and they fit above the fold. */
+  .stats-row { grid-template-columns: 1fr 1fr; }
   .section-hd { align-items: flex-start; flex-direction: column; gap: 10px; }
   .channel-grid { grid-template-columns: 1fr; }
   .channel-footer { align-items: flex-start; flex-direction: column; gap: 10px; }

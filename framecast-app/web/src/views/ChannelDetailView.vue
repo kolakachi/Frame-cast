@@ -732,5 +732,30 @@ onMounted(loadData)
   .tab-content { padding: 16px; }
   .brand-defaults { grid-template-columns: 1fr 1fr; }
   .hero-wrap { padding: 12px 16px 0; }
+
+  /* The hero lays out icon, text and two buttons as one row. At 430px that
+     squeezed the name to two lines and the description into a column barely
+     wide enough for one word, so it stacks. */
+  .channel-hero {
+    height: auto;
+    min-height: 0;
+    padding: 16px;
+  }
+  .channel-hero-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .channel-hero-icon { font-size: 32px; }
+  .channel-hero-name { font-size: 20px; }
+  .channel-hero-actions > .btn { flex: 1; min-height: 40px; }
+
+  /* Four tabs, each a tap target, on one scrolling row. */
+  .channel-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .channel-tabs::-webkit-scrollbar { display: none; }
+  .ch-tab { flex: 0 0 auto; }
 }
 </style>
