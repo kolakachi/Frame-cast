@@ -2429,10 +2429,24 @@ const activeSceneIndex = computed(() =>
 // query cannot shrink it. On a phone the player is a sticky header with the
 // scene list scrolling beneath, so its size has to come from the viewport
 // rather than a fixed 480px box that leaves no room for anything else.
-// On a phone the right-hand panel — assistant AND every config section — is
-// a bottom sheet rather than a column stacked below fifteen scenes, which is
-// where the grid put it and where nobody would ever scroll to find it.
-const mobilePanelOpen = ref(false);
+// Which editor sheet is open on a phone: 'scenes' | 'config' | null.
+// mobile-editor-v3.html makes the editor a fixed-height app — bar, canvas,
+// dock — rather than a scrolling page, so the scene list and the config panel
+// both live in sheets reached from the dock instead of stacking below the
+// player where neither could be found.
+const mobileSheet = ref(null);
+const mobilePanelOpen = computed(() => mobileSheet.value === 'config');
+function openPanel(tab) {
+  if (mobileSheet.value === 'config' && cruiseTab.value === tab) {
+    mobileSheet.value = null;
+    return;
+  }
+  cruiseTab.value = tab;
+  mobileSheet.value = 'config';
+}
+function toggleSheet(name) {
+  mobileSheet.value = mobileSheet.value === name ? null : name;
+}
 
 const viewport = ref({
   w: typeof window !== "undefined" ? window.innerWidth : 1440,
@@ -2442,14 +2456,18 @@ function onViewportResize() {
   viewport.value = { w: window.innerWidth, h: window.innerHeight };
 }
 
+const isPhone = computed(() => viewport.value.w <= 860);
+
 const previewContainerStyle = computed(() => {
   const ratio = project.value?.aspect_ratio || "9:16";
   const [w, h] = { "9:16": [9, 16], "16:9": [16, 9], "1:1": [1, 1] }[ratio] || [9, 16];
-  const isPhone = viewport.value.w <= 860;
-  // Roughly a third of the screen, and never wider than it.
-  const box = isPhone
-    ? Math.max(170, Math.min(260, Math.round(viewport.value.h * 0.28), viewport.value.w - 80))
-    : 480;
+  // On a phone the frame grows to fill the canvas — `.canvas{flex:1}` with
+  // `.frame{flex:1;aspect-ratio}` in the mockup — and an inline pixel size
+  // would override any stylesheet trying to do that. So return nothing and
+  // let CSS own it.
+  if (viewport.value.w <= 860) return {};
+
+  const box = 480;
   const scale = box / Math.max(w, h);
   return { width: `${Math.round(w * scale)}px`, height: `${Math.round(h * scale)}px` };
 });
@@ -4661,6 +4679,10 @@ async function logout() {
 }
 
 function selectScene(sceneId) {
+  // Picking a scene on a phone is the whole reason the sheet is open — drop
+  // it so the tap lands back on the frame, including when the tapped scene
+  // was already the active one.
+  if (isPhone.value && mobileSheet.value === 'scenes') mobileSheet.value = null;
   if (sceneId === activeSceneId.value) return;
 
   stopPreviewPlay();
@@ -7102,9 +7124,6 @@ onBeforeUnmount(() => {
             </div>
             <!-- Phone only: the way into the settings sheet. Desktop has the
                  panel on screen permanently and needs no button. -->
-            <button class="btn btn-ghost btn-mobile-config" type="button" @click="mobilePanelOpen = true">
-              Config
-            </button>
             <button :class="['btn btn-ghost btn-timeline-toggle', timelineOpen ? 'active' : '']" type="button" @click="timelineOpen = !timelineOpen">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="11" height="4" rx="1"/><rect x="3" y="17" width="15" height="4" rx="1"/></svg>
               Timeline
@@ -7164,9 +7183,17 @@ onBeforeUnmount(() => {
 
         <div class="editor-body">
         <div class="editor active">
-          <div class="editor-sidebar">
+          <div :class="['editor-sidebar', mobileSheet === 'scenes' ? 'sheet-open' : '']">
             <div class="editor-sidebar-header">
               <div class="editor-sidebar-title">Scenes</div>
+              <!-- The sheet covers the dock while open, so it carries its own
+                   way out rather than relying on the scrim alone. -->
+              <button
+                v-if="isPhone"
+                class="editor-sheet-done"
+                type="button"
+                @click="mobileSheet = null"
+              >Done</button>
               <button
                 class="btn btn-ghost btn-sm"
                 type="button"
@@ -7801,19 +7828,64 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <!-- ── Editor dock (phones) ──────────────────────────────────
+               mobile-editor-v3.html gives the editor its own four-button
+               dock instead of the app's global tabs. That removes a whole
+               bar: on a real phone the export bar, the tab bar and Safari's
+               own chrome were stacking into three rows of furniture. -->
+          <nav v-if="isPhone" class="ed-dock">
+            <button
+              :class="['ed-dbtn', mobileSheet === 'scenes' ? 'is-on' : '']"
+              type="button"
+              @click="toggleSheet('scenes')"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2.4" y="4" width="6.4" height="12" rx="1.6" />
+                <rect x="11.2" y="4" width="6.4" height="12" rx="1.6" />
+              </svg>
+              Scenes
+            </button>
+            <button
+              :class="['ed-dbtn', mobileSheet === 'config' && cruiseTab === 'config' ? 'is-on' : '']"
+              type="button"
+              @click="openPanel('config')"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3.5 6h13M3.5 10h13M3.5 14h13" />
+              </svg>
+              Config
+            </button>
+            <button
+              :class="['ed-dbtn', mobileSheet === 'config' && cruiseTab === 'assistant' ? 'is-on' : '']"
+              type="button"
+              @click="openPanel('assistant')"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M7.4 2.6l1.1 3.1 3.1 1.1-3.1 1.1-1.1 3.1-1.1-3.1L3.2 6.8l3.1-1.1z" />
+              </svg>
+              Assistant
+            </button>
+            <button class="ed-dbtn ed-dbtn-export" type="button" @click="queueExport">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M10 13V4M6 7.6L10 3.6l4 4M3.6 13.4v2.2a1.4 1.4 0 001.4 1.4h10a1.4 1.4 0 001.4-1.4v-2.2" />
+              </svg>
+              Export
+            </button>
+          </nav>
+
           <button
-            v-if="mobilePanelOpen"
+            v-if="mobileSheet"
             class="editor-sheet-scrim"
             type="button"
             aria-label="Close panel"
-            @click="mobilePanelOpen = false"
+            @click="mobileSheet = null"
           ></button>
           <div :class="['editor-right', mobilePanelOpen ? 'sheet-open' : '']">
             <!-- Sheet chrome, phone only: a grab handle and a way out. -->
             <div class="editor-sheet-head">
               <span class="editor-sheet-grab"></span>
-              <b>Settings</b>
-              <button type="button" @click="mobilePanelOpen = false">Done</button>
+              <b>{{ cruiseTab === 'assistant' ? 'Assistant' : 'Settings' }}</b>
+              <button type="button" @click="mobileSheet = null">Done</button>
             </div>
             <!-- Cruise Control rail toggle. Flips between Config (the
                  existing accordion) and Assistant (chat-driven editing,
@@ -14671,161 +14743,221 @@ select.preset-select {
     flex-wrap: wrap;
   }
 
-  /* .editor is display:flex in its base rule but the 1180px block above turns
-     it into `grid: 320px 1fr`, and at 390px BOTH queries apply — so down here
-     it is a grid. Reading only the base rule and deleting this as a no-op put
-     the 320px column back and squeezed the scene list to a ribbon.
-     Both properties are set so it collapses to one column either way. */
-  .editor {
-    grid-template-columns: 1fr;
+  /* ── Editor shell, from mobile-editor-v3.html ───────────────────────
+     A fixed-height app rather than a scrolling page: bar / canvas / dock,
+     with the frame growing to fill whatever the canvas has left. The
+     scrolling version put the player in a sticky box of a computed pixel
+     height and pushed the scene list below it — which is why the frame was
+     small and the page grew a bar for every job. */
+  .main {
+    height: 100dvh;
+    display: flex;
     flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0 !important;
+  }
+
+  /* .editor-body sits between .main and .editor; without this it kept its
+     content height and left a strip of bare page under the dock. */
+  .editor-body {
+    flex: 1 1 auto;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
-  /* The scene list comes first in the DOM because on desktop it is a left
-     rail beside the player. Stacked into one column that ordering puts the
-     player below every scene — fifteen of them on a real project — so the
-     editor opened on the one thing you cannot see. The player goes first and
-     stays there while the scenes scroll under it. */
-  /* The export bar, which is the whole reason the mockup has one.
-     Every view topbar is hidden globally on phones because it repeats the app
-     bar — but the editor's carries Export, Download, Open and Variants, and
-     hiding it took away the only way to get a video out on a phone. It comes
-     back here, pinned above the tab bar, with just the actions. */
-  .topbar {
+  .editor {
     display: flex !important;
-    position: fixed;
-    inset: auto 0 calc(56px + env(safe-area-inset-bottom)) 0;
-    z-index: 96;
-    height: auto;
-    padding: 9px 12px calc(9px + 0px);
-    background: var(--color-bg-panel, #111117);
-    border-top: 1px solid var(--color-border);
-    border-bottom: none;
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: none;
   }
-  /* The title is already in the app bar. */
-  .topbar-left { display: none; }
 
-  /* Trim the bar to what the mockup has: the export action and the things
-     you would reach for beside it. Timeline is frame-level work that needs a
-     wide screen, Back to Dashboard is what the Home tab is for, and the bell
-     is already in the app bar — three of the five buttons were noise, and
-     they pushed Export off the edge. */
-  .topbar-right .btn-timeline-toggle,
-  .topbar-right .btn-back { display: none !important; }
-  .btn-mobile-config { display: inline-flex !important; }
-  .editor-sheet-head { display: flex; }
-  .editor-sheet-scrim { display: block; }
+  .editor-canvas {
+    order: -1;
+    flex: 1 1 auto;
+    min-height: 0 !important;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 12px 0;
+    position: static;
+    background: var(--color-bg, #0a0a0f);
+  }
 
-  /* ── Settings sheet ──────────────────────────────────────────────────
-     The mockup reaches config and the assistant through a bottom sheet. The
-     app already has both in .editor-right; on a phone the grid had stacked
-     it below every scene, so it existed but nobody would find it. Same
-     markup, presented the way the mockup presents it. */
-  .editor-right {
+  /* The frame takes the room the canvas has, keeping 9:16. */
+  .preview-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: auto !important;
+    height: auto !important;
+    aspect-ratio: 9 / 16;
+    max-width: 100%;
+    margin: 0 auto;
+  }
+
+  .playback-controls { flex: 0 0 auto; width: 100%; }
+
+  /* Scenes move into a sheet; the dock opens them. */
+  .editor-sidebar {
     position: fixed;
     inset: auto 0 0 0;
     z-index: 120;
-    width: auto !important;
-    max-height: 82vh;
-    display: flex;
-    flex-direction: column;
-    border-left: 0;
+    width: auto;
+    height: 62vh;
+    border-right: none;
     border-top: 1px solid var(--color-border-active, #34343f);
     border-radius: 16px 16px 0 0;
     background: var(--color-bg-panel, #111117);
     padding-bottom: env(safe-area-inset-bottom);
     overflow-y: auto;
-    /* Shown/hidden rather than slid. The transform toggle would not apply —
-       correct selector, correct nesting, served CSS, even !important — and
-       rather than ship a Config button that opens nothing, this uses a
-       mechanism that demonstrably works. The slide can come back once the
-       specificity puzzle is understood. */
     display: none;
   }
-  .editor-right.sheet-open { display: flex; }
+  .editor-sidebar.sheet-open { display: flex; flex-direction: column; }
 
-  .editor-sheet-scrim {
-    position: fixed; inset: 0; z-index: 119;
-    background: rgba(0, 0, 0, .55); border: none; padding: 0;
-  }
-  .editor-sheet-head {
-    position: sticky; top: 0; z-index: 1;
-    display: flex; align-items: center; gap: 10px;
-    padding: 6px 14px 12px;
+  /* Config + Assistant ride the same sheet, switched by the rail. */
+  .editor-right {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 120;
+    width: auto;
+    grid-column: auto;
+    height: 62vh;
+    border-left: 0;
+    border-top: 1px solid var(--color-border-active, #34343f);
+    border-radius: 16px 16px 0 0;
     background: var(--color-bg-panel, #111117);
-    border-bottom: 1px solid var(--color-border);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
   }
-  .editor-sheet-head b { font-size: 15px; font-weight: 600; }
-  .editor-sheet-head button {
-    margin-left: auto; background: none; border: none; cursor: pointer;
-    color: var(--color-text-muted); font: inherit; font-size: 13px;
-    min-height: 34px; padding: 0 6px;
-  }
-  .editor-sheet-grab {
-    position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
-    width: 38px; height: 4px; border-radius: 2px;
+  .editor-right.sheet-open { display: flex; }
+  .editor-right > .cruise-toggle-bar { display: none; }
+
+  .editor-sidebar-header { flex: 0 0 auto; position: relative; }
+  .editor-sidebar-header::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
     background: var(--color-border-active, #34343f);
   }
-  .topbar-right {
-    width: 100%;
+  .editor-sheet-done {
+    margin-left: auto;
+    border: 0;
+    background: none;
+    color: var(--color-accent, #ff6b35);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 2px;
+  }
+  .scene-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+
+  .editor-sheet-head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-  .topbar-right::-webkit-scrollbar { display: none; }
-  .topbar-right .btn { flex: 0 0 auto; min-height: 40px; white-space: nowrap; }
-  /* Export is the one that matters; let it take the room. */
-  .topbar-right .btn-primary { flex: 1 1 auto; justify-content: center; }
-
-  /* Clear BOTH bottom bars, not just the tab bar. */
-  .main { padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important; }
-
-  /* The preview carries its height as an inline style, but it is a flex child
-     of the canvas — default flex-shrink let it collapse to 0 while keeping its
-     161px width, so the player rendered as a 21px sliver. */
-  .preview-container {
+    gap: 10px;
     flex: 0 0 auto;
-  }
-
-  .editor-canvas {
-    order: -1;
-    /* The stage is the player AND its controls — the mockup's stagewrap — so
-       it has to be tall enough for both or the transport buttons hang out of
-       the box and paint over scene 1. 560px from the 1180px block is far too
-       tall for a phone; 0 collapses the grid row. This tracks the preview,
-       which is itself derived from viewport height, plus the control stack.
-       align-self:start stops the grid stretching it to the row instead. */
-    min-height: calc(28vh + 118px) !important;
-    align-self: start;
-    /* flex:1 from the base rule made the player absorb the column and then
-       clip itself to a sliver. It should be exactly as tall as the preview. */
-    flex: 0 0 auto;
-    position: sticky;
-    top: calc(52px + env(safe-area-inset-top));
-    z-index: 4;
-    min-height: 0;
-    padding: 10px 12px;
-    /* No max-height and no overflow:hidden — capping the box never shrank its
-       contents (they spilled over the scene list), and hiding the overflow
-       made the row collapse instead. previewContainerStyle sizes the player. */
-    background: var(--color-bg, #0a0a0f);
+    padding: 10px 14px 8px;
     border-bottom: 1px solid var(--color-border);
+    position: relative;
+  }
+  .editor-sheet-head b { font-size: 14px; }
+  .editor-sheet-head button {
+    margin-left: auto;
+    border: 0;
+    background: none;
+    color: var(--color-accent, #ff6b35);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 2px;
+  }
+  .editor-sheet-grab {
+    position: absolute;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--color-border-active, #34343f);
+  }
+  .editor-sheet-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+    border: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, .5);
   }
 
-  .editor-sidebar {
-    /* 320px is the desktop rail. `auto` let it keep that intrinsic width and
-       run 77px off the side of the phone; it has to be told the screen. */
-    width: 100%;
-    min-width: 0;
-    flex: 1 1 auto;
-    order: 0;
-    border-right: none;
+  /* ── Dock ───────────────────────────────────────────────────────────
+     Four buttons, Export carrying the accent. This replaces the app's
+     global tab bar inside the editor — the mockup has no global tabs here,
+     and on a real phone the export bar plus tab bar plus Safari's chrome
+     came to three stacked rows. */
+  .ed-dock {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg-panel, #111117);
+    position: relative;
+    z-index: 1;
+  }
+  .ed-dbtn {
+    flex: 1;
+    min-height: 50px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 1px solid transparent;
+    background: none;
+    cursor: pointer;
+    color: var(--color-text-secondary, #a8a9b4);
+    font: inherit;
+    font-size: 10.5px;
+  }
+  .ed-dbtn svg { width: 20px; height: 20px; }
+  .ed-dbtn.is-on {
+    color: var(--color-accent, #ff6b35);
+    border-color: var(--color-accent-border, rgba(255,107,53,.32));
+    background: rgba(255, 107, 53, .1);
+  }
+  .ed-dbtn-export {
+    flex: 0 0 94px;
+    flex-direction: row;
+    gap: 7px;
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--color-accent, #ff6b35);
+    color: #fff;
+  }
+
+  /* The reused topbar is no longer a bottom bar — the dock is. */
+  .topbar {
+    position: static;
+    inset: auto;
+    flex: 0 0 auto;
+    border-top: none;
+    border-bottom: 1px solid var(--color-border);
+    padding: 6px 10px;
   }
 }
 .xfb-backdrop { position: fixed; inset: 0; z-index: 300; background: rgba(5,5,10,.6); display: flex; align-items: center; justify-content: center; padding: 20px; }

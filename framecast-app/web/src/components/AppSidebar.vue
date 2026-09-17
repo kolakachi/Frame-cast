@@ -61,6 +61,13 @@ function tabTap(tab) {
   router.push({ name: tab.to });
 }
 
+// The editor is a fixed-height app with its own dock (Scenes/Config/
+// Assistant/Export) — stacking the global tabs under it cost a row of screen
+// and gave two bottom bars at once.
+const hideTabs = computed(() =>
+  ['editor', 'project-editor'].includes(props.activePage)
+);
+
 const screenTitle = computed(() => {
   const named = {
     dashboard: "Dashboard", videos: "Videos", calendar: "Calendar", jobs: "Jobs",
@@ -729,7 +736,7 @@ onBeforeUnmount(() => {
   <!-- The five destinations from the mockup. Create sits in the middle and is
        an action rather than a route: it opens the same wizard the desktop
        header button does, so a video is made one way, not two. -->
-  <nav v-if="isMobile" class="mshell-tabs">
+  <nav v-if="isMobile && !hideTabs" class="mshell-tabs">
     <button
       v-for="t in TABS"
       :key="t.key"

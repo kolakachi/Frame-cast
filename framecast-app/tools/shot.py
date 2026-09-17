@@ -8,7 +8,7 @@ like it is overflowing when it is merely cropped. That cost an hour once.
 Everything here goes through Emulation.setDeviceMetricsOverride instead, which
 is what actually changes the viewport the CSS sees.
 
-  python3 tools/shot.py <url> <out.png> [width] [height] [--full] [--auth FILE]
+  python3 tools/shot.py <url> <out.png> [width] [height] [--full] [--auth FILE] [--click SEL]...
 
 --auth takes a JSON file of {"accessToken":..., "user":...} and writes it to
 localStorage under framecast.auth before navigating, so authenticated pages
@@ -115,6 +115,9 @@ def main():
     # Wait for a selector instead of guessing a sleep. Screenshotting a
     # loading skeleton and reading it as the page cost a round trip once.
     wait_for = sys.argv[sys.argv.index("--wait-for") + 1] if "--wait-for" in sys.argv else None
+    # --click fires a click per occurrence, in order, after the page settles.
+    # Sheets and overlays only exist once something opens them.
+    clicks = [sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--click"]
     auth = None
     if "--auth" in sys.argv:
         auth = pathlib.Path(sys.argv[sys.argv.index("--auth") + 1]).read_text().strip()
@@ -171,6 +174,22 @@ def main():
         time.sleep(1.0)
     else:
         time.sleep(2.5)
+
+    for n, sel in enumerate(clicks):
+        send(s, 50 + n, "Runtime.evaluate", {"returnByValue": True, "expression":
+             "(() => { const q = " + json.dumps(sel) + ";"
+             # text=Foo clicks the first clickable whose text is exactly Foo —
+             # buttons here are more reliably identified by their label than by
+             # nth-of-type in a deeply nested panel.
+             "const el = q.startsWith('text=')"
+             " ? [...document.querySelectorAll('button,a,[role=button]')]"
+             "     .find(n => n.textContent.trim() === q.slice(5))"
+             " : document.querySelector(q);"
+             "if (!el) return 'MISSING'; el.click(); return 'ok' })()"})
+        r = wait(gen, 50 + n)["result"]["result"]["value"]
+        if r == "MISSING":
+            print(f"!! no element for --click {sel}")
+        time.sleep(1.0)
 
     # Report anything wider than the viewport while we are here — the whole
     # point of looking at a phone layout.

@@ -1632,4 +1632,38 @@ function trackMoodLabel(track) {
 .mp-btn-primary { background: var(--color-accent); color: #fff; }
 .mp-btn-primary:hover { background: var(--color-accent-hover); }
 .mp-btn-primary:disabled { opacity: .4; cursor: default; }
+
+/* ── Phone: the picker takes the whole screen ───────────────────────────
+   Per mobile-editor-v3.html, which gives media its own full-screen view.
+   In the desktop layout a 200px preview pane sits beside the grid; at 430px
+   that left the grid 182px wide — two cropped thumbnails. The preview goes
+   away and the grid gets the screen. */
+@media (max-width: 860px) {
+  .mp-overlay { padding: 0; }
+
+  .mp-modal {
+    height: 100dvh;
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .mp-header { padding: calc(12px + env(safe-area-inset-top)) 14px 0; }
+  .mp-search-tabs { flex-direction: column; align-items: stretch; gap: 8px; }
+  .mp-tabs, .mp-filters { overflow-x: auto; scrollbar-width: none; }
+  .mp-tabs::-webkit-scrollbar, .mp-filters::-webkit-scrollbar { display: none; }
+  .mp-tabs > *, .mp-filters > * { flex: 0 0 auto; }
+
+  .mp-body { margin-top: 8px; }
+  .mp-grid-pane { padding: 0 14px 16px; }
+  .mp-visual-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+
+  /* Selection is confirmed from the footer, so the preview column is a
+     luxury the width can't pay for. */
+  .mp-preview-pane { display: none; }
+
+  .mp-footer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .mp-footer-actions { flex: 1; }
+  .mp-footer-actions .mp-btn { flex: 1; min-height: 44px; }
+}
 </style>
