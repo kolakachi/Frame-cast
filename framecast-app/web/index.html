@@ -3,8 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>WyvStudio</title>
+
+    <!-- Home-screen install. iOS ignores favicon.svg for this and, with no
+         apple-touch-icon, falls back to a screenshot of whatever the page was
+         showing — which is the dark boot screen, so customers got a black W.
+         The PNG below is what it actually uses. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="theme-color" content="#0a0a0f">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="WyvStudio">
+    <!-- Dark chrome behind the status bar, matching the app's own background. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <!-- Paddle.js — loaded once globally, used in SettingsView billing section -->
     <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     <!-- Cold-boot loader: shown before the JS bundle loads/executes so a slow
