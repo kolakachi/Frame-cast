@@ -1220,7 +1220,62 @@ async function confirmDelete() {
 .cv-ref-add:hover { border-color: #ff6b35; color: #ff8055; background: rgba(255,107,53,0.05); }
 .cv-ref-plus { font-size: 22px; }
 
-@media (max-width: 768px) {
+
+/* ── Phone ─────────────────────────────────────────────────────────────
+   The shell switches to its mobile form at 860px, so the page has to as
+   well — the old 768px cutoff left a band where the app bar was up but the
+   content was still indented for a sidebar that wasn't there. */
+@media (max-width: 860px) {
   .main { margin-left: 0; }
+
+  /* Three full-width cards put the library — the point of the page — 400px
+     down. Two across; the odd one out takes the full width. */
+  .stats-row { grid-template-columns: 1fr 1fr; }
+  .stats-row > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+  /* auto-fill at minmax(200px) resolves to a single column at this width, so
+     each character got a 400px-tall card and two of them filled the screen.
+     A library reads better as a grid of faces. */
+  .char-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .char-card-name { font-size: 13.5px; }
+  .char-card-body { padding: 10px 11px; }
+
+  /* Generate, edit and delete were revealed by :hover, which a touch screen
+     never fires — the only reachable action was the card tap. They stay
+     visible here, at a size a finger can actually hit. */
+  .char-card-actions {
+    opacity: 1;
+    /* Bottom-right: a reference photo is a face, and a face sits in the
+       middle and upper half of the frame. */
+    top: auto;
+    bottom: 6px;
+    right: 6px;
+    gap: 5px;
+  }
+  .char-card-act {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
+  }
+  /* One dark chip for all three. The accent fill vanished against the orange
+     placeholder that stands in for a character with no photo. */
+  .char-card-act,
+  .char-card-act.accent {
+    background: rgba(0, 0, 0, .66);
+    border: 1px solid rgba(255, 255, 255, .14);
+  }
+  .char-card-act.accent { color: var(--color-accent, #ff6b35); }
+
+  /* The modal is a sheet: full width, and its own scroll. */
+  .cv-backdrop { padding: 0; align-items: flex-end; }
+  .cv-modal {
+    max-width: none;
+    max-height: 92dvh;
+    border-radius: 16px 16px 0 0;
+    border-bottom: 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  }
+  .cv-foot { bottom: calc(-18px - env(safe-area-inset-bottom)); }
+  .cv-foot .btn { flex: 1; min-height: 44px; }
 }
 </style>
