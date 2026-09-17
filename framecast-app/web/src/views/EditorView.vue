@@ -440,7 +440,12 @@ function cruiseStopProgressLoop(card) {
 // websocket, ad blockers, network blip). Gives up after 5 minutes so a
 // truly-stuck job doesn't poll forever.
 const CRUISE_POLL_INTERVAL_MS = 5000
-const CRUISE_POLL_TIMEOUT_MS = 5 * 60 * 1000
+// Must outlast the longest job a Cruise action can be waiting on —
+// AnimateSceneJob is 600s and GenerateTTSJob 900s. At five minutes this
+// marked work failed while the server was still running it, and the error
+// copy then invited a retry, which is how a customer bought the same piece
+// of music twice.
+const CRUISE_POLL_TIMEOUT_MS = 16 * 60 * 1000
 
 function cruiseStartPollingFallback(card) {
   if (card._pollTimer) return
@@ -468,8 +473,11 @@ function cruiseStartPollingFallback(card) {
     if (card.status !== 'running') { cruiseStopPolling(card); return }
     attempts++
     if (attempts > MAX_ATTEMPTS || Date.now() - startedAt > CRUISE_POLL_TIMEOUT_MS) {
-      card.status = 'failed'
-      card.error = 'Generation timed out — check the Config tab for the latest scene state.'
+      // Deliberately not 'failed': we stopped watching, the server did not
+      // necessarily stop working. Saying failed here invites a retry that can
+      // pay for the same output twice.
+      card.status = 'unknown'
+      card.error = 'Still running after 16 minutes. Reopen this project shortly to see where it landed — do not re-run it yet, or you may be charged twice.'
       cruiseStopPolling(card)
       cruiseStopProgressLoop(card)
       return
@@ -909,7 +917,7 @@ function cruiseFriendlyError(raw) {
   const s = String(raw || '').toLowerCase()
   if (!s) return 'Something went wrong. Tap Retry to try again.'
   if (s.includes('timed out') || s.includes('timeout') || s.includes('error 28')) {
-    return 'That took too long to generate — the provider was slow. Tap Retry.'
+    return 'That took too long to generate — the provider was slow. Check the scene before retrying: if the result already landed, retrying pays for it again.'
   }
   // Match real rate-limit phrases only — NOT the bare substring "rate",
   // which also matches "gene-rate"/"generation" and mislabeled ordinary
@@ -9711,6 +9719,12 @@ onBeforeUnmount(() => {
                         <div v-else-if="card.status === 'undone'" class="cruise-action-status undone">
                           ↩ Undone
                         </div>
+                        <!-- We stopped watching; the server may not have stopped
+                             working. No Retry button here on purpose — that is
+                             the button that pays for the same output twice. -->
+                        <div v-else-if="card.status === 'unknown'" class="cruise-action-status unknown">
+                          <span class="cruise-action-fail-msg">⏱ {{ card.error }}</span>
+                        </div>
                         <div v-else-if="card.status === 'failed'" class="cruise-action-status failed">
                           <div class="cruise-action-fail-row">
                             <span class="cruise-action-fail-msg">✕ {{ cruiseFriendlyError(card.error) }}</span>
@@ -11338,6 +11352,15 @@ button {
 }
 .cruise-action-undo:hover:not(:disabled) { color: var(--color-text-primary); border-color: var(--color-border-active); }
 .cruise-action-undo:disabled { opacity: 0.5; cursor: default; }
+.cruise-action-status.unknown {
+  color: var(--color-warning, #fbbf24);
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
 .cruise-action-status.failed { color: #f87171; background: rgba(248,113,113,0.06); flex-direction: column; align-items: stretch; gap: 6px; }
 .cruise-action-fail-row { display: flex; align-items: center; gap: 8px; }
 .cruise-action-fail-msg { flex: 1; }
