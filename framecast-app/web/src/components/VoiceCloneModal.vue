@@ -276,4 +276,21 @@ onBeforeUnmount(() => { clearTimers(); stopPreview(); releaseStream(); revokeSam
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-ghost { background: transparent; border-color: transparent; }
 .btn-ghost:hover { background: rgba(255,255,255,0.06); }
+
+/* ── Phone ───────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  /* Recording a sample is the whole job here — give it the screen rather
+     than a 480px box floating in the middle of one. */
+  .vc-backdrop { padding: 0; align-items: flex-end; }
+  .vc-modal {
+    max-width: none;
+    max-height: 92dvh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+    border-bottom: 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  }
+  .vc-foot { gap: 8px; }
+  .vc-foot .btn { flex: 1; min-height: 44px; }
+}
 </style>

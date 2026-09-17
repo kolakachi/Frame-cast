@@ -91,7 +91,16 @@ onMounted(async () => {
 
         <template v-else>
           <div class="intro">
-            <div class="intro-title">Your cloned voices</div>
+            <div class="intro-head">
+              <div class="intro-title">Your cloned voices</div>
+              <!-- Phone only. The desktop action lives in the topbar, and the
+                   phone shell hides that topbar — so once a workspace had one
+                   cloned voice the empty state went away and with it the only
+                   way to clone another. -->
+              <button class="btn btn-primary btn-sm intro-clone" type="button" @click="openClone">
+                <span style="font-weight:700">＋</span> Clone a voice
+              </button>
+            </div>
             <div class="intro-body">
               Upload a clean ~10–20s sample of a voice. We clone it with Chatterbox, and it
               becomes selectable as the voiceover for any scene — alongside the built-in voices.
@@ -155,7 +164,8 @@ onMounted(async () => {
 .page-state { color: #8a8a9a; padding: 40px 0; }
 
 .intro { margin-bottom: 20px; }
-.intro-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.intro-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.intro-title { font-size: 18px; font-weight: 700; }
 .intro-body { font-size: 13px; color: #9a9aab; line-height: 1.5; max-width: 640px; }
 
 .empty-hero { text-align: center; padding: 60px 20px; border: 1px dashed rgba(255,255,255,0.12); border-radius: 14px; }
@@ -204,4 +214,41 @@ onMounted(async () => {
 .v-hint { font-size: 11px; color: #7a7a8a; margin-top: 6px; line-height: 1.4; }
 .v-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .v-confirm-body { font-size: 13px; color: #9a9aab; line-height: 1.5; margin: 10px 0 4px; }
+
+/* Above the phone breakpoint the topbar carries this action, so the one in
+   the heading would be a second copy of it. Stated as a media query rather
+   than a bare rule because .btn is declared later in this same block and
+   would otherwise win on source order. */
+@media (min-width: 861px) {
+  .intro-clone { display: none; }
+}
+
+/* ── Phone ───────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .content { padding: 16px; }
+
+  .intro-head { flex-wrap: wrap; }
+  .intro-clone { margin-left: auto; }
+
+  /* One voice per row. minmax(260px) already resolves to a single column at
+     this width; saying so keeps the cards from stretching oddly mid-band. */
+  .voice-grid { grid-template-columns: 1fr; }
+  .voice-card { padding: 12px 13px; }
+
+  /* Delete was a 24px hit target in the corner of a row. */
+  .voice-del { width: 36px; height: 36px; font-size: 15px; }
+
+  /* The clone modal records audio — it wants the whole screen, not a box. */
+  .v-backdrop { padding: 0; align-items: flex-end; }
+  .v-modal {
+    max-width: none;
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+  .v-modal-sm { max-width: none; }
+  .v-foot { gap: 8px; }
+  .v-foot .btn { flex: 1; min-height: 44px; }
+}
 </style>
