@@ -21,6 +21,9 @@ final class UgcPlan
 
     public const REACTION_TIER = 'quick';
 
+    /** A hook long enough to land a face and a first line, and no longer. */
+    public const HOOK_SECONDS = 5;
+
     public const CAMERA = 'Authentic phone-recorded UGC. Eye-level medium close-up, eyes toward the lens, natural window light, casual lived-in setting. Preserve the reference person, outfit and setting across shots. No beauty filter, studio advertising look, text, logos or watermarks. Keep the face unobstructed and leave space above the head for a headline.';
 
     public const DELIVERY = 'Speak conversationally to one friend, with natural pauses and warmth, not an announcer or a sales pitch. Keep a consistent voice and pace.';
@@ -186,6 +189,21 @@ final class UgcPlan
         return trim((string) preg_replace('/\s+/u', ' ', $text));
     }
 
+    /**
+     * Seconds of synced talking face — the only part of a UGC take whose cost
+     * scales with its length. Everything else is per shot and rounds to
+     * nothing beside it.
+     *
+     * @param  array<int, array<string, mixed>>  $segments
+     */
+    public static function onCameraSeconds(array $segments): float
+    {
+        return (float) array_sum(array_map(
+            fn ($s) => $s['kind'] === 'on_camera' ? (float) $s['seconds'] : 0.0,
+            $segments,
+        ));
+    }
+
     public static function quote(array $segments): int
     {
         $images = app(ImageAdapterFactory::class);
@@ -217,6 +235,21 @@ final class UgcPlan
                 $warnings[] = 'Shot '.($i + 1).' needs selected '.$seg['source'].' footage before generation. It will not be replaced with an AI image.';
             }
         }
+        // The talking face is ~96% of a long take, and it is linear in
+        // seconds. Saying so where the plan is priced is the difference
+        // between a customer choosing the expensive shape and discovering it.
+        $onCamera = self::onCameraSeconds($segments);
+        if ($onCamera > self::HOOK_SECONDS + 7) {
+            $saving = CreditService::spokespersonCost($onCamera) - CreditService::spokespersonCost(self::HOOK_SECONDS);
+            $warnings[] = sprintf(
+                'This take is %s seconds on camera, which is %d credits of synced face. Cutting to footage after a %d-second hook would save about %d of them — the rest of the ad runs the same length.',
+                rtrim(rtrim(number_format($onCamera, 1), '0'), '.'),
+                CreditService::spokespersonCost($onCamera),
+                self::HOOK_SECONDS,
+                $saving,
+            );
+        }
+
         $stale = self::staleCount($segments);
         if ($stale > 0) {
             $warnings[] = $stale === 1
