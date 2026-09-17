@@ -253,6 +253,8 @@ function projectVisualTypeForMode(mode) {
   if (mode === 'ai_images') return 'ai_image'
   if (mode === 'stock_images') return 'stock_image'
   if (mode === 'waveform') return 'waveform'
+  // 'stock_video' — and anything unrecognised, which the API then rejects
+  // rather than silently generating something else.
   return 'stock_clip'
 }
 
@@ -1123,6 +1125,14 @@ async function submitWizardProject() {
         : {}),
       ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'stock_images'
         ? { visual_type: projectVisualTypeForMode('stock_images') }
+        : {}),
+      // Stock video had no branch at all, so picking it sent no visual field
+      // whatsoever — the API stored a null mode and generation fell through to
+      // its AI-image default. The user asked for Pexels clips and was charged
+      // for generated images. projectVisualTypeForMode already returns
+      // 'stock_clip' here; nothing ever called it.
+      ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'stock_video'
+        ? { visual_type: projectVisualTypeForMode('stock_video') }
         : {}),
       ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'waveform'
         ? {
@@ -2582,4 +2592,98 @@ defineExpose({ open })
 .plan-toggle-mood { color: var(--color-text-muted); }
 .plan-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; font-size: 12px; color: var(--color-text-muted); }
 .plan-meta-cost { font-weight: 700; color: var(--color-text-primary); }
+
+/* ── Phone: the wizard becomes the screen ──────────────────────────────
+   On desktop this is a card floating over the app, which is right there and
+   wrong on a phone: a 16px overlay inset leaves the tab bar and dashboard
+   showing round the edges of the thing you are supposed to be filling in.
+   Full bleed, a sticky footer for the step controls, and the path cards
+   compacted so all three choices fit roughly one screen instead of three.
+
+   Deliberately last in the file: the 900/640/680px blocks above only set grid
+   columns, so nothing here fights them — but later-and-equal wins in this
+   codebase, and I would rather that be on purpose. */
+@media (max-width: 860px) {
+  .modal-overlay { padding: 0 !important; align-items: stretch; }
+
+  .modal.wizard-modal {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: calc(16px + env(safe-area-inset-top)) 16px 0;
+  }
+
+  /* A 44px target, clear of the notch. */
+  .wizard-close {
+    top: calc(10px + env(safe-area-inset-top));
+    right: 8px;
+    width: 44px;
+    height: 44px;
+  }
+  .modal-title { font-size: 19px; padding-right: 44px; }
+  .modal-subtitle { margin-bottom: 16px; }
+
+  /* Back / Next stay on screen while the content scrolls under them. Without
+     this you scroll to the bottom of a long step to find the only way on. */
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    margin: 20px -16px 0;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: var(--color-bg-panel);
+    border-top: 1px solid var(--color-border);
+    gap: 8px;
+  }
+  .modal-actions .btn { flex: 1; justify-content: center; min-height: 44px; }
+  /* The discard warning pushed the buttons off the row when it appeared. */
+  .modal-actions .discard-warn { flex: 1 0 100%; margin: 0 0 4px; text-align: center; }
+
+  /* Three ~400px cards was most of three screens before you had seen your
+     options. The descriptions stay; the padding and the tag rows go. */
+  .path-card { min-height: 0; padding: 15px 16px; }
+  .path-card-icon { font-size: 22px; margin-bottom: 6px; }
+  .path-card-title { font-size: 16px; }
+  .path-card-desc { font-size: 12.5px; }
+  .path-picker-grid { gap: 10px; }
+
+  /* Visual styles become a swipe rail instead of a grid. Six styles in two
+     columns of 200px cards is ~600px of form before the next question — and
+     the form already has several. Sideways costs one card's height and keeps
+     every option reachable, which a "show 4, tap for more" would not.
+
+     The overlay is deliberately bled to the screen edges so the rail runs off
+     the side of the phone: that is the affordance telling you it scrolls. */
+  .ai-broll-grid {
+    display: flex;
+    grid-template-columns: none;
+    gap: 10px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -16px 14px;
+    padding: 0 16px 4px;
+  }
+  .ai-broll-grid::-webkit-scrollbar { display: none; }
+  .ai-broll-card {
+    flex: 0 0 148px;
+    min-height: 0;
+    scroll-snap-align: start;
+  }
+  .ai-broll-card:hover { transform: none; }
+  .ai-broll-art { height: 104px; }
+  .ai-broll-label { padding: 9px 10px 2px; font-size: 12.5px; }
+  .ai-broll-hint {
+    padding: 0 10px 10px; font-size: 10.5px;
+    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  .wizard-steps { margin-bottom: 18px; }
+  .wizard-step span { font-size: 11px; }
+  .wizard-connector { width: 16px; margin: 0 2px; }
+}
 </style>
