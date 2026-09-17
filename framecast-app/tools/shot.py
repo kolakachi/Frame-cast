@@ -34,8 +34,12 @@ def ensure_chrome():
         # hand the URL to that one and exit, and the debugging port never
         # opens — which looks exactly like "chrome did not start".
         p = subprocess.Popen(
+            # --mute-audio gives headless a null audio sink. Without one an
+            # <audio> element can sit at readyState 0 forever and never issue
+            # its request, which reads exactly like a broken media route.
             [CHROME, "--headless", "--disable-gpu", f"--remote-debugging-port={PORT}",
              "--hide-scrollbars", "--no-first-run", "--no-default-browser-check",
+             "--mute-audio", "--autoplay-policy=no-user-gesture-required",
              f"--user-data-dir={os.path.join(os.path.expanduser('~'), '.cache', 'wyv-shot-profile')}",
              "about:blank"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

@@ -103,6 +103,29 @@ class StorageService
     }
 
     /**
+     * Byte size of the stored object, or null when it can't be determined.
+     *
+     * Media playback needs this: a Range request can't be answered without a
+     * total, and Safari won't start an <audio> element it can't range into.
+     */
+    public function size(string $storageUrl): ?int
+    {
+        $path = $this->extractPath($storageUrl);
+
+        if ($path === null) {
+            return null;
+        }
+
+        try {
+            $disk = ($this->isMinio($storageUrl) || $this->minioHas($path)) ? self::MINIO : self::B2;
+
+            return Storage::disk($disk)->size($path);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Get raw file contents. Tries MinIO first for legacy URLs, falls back to B2.
      */
     public function get(string $storageUrl): ?string

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Asset;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateAssetThumbnailJob;
 use App\Jobs\TranscribeAssetJob;
+use App\Http\Controllers\Concerns\StreamsMedia;
 use App\Models\Asset;
 use App\Models\Collection;
 use App\Models\ExportJob;
@@ -24,6 +25,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AssetController extends Controller
 {
+    use StreamsMedia;
+
     public function index(Request $request): JsonResponse
     {
         /** @var User $user */
@@ -364,7 +367,7 @@ class AssetController extends Controller
             $externalUrl = trim($rawStorageUrl);
             if (filter_var($externalUrl, FILTER_VALIDATE_URL)) {
                 if ($this->shouldProxyAudio($asset)) {
-                    return $this->streamExternalAsset($externalUrl, $asset);
+                    return $this->streamExternalAsset($request, $externalUrl, $asset);
                 }
 
                 return redirect()->away($externalUrl);
@@ -410,10 +413,7 @@ class AssetController extends Controller
             ], 502);
         }
 
-        return response()->stream(function () use ($stream): void {
-            fpassthru($stream);
-            fclose($stream);
-        }, 200, [
+        return $this->streamMedia($request, $stream, $storageService->size($rawStorageUrl), [
             'Content-Type' => $asset->mime_type ?: 'application/octet-stream',
             'Cache-Control' => 'private, max-age=3600',
             'Accept-Ranges' => 'bytes',
@@ -577,12 +577,17 @@ class AssetController extends Controller
             || str_starts_with((string) ($asset->mime_type ?? ''), 'audio/');
     }
 
-    private function streamExternalAsset(string $url, Asset $asset): StreamedResponse|JsonResponse
+    private function streamExternalAsset(Request $request, string $url, Asset $asset): StreamedResponse|JsonResponse
     {
+        // Pass the client's Range through so the origin can answer it — we're
+        // proxying a stream we can't seek in, so a 206 has to come from there.
+        $range = (string) $request->header('Range', '');
+
         try {
             $response = Http::withOptions(['stream' => true])
                 ->connectTimeout(15)
                 ->timeout(180)
+                ->withHeaders($range !== '' ? ['Range' => $range] : [])
                 ->get($url);
         } catch (\Throwable) {
             return response()->json([
@@ -606,20 +611,24 @@ class AssetController extends Controller
         $headers = [
             'Content-Type' => $response->header('Content-Type') ?: ($asset->mime_type ?: 'application/octet-stream'),
             'Cache-Control' => 'private, max-age=3600',
-            'Accept-Ranges' => $response->header('Accept-Ranges') ?: 'bytes',
             'Content-Disposition' => 'inline; filename="'.$this->downloadName($asset).'"',
         ];
 
-        $contentLength = $response->header('Content-Length');
-        if (is_string($contentLength) && trim($contentLength) !== '') {
-            $headers['Content-Length'] = trim($contentLength);
+        // Only claim what the origin actually offered. Advertising range
+        // support and then answering 200 is what stalls an <audio> element on
+        // iOS, so an origin that says nothing gets nothing said for it.
+        foreach (['Accept-Ranges', 'Content-Range', 'Content-Length'] as $pass) {
+            $value = $response->header($pass);
+            if (is_string($value) && trim($value) !== '') {
+                $headers[$pass] = trim($value);
+            }
         }
 
         return response()->stream(function () use ($stream): void {
             while (! $stream->eof()) {
                 echo $stream->read(8192);
             }
-        }, 200, $headers);
+        }, $response->status() === 206 ? 206 : 200, $headers);
     }
 
     /**

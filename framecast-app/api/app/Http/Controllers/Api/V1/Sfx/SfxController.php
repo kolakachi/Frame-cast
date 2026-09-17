@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Sfx;
 
+use App\Http\Controllers\Concerns\StreamsMedia;
 use App\Http\Controllers\Controller;
 use App\Models\Asset;
 use App\Models\SfxLibrarySound;
@@ -16,6 +17,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SfxController extends Controller
 {
+    use StreamsMedia;
+
     public function __construct(
         private readonly SfxLibraryService $library,
         private readonly StorageService $storage,
@@ -112,10 +115,7 @@ class SfxController extends Controller
             return response()->json(['error' => ['code' => 'stream_failed', 'message' => 'Unable to open sound stream.']], 502);
         }
 
-        return response()->stream(function () use ($stream): void {
-            fpassthru($stream);
-            fclose($stream);
-        }, 200, [
+        return $this->streamMedia($request, $stream, $this->storage->size($sound->storage_url), [
             'Content-Type'  => $sound->mime_type ?: 'audio/mpeg',
             'Cache-Control' => 'private, max-age=3600',
             'Accept-Ranges' => 'bytes',

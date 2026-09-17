@@ -4720,12 +4720,54 @@ async function setPreviewMode(mode) {
   playProgress.value = 0;
 }
 
+// iOS (and Android Chrome with autoplay off) refuse <audio>.play() unless
+// that element has been played once inside a user gesture. Our real play()
+// runs after `await flushActiveSceneDrafts()` and inside nextTick, by which
+// point the gesture is spent — so on a phone the preview ran silently while
+// the timer and captions advanced normally. The click handler starts each
+// element itself; permission is granted per element and survives later src
+// changes, so this only matters on the first tap.
+//
+// Nothing here mutes: a muted prime looks identical until the play() promise
+// resolves, and it doesn't resolve while the file is still loading — which is
+// exactly the case this exists to fix.
+const primedMedia = new WeakSet();
+function primeMediaForGesture() {
+  for (const el of [audioRef.value, soundAudioRef.value, musicAudioRef.value]) {
+    // An element with no source can't be primed — the next tap retries it.
+    if (!el || primedMedia.has(el) || (!el.src && !el.currentSrc)) continue;
+    primedMedia.add(el);
+
+    let started;
+    try {
+      started = el.play();
+    } catch {
+      primedMedia.delete(el);
+      continue;
+    }
+    Promise.resolve(started)
+      .then(() => {
+        // startPreviewPlay() seeks and plays these a tick later; if it hasn't
+        // yet — the scene's assets are still loading — park them at the start.
+        if (!isPreviewPlaying.value) {
+          el.pause();
+          try { el.currentTime = 0; } catch {}
+        }
+      })
+      .catch(() => { primedMedia.delete(el); });
+  }
+}
+
 function togglePreviewPlay() {
   unlockWaveformAudio();
   // pendingScenePlay (spinner showing while assets load) counts as active, so
   // a click cancels the queued play instead of re-queuing it.
-  if (isPreviewPlaying.value || pendingScenePlay.value) stopPreviewPlay();
-  else startPreviewPlay();
+  if (isPreviewPlaying.value || pendingScenePlay.value) {
+    stopPreviewPlay();
+    return;
+  }
+  primeMediaForGesture();
+  startPreviewPlay();
 }
 
 async function startPreviewPlay() {
@@ -9774,9 +9816,8 @@ onBeforeUnmount(() => {
     </div>
 
     <audio
-      v-if="activeSceneAudioUrl"
       ref="audioRef"
-      :src="activeSceneAudioUrl"
+      :src="activeSceneAudioUrl || undefined"
       :crossorigin="mediaCrossOriginMode(activeSceneAudioUrl)"
       preload="metadata"
       @loadstart="isAudioLoading = true"
@@ -9788,9 +9829,8 @@ onBeforeUnmount(() => {
       @error="isAudioLoading = false"
     ></audio>
     <audio
-      v-if="activeMusicTrackUrl"
       ref="musicAudioRef"
-      :src="activeMusicTrackUrl"
+      :src="activeMusicTrackUrl || undefined"
       :crossorigin="mediaCrossOriginMode(activeMusicTrackUrl)"
       preload="metadata"
       :loop="musicLoop"
@@ -9800,9 +9840,8 @@ onBeforeUnmount(() => {
       @error="musicReady = true"
     ></audio>
     <audio
-      v-if="activeSceneSoundUrl"
       ref="soundAudioRef"
-      :src="activeSceneSoundUrl"
+      :src="activeSceneSoundUrl || undefined"
       :crossorigin="mediaCrossOriginMode(activeSceneSoundUrl)"
       preload="auto"
       @loadeddata="syncSceneSoundVolume"
