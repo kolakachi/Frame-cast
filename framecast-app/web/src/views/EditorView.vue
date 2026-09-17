@@ -1244,15 +1244,24 @@ async function regenerateAIMusic() {
 // Poll the project until music_asset_id changes from its pre-regen value
 // (or we hit the ceiling). When it changes: refresh musicTracks so the
 // new "AI Music — …" track appears in the picker, point the active
-// selection at it, and toast the user. ~30s ceiling matches the
-// MusicGen typical-runtime; loud-toast on timeout so the user knows.
+// selection at it, and toast the user.
+//
+// The ceiling has to outlast GenerateAIMusicJob's own 240s timeout. It used to
+// stop at ~140s, so a slow-but-successful run was reported as a failure while
+// the server was still working: a customer was told his music had failed,
+// retried as invited, and bought the same track twice. Stopping before the
+// server does turns every slow success into a double charge.
+//
+// 4 x 2.5s + 56 x 5s = 290s, comfortably past the job's timeout.
 async function pollProjectMusicUntilNew(beforeId, attempt = 0) {
-  const MAX = 30;
+  const MAX = 60;
   if (attempt >= MAX) {
     aiMusicPending.value = false;
+    // Not a failure, and deliberately not an invitation to retry: past this
+    // point the job has hit its own timeout and nothing was charged.
     pushToast({ id: `ai-music-timeout-${Date.now()}`,
-                title: 'Music taking longer than expected',
-                message: 'Refresh in a moment — it should arrive shortly.' });
+                title: 'Music is still generating',
+                message: 'It is taking unusually long. Reopen this project shortly — if it arrived you will not be charged again.' });
     return;
   }
   window.setTimeout(async () => {

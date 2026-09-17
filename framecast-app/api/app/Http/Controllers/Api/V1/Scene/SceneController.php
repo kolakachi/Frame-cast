@@ -1190,6 +1190,29 @@ class SceneController extends Controller
             );
         }
 
+        // A second run while the first is still going produces one track and
+        // two charges. A customer hit exactly that: the editor gave up waiting
+        // before the job's own timeout, told him it had failed, and the retry
+        // he was invited to make bought him the same music twice.
+        //
+        // The lock outlives the job's timeout, and is released as soon as the
+        // job finishes either way, so a genuine retry after a real failure is
+        // never blocked for longer than the work could still be running.
+        // Cache::add is put-if-absent and atomic, and unlike an atomic lock it
+        // is released by the same key the job forgets.
+        $claimed = \Illuminate\Support\Facades\Cache::add(
+            \App\Jobs\GenerateAIMusicJob::inFlightKey((int) $scene->project_id),
+            true,
+            \App\Jobs\GenerateAIMusicJob::LOCK_SECONDS,
+        );
+        if (! $claimed) {
+            return $this->error(
+                'music_already_generating',
+                'Music for this project is still being generated. It will appear here when it lands — no need to run it again.',
+                409,
+            );
+        }
+
         $duration = (int) ($validated['duration_seconds'] ?? max(3, min(30, (int) ($scene->duration_seconds ?? 8))));
 
         \App\Jobs\GenerateAIMusicJob::dispatch(

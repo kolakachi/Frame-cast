@@ -14,6 +14,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -34,6 +35,18 @@ class GenerateAIMusicJob implements ShouldQueue
     use SerializesModels;
 
     public int $timeout = 240;
+
+    /**
+     * How long a project is considered to have music in flight. Longer than
+     * $timeout so the lock cannot lapse while the job is still allowed to run,
+     * and released in finally() the moment it stops either way.
+     */
+    public const LOCK_SECONDS = 300;
+
+    public static function inFlightKey(int $projectId): string
+    {
+        return 'ai-music:in-flight:'.$projectId;
+    }
     public int $tries   = 1;
 
     public function __construct(
@@ -137,6 +150,11 @@ class GenerateAIMusicJob implements ShouldQueue
             // music is recoverable in the editor.
             GenerationProgressed::dispatch($this->projectId, 'ai_music', 'failed', $e->getMessage(), ['scene_id' => $this->sceneId]);
             app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'ai_music', $e->getMessage(), $this->sceneId);
+        } finally {
+            // Success or failure, the project is no longer generating music.
+            // Released here rather than on the happy path alone, or a failed
+            // run would block the retry it is the whole reason for.
+            rescue(fn () => Cache::forget(self::inFlightKey($this->projectId)));
         }
     }
 }
