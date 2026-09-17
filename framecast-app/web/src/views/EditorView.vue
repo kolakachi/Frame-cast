@@ -1039,6 +1039,20 @@ async function cruiseResumeInflightAfterHydrate() {
 const cruisePulseClass = (sectionKey) => cruisePulseSection.value === sectionKey ? 'cruise-pulse' : ''
 const hookOptions = ref([]);
 const mePayload = ref(null);
+// Costs come from the server. Typing them into the template is how the music
+// panel came to advertise three credits on one line, five on the next, and
+// charge two.
+const creditCosts = ref({});
+async function loadCreditCosts() {
+  try {
+    const res = await api.get('/credit-costs');
+    creditCosts.value = res.data?.data?.costs ?? {};
+  } catch {
+    // Leave it empty; the labels fall back to naming no number at all rather
+    // than naming a wrong one.
+  }
+}
+const aiMusicCost = computed(() => creditCosts.value.ai_music ?? null);
 const isAdmin = computed(() => ["super_admin", "platform_admin"].includes(mePayload.value?.role ?? authStore.user?.role));
 const activeSceneId = ref(null);
 const notificationDrawerOpen = ref(false);
@@ -7057,6 +7071,7 @@ onMounted(() => {
   window.visualViewport?.addEventListener('resize', onViewportResize);
   syncAppHeight();
   loadLipsyncEngines();
+  loadCreditCosts();
   beforeUnloadHandler = (event) => {
     if (
       scriptSaveState.value === "pending" ||
@@ -9497,13 +9512,13 @@ onBeforeUnmount(() => {
                     placeholder="…or type your own: e.g. tense neon synth wave"
                   />
                   <div style="font-size:11px;color:var(--text-muted);margin:6px 0 10px;line-height:1.5;">
-                    Replaces the current background music. Costs 3 credits. Generation takes ~30s; you'll see it appear when ready.
+                    Replaces the current background music.<template v-if="aiMusicCost"> Costs {{ aiMusicCost }} credit{{ aiMusicCost === 1 ? '' : 's' }}.</template> Generation takes ~30s; you'll see it appear when ready.
                   </div>
                   <button class="btn btn-primary btn-sm panel-full-btn" type="button"
                     :disabled="aiMusicPending || !aiMusicMood.trim()"
                     @click="regenerateAIMusic"
                   >
-                    {{ aiMusicPending ? '✦ Generating…' : '✦ Generate music (5 cr)' }}
+                    {{ aiMusicPending ? '✦ Generating…' : (aiMusicCost ? `✦ Generate music (${aiMusicCost} cr)` : '✦ Generate music') }}
                   </button>
                   <div v-if="aiMusicError" class="panel-error-copy" style="margin-top:8px;">{{ aiMusicError }}</div>
                 </template>

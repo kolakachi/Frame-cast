@@ -180,6 +180,20 @@ Route::prefix('v1')->group(function (): void {
             ]);
         });
 
+        // Fixed per-operation credit costs the editor prints next to a button.
+        // Same reasoning as lipsync-engines below: a number typed into a Vue
+        // template is a copy of the pricing that drifts the moment the constant
+        // moves. It already had — the music panel advertised "Costs 3 credits"
+        // on one line and "Generate music (5 cr)" on the next, while the server
+        // charged 2.
+        Route::get('/credit-costs', function () {
+            return response()->json(['data' => ['costs' => [
+                'ai_music' => \App\Services\CreditService::AI_MUSIC,
+                'tts'      => \App\Services\CreditService::TTS_GEMINI,
+                'tts_clone' => \App\Services\CreditService::TTS_CLONE,
+            ]], 'meta' => []]);
+        });
+
         // Lip-sync engines the spokesperson tier can run on. The editor needs
         // the per-second rate to price a clip, and shipping the formula to the
         // client instead left a copy of the pricing in JavaScript that drifted
