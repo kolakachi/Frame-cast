@@ -1785,10 +1785,19 @@ onMounted(() => {
 
   .brand-kit-grid { grid-template-columns: 1fr 1fr; }
 
-  /* Tables: the timestamp column was taking a third of the width to say the
-     same year four hundred times. */
   .credit-summary-grid { grid-template-columns: 1fr 1fr; }
   .topup-grid { grid-template-columns: 1fr 1fr; }
+
+  /* The operation pill is one unbroken monospace token — "stock_actor:image"
+     — so the table's min-content width ran past the card and the last column,
+     Balance after, was clipped off the right edge rather than wrapping or
+     scrolling. Letting the pill break lets the table fit; the scroll on the
+     wrapper is the net for the rows that still can't. */
+  .credit-entries-wrap { overflow-x: auto; }
+  .credit-entries { font-size: 11.5px; }
+  .credit-entries th,
+  .credit-entries td { padding: 7px 6px; }
+  .op-tag { font-size: 10px; padding: 2px 6px; overflow-wrap: anywhere; }
 }
 
 
