@@ -7179,7 +7179,7 @@ onBeforeUnmount(() => {
       <p class="gf-reason">{{ generationFailureMessage }}</p>
       <p class="gf-note">Nothing was charged for the failed attempt.</p>
       <p v-if="project?.source_type === 'pdf_upload'" class="gf-note">
-        Scanned or image-only PDFs can be read with AI — 1 credit per page-sized
+        Scanned or image-only PDFs can be read with AI — {{ creditCosts.pdf_vision_page ?? 1 }} credit per page-sized
         section, shown in your balance before anything runs.
       </p>
 

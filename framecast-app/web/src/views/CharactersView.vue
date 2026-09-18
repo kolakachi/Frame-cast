@@ -63,11 +63,29 @@ const genPrompt = ref("");
 // Costs mirror ImageAdapterFactory::referenceGenerationCost (backend is
 // authoritative). Only shown for characters that already have a reference
 // photo; no-reference work stays on the gpt-image-1 text path.
-const REF_MODEL_OPTIONS = [
-  { key: "nano-banana-pro", label: "Nano Banana Pro", sub: "best identity · ~35 cr", cost: 35 },
-  { key: "nano-banana",     label: "Nano Banana",     sub: "fast & cheap · ~10 cr",  cost: 10 },
-  { key: "gpt-image-2",     label: "GPT Image 2",     sub: "OpenAI edits · ~50 cr",  cost: 50 },
+// Descriptions only. The credits come from /credit-costs, because these are
+// reference generations and four of the six models charge a different rate
+// with a reference attached than without.
+const REF_MODELS = [
+  { key: "nano-banana-pro", label: "Nano Banana Pro", note: "best identity" },
+  { key: "nano-banana",     label: "Nano Banana",     note: "fast & cheap" },
+  { key: "gpt-image-2",     label: "GPT Image 2",     note: "OpenAI edits" },
 ];
+const creditCosts = ref({});
+async function loadCreditCosts() {
+  try {
+    const res = await api.get('/credit-costs');
+    creditCosts.value = res.data?.data?.costs ?? {};
+  } catch { /* labels name no price rather than a wrong one */ }
+}
+function refModelCost(key) {
+  return creditCosts.value.image_models?.[key]?.credits_with_reference ?? null;
+}
+const REF_MODEL_OPTIONS = computed(() => REF_MODELS.map((m) => {
+  const cost = refModelCost(m.key);
+  return { ...m, cost, sub: cost ? `${m.note} · ~${cost} cr` : m.note };
+}));
+
 const genModelKey = ref("nano-banana-pro");
 const genStyle = ref("photorealistic");
 
@@ -110,7 +128,7 @@ const genElapsedSec = ref(0);
 const genElapsedTimer = ref(null);
 
 const genModelLabel = computed(
-  () => REF_MODEL_OPTIONS.find((o) => o.key === genModelKey.value)?.label ?? "Nano Banana Pro",
+  () => REF_MODEL_OPTIONS.value.find((o) => o.key === genModelKey.value)?.label ?? "Nano Banana Pro",
 );
 
 function openGenerate(character) {
@@ -255,10 +273,11 @@ const genCostEstimate = computed(() => {
   // Frontend-only estimate — backend is authoritative.
   if (!genTarget.value) return 0;
   if (!genTarget.value.reference_asset) return 15; // gpt-image-1 text path (AI_MEDIUM)
-  return REF_MODEL_OPTIONS.find((o) => o.key === genModelKey.value)?.cost ?? 35;
+  return REF_MODEL_OPTIONS.value.find((o) => o.key === genModelKey.value)?.cost ?? null;
 });
 
 onMounted(async () => {
+  loadCreditCosts();
   try {
     const me = await api.get("/me");
     mePayload.value = me.data?.data?.user ?? null;

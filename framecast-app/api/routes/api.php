@@ -215,6 +215,7 @@ Route::prefix('v1')->group(function (): void {
                 'ai_music' => \App\Services\CreditService::AI_MUSIC,
                 'tts'      => \App\Services\CreditService::TTS_GEMINI,
                 'tts_clone' => \App\Services\CreditService::TTS_CLONE,
+                'pdf_vision_page' => \App\Services\CreditService::PDF_VISION_PAGE,
                 'image_models' => $imageModels,
                 'video_tiers'  => $videoTiers,
             ]], 'meta' => []]);
