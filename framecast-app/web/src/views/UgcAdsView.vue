@@ -766,7 +766,8 @@ onMounted(() => {
           </button>
         </nav>
 
-          <div v-show="step === 0" class="ugc-step-body">
+          <div v-show="step === 0" class="ugc-step-body ugc-brief-layout">
+          <div class="ugc-brief-main">
           <div class="ugc-card ugc-fields">
             <h2 class="ugc-card-t">What are we making?</h2>
             <p class="ugc-hint" style="margin:0 0 10px">Start however is easiest. We'll ask for anything else we need once we see it.</p>
@@ -952,6 +953,7 @@ onMounted(() => {
 
           <div class="ugc-card ugc-fields">
             <h2 class="ugc-card-t">Delivery</h2>
+            <div class="ugc-delivery-grid">
             <label>Target length
               <span class="ugc-seg-group">
                 <button
@@ -963,10 +965,6 @@ onMounted(() => {
                 >{{ secs }}s</button>
               </span>
             </label>
-            <label v-if="format !== 'reaction'">Custom seconds
-              <input v-model.number="duration" type="number" min="5" :max="format === 'direct_camera' ? 60 : 180" />
-            </label>
-            <span class="ugc-hint">Approximate — not a hard cutoff yet.</span>
             <label>Aspect ratio
               <span class="ugc-seg-group">
                 <button
@@ -978,15 +976,49 @@ onMounted(() => {
                 >{{ r }}</button>
               </span>
             </label>
-            <label>Language<input v-model="language" maxlength="12" placeholder="en" /></label>
+            <label>Language<input v-model="language" maxlength="12" placeholder="en" title="Language code for the video, for example en, fr or es." /></label>
+            </div>
+            <details v-if="format !== 'reaction'" class="ugc-custom-length">
+              <summary>Custom length · {{ duration }} seconds</summary>
+              <label>Custom seconds
+                <input v-model.number="duration" type="number" min="5" :max="format === 'direct_camera' ? 60 : 180" />
+              </label>
+              <span class="ugc-hint">Approximate — not a hard cutoff yet.</span>
+            </details>
           </div>
 
-          <div class="ugc-card-f ugc-brief-cta">
-            <button class="ugc-btn ugc-btn-primary" type="button" :disabled="!stepReady[0] || planning" @click="advanceFromBrief">
+          </div>
+          <aside class="ugc-brief-side" aria-label="Live brief">
+            <div class="ugc-card ugc-live-brief">
+              <h2><span class="ugc-live-dot" aria-hidden="true"></span>Live brief</h2>
+              <p>A <strong>{{ duration }}s</strong>, <strong>{{ aspectRatio }}</strong> UGC ad
+                built <strong>{{ startPoint === 'found' ? 'from a reference ad’s structure' : startPoint === 'owned' ? 'from your own footage' : 'from scratch' }}</strong>,
+                {{ briefMode === 'script' ? 'using your exact script' : briefMode === 'link' ? 'starting from a product link' : 'from a described idea' }}.</p>
+              <p class="ugc-hint">Nothing is generated yet — this only plans the video.</p>
+              <dl>
+                <div><dt>Language</dt><dd>{{ language || 'Not set' }}</dd></div>
+                <div><dt>Credit estimate</dt><dd>After planning</dd></div>
+                <div><dt>Next steps</dt><dd>Plan → Approve</dd></div>
+              </dl>
+            </div>
+            <button class="ugc-btn ugc-btn-primary ugc-plan-cta" type="button" :disabled="!stepReady[0] || planning" @click="advanceFromBrief">
               {{ planning ? 'Planning…' : 'See the proposed plan →' }}
             </button>
-            <span class="ugc-hint">Nothing is generated yet — this only plans the video.</span>
-          </div>
+            <p class="ugc-hint ugc-plan-note">Review the plan and production cost before you approve generation.</p>
+            <section class="ugc-card ugc-brief-recent" aria-label="Recent takes">
+              <h2>Recent takes <span class="ugc-card-c">{{ takes.length }}</span></h2>
+              <p v-if="!takes.length" class="ugc-hint">Your generated takes will appear here.</p>
+              <div v-for="t in takes.slice(0, 3)" :key="t.id" class="ugc-recent-row">
+                <div><b>{{ t.character }}</b><p>{{ t.scenes }} scenes · {{ t.credits }} estimated credits</p>
+                  <span>{{ t.status === 'ready_for_review' ? 'Ready to review' : t.status === 'needs_attention' ? 'Needs attention' : 'Generating…' }}</span></div>
+                <button type="button" class="ugc-recent-open" @click="openTake(t)">{{ t.status === 'ready_for_review' ? 'Review →' : 'Open →' }}</button>
+              </div>
+              <details v-if="takes.length > 3" class="ugc-more-takes">
+                <summary>Show {{ takes.length - 3 }} more takes</summary>
+                <button v-for="t in takes.slice(3)" :key="t.id" type="button" class="ugc-recent-extra" @click="openTake(t)">{{ t.character }} →</button>
+              </details>
+            </section>
+          </aside>
           </div>
 
           <div v-show="step === 1" class="ugc-step-body">
@@ -1398,7 +1430,7 @@ onMounted(() => {
           </div>
 
           <!-- Each stage owns its primary action; this footer only goes back. -->
-          <div class="ugc-nav">
+          <div v-if="step > 0" class="ugc-nav">
             <button v-if="step > 0" class="ugc-nav-back" type="button" @click="prevStep">← Back</button>
             <span class="ugc-nav-where">Step {{ step + 1 }} of {{ STEPS.length }}</span>
 
@@ -1406,7 +1438,7 @@ onMounted(() => {
         </section>
 
         <!-- takes -->
-        <details class="ugc-stage">
+        <details v-if="step !== 0" class="ugc-stage">
           <summary>Recent takes <span class="ugc-card-c">{{ takes.length }}</span></summary>
           <div class="ugc-stage-h">
             <span class="ugc-card-t">Takes</span>
@@ -2721,4 +2753,54 @@ onMounted(() => {
 }
 .ugc-optional summary { cursor: pointer; }
 .ugc-optional[open] summary { margin-bottom: 16px; }
+
+/* Brief reference: compact inputs with a live summary and primary action beside them. */
+.ugc-at-0 .ugc-brief-layout { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(270px, 1fr); max-width: none; gap: 24px; align-items: start; }
+.ugc-brief-main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.ugc-brief-main > .ugc-card { margin-bottom: 0; padding: 20px; }
+.ugc-brief-main .ugc-card-t { font-size: 16px; }
+.ugc-brief-main .ugc-starts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ugc-brief-main .ugc-start { min-width: 0; padding: 12px; }
+.ugc-brief-main .ugc-start b { font-size: 12px; }
+.ugc-brief-main .ugc-start span { font-size: 11px; line-height: 1.5; }
+.ugc-brief-main .ugc-brief-tabs { flex-wrap: wrap; }
+.ugc-brief-main textarea { min-height: 90px; }
+.ugc-brief-main .ugc-optional:not([open]) { display: block; }
+.ugc-brief-side { position: sticky; top: 24px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ugc-brief-side .ugc-card { margin: 0; padding: 20px; }
+.ugc-live-brief h2, .ugc-brief-recent h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; font-size: 13px; font-weight: 600; }
+.ugc-live-brief h2 { text-transform: uppercase; letter-spacing: .08em; font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); }
+.ugc-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); }
+.ugc-live-brief > p { font-size: 14px; line-height: 1.7; color: var(--color-text-secondary); margin: 0 0 12px; }
+.ugc-live-brief strong { color: var(--color-text-primary); font-weight: 500; }
+.ugc-live-brief dl { border-top: 1px solid var(--color-border); padding-top: 12px; margin: 16px 0 0; }
+.ugc-live-brief dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 12px; }
+.ugc-live-brief dt { color: var(--color-text-muted); }
+.ugc-live-brief dd { margin: 0; text-align: right; }
+.ugc-plan-cta { width: 100%; padding: 14px; font-size: 13px; }
+.ugc-plan-note { text-align: center; margin: -4px 0 4px; line-height: 1.6; }
+.ugc-delivery-grid { display: grid; grid-template-columns: 1.2fr 1fr .65fr; gap: 14px; }
+.ugc-delivery-grid .ugc-seg-group { flex-wrap: nowrap; }
+.ugc-delivery-grid .ugc-seg-btn { padding: 8px 9px; flex: 1; font-size: 12px; }
+.ugc-custom-length { font-size: 12px; color: var(--color-text-muted); }
+.ugc-custom-length summary, .ugc-more-takes summary { cursor: pointer; }
+.ugc-custom-length label { max-width: 180px; margin-top: 12px; }
+.ugc-recent-row { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--color-border); padding: 14px 0; }
+.ugc-recent-row > div { flex: 1; min-width: 0; }
+.ugc-recent-row b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.ugc-recent-row p, .ugc-recent-row span { font-size: 11px; color: var(--color-text-muted); margin: 4px 0 0; line-height: 1.5; }
+.ugc-recent-open, .ugc-recent-extra { color: var(--color-accent); border: 0; background: transparent; font: inherit; font-size: 12px; cursor: pointer; padding: 4px 0; white-space: nowrap; }
+.ugc-more-takes { font-size: 12px; color: var(--color-text-secondary); }
+.ugc-recent-extra { display: block; white-space: normal; text-align: left; margin-top: 12px; }
+@media (max-width: 1100px) {
+  .ugc-at-0 .ugc-brief-layout { grid-template-columns: minmax(0, 1.5fr) minmax(250px, 1fr); gap: 16px; }
+  .ugc-delivery-grid { grid-template-columns: 1fr 1fr; }
+  .ugc-brief-main .ugc-starts { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .ugc-at-0 .ugc-brief-layout { grid-template-columns: minmax(0, 1fr); }
+  .ugc-brief-side { position: static; }
+  .ugc-brief-main > .ugc-card, .ugc-brief-side .ugc-card { padding: 16px; }
+}
+@media (max-width: 400px) { .ugc-delivery-grid { grid-template-columns: 1fr; } }
 </style>
