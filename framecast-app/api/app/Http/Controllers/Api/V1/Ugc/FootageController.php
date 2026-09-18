@@ -195,7 +195,9 @@ class FootageController extends Controller
             'format' => $format,
             'segments' => $normalised,
             'script' => UgcPlan::script($normalised) ?: null,
-            'character_ids' => ! empty($v['character_id']) ? [(int) $v['character_id']] : [],
+            // Omitted entirely when nobody presents: a still-only run casts
+            // no one, and an empty array fails min:1 rather than meaning it.
+            ...(! empty($v['character_id']) ? ['character_ids' => [(int) $v['character_id']]] : []),
             'aspect_ratio' => $v['aspect_ratio'] ?? '9:16',
             'language' => $v['language'] ?? 'en',
             'voices' => [],

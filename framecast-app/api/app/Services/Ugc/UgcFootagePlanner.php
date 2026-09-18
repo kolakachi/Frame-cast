@@ -94,6 +94,14 @@ class UgcFootagePlanner
                 $treatment = 'new';
             }
             $seg = (array) ($p['segment'] ?? []);
+            // A card with neither words nor a headline fails validation and
+            // renders as nothing. A silent source (music-only reels) tends to
+            // produce exactly that, so the passage's own target stands in.
+            if (($seg['kind'] ?? 'b_roll') === 'b_roll'
+                && trim((string) ($seg['script_text'] ?? '')) === ''
+                && trim((string) ($seg['headline'] ?? '')) === '') {
+                $seg['headline'] = mb_substr(trim((string) ($p['target'] ?? $byId[$p['id']]['title'])), 0, 80);
+            }
             $out[] = [
                 'id' => (string) $p['id'],
                 'title' => $byId[$p['id']]['title'],
