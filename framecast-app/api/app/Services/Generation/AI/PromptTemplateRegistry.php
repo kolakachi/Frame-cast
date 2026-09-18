@@ -106,6 +106,16 @@ class PromptTemplateRegistry
                 'system' => 'You fill in one field of a UGC ad brief. Return JSON only: {"suggestion":"..."}. Write the field contents alone, in the user\'s voice, ready to paste — never a question, never a preamble, never options, never quotation marks around it. product: what is advertised and who it is for. context: the shots a viewer would see, in plain words. available_footage: one short description per line of clips they would realistically already have. script: the words spoken aloud, nothing else, under 1500 characters. visual_brief: setting, framing, lighting, outfit and starting expression for that one shot. motion_prompt: what the person physically does in that shot, one or two achievable beats. voice_direction: how the line is delivered — pace, warmth, emphasis. headline: the on-screen text, under 60 characters, no ending full stop. Ground everything in what the user already told you and invent no claims, statistics or product capabilities.',
                 'user' => "Field to fill: {{field}}\nFormat: {{format}}\nThe shot this belongs to: {{shot}}\nWhat they have written so far:\n  product: {{product}}\n  context: {{context}}\n  footage they have: {{available_footage}}\nWrite the {{field}} contents.",
             ],
+            'ugc_reference_read' => [
+                'system' => <<<'PROMPT'
+You read an existing short ad and write down what it is doing, beat by beat, so a different product can be advertised in the same shape. You are not copying it: none of its footage, wording or claims may be reused, and the plan built from your reading will have a new product and new words.
+Return JSON only:
+{"duration":30,"shape":"one sentence on how the ad is built","beats":[{"start":0,"end":2.5,"role":"hook|problem|proof|demonstration|contrast|cta","does":"what this beat is for, in the ad's own logic","on_screen":"what a viewer sees, described generically","spoken":"the words said here, verbatim from the transcript"}]}
+Between three and eight beats. role is what the beat does for the argument, not what is on screen. does explains why the beat exists — "names the cost of the problem before the product appears", not "person talks". on_screen stays generic — "a phone screen showing a list", never a brand, logo, slogan or person's name, because the new ad cannot use them.
+Timings come from the transcript you are given. A beat boundary falls where the argument turns, not every sentence. If the transcript is thin, infer fewer beats rather than inventing detail. Never invent statistics, testimonials or product capabilities: you are describing structure, and the claims belong to whoever made the original.
+PROMPT,
+                'user' => "Read this ad's structure.\nStated duration: {{duration}} seconds\nTranscript with timings (JSON):\n{{transcript_json}}",
+            ],
             'ugc_shot_plan' => [
                 'system' => <<<'PROMPT'
 You direct authentic creator-style UGC, not generic avatar advertisements. Return JSON only:
@@ -119,7 +129,7 @@ anchor and anchor_role are REQUIRED for EVERY shot and are the reason a rewrite 
 visual_brief is REQUIRED for EVERY shot, including on_camera. Specify phone-camera framing, casual environment, natural light, starting expression; keep the same outfit, location and framing throughout unless the story needs a change. Leave safe space above the head for the headline. No baked-in text, logos or watermarks. Talking shots use audio-driven lip-sync: voice_direction controls delivery, not exact gestures. Never promise a precisely timed physical action in a talking shot.
 For b_roll only, source must be upload (real app screens, dashboards, customer product interactions), stock (generic illustrative footage), or generate (a clearly illustrative STILL, not video or real proof). Never invent app screens, product evidence or brand packaging. Available footage is a list of labels, not authority to invent asset IDs. Leave asset selection to the user. Non-b_roll source is null. headline is optional for speech and required for reactions, maximum 180 characters, short enough for the top safe area. Return practical directions, not abstract adjectives.
 PROMPT,
-                'user' => "Direct this UGC take.\nRequested format: {{format}}\nProduct: {{product}}\nBrief / audience / goal: {{context}}\nTarget length: {{duration}} seconds (reaction clips support 5 or 10).\nLanguage: {{language}}\nAvailable footage labels: {{available_footage}}\nExact spoken script (empty means write from brief):\n{{script_text}}",
+                'user' => "Direct this UGC take.\nRequested format: {{format}}\nProduct: {{product}}\nBrief / audience / goal: {{context}}\nTarget length: {{duration}} seconds (reaction clips support 5 or 10).\nLanguage: {{language}}\nAvailable footage labels: {{available_footage}}\nReference shape:\n{{reference}}\nExact spoken script (empty means write from brief):\n{{script_text}}",
             ],
             'ugc_shot_reanchor' => [
                 'system' => <<<'PROMPT'

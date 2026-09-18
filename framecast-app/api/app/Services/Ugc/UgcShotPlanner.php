@@ -12,13 +12,14 @@ class UgcShotPlanner
     public function __construct(private readonly AIGenerationAdapter $ai) {}
 
     public function plan(string $scriptText, string $product = '', string $context = '', int $durationSeconds = 30,
-        string $language = 'en', array $availableFootage = [], string $format = 'auto'): array
+        string $language = 'en', array $availableFootage = [], string $format = 'auto', array $reference = []): array
     {
         try {
             $result = $this->ai->generate('ugc_shot_plan', [
                 'script_text' => trim($scriptText), 'product' => $product, 'context' => $context,
                 'duration' => (string) $durationSeconds, 'language' => $language,
                 'available_footage' => implode(', ', $availableFootage), 'format' => $format,
+                'reference' => $this->referenceBrief($reference),
             ], 3500, 0.3);
             $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
             $content = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $content);
@@ -43,6 +44,40 @@ class UgcShotPlanner
             Log::warning('UGC director returned no usable plan', ['error' => mb_substr($e->getMessage(), 0, 200)]);
             throw ValidationException::withMessages(['plan' => 'The director could not produce a valid plan. No credits were spent. Try again or simplify the brief. Reaction clips need a visual brief, not a spoken script.']);
         }
+    }
+
+    /**
+     * The reference's argument, as instructions — never its words or its
+     * pictures. Only what each beat was for and roughly how long it ran, so
+     * the new ad can make the same case about a different product.
+     *
+     * @param  array<string, mixed>  $reference
+     */
+    private function referenceBrief(array $reference): string
+    {
+        $beats = array_values(array_filter((array) ($reference['beats'] ?? []), 'is_array'));
+        if ($beats === []) {
+            return 'none — plan from the brief';
+        }
+
+        $lines = ['Build the ad in this shape, read off an existing one. Use its STRUCTURE only:',
+                  'none of its wording, footage, claims or branding may appear in your plan.'];
+        if (! empty($reference['shape'])) {
+            $lines[] = 'How that ad is built: '.$reference['shape'];
+        }
+        foreach ($beats as $i => $b) {
+            $secs = max(0.0, round((float) ($b['end'] ?? 0) - (float) ($b['start'] ?? 0), 1));
+            $lines[] = sprintf(
+                '%d. %s (~%ss) — %s%s',
+                $i + 1,
+                (string) ($b['role'] ?? 'beat'),
+                $secs > 0 ? $secs : '?',
+                (string) ($b['does'] ?? ''),
+                ! empty($b['on_screen']) ? ' | on screen: '.$b['on_screen'] : '',
+            );
+        }
+
+        return implode("\n", $lines);
     }
 
     /**

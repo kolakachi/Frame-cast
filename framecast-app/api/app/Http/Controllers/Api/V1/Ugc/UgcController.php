@@ -15,6 +15,7 @@ use App\Services\Generation\TTS\GeminiVoices;
 use App\Services\Ugc\UgcHeadline;
 use App\Services\Generation\AI\AIGenerationAdapter;
 use App\Services\Ugc\UgcPlan;
+use App\Services\Ugc\UgcReference;
 use App\Services\Ugc\UgcShotPlanner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -62,12 +63,50 @@ class UgcController extends Controller
             'language' => ['sometimes', 'string', 'max:12'],
             'available_footage' => ['sometimes', 'array', 'max:20'],
             'available_footage.*' => ['string', 'max:120'],
+            // The shape read off a reference, if the user started from one.
+            'reference' => ['sometimes', 'array'],
+            'reference.shape' => ['sometimes', 'nullable', 'string', 'max:300'],
+            'reference.beats' => ['sometimes', 'array', 'max:8'],
+            'reference.beats.*.role' => ['required_with:reference.beats', 'string', 'max:24'],
+            'reference.beats.*.does' => ['sometimes', 'nullable', 'string', 'max:300'],
+            'reference.beats.*.on_screen' => ['sometimes', 'nullable', 'string', 'max:300'],
+            'reference.beats.*.start' => ['sometimes', 'numeric'],
+            'reference.beats.*.end' => ['sometimes', 'numeric'],
         ]);
 
         return response()->json(['data' => $planner->plan(
             (string) ($v['script'] ?? ''), (string) ($v['product'] ?? ''), (string) ($v['context'] ?? ''),
             $v['duration_seconds'], $v['language'] ?? 'en', $v['available_footage'] ?? [], $v['format'],
+            $v['reference'] ?? [],
         ), 'meta' => []]);
+    }
+
+    /**
+     * Read an uploaded ad into the shape it argues in, so a different product
+     * can be advertised the same way. Reversible and free: nothing is
+     * generated and no credits move.
+     *
+     * Upload only for now. A URL would need a fetcher for platforms whose
+     * terms are their own question, and the analysis should prove itself
+     * before the fetching becomes the risky part.
+     */
+    public function reference(Request $request, UgcReference $reader): JsonResponse
+    {
+        $v = $request->validate(['asset_id' => ['required', 'integer', 'min:1']]);
+
+        $asset = Asset::query()
+            ->where('workspace_id', $request->user()->workspace_id)
+            ->whereKey($v['asset_id'])
+            ->whereIn('asset_type', ['video', 'audio'])
+            ->first();
+
+        if (! $asset || ! $asset->storage_url) {
+            throw ValidationException::withMessages([
+                'asset_id' => 'Upload the reference to this workspace first.',
+            ]);
+        }
+
+        return response()->json(['data' => ['reference' => $reader->read($asset)], 'meta' => []]);
     }
 
     /**
