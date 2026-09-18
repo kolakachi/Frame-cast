@@ -51,8 +51,9 @@ const activeSceneRow = computed(() => scenes.value.find((s) => s.id === activeSc
 async function load() {
   try {
     const { data } = await api.get(`/projects/${projectId.value}`);
-    project.value = data?.data?.project ?? data?.data ?? null;
-    scenes.value = (project.value?.scenes ?? []).slice().sort((a, b) => (a.scene_order ?? 0) - (b.scene_order ?? 0));
+    // Scenes ride beside the project in this payload, not inside it.
+    project.value = data?.data?.project ?? null;
+    scenes.value = (data?.data?.scenes ?? []).slice().sort((a, b) => (a.scene_order ?? 0) - (b.scene_order ?? 0));
     if (scenes.value.length && !activeScene.value) selectScene(scenes.value[0].id);
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, "Could not load this take.");
@@ -102,7 +103,7 @@ async function sendRevision() {
         project_id: projectId.value,
         tool: action.tool,
         params: action.params ?? {},
-        message_id: reply.message_id ?? null,
+        message_id: reply.assistant_message_id ?? null,
         action_index: i,
       });
     }
@@ -335,7 +336,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .rev-shell { display: flex; min-height: 100vh; background: var(--color-bg); }
-.rev-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0 28px 40px; }
+.rev-main {
+  margin-left: var(--sidebar-width, 220px);
+  flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0 28px 40px;
+}
 .rev-top {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 18px 0 14px; border-bottom: 1px solid var(--color-border); flex-wrap: wrap;
@@ -405,6 +409,7 @@ onBeforeUnmount(() => {
 .rev-done { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .rev-done-a { display: flex; gap: 10px; flex-wrap: wrap; }
 @media (max-width: 860px) {
+  .rev-main { margin-left: 0; }
   .rev-body { flex-direction: column; }
   .rev-preview { width: 100%; max-width: 380px; }
   .rev-main { padding: 0 14px 90px; }

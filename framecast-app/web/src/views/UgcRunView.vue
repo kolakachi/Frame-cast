@@ -215,7 +215,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .run-shell { display: flex; min-height: 100vh; background: var(--color-bg); }
-.run-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0 28px 40px; }
+.run-main {
+  margin-left: var(--sidebar-width, 220px);
+  flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0 28px 40px;
+}
 .run-top {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 18px 0 14px; border-bottom: 1px solid var(--color-border); flex-wrap: wrap;
@@ -267,7 +270,7 @@ onBeforeUnmount(() => {
 .run-take-f { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 .run-empty { padding: 30px 0; font-size: 14px; color: var(--color-text-muted); }
 .run-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-@media (max-width: 760px) {
-  .run-main { padding: 0 14px 90px; }
+@media (max-width: 860px) {
+  .run-main { margin-left: 0; padding: 0 14px 90px; }
 }
 </style>
