@@ -40,15 +40,18 @@ class UgcController extends Controller
         $v = $request->validate([
             'run' => ['sometimes', 'nullable', 'string', 'max:64'],
             'detail' => ['sometimes', 'boolean'],
+            'project_id' => ['sometimes', 'integer'],
         ]);
         $query = Project::query()->where('workspace_id', $request->user()->workspace_id)
             ->whereNotNull('visual_brief->ugc_format')->with('scenes')->latest('id')->limit(30);
         if (! empty($v['run'])) {
             $query->where('visual_brief->ugc_run_id', $v['run']);
         }
+        if (! empty($v['project_id'])) $query->whereKey($v['project_id']);
         $detail = (bool) ($v['detail'] ?? false);
         $takes = $query->get()->map(function (Project $project) use ($detail) {
             $pending = false;
+            $working = false;
             $failed = $project->status === 'failed';
             $sceneRows = [];
             foreach ($project->scenes->sortBy('scene_order') as $scene) {
@@ -63,6 +66,7 @@ class UgcController extends Controller
                 $voiceDone = ! $spoken || ! empty($voice['audio_asset_id']);
                 $scenePending = ! $visualDone || ! $voiceDone;
                 $pending = $pending || $scenePending;
+                $working = $working || ($scenePending && $sceneError === '');
                 if ($detail) {
                     $sceneRows[] = [
                         'id' => $scene->id,
@@ -73,7 +77,7 @@ class UgcController extends Controller
                         'visual' => $sceneError !== '' ? 'failed' : ($visualDone ? 'done' : 'working'),
                         // The provider's raw failure is logged, not shown — it
                         // names hosts and internals the user can't act on.
-                        'error' => $sceneError !== '' ? 'This scene failed to generate. Retrying is free until it succeeds.' : null,
+                        'error' => $sceneError !== '' ? 'This scene failed to generate. Retry the failed step; completed scenes are kept.' : null,
                         'preview_asset_id' => $scene->visual_asset_id,
                     ];
                 }
@@ -83,6 +87,10 @@ class UgcController extends Controller
                 'credits' => data_get($project->visual_brief, 'ugc_estimated_credits', 0),
                 'variant' => data_get($project->visual_brief, 'ugc_variant'),
                 'run_id' => data_get($project->visual_brief, 'ugc_run_id'),
+                'revision_at' => data_get($project->visual_brief, 'ugc_revision_at'),
+                'revision_export_id' => data_get($project->visual_brief, 'ugc_revision_export_id'),
+                'pending' => $pending,
+                'working' => $working,
                 'status' => $failed ? 'needs_attention' : ($pending ? 'generating' : 'ready_for_review')];
             if ($detail) {
                 $row['scene_rows'] = $sceneRows;
@@ -297,6 +305,7 @@ class UgcController extends Controller
         /** @var User $user */
         $user = $request->user();
         $v = $request->validate($this->planRules() + [
+            'request_id' => ['sometimes', 'uuid'],
             'script' => ['present', 'nullable', 'string', 'max:1500'],
             // A still-only format has no presenter, so casting is optional
             // there — and anything sent anyway is ignored below rather than
@@ -329,127 +338,147 @@ class UgcController extends Controller
             'credits_per_character' => ['required', 'integer', 'min:0'],
         ]);
 
-        $productAssetId = null;
-        if (! empty($v['product_asset_id'])) {
-            $product = Asset::query()
-                ->whereKey($v['product_asset_id'])
-                ->where('workspace_id', $user->workspace_id)
-                ->where('asset_type', 'image')
-                ->first();
-            if (! $product) {
-                return $this->error('product_not_found', 'That product image is not in this workspace.', 422);
+        // Serialize quota checks and creation per workspace. The same request key
+        // returns the committed run after a timeout, even if its credits are now spent.
+        return DB::transaction(function () use ($request, $user, $v) {
+            \App\Models\Workspace::whereKey($user->workspace_id)->lockForUpdate()->firstOrFail();
+            $requestId = $v['request_id'] ?? (string) Str::uuid(); // Legacy/internal callers.
+            $fingerprint = hash('sha256', json_encode($v));
+            $existing = DB::table('ugc_run_requests')->where('workspace_id', $user->workspace_id)->where('request_id', $requestId)->first();
+            if ($existing) {
+                if (! hash_equals($existing->fingerprint, $fingerprint)) {
+                    return $this->error('request_changed', 'This submission has already started with a different plan. Start a new run.', 409);
+                }
+                return response()->json(json_decode($existing->response, true), 200);
             }
-            $productAssetId = (int) $product->getKey();
-        }
-        // Carry the validated id, never the raw one: buildProject reads $v, and
-        // anything unchecked reaching it would escape the workspace scoping.
-        $v['product_asset_id'] = $productAssetId;
 
-        $segments = UgcPlan::normalise($v['segments'], $v['format']);
-        if (! UgcPlan::sameScript((string) ($v['script'] ?? ''), UgcPlan::script($segments))) {
-            throw ValidationException::withMessages(['script' => 'The script and shot plan differ. Review and re-price the latest plan.']);
-        }
-        $stillOnly = in_array($v['format'], UgcPlan::STILL_ONLY_FORMATS, true);
-        $characters = collect();
-        if (! $stillOnly) {
-            $characters = Character::query()->whereIn('id', $v['character_ids'])->where('status', 'active')
-                ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
-                    ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->get();
-            if ($characters->count() !== count($v['character_ids']) || $characters->contains(fn ($c) => ! $c->reference_asset_id)) {
-                throw ValidationException::withMessages(['character_ids' => 'Choose accessible, active characters with reference images.']);
+            $productAssetId = null;
+            if (! empty($v['product_asset_id'])) {
+                $product = Asset::query()
+                    ->whereKey($v['product_asset_id'])
+                    ->where('workspace_id', $user->workspace_id)
+                    ->where('asset_type', 'image')
+                    ->first();
+                if (! $product) {
+                    return $this->error('product_not_found', 'That product image is not in this workspace.', 422);
+                }
+                $productAssetId = (int) $product->getKey();
             }
-            $referenceIds = $characters->pluck('reference_asset_id')->unique();
-            $references = Asset::query()->whereIn('id', $referenceIds)->where('asset_type', 'image')
-                ->whereNotNull('storage_url')->where('storage_url', '!=', '')->count();
-            if ($references !== $referenceIds->count()) {
-                throw ValidationException::withMessages(['character_ids' => 'A selected character reference is missing. Repair it before generating a take.']);
-            }
-        }
-        // Resolve media before spending. Stock must be selected/imported into this workspace too.
-        $assets = [];
-        foreach ($segments as $i => $seg) {
-            if ($seg['kind'] !== 'b_roll' || $seg['source'] === 'generate') {
-                continue;
-            }
-            $asset = $seg['asset_id'] ? Asset::query()->where('workspace_id', $user->workspace_id)
-                ->whereKey($seg['asset_id'])->whereIn('asset_type', ['image', 'video'])->first() : null;
-            if (! $asset || ! $asset->storage_url) {
-                throw ValidationException::withMessages(["segments.{$i}.asset_id" => 'Select accessible footage for this shot. Missing footage is never replaced by an AI image.']);
-            }
-            $assets[$asset->id] = $asset;
-        }
-        // The reviewed plan, then any extra openings. Each row is a full take
-        // for every character, which is how a careless run becomes thirty.
-        $plans = [['label' => '', 'segments' => $segments]];
-        foreach ($v['variants'] ?? [] as $i => $variant) {
-            $plans[] = [
-                'label' => trim((string) ($variant['label'] ?? '')) ?: 'Variant '.($i + 1),
-                'segments' => UgcPlan::normalise($variant['segments'], $v['format']),
-            ];
-        }
+            // Carry the validated id, never the raw one: buildProject reads $v, and
+            // anything unchecked reaching it would escape the workspace scoping.
+            $v['product_asset_id'] = $productAssetId;
 
-        $castCount = max(1, $characters->count());
-        $takes = count($plans) * $castCount;
-
-        // The monthly cap is what bounds the near-free shapes: a text-led take
-        // on stock footage quotes zero credits and export is included, so
-        // credits alone bound nothing on that path.
-        $capService = app(CreditService::class);
-        $monthlyCap = $capService->limitFor((int) $user->workspace_id, 'ugc_takes_month');
-        if ($monthlyCap !== null) {
-            $usedThisMonth = Project::query()
-                ->where('workspace_id', $user->workspace_id)
-                ->whereNotNull('visual_brief->ugc_format')
-                ->where('created_at', '>=', now()->startOfMonth())
-                ->count();
-            if ($usedThisMonth + $takes > (int) $monthlyCap) {
-                throw ValidationException::withMessages(['takes' => sprintf(
-                    'Your plan includes %d UGC takes a month; you have used %d and this run adds %d. The count resets on the 1st.',
-                    (int) $monthlyCap, $usedThisMonth, $takes,
-                )]);
+            $segments = UgcPlan::normalise($v['segments'], $v['format']);
+            if (! UgcPlan::sameScript((string) ($v['script'] ?? ''), UgcPlan::script($segments))) {
+                throw ValidationException::withMessages(['script' => 'The script and shot plan differ. Review and re-price the latest plan.']);
             }
-        }
-        if ($takes > self::MAX_TAKES_PER_RUN) {
-            throw ValidationException::withMessages([
-                'variants' => sprintf(
-                    'That is %d takes — %d opening%s across %d character%s. Run at most %d at once so you can watch one before paying for the rest.',
-                    $takes, count($plans), count($plans) === 1 ? '' : 's',
-                    $castCount, $castCount === 1 ? '' : 's',
-                    self::MAX_TAKES_PER_RUN,
-                ),
-            ]);
-        }
+            $stillOnly = in_array($v['format'], UgcPlan::STILL_ONLY_FORMATS, true);
+            $characters = collect();
+            if (! $stillOnly) {
+                $characters = Character::query()->whereIn('id', $v['character_ids'])->where('status', 'active')
+                    ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
+                        ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->get();
+                if ($characters->count() !== count($v['character_ids']) || $characters->contains(fn ($c) => ! $c->reference_asset_id)) {
+                    throw ValidationException::withMessages(['character_ids' => 'Choose accessible, active characters with reference images.']);
+                }
+                $referenceIds = $characters->pluck('reference_asset_id')->unique();
+                $references = Asset::query()->whereIn('id', $referenceIds)->where('asset_type', 'image')
+                    ->whereNotNull('storage_url')->where('storage_url', '!=', '')->count();
+                if ($references !== $referenceIds->count()) {
+                    throw ValidationException::withMessages(['character_ids' => 'A selected character reference is missing. Repair it before generating a take.']);
+                }
+            }
+            // The reviewed plan, then any extra openings. Each row is a full take
+            // for every character, which is how a careless run becomes thirty.
+            $plans = [['label' => '', 'segments' => $segments]];
+            foreach ($v['variants'] ?? [] as $i => $variant) {
+                $plans[] = [
+                    'label' => trim((string) ($variant['label'] ?? '')) ?: 'Variant '.($i + 1),
+                    'segments' => UgcPlan::normalise($variant['segments'], $v['format']),
+                ];
+            }
 
-        $perCharacter = UgcPlan::quote($segments);
-        if ($perCharacter !== $v['credits_per_character']) {
-            throw ValidationException::withMessages(['credits_per_character' => 'The estimate changed. Re-price and review the plan before generating.']);
-        }
-        // Openings differ in length, so each plan is priced on its own rather
-        // than multiplying the first one's estimate.
-        $total = 0;
-        foreach ($plans as $plan) {
-            $total += UgcPlan::quote($plan['segments']) * $castCount;
-        }
-        $balance = app(CreditService::class)->balance((int) $user->workspace_id);
-        if ($balance < $total) {
-            throw ValidationException::withMessages(['credits' => "This run needs an estimated {$total} credits and you have {$balance}."]);
-        }
-        // One id across every take in the run, so the progress screen can
-        // follow the whole batch with a single query.
-        $runId = (string) Str::uuid();
-        // All characters/scene records commit together. No job can see a half-built batch.
-        $projects = DB::transaction(function () use ($user, $characters, $plans, $v, $assets, $runId) {
-            $built = [];
-            foreach ($plans as $plan) {
-                foreach ($characters->isEmpty() ? [null] : $characters->all() as $character) {
-                    $built[] = $this->buildProject($user, $character, $plan['segments'], $v, $assets, $plan['label'], $runId);
+            // Validate and resolve assets across EVERY plan, including extra openings.
+            $assets = [];
+            foreach ($plans as $planIndex => $plan) {
+                foreach ($plan['segments'] as $i => $seg) {
+                    if ($seg['kind'] !== 'b_roll' || $seg['source'] === 'generate') {
+                        continue;
+                    }
+                    $asset = $seg['asset_id'] ? Asset::where('workspace_id', $user->workspace_id)
+                        ->whereKey($seg['asset_id'])->whereIn('asset_type', ['image', 'video'])->first() : null;
+                    if (! $asset || ! $asset->storage_url) {
+                        throw ValidationException::withMessages([($planIndex === 0 ? "segments.{$i}.asset_id" : "variants.".($planIndex - 1).".segments.{$i}.asset_id") => 'Select accessible footage for every shot and opening. Missing footage is never replaced by an AI image.']);
+                    }
+                    $assets[$asset->id] = $asset;
                 }
             }
 
-            return $built;
-        });
+            $castCount = max(1, $characters->count());
+            $takes = count($plans) * $castCount;
 
-        return response()->json(['data' => ['takes' => $projects, 'credits_quoted' => $total, 'run_id' => $runId], 'meta' => []], 201);
+            // The monthly cap is what bounds the near-free shapes: a text-led take
+            // on stock footage quotes zero credits and export is included, so
+            // credits alone bound nothing on that path.
+            $capService = app(CreditService::class);
+            $monthlyCap = $capService->limitFor((int) $user->workspace_id, 'ugc_takes_month');
+            if ($monthlyCap !== null) {
+                $usedThisMonth = Project::query()
+                    ->where('workspace_id', $user->workspace_id)
+                    ->whereNotNull('visual_brief->ugc_format')
+                    ->where('created_at', '>=', now()->startOfMonth())
+                    ->count();
+                if ($usedThisMonth + $takes > (int) $monthlyCap) {
+                    throw ValidationException::withMessages(['takes' => sprintf(
+                        'Your plan includes %d UGC takes a month; you have used %d and this run adds %d. The count resets on the 1st.',
+                        (int) $monthlyCap, $usedThisMonth, $takes,
+                    )]);
+                }
+            }
+            if ($takes > self::MAX_TAKES_PER_RUN) {
+                throw ValidationException::withMessages([
+                    'variants' => sprintf(
+                        'That is %d takes — %d opening%s across %d character%s. Run at most %d at once so you can watch one before paying for the rest.',
+                        $takes, count($plans), count($plans) === 1 ? '' : 's',
+                        $castCount, $castCount === 1 ? '' : 's',
+                        self::MAX_TAKES_PER_RUN,
+                    ),
+                ]);
+            }
+
+            $perCharacter = UgcPlan::quote($segments);
+            if ($perCharacter !== $v['credits_per_character']) {
+                throw ValidationException::withMessages(['credits_per_character' => 'The estimate changed. Re-price and review the plan before generating.']);
+            }
+            // Openings differ in length, so each plan is priced on its own rather
+            // than multiplying the first one's estimate.
+            $total = 0;
+            foreach ($plans as $plan) {
+                $total += UgcPlan::quote($plan['segments']) * $castCount;
+            }
+            $balance = app(CreditService::class)->balance((int) $user->workspace_id);
+            if ($balance < $total) {
+                throw ValidationException::withMessages(['credits' => "This run needs an estimated {$total} credits and you have {$balance}."]);
+            }
+            // One id across every take in the run, so the progress screen can
+            // follow the whole batch with a single query.
+            $runId = (string) Str::uuid();
+            // All characters/scene records commit together. No job can see a half-built batch.
+            $projects = DB::transaction(function () use ($user, $characters, $plans, $v, $assets, $runId) {
+                $built = [];
+                foreach ($plans as $plan) {
+                    foreach ($characters->isEmpty() ? [null] : $characters->all() as $character) {
+                        $built[] = $this->buildProject($user, $character, $plan['segments'], $v, $assets, $plan['label'], $runId);
+                    }
+                }
+
+                return $built;
+            });
+
+            $payload = ['data' => ['takes' => $projects, 'credits_quoted' => $total, 'run_id' => $runId], 'meta' => []];
+            DB::table('ugc_run_requests')->insert(['workspace_id'=>$user->workspace_id,'request_id'=>$requestId,'fingerprint'=>$fingerprint,'response'=>json_encode($payload),'created_at'=>now(),'updated_at'=>now()]);
+            return response()->json($payload, 201);
+        });
     }
 
     /**

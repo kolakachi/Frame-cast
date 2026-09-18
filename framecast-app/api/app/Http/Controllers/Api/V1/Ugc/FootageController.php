@@ -191,6 +191,7 @@ class FootageController extends Controller
         $format = $hasPerformance ? 'story' : 'text_led';
         $normalised = UgcPlan::normalise($segments, $format);
         $generateRequest = Request::create('/api/v1/ugc/generate', 'POST', [
+            'request_id' => (string) \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'footage:'.$session->id.':'.hash('sha256',json_encode([$normalised,$v]))),
             'format' => $format,
             'segments' => $normalised,
             'script' => UgcPlan::script($normalised) ?: null,
