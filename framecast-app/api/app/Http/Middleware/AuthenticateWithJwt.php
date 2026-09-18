@@ -136,7 +136,7 @@ class AuthenticateWithJwt
             }
         }
 
-        if ($request->is('api/v1/workspace-access/switch/*') || ($request->isMethod('POST') && ($request->is('api/v1/client-work/requests') || $request->is('api/v1/client-work/attachments')))) {
+        if ($request->is('api/v1/workspace-access/switch/*') || ($request->isMethod('POST') && ($request->is('api/v1/client-work/requests') || $request->is('api/v1/client-work/attachments') || $request->is('api/v1/client-work/draft-text')))) {
             return null;
         }
 

@@ -11,12 +11,14 @@ Route::middleware('auth.jwt')->group(function () {
     Route::get('/workspace-access', [Hub::class, 'workspaces']);
     Route::post('/workspace-access/switch/{id}', [Hub::class, 'switch'])->whereNumber('id');
     Route::get('/client-work', [Hub::class, 'show']);
+    Route::post('/client-work/draft-text', [Hub::class, 'draftText'])->middleware('throttle:10,1');
     Route::put('/client-work/profile', [Hub::class, 'profile']);
     Route::post('/client-work/requests', [Hub::class, 'requestVideo']);
     Route::prefix('/workspaces/clients/{id}')->whereNumber('id')->group(function () {
         Route::post('/attachments', [Hub::class, 'attachment'])->middleware('throttle:20,1');
         Route::post('/offboard', [Hub::class, 'offboard']);
         Route::get('/hub', [Hub::class, 'show']);
+        Route::post('/draft-text', [Hub::class, 'draftText'])->middleware('throttle:10,1');
         Route::put('/profile', [Hub::class, 'profile']);
         Route::post('/requests', [Hub::class, 'requestVideo']);
         Route::post('/requests/{requestId}/start', [Hub::class, 'startRequest'])->whereNumber('requestId');

@@ -252,4 +252,50 @@ class AgencyWorkflowTest extends ClientWorkspaceTest
         $this->assertSame(502,$response->status());
         $this->assertSame('failed',DB::table('workspace_memberships')->value('delivery_status'));
     }
+    public function test_ai_draft_is_scoped_and_does_not_save_profile(): void
+    {
+        [, $owner, $client] = $this->fixture();
+        $usage = $this->createMock(\App\Services\WorkspaceUsageService::class);
+        $usage->method('hasExceededApiBudget')->willReturn(false);
+        $this->app->instance(\App\Services\WorkspaceUsageService::class, $usage);
+        $ai = $this->createMock(\App\Services\Generation\AI\AIGenerationAdapter::class);
+        $ai->expects($this->once())->method('generate')->with('client_field_draft', $this->anything(), 1000, 0.4, $this->callback(fn ($o) => $o['usage_context']['workspace_id'] === $client->id))->willReturn(['content' => 'A clear product introduction.']);
+        $this->app->instance(\App\Services\Generation\AI\AIGenerationAdapter::class, $ai);
+        $response = app(ClientHubController::class)->draftText($this->requestFor($owner, ['field' => 'goals', 'instruction' => 'Introduce our product clearly']), $client->id);
+        $this->assertSame('A clear product introduction.', $response->getData(true)['data']['text']);
+        $this->assertSame(0, DB::table('client_profiles')->count());
+    }
+
+    public function test_ai_draft_rejects_another_agencys_client(): void
+    {
+        [, $owner] = $this->fixture();
+        [, , $other] = $this->fixture();
+        $ai = $this->createMock(\App\Services\Generation\AI\AIGenerationAdapter::class);
+        $ai->expects($this->never())->method('generate');
+        $this->app->instance(\App\Services\Generation\AI\AIGenerationAdapter::class, $ai);
+        $this->expectException(ModelNotFoundException::class);
+        app(ClientHubController::class)->draftText($this->requestFor($owner, ['field' => 'goals', 'instruction' => 'Introduce the product']), $other->id);
+    }
+
+    public function test_viewer_cannot_draft_client_brand_fields(): void
+    {
+        [, , $client] = $this->fixture();
+        $viewer = User::create(['email' => 'draft-viewer@test.test', 'role' => 'client', 'status' => 'active', 'workspace_id' => $client->id]);
+        $this->expectException(HttpException::class);
+        app(ClientHubController::class)->draftText($this->requestFor($viewer, ['field' => 'approved_claims', 'instruction' => 'Invent a claim']));
+    }
+
+    public function test_ai_draft_honors_workspace_budget(): void
+    {
+        [, $owner, $client] = $this->fixture();
+        $usage = $this->createMock(\App\Services\WorkspaceUsageService::class);
+        $usage->method('hasExceededApiBudget')->willReturn(true);
+        $this->app->instance(\App\Services\WorkspaceUsageService::class, $usage);
+        $ai = $this->createMock(\App\Services\Generation\AI\AIGenerationAdapter::class);
+        $ai->expects($this->never())->method('generate');
+        $this->app->instance(\App\Services\Generation\AI\AIGenerationAdapter::class, $ai);
+        $this->expectException(HttpException::class);
+        app(ClientHubController::class)->draftText($this->requestFor($owner, ['field' => 'goals', 'instruction' => 'Introduce our product']), $client->id);
+    }
+
 }
