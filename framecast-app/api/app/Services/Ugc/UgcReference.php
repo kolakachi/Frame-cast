@@ -36,6 +36,14 @@ class UgcReference
     public function read(Asset $asset): array
     {
         $duration = (float) ($asset->duration_seconds ?? 0);
+        // Same trap as the footage reader: an asset row with no recorded
+        // duration reads as a "0 second" ad. Probe the file once instead.
+        if ($duration <= 0) {
+            $duration = (float) ($this->frames?->duration($asset) ?? 0);
+            if ($duration > 0) {
+                $asset->forceFill(['duration_seconds' => $duration])->save();
+            }
+        }
         // Pictures first: they are what a transcript cannot give us, and they
         // are the only thing a silent ad has.
         $frames = $this->frames?->sample($asset, $duration) ?? [];

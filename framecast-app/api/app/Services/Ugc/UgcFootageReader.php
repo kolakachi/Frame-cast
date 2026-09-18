@@ -35,6 +35,16 @@ class UgcFootageReader
     public function read(Asset $asset, array $selection = []): array
     {
         $duration = (float) ($asset->duration_seconds ?? 0);
+        // An upload recorded before durations were probed has none on the
+        // row. Passing "0 seconds" to the model made it conclude the video
+        // was empty and return no passages — probe the file instead, and
+        // keep the answer so it is only ever probed once.
+        if ($duration <= 0) {
+            $duration = (float) ($this->frames?->duration($asset) ?? 0);
+            if ($duration > 0) {
+                $asset->forceFill(['duration_seconds' => $duration])->save();
+            }
+        }
         $frames = $this->frames?->sample($asset, $duration) ?? [];
 
         $segments = [];
@@ -64,7 +74,9 @@ class UgcFootageReader
 
         try {
             $result = $this->ai->generate('ugc_footage_read', [
-                'duration' => (string) round($end > $start ? $end - $start : $duration, 1),
+                'duration' => ($end > $start ? $end - $start : $duration) > 0
+                    ? (string) round($end > $start ? $end - $start : $duration, 1)
+                    : 'unknown — read it from the frames and transcript timings',
                 'transcript_json' => $segments === [] ? 'none — no speech detected' : json_encode(
                     array_map(fn ($s) => [
                         'start' => round((float) ($s['start'] ?? 0), 2),

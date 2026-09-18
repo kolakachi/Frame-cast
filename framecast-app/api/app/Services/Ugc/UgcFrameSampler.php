@@ -111,6 +111,34 @@ class UgcFrameSampler
      *
      * @return array{0: ?string, 1: ?string}  [input, temp path to clean up]
      */
+    /**
+     * The clip's real length, probed from the file. Uploads recorded before
+     * durations were probed have none on the row, and a reader told a video
+     * is "0 seconds" concludes it is empty.
+     */
+    public function duration(Asset $asset): ?float
+    {
+        $temp = null;
+        try {
+            [$input, $temp] = $this->input($asset);
+            if ($input === null) {
+                return null;
+            }
+            $result = Process::timeout(60)->run([
+                'ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $input,
+            ]);
+            $probed = (float) trim($result->output());
+
+            return $probed > 0 ? round($probed, 2) : null;
+        } catch (\Throwable) {
+            return null;
+        } finally {
+            if ($temp !== null) {
+                @unlink($temp);
+            }
+        }
+    }
+
     private function input(Asset $asset): array
     {
         $raw = trim((string) $asset->storage_url);
