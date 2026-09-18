@@ -50,6 +50,9 @@ class UgcExecutionTest extends TestCase
                 $t->timestamps();
             });
         }
+        Schema::create('workspaces', function (Blueprint $t) { $t->id(); $t->timestamps(); });
+        DB::table('workspaces')->insert(['id' => 1]);
+        (require database_path('migrations/2026_09_18_120000_create_ugc_run_requests.php'))->up();
         Character::query()->create(['workspace_id' => 1, 'name' => 'Creator', 'status' => 'active', 'is_stock' => false, 'reference_asset_id' => 10, 'gender' => 'female']);
         $reference = new Asset(['workspace_id' => 1, 'asset_type' => 'image', 'storage_url' => 'test/creator.png']);
         $reference->id = 10;
@@ -78,6 +81,82 @@ class UgcExecutionTest extends TestCase
             'visual_brief' => 'Kitchen selfie, casual sweater, window light.', 'headline' => 'One useful idea',
             'voice_direction' => 'Warm and curious.', 'motion_prompt' => '', 'source' => null,
             'speed' => 1.0], $changes);
+    }
+
+    public function test_replayed_submission_returns_the_same_run_without_more_jobs(): void
+    {
+        $request = $this->request([$this->shot()], 'direct_camera', ['request_id' => '86ebc83e-7eec-4b8f-bc12-cbd854073521']);
+        $first = (new UgcController)->generate($request);
+        $second = (new UgcController)->generate($request);
+        $this->assertSame(201, $first->status());
+        $this->assertSame(200, $second->status());
+        $this->assertSame($first->getData(true), $second->getData(true));
+        $this->assertSame(1, Project::count());
+        Bus::assertDispatchedTimes(GenerateAIImageJob::class, 1);
+    }
+
+    public function test_reused_submission_key_with_changed_plan_is_rejected(): void
+    {
+        $changes = ['request_id' => '86ebc83e-7eec-4b8f-bc12-cbd854073521'];
+        (new UgcController)->generate($this->request([$this->shot()], 'direct_camera', $changes));
+        $response = (new UgcController)->generate($this->request([$this->shot()], 'direct_camera', $changes + ['title' => 'Changed']));
+        $this->assertSame(409, $response->status());
+        $this->assertSame(1, Project::count());
+    }
+
+    public function test_missing_variant_asset_prevents_the_entire_run(): void
+    {
+        try {
+            (new UgcController)->generate($this->request([$this->shot()], 'demo', ['variants' => [
+                ['label' => 'Alternative', 'segments' => [$this->shot(['kind' => 'b_roll', 'source' => 'upload', 'asset_id' => 999])]],
+            ]]));
+            $this->fail('Missing variant footage must fail before any take starts.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('variants.0.segments.0.asset_id', $e->errors());
+        }
+        $this->assertSame(0, Project::count());
+        $this->assertSame(0, DB::table('ugc_run_requests')->count());
+        Bus::assertNothingDispatched();
+    }
+
+    public function test_variant_asset_is_attached_to_its_scene(): void
+    {
+        $asset = Asset::create(['workspace_id' => 1, 'asset_type' => 'video', 'storage_url' => 'test/variant.mp4']);
+        (new UgcController)->generate($this->request([$this->shot()], 'demo', ['variants' => [
+            ['label' => 'Alternative', 'segments' => [$this->shot(['kind' => 'b_roll', 'source' => 'upload', 'asset_id' => $asset->id])]],
+        ]]));
+        $this->assertSame(2, Project::count());
+        $this->assertSame($asset->id, (int) Scene::orderByDesc('id')->first()->visual_asset_id);
+    }
+
+    public function test_monthly_cap_rejects_a_second_run_but_allows_replaying_the_first(): void
+    {
+        $credits = $this->createMock(CreditService::class);
+        $credits->method('balance')->willReturn(100000);
+        $credits->method('limitFor')->willReturn(1);
+        $this->app->instance(CreditService::class, $credits);
+        $request = $this->request([$this->shot()], 'direct_camera', ['request_id' => '86ebc83e-7eec-4b8f-bc12-cbd854073521']);
+        (new UgcController)->generate($request);
+        $this->assertSame(200, (new UgcController)->generate($request)->status());
+        try {
+            (new UgcController)->generate($this->request([$this->shot()], 'direct_camera'));
+            $this->fail('The second run should exceed the monthly cap.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('takes', $e->errors());
+        }
+        $this->assertSame(1, Project::count());
+    }
+
+    public function test_failed_take_reports_other_unfinished_scenes_as_working(): void
+    {
+        (new UgcController)->generate($this->request([$this->shot(), $this->shot()], 'story'));
+        $scene = Scene::orderBy('id')->firstOrFail();
+        $scene->forceFill(['image_generation_settings_json' => ['last_error' => 'Provider failed']])->save();
+        $request = Request::create('/ugc/takes', 'GET', ['detail' => true]);
+        $request->setUserResolver(fn () => (new User)->forceFill(['id' => 1, 'workspace_id' => 1]));
+        $take = (new UgcController)->takes($request)->getData(true)['data']['takes'][0];
+        $this->assertSame('needs_attention', $take['status']);
+        $this->assertTrue($take['working']);
     }
 
     public function test_reaction_dispatches_directed_animation_chain_without_tts(): void

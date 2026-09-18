@@ -166,6 +166,7 @@ class CruiseControlController extends Controller
         $validated = $request->validate([
             'project_id'   => ['required', 'integer'],
             'tool'         => ['required', 'string'],
+            'expected_credits' => ['sometimes', 'integer', 'min:0'],
             'params'       => ['required', 'array'],
             'message_id'   => ['nullable', 'string', 'max:64'],
             // Index into the assistant message's actions[] array. When the
@@ -196,6 +197,9 @@ class CruiseControlController extends Controller
         // the resolve already showed the user the cost, but balance may
         // have dropped between resolve and apply.
         $estimate = $tool->estimateCost($project, $validated['params']);
+        if (isset($validated['expected_credits']) && (int) $validated['expected_credits'] !== $estimate) {
+            return $this->error('estimate_changed', 'The revision estimate changed. Request an updated proposal before applying it.', 409);
+        }
         $balance = $this->credits->balance((int) $workspace->getKey());
         if ($balance < $estimate) {
             return $this->error(
@@ -212,7 +216,17 @@ class CruiseControlController extends Controller
 
         try {
             $result = DB::transaction(function () use ($tool, $workspace, $project, $validated) {
-                return $tool->execute($workspace, $project, $validated['params']);
+                $result = $tool->execute($workspace, $project, $validated['params']);
+                if (data_get($project->visual_brief, 'ugc_format') && ! in_array($validated['tool'], ['export_video', 'schedule_post', 'lock_subject'], true)) {
+                    $fresh = Project::whereKey($project->id)->lockForUpdate()->firstOrFail();
+                    $fresh->forceFill(['visual_brief' => array_merge($fresh->visual_brief ?? [], [
+                        'ugc_revision_at' => now()->toISOString(),
+                        // Export timestamps may have second precision. The ID watermark
+                        // also excludes an old export queued within the same second.
+                        'ugc_revision_export_id' => (int) DB::table('export_jobs')->where('project_id', $project->id)->max('id'),
+                    ])])->save();
+                }
+                return $result;
             });
         } catch (\Throwable $e) {
             CruiseAuditLog::create([

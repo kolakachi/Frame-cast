@@ -69,7 +69,9 @@ const routes = [
   // arrangement. They would never look inside something called UGC Ads, and a
   // second implementation would be two to maintain — so it is one view with a
   // different way in and a different name on it.
-  { path: '/from-my-footage', name: 'from-my-footage', component: UgcAdsView, meta: { requiresAuth: true, internalOnly: true, ugcStart: 'owned' } },
+  { path: '/from-my-footage', name: 'from-my-footage', component: () => import('../views/FootageFlowView.vue'), meta: { requiresAuth: true, internalOnly: true } },
+  { path: '/from-my-footage/:sessionId', name: 'footage-flow', component: () => import('../views/FootageFlowView.vue'), meta: { requiresAuth: true, internalOnly: true } },
+  { path: '/from-my-footage/:sessionId/compare', name: 'footage-compare', component: () => import('../views/FootageFlowView.vue'), meta: { requiresAuth: true, internalOnly: true } },
   { path: '/series/new', name: 'series-create', component: SeriesCreateView, meta: { requiresAuth: true } },
   { path: '/series/:seriesId', name: 'series-detail', component: SeriesDetailView, meta: { requiresAuth: true } },
   // Agency client management. Its own area rather than a settings tab: a
