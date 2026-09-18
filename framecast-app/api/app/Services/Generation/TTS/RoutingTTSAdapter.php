@@ -54,12 +54,22 @@ class RoutingTTSAdapter implements TTSAdapter
     {
         $provider = strtolower(trim((string) ($options['provider'] ?? '')));
 
+        // Clone identity outranks the provider label. A customer's profile was
+        // saved with provider "openai" but a clone-… key; the label won, the
+        // OpenAI adapter silently swapped the unknown voice for alloy, and the
+        // entry he had named "Default" produced a stock voice every time — the
+        // complaint he churned with. The voice being a clone is a fact about
+        // the voice; the label is a fact about a form somewhere, and when they
+        // disagree the voice is the one the user can hear.
+        if (
+            str_contains($provider, 'chatterbox') || $provider === 'clone'
+            || str_starts_with(strtolower($voiceId), 'clone-')
+            || ! empty($options['clone_audio_url'])
+        ) {
+            return 'chatterbox';
+        }
         if ($provider === 'openai') {
             return 'openai';
-        }
-        // Cloned voices carry a replicate:chatterbox provider (or a clone_audio_url).
-        if (str_contains($provider, 'chatterbox') || $provider === 'clone' || ! empty($options['clone_audio_url'])) {
-            return 'chatterbox';
         }
         if ($provider === 'google' || $provider === 'gemini') {
             return 'gemini';

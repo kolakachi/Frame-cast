@@ -72,10 +72,31 @@ class VoiceProfileController extends Controller
         $validated = $request->validate([
             'name'               => ['required', 'string', 'max:80'],
             'provider_voice_key' => ['required', 'string', 'max:120'],
-            'provider'           => ['sometimes', 'string', 'in:openai,elevenlabs,google'],
+            'provider'           => ['sometimes', 'string', 'in:openai,elevenlabs,google,replicate:chatterbox'],
             'language'           => ['sometimes', 'string', 'max:10'],
             'gender_label'       => ['sometimes', 'nullable', 'string', 'max:40'],
         ]);
+
+        // A key that already has a profile gets that profile back, never a
+        // twin. The editor once re-registered a customer's cloned voice under
+        // provider "openai": two identical-looking entries, one of which could
+        // only ever produce a stock voice.
+        $existing = VoiceProfile::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where('provider_voice_key', $validated['provider_voice_key'])
+            ->first();
+        if ($existing) {
+            return response()->json([
+                'data' => ['voice_profile' => [
+                    'id' => $existing->getKey(),
+                    'name' => $existing->name,
+                    'provider' => $existing->provider,
+                    'provider_voice_key' => $existing->provider_voice_key,
+                    'is_cloned' => (bool) $existing->is_cloned,
+                ]],
+                'meta' => ['reused_existing' => true],
+            ]);
+        }
 
         $profile = VoiceProfile::query()->create([
             'workspace_id'       => $user->workspace_id,

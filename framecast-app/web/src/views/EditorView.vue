@@ -5344,10 +5344,20 @@ async function saveVoiceProfile() {
   if (!name || !voiceProfileKey.value) return;
   voiceProfileSaving.value = true;
   try {
+    // The provider is a fact about the voice, not a constant. Hardcoding
+    // "openai" here once re-registered a customer's chatterbox clone under the
+    // wrong engine, and the profile he named "Default" spoke in a stock voice
+    // from then on.
+    const key = voiceProfileKey.value;
+    const provider = key.startsWith("clone-")
+      ? "replicate:chatterbox"
+      : ["alloy", "echo", "fable", "onyx", "nova", "shimmer"].includes(key)
+      ? "openai"
+      : "google";
     const response = await api.post("/voice-profiles", {
       name,
-      provider_voice_key: voiceProfileKey.value,
-      provider: "openai",
+      provider_voice_key: key,
+      provider,
       language: activeScene.value?.voice_settings?.language || "en",
     });
     const created = response.data?.data?.voice_profile;
