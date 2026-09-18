@@ -131,9 +131,11 @@ class FootageController extends Controller
 
         $plan = $planner->plan($session);
 
-        // Price it the way it will be charged: the passages are UGC segments.
-        $raw = array_map(fn ($p) => $p['segment'], $plan['passages']);
-        $format = array_filter($raw, fn ($s) => $s['kind'] !== 'b_roll') ? 'story' : 'text_led';
+        // Price it the way it will be charged: the passages are UGC segments,
+        // and a reused passage is the source clip itself — free footage, not
+        // a generated still.
+        $raw = $this->segmentsFor($plan['passages'], $session);
+        $format = $this->formatFor($raw);
         $segments = UgcPlan::normalise($raw, $format);
         $plan['format'] = $format;
         $plan['credits'] = UgcPlan::quote($segments);
@@ -168,14 +170,7 @@ class FootageController extends Controller
             'answers.*' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $segments = array_map(fn ($p) => $p['segment'], (array) $plan['passages']);
-        // 'Reuse directly' rights: passages marked reused keep the source clip.
-        foreach ($segments as $i => $seg) {
-            if (($plan['passages'][$i]['treatment'] ?? '') === 'reused' && $session->rights === 'reuse') {
-                $segments[$i]['source'] = 'upload';
-                $segments[$i]['asset_id'] = $session->source_asset_id;
-            }
-        }
+        $segments = $this->segmentsFor((array) $plan['passages'], $session);
 
         $hasPerformance = (bool) array_filter($segments, fn ($s) => $s['kind'] !== 'b_roll');
         if ($hasPerformance && empty($v['character_id'])) {
@@ -188,7 +183,7 @@ class FootageController extends Controller
             'answers' => $v['answers'] ?? [],
         ]])->save();
 
-        $format = $hasPerformance ? 'story' : 'text_led';
+        $format = $this->formatFor($segments);
         $normalised = UgcPlan::normalise($segments, $format);
         $generateRequest = Request::create('/api/v1/ugc/generate', 'POST', [
             'request_id' => (string) \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'footage:'.$session->id.':'.hash('sha256',json_encode([$normalised,$v]))),
@@ -219,6 +214,37 @@ class FootageController extends Controller
             'takes' => data_get($payload, 'data.takes'),
             'run_id' => $runId,
         ], 'meta' => []], 201);
+    }
+
+    /**
+     * The UGC format this plan actually is. A presenter makes it a story;
+     * cards with words make it text-led; clips of the user's own footage
+     * with no headlines are a demo — assembled footage, not a caption ad.
+     */
+    private function formatFor(array $segments): string
+    {
+        if (array_filter($segments, fn ($s) => $s['kind'] !== 'b_roll')) {
+            return 'story';
+        }
+        if (array_filter($segments, fn ($s) => trim((string) ($s['headline'] ?? '')) !== '')) {
+            return 'text_led';
+        }
+
+        return 'demo';
+    }
+
+    /** Plan passages as produceable segments — reused ones keep the source clip. */
+    private function segmentsFor(array $passages, FootageSession $session): array
+    {
+        return array_map(function ($p) use ($session) {
+            $seg = $p['segment'];
+            if (($p['treatment'] ?? '') === 'reused' && $session->rights === 'reuse') {
+                $seg['source'] = 'upload';
+                $seg['asset_id'] = $session->source_asset_id;
+            }
+
+            return $seg;
+        }, $passages);
     }
 
     private function find(Request $request, int $id): FootageSession

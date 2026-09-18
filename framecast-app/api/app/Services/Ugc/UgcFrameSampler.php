@@ -139,6 +139,42 @@ class UgcFrameSampler
         }
     }
 
+    /**
+     * What the soundtrack is, measured rather than guessed: 'none' (no audio
+     * stream), 'silent', or 'audible'. Speech transcription on music-and-
+     * effects tracks is nondeterministic; this is not.
+     */
+    public function audioProfile(Asset $asset): string
+    {
+        $temp = null;
+        try {
+            [$input, $temp] = $this->input($asset);
+            if ($input === null) {
+                return 'unknown';
+            }
+            $streams = Process::timeout(30)->run([
+                'ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', $input,
+            ]);
+            if (trim($streams->output()) === '') {
+                return 'none';
+            }
+            $vol = Process::timeout(60)->run([
+                'ffmpeg', '-t', '30', '-i', $input, '-map', 'a:0', '-af', 'volumedetect', '-f', 'null', '-',
+            ]);
+            if (preg_match('/max_volume:\s*(-?[\d.]+)/', $vol->errorOutput(), $m)) {
+                return (float) $m[1] < -50 ? 'silent' : 'audible';
+            }
+
+            return 'unknown';
+        } catch (\Throwable) {
+            return 'unknown';
+        } finally {
+            if ($temp !== null) {
+                @unlink($temp);
+            }
+        }
+    }
+
     private function input(Asset $asset): array
     {
         $raw = trim((string) $asset->storage_url);

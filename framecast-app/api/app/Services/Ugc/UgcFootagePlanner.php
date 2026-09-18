@@ -94,10 +94,21 @@ class UgcFootagePlanner
                 $treatment = 'new';
             }
             $seg = (array) ($p['segment'] ?? []);
+            // A talking shot with nothing to say fails validation — and a
+            // silent source has no words to carry over. Silence plans as
+            // footage, never as a performer.
+            if (($seg['kind'] ?? '') !== 'b_roll' && trim((string) ($seg['script_text'] ?? '')) === '') {
+                $seg['kind'] = 'b_roll';
+                $seg['source'] = $seg['source'] ?? 'generate';
+            }
             // A card with neither words nor a headline fails validation and
             // renders as nothing. A silent source (music-only reels) tends to
             // produce exactly that, so the passage's own target stands in.
+            // …but never onto a reused clip: the user's own footage carries
+            // itself, and auto-text burned over it reads as vandalism. The
+            // validator's silent-card rule only bites generated stills.
             if (($seg['kind'] ?? 'b_roll') === 'b_roll'
+                && $treatment !== 'reused'
                 && trim((string) ($seg['script_text'] ?? '')) === ''
                 && trim((string) ($seg['headline'] ?? '')) === '') {
                 $seg['headline'] = mb_substr(trim((string) ($p['target'] ?? $byId[$p['id']]['title'])), 0, 80);

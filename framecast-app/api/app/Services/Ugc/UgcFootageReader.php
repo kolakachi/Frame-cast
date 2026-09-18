@@ -72,6 +72,14 @@ class UgcFootageReader
             ]);
         }
 
+        $audio = $this->frames?->audioProfile($asset) ?? 'unknown';
+        $audioLine = match (true) {
+            $audio === 'none' || $audio === 'silent' => 'no audio — the video is silent',
+            $segments !== [] => 'audio with speech (transcript below)',
+            $audio === 'audible' => 'audio present — music and/or sound effects, no speech was transcribed; the soundtrack is part of the video, note its role in the passages',
+            default => 'could not be measured',
+        };
+
         try {
             $result = $this->ai->generate('ugc_footage_read', [
                 'duration' => ($end > $start ? $end - $start : $duration) > 0
@@ -86,6 +94,7 @@ class UgcFootageReader
                     JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
                 ),
                 'frame_times' => $frames === [] ? 'none' : implode(', ', array_map(fn ($f) => $f['at'].'s', $frames)),
+                'audio_profile' => $audioLine,
             ], 5000, 0.2, [
                 'operation' => 'ugc_footage_read',
                 'images' => array_map(fn ($f) => ['url' => $f['url'], 'title' => 'Frame at '.$f['at'].'s'], $frames),

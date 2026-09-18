@@ -86,8 +86,12 @@ final class UgcPlan
             // are the ad, and narration over them is a choice rather than the
             // point. In demo it stays the exception it always was.
             $silentCutawayAllowed = $kind === 'b_roll'
-                && in_array($format, ['demo', ...self::STILL_ONLY_FORMATS], true)
-                && $headlineFor($seg) !== '';
+                && (
+                    (in_array($format, ['demo', ...self::STILL_ONLY_FORMATS], true) && $headlineFor($seg) !== '')
+                    // Real footage carries itself: an uploaded clip is a scene
+                    // without burned-in text, unlike a generated still.
+                    || (($seg['source'] ?? null) === 'upload' && ! empty($seg['asset_id']))
+                );
 
             if ($kind === 'reaction') {
                 if ($format !== 'reaction' || $text !== '' || ! in_array($seconds, [5.0, 10.0], true) || $motion === '') {
