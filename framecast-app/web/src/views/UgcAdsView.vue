@@ -133,6 +133,7 @@ async function redirectStale() {
       segments: plan.value.segments,
     });
     plan.value = { ...plan.value, ...data.data };
+    clearVariants();
     reviewed.value = false;
   } catch (e) {
     errorMessage.value =
@@ -175,6 +176,14 @@ async function writeVariants() {
   }
 }
 
+// Openings carry a full copy of the body they were written for. Any change
+// to that body must take them with it, or generation submits the new base
+// alongside stale copies of the old one.
+function clearVariants() {
+  variants.value = [];
+  chosenVariants.value = [];
+}
+
 function toggleVariant(label) {
   chosenVariants.value = chosenVariants.value.includes(label)
     ? chosenVariants.value.filter((l) => l !== label)
@@ -185,10 +194,6 @@ function toggleVariant(label) {
 
 const selectedVariants = computed(() =>
   variants.value.filter((v) => chosenVariants.value.includes(v.label))
-);
-// One take per opening per character — the arithmetic the server caps at ten.
-const takeCount = computed(
-  () => (1 + selectedVariants.value.length) * Math.max(selected.value.length, 1)
 );
 
 const productPicker = ref(false);
@@ -206,6 +211,9 @@ const formatOptions = [
 const selected = ref([]); // chosen characters
 const aspectRatio = ref("9:16");
 const plan = ref(null); // { segments, reasoning, credits_per_character }
+// A still-only plan has no presenter, so the cast step neither gates nor
+// multiplies anything.
+const noCast = computed(() => plan.value?.format === "text_led");
 const planning = ref(false);
 const generating = ref(false);
 const takes = ref([]);
@@ -278,7 +286,20 @@ const onCameraCount = computed(
     (plan.value?.segments ?? []).filter((s) => s.kind === "on_camera").length
 );
 const perCharacter = computed(() => plan.value?.credits_per_character ?? 0);
-const totalCredits = computed(() => perCharacter.value * selected.value.length);
+// The run is the base plan plus every ticked opening, each a full take per
+// presenter. Base x characters alone showed a number smaller than the charge
+// — the same shape of bug a customer was refunded for on music.
+const variantCreditsPerCast = computed(() =>
+  selectedVariants.value.reduce((sum, v) => sum + (v.credits_per_character ?? 0), 0)
+);
+const castCount = computed(() => (noCast.value ? 1 : selected.value.length));
+const totalCredits = computed(
+  () => (perCharacter.value + variantCreditsPerCast.value) * castCount.value
+);
+// One take per opening per cast member — the arithmetic the server caps at ten.
+const takeCount = computed(
+  () => (1 + selectedVariants.value.length) * castCount.value
+);
 const planFingerprint = computed(() =>
   JSON.stringify([plan.value?.format, plan.value?.segments])
 );
@@ -297,7 +318,7 @@ const stepReady = computed(() => [
   Boolean(product.value.trim() || context.value.trim()),
   true,                                   // script is optional; the director writes one
   Boolean(plan.value?.segments?.length),
-  selected.value.length > 0,
+  noCast.value || selected.value.length > 0,
   canGenerate.value,
 ]);
 const furthestStep = computed(() => {
@@ -320,7 +341,7 @@ function prevStep() { goStep(Math.max(step.value - 1, 0)); }
 const canGenerate = computed(
   () =>
     quoteCurrent.value &&
-    selected.value.length > 0 &&
+    (noCast.value || selected.value.length > 0) &&
     reviewed.value &&
     consent.value &&
     !missingFootage.value &&
@@ -336,8 +357,22 @@ watch(
     inputRevision++;
     plan.value = null;
     reviewed.value = false;
+    clearVariants();
   },
   { flush: "sync" }
+);
+// Where the material comes from is part of what the plan means. Before this,
+// switching starting point or swapping the reference kept the old plan on
+// screen — and a reference once read stayed in the payload even after
+// returning to "From scratch".
+watch(
+  [startPoint, referenceShape, footageAssets],
+  () => {
+    plan.value = null;
+    reviewed.value = false;
+    clearVariants();
+  },
+  { deep: true, flush: "sync" }
 );
 watch(
   [planFingerprint, selected, aspectRatio, voiceByCharacter],
@@ -424,11 +459,16 @@ async function makePlan() {
         .filter(Boolean),
       // The shape read off a reference, and the clips they own. Either may be
       // absent; the director plans from the brief alone when both are.
-      ...(referenceShape.value ? { reference: referenceShape.value } : {}),
-      ...(footageAssets.value.length ? { footage_asset_ids: footageAssets.value.map((a) => a.id) } : {}),
+      ...(startPoint.value === "found" && referenceShape.value
+        ? { reference: referenceShape.value }
+        : {}),
+      ...(startPoint.value !== "scratch" && footageAssets.value.length
+        ? { footage_asset_ids: footageAssets.value.map((a) => a.id) }
+        : {}),
     });
     if (revision !== inputRevision) return;
     plan.value = data?.data ?? null;
+    clearVariants();
     quotedFingerprint.value = planFingerprint.value;
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, "Could not plan the shots.");
@@ -448,6 +488,7 @@ async function reprice() {
     });
     if (fingerprint !== planFingerprint.value) return;
     plan.value = { ...plan.value, ...data.data };
+    clearVariants();
     quotedFingerprint.value = planFingerprint.value;
   } catch (err) {
     errorMessage.value = apiErrorMessage(
@@ -566,7 +607,11 @@ async function generate() {
     const { data } = await api.post("/ugc/generate", {
       script: plan.value.script,
       format: plan.value.format,
-      character_ids: selected.value.map((c) => c.id),
+      // A still-only run casts nobody; sending an empty list would fail the
+      // conditional requirement rather than express it.
+      ...(noCast.value && !selected.value.length
+        ? {}
+        : { character_ids: selected.value.map((c) => c.id) }),
       segments: plan.value.segments,
       // The chosen openings run alongside the reviewed plan, one take each
       // per character. The server caps the product of the two.
@@ -1168,7 +1213,11 @@ onMounted(() => {
             <div class="ugc-card-h">
               <span class="ugc-card-t">Characters</span>
               <span class="ugc-card-c">{{
-                selected.length ? `${selected.length} selected` : "none"
+                noCast
+                  ? "no presenter in this format"
+                  : selected.length
+                  ? `${selected.length} selected`
+                  : "none"
               }}</span>
             </div>
             <div v-for="c in selected" :key="c.id" class="ugc-ch">
@@ -1263,8 +1312,10 @@ onMounted(() => {
                 character.
               </span>
               <span v-else class="ugc-math">
-                {{ selected.length }} take{{ selected.length > 1 ? "s" : "" }} ×
-                {{ perCharacter }} credits ≈
+                {{ takeCount }} take{{ takeCount > 1 ? "s" : "" }}<template
+                  v-if="selectedVariants.length"
+                > ({{ 1 + selectedVariants.length }} openings ×
+                {{ castCount }} cast)</template> ≈
                 <b>{{ totalCredits }} credits estimated</b>
               </span>
 

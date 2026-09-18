@@ -259,7 +259,13 @@ class UgcController extends Controller
         $user = $request->user();
         $v = $request->validate($this->planRules() + [
             'script' => ['present', 'nullable', 'string', 'max:1500'],
-            'character_ids' => ['required', 'array', 'min:1', 'max:5'],
+            // A still-only format has no presenter, so casting is optional
+            // there — and anything sent anyway is ignored below rather than
+            // fanned out into identical presenter-less takes.
+            'character_ids' => [
+                Rule::requiredIf(fn () => ! in_array($request->input('format'), UgcPlan::STILL_ONLY_FORMATS, true)),
+                'array', 'min:1', 'max:5',
+            ],
             // Extra openings to run alongside the reviewed plan. Each is a
             // whole take per character, so they multiply — see the cap below.
             'variants' => ['sometimes', 'array', 'max:5'],
@@ -304,17 +310,21 @@ class UgcController extends Controller
         if (! UgcPlan::sameScript((string) ($v['script'] ?? ''), UgcPlan::script($segments))) {
             throw ValidationException::withMessages(['script' => 'The script and shot plan differ. Review and re-price the latest plan.']);
         }
-        $characters = Character::query()->whereIn('id', $v['character_ids'])->where('status', 'active')
-            ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
-                ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->get();
-        if ($characters->count() !== count($v['character_ids']) || $characters->contains(fn ($c) => ! $c->reference_asset_id)) {
-            throw ValidationException::withMessages(['character_ids' => 'Choose accessible, active characters with reference images.']);
-        }
-        $referenceIds = $characters->pluck('reference_asset_id')->unique();
-        $references = Asset::query()->whereIn('id', $referenceIds)->where('asset_type', 'image')
-            ->whereNotNull('storage_url')->where('storage_url', '!=', '')->count();
-        if ($references !== $referenceIds->count()) {
-            throw ValidationException::withMessages(['character_ids' => 'A selected character reference is missing. Repair it before generating a take.']);
+        $stillOnly = in_array($v['format'], UgcPlan::STILL_ONLY_FORMATS, true);
+        $characters = collect();
+        if (! $stillOnly) {
+            $characters = Character::query()->whereIn('id', $v['character_ids'])->where('status', 'active')
+                ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
+                    ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->get();
+            if ($characters->count() !== count($v['character_ids']) || $characters->contains(fn ($c) => ! $c->reference_asset_id)) {
+                throw ValidationException::withMessages(['character_ids' => 'Choose accessible, active characters with reference images.']);
+            }
+            $referenceIds = $characters->pluck('reference_asset_id')->unique();
+            $references = Asset::query()->whereIn('id', $referenceIds)->where('asset_type', 'image')
+                ->whereNotNull('storage_url')->where('storage_url', '!=', '')->count();
+            if ($references !== $referenceIds->count()) {
+                throw ValidationException::withMessages(['character_ids' => 'A selected character reference is missing. Repair it before generating a take.']);
+            }
         }
         // Resolve media before spending. Stock must be selected/imported into this workspace too.
         $assets = [];
@@ -339,13 +349,14 @@ class UgcController extends Controller
             ];
         }
 
-        $takes = count($plans) * $characters->count();
+        $castCount = max(1, $characters->count());
+        $takes = count($plans) * $castCount;
         if ($takes > self::MAX_TAKES_PER_RUN) {
             throw ValidationException::withMessages([
                 'variants' => sprintf(
                     'That is %d takes — %d opening%s across %d character%s. Run at most %d at once so you can watch one before paying for the rest.',
                     $takes, count($plans), count($plans) === 1 ? '' : 's',
-                    $characters->count(), $characters->count() === 1 ? '' : 's',
+                    $castCount, $castCount === 1 ? '' : 's',
                     self::MAX_TAKES_PER_RUN,
                 ),
             ]);
@@ -359,7 +370,7 @@ class UgcController extends Controller
         // than multiplying the first one's estimate.
         $total = 0;
         foreach ($plans as $plan) {
-            $total += UgcPlan::quote($plan['segments']) * $characters->count();
+            $total += UgcPlan::quote($plan['segments']) * $castCount;
         }
         $balance = app(CreditService::class)->balance((int) $user->workspace_id);
         if ($balance < $total) {
@@ -369,7 +380,7 @@ class UgcController extends Controller
         $projects = DB::transaction(function () use ($user, $characters, $plans, $v, $assets) {
             $built = [];
             foreach ($plans as $plan) {
-                foreach ($characters as $character) {
+                foreach ($characters->isEmpty() ? [null] : $characters->all() as $character) {
                     $built[] = $this->buildProject($user, $character, $plan['segments'], $v, $assets, $plan['label']);
                 }
             }
@@ -400,7 +411,7 @@ class UgcController extends Controller
         ];
     }
 
-    private function buildProject(User $user, Character $character, array $segments, array $v, array $assets, string $variantLabel = ''): array
+    private function buildProject(User $user, ?Character $character, array $segments, array $v, array $assets, string $variantLabel = ''): array
     {
         $reaction = $v['format'] === 'reaction';
         $script = UgcPlan::script($segments);
@@ -409,12 +420,12 @@ class UgcController extends Controller
             'workspace_id' => $user->workspace_id, 'created_by_user_id' => $user->id,
             // The variant's angle in the title, or six takes on one screen are
             // distinguishable only by opening them.
-            'title' => $title.' — '.$character->name.($variantLabel !== '' ? ' · '.$variantLabel : ''),
+            'title' => $title.($character ? ' — '.$character->name : '').($variantLabel !== '' ? ' · '.$variantLabel : ''),
             'aspect_ratio' => $v['aspect_ratio'],
             'duration_target_seconds' => (int) ceil(array_sum(array_column($segments, 'seconds'))),
             'status' => 'generating',
             'source_type' => 'script', 'primary_language' => $v['language'] ?? 'en',
-            'source_content_raw' => $script, 'default_character_id' => $character->id,
+            'source_content_raw' => $script, 'default_character_id' => $character?->id,
             'visual_brief' => [
                 'ugc_format' => $v['format'],
                 'ugc_estimated_credits' => UgcPlan::quote($segments),
@@ -425,9 +436,9 @@ class UgcController extends Controller
         // case, then the character's own gender. Picking a female voice for a
         // male presenter is visible on the lip-sync, so the gender default is
         // the last resort rather than the first.
-        $voiceId = ($v['voices'][$character->id] ?? null)
+        $voiceId = ($character ? ($v['voices'][$character->id] ?? null) : null)
             ?: ($v['voice_key'] ?? null)
-            ?: GeminiVoices::defaultForGender($character->gender ?? null);
+            ?: GeminiVoices::defaultForGender($character?->gender);
         foreach ($segments as $i => $seg) {
             $talking = $seg['kind'] === 'on_camera';
             $actor = $seg['kind'] !== 'b_roll';
@@ -447,7 +458,7 @@ class UgcController extends Controller
                     'ugc_headline' => UgcHeadline::layout($seg['headline']),
                 ],
                 'visual_type' => $talking ? 'spokesperson' : ($asset ? $asset->asset_type : 'ai_image'),
-                'visual_asset_id' => $asset?->id, 'character_id' => $actor ? $character->id : null,
+                'visual_asset_id' => $asset?->id, 'character_id' => $actor && $character ? $character->id : null,
                 'visual_prompt' => ($actor ? UgcPlan::CAMERA.' ' : '').$seg['visual_brief'],
                 'status' => 'draft',
                 'image_generation_settings_json' => array_filter([
@@ -456,7 +467,7 @@ class UgcController extends Controller
                     // Actor first, product second: the adapter preserves any
                     // person's likeness and reproduces any object exactly, so
                     // the order carries the roles.
-                    'reference_asset_ids' => $actor
+                    'reference_asset_ids' => $actor && $character
                         ? array_values(array_filter([(int) $character->reference_asset_id, ($v['product_asset_id'] ?? null)]))
                         : [],
                     // Carried onto the scene so a later rewrite in the editor
@@ -480,7 +491,7 @@ class UgcController extends Controller
                     null,
                     // Only where a person appears — a generated cutaway of the
                     // product alone does not need the actor's face in it.
-                    $actor && ($v['product_asset_id'] ?? null)
+                    $actor && $character && ($v['product_asset_id'] ?? null)
                         ? array_values(array_filter([(int) $character->reference_asset_id, ($v['product_asset_id'] ?? null)]))
                         : [],
                 )->afterCommit();
@@ -490,7 +501,7 @@ class UgcController extends Controller
             GenerateTTSJob::dispatch($project->id)->afterCommit();
         }
 
-        return ['id' => $project->id, 'character' => $character->name,
+        return ['id' => $project->id, 'character' => $character?->name ?? 'No presenter',
             'scenes' => count($segments), 'credits' => UgcPlan::quote($segments), 'status' => 'generating'];
     }
 }
