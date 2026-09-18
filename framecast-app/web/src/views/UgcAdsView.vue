@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
 import UiSelect from "../components/UiSelect.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
@@ -9,6 +9,7 @@ import { useAuthStore } from "../stores/auth";
 import { apiErrorMessage } from "../composables/apiError";
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
 // ── Wizard ──────────────────────────────────────────────────────────────
@@ -58,7 +59,12 @@ const START_POINTS = [
   { key: "found", label: "From an ad I like", hint: "We copy the structure only — never its footage or words" },
   { key: "owned", label: "From my own footage", hint: "Your clips, arranged into an ad" },
 ];
-const startPoint = ref("scratch");
+// Entering at /from-my-footage means they arrived with material in hand, so
+// that is where they start. The picker stays — arriving by the wrong door
+// should be a change of mind, not a dead end.
+const startPoint = ref(route.meta?.ugcStart === "owned" ? "owned" : "scratch");
+const ownedEntry = computed(() => route.meta?.ugcStart === "owned");
+const pageName = computed(() => (ownedEntry.value ? "From My Footage" : "UGC Ads"));
 
 // The reference we read a shape off, and what we understood from it.
 const referencePicker = ref(false);
@@ -542,13 +548,13 @@ onMounted(() => {
   <div class="ugc-shell">
     <AppSidebar
       :user="authStore.user"
-      active-page="ugc-ads"
+      :active-page="ownedEntry ? 'from-my-footage' : 'ugc-ads'"
       @logout="authStore.logout()"
     />
 
     <main class="ugc-main">
       <header class="ugc-top">
-        <div class="ugc-crumb">My Workspace / <b>UGC Ads</b></div>
+        <div class="ugc-crumb">My Workspace / <b>{{ pageName }}</b></div>
         <span class="ugc-beta">BETA · INTERNAL</span>
         <div v-if="balance !== null" class="ugc-credits">
           {{ balance.toLocaleString() }} credits
@@ -579,8 +585,12 @@ onMounted(() => {
 
           <div v-show="step === 0" class="ugc-step-body">
           <div class="ugc-card ugc-fields">
-            <h2 class="ugc-card-t">Starting point</h2>
-            <p class="ugc-hint" style="margin:0 0 10px">This decides what we are allowed to do with the source.</p>
+            <h2 class="ugc-card-t">{{ ownedEntry ? 'Your material' : 'Starting point' }}</h2>
+            <p class="ugc-hint" style="margin:0 0 10px">
+              {{ ownedEntry
+                ? 'Add the clips you already have. Point at an ad you like and we arrange yours in its shape — nothing is generated, and your real product beats anything we would invent of it.'
+                : 'This decides what we are allowed to do with the source.' }}
+            </p>
             <div class="ugc-starts">
               <button
                 v-for="sp in START_POINTS"

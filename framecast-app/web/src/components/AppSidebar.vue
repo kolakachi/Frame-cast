@@ -73,7 +73,7 @@ const screenTitle = computed(() => {
   const named = {
     dashboard: "Dashboard", videos: "Videos", calendar: "Calendar", jobs: "Jobs",
     channels: "Channels", series: "Series", clients: "Clients", settings: "Settings",
-    characters: "Characters", voices: "Voices", "asset-library": "Assets",
+    characters: "Characters", voices: "Voices", "asset-library": "Assets", "ugc-ads": "UGC Ads", "from-my-footage": "From My Footage",
     editor: "Editor", "project-editor": "Editor", "project-variants": "Variants",
     "generation-progress": "Generating", "client-detail": "Client",
   };
@@ -489,6 +489,22 @@ onBeforeUnmount(() => {
         </svg>
         UGC Ads
         <span class="ws-soon-badge">Beta</span>
+      </button>
+      <!-- Same pipeline as UGC Ads, named for the person who arrives with
+           footage rather than a product description. They would not think to
+           look inside "UGC Ads" for it. -->
+      <button
+        v-if="isInternal"
+        :class="['nav-item', activePage === 'from-my-footage' ? 'active' : '']"
+        data-tooltip="From My Footage"
+        type="button"
+        @click="nav('from-my-footage')"
+      >
+        <svg class="nav-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24">
+          <rect x="2.5" y="5" width="14" height="14" rx="2" />
+          <path d="M16.5 10.5L21.5 7.5v9l-5-3" />
+        </svg>
+        From My Footage
       </button>
       <button
         :class="['nav-item', activePage === 'calendar' ? 'active' : '']"

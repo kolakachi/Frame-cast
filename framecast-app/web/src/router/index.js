@@ -59,6 +59,11 @@ const routes = [
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
   { path: '/series', name: 'series', component: SeriesView, meta: { requiresAuth: true } },
   { path: '/ugc-ads', name: 'ugc-ads', component: UgcAdsView, meta: { requiresAuth: true, internalOnly: true } },
+  // The same pipeline, entered by someone who has the footage and needs the
+  // arrangement. They would never look inside something called UGC Ads, and a
+  // second implementation would be two to maintain — so it is one view with a
+  // different way in and a different name on it.
+  { path: '/from-my-footage', name: 'from-my-footage', component: UgcAdsView, meta: { requiresAuth: true, internalOnly: true, ugcStart: 'owned' } },
   { path: '/series/new', name: 'series-create', component: SeriesCreateView, meta: { requiresAuth: true } },
   { path: '/series/:seriesId', name: 'series-detail', component: SeriesDetailView, meta: { requiresAuth: true } },
   // Agency client management. Its own area rather than a settings tab: a
