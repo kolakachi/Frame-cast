@@ -209,4 +209,84 @@ class UgcShotPlanner
 
         return UgcPlan::reanchor($segments, UgcPlan::script($segments));
     }
+
+    /**
+     * Alternative openings for a plan that already works, so a batch can be one
+     * idea with six openings rather than one opening on six faces.
+     *
+     * Character fan-out answers "who says it" and was already there. This
+     * answers "how it starts", which is the axis that actually decides whether
+     * anyone watches the rest.
+     *
+     * Each variant is re-anchored: changing the opening changes what the first
+     * shot's visual was chosen to answer, and a visual left pointing at a line
+     * that is no longer spoken is exactly what anchoring exists to catch.
+     *
+     * @param  array<int, array<string, mixed>>  $segments
+     * @return array<int, array{label: string, segments: array<int, array<string, mixed>>}>
+     */
+    public function hookVariants(array $segments, string $format, int $count, string $product = '', string $context = ''): array
+    {
+        $first = null;
+        foreach ($segments as $i => $seg) {
+            if (trim((string) $seg['script_text']) !== '') {
+                $first = $i;
+                break;
+            }
+        }
+        if ($first === null) {
+            throw ValidationException::withMessages([
+                'segments' => 'This ad has no spoken opening to vary. Hook variants need a take that starts with words.',
+            ]);
+        }
+
+        try {
+            $result = $this->ai->generate('ugc_hook_variants', [
+                'product' => $product ?: 'not said',
+                'context' => $context ?: 'not said',
+                'script' => UgcPlan::script($segments),
+                'opening' => (string) $segments[$first]['script_text'],
+                'count' => (string) $count,
+            ], 1600, 0.8, ['operation' => 'ugc_hook_variants']);
+
+            $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
+            $content = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $content);
+            $raw = json_decode($content, true, 16, JSON_THROW_ON_ERROR)['variants'] ?? [];
+        } catch (\Throwable $e) {
+            Log::warning('UGC hook variants produced nothing usable', ['error' => mb_substr($e->getMessage(), 0, 200)]);
+            throw ValidationException::withMessages([
+                'variants' => 'Could not write alternative openings just now. No credits were spent — try again, or generate the take as it stands.',
+            ]);
+        }
+
+        $out = [];
+        foreach (array_slice((array) $raw, 0, $count) as $v) {
+            $text = trim((string) ($v['script_text'] ?? ''));
+            if (! is_array($v) || $text === '') {
+                continue;
+            }
+            $swapped = $segments;
+            $swapped[$first]['script_text'] = $text;
+            $swapped[$first]['anchor'] = $text;
+            if (array_key_exists('headline', $v) && is_string($v['headline'])) {
+                $swapped[$first]['headline'] = trim($v['headline']);
+            }
+
+            // normalise() re-derives the duration from the new word count, and
+            // reanchor then reports any shot the swap stranded.
+            $swapped = UgcPlan::normalise($swapped, $format);
+            $out[] = [
+                'label' => mb_substr(trim((string) ($v['label'] ?? 'Alternative')), 0, 40) ?: 'Alternative',
+                'segments' => UgcPlan::reanchor($swapped, UgcPlan::script($swapped)),
+            ];
+        }
+
+        if ($out === []) {
+            throw ValidationException::withMessages([
+                'variants' => 'No usable openings came back. Nothing was changed.',
+            ]);
+        }
+
+        return $out;
+    }
 }

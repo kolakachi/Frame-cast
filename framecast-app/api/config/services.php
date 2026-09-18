@@ -110,7 +110,7 @@ return [
             'script_from_video_reference', 'script_polish',
             'scene_breakdown', 'hook_options', 'scene_rewrite', 'scene_insert',
             'visual_brief', 'summarize_document', 'scene_visual_concepts',
-            'ugc_shot_plan', 'ugc_shot_reanchor', 'ugc_reference_read',
+            'ugc_shot_plan', 'ugc_shot_reanchor', 'ugc_reference_read', 'ugc_hook_variants',
             'one_shot_plan', 'one_shot_plan_multi',
             'ugc_brief_suggestion',
         ],

@@ -27,6 +27,14 @@ use Illuminate\Validation\ValidationException;
 /** Internal UGC director. Planning/quoting are reversible; generation executes the reviewed plan. */
 class UgcController extends Controller
 {
+    /**
+     * Openings times characters. Five of each would be twenty-five full takes
+     * off one click, and the estimate is only an estimate until speech is
+     * synthesised — so the ceiling is low enough to watch one first.
+     */
+    private const MAX_TAKES_PER_RUN = 10;
+
+
     public function takes(Request $request): JsonResponse
     {
         $projects = Project::query()->where('workspace_id', $request->user()->workspace_id)
@@ -133,6 +141,35 @@ class UgcController extends Controller
     }
 
     /**
+     * Alternative openings for a reviewed plan. Reversible and free: nothing is
+     * generated and no credits move until one is chosen and run.
+     */
+    public function variants(Request $request, UgcShotPlanner $planner): JsonResponse
+    {
+        $v = $request->validate($this->planRules() + [
+            'count' => ['sometimes', 'integer', 'min:2', 'max:6'],
+            'product' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'context' => ['sometimes', 'nullable', 'string', 'max:1500'],
+        ]);
+
+        $segments = UgcPlan::normalise($v['segments'], $v['format']);
+        $variants = $planner->hookVariants(
+            $segments, $v['format'], (int) ($v['count'] ?? 3),
+            (string) ($v['product'] ?? ''), (string) ($v['context'] ?? ''),
+        );
+
+        return response()->json(['data' => [
+            'variants' => array_map(fn ($x) => [
+                'label' => $x['label'],
+                'segments' => $x['segments'],
+                'script' => UgcPlan::script($x['segments']),
+                'credits_per_character' => UgcPlan::quote($x['segments']),
+                'warnings' => UgcPlan::warnings($x['segments'], $v['format']),
+            ], $variants),
+        ], 'meta' => []]);
+    }
+
+    /**
      * Re-direct the shots a script edit stranded. Reversible and free: no media
      * is made and no credits move, so a user can re-run it until the direction
      * reads right.
@@ -223,6 +260,11 @@ class UgcController extends Controller
         $v = $request->validate($this->planRules() + [
             'script' => ['present', 'nullable', 'string', 'max:1500'],
             'character_ids' => ['required', 'array', 'min:1', 'max:5'],
+            // Extra openings to run alongside the reviewed plan. Each is a
+            // whole take per character, so they multiply — see the cap below.
+            'variants' => ['sometimes', 'array', 'max:5'],
+            'variants.*.label' => ['sometimes', 'nullable', 'string', 'max:40'],
+            'variants.*.segments' => ['required_with:variants', 'array', 'min:1', 'max:12'],
             'character_ids.*' => ['required', 'integer', 'distinct'],
             // Voice belongs to the presenter, not the run. Each take is a
             // different person, and one shared voice across several characters
@@ -287,18 +329,52 @@ class UgcController extends Controller
             }
             $assets[$asset->id] = $asset;
         }
+        // The reviewed plan, then any extra openings. Each row is a full take
+        // for every character, which is how a careless run becomes thirty.
+        $plans = [['label' => '', 'segments' => $segments]];
+        foreach ($v['variants'] ?? [] as $i => $variant) {
+            $plans[] = [
+                'label' => trim((string) ($variant['label'] ?? '')) ?: 'Variant '.($i + 1),
+                'segments' => UgcPlan::normalise($variant['segments'], $v['format']),
+            ];
+        }
+
+        $takes = count($plans) * $characters->count();
+        if ($takes > self::MAX_TAKES_PER_RUN) {
+            throw ValidationException::withMessages([
+                'variants' => sprintf(
+                    'That is %d takes — %d opening%s across %d character%s. Run at most %d at once so you can watch one before paying for the rest.',
+                    $takes, count($plans), count($plans) === 1 ? '' : 's',
+                    $characters->count(), $characters->count() === 1 ? '' : 's',
+                    self::MAX_TAKES_PER_RUN,
+                ),
+            ]);
+        }
+
         $perCharacter = UgcPlan::quote($segments);
         if ($perCharacter !== $v['credits_per_character']) {
             throw ValidationException::withMessages(['credits_per_character' => 'The estimate changed. Re-price and review the plan before generating.']);
         }
-        $total = $perCharacter * $characters->count();
+        // Openings differ in length, so each plan is priced on its own rather
+        // than multiplying the first one's estimate.
+        $total = 0;
+        foreach ($plans as $plan) {
+            $total += UgcPlan::quote($plan['segments']) * $characters->count();
+        }
         $balance = app(CreditService::class)->balance((int) $user->workspace_id);
         if ($balance < $total) {
             throw ValidationException::withMessages(['credits' => "This run needs an estimated {$total} credits and you have {$balance}."]);
         }
         // All characters/scene records commit together. No job can see a half-built batch.
-        $projects = DB::transaction(function () use ($user, $characters, $segments, $v, $assets) {
-            return $characters->map(fn ($c) => $this->buildProject($user, $c, $segments, $v, $assets))->all();
+        $projects = DB::transaction(function () use ($user, $characters, $plans, $v, $assets) {
+            $built = [];
+            foreach ($plans as $plan) {
+                foreach ($characters as $character) {
+                    $built[] = $this->buildProject($user, $character, $plan['segments'], $v, $assets, $plan['label']);
+                }
+            }
+
+            return $built;
         });
 
         return response()->json(['data' => ['takes' => $projects, 'credits_quoted' => $total], 'meta' => []], 201);
@@ -324,19 +400,26 @@ class UgcController extends Controller
         ];
     }
 
-    private function buildProject(User $user, Character $character, array $segments, array $v, array $assets): array
+    private function buildProject(User $user, Character $character, array $segments, array $v, array $assets, string $variantLabel = ''): array
     {
         $reaction = $v['format'] === 'reaction';
         $script = UgcPlan::script($segments);
         $title = trim((string) ($v['title'] ?? '')) ?: Str::limit($script ?: $segments[0]['headline'], 48, '');
         $project = Project::query()->create([
             'workspace_id' => $user->workspace_id, 'created_by_user_id' => $user->id,
-            'title' => $title.' — '.$character->name, 'aspect_ratio' => $v['aspect_ratio'],
+            // The variant's angle in the title, or six takes on one screen are
+            // distinguishable only by opening them.
+            'title' => $title.' — '.$character->name.($variantLabel !== '' ? ' · '.$variantLabel : ''),
+            'aspect_ratio' => $v['aspect_ratio'],
             'duration_target_seconds' => (int) ceil(array_sum(array_column($segments, 'seconds'))),
             'status' => 'generating',
             'source_type' => 'script', 'primary_language' => $v['language'] ?? 'en',
             'source_content_raw' => $script, 'default_character_id' => $character->id,
-            'visual_brief' => ['ugc_format' => $v['format'], 'ugc_estimated_credits' => UgcPlan::quote($segments)],
+            'visual_brief' => [
+                'ugc_format' => $v['format'],
+                'ugc_estimated_credits' => UgcPlan::quote($segments),
+                'ugc_variant' => $variantLabel ?: null,
+            ],
         ]);
         // Per character first, then a run-wide key for the single-character
         // case, then the character's own gender. Picking a female voice for a

@@ -302,6 +302,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/quote', [UgcController::class, 'quote']);
             Route::post('/reanchor', [UgcController::class, 'reanchor']);
             Route::post('/reference', [UgcController::class, 'reference']);
+            Route::post('/variants', [UgcController::class, 'variants']);
             Route::post('/generate', [UgcController::class, 'generate']);
         });
 

@@ -133,6 +133,16 @@ For b_roll only, source must be upload (real app screens, dashboards, customer p
 PROMPT,
                 'user' => "Direct this UGC take.\nRequested format: {{format}}\nProduct: {{product}}\nBrief / audience / goal: {{context}}\nTarget length: {{duration}} seconds (reaction clips support 5 or 10).\nLanguage: {{language}}\nAvailable footage labels: {{available_footage}}\nReference shape:\n{{reference}}\nTheir uploaded footage:\n{{library}}\nExact spoken script (empty means write from brief):\n{{script_text}}",
             ],
+            'ugc_hook_variants' => [
+                'system' => <<<'PROMPT'
+You write alternative openings for an ad that already works. Return JSON only:
+{"variants":[{"label":"three words naming the angle","script_text":"the new opening line, spoken","headline":"on-screen text for that shot, or empty"}]}
+The opening is the first spoken shot. Everything after it stays exactly as written, so each opening must hand over to the second shot without a seam: the same claim has to still make sense following it.
+Give genuinely different angles, not rewordings. A question, a blunt statement, a confession, a number, a refusal — if two openings could be swapped without a viewer noticing, one of them is wasted. Keep each within roughly the same spoken length as the original so the ad's timing holds.
+label names the angle for someone choosing between them, in three words or fewer: "blunt claim", "question", "confession". Never invent statistics, testimonials or product capabilities that the rest of the ad does not already make. Write in the same language as the original.
+PROMPT,
+                'user' => "Product: {{product}}\nBrief: {{context}}\nThe ad as written:\n{{script}}\nIts current opening: {{opening}}\nWrite {{count}} alternative openings.",
+            ],
             'ugc_shot_reanchor' => [
                 'system' => <<<'PROMPT'
 You repair shots whose script moved out from under them. Return JSON only:
