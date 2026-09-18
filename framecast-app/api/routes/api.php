@@ -32,6 +32,7 @@ use Illuminate\Broadcasting\BroadcastController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
+    require __DIR__.'/agency.php';
     Route::get('/health', HealthCheckController::class);
 
     // Kelviq (Merchant of Record) webhook — unauthenticated, signature-verified

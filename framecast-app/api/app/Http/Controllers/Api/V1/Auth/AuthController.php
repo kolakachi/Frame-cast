@@ -580,7 +580,10 @@ class AuthController extends Controller
 
     private function sessionResponse(User $user, $session, string $refreshToken): JsonResponse
     {
-        $workspace = $user->workspace;
+        $workspace = Workspace::find($session->active_workspace_id ?: $user->workspace_id);
+        if (! $workspace || ! app(\App\Services\Agency\WorkspaceAccess::class)->activate($user, $workspace)) {
+            return $this->error('workspace_unavailable', 'The selected workspace is unavailable. Sign in again or ask the agency to restore access.', 403);
+        }
         $accessToken = $this->jwtService->issue($user, $workspace, $session);
 
         return $this->withRefreshCookie(response()->json([

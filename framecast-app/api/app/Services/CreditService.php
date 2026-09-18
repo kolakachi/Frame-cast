@@ -506,8 +506,8 @@ class CreditService
         sort($ids);
 
         $reason = 'ok';
-        $moved = DB::transaction(function () use ($ids, $agency, $client, $amount, &$reason): bool {
-            $locked = Workspace::query()->whereIn('id', $ids)->lockForUpdate()->get()->keyBy('id');
+        $moved = DB::transaction(function () use ($ids, $agency, $client, &$amount, &$reason): bool {
+            $locked = Workspace::query()->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $a = $locked[$agency->getKey()] ?? null;
             $c = $locked[$client->getKey()] ?? null;
             if (! $a || ! $c) {
@@ -517,7 +517,7 @@ class CreditService
             }
 
             if ($amount > 0) {
-                if ($a->creditsBalance() < $amount) {
+                if ((int) $a->credits_topup < $amount) {
                     $reason = 'agency_short';
 
                     return false;
@@ -525,15 +525,9 @@ class CreditService
                 // Funding always comes out of the agency's one-time bucket, so
                 // a monthly allowance cannot be quietly converted into a
                 // client balance that outlives the month it belonged to.
-                $fromTopup = min($amount, (int) $a->credits_topup);
-                $fromMonthly = $amount - $fromTopup;
-                if ($fromTopup > 0) {
-                    $a->decrement('credits_topup', $fromTopup);
-                }
-                if ($fromMonthly > 0) {
-                    $a->decrement('credits_monthly', $fromMonthly);
-                }
+                $a->decrement('credits_topup', $amount);
                 $c->increment('credits_topup', $amount);
+                $c->forceFill(['funding_mode' => Workspace::FUNDING_FUNDED])->save();
             } else {
                 $take = min(-$amount, (int) $c->credits_topup);
                 if ($take <= 0) {
@@ -546,16 +540,6 @@ class CreditService
                 $amount = -$take;
             }
 
-            return true;
-        });
-
-        if (! $moved) {
-            return [false, $reason];
-        }
-
-        // Two rows, one on each side, so the movement reads correctly from
-        // either workspace's history rather than appearing from nowhere.
-        rescue(function () use ($agency, $client, $amount): void {
             $now = now();
 
             // Sign convention, shared with deduct() and grant(): positive means
@@ -582,11 +566,12 @@ class CreditService
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
-        }, $this->ledgerWriteFailed('transferToClient', [
-            'agency_workspace_id' => (int) $agency->getKey(),
-            'client_workspace_id' => (int) $client->getKey(),
-            'amount' => $amount,
-        ]), false);
+            return true;
+        });
+
+        if (! $moved) {
+            return [false, $reason];
+        }
 
         return [true, 'ok'];
     }
@@ -709,8 +694,7 @@ class CreditService
      *
      * Writes a credit_ledger row on success so we can answer "where did this
      * workspace's credits go today?" without reconstructing from logs. Ledger
-     * writes are best-effort (rescued): a logging failure must never cost the
-     * user their generation.
+     * writes commit with the deduction: cap enforcement cannot miss a charge.
      *
      * @param  array<string, mixed>  $context  optional caller context — keys recognised:
      *                                          - project_id (int)
@@ -736,8 +720,17 @@ class CreditService
         $workspaceId = $this->poolId($workspaceId);
 
         $capped = false;
-        $charged = DB::transaction(function () use ($workspaceId, $spentBy, $amount, &$capped): bool {
-            $workspace = Workspace::query()->whereKey($workspaceId)->lockForUpdate()->first();
+        $charged = DB::transaction(function () use (&$workspaceId, $spentBy, $amount, $operation, $context, &$capped): bool {
+            $spender = Workspace::find($spentBy);
+            if (! $spender) {
+                return false;
+            }
+            $ids = array_unique([$spentBy, (int) ($spender->parent_workspace_id ?: $spentBy)]);
+            sort($ids);
+            $locked = Workspace::whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $spender = $locked[$spentBy];
+            $workspaceId = $spender->creditRootId();
+            $workspace = $locked[$workspaceId] ?? null;
             if (! $workspace || $workspace->creditsBalance() < $amount) {
                 return false;
             }
@@ -763,6 +756,28 @@ class CreditService
             if ($fromTopup > 0) {
                 $workspace->decrement('credits_topup', $fromTopup);
             }
+
+            CreditLedgerEntry::query()->create([
+                'workspace_id' => $workspaceId,
+                // Indexed, unlike the metadata copy below, because a per-client
+                // ceiling has to be summed before every charge.
+                'spent_by_workspace_id' => $spentBy !== $workspaceId ? $spentBy : null,
+                'user_id' => isset($context['user_id']) ? (int) $context['user_id'] : null,
+                'project_id' => isset($context['project_id']) ? (int) $context['project_id'] : null,
+                'scene_id' => isset($context['scene_id']) ? (int) $context['scene_id'] : null,
+                'operation' => mb_substr($operation !== '' ? $operation : 'unknown', 0, 64),
+                'credits' => $amount,
+                'balance_after' => $this->balance($workspaceId),
+                // Real upstream provider cost in USD, when the caller knows it.
+                // Unblocks data-driven recalibration (CREDIT_CALIBRATION.md §2).
+                'upstream_cost_usd' => isset($context['upstream_cost_usd']) ? (float) $context['upstream_cost_usd'] : null,
+                'metadata' => array_filter(array_merge(
+                    is_array($context['metadata'] ?? null) ? $context['metadata'] : [],
+                    // Only when they differ, so an ordinary workspace's ledger
+                    // does not carry a field that always repeats its own id.
+                    $spentBy !== $workspaceId ? ['spent_by_workspace_id' => $spentBy] : [],
+                ), fn ($v) => $v !== null && $v !== []) ?: null,
+            ]);
 
             return true;
         });
@@ -795,37 +810,6 @@ class CreditService
 
             return false;
         }
-
-        // Best-effort ledger write — never let a logging failure mask a
-        // successful deduction.
-        rescue(function () use ($workspaceId, $spentBy, $amount, $operation, $context) {
-            CreditLedgerEntry::query()->create([
-                'workspace_id'  => $workspaceId,
-                // Indexed, unlike the metadata copy below, because a per-client
-                // ceiling has to be summed before every charge.
-                'spent_by_workspace_id' => $spentBy !== $workspaceId ? $spentBy : null,
-                'user_id'       => isset($context['user_id'])    ? (int) $context['user_id']    : null,
-                'project_id'    => isset($context['project_id']) ? (int) $context['project_id'] : null,
-                'scene_id'      => isset($context['scene_id'])   ? (int) $context['scene_id']   : null,
-                'operation'     => mb_substr($operation !== '' ? $operation : 'unknown', 0, 64),
-                'credits'       => $amount,
-                'balance_after' => $this->balance($workspaceId),
-                // Real upstream provider cost in USD, when the caller knows it.
-                // Unblocks data-driven recalibration (CREDIT_CALIBRATION.md §2).
-                'upstream_cost_usd' => isset($context['upstream_cost_usd']) ? (float) $context['upstream_cost_usd'] : null,
-                'metadata'      => array_filter(array_merge(
-                    is_array($context['metadata'] ?? null) ? $context['metadata'] : [],
-                    // Only when they differ, so an ordinary workspace's ledger
-                    // does not carry a field that always repeats its own id.
-                    $spentBy !== $workspaceId ? ['spent_by_workspace_id' => $spentBy] : [],
-                ), fn ($v) => $v !== null && $v !== []) ?: null,
-            ]);
-        }, $this->ledgerWriteFailed('deduct', [
-            'workspace_id' => $workspaceId,
-            'spent_by_workspace_id' => $spentBy,
-            'amount' => $amount,
-            'operation' => $operation,
-        ]), false);
 
         return true;
     }

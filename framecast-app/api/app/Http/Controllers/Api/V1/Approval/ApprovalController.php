@@ -116,7 +116,7 @@ class ApprovalController extends Controller
             return $this->error('not_found', 'Approval not found.', 404);
         }
 
-        if (in_array($approval->status, ['approved', 'rejected'], true)) {
+        if ($approval->status !== 'pending') {
             return $this->error('already_decided', 'This approval has already been reviewed.', 422);
         }
 
@@ -208,7 +208,7 @@ class ApprovalController extends Controller
      */
     private function applyDecision(Approval $approval, array $validated): JsonResponse
     {
-        if (in_array($approval->status, ['approved', 'rejected'], true)) {
+        if ($approval->status !== 'pending') {
             return $this->error('already_decided', 'This approval has already been reviewed.', 422);
         }
 
@@ -272,6 +272,8 @@ class ApprovalController extends Controller
 
     private function publicSerialize(Approval $a): array
     {
+        $workspace = \App\Models\Workspace::find($a->workspace_id);
+        abort_unless($workspace?->status === 'active' && (! $workspace->parent_workspace_id || $workspace->parent?->status === 'active'), 404);
         // Don't leak internals — only what the reviewer needs
         $project = $a->project;
         $exportJob = $a->exportJob;
@@ -281,7 +283,7 @@ class ApprovalController extends Controller
             // Use the existing signed asset route
             $outputAssetUrl = URL::temporarySignedRoute(
                 'media.assets.content',
-                now()->addDays(7),
+                now()->addMinutes(10),
                 ['assetId' => $exportJob->output_asset_id],
             );
         }

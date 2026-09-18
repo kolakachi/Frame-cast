@@ -93,6 +93,9 @@ class WorkspaceController extends Controller
             'status' => ['sometimes', 'required', 'in:active,archived'],
         ]);
 
+        if ($user->isClientSeat() && array_key_exists('status', $validated)) {
+            return $this->error('forbidden', 'Only the agency can change workspace status.', 403);
+        }
         $workspace->fill($validated)->save();
 
         return response()->json([

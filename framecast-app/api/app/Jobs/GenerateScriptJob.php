@@ -73,7 +73,7 @@ class GenerateScriptJob implements ShouldQueue
             'template' => $promptTemplateKey,
         ]);
 
-        $seriesContext = $this->buildSeriesContext($project);
+        $seriesContext = trim($this->buildSeriesContext($project)."\n".app(\App\Services\Agency\ClientContext::class)->prompt((int) $project->workspace_id));
         if ($seriesContext !== '') {
             $options['system_prefix'] = $seriesContext;
         }
