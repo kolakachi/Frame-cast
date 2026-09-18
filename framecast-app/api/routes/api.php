@@ -307,6 +307,16 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/read-link', [UgcController::class, 'readLink']);
             Route::post('/fetch-video', [UgcController::class, 'fetchVideo']);
             Route::post('/scenes/{sceneId}/retry', [UgcController::class, 'sceneRetry'])->whereNumber('sceneId');
+
+            // My Footage: bring a video, correct our read of it, plan and
+            // produce your version. Same gate as the rest of UGC.
+            Route::get('/footage', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'index']);
+            Route::post('/footage', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'store']);
+            Route::get('/footage/{id}', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'show'])->whereNumber('id');
+            Route::patch('/footage/{id}', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'update'])->whereNumber('id');
+            Route::post('/footage/{id}/read', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'read'])->whereNumber('id');
+            Route::post('/footage/{id}/plan', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'plan'])->whereNumber('id');
+            Route::post('/footage/{id}/produce', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'produce'])->whereNumber('id');
         });
 
         Route::prefix('/admin')->middleware(['admin', 'admin.ip'])->group(function (): void {
