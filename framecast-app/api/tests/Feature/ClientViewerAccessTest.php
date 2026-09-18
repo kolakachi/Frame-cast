@@ -34,23 +34,33 @@ class ClientViewerAccessTest extends TestCase
         DB::purge('cva_test');
 
         Schema::create('workspaces', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('parent_workspace_id')->nullable();
-            $t->string('client_label')->nullable(); $t->string('name')->nullable();
-            $t->string('plan_tier')->nullable(); $t->string('status')->default('active');
+            $t->id();
+            $t->unsignedBigInteger('parent_workspace_id')->nullable();
+            $t->string('client_label')->nullable();
+            $t->string('name')->nullable();
+            $t->string('plan_tier')->nullable();
+            $t->string('status')->default('active');
             $t->timestamps();
         });
         Schema::create('auth_sessions', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('user_id')->nullable();
+            $t->id();
+            $t->unsignedBigInteger('user_id')->nullable();
             $t->unsignedBigInteger('workspace_id')->nullable();
             $t->string('refresh_token_hash')->nullable();
-            $t->timestamp('expires_at')->nullable(); $t->timestamps();
+            $t->timestamp('expires_at')->nullable();
+            $t->timestamps();
         });
         Schema::create('users', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
-            $t->string('email')->nullable(); $t->string('name')->nullable();
-            $t->string('role')->nullable(); $t->string('status')->nullable();
-            $t->timestamp('last_seen_at')->nullable(); $t->timestamps();
+            $t->id();
+            $t->unsignedBigInteger('workspace_id')->nullable();
+            $t->string('email')->nullable();
+            $t->string('name')->nullable();
+            $t->string('role')->nullable();
+            $t->string('status')->nullable();
+            $t->timestamp('last_seen_at')->nullable();
+            $t->timestamps();
         });
+        (require database_path('migrations/2026_09_18_110000_add_agency_workflows.php'))->up();
     }
 
     /** @return array{0: User, 1: Workspace} */
@@ -62,6 +72,8 @@ class ClientViewerAccessTest extends TestCase
 
         $u = User::query()->create(['email' => 'ops@acme.test', 'name' => 'Ops', 'role' => $role, 'status' => 'active']);
         $u->forceFill(['workspace_id' => $client->getKey()])->save();
+
+        DB::table('workspace_memberships')->insert(['workspace_id' => $client->id, 'user_id' => $u->id, 'role' => $role, 'created_at' => now(), 'updated_at' => now()]);
 
         return [$u->fresh(), $client->fresh()];
     }

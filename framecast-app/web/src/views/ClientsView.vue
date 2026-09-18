@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
+import api from "../services/api";
 import NotifBell from "../components/NotifBell.vue";
 import { useAuthStore } from "../stores/auth";
 import { useWorkspaceStore } from "../stores/workspace";
@@ -10,13 +11,17 @@ const router = useRouter();
 const authStore = useAuthStore();
 const workspaceStore = useWorkspaceStore();
 
+const summaries=ref({});
 const newName = ref("");
 const busy = ref(false);
 const error = ref("");
 
-const clients = computed(() => workspaceStore.clients ?? []);
+const showArchived = ref(false);
+const search = ref('');
+const clients = computed(() => (workspaceStore.clients ?? []).filter(c => (showArchived.value || c.status !== 'archived') && (c.client_label || c.name).toLowerCase().includes(search.value.toLowerCase())));
+watch(showArchived, () => workspaceStore.loadClients(showArchived.value));
 const atLimit = computed(
-  () => clients.value.length >= (workspaceStore.maxClients ?? 50),
+  () => (workspaceStore.clients ?? []).filter(c=>c.status!=='archived').length >= (workspaceStore.maxClients ?? 50),
 );
 
 async function addClient() {
@@ -45,15 +50,16 @@ function creditLine(c) {
   return "Shared balance, no cap";
 }
 
-onMounted(() => {
+onMounted(async () => {
   workspaceStore.loadClients();
   workspaceStore.loadClientUsage(30);
+  try { const r=await api.get('/agency-overview');summaries.value=Object.fromEntries(r.data.data.map(x=>[x.id,x])); } catch {error.value='Could not load client activity. Refresh to retry.'}
 });
 </script>
 
 <template>
   <div class="shell">
-    <AppSidebar :user="authStore.user" />
+    <AppSidebar :user="authStore.user" active-page="clients" />
     <div class="main">
       <div class="topbar">
         <div class="topbar-left">
@@ -77,6 +83,7 @@ onMounted(() => {
           can only ever spend what you gave it.
         </p>
 
+        <div class="add"><input class="input" v-model="search" aria-label="Search clients" placeholder="Find a client…" /><label><input v-model="showArchived" type="checkbox" /> Show archived</label></div>
         <div class="add">
           <input
             v-model="newName"
@@ -93,7 +100,7 @@ onMounted(() => {
         <p v-if="atLimit" class="hint warn">
           You have reached the limit of {{ workspaceStore.maxClients ?? 50 }} client workspaces.
         </p>
-        <p v-if="error" class="err">{{ error }}</p>
+        <p v-if="error || workspaceStore.loadFailed" class="err">{{ error || "Could not load clients." }} <button class="btn" @click="workspaceStore.loadClients(showArchived)">Retry</button></p>
 
         <div v-if="workspaceStore.clients === null" class="empty">Loading…</div>
         <div v-else-if="!clients.length" class="empty">
@@ -114,7 +121,8 @@ onMounted(() => {
                 {{ c.funding_mode === "funded" ? "Funded" : "Pooled" }}
               </span>
             </div>
-            <div class="card-row">{{ creditLine(c) }}</div>
+            <div class="card-row">{{c.status}} · {{ creditLine(c) }}</div><p v-if="c.monthly_credit_cap && c.spent_this_month >= c.monthly_credit_cap * .8" class="warn">At least 80% of monthly cap used</p>
+            <div v-if="summaries[c.id]" class="card-row">{{summaries[c.id].open_requests}} open requests · {{summaries[c.id].pending_reviews}} awaiting approval</div>
             <div class="card-foot">
               <span>{{ c.projects }} project{{ c.projects === 1 ? "" : "s" }}</span>
               <span>{{ c.members }} member{{ c.members === 1 ? "" : "s" }}</span>

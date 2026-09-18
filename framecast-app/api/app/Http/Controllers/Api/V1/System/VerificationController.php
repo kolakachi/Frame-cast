@@ -18,7 +18,8 @@ class VerificationController extends Controller
     public function __construct(
         private readonly WorkspaceUsageService $usageService,
         private readonly CreditService $credits,
-    ) {}
+    ) {
+    }
 
     public function me(Request $request): JsonResponse
     {
@@ -190,10 +191,15 @@ class VerificationController extends Controller
             'confirm_email' => ['required', 'string', 'in:'.$user->email],
         ]);
 
+        $user = User::findOrFail($user->id);
         $workspace = $user->workspace;
 
+        if ($workspace && (int) $workspace->owner_user_id === (int) $user->id && $workspace->children()->exists()) {
+            return response()->json(['error' => ['message' => 'Contact support to close an agency account with client workspaces.']], 422);
+        }
+
         // Best-effort: revoke API tokens immediately so other sessions can't act.
-        \Illuminate\Support\Facades\DB::table('auth_tokens')
+        \Illuminate\Support\Facades\DB::table('auth_sessions')
             ->where('user_id', $user->getKey())
             ->delete();
 
@@ -204,7 +210,7 @@ class VerificationController extends Controller
                 ->where('workspace_id', $workspace->getKey())
                 ->where('id', '!=', $user->getKey())
                 ->count();
-            if ($otherUsers === 0) {
+            if ($otherUsers === 0 && ! $workspace->parent_workspace_id && (int) $workspace->owner_user_id === (int) $user->id) {
                 $workspace->delete();
             }
         }

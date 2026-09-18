@@ -35,7 +35,8 @@ class ProjectController extends Controller
     public function __construct(
         private readonly WorkspaceUsageService $usageService,
         private readonly CreditService $credits,
-    ) {}
+    ) {
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -865,6 +866,7 @@ class ProjectController extends Controller
 
         $sceneCount     = max(1, min(8, (int) ($validated['scenes_count'] ?? 1)));
         $promptText     = trim($validated['prompt']);
+        $promptText .= "\n\n".app(\App\Services\Agency\ClientContext::class)->prompt((int) $user->workspace_id);
 
         // Resolve reference images (workspace-scoped) to signed URLs so the
         // PLANNER can SEE them — scene visuals then describe what the images
@@ -1136,6 +1138,7 @@ class ProjectController extends Controller
         }
 
         $promptText  = trim($validated['prompt']);
+        $promptText .= "\n\n".app(\App\Services\Agency\ClientContext::class)->prompt((int) $user->workspace_id);
         $aspectRatio = $validated['aspect_ratio'] ?? '9:16';
         $title       = $validated['title']
             ?? \Illuminate\Support\Str::limit($promptText, 60, '');
@@ -1743,15 +1746,23 @@ class ProjectController extends Controller
         $visualOptionalTypes = ['text_card', 'waveform'];
 
         foreach ($scenes as $scene) {
-            if (trim((string) $scene->script_text) === '') {
-                return $this->error('export_blocked', 'All scenes must have script content before export.', 422);
+            // A scene without words is only an unfinished scene when it also
+            // has nothing to show. The text-led UGC format is silent cards by
+            // design — a still and a headline, no narration — and this gate
+            // used to refuse the whole format at the last step: planned,
+            // generated, priced, unexportable.
+            $headline = trim((string) data_get($scene->caption_settings_json, 'ugc_headline.text', ''));
+            if (trim((string) $scene->script_text) === '' && ! $scene->visual_asset_id && $headline === '') {
+                return $this->error('export_blocked', 'Every scene needs narration, a visual, or a headline before export.', 422);
             }
 
             if (! $scene->visual_asset_id && ! in_array((string) $scene->visual_type, $visualOptionalTypes, true)) {
                 return $this->error('export_blocked', 'Missing visual blocks export.', 422);
             }
 
-            if (! data_get($scene->voice_settings_json, 'audio_asset_id')) {
+            // Only scenes with words need a voice track — silent cards
+            // (text_led UGC) have no narration to have generated.
+            if (trim((string) $scene->script_text) !== '' && ! data_get($scene->voice_settings_json, 'audio_asset_id')) {
                 return $this->error('export_blocked', 'Missing voice blocks export.', 422);
             }
         }

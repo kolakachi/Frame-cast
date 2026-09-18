@@ -24,78 +24,115 @@ class ClientWorkspaceTest extends TestCase
         DB::purge('cw_test');
 
         Schema::create('workspaces', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('parent_workspace_id')->nullable();
-            $t->string('client_label')->nullable(); $t->string('name')->nullable();
+            $t->id();
+            $t->unsignedBigInteger('parent_workspace_id')->nullable();
+            $t->string('client_label')->nullable();
+            $t->string('name')->nullable();
             $t->unsignedBigInteger('owner_user_id')->nullable();
-            $t->string('plan_tier')->nullable(); $t->string('plan_source')->nullable();
-            $t->string('plan_status')->nullable(); $t->string('status')->nullable();
-            $t->integer('credits_monthly')->default(0); $t->integer('credits_topup')->default(0);
+            $t->string('plan_tier')->nullable();
+            $t->string('plan_source')->nullable();
+            $t->string('plan_status')->nullable();
+            $t->string('status')->nullable();
+            $t->integer('credits_monthly')->default(0);
+            $t->integer('credits_topup')->default(0);
             $t->integer('credits_free_granted')->default(0);
             $t->unsignedInteger('monthly_credit_cap')->nullable();
-            $t->string('funding_mode')->default('pooled'); $t->timestamps();
+            $t->string('funding_mode')->default('pooled');
+            $t->timestamps();
         });
         Schema::create('users', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
-            $t->string('email')->nullable(); $t->string('role')->nullable();
-            $t->string('name')->nullable(); $t->string('timezone')->nullable();
-            $t->string('status')->nullable(); $t->timestamp('last_seen_at')->nullable();
+            $t->id();
+            $t->unsignedBigInteger('workspace_id')->nullable();
+            $t->string('email')->nullable();
+            $t->string('role')->nullable();
+            $t->string('name')->nullable();
+            $t->string('timezone')->nullable();
+            $t->string('status')->nullable();
+            $t->timestamp('last_seen_at')->nullable();
             $t->timestamps();
         });
         Schema::create('projects', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
-            $t->string('primary_language')->nullable(); $t->timestamps();
+            $t->id();
+            $t->unsignedBigInteger('workspace_id')->nullable();
+            $t->string('primary_language')->nullable();
+            $t->timestamps();
         });
         // The ledger write is rescued, so a missing column fails silently —
         // mirror the real columns or these assertions test nothing.
         Schema::create('credit_ledger', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('workspace_id');
+            $t->id();
+            $t->unsignedBigInteger('workspace_id');
             $t->unsignedBigInteger('spent_by_workspace_id')->nullable();
-            $t->unsignedBigInteger('user_id')->nullable(); $t->unsignedBigInteger('project_id')->nullable();
+            $t->unsignedBigInteger('user_id')->nullable();
+            $t->unsignedBigInteger('project_id')->nullable();
             $t->unsignedBigInteger('scene_id')->nullable();
-            $t->string('operation'); $t->integer('credits'); $t->integer('balance_after')->nullable();
+            $t->string('operation');
+            $t->integer('credits');
+            $t->integer('balance_after')->nullable();
             $t->decimal('upstream_cost_usd', 12, 6)->nullable();
-            $t->json('metadata')->nullable(); $t->timestamps();
+            $t->json('metadata')->nullable();
+            $t->timestamps();
         });
         Schema::create('scenes', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('project_id')->nullable();
-            $t->float('duration_seconds')->default(0); $t->timestamps();
+            $t->id();
+            $t->unsignedBigInteger('project_id')->nullable();
+            $t->float('duration_seconds')->default(0);
+            $t->timestamps();
         });
         Schema::create('export_jobs', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('project_id')->nullable();
-            $t->string('status')->nullable(); $t->timestamp('completed_at')->nullable(); $t->timestamps();
+            $t->id();
+            $t->unsignedBigInteger('project_id')->nullable();
+            $t->string('status')->nullable();
+            $t->timestamp('completed_at')->nullable();
+            $t->timestamps();
         });
         Schema::create('channels', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
-            $t->string('status')->nullable(); $t->timestamps();
+            $t->id();
+            $t->unsignedBigInteger('workspace_id')->nullable();
+            $t->string('status')->nullable();
+            $t->timestamps();
         });
         Schema::create('voice_profiles', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
-            $t->boolean('is_cloned')->default(false); $t->timestamps();
+            $t->id();
+            $t->unsignedBigInteger('workspace_id')->nullable();
+            $t->boolean('is_cloned')->default(false);
+            $t->timestamps();
         });
         Schema::create('assets', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('workspace_id')->nullable();
-            $t->string('status')->nullable(); $t->unsignedBigInteger('size_bytes')->nullable();
+            $t->id();
+            $t->unsignedBigInteger('workspace_id')->nullable();
+            $t->string('status')->nullable();
+            $t->unsignedBigInteger('size_bytes')->nullable();
             $t->timestamps();
         });
         Schema::create('brand_kits', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('workspace_id');
+            $t->id();
+            $t->unsignedBigInteger('workspace_id');
             $t->string('name')->nullable();
-            $t->string('primary_color')->nullable(); $t->string('secondary_color')->nullable();
+            $t->string('primary_color')->nullable();
+            $t->string('secondary_color')->nullable();
             $t->string('accent_color')->nullable();
-            $t->string('font_primary')->nullable(); $t->string('font_secondary')->nullable();
+            $t->string('font_primary')->nullable();
+            $t->string('font_secondary')->nullable();
             $t->unsignedBigInteger('logo_asset_id')->nullable();
             $t->string('default_caption_style')->nullable();
             $t->unsignedBigInteger('default_voice_profile_id')->nullable();
             $t->timestamps();
         });
         Schema::create('magic_link_tokens', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('user_id'); $t->string('email')->nullable();
-            $t->string('token_hash'); $t->timestamp('expires_at')->nullable();
+            $t->id();
+            $t->unsignedBigInteger('user_id');
+            $t->string('email')->nullable();
+            $t->string('token_hash');
+            $t->timestamp('expires_at')->nullable();
             $t->timestamp('created_at')->nullable();
         });
         Schema::create('auth_sessions', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('user_id')->nullable(); $t->timestamps();
+            $t->id();
+            $t->unsignedBigInteger('user_id')->nullable();
+            $t->timestamps();
         });
+        (require database_path('migrations/2026_09_18_110000_add_agency_workflows.php'))->up();
     }
 
     private function agency(string $tier = 'agency', int $credits = 20000): Workspace
@@ -221,8 +258,8 @@ class ClientWorkspaceTest extends TestCase
         $this->assertFalse($client->canOwnClients());
 
         // Acting inside the client, a create still attaches to the agency.
-        $u->forceFill(['workspace_id' => $client->getKey()])->save();
-        $this->ctrl()->store($this->req($u->fresh(), ['name' => 'Nested']));
+        $u->setRawAttributes(array_merge($u->getAttributes(), ['workspace_id' => $client->id]), true);
+        $this->ctrl()->store($this->req($u, ['name' => 'Nested']));
 
         $this->assertSame((int) $a->getKey(),
             (int) Workspace::query()->where('name', 'Nested')->firstOrFail()->parent_workspace_id);
@@ -401,7 +438,7 @@ class ClientWorkspaceTest extends TestCase
         );
 
         $this->assertSame(422, $res->status());
-        $this->assertSame('email_in_use', $res->getData(true)['error']['code']);
+        $this->assertSame('owner_access', $res->getData(true)['error']['code']);
     }
 
     public function test_an_agency_cannot_invite_into_someone_else_s_client(): void
@@ -421,7 +458,7 @@ class ClientWorkspaceTest extends TestCase
         $this->assertNull(User::query()->where('email', 'x@y.test')->first());
     }
 
-    public function test_removing_a_viewer_kills_their_sessions_too(): void
+    public function test_removing_a_viewer_revokes_only_this_membership(): void
     {
         \Illuminate\Support\Facades\Mail::fake();
         $a = $this->agency();
@@ -435,8 +472,9 @@ class ClientWorkspaceTest extends TestCase
         $res = $this->ctrl()->removeViewer($this->req($u, [], 'DELETE'), (int) $client->getKey(), (int) $viewer->getKey());
 
         $this->assertSame(200, $res->status());
-        $this->assertNull(User::query()->where('email', 'ops@acme.test')->first());
-        $this->assertSame(0, DB::table('auth_sessions')->where('user_id', $viewer->getKey())->count());
+        $this->assertNotNull(User::query()->where('email', 'ops@acme.test')->first());
+        $this->assertNotNull(DB::table('workspace_memberships')->where('workspace_id', $client->id)->where('user_id', $viewer->id)->value('revoked_at'));
+        $this->assertSame(1, DB::table('auth_sessions')->where('user_id', $viewer->getKey())->count());
         $this->assertNotNull(Workspace::query()->find($client->getKey()), 'the workspace survives');
     }
 
@@ -666,7 +704,8 @@ class ClientWorkspaceTest extends TestCase
         );
 
         $this->assertSame(200, $res->status());
-        $this->assertSame(User::ROLE_CLIENT_ADMIN, $seat->fresh()->role);
+        $this->assertSame(User::ROLE_CLIENT_ADMIN, DB::table('workspace_memberships')->where('workspace_id', $client->id)->where('user_id', $seat->id)->value('role'));
+        $this->assertSame(User::ROLE_CLIENT_VIEWER, $seat->fresh()->role);
     }
 
     public function test_members_are_paged_and_searchable(): void
@@ -828,7 +867,7 @@ class ClientWorkspaceTest extends TestCase
         \Illuminate\Support\Facades\Log::spy();
 
         $a = $this->agency(credits: 1000);
-        \Illuminate\Support\Facades\Schema::drop('credit_ledger');   // make every ledger write fail
+        Schema::drop('credit_ledger');   // make every ledger write fail
 
         app(CreditService::class)->grant((int) $a->getKey(), 500, 'topup_kelviq');
 

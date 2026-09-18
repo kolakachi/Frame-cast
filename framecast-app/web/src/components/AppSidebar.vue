@@ -1,4 +1,5 @@
 <script setup>
+import WorkspaceAccessPicker from "./WorkspaceAccessPicker.vue"
 import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import WhatsNew from './WhatsNew.vue'
 import NotifBell from './NotifBell.vue'
@@ -370,6 +371,7 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
+    <WorkspaceAccessPicker v-if="!isCollapsed" />
     <div class="sidebar-nav">
       <div class="nav-section-label">Workspace</div>
       <button

@@ -37,24 +37,58 @@ class UgcController extends Controller
 
     public function takes(Request $request): JsonResponse
     {
-        $projects = Project::query()->where('workspace_id', $request->user()->workspace_id)
-            ->whereNotNull('visual_brief->ugc_format')->with('scenes')->latest('id')->limit(30)->get();
-        $takes = $projects->map(function (Project $project) {
+        $v = $request->validate([
+            'run' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'detail' => ['sometimes', 'boolean'],
+        ]);
+        $query = Project::query()->where('workspace_id', $request->user()->workspace_id)
+            ->whereNotNull('visual_brief->ugc_format')->with('scenes')->latest('id')->limit(30);
+        if (! empty($v['run'])) {
+            $query->where('visual_brief->ugc_run_id', $v['run']);
+        }
+        $detail = (bool) ($v['detail'] ?? false);
+        $takes = $query->get()->map(function (Project $project) use ($detail) {
             $pending = false;
             $failed = $project->status === 'failed';
-            foreach ($project->scenes as $scene) {
+            $sceneRows = [];
+            foreach ($project->scenes->sortBy('scene_order') as $scene) {
                 $settings = $scene->image_generation_settings_json ?? [];
                 $voice = $scene->voice_settings_json ?? [];
-                $failed = $failed || ! empty($settings['last_error']) || ! empty($settings['animation_last_error']) || ! empty($voice['last_error']);
+                $sceneError = trim((string) (($settings['last_error'] ?? '') ?: ($settings['animation_last_error'] ?? '') ?: ($voice['last_error'] ?? '')));
+                $failed = $failed || $sceneError !== '';
                 $actor = in_array($settings['ugc_kind'] ?? '', ['on_camera', 'reaction'], true);
-                $pending = $pending || ! $scene->visual_asset_id || ! empty($settings['in_progress']) || ! empty($settings['animation_in_progress'])
-                    || ($actor && empty($settings['animation_video_asset_id']))
-                    || (trim((string) $scene->script_text) !== '' && empty($voice['audio_asset_id']));
+                $spoken = trim((string) $scene->script_text) !== '' && ($voice['enabled'] ?? true);
+                $visualBusy = ! empty($settings['in_progress']) || ! empty($settings['animation_in_progress']);
+                $visualDone = $scene->visual_asset_id && ! $visualBusy && (! $actor || ! empty($settings['animation_video_asset_id']));
+                $voiceDone = ! $spoken || ! empty($voice['audio_asset_id']);
+                $scenePending = ! $visualDone || ! $voiceDone;
+                $pending = $pending || $scenePending;
+                if ($detail) {
+                    $sceneRows[] = [
+                        'id' => $scene->id,
+                        'label' => $scene->label,
+                        'kind' => $settings['ugc_kind'] ?? 'b_roll',
+                        'script_text' => \Illuminate\Support\Str::limit((string) $scene->script_text, 90),
+                        'voice' => $spoken ? ($voiceDone ? 'done' : 'working') : 'none',
+                        'visual' => $sceneError !== '' ? 'failed' : ($visualDone ? 'done' : 'working'),
+                        // The provider's raw failure is logged, not shown — it
+                        // names hosts and internals the user can't act on.
+                        'error' => $sceneError !== '' ? 'This scene failed to generate. Retrying is free until it succeeds.' : null,
+                        'preview_asset_id' => $scene->visual_asset_id,
+                    ];
+                }
             }
 
-            return ['id' => $project->id, 'character' => $project->title, 'scenes' => $project->scenes->count(),
+            $row = ['id' => $project->id, 'character' => $project->title, 'scenes' => $project->scenes->count(),
                 'credits' => data_get($project->visual_brief, 'ugc_estimated_credits', 0),
+                'variant' => data_get($project->visual_brief, 'ugc_variant'),
+                'run_id' => data_get($project->visual_brief, 'ugc_run_id'),
                 'status' => $failed ? 'needs_attention' : ($pending ? 'generating' : 'ready_for_review')];
+            if ($detail) {
+                $row['scene_rows'] = $sceneRows;
+            }
+
+            return $row;
         });
 
         return response()->json(['data' => ['takes' => $takes], 'meta' => []]);
@@ -89,6 +123,11 @@ class UgcController extends Controller
 
         // Resolved here, not trusted from the client: the planner only ever
         // sees clips this workspace owns.
+        // The client's saved context follows both UGC and owned-footage planning.
+        $workspaceId = (int) $request->user()->workspace_id;
+        $v['context'] = trim(($v['context'] ?? '')."\n".app(\App\Services\Agency\ClientContext::class)->prompt($workspaceId));
+        $clientBrief = json_decode(DB::table('client_profiles')->where('workspace_id', $workspaceId)->value('brief') ?? '{}', true);
+        $v['footage_asset_ids'] = array_slice(array_unique(array_merge($v['footage_asset_ids'] ?? [], $clientBrief['asset_ids'] ?? [])), 0, 40);
         $library = [];
         foreach (Asset::query()
             ->where('workspace_id', $request->user()->workspace_id)
@@ -395,19 +434,220 @@ class UgcController extends Controller
         if ($balance < $total) {
             throw ValidationException::withMessages(['credits' => "This run needs an estimated {$total} credits and you have {$balance}."]);
         }
+        // One id across every take in the run, so the progress screen can
+        // follow the whole batch with a single query.
+        $runId = (string) Str::uuid();
         // All characters/scene records commit together. No job can see a half-built batch.
-        $projects = DB::transaction(function () use ($user, $characters, $plans, $v, $assets) {
+        $projects = DB::transaction(function () use ($user, $characters, $plans, $v, $assets, $runId) {
             $built = [];
             foreach ($plans as $plan) {
                 foreach ($characters->isEmpty() ? [null] : $characters->all() as $character) {
-                    $built[] = $this->buildProject($user, $character, $plan['segments'], $v, $assets, $plan['label']);
+                    $built[] = $this->buildProject($user, $character, $plan['segments'], $v, $assets, $plan['label'], $runId);
                 }
             }
 
             return $built;
         });
 
-        return response()->json(['data' => ['takes' => $projects, 'credits_quoted' => $total], 'meta' => []], 201);
+        return response()->json(['data' => ['takes' => $projects, 'credits_quoted' => $total, 'run_id' => $runId], 'meta' => []], 201);
+    }
+
+    /**
+     * Read a product page so the brief can start from a link. Returns what we
+     * found for the user to confirm — never silently assumed correct.
+     */
+    public function readLink(Request $request, AIGenerationAdapter $ai): JsonResponse
+    {
+        $v = $request->validate(['url' => ['required', 'url', 'max:2000']]);
+
+        try {
+            $content = app(\App\Services\Generation\UrlContentExtractor::class)->extract($v['url']);
+        } catch (\Throwable $e) {
+            return $this->error('link_unreadable', $e->getMessage() ?: 'That page could not be read.', 422);
+        }
+
+        try {
+            $result = $ai->generate('ugc_read_link', [
+                'page_content' => mb_substr($content, 0, 12000),
+                'url' => $v['url'],
+            ], 900, 0.4, ['operation' => 'ugc_read_link']);
+            $parsed = UgcPlan::decodeModelJson((string) ($result['content'] ?? $result['text'] ?? ''));
+            $product = trim((string) ($parsed['product'] ?? ''));
+            $context = trim((string) ($parsed['context'] ?? ''));
+            if ($product === '' && $context === '') {
+                throw new \UnexpectedValueException('empty read');
+            }
+
+            return response()->json(['data' => [
+                'product' => mb_substr($product, 0, 200),
+                'context' => mb_substr($context, 0, 1500),
+                'must_include' => mb_substr(trim((string) ($parsed['must_include'] ?? '')), 0, 200),
+                'source_url' => $v['url'],
+            ], 'meta' => []]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->error('link_unreadable', 'We opened the page but could not make sense of it. Paste the product details instead.', 422);
+        }
+    }
+
+    /**
+     * Bring a remote video into the workspace by URL — the footage flow's
+     * "paste a link" intake. Downloads server-side into managed storage.
+     */
+    public function fetchVideo(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $v = $request->validate(['url' => ['required', 'url', 'max:2000']]);
+        $url = $v['url'];
+        if (! preg_match('#^https?://#i', $url)) {
+            return $this->error('invalid_url', 'Only http(s) links can be fetched.', 422);
+        }
+        // A fetch the server performs on the user's behalf must not be able
+        // to reach the server's own network.
+        $host = (string) parse_url($url, PHP_URL_HOST);
+        $ips = @gethostbynamel($host) ?: [];
+        foreach ($ips as $ip) {
+            if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return $this->error('invalid_url', 'That address points somewhere we cannot fetch from.', 422);
+            }
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'ugc-fetch-');
+        try {
+            $response = \Illuminate\Support\Facades\Http::connectTimeout(10)->timeout(180)
+                ->withOptions(['allow_redirects' => ['max' => 3]])
+                ->sink($tmp)
+                ->get($url);
+            if (! $response->successful()) {
+                return $this->error('fetch_failed', 'The link answered with an error ('.$response->status().'). Check it opens in a browser, or upload the file instead.', 422);
+            }
+            $size = (int) filesize($tmp);
+            if ($size < 1024) {
+                return $this->error('fetch_failed', 'The link did not return a video file. Some platforms block direct downloads — upload the file instead.', 422);
+            }
+            if ($size > 500 * 1024 * 1024) {
+                return $this->error('fetch_failed', 'That file is larger than 500 MB. Trim it or upload a smaller cut.', 422);
+            }
+            $mime = mime_content_type($tmp) ?: (string) $response->header('Content-Type');
+            if (! str_starts_with($mime, 'video/')) {
+                return $this->error('fetch_failed', 'The link returned "'.($mime ?: 'unknown').'", not a video. Page links (YouTube, TikTok) cannot be fetched directly — use the file itself.', 422);
+            }
+
+            $extension = pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'mp4';
+            $path = sprintf('workspace-assets/%d/%s.%s', $user->workspace_id, Str::uuid()->toString(), $extension);
+            $storageUrl = app(\App\Services\Media\StorageService::class)->put($path, file_get_contents($tmp), ['ContentType' => $mime]);
+
+            $probe = $this->probeVideo($tmp);
+            $name = basename((string) parse_url($url, PHP_URL_PATH)) ?: 'Fetched video';
+            $asset = Asset::query()->create([
+                'workspace_id' => $user->workspace_id,
+                'asset_type' => 'video',
+                'title' => mb_substr($name, 0, 255),
+                'description' => 'Fetched from '.$url,
+                'storage_url' => $storageUrl,
+                'mime_type' => $mime,
+                'file_size_bytes' => $size,
+                'duration_seconds' => $probe['duration'],
+                'dimensions_json' => $probe['dimensions'],
+                'tags' => ['fetched_url'],
+                'status' => 'active',
+                'created_by_user_id' => $user->id,
+            ]);
+
+            return response()->json(['data' => ['asset' => $asset], 'meta' => []], 201);
+        } finally {
+            @unlink($tmp);
+        }
+    }
+
+    /** @return array{duration: ?float, dimensions: ?array} */
+    private function probeVideo(string $path): array
+    {
+        try {
+            $process = new \Symfony\Component\Process\Process([
+                'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                '-show_entries', 'stream=width,height:format=duration',
+                '-of', 'json', $path,
+            ]);
+            $process->setTimeout(30)->run();
+            $probe = json_decode($process->getOutput(), true) ?: [];
+            $stream = $probe['streams'][0] ?? [];
+
+            return [
+                'duration' => isset($probe['format']['duration']) ? (float) $probe['format']['duration'] : null,
+                'dimensions' => isset($stream['width']) ? ['width' => (int) $stream['width'], 'height' => (int) $stream['height']] : null,
+            ];
+        } catch (\Throwable) {
+            return ['duration' => null, 'dimensions' => null];
+        }
+    }
+
+    /**
+     * Retry one failed leg of a UGC scene. Charge-on-success billing means a
+     * failed leg never charged, so the retry is free until it works.
+     */
+    public function sceneRetry(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $scene = Scene::query()->whereKey($sceneId)
+            ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id)->whereNotNull('visual_brief->ugc_format'))
+            ->first();
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $settings = $scene->image_generation_settings_json ?? [];
+        $voice = $scene->voice_settings_json ?? [];
+        $retried = [];
+
+        if (! empty($voice['last_error'])) {
+            $scene->forceFill(['voice_settings_json' => array_merge($voice, ['last_error' => null])])->save();
+            GenerateTTSJob::dispatch($scene->project_id)->afterCommit();
+            $retried[] = 'voice';
+        }
+
+        if (! empty($settings['last_error'])) {
+            $token = (string) Str::uuid();
+            $reaction = ($settings['ugc_kind'] ?? '') === 'reaction';
+            $scene->forceFill(['image_generation_settings_json' => array_merge($settings, [
+                'last_error' => null, 'in_progress' => true,
+                'generation_token' => $token, 'generation_started_at' => now()->toIso8601String(),
+            ])])->save();
+            GenerateAIImageJob::dispatch(
+                $scene->id, $scene->project_id, 'photorealistic', null, 'photorealistic', $token,
+                $reaction ? (int) $scene->duration_seconds : null,
+                $reaction ? (string) ($settings['ugc_motion_prompt'] ?? '') : null,
+                $reaction ? UgcPlan::REACTION_TIER : null,
+                null,
+                array_map('intval', $settings['reference_asset_ids'] ?? []),
+            )->afterCommit();
+            $retried[] = 'visual';
+        } elseif (! empty($settings['animation_last_error'])) {
+            $scene->forceFill(['image_generation_settings_json' => array_merge($settings, [
+                'animation_last_error' => null,
+            ])])->save();
+            if (! empty($settings['planned_spokesperson'])) {
+                // Release the one-time dispatch guard so the retry can win it.
+                \Illuminate\Support\Facades\Cache::forget('spokesperson-dispatch:'.$scene->getKey());
+                \App\Jobs\GenerateTalkingVideoJob::maybeDispatchForScene($scene);
+            } else {
+                \App\Jobs\AnimateSceneJob::dispatch(
+                    $scene->id, $scene->project_id, UgcPlan::REACTION_TIER,
+                    max(3, min(10, (int) $scene->duration_seconds)),
+                    (string) ($settings['ugc_motion_prompt'] ?? '') ?: null,
+                )->afterCommit();
+            }
+            $retried[] = 'animation';
+        }
+
+        if ($retried === []) {
+            return $this->error('nothing_to_retry', 'This scene has no failed step to retry.', 422);
+        }
+
+        return response()->json(['data' => ['retried' => $retried], 'meta' => []]);
     }
 
     private function planRules(): array
@@ -430,7 +670,7 @@ class UgcController extends Controller
         ];
     }
 
-    private function buildProject(User $user, ?Character $character, array $segments, array $v, array $assets, string $variantLabel = ''): array
+    private function buildProject(User $user, ?Character $character, array $segments, array $v, array $assets, string $variantLabel = '', ?string $runId = null): array
     {
         $reaction = $v['format'] === 'reaction';
         $script = UgcPlan::script($segments);
@@ -449,6 +689,7 @@ class UgcController extends Controller
                 'ugc_format' => $v['format'],
                 'ugc_estimated_credits' => UgcPlan::quote($segments),
                 'ugc_variant' => $variantLabel ?: null,
+                'ugc_run_id' => $runId,
             ],
         ]);
         // Per character first, then a run-wide key for the single-character
@@ -521,6 +762,7 @@ class UgcController extends Controller
         }
 
         return ['id' => $project->id, 'character' => $character?->name ?? 'No presenter',
-            'scenes' => count($segments), 'credits' => UgcPlan::quote($segments), 'status' => 'generating'];
+            'scenes' => count($segments), 'credits' => UgcPlan::quote($segments), 'status' => 'generating',
+            'run_id' => $runId, 'variant' => $variantLabel ?: null];
     }
 }

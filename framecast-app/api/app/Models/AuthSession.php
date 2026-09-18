@@ -11,6 +11,7 @@ class AuthSession extends Model
 
     protected $fillable = [
         'user_id',
+        'active_workspace_id',
         'token_hash',
         'user_agent',
         'ip_address',

@@ -33,33 +33,29 @@ class AuthenticateWithJwt
             return $this->unauthorized('Invalid access token.');
         }
 
+        $session = \App\Models\AuthSession::whereKey($claims['session_id'])->where('user_id', $claims['user_id'])->first();
+        if (! $session || $session->revoked_at || ($session->expires_at && $session->expires_at->isPast())) {
+            return $this->unauthorized('User session is no longer valid.');
+        }
+        $request->attributes->set('auth_session_id', $claims['session_id']);
+
         $user = User::query()->with('workspace')->whereKey($claims['user_id'])->first();
 
         if (! $user) {
             return $this->unauthorized('User session is no longer valid.');
         }
 
-        // The token names the workspace being acted in, which is the user's own
-        // or — for an agency — one of its client workspaces. This equality used
-        // to be the whole tenant boundary, so widening it is the one place a
-        // mistake becomes a cross-tenant leak: a client workspace is accepted
-        // ONLY when its parent is this user's own workspace.
         $active = (int) ($claims['workspace_id'] ?? 0);
-        if ($active !== (int) $user->workspace_id && ! $this->ownsClient($user, $active)) {
-            return $this->unauthorized('User session is no longer valid.');
+        $target = Workspace::find($active);
+        $access = app(\App\Services\Agency\WorkspaceAccess::class);
+        if (! $target || ! $access->role($user, $target)) {
+            return $this->unauthorized('Workspace access is no longer valid.');
         }
 
-        // Every controller reads $user->workspace_id to scope its queries. Point
-        // it at the active workspace so all of them follow the switch without
-        // being touched — and sync it as original so a later save() of this
-        // model cannot write the borrowed id over the user's real home.
-        if ($active !== (int) $user->workspace_id) {
-            $user->setRawAttributes(
-                array_merge($user->getAttributes(), ['workspace_id' => $active]),
-                true,
-            );
-            $user->setRelation('workspace', Workspace::find($active));
-        }
+        // A revoked membership takes effect on the next request, including old JWTs.
+        $role = $access->role($user, $target);
+        $user->setRawAttributes(array_merge($user->getAttributes(), ['workspace_id' => $active, 'role' => $role]), true);
+        $user->setRelation('workspace', $target);
 
         if (
             ! WorkspaceUsageService::isAdmin($user)
@@ -72,7 +68,7 @@ class AuthenticateWithJwt
             // Write-only, rate-limited, creates nothing but a report.
             && ! ($request->is('api/v1/feedback') && $request->isMethod('POST'))
             && $user->workspace
-            && $user->workspace->status !== 'active'
+            && ($user->workspace->status !== 'active' || ($user->workspace->parent_workspace_id && $user->workspace->parent?->status !== 'active'))
         ) {
             return response()->json([
                 'error' => [
@@ -85,6 +81,8 @@ class AuthenticateWithJwt
         if ($user->isClientSeat() && ($deny = $this->denyClientSeat($request, $user, $active))) {
             return $deny;
         }
+
+        \Illuminate\Support\Facades\DB::table('workspace_memberships')->where('workspace_id', $active)->where('user_id', $user->id)->whereNull('accepted_at')->whereNull('revoked_at')->update(['accepted_at' => now()]);
 
         $request->setUserResolver(fn (): User => $user);
 
@@ -138,6 +136,10 @@ class AuthenticateWithJwt
             }
         }
 
+        if ($request->is('api/v1/workspace-access/switch/*') || ($request->isMethod('POST') && ($request->is('api/v1/client-work/requests') || $request->is('api/v1/client-work/attachments')))) {
+            return null;
+        }
+
         if (in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true)) {
             return null;
         }
@@ -153,7 +155,11 @@ class AuthenticateWithJwt
             }
         }
 
-        // Editor and above: anything that is not the agency's own business.
+        // Workspace lifecycle belongs to the agency; editors cannot change settings.
+        if ($request->is('api/v1/workspaces/*') && ($request->isMethod('DELETE') || $user->role !== User::ROLE_CLIENT_ADMIN)) {
+            return $this->forbiddenForClient($user);
+        }
+        // Editor and above: content operations.
         if ($user->clientSeatLevel() >= User::CLIENT_SEATS[User::ROLE_CLIENT_EDITOR]) {
             return null;
         }

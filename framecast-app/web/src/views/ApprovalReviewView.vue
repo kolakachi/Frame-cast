@@ -14,6 +14,9 @@ const decision   = ref('')
 const comment    = ref('')
 const reviewerName = ref('')
 const justDecided = ref(false)
+const notes=ref([]), noteBody=ref(''), noteTime=ref(null), player=ref(null), noteBusy=ref(false)
+async function loadNotes(){try{notes.value=(await api.get(`/approve/${token.value}/comments`)).data.data}catch{ /* legacy reviews may have no export */ }}
+async function addNote(){noteBusy.value=true;error.value='';try{notes.value=(await api.post(`/approve/${token.value}/comments`,{author:reviewerName.value || 'Reviewer',body:noteBody.value,at_seconds:noteTime.value})).data.data;noteBody.value='';noteTime.value=null}catch(e){error.value=e.response?.data?.message || 'Could not add comment.'}finally{noteBusy.value=false}}
 
 const apiBase = import.meta.env.VITE_API_URL || ''
 const api = axios.create({ baseURL: `${apiBase}/api/v1` })
@@ -53,7 +56,7 @@ async function submit(d) {
   }
 }
 
-onMounted(load)
+onMounted(async()=>{await load();await loadNotes()})
 
 const statusLabel = computed(() => {
   const s = approval.value?.status
@@ -95,9 +98,18 @@ const isReviewable = computed(() => approval.value?.status === 'pending' && !app
             </div>
           </div>
 
+          <section style="padding: 20px" aria-label="Version comments">
+            <h3>Version comments</h3>
+            <p v-for="n in notes" :key="n.id"><strong>{{n.author}}</strong> <button v-if="n.at_seconds !== null" @click="player && (player.currentTime=Number(n.at_seconds))">{{Number(n.at_seconds).toFixed(1)}}s</button> · {{n.body}}</p>
+            <form v-if="isReviewable && approval.video_url" @submit.prevent="addNote">
+              <label>Comment<textarea v-model="noteBody" required maxlength="2000" style="display:block;width:100%;margin:10px 0;padding:12px;color:inherit;background:transparent;border:1px solid #555;border-radius:8px" /></label>
+              <button type="button" @click="noteTime=Number((player?.currentTime || 0).toFixed(2))">Attach current time {{noteTime===null?'':`(${noteTime}s)`}}</button>
+              <button :disabled="noteBusy || !noteBody.trim()">Add comment</button>
+            </form>
+          </section>
           <!-- Video player -->
           <div v-if="approval.video_url" class="rv-video-wrap">
-            <video :src="approval.video_url" controls playsinline class="rv-video"></video>
+            <video ref="player" :src="approval.video_url" controls playsinline class="rv-video"></video>
           </div>
           <div v-else class="rv-video-missing">
             Video is not yet available.

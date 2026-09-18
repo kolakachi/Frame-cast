@@ -32,6 +32,8 @@ import AppSumoActivateView from '../views/AppSumoActivateView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
+  { path: '/client-work', name: 'client-work', component: () => import('../views/ClientWorkView.vue'), meta: { requiresAuth: true } },
+  { path: '/delivery/:token', name: 'client-delivery', component: () => import('../views/ClientDeliveryView.vue'), meta: { public: true } },
   { path: '/', redirect: '/dashboard' },
   { path: '/onboarding', name: 'onboarding', component: OnboardingView, meta: { requiresAuth: true, skipOnboardingGuard: true } },
   { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
@@ -59,6 +61,10 @@ const routes = [
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
   { path: '/series', name: 'series', component: SeriesView, meta: { requiresAuth: true } },
   { path: '/ugc-ads', name: 'ugc-ads', component: UgcAdsView, meta: { requiresAuth: true, internalOnly: true } },
+  // The run and review screens are route-addressable so "you can leave this
+  // page — we'll keep working" is actually true.
+  { path: '/ugc-ads/run/:runId', name: 'ugc-run', component: () => import('../views/UgcRunView.vue'), meta: { requiresAuth: true, internalOnly: true } },
+  { path: '/ugc-ads/review/:projectId', name: 'ugc-review', component: () => import('../views/UgcReviewView.vue'), meta: { requiresAuth: true, internalOnly: true } },
   // The same pipeline, entered by someone who has the footage and needs the
   // arrangement. They would never look inside something called UGC Ads, and a
   // second implementation would be two to maintain — so it is one view with a
@@ -121,12 +127,15 @@ router.beforeEach(async function (to) {
     }
   }
 
+  if (["client", "client_editor", "client_admin"].includes(authStore.user?.role) && to.name === "dashboard") return { name: "client-work" };
+
   // Redirect unonboarded users to the wizard (except the wizard itself,
   // auth routes, and public-share/approval pages that anyone — incl.
   // unonboarded users hitting a share link — should see).
   if (
     authStore.isAuthenticated &&
     !authStore.isOnboarded &&
+    !["client", "client_editor", "client_admin"].includes(authStore.user?.role) &&
     !to.meta.skipOnboardingGuard &&
     !to.meta.guestOnly &&
     !to.meta.public

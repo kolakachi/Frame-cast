@@ -32,6 +32,7 @@ use Illuminate\Broadcasting\BroadcastController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
+    require __DIR__.'/agency.php';
     Route::get('/health', HealthCheckController::class);
 
     // Kelviq (Merchant of Record) webhook — unauthenticated, signature-verified
@@ -304,6 +305,9 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/reference', [UgcController::class, 'reference']);
             Route::post('/variants', [UgcController::class, 'variants']);
             Route::post('/generate', [UgcController::class, 'generate']);
+            Route::post('/read-link', [UgcController::class, 'readLink']);
+            Route::post('/fetch-video', [UgcController::class, 'fetchVideo']);
+            Route::post('/scenes/{sceneId}/retry', [UgcController::class, 'sceneRetry'])->whereNumber('sceneId');
         });
 
         Route::prefix('/admin')->middleware(['admin', 'admin.ip'])->group(function (): void {

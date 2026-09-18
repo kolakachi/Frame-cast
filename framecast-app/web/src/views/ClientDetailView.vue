@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
+import ClientHubPanel from "../components/ClientHubPanel.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { useAuthStore } from "../stores/auth";
 import { useWorkspaceStore } from "../stores/workspace";
@@ -12,14 +13,16 @@ const authStore = useAuthStore();
 const workspaceStore = useWorkspaceStore();
 
 const clientId = computed(() => Number(route.params.id));
+const initialClient = ref(null);
+const detailLoading = ref(true);
 const client = computed(
-  () => (workspaceStore.clients ?? []).find((c) => Number(c.id) === clientId.value) ?? null,
+  () => (workspaceStore.clients ?? []).find((c) => Number(c.id) === clientId.value) ?? initialClient.value,
 );
 
 const SEATS = [
-  { value: "client", label: "View only", hint: "Watch and approve. Cannot change anything." },
+  { value: "client", label: "View only", hint: "View, request videos and approve work." },
   { value: "client_editor", label: "Edit", hint: "Make and change videos." },
-  { value: "client_admin", label: "Admin", hint: "Full run of this workspace." },
+  { value: "client_admin", label: "Admin", hint: "Edit content and manage client brand settings." },
 ];
 const seatLabel = (r) => SEATS.find((s) => s.value === r)?.label ?? "View only";
 
@@ -89,7 +92,11 @@ async function saveCap() {
   const raw = String(capValue.value).trim();
   capBusy.value = true;
   try {
-    await workspaceStore.setCap(clientId.value, raw === "" ? null : Math.max(1, parseInt(raw, 10) || 0));
+    if (raw !== "" && (!/^\d+$/.test(raw) || Number(raw)<1)) throw new Error('Enter a positive whole number or leave the cap blank.');
+    await workspaceStore.setCap(clientId.value, raw === "" ? null : Number(raw));
+    fundError.value = "";
+  } catch (e) {
+    fundError.value = e.response?.data?.error?.message ?? e.message ?? 'Could not save the cap.';
   } finally {
     capBusy.value = false;
   }
@@ -106,19 +113,22 @@ const inviteBusy = ref(false);
 const memberError = ref("");
 
 async function loadMembers(page = 1) {
+  const currentRequest = ++memberRequest;
   membersBusy.value = true;
   try {
     const r = await workspaceStore.loadViewers(clientId.value, { page, q: search.value.trim() });
+    if(currentRequest !== memberRequest) return;
     members.value = r.viewers;
     pagination.value = r.pagination;
   } catch {
-    members.value = [];
+    memberError.value = "Could not load members. Try again.";
   } finally {
     membersBusy.value = false;
   }
 }
 
 let searchTimer = null;
+let memberRequest = 0;
 watch(search, () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => loadMembers(1), 250);
@@ -166,16 +176,21 @@ function remove(m) {
   });
 }
 
-onMounted(async () => {
-  if (workspaceStore.clients === null) await workspaceStore.loadClients();
+watch(clientId, async () => {
+  detailLoading.value = true;
+  initialClient.value = null;
+  await workspaceStore.loadClients(true);
+  initialClient.value = (workspaceStore.clients ?? []).find(c=>Number(c.id)===clientId.value) ?? null;
+  detailLoading.value = false;
   capValue.value = client.value?.monthly_credit_cap ?? "";
   loadMembers(1);
-});
+}, { immediate: true });
+onBeforeUnmount(() => clearTimeout(searchTimer));
 </script>
 
 <template>
   <div class="shell">
-    <AppSidebar :user="authStore.user" />
+    <AppSidebar :user="authStore.user" active-page="clients" />
     <div class="main">
       <div class="topbar">
         <button class="back" @click="router.push({ name: 'clients' })">‹ Clients</button>
@@ -189,7 +204,9 @@ onMounted(async () => {
       </div>
 
       <div v-if="client" class="body">
+        <ClientHubPanel :client-id="clientId" @changed="workspaceStore.loadClients(true)"><template #access>
         <!-- Credits -->
+        <p class="sub">Allocation uses top-up credits only. Keep monthly credits in the shared balance and set a cap to limit each client.</p>
         <section class="panel">
           <h2>Credits</h2>
           <p class="sub">
@@ -278,13 +295,13 @@ onMounted(async () => {
             <tbody>
               <tr v-for="m in members" :key="m.id">
                 <td class="m-mail">{{ m.email }}</td>
-                <td class="m-seen">{{ m.last_seen_at ? "signed in" : "not signed in yet" }}</td>
+                <td class="m-seen">{{ m.accepted_at ? "accessed workspace" : m.delivery_status === "failed" ? "email failed" : m.invite_expired ? "invite expired" : "invited" }}</td>
                 <td class="m-role">
                   <select :value="m.role" class="input tiny" @change="changeRole(m, $event.target.value)">
                     <option v-for="s in SEATS" :key="s.value" :value="s.value">{{ s.label }}</option>
                   </select>
                 </td>
-                <td class="m-x"><button class="x" title="Remove access" @click="remove(m)">&#10005;</button></td>
+                <td class="m-x"><button class="btn" @click="inviteEmail=m.email; inviteRole=m.role; invite()" :disabled="inviteBusy">Resend</button><button class="x" title="Remove access" @click="remove(m)">&#10005;</button></td>
               </tr>
             </tbody>
           </table>
@@ -295,8 +312,9 @@ onMounted(async () => {
             <button class="btn" :disabled="pagination.current_page >= pagination.last_page" @click="loadMembers(pagination.current_page + 1)">Next</button>
           </div>
         </section>
+        </template></ClientHubPanel>
       </div>
-      <div v-else class="body"><div class="empty">Loading…</div></div>
+      <div v-else class="body"><div class="empty">{{workspaceStore.loadFailed ? "Could not load this client." : detailLoading ? "Loading client…" : "Client not found."}} <button class="btn" @click="workspaceStore.loadClients(true)">Retry</button></div></div>
     </div>
 
     <ConfirmDialog
