@@ -83,7 +83,10 @@ trait RendersExportScenes
         $captionColor = (string) ($captionSettings['color'] ?? '#ffffff');
         $captionSize = (string) ($captionSettings['size'] ?? 'medium');
         $captionHighlightColor = (string) ($captionSettings['highlight_color'] ?? '#ff6b35');
-        $captionText = (string) ($scene->script_text ?: $scene->label ?: 'Framecast');
+        // Captions transcribe narration. A silent scene has nothing to
+        // transcribe — falling back to the scene label burned internal shot
+        // names ("B roll 2") into customer exports.
+        $captionText = (string) $scene->script_text;
         $captionAnimationOptions = [
             'animation' => (string) ($captionSettings['animation'] ?? 'plain'),
             'highlight_style' => (string) ($captionSettings['highlight_style'] ?? 'color'),
