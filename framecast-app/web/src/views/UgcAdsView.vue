@@ -13,11 +13,6 @@ const route = useRoute();
 const authStore = useAuthStore();
 
 // ── Wizard ──────────────────────────────────────────────────────────────
-// Five steps, per ugc-steps-mockup.html. The page was one long screen: every
-// field for every stage visible at once, which is why it had never been laid
-// out for a phone and why the brief and the review read as equally urgent.
-// The cards below were already one per stage, so this arranges them rather
-// than rewriting them.
 // Three screens, per the wyvstudio-ugc-html mockups: say what you're making,
 // review the plan as passages, then approve the cost and generate. Script,
 // shots and cast are no longer separate stops — the script rides the brief
@@ -28,6 +23,7 @@ const STEPS = [
   { key: "approve", label: "Approve & generate", hint: "Cost and consent" },
 ];
 const step = ref(0);
+const selectedPassage = ref(0);
 
 const MAX_SCRIPT = 1500;
 const MAX_CHARACTERS = 5;
@@ -229,6 +225,7 @@ const plan = ref(null); // { segments, reasoning, credits_per_character }
 // A still-only plan has no presenter, so the cast step neither gates nor
 // multiplies anything.
 const noCast = computed(() => plan.value?.format === "text_led");
+watch(() => plan.value?.segments, () => { selectedPassage.value = 0; });
 const planning = ref(false);
 const generating = ref(false);
 const takes = ref([]);
@@ -348,7 +345,6 @@ function goStep(i) {
   // The rail is above the fold on a phone; the fields are not.
   nextTick(() => document.querySelector(".ugc-step-body")?.scrollIntoView({ block: "start", behavior: "smooth" }));
 }
-function nextStep() { goStep(Math.min(step.value + 1, STEPS.length - 1)); }
 function prevStep() { goStep(Math.max(step.value - 1, 0)); }
 
 const canGenerate = computed(
@@ -653,12 +649,18 @@ function setVoice(characterId, key) {
   voicePreviewUrl.value = rest;
 }
 
+let submission = null;
+function requestKey(payload) {
+  const fingerprint = JSON.stringify(payload);
+  if (!submission || submission.fingerprint !== fingerprint) submission = { fingerprint, id: crypto.randomUUID() };
+  return submission.id;
+}
 async function generate() {
   if (!canGenerate.value) return;
   generating.value = true;
   errorMessage.value = "";
   try {
-    const { data } = await api.post("/ugc/generate", {
+    const payload = {
       script: plan.value.script,
       format: plan.value.format,
       // A still-only run casts nobody; sending an empty list would fail the
@@ -679,7 +681,8 @@ async function generate() {
       consent: consentLikeness.value && consentFacts.value,
       reviewed: reviewed.value,
       credits_per_character: perCharacter.value,
-    });
+    };
+    const { data } = await api.post("/ugc/generate", { ...payload, request_id: requestKey(payload) });
     takes.value = data?.data?.takes ?? [];
     reviewed.value = false;
     loadTakes();
@@ -700,11 +703,10 @@ async function generate() {
 // the running jobs will overwrite. Send it to the progress view instead —
 // the same rule VideosView applies to any generating project.
 function openTake(take) {
-  router.push(
-    take.status === "generating"
-      ? { name: "generation-progress", params: { projectId: take.id } }
-      : { name: "project-editor", params: { projectId: take.id } },
-  );
+  router.push(take.status === 'ready_for_review'
+    ? { name: 'ugc-review', params: { projectId: take.id } }
+    : take.run_id ? { name: 'ugc-run', params: { runId: take.run_id } }
+    : { name: 'project-editor', params: { projectId: take.id } });
 }
 
 onMounted(() => {
@@ -735,7 +737,7 @@ onMounted(() => {
 
     <main class="ugc-main">
       <header class="ugc-top">
-        <div class="ugc-crumb">My Workspace / <b>{{ pageName }}</b></div>
+        <div class="ugc-crumb"><b>{{ pageName }}</b></div>
         <span class="ugc-beta">BETA · INTERNAL</span>
         <div v-if="balance !== null" class="ugc-credits">
           {{ balance.toLocaleString() }} credits
@@ -744,7 +746,7 @@ onMounted(() => {
 
       <div v-if="errorMessage" class="ugc-error">{{ errorMessage }}</div>
 
-      <div class="ugc-body">
+      <div :class="['ugc-body', `ugc-at-${step}`]">
         <!-- build column -->
         <section class="ugc-build">
         <!-- Step rail. Horizontal and scrollable on a phone, where it is the
@@ -779,7 +781,7 @@ onMounted(() => {
                 <span class="ugc-label-row">
                   Tell us what you want, in your own words
                   <button class="ugc-suggest" type="button" :disabled="suggesting === 'context'" @click="suggest('context')">
-                    {{ suggesting === "context" ? "thinking…" : "✨ suggest" }}
+                    {{ suggesting === "context" ? "thinking…" : "✨ Write with AI" }}
                   </button>
                 </span>
                 <textarea
@@ -889,13 +891,13 @@ onMounted(() => {
             </template>
           </div>
 
-          <div class="ugc-card ugc-fields">
-            <h2 class="ugc-card-t">Details &amp; direction</h2>
+          <details class="ugc-card ugc-fields ugc-optional">
+            <summary class="ugc-card-t">More direction <span class="ugc-hint">· optional</span></summary>
             <label>
               <span class="ugc-label-row">
                 Product / app
                 <button class="ugc-suggest" type="button" :disabled="suggesting === 'product'" @click="suggest('product')">
-                  {{ suggesting === "product" ? "thinking…" : "✨ suggest" }}
+                  {{ suggesting === "product" ? "thinking…" : "✨ Write with AI" }}
                 </button>
               </span>
               <input v-model="product" maxlength="200" placeholder="What are we showing?" />
@@ -904,7 +906,7 @@ onMounted(() => {
               <span class="ugc-label-row">
                 Audience, idea and desired reaction
                 <button class="ugc-suggest" type="button" :disabled="suggesting === 'context'" @click="suggest('context')">
-                  {{ suggesting === "context" ? "thinking…" : "✨ suggest" }}
+                  {{ suggesting === "context" ? "thinking…" : "✨ Write with AI" }}
                 </button>
               </span>
               <textarea v-model="context" maxlength="1500" placeholder="Who is this for, and what should they feel?" />
@@ -928,7 +930,7 @@ onMounted(() => {
               <span class="ugc-label-row">
                 Available footage (one description per line)
                 <button class="ugc-suggest" type="button" :disabled="suggesting === 'available_footage'" @click="suggest('available_footage')">
-                  {{ suggesting === "available_footage" ? "thinking…" : "✨ suggest" }}
+                  {{ suggesting === "available_footage" ? "thinking…" : "✨ Write with AI" }}
                 </button>
               </span>
               <textarea v-model="footageLabels" :placeholder="'My app screen recording\nProduct close-up'" />
@@ -946,7 +948,7 @@ onMounted(() => {
               </span>
               <span class="ugc-hint">Composited onto the actor so they hold or wear your actual product.</span>
             </label>
-          </div>
+          </details>
 
           <div class="ugc-card ugc-fields">
             <h2 class="ugc-card-t">Delivery</h2>
@@ -996,6 +998,62 @@ onMounted(() => {
               <span class="ugc-kind roll">{{ aspectRatio }}</span>
             </div>
           </div>
+          <div class="ugc-plan-layout">
+          <aside class="ugc-plan-list">
+            <h3>Passages</h3>
+            <p class="ugc-hint">Select a passage to review its words, visuals and delivery.</p>
+            <button v-for="(seg, i) in plan?.segments || []" :key="i" type="button"
+              :class="['ugc-passage', { on: selectedPassage === i }]" :aria-pressed="selectedPassage === i" @click="selectedPassage = i">
+              <span><b>{{ String(i + 1).padStart(2, '0') }} · {{ seg.kind === 'on_camera' ? 'On camera' : seg.kind === 'reaction' ? 'Reaction' : 'Cut-away' }}</b><small>{{ seg.seconds }}s</small></span>
+              <span class="ugc-passage-copy">{{ seg.script_text || seg.headline || seg.visual_brief || 'Add direction' }}</span>
+              <small v-if="seg.stale" class="ugc-seg-stale">Needs re-directing</small>
+            </button>
+          <!-- Cast &amp; voice belongs beside the plan it presents. -->
+          <div v-if="!noCast" class="ugc-card">
+            <div class="ugc-card-h">
+              <span class="ugc-card-t">Cast &amp; voice</span>
+              <span class="ugc-card-c">{{ selected.length ? `${selected.length} selected` : "Shown because someone is seen and heard" }}</span>
+            </div>
+            <div v-for="c in selected" :key="c.id" class="ugc-ch">
+              <div class="ugc-ch-av">
+                <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" alt="" />
+                <span v-else>☺</span>
+              </div>
+              <div class="ugc-ch-m">
+                <div class="ugc-ch-n">{{ c.name }}</div>
+                <div class="ugc-ch-s">{{ (c.situations || []).join(" · ") || c.age_group || "—" }}</div>
+                <div v-if="plan?.format !== 'reaction'" class="ugc-ch-voice">
+                  <UiSelect
+                    :model-value="voiceByCharacter[c.id] || ''"
+                    :options="[{ value: '', label: 'Voice — automatic' }].concat(voices.map((v) => ({ value: v.provider_voice_key, label: v.name })))"
+                    :aria-label="`Voice for ${c.name}`"
+                    drop="down"
+                    @update:model-value="(val) => setVoice(c.id, val)"
+                  />
+                  <button
+                    v-if="voiceByCharacter[c.id]"
+                    class="ugc-btn ugc-btn-sm"
+                    type="button"
+                    :disabled="loadingVoice === c.id"
+                    @click="previewVoice(c)"
+                  >
+                    {{ loadingVoice === c.id ? "…" : "▶ Hear sample" }}
+                  </button>
+                  <audio v-if="voicePreviewUrl[c.id]" class="ugc-audio" :src="voicePreviewUrl[c.id]" controls />
+                </div>
+              </div>
+              <button class="ugc-ch-x" type="button" @click="toggleCharacter(c)">✕</button>
+            </div>
+            <div class="ugc-card-f">
+              <button class="ugc-btn" @click="openPicker">＋ Add characters</button>
+            </div>
+          </div>
+          <p v-else-if="plan" class="ugc-hint">
+            No presenter in this format — the words on screen carry the ad, so there is nobody to cast.
+          </p>
+
+          </aside>
+          <div class="ugc-plan-detail">
           <!-- the plan, as something to adjust rather than accept -->
           <div v-if="plan" class="ugc-card">
             <div class="ugc-card-h">
@@ -1023,7 +1081,8 @@ onMounted(() => {
             </div>
 
             <ol class="ugc-segs">
-              <li v-for="(seg, i) in plan.segments" :key="i" class="ugc-seg">
+              <li v-for="(seg, i) in plan.segments" v-show="selectedPassage === i" :key="i" class="ugc-seg">
+                <h3>Passage {{ i + 1 }} <span class="ugc-hint">of {{ plan.segments.length }}</span></h3>
                 <span
                   :class="[
                     'ugc-kind',
@@ -1058,11 +1117,11 @@ onMounted(() => {
                         {{
                           suggesting === suggestToken("script", seg)
                             ? "thinking…"
-                            : "✨ suggest"
+                            : "✨ Write with AI"
                         }}
                       </button>
                     </span>
-                    <textarea v-model="seg.script_text" maxlength="1500" />
+                    <textarea v-model="seg.script_text" placeholder="Write the words spoken in this passage." title="These words are spoken aloud. Editing them changes the plan and requires a new estimate." maxlength="1500" />
                   </label>
                   <label>
                     <span class="ugc-label-row">
@@ -1078,11 +1137,11 @@ onMounted(() => {
                         {{
                           suggesting === suggestToken("visual_brief", seg)
                             ? "thinking…"
-                            : "✨ suggest"
+                            : "✨ Write with AI"
                         }}
                       </button>
                     </span>
-                    <textarea v-model="seg.visual_brief" maxlength="1000" />
+                    <textarea v-model="seg.visual_brief" placeholder="e.g. Close-up of the bottle on a desk, soft daylight." title="Describe the subject, setting, framing and lighting for this passage." maxlength="1000" />
                   </label>
                   <label v-if="seg.kind === 'reaction'">
                     <span class="ugc-label-row">
@@ -1098,11 +1157,11 @@ onMounted(() => {
                         {{
                           suggesting === suggestToken("motion_prompt", seg)
                             ? "thinking…"
-                            : "✨ suggest"
+                            : "✨ Write with AI"
                         }}
                       </button>
                     </span>
-                    <textarea v-model="seg.motion_prompt" maxlength="1000" />
+                    <textarea v-model="seg.motion_prompt" placeholder="e.g. Look surprised, pause, then smile." title="Describe physical movement for this silent reaction." maxlength="1000" />
                   </label>
                   <label v-else>
                     <span class="ugc-label-row">
@@ -1120,11 +1179,11 @@ onMounted(() => {
                         {{
                           suggesting === suggestToken("voice_direction", seg)
                             ? "thinking…"
-                            : "✨ suggest"
+                            : "✨ Write with AI"
                         }}
                       </button>
                     </span>
-                    <textarea v-model="seg.voice_direction" maxlength="500" />
+                    <textarea v-model="seg.voice_direction" placeholder="e.g. Warm and confident, with a pause before the benefit." title="Describe delivery and emotion. Choose the actual voice in Cast & voice." maxlength="500" />
                   </label>
                   <!-- Pace belongs with delivery, not with the script: it is
                        how the line is said, the same as the direction above. -->
@@ -1156,11 +1215,11 @@ onMounted(() => {
                         {{
                           suggesting === suggestToken("headline", seg)
                             ? "thinking…"
-                            : "✨ suggest"
+                            : "✨ Write with AI"
                         }}
                       </button>
                     </span>
-                    <textarea v-model="seg.headline" maxlength="180" />
+                    <textarea v-model="seg.headline" placeholder="e.g. Built for busy mornings" title="Short text on screen; this is not spoken aloud." maxlength="180" />
                   </label>
                   <label v-if="seg.kind === 'reaction'"
                     >Seconds<UiSelect
@@ -1219,11 +1278,7 @@ onMounted(() => {
             <div class="ugc-variants">
               <div class="ugc-variants-h">
                 <b>Try other openings</b>
-                <select v-model="variantCount" class="ugc-mini-select" aria-label="How many openings">
-                  <option :value="2">2</option>
-                  <option :value="3">3</option>
-                  <option :value="4">4</option>
-                </select>
+                <UiSelect v-model="variantCount" :options="[2, 3, 4].map(n => ({ value: n, label: `${n} openings` }))" aria-label="How many openings" />
                 <button class="ugc-btn" type="button" :disabled="writingVariants" @click="writeVariants">
                   {{ writingVariants ? 'Writing…' : (variants.length ? 'Rewrite' : 'Write them') }}
                 </button>
@@ -1270,50 +1325,8 @@ onMounted(() => {
             </p>
           </div>
 
-          <!-- Cast &amp; voice belongs beside the plan it presents. -->
-          <div v-if="!noCast" class="ugc-card">
-            <div class="ugc-card-h">
-              <span class="ugc-card-t">Cast &amp; voice</span>
-              <span class="ugc-card-c">{{ selected.length ? `${selected.length} selected` : "Shown because someone is seen and heard" }}</span>
-            </div>
-            <div v-for="c in selected" :key="c.id" class="ugc-ch">
-              <div class="ugc-ch-av">
-                <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" alt="" />
-                <span v-else>☺</span>
-              </div>
-              <div class="ugc-ch-m">
-                <div class="ugc-ch-n">{{ c.name }}</div>
-                <div class="ugc-ch-s">{{ (c.situations || []).join(" · ") || c.age_group || "—" }}</div>
-                <div v-if="plan?.format !== 'reaction'" class="ugc-ch-voice">
-                  <UiSelect
-                    :model-value="voiceByCharacter[c.id] || ''"
-                    :options="[{ value: '', label: 'Voice — automatic' }].concat(voices.map((v) => ({ value: v.provider_voice_key, label: v.name })))"
-                    :aria-label="`Voice for ${c.name}`"
-                    drop="down"
-                    @update:model-value="(val) => setVoice(c.id, val)"
-                  />
-                  <button
-                    v-if="voiceByCharacter[c.id]"
-                    class="ugc-btn ugc-btn-sm"
-                    type="button"
-                    :disabled="loadingVoice === c.id"
-                    @click="previewVoice(c)"
-                  >
-                    {{ loadingVoice === c.id ? "…" : "▶ Hear sample" }}
-                  </button>
-                  <audio v-if="voicePreviewUrl[c.id]" class="ugc-audio" :src="voicePreviewUrl[c.id]" controls />
-                </div>
-              </div>
-              <button class="ugc-ch-x" type="button" @click="toggleCharacter(c)">✕</button>
-            </div>
-            <div class="ugc-card-f">
-              <button class="ugc-btn" @click="openPicker">＋ Add characters</button>
-            </div>
           </div>
-          <p v-else-if="plan" class="ugc-hint">
-            No presenter in this format — the words on screen carry the ad, so there is nobody to cast.
-          </p>
-
+          </div>
           <div class="ugc-card-f ugc-brief-cta">
             <button class="ugc-btn ugc-btn-primary" type="button" :disabled="!stepReady[1] || quoting" @click="advanceFromPlan">
               {{ quoting ? 'Checking…' : 'Approve plan → see cost' }}
@@ -1384,23 +1397,17 @@ onMounted(() => {
           </div>
           </div>
 
-          <!-- Back / Continue. The generate button lives in step 5's own card,
-               so Continue stops at Review rather than pretending to submit. -->
+          <!-- Each stage owns its primary action; this footer only goes back. -->
           <div class="ugc-nav">
             <button v-if="step > 0" class="ugc-nav-back" type="button" @click="prevStep">← Back</button>
             <span class="ugc-nav-where">Step {{ step + 1 }} of {{ STEPS.length }}</span>
-            <button
-              v-if="step < STEPS.length - 1"
-              class="ugc-nav-next"
-              type="button"
-              :disabled="!stepReady[step]"
-              @click="nextStep"
-            >{{ stepReady[step] ? `Continue → ${STEPS[step + 1].label}` : `Add ${STEPS[step].hint.toLowerCase()} to continue` }}</button>
+
           </div>
         </section>
 
         <!-- takes -->
-        <section class="ugc-stage">
+        <details class="ugc-stage">
+          <summary>Recent takes <span class="ugc-card-c">{{ takes.length }}</span></summary>
           <div class="ugc-stage-h">
             <span class="ugc-card-t">Takes</span>
             <span class="ugc-card-c">{{ takes.length }}</span>
@@ -1424,7 +1431,7 @@ onMounted(() => {
                     t.status === "ready_for_review"
                       ? "Ready to review"
                       : t.status === "needs_attention"
-                      ? "Needs attention — open editor"
+                      ? "Needs attention"
                       : "Generating…"
                   }}
                 </div>
@@ -1434,13 +1441,13 @@ onMounted(() => {
                     :class="{ 'ugc-btn-primary': t.status !== 'generating' }"
                     @click="openTake(t)"
                   >
-                    {{ t.status === "generating" ? "Watch progress →" : "Open in editor →" }}
+                    {{ t.status === "generating" ? "Watch progress →" : "Review take →" }}
                   </button>
                 </div>
               </div>
             </div>
           </div>
-        </section>
+        </details>
       </div>
 
       <!-- character picker -->
@@ -2672,7 +2679,7 @@ onMounted(() => {
 .ugc-summary-row span { color: var(--color-text-muted); }
 .ugc-summary-row:last-child { border-bottom: none; }
 .ugc-summary-total {
-  background: var(--color-primary-soft, rgba(20, 99, 86, 0.08));
+  background: var(--color-primary-soft, rgba(255, 107, 53, 0.08));
   border-radius: 10px;
   padding: 12px 14px;
   margin-top: 6px;
@@ -2682,4 +2689,36 @@ onMounted(() => {
 @media (max-width: 640px) {
   .ugc-two { flex-direction: column; }
 }
+
+/* Reference layout, using the application's existing colors and shell. */
+.ugc-body { display: block; overflow: visible; }
+.ugc-build { width: 100%; max-width: 1280px; margin: 0 auto; border: 0; overflow: visible; padding: 24px; }
+.ugc-at-0 .ugc-step-body, .ugc-at-2 .ugc-step-body { max-width: 840px; margin: 0 auto; }
+.ugc-stage { flex: none; margin: 12px 24px 32px; padding: 18px; border: 1px solid var(--color-border); border-radius: 12px; overflow: visible; }
+.ugc-stage summary { cursor: pointer; font-weight: 600; }
+.ugc-stage-h { display: none; }
+.ugc-plan-layout { display: grid; grid-template-columns: minmax(250px, .8fr) minmax(0, 1.6fr); gap: 24px; align-items: start; }
+.ugc-plan-list, .ugc-plan-detail { min-width: 0; }
+.ugc-plan-list h3 { margin: 0 0 8px; }
+.ugc-plan-list > .ugc-card { margin-top: 24px; }
+.ugc-passage { display: flex; flex-direction: column; gap: 10px; width: 100%; text-align: left; padding: 15px; margin: 10px 0; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-card); color: var(--color-text-primary); cursor: pointer; }
+.ugc-passage > span:first-child { display: flex; justify-content: space-between; gap: 12px; }
+.ugc-passage.on { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card)); }
+.ugc-passage-copy { font-size: 13px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--color-text-muted); }
+.ugc-seg { display: block; padding: 18px 0; }
+.ugc-seg h3 { margin: 0 0 14px; font-size: 18px; font-weight: 600; }
+.ugc-shot-fields { width: 100%; margin-top: 16px; }
+.ugc-plan-list .ugc-card-h { flex-wrap: wrap; }
+.ugc-plan-list .ugc-card-t { white-space: nowrap; }
+.ugc-segs { padding: 0 16px; }
+.ugc-plan-list .ugc-ch { flex-wrap: wrap; }
+.ugc-plan-list .ugc-ch-m { min-width: 0; }
+@media (max-width: 1050px) { .ugc-plan-layout { grid-template-columns: minmax(220px, .85fr) minmax(0, 1.4fr); gap: 16px; } }
+@media (max-width: 760px) {
+  .ugc-plan-layout { grid-template-columns: minmax(0, 1fr); }
+  .ugc-build { padding: 16px; }
+  .ugc-stage { margin: 12px 16px 32px; }
+}
+.ugc-optional summary { cursor: pointer; }
+.ugc-optional[open] summary { margin-bottom: 16px; }
 </style>

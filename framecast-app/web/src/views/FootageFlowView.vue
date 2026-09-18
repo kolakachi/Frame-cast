@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
@@ -28,6 +28,30 @@ const busy = ref(""); // which long call is running
 const intakeMode = ref("upload");
 const sourceAsset = ref(null); // { id, title, thumbnail_url, duration_seconds }
 const sourcePicker = ref(false);
+const sourceUrl = ref(null);
+const sourceVideo = ref(null);
+const sourcePreviewError = ref('');
+const producedTake = ref(null);
+const producedPreview = ref(null);
+const producedScene = ref(null);
+let compareTimer = null;
+let disposed = false;
+let previewRequest = 0;
+watch(() => sourceAsset.value?.id, async (id) => {
+  sourceUrl.value = null;
+  sourcePreviewError.value = '';
+  if (!id) return;
+  try {
+    const { data } = await api.get(`/assets/${id}`);
+    if (sourceAsset.value?.id === id) sourceUrl.value = data?.data?.asset?.storage_url ?? null;
+  } catch { sourcePreviewError.value = 'Source preview could not load. Your analysis is still available.'; }
+});
+function seekSource() {
+  const row = passages.value.find(p => p.id === activePassage.value);
+  if (sourceVideo.value && row) sourceVideo.value.currentTime = Number(row.start || 0);
+}
+
+
 const linkUrl = ref("");
 const fetchingLink = ref(false);
 const brief = ref("");
@@ -62,6 +86,46 @@ const canProduce = computed(
     (!needsPresenter.value || presenter.value) &&
     !producing.value
 );
+watch(activePassage, async () => {
+  editingTranscript.value = false;
+  await nextTick();
+  seekSource();
+  if (screen.value === 'compare') loadComparison();
+});
+watch(screen, async value => {
+  clearTimeout(compareTimer);
+  if (value === 'compare') await loadComparison();
+});
+async function loadComparison() {
+  clearTimeout(compareTimer);
+  if (!session.value?.run_id || disposed || screen.value !== 'compare') return;
+  const request = ++previewRequest;
+  const passageId = activePassage.value;
+  producedPreview.value = null;
+  try {
+    const { data } = await api.get('/ugc/takes', { params: { run: session.value.run_id, detail: 1 } });
+    if (request !== previewRequest || disposed) return;
+    producedTake.value = data?.data?.takes?.[0] ?? null;
+    const index = (plan.value?.passages ?? []).findIndex(p => p.id === passageId);
+    const row = producedTake.value?.scene_rows?.[index];
+    producedScene.value = row ?? null;
+    if (row?.visual === 'done') {
+      const { data: preview } = await api.get(`/scenes/${row.id}/preview`);
+      if (request === previewRequest && activePassage.value === passageId) producedPreview.value = { ...preview?.data?.preview, visual_type: preview?.data?.scene?.visual_asset?.asset_type };
+    }
+  } catch { errorMessage.value = 'Could not load the generated passage. Try opening production progress.'; }
+  if (!disposed && request === previewRequest && (producedTake.value?.working || producedTake.value?.status === 'generating')) compareTimer = setTimeout(loadComparison, 6000);
+}
+onBeforeUnmount(() => { disposed = true; clearTimeout(compareTimer); });
+const FLOW_STEPS = [
+  { key: 'intake', label: 'Source' }, { key: 'analysis', label: 'Understand' },
+  { key: 'plan', label: 'Plan' }, { key: 'approve', label: 'Approve' }, { key: 'compare', label: 'Compare' },
+];
+function canVisit(key) {
+  if (key === screen.value) return true;
+  if (session.value?.run_id) return key === 'compare';
+  return key === 'intake' || (key === 'analysis' && corrected.value) || (['plan', 'approve'].includes(key) && plan.value);
+}
 const kindBadge = { observed: "Observed", inferred: "Inferred", unclear: "Needs you" };
 const treatmentBadge = { new: "New performance", rebuilt: "Rebuilt", reused: "Reused" };
 
@@ -208,7 +272,7 @@ async function produce() {
       answers: answers.value,
     });
     const runId = data?.data?.run_id;
-    if (runId) router.push({ name: "ugc-run", params: { runId } });
+    if (runId) router.push({ name: "ugc-run", params: { runId }, query: { footage: session.value.id } });
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, "Could not start production.");
   } finally {
@@ -269,6 +333,9 @@ onMounted(() => {
         <span v-else-if="sourceAsset" class="ff-note">{{ sourceAsset.title }}</span>
       </header>
 
+      <nav class="ff-steps" aria-label="My Footage steps">
+        <button v-for="(item, i) in FLOW_STEPS" :key="item.key" type="button" :disabled="!canVisit(item.key) || Boolean(busy) || producing" :aria-current="screen === item.key ? 'step' : undefined" :class="{ on: screen === item.key }" @click="screen = item.key"><span>{{ i + 1 }}</span>{{ item.label }}</button>
+      </nav>
       <div v-if="errorMessage" class="ff-error">{{ errorMessage }}</div>
 
       <!-- ── 1 · Intake ─────────────────────────────────────────────────── -->
@@ -337,7 +404,7 @@ onMounted(() => {
         <aside class="ff-col-side">
           <div class="ff-card">
             <h3>What happens next</h3>
-            <p class="ff-muted">We'll watch the video, note who's speaking, what's shown, and how it's structured — about a minute.</p>
+            <p class="ff-muted">We'll watch the video, note who's speaking, what's shown, and how it's structured.</p>
             <p class="ff-muted">Reading the source is included; you approve any production cost separately, before it starts.</p>
           </div>
           <button class="ff-btn ff-btn-primary" type="button" :disabled="!sourceAsset || busy === 'reading'" @click="understandSource">
@@ -353,6 +420,8 @@ onMounted(() => {
 
         <div class="ff-cols" style="margin-top: 18px">
           <div class="ff-col-list">
+            <video v-if="sourceUrl" ref="sourceVideo" class="ff-video" :src="sourceUrl" controls playsinline preload="metadata" @loadedmetadata="seekSource" />
+            <p v-if="sourcePreviewError" class="ff-muted">{{ sourcePreviewError }}</p>
             <span class="ff-eyebrow">Passages</span>
             <button
               v-for="p in passages"
@@ -373,7 +442,7 @@ onMounted(() => {
               <span class="ff-eyebrow">Speakers</span>
               <div v-for="sp in corrected?.speakers ?? []" :key="sp.id" class="ff-speaker">
                 <template v-if="renamingSpeaker === sp.id">
-                  <input v-model="speakerName" maxlength="60" @keyup.enter="saveSpeaker" />
+                  <input v-model="speakerName" aria-label="Speaker name" placeholder="e.g. Host or customer" maxlength="60" @keyup.enter="saveSpeaker" />
                   <button class="ff-link" type="button" @click="saveSpeaker">Save</button>
                 </template>
                 <template v-else>
@@ -391,7 +460,7 @@ onMounted(() => {
             </div>
             <span class="ff-eyebrow">Transcript / observation</span>
             <template v-if="editingTranscript">
-              <textarea v-model="editedTranscript" rows="4" maxlength="1000"></textarea>
+              <textarea v-model="editedTranscript" aria-label="Corrected transcript" placeholder="Write what is actually spoken or shown in this passage" rows="4" maxlength="1000"></textarea>
               <div class="ff-row" style="margin-top: 8px">
                 <button class="ff-btn" type="button" @click="saveTranscript">Save correction</button>
                 <button class="ff-link" type="button" @click="editingTranscript = false">Cancel</button>
@@ -522,7 +591,7 @@ onMounted(() => {
             <div><span>Understanding the source</span><b>included</b></div>
             <div><span>Producing your version</span><b>{{ plan?.credits ?? 0 }} credits</b></div>
             <div class="ff-total"><span>Total to approve</span><b>{{ plan?.credits ?? 0 }} credits</b></div>
-            <p class="ff-muted">The exact total, not a range — charged only for what succeeds. Because the presenter is changing, almost nothing from the source can be reused directly; that is the main driver of cost here.</p>
+            <p class="ff-muted">This estimate covers the approved passages. New performances and generated visuals contribute to the cost; reused footage reduces generation work.</p>
           </div>
 
           <div class="ff-card">
@@ -533,7 +602,7 @@ onMounted(() => {
             </label>
             <label class="ff-check">
               <input v-model="consentPresenter" type="checkbox" />
-              I confirm I have the right to use {{ presenter ? `${presenter.name}'s` : "my presenter's" }} likeness and voice.
+              I confirm I have the rights to use {{ needsPresenter ? (presenter ? `${presenter.name}'s likeness and voice` : "the selected presenter’s likeness and voice") : "the footage and assets in this version" }}.
             </label>
             <p v-if="needsPresenter && !presenter" class="ff-warn">Pick the presenter on the plan before starting.</p>
             <div class="ff-row" style="justify-content: flex-end; margin-top: 10px">
@@ -564,21 +633,28 @@ onMounted(() => {
         <div v-if="activePlanRow" class="ff-compare ff-compare-wide">
           <div>
             <span class="ff-eyebrow">Source</span>
+            <video v-if="sourceUrl" ref="sourceVideo" class="ff-video ff-comparison-video" :src="sourceUrl" controls playsinline preload="metadata" @loadedmetadata="seekSource" />
+            <p v-else class="ff-muted">{{ sourcePreviewError || 'Loading source preview…' }}</p>
             <div class="ff-panel">{{ sourceById[activePlanRow.id]?.transcript || activePlanRow.source }}</div>
           </div>
           <div>
             <span class="ff-eyebrow ff-eyebrow-brand">Your version</span>
+            <video v-if="producedPreview?.visual_url && producedPreview.visual_type === 'video'" class="ff-video ff-comparison-video" :src="producedPreview.visual_url" controls playsinline />
+            <img v-else-if="producedPreview?.visual_url" class="ff-video ff-comparison-video" :src="producedPreview.visual_url" alt="Generated passage" />
+            <div v-else class="ff-video ff-preview-empty">{{ producedScene?.error ? 'This passage needs attention. Open production to retry.' : 'This passage preview is not ready yet.' }}</div>
+            <audio v-if="producedPreview?.audio_url" :src="producedPreview.audio_url" controls class="ff-audio" />
             <div class="ff-panel ff-panel-brand">{{ activePlanRow.segment.script_text || activePlanRow.target }}</div>
           </div>
         </div>
         <p v-if="activePlanRow" class="ff-muted" style="margin-top: 10px">{{ activePlanRow.reason }}</p>
         <div class="ff-footer">
-          <span class="ff-muted">Revisions and download live on the take's review screen.</span>
+          <span class="ff-muted">Passage previews are separate from the final export. Review, revise and download your version when production finishes.</span>
+          <button v-if="producedTake?.status === 'ready_for_review'" type="button" class="ff-btn ff-btn-primary" @click="router.push({ name: 'ugc-review', params: { projectId: producedTake.id }, query: { footage: session.id } })">Review & revise →</button>
           <button
             v-if="session?.run_id"
             class="ff-btn ff-btn-primary"
             type="button"
-            @click="router.push({ name: 'ugc-run', params: { runId: session.run_id } })"
+            @click="router.push({ name: 'ugc-run', params: { runId: session.run_id }, query: { footage: session.id } })"
           >Open production →</button>
         </div>
       </div>
@@ -603,7 +679,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.ff-shell { display: flex; min-height: 100vh; background: var(--color-bg); }
+.ff-shell { display: flex; min-height: 100vh; background: var(--color-bg-deep); }
 .ff-main {
   margin-left: var(--sidebar-width, 220px);
   flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0 28px 48px;
@@ -613,7 +689,7 @@ onMounted(() => {
   padding: 18px 0 14px; border-bottom: 1px solid var(--color-border); flex-wrap: wrap;
 }
 .ff-crumb { font-size: 13.5px; color: var(--color-text-muted); }
-.ff-crumb b { color: var(--color-text); }
+.ff-crumb b { color: var(--color-text-primary); }
 .ff-note { font-size: 12.5px; color: var(--color-text-muted); }
 .ff-error {
   margin: 14px 0 0; padding: 10px 14px; border-radius: 10px; font-size: 13px;
@@ -628,32 +704,32 @@ onMounted(() => {
 .ff-col-list { width: 360px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; }
 .ff-col-detail { flex: 1; min-width: 0; }
 .ff-card {
-  background: var(--color-surface); border: 1px solid var(--color-border);
+  background: var(--color-bg-card); border: 1px solid var(--color-border);
   border-radius: 14px; padding: 16px 18px;
 }
 .ff-card h3 { margin: 0 0 10px; font-size: 15px; }
 .ff-tabs { display: flex; gap: 8px; margin: 16px 0 12px; }
 .ff-tab {
-  border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text);
+  border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-primary);
   border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
 }
-.ff-tab.on { border-color: var(--color-primary); color: var(--color-primary); }
+.ff-tab.on { border-color: var(--color-accent); color: var(--color-accent); }
 .ff-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--color-text-muted); margin-bottom: 6px; }
 .ff-card textarea, .ff-card input, .ff-col-detail textarea {
   width: 100%; border: 1px solid var(--color-border); border-radius: 10px; padding: 11px 12px;
-  font-size: 13.5px; font-family: inherit; background: var(--color-bg); color: var(--color-text);
+  font-size: 13.5px; font-family: inherit; background: var(--color-bg-deep); color: var(--color-text-primary);
 }
 .ff-card textarea { resize: vertical; }
 .ff-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ff-muted { font-size: 12.5px; color: var(--color-text-muted); margin: 6px 0 0; line-height: 1.5; }
 .ff-btn {
-  border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text);
+  border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-primary);
   border-radius: 9px; padding: 9px 15px; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .ff-btn:disabled { opacity: 0.55; cursor: default; }
-.ff-btn-primary { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.ff-btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
 .ff-btn-quiet { color: var(--color-text-muted); }
-.ff-link { border: none; background: none; color: var(--color-primary); font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; }
+.ff-link { border: none; background: none; color: var(--color-accent); font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; }
 .ff-drop {
   width: 100%; border: 1.5px dashed var(--color-border); border-radius: 12px; background: none;
   color: var(--color-text-muted); padding: 20px 14px; font-size: 13px; cursor: pointer;
@@ -663,23 +739,23 @@ onMounted(() => {
 .ff-rights { display: flex; gap: 10px; }
 .ff-right {
   flex: 1; text-align: left; border: 1.5px solid var(--color-border); border-radius: 12px;
-  background: none; color: var(--color-text); padding: 14px; cursor: pointer;
+  background: none; color: var(--color-text-primary); padding: 14px; cursor: pointer;
   display: flex; flex-direction: column; gap: 4px;
 }
 .ff-right span { font-size: 12.5px; color: var(--color-text-muted); line-height: 1.45; }
-.ff-right.on { border-color: var(--color-primary); }
-.ff-right.on b { color: var(--color-primary); }
+.ff-right.on { border-color: var(--color-accent); }
+.ff-right.on b { color: var(--color-accent); }
 .ff-eyebrow {
   display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
   text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 8px;
 }
-.ff-eyebrow-brand { color: var(--color-primary); }
+.ff-eyebrow-brand { color: var(--color-accent); }
 .ff-passage {
   text-align: left; width: 100%; border: 1px solid var(--color-border); border-radius: 12px;
-  background: var(--color-surface); color: var(--color-text); padding: 12px 14px; cursor: pointer;
+  background: var(--color-bg-card); color: var(--color-text-primary); padding: 12px 14px; cursor: pointer;
   display: flex; flex-direction: column; gap: 4px;
 }
-.ff-passage.on { border-color: var(--color-primary); }
+.ff-passage.on { border-color: var(--color-accent); }
 .ff-passage.dropped { opacity: 0.55; }
 .ff-passage-t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13.5px; }
 .ff-badge {
@@ -688,18 +764,18 @@ onMounted(() => {
 }
 .ff-badge.observed, .ff-badge.reused { background: var(--color-success-soft, rgba(31, 122, 77, 0.12)); color: var(--color-success, #1f7a4d); }
 .ff-badge.inferred, .ff-badge.rebuilt { background: var(--color-info-soft, rgba(59, 100, 160, 0.14)); color: var(--color-info, #3b64a0); }
-.ff-badge.unclear { background: var(--color-warning-soft, rgba(180, 116, 14, 0.14)); color: var(--color-warning-strong, #7a5008); }
-.ff-badge.new { background: var(--color-primary-soft, rgba(20, 99, 86, 0.1)); color: var(--color-primary); }
+.ff-badge.unclear { background: var(--color-warning-soft, rgba(180, 116, 14, 0.14)); color: var(--color-warning-strong, #efb968); }
+.ff-badge.new { background: var(--color-primary-soft, rgba(20, 99, 86, 0.1)); color: var(--color-accent); }
 .ff-important { font-size: 11.5px; color: var(--color-warning-strong, #b4740e); font-weight: 600; }
 .ff-speaker { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; font-size: 13.5px; }
 .ff-detail-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .ff-detail-h h2 { margin: 0; font-size: 18px; }
 .ff-quote {
   border: 1px solid var(--color-border); border-radius: 12px; padding: 13px 15px;
-  font-size: 14.5px; line-height: 1.55; background: var(--color-bg);
+  font-size: 14.5px; line-height: 1.55; background: var(--color-bg-deep);
 }
 .ff-quote-plain { font-size: 13px; color: var(--color-text-muted); }
-.ff-quote-brand { border-color: var(--color-primary); }
+.ff-quote-brand { border-color: var(--color-accent); }
 .ff-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 .ff-footer {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
@@ -709,19 +785,19 @@ onMounted(() => {
 .ff-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .ff-pill {
   font-size: 12px; font-weight: 600; border-radius: 999px; padding: 6px 12px;
-  background: var(--color-primary-soft, rgba(20, 99, 86, 0.08)); color: var(--color-primary); border: none;
+  background: var(--color-primary-soft, rgba(255, 107, 53, 0.08)); color: var(--color-accent); border: none;
 }
 .ff-pill-warn { background: var(--color-danger-soft, rgba(179, 38, 30, 0.08)); color: var(--color-danger, #b3261e); }
-.ff-pill-btn { cursor: pointer; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
-.ff-pill-btn.on { border-color: var(--color-primary); color: var(--color-primary); }
+.ff-pill-btn { cursor: pointer; background: var(--color-bg-card); color: var(--color-text-primary); border: 1px solid var(--color-border); }
+.ff-pill-btn.on { border-color: var(--color-accent); color: var(--color-accent); }
 .ff-compare { display: flex; gap: 14px; }
 .ff-compare > div { flex: 1; min-width: 0; }
 .ff-compare-wide .ff-panel { min-height: 120px; }
 .ff-panel {
   border: 1px solid var(--color-border); border-radius: 12px; padding: 14px;
-  font-size: 14px; line-height: 1.55; background: var(--color-bg); color: var(--color-text-muted);
+  font-size: 14px; line-height: 1.55; background: var(--color-bg-deep); color: var(--color-text-muted);
 }
-.ff-panel-brand { border: 1.5px solid var(--color-primary); color: var(--color-text); }
+.ff-panel-brand { border: 1.5px solid var(--color-accent); color: var(--color-text-primary); }
 .ff-summary { display: flex; flex-direction: column; gap: 0; }
 .ff-summary > div {
   display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
@@ -730,7 +806,7 @@ onMounted(() => {
 .ff-summary > div > span { color: var(--color-text-muted); }
 .ff-summary > div:last-of-type { border-bottom: none; }
 .ff-summary .ff-total {
-  background: var(--color-primary-soft, rgba(20, 99, 86, 0.08)); border-radius: 10px;
+  background: var(--color-primary-soft, rgba(255, 107, 53, 0.08)); border-radius: 10px;
   padding: 12px 14px; margin-top: 6px; border-bottom: none; font-size: 14.5px;
 }
 .ff-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; padding: 7px 0; cursor: pointer; }
@@ -741,14 +817,14 @@ onMounted(() => {
   display: flex; align-items: center; justify-content: center; padding: 20px;
 }
 .ff-modal {
-  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 16px;
+  background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 16px;
   padding: 20px; width: min(680px, 100%); max-height: 80vh; overflow: auto;
 }
 .ff-modal h3 { margin: 0 0 14px; font-size: 16px; }
 .ff-presenters { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
 .ff-presenter {
-  border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg);
-  color: var(--color-text); padding: 10px; cursor: pointer; display: flex; flex-direction: column; gap: 8px; align-items: center;
+  border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-deep);
+  color: var(--color-text-primary); padding: 10px; cursor: pointer; display: flex; flex-direction: column; gap: 8px; align-items: center;
 }
 .ff-presenter img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 9px; }
 .ff-presenter-blank { font-size: 40px; padding: 20px 0; }
@@ -759,4 +835,19 @@ onMounted(() => {
   .ff-compare { flex-direction: column; }
   .ff-rights { flex-direction: column; }
 }
+
+.ff-steps { display: flex; gap: 8px; padding: 20px 0 0; overflow-x: auto; }
+.ff-steps button { display: flex; align-items: center; gap: 8px; flex: 1; white-space: nowrap; border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-muted); border-radius: 10px; padding: 12px; cursor: pointer; font: inherit; font-size: 13px; }
+.ff-steps button.on { color: var(--color-accent); border-color: var(--color-accent); }
+.ff-steps button:disabled { opacity: .5; cursor: default; }
+.ff-steps button span { font-weight: 700; }
+.ff-video { width: 100%; max-height: 320px; background: #08080b; border: 1px solid var(--color-border); border-radius: 12px; object-fit: contain; margin-bottom: 16px; }
+.ff-comparison-video { height: 420px; max-height: 55vh; }
+.ff-preview-empty { min-height: 240px; display: grid; place-items: center; padding: 20px; color: var(--color-text-muted); text-align: center; }
+.ff-audio { width: 100%; margin-bottom: 12px; }
+.ff-cols { flex-wrap: wrap; }
+.ff-col-list { flex: 1 1 260px; min-width: 0; }
+.ff-col-detail { flex: 2 1 360px; min-width: 0; }
+.ff-col-side { flex: 1 1 230px; min-width: 0; }
+@media (max-width: 760px) { .ff-cols { display: flex; flex-direction: column; } .ff-col-list, .ff-col-detail, .ff-col-side { width: 100%; flex: auto; } .ff-compare { grid-template-columns: 1fr; } }
 </style>
