@@ -63,6 +63,11 @@ class UgcController extends Controller
             'language' => ['sometimes', 'string', 'max:12'],
             'available_footage' => ['sometimes', 'array', 'max:20'],
             'available_footage.*' => ['string', 'max:120'],
+            // The workspace's own clips, so the director can assign them to
+            // beats instead of the user hand-picking a file per shot. Labels
+            // above stay for footage they have but have not uploaded yet.
+            'footage_asset_ids' => ['sometimes', 'array', 'max:40'],
+            'footage_asset_ids.*' => ['integer', 'min:1'],
             // The shape read off a reference, if the user started from one.
             'reference' => ['sometimes', 'array'],
             'reference.shape' => ['sometimes', 'nullable', 'string', 'max:300'],
@@ -74,10 +79,28 @@ class UgcController extends Controller
             'reference.beats.*.end' => ['sometimes', 'numeric'],
         ]);
 
+        // Resolved here, not trusted from the client: the planner only ever
+        // sees clips this workspace owns.
+        $library = [];
+        foreach (Asset::query()
+            ->where('workspace_id', $request->user()->workspace_id)
+            ->whereIn('id', $v['footage_asset_ids'] ?? [])
+            ->whereIn('asset_type', ['image', 'video'])
+            ->whereNotNull('storage_url')
+            ->limit(40)->get() as $asset) {
+            $library[] = [
+                'id' => $asset->getKey(),
+                'kind' => $asset->asset_type,
+                'title' => mb_substr((string) ($asset->title ?: 'Untitled'), 0, 120),
+                'description' => mb_substr((string) ($asset->description ?? ''), 0, 200),
+                'seconds' => $asset->duration_seconds ? round((float) $asset->duration_seconds, 1) : null,
+            ];
+        }
+
         return response()->json(['data' => $planner->plan(
             (string) ($v['script'] ?? ''), (string) ($v['product'] ?? ''), (string) ($v['context'] ?? ''),
             $v['duration_seconds'], $v['language'] ?? 'en', $v['available_footage'] ?? [], $v['format'],
-            $v['reference'] ?? [],
+            $v['reference'] ?? [], $library,
         ), 'meta' => []]);
     }
 

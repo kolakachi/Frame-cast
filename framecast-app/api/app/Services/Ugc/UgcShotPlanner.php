@@ -12,7 +12,8 @@ class UgcShotPlanner
     public function __construct(private readonly AIGenerationAdapter $ai) {}
 
     public function plan(string $scriptText, string $product = '', string $context = '', int $durationSeconds = 30,
-        string $language = 'en', array $availableFootage = [], string $format = 'auto', array $reference = []): array
+        string $language = 'en', array $availableFootage = [], string $format = 'auto', array $reference = [],
+        array $library = []): array
     {
         try {
             $result = $this->ai->generate('ugc_shot_plan', [
@@ -20,6 +21,7 @@ class UgcShotPlanner
                 'duration' => (string) $durationSeconds, 'language' => $language,
                 'available_footage' => implode(', ', $availableFootage), 'format' => $format,
                 'reference' => $this->referenceBrief($reference),
+                'library' => $this->libraryBrief($library),
             ], 3500, 0.3);
             $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
             $content = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $content);
@@ -29,6 +31,11 @@ class UgcShotPlanner
                 throw new \UnexpectedValueException('Director returned a different format.');
             }
             $segments = UgcPlan::normalise($parsed['segments'] ?? [], $chosen);
+            // A model that names a clip we never offered would show the user
+            // footage assigned to a shot that cannot be generated — and an id
+            // from another workspace would be worse than that. Only ids from
+            // the list we handed it survive.
+            $segments = $this->keepOfferedAssetsOnly($segments, $library);
             $spoken = UgcPlan::script($segments);
             if (trim($scriptText) !== '' && ! UgcPlan::sameScript($scriptText, $spoken)) {
                 throw new \UnexpectedValueException('Director changed the supplied spoken script.');
@@ -44,6 +51,63 @@ class UgcShotPlanner
             Log::warning('UGC director returned no usable plan', ['error' => mb_substr($e->getMessage(), 0, 200)]);
             throw ValidationException::withMessages(['plan' => 'The director could not produce a valid plan. No credits were spent. Try again or simplify the brief. Reaction clips need a visual brief, not a spoken script.']);
         }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $segments
+     * @param  array<int, array<string, mixed>>  $library
+     * @return array<int, array<string, mixed>>
+     */
+    private function keepOfferedAssetsOnly(array $segments, array $library): array
+    {
+        $offered = array_map(fn ($a) => (int) ($a['id'] ?? 0), $library);
+
+        foreach ($segments as $i => $seg) {
+            $id = (int) ($seg['asset_id'] ?? 0);
+            if ($id > 0 && ! in_array($id, $offered, true)) {
+                $segments[$i]['asset_id'] = null;
+                // Left as an upload shot with nothing chosen: UgcPlan::warnings
+                // already tells the user that shot needs footage selecting, and
+                // generate() refuses until it has some.
+            }
+        }
+
+        return $segments;
+    }
+
+    /**
+     * Their own clips, offered to the director by id so a shot can be assigned
+     * one rather than described and hand-matched afterwards.
+     *
+     * This is the half of reference-reading that makes it useful: the shape
+     * comes from the ad they admire, the substance from footage they already
+     * own. Their real product beats anything we would generate of it, and
+     * nothing is generated at all.
+     *
+     * @param  array<int, array<string, mixed>>  $library
+     */
+    private function libraryBrief(array $library): string
+    {
+        if ($library === []) {
+            return 'none uploaded — plan cutaways as stock or generate';
+        }
+
+        $lines = ['Their own uploaded footage. Prefer these over stock or generated stills wherever',
+                  'one genuinely answers the shot: it is their real product, and it costs nothing to use.',
+                  'Set source to "upload" and asset_id to the id below. Never invent an id, and never',
+                  'claim a clip shows something this list does not say it shows.'];
+        foreach ($library as $a) {
+            $lines[] = sprintf(
+                '- id %d (%s%s): %s%s',
+                (int) ($a['id'] ?? 0),
+                (string) ($a['kind'] ?? 'clip'),
+                isset($a['seconds']) && $a['seconds'] ? ', '.$a['seconds'].'s' : '',
+                (string) ($a['title'] ?? 'Untitled'),
+                ! empty($a['description']) ? ' — '.$a['description'] : '',
+            );
+        }
+
+        return implode("\n", $lines);
     }
 
     /**
