@@ -39,7 +39,11 @@ final class UgcPlan
 
     public static function sameScript(string $a, string $b): bool
     {
-        return preg_replace('/\s+/u', ' ', trim($a)) === preg_replace('/\s+/u', ' ', trim($b));
+        // Words, not punctuation. A real run rejected an entire valid plan
+        // with "Director changed the supplied spoken script" because the
+        // model normalised a comma. The instruction is to preserve every
+        // word; casing and punctuation are not words.
+        return self::flatten($a) === self::flatten($b);
     }
 
     public static function script(array $segments): string

@@ -15,6 +15,31 @@ class UgcShotPlanner
         string $language = 'en', array $availableFootage = [], string $format = 'auto', array $reference = [],
         array $library = []): array
     {
+        // One self-repair attempt. The first real run failed on a rule the
+        // prompt states tersely — a silent cutaway outside demo — and the
+        // right response to a near-miss is to hand the director its own
+        // error, not to hand the user ours.
+        $previousError = '';
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            try {
+                return $this->planOnce($scriptText, $product, $context, $durationSeconds,
+                    $language, $availableFootage, $format, $reference, $library, $previousError);
+            } catch (ValidationException $e) {
+                throw $e; // planOnce only throws this for the terminal failure
+            } catch (\Throwable $e) {
+                $previousError = mb_substr($e->getMessage(), 0, 300);
+                Log::info('UGC director retrying after invalid plan', ['error' => $previousError]);
+            }
+        }
+
+        Log::warning('UGC director returned no usable plan', ['error' => $previousError]);
+        throw ValidationException::withMessages(['plan' => 'The director could not produce a valid plan. No credits were spent. Try again or simplify the brief. Reaction clips need a visual brief, not a spoken script.']);
+    }
+
+    private function planOnce(string $scriptText, string $product, string $context, int $durationSeconds,
+        string $language, array $availableFootage, string $format, array $reference,
+        array $library, string $previousError): array
+    {
         try {
             $result = $this->ai->generate('ugc_shot_plan', [
                 'script_text' => trim($scriptText), 'product' => $product, 'context' => $context,
@@ -22,6 +47,9 @@ class UgcShotPlanner
                 'available_footage' => implode(', ', $availableFootage), 'format' => $format,
                 'reference' => $this->referenceBrief($reference),
                 'library' => $this->libraryBrief($library),
+                'previous_error' => $previousError !== ''
+                    ? 'Your previous plan was rejected: '.$previousError.' Return a corrected plan that fixes exactly this.'
+                    : '',
             ], 3500, 0.3);
             $parsed = UgcPlan::decodeModelJson((string) ($result['content'] ?? $result['text'] ?? ''));
             $chosen = (string) ($parsed['format'] ?? '');
@@ -45,9 +73,12 @@ class UgcShotPlanner
                 'reasoning' => mb_substr((string) ($parsed['reasoning'] ?? ''), 0, 600),
                 'warnings' => UgcPlan::warnings($segments, $chosen),
             ];
-        } catch (\Throwable $e) {
-            Log::warning('UGC director returned no usable plan', ['error' => mb_substr($e->getMessage(), 0, 200)]);
-            throw ValidationException::withMessages(['plan' => 'The director could not produce a valid plan. No credits were spent. Try again or simplify the brief. Reaction clips need a visual brief, not a spoken script.']);
+        } catch (ValidationException $e) {
+            // normalise()'s message says exactly what rule broke — that is the
+            // repair instruction, so surface it to the retry loop.
+            throw new \UnexpectedValueException(implode(' ', array_map(
+                fn ($m) => implode(' ', (array) $m), $e->errors(),
+            )), 0, $e);
         }
     }
 
