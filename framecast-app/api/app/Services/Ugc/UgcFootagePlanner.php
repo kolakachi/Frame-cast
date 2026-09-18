@@ -48,7 +48,9 @@ class UgcFootagePlanner
                         'important' => ! empty($p['important']),
                     ], $kept),
                 ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
-            ], 4000, 0.3, ['operation' => 'ugc_footage_target_plan']);
+            // Twelve passages of full segments is a lot of JSON; a cap that
+            // truncates mid-object reads back as 'Syntax error'.
+            ], 8000, 0.3, ['operation' => 'ugc_footage_target_plan']);
 
             $parsed = UgcPlan::decodeModelJson((string) ($result['content'] ?? $result['text'] ?? ''));
         } catch (ValidationException $e) {

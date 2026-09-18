@@ -74,7 +74,7 @@ class UgcFootageReader
                     JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
                 ),
                 'frame_times' => $frames === [] ? 'none' : implode(', ', array_map(fn ($f) => $f['at'].'s', $frames)),
-            ], 3000, 0.2, [
+            ], 5000, 0.2, [
                 'operation' => 'ugc_footage_read',
                 'images' => array_map(fn ($f) => ['url' => $f['url'], 'title' => 'Frame at '.$f['at'].'s'], $frames),
                 'image_detail' => 'low',
