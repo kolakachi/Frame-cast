@@ -23,9 +23,7 @@ class UgcShotPlanner
                 'reference' => $this->referenceBrief($reference),
                 'library' => $this->libraryBrief($library),
             ], 3500, 0.3);
-            $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
-            $content = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $content);
-            $parsed = json_decode($content, true, 32, JSON_THROW_ON_ERROR);
+            $parsed = UgcPlan::decodeModelJson((string) ($result['content'] ?? $result['text'] ?? ''));
             $chosen = (string) ($parsed['format'] ?? '');
             if (! in_array($chosen, UgcPlan::FORMATS, true) || ($format !== 'auto' && $format !== $chosen)) {
                 throw new \UnexpectedValueException('Director returned a different format.');
@@ -180,9 +178,7 @@ class UgcShotPlanner
                 'shots_json' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
             ], 2000, 0.3, ['operation' => 'ugc_shot_reanchor']);
 
-            $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
-            $content = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $content);
-            $shots = json_decode($content, true, 16, JSON_THROW_ON_ERROR)['shots'] ?? [];
+            $shots = UgcPlan::decodeModelJson((string) ($result['content'] ?? $result['text'] ?? ''))['shots'] ?? [];
 
             foreach ($shots as $shot) {
                 $i = (int) ($shot['index'] ?? -1);
@@ -249,9 +245,7 @@ class UgcShotPlanner
                 'count' => (string) $count,
             ], 1600, 0.8, ['operation' => 'ugc_hook_variants']);
 
-            $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
-            $content = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $content);
-            $raw = json_decode($content, true, 16, JSON_THROW_ON_ERROR)['variants'] ?? [];
+            $raw = UgcPlan::decodeModelJson((string) ($result['content'] ?? $result['text'] ?? ''))['variants'] ?? [];
         } catch (\Throwable $e) {
             Log::warning('UGC hook variants produced nothing usable', ['error' => mb_substr($e->getMessage(), 0, 200)]);
             throw ValidationException::withMessages([

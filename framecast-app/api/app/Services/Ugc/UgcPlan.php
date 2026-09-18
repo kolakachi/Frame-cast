@@ -186,6 +186,79 @@ final class UgcPlan
      * @param  array<int, array<string, mixed>>  $segments
      * @return array<int, array<string, mixed>>  the same shots, each with `stale`
      */
+
+    /**
+     * Decode a model reply that is supposed to be JSON and sometimes is not
+     * quite. Real runs produced five "Syntax error" failures in one day: the
+     * model wraps the object in prose or fences often enough that trusting the
+     * raw string is trusting a coin.
+     *
+     * @return array<string, mixed>
+     */
+    public static function decodeModelJson(string $content): array
+    {
+        $content = trim((string) preg_replace('/^```[a-z]*\s*|\s*```$/i', '', trim($content)));
+
+        try {
+            return (array) json_decode($content, true, 32, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            // Take the outermost object: from the first brace to the last.
+            $start = strpos($content, '{');
+            $end = strrpos($content, '}');
+            if ($start === false || $end === false || $end <= $start) {
+                throw new \JsonException('No JSON object in model reply.');
+            }
+
+            return (array) json_decode(substr($content, $start, $end - $start + 1), true, 32, JSON_THROW_ON_ERROR);
+        }
+    }
+
+    /**
+     * Timed passages from word-level timings. The transcription service asks
+     * for word granularity, so its "segments" come back empty — a real read
+     * returned 130 words and 0 segments, and the reference reader concluded
+     * the ad was silent while holding its entire script.
+     *
+     * @param  array<int, array{text: string, start: float, end: float}>  $words
+     * @return array<int, array{text: string, start: float, end: float}>
+     */
+    public static function segmentsFromWords(array $words): array
+    {
+        $segments = [];
+        $current = null;
+        foreach ($words as $w) {
+            $text = trim((string) ($w['text'] ?? ''));
+            if ($text === '') {
+                continue;
+            }
+            $start = (float) ($w['start'] ?? 0);
+            $end = (float) ($w['end'] ?? $start);
+
+            if ($current === null) {
+                $current = ['text' => $text, 'start' => $start, 'end' => $end];
+                continue;
+            }
+
+            $gap = $start - $current['end'];
+            $count = substr_count($current['text'], ' ') + 1;
+            $sentenceEnded = (bool) preg_match('/[.!?…]$/u', $current['text']);
+
+            // A passage closes at a sentence end, a real pause, or sheer length.
+            if ($sentenceEnded || $gap > 0.9 || $count >= 28) {
+                $segments[] = $current;
+                $current = ['text' => $text, 'start' => $start, 'end' => $end];
+            } else {
+                $current['text'] .= ' '.$text;
+                $current['end'] = $end;
+            }
+        }
+        if ($current !== null) {
+            $segments[] = $current;
+        }
+
+        return $segments;
+    }
+
     public static function reanchor(array $segments, string $newScript): array
     {
         $haystack = self::flatten($newScript);

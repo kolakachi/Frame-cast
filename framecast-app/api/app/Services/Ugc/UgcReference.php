@@ -44,6 +44,11 @@ class UgcReference
         try {
             $timed = $this->transcription->transcribeAssetWithTimestamps($asset);
             $segments = array_values(array_filter((array) ($timed['segments'] ?? [])));
+            if ($segments === [] && ! empty($timed['words'])) {
+                // Word granularity comes back with no segments at all; the
+                // words carry the whole script.
+                $segments = UgcPlan::segmentsFromWords((array) $timed['words']);
+            }
         } catch (\Throwable $e) {
             // A silent reference fails transcription rather than returning
             // nothing. With frames in hand that is survivable.
@@ -77,9 +82,7 @@ class UgcReference
                 'image_detail' => 'low',
             ]);
 
-            $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
-            $content = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $content);
-            $parsed = json_decode($content, true, 16, JSON_THROW_ON_ERROR);
+            $parsed = UgcPlan::decodeModelJson((string) ($result['content'] ?? $result['text'] ?? ''));
         } catch (\Throwable $e) {
             Log::warning('UGC reference read produced nothing usable', ['error' => mb_substr($e->getMessage(), 0, 200)]);
             throw ValidationException::withMessages([
