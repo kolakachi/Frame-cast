@@ -5,8 +5,11 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
-  modelValue: { type: [String, Number], default: '' },
+  modelValue: { type: [String, Number, Array], default: '' },
   options: { type: Array, default: () => [] }, // [{ value, label }]
+  multiple: { type: Boolean, default: false },
+  disabled: { type: Boolean, default: false },
+  label: { type: String, default: 'Select an option' },
   placeholder: { type: String, default: 'Select…' },
   align: { type: String, default: 'right' }, // menu edge to anchor to
   drop: { type: String, default: 'auto' }, // 'auto' | 'up' | 'down'
@@ -20,11 +23,16 @@ const root = ref(null)
 const MENU_MAX_H = 280 // keep in sync with .ui-select-menu max-height + margin
 
 const selectedLabel = computed(() => {
+  if (props.multiple) {
+    const values = Array.isArray(props.modelValue) ? props.modelValue : []
+    return values.length ? `${values.length} selected` : props.placeholder
+  }
   const found = props.options.find((o) => String(o.value) === String(props.modelValue))
   return found ? found.label : props.placeholder
 })
 
 function toggle() {
+  if (props.disabled) return
   if (!open.value) {
     // Decide direction before showing: explicit prop wins; otherwise flip up
     // when there isn't room below but there is above (bottom-of-screen selects).
@@ -42,7 +50,14 @@ function toggle() {
   }
   open.value = !open.value
 }
-function pick(value) { emit('update:modelValue', value); open.value = false }
+function selected(value) { return props.multiple ? (props.modelValue || []).some(v => String(v) === String(value)) : String(value) === String(props.modelValue) }
+function pick(value) {
+  if (props.disabled) return
+  if (props.multiple) {
+    const values = Array.isArray(props.modelValue) ? props.modelValue : []
+    emit('update:modelValue', selected(value) ? values.filter(v => String(v) !== String(value)) : [...values, value])
+  } else { emit('update:modelValue', value); open.value = false }
+}
 function onDocClick(e) { if (root.value && !root.value.contains(e.target)) open.value = false }
 function onKey(e) { if (e.key === 'Escape') open.value = false }
 
@@ -52,20 +67,21 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 
 <template>
   <div class="ui-select" ref="root">
-    <button type="button" class="ui-select-trigger" :class="{ open }" @click.stop="toggle">
+    <button type="button" class="ui-select-trigger" :disabled="disabled" :aria-label="label" :aria-expanded="open" :class="{ open }" @click.stop="toggle">
       <span class="ui-select-value">{{ selectedLabel }}</span>
       <span class="ui-select-caret">▾</span>
     </button>
-    <div v-if="open" :class="['ui-select-menu', align === 'left' ? 'ui-select-menu--left' : '', dropUp ? 'ui-select-menu--up' : '']">
+    <div v-if="open && !disabled" :class="['ui-select-menu', align === 'left' ? 'ui-select-menu--left' : '', dropUp ? 'ui-select-menu--up' : '']">
       <button
         v-for="o in options"
         :key="o.value"
         type="button"
-        :class="['ui-select-option', String(o.value) === String(modelValue) ? 'selected' : '']"
+        :class="['ui-select-option', selected(o.value) ? 'selected' : '']"
+        :aria-pressed="selected(o.value)"
         @click.stop="pick(o.value)"
       >
         <span>{{ o.label }}</span>
-        <span v-if="String(o.value) === String(modelValue)" class="ui-select-check">✓</span>
+        <span v-if="selected(o.value)" class="ui-select-check">✓</span>
       </button>
     </div>
   </div>
@@ -80,6 +96,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
   color: var(--color-text-primary, #e8e8ee); font-size: 12.5px; font-family: inherit;
   cursor: pointer; transition: border-color 0.15s, color 0.15s;
 }
+.ui-select-trigger:disabled { opacity: .5; cursor: not-allowed; }
 .ui-select-trigger:hover, .ui-select-trigger.open { border-color: rgba(255, 107, 53, 0.45); }
 .ui-select-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui-select-caret { font-size: 9px; opacity: 0.6; transition: transform 0.15s; }

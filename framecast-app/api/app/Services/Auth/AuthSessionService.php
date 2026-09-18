@@ -10,12 +10,13 @@ use Illuminate\Support\Str;
 
 class AuthSessionService
 {
-    public function create(User $user, Request $request): array
+    public function create(User $user, Request $request, ?int $activeWorkspaceId = null): array
     {
         $plainTextToken = Str::random(80);
 
         $session = AuthSession::query()->create([
             'user_id' => $user->getKey(),
+            'active_workspace_id' => $activeWorkspaceId ?? $user->workspace_id,
             'token_hash' => hash('sha256', $plainTextToken),
             'user_agent' => (string) $request->userAgent(),
             'ip_address' => $request->ip(),
@@ -55,7 +56,7 @@ class AuthSessionService
 
         $existingSession->forceFill(['revoked_at' => CarbonImmutable::now()])->save();
 
-        [$newSession, $newRefreshToken] = $this->create($existingSession->user, $request);
+        [$newSession, $newRefreshToken] = $this->create($existingSession->user, $request, $existingSession->active_workspace_id);
 
         return [$existingSession->user, $newSession, $newRefreshToken];
     }

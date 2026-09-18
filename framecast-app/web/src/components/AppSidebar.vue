@@ -1,4 +1,5 @@
 <script setup>
+import api from "../services/api"
 import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import WhatsNew from './WhatsNew.vue'
 import NotifBell from './NotifBell.vue'
@@ -82,16 +83,20 @@ const screenTitle = computed(() => {
   return named[props.activePage] ?? "WyvStudio";
 });
 
-// The agency first, then its clients — the order an agency thinks in.
-const switchTargets = computed(() => {
-  const a = workspaceStore.agency;
-  return a ? [a, ...(workspaceStore.clients ?? [])] : (workspaceStore.clients ?? []);
-});
+// One switcher serves agency owners and people invited into multiple clients.
+const switchTargets = ref([]);
+const workspaceError = ref('');
 const activeWorkspaceId = computed(() => props.user?.workspace_id ?? null);
-
+const activeWorkspaceName = computed(() => switchTargets.value.find(w => Number(w.id) === Number(activeWorkspaceId.value))?.name || workspaceStore.workspaceName);
+onMounted(async () => {
+  try { switchTargets.value = (await api.get('/workspace-access')).data.data; }
+  catch { workspaceError.value = 'Could not load workspaces. Refresh to retry.'; }
+});
 async function switchWorkspace(id) {
-  if (id === activeWorkspaceId.value) return;
-  await workspaceStore.switchTo(id);
+  if (Number(id) === Number(activeWorkspaceId.value)) return;
+  workspaceError.value = '';
+  try { await workspaceStore.switchTo(id); }
+  catch { workspaceError.value = 'Could not switch workspace. Please retry.'; }
 }
 
 const showWsPopover = ref(false);
@@ -220,12 +225,14 @@ onBeforeUnmount(() => {
       role="button"
       tabindex="0"
       @click.stop="openWsPopover"
+      @keydown.enter.prevent="openWsPopover"
+      @keydown.space.prevent="openWsPopover"
     >
       <div class="ws-avatar">
-        {{ workspaceStore.workspaceName[0]?.toUpperCase() || "W" }}
+        {{ activeWorkspaceName[0]?.toUpperCase() || "W" }}
       </div>
       <div class="ws-info">
-        <div class="ws-name">{{ workspaceStore.workspaceName }}</div>
+        <div class="ws-name">{{ activeWorkspaceName }}</div>
         <!-- Nothing at all while the plan is unknown. Printing "Free Plan"
              here contradicted the billing panel for every paying customer. -->
         <div v-if="workspaceStore.planLabel" class="ws-plan">{{ workspaceStore.planLabel }} Plan</div>
@@ -256,10 +263,10 @@ onBeforeUnmount(() => {
         @click="goWorkspaceSettings"
       >
         <div class="ws-popover-avatar">
-          {{ workspaceStore.workspaceName[0]?.toUpperCase() || "W" }}
+          {{ activeWorkspaceName[0]?.toUpperCase() || "W" }}
         </div>
         <div class="ws-popover-info">
-          <div class="ws-popover-name">{{ workspaceStore.workspaceName }}</div>
+          <div class="ws-popover-name">{{ activeWorkspaceName }}</div>
           <div v-if="workspaceStore.planLabel" class="ws-popover-plan" :style="{ color: planColor }">
             {{ workspaceStore.planLabel }} Plan
           </div>
@@ -279,7 +286,7 @@ onBeforeUnmount(() => {
 
       <!-- Client workspaces. Only agencies see this; for everyone else the
            endpoint answers 403 and the list stays empty. -->
-      <div v-if="workspaceStore.canOwnClients" class="ws-clients">
+      <div v-if="switchTargets.length > 1" class="ws-clients">
         <div class="ws-clients-h">Workspaces</div>
         <button
           v-for="w in switchTargets"
@@ -370,6 +377,8 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
+    <p v-if="workspaceError && !isCollapsed" class="workspace-error" role="alert">{{ workspaceError }}</p>
+    <router-link v-if="!isCollapsed && switchTargets.some(w => Number(w.id) === Number(activeWorkspaceId) && w.is_client)" class="client-work-link" to="/client-work">Client brief &amp; requests →</router-link>
     <div class="sidebar-nav">
       <div class="nav-section-label">Workspace</div>
       <button
@@ -778,6 +787,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.workspace-error { padding: 8px 16px; color: #fca5a5; font-size: 12px; }
+.client-work-link { display:block; margin: 6px 16px 12px; color: var(--color-accent); font-size:12px; }
 /* Below 860px the rail becomes an overlay.
    --sidebar-width goes to 0 (set inline by the sidebar store, which beats a
    stylesheet), so the seventeen views that offset by it reclaim the whole

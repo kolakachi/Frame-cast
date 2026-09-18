@@ -123,6 +123,11 @@ class UgcController extends Controller
 
         // Resolved here, not trusted from the client: the planner only ever
         // sees clips this workspace owns.
+        // The client's saved context follows both UGC and owned-footage planning.
+        $workspaceId = (int) $request->user()->workspace_id;
+        $v['context'] = trim(($v['context'] ?? '')."\n".app(\App\Services\Agency\ClientContext::class)->prompt($workspaceId));
+        $clientBrief = json_decode(DB::table('client_profiles')->where('workspace_id', $workspaceId)->value('brief') ?? '{}', true);
+        $v['footage_asset_ids'] = array_slice(array_unique(array_merge($v['footage_asset_ids'] ?? [], $clientBrief['asset_ids'] ?? [])), 0, 40);
         $library = [];
         foreach (Asset::query()
             ->where('workspace_id', $request->user()->workspace_id)

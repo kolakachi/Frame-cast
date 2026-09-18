@@ -77,9 +77,10 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.workspace = res.data.data.workspace
     },
 
-    async loadClients() {
+    async loadClients(includeArchived = false) {
       try {
-        const { data } = await api.get('/workspaces/clients')
+        const { data } = await api.get('/workspaces/clients', { params: { include_archived: includeArchived } })
+        this.loadFailed = false
         this.agency = data.data.agency
         this.clients = data.data.clients
         this.canOwnClients = Boolean(data.data.can_own_clients)
@@ -88,6 +89,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       } catch {
         // An agency-only endpoint answers 403 for everyone else; the switcher
         // simply does not appear.
+        this.loadFailed = true
         this.clients = []
         this.canOwnClients = false
       }
@@ -165,15 +167,15 @@ export const useWorkspaceStore = defineStore('workspace', {
      * cached list, and missing one means showing one client's work under
      * another client's name.
      */
-    async switchTo(id) {
+    async switchTo(id, destination = "/dashboard") {
       if (this.switching) return
       this.switching = true
       try {
-        const { data } = await api.post(`/workspaces/switch/${id}`)
+        const { data } = await api.post(`/workspace-access/switch/${id}`)
         const auth = useAuthStore()
-        auth.setSession({ accessToken: data.data.access_token, user: auth.user })
+        auth.setSession({ accessToken: data.data.access_token, user: { ...auth.user, workspace_id: data.data.workspace_id, role: data.data.role } })
         setApiAccessToken(data.data.access_token)
-        window.location.assign('/dashboard')
+        window.location.assign(/^\/(dashboard|assets|workspace|client-work|ugc-ads|from-my-footage|projects\/\d+\/editor)(\?.*)?$/.test(destination) ? destination : '/dashboard')
       } catch (e) {
         this.switching = false
         throw e

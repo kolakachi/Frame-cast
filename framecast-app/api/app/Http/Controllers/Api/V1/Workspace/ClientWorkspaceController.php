@@ -26,9 +26,7 @@ use Illuminate\Support\Facades\DB;
  */
 class ClientWorkspaceController extends Controller
 {
-    public function __construct(private readonly JwtService $jwt)
-    {
-    }
+    public function __construct(private readonly JwtService $jwt) {}
 
     /** The agency and everything under it, with the shared balance stated once. */
     public function index(Request $request): JsonResponse
@@ -41,6 +39,7 @@ class ClientWorkspaceController extends Controller
         }
 
         $children = Workspace::query()->where('parent_workspace_id', $home->getKey())
+            ->when(! $request->boolean('include_archived'), fn ($q) => $q->where('status', '!=', 'archived'))
             ->orderBy('client_label')->orderBy('id')->get();
 
         return response()->json(['data' => [
@@ -70,29 +69,32 @@ class ClientWorkspaceController extends Controller
             'client_label' => ['sometimes', 'nullable', 'string', 'max:120'],
         ]);
 
-        $count = Workspace::query()->where('parent_workspace_id', $home->getKey())->count();
-        if ($count >= (int) config('workspaces.max_clients', 50)) {
-            return $this->error('limit_reached',
-                'You have reached the maximum number of client workspaces.', 422);
-        }
+        return DB::transaction(function () use ($home, $user, $v) {
+            Workspace::whereKey($home->id)->lockForUpdate()->firstOrFail();
+            $count = Workspace::query()->where('parent_workspace_id', $home->getKey())->where('status', '!=', 'archived')->count();
+            if ($count >= (int) config('workspaces.max_clients', 50)) {
+                return $this->error('limit_reached',
+                    'You have reached the maximum number of client workspaces.', 422);
+            }
 
-        // No credits of its own — every lookup resolves to the agency. Setting a
-        // balance here would create a second, wrong answer to "how many left?".
-        $client = Workspace::query()->create(['name' => $v['name'], 'status' => 'active']);
-        $client->forceFill([
-            'parent_workspace_id' => $home->getKey(),
-            'client_label' => $v['client_label'] ?? $v['name'],
-            'owner_user_id' => $user->getKey(),
-            'plan_tier' => $home->plan_tier,
-            'plan_source' => $home->plan_source,
-            'plan_status' => 'active',
-            'credits_monthly' => 0,
-            'credits_topup' => 0,
-        ])->save();
+            // No credits of its own — every lookup resolves to the agency. Setting a
+            // balance here would create a second, wrong answer to "how many left?".
+            $client = Workspace::query()->create(['name' => $v['name'], 'status' => 'active']);
+            $client->forceFill([
+                'parent_workspace_id' => $home->getKey(),
+                'client_label' => $v['client_label'] ?? $v['name'],
+                'owner_user_id' => $user->getKey(),
+                'plan_tier' => $home->plan_tier,
+                'plan_source' => $home->plan_source,
+                'plan_status' => 'active',
+                'credits_monthly' => 0,
+                'credits_topup' => 0,
+            ])->save();
 
-        $this->seedFromAgency($home, $client);
+            $this->seedFromAgency($home, $client);
 
-        return response()->json(['data' => ['client' => $this->shape($client->fresh(), false)], 'meta' => []], 201);
+            return response()->json(['data' => ['client' => $this->shape($client->fresh(), false)], 'meta' => []], 201);
+        });
     }
 
     /**
@@ -145,11 +147,21 @@ class ClientWorkspaceController extends Controller
             'client_label' => ['sometimes', 'nullable', 'string', 'max:120'],
             // Null clears it. A ceiling of zero would mean "this client may do
             // nothing", which is what archiving is for.
+            'status' => ['sometimes', 'in:active,paused,archived'],
             'monthly_credit_cap' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:10000000'],
         ]);
-        $client->forceFill($v)->save();
+        return DB::transaction(function () use ($client, $v) {
+            $ids = [$client->parent_workspace_id, $client->id];
+            $locked = Workspace::whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $client = $locked[$client->id];
+            if (($v['status'] ?? null) !== 'archived' && isset($v['status']) && $client->status === 'archived'
+                && Workspace::where('parent_workspace_id', $client->parent_workspace_id)->where('status', '!=', 'archived')->count() >= (int) config('workspaces.max_clients', 50)) {
+                return $this->error('limit_reached', 'Archive another client before restoring this one.', 422);
+            }
+            $client->forceFill($v)->save();
 
-        return response()->json(['data' => ['client' => $this->shape($client->fresh(), false)], 'meta' => []]);
+            return response()->json(['data' => ['client' => $this->shape($client->fresh(), false)], 'meta' => []]);
+        });
     }
 
     /**
@@ -171,18 +183,20 @@ class ClientWorkspaceController extends Controller
             ? $home
             : Workspace::query()->whereKey($id)->where('parent_workspace_id', $home->getKey())->first();
 
-        if (! $target) {
+        if (! $target || $target->status !== 'active') {
             return $this->error('not_found', 'No such client workspace.', 404);
         }
 
         $session = AuthSession::query()
+            ->whereKey($request->attributes->get('auth_session_id'))
             ->where('user_id', $user->getKey())
-            ->whereNull('revoked_at')
-            ->latest('id')->first();
+            ->whereNull('revoked_at')->first();
 
         if (! $session) {
             return $this->error('session_expired', 'Sign in again to switch workspace.', 401);
         }
+
+        $session->forceFill(['active_workspace_id' => $target->id])->save();
 
         return response()->json(['data' => [
             'access_token' => $this->jwt->issue($user, $target, $session),
@@ -328,9 +342,9 @@ class ClientWorkspaceController extends Controller
     /**
      * Invite a client to watch their own workspace.
      *
-     * The invited person becomes a real user with the `client` role, pinned to
-     * this one workspace. They can see it and approve what is put in front of
-     * them; they cannot spend the agency's credits. That boundary is enforced
+     * The invited person receives a role for this workspace without changing
+     * their home workspace or access elsewhere. A viewer can review work but
+     * cannot spend the agency's credits. That boundary is enforced
      * in AuthenticateWithJwt rather than here, because a permission checked at
      * the point of invitation is a permission that stops being checked.
      */
@@ -354,17 +368,6 @@ class ClientWorkspaceController extends Controller
         $email = mb_strtolower(trim($v['email']));
         $existing = User::query()->where('email', $email)->first();
 
-        // An address that already has a WyvStudio account of its own must not
-        // be moved into someone else's workspace. Silently re-pointing it would
-        // take that person's own work away from them.
-        if ($existing && ! ($existing->isClientSeat() && (int) $existing->workspace_id === (int) $client->getKey())) {
-            return $this->error(
-                'email_in_use',
-                'That address already has a WyvStudio account. Ask them to use a different one for client access.',
-                422,
-            );
-        }
-
         $user = $existing ?: User::query()->create([
             'workspace_id' => $client->getKey(),
             'name'         => $v['name'] ?? \Illuminate\Support\Str::of($email)->before('@')->headline()->value(),
@@ -374,33 +377,30 @@ class ClientWorkspaceController extends Controller
             'status'       => 'active',
         ]);
 
-        // Re-inviting somebody who already holds a seat is how an agency
-        // changes their level, so the new one has to stick.
-        if ($existing && $existing->role !== $seat) {
-            $user->forceFill(['role' => $seat])->save();
+        if ((int) $client->owner_user_id === (int) $user->id) {
+            return $this->error('owner_access', 'The agency owner already has access.', 422);
         }
 
+        DB::table('workspace_memberships')->updateOrInsert(['workspace_id' => $client->id, 'user_id' => $user->id], [
+            'role' => $seat, 'revoked_at' => null, 'invited_at' => now(), 'delivery_status' => 'pending', 'updated_at' => now(), 'created_at' => now(),
+        ]);
         $agency = $this->homeWorkspace($request->user());
         $link = $this->issueInviteLink($user);
 
-        rescue(fn () => \Illuminate\Support\Facades\Mail::to($user->email)->send(
-            new \App\Mail\Workspace\ClientViewerInvite(
-                $user,
-                $client,
-                (string) ($agency?->name ?: 'Your agency'),
-                $link,
-            ),
-        ), function (\Throwable $e) use ($user) {
-            \Illuminate\Support\Facades\Log::error('Client viewer invite mail failed', [
-                'user_id' => $user->getKey(),
-                'error'   => $e->getMessage(),
-            ]);
-        });
+        try {
+            \Illuminate\Support\Facades\Mail::to($user->email)->send(new \App\Mail\Workspace\ClientViewerInvite($user, $client, (string) ($agency?->name ?: 'Your agency'), $link));
+            DB::table('workspace_memberships')->where('workspace_id', $client->id)->where('user_id', $user->id)->update(['delivery_status' => 'sent']);
+        } catch (\Throwable $e) {
+            report($e);
+            DB::table('workspace_memberships')->where('workspace_id', $client->id)->where('user_id', $user->id)->update(['delivery_status' => 'failed']);
 
-        return response()->json(['data' => ['viewer' => $this->shapeViewer($user)], 'meta' => []], 201);
+            return $this->error('invite_delivery_failed', 'Access was saved, but the invitation email failed. Retry the invitation.', 502);
+        }
+
+        return response()->json(['data' => ['viewer' => $this->shapeViewer($user, $client->id)], 'meta' => []], 201);
     }
 
-    /** Take a client's access away. The user row goes; their workspace does not. */
+    /** Revoke this membership without deleting the account or access elsewhere. */
     public function removeViewer(Request $request, int $id, int $userId): JsonResponse
     {
         $client = $this->ownedClient($request, $id);
@@ -408,22 +408,12 @@ class ClientWorkspaceController extends Controller
             return $this->error('not_found', 'Client workspace not found.', 404);
         }
 
-        $user = User::query()
-            ->whereKey($userId)
-            ->where('workspace_id', $client->getKey())
-            ->whereIn('role', array_keys(User::CLIENT_SEATS))
-            ->first();
-
-        if (! $user) {
-            return $this->error('not_found', 'That person does not have access to this workspace.', 404);
+        $removed = DB::table('workspace_memberships')->where('workspace_id', $client->id)->where('user_id', $userId)->whereNull('revoked_at')->update(['revoked_at' => now()]);
+        if (! $removed) {
+            return $this->error('not_found', 'That person does not have access.', 404);
         }
 
-        // Kill live sessions first: deleting the user alone would leave an
-        // already-issued access token working until it expired.
-        rescue(fn () => AuthSession::query()->where('user_id', $user->getKey())->delete(), null, false);
-        rescue(fn () => \App\Models\MagicLinkToken::query()->where('user_id', $user->getKey())->delete(), null, false);
-        $user->delete();
-
+        // Keep their identity and memberships in other workspaces intact.
         return response()->json(['data' => ['removed' => true], 'meta' => []]);
     }
 
@@ -455,15 +445,20 @@ class ClientWorkspaceController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function shapeViewer(User $user): array
+    private function shapeViewer(User $user, ?int $workspaceId = null): array
     {
+        $membership = DB::table('workspace_memberships')->where('workspace_id', $workspaceId ?? $user->workspace_id)->where('user_id', $user->id)->first();
+
         return [
             'id'            => (int) $user->getKey(),
             'name'          => $user->name,
             'email'         => $user->email,
-            'role'          => $user->role,
+            'role' => $membership?->role ?? $user->role,
+            'delivery_status' => $membership?->delivery_status,
+            'accepted_at' => $membership?->accepted_at,
             'last_seen_at'  => $user->last_seen_at?->toIso8601String(),
-            'invited_at'    => $user->created_at?->toDateString(),
+            'invited_at' => $membership?->invited_at,
+            'invite_expired' => $membership && ! $membership->accepted_at && $membership->invited_at && \Illuminate\Support\Carbon::parse($membership->invited_at)->addDays(7)->isPast(),
         ];
     }
 
@@ -496,20 +491,11 @@ class ClientWorkspaceController extends Controller
 
         if (! $moved) {
             return $this->error($why, match ($why) {
-                'agency_short' => 'Your balance does not cover that. Top up, or move a smaller amount.',
+                'agency_short' => 'Not enough top-up credits to allocate. Monthly credits remain available through the shared balance and a client spending cap.',
                 'client_empty' => 'That client has no credits left to take back.',
                 'not_your_client' => 'That client workspace is not yours.',
                 default => 'Those credits could not be moved.',
             }, 422);
-        }
-
-        $client = $client->fresh();
-
-        // First money in makes it funded; emptying it by hand does not make it
-        // pooled again, because "spend the agency's balance instead" is a
-        // decision the agency should have to state rather than fall into.
-        if ((int) $v['amount'] > 0 && ! $client->isFunded()) {
-            $client->forceFill(['funding_mode' => Workspace::FUNDING_FUNDED])->save();
         }
 
         return response()->json(['data' => ['client' => $this->shape($client->fresh(), false)], 'meta' => []]);
@@ -524,12 +510,23 @@ class ClientWorkspaceController extends Controller
         }
 
         $agency = $this->homeWorkspace($request->user());
-        $remaining = (int) $client->credits_topup;
-        if ($remaining > 0 && $agency) {
-            app(CreditService::class)->transferToClient($agency, $client, -$remaining);
+        if (! $agency) {
+            return $this->error('not_found', 'Agency not found.', 404);
         }
 
-        $client->forceFill(['funding_mode' => Workspace::FUNDING_POOLED])->save();
+        DB::transaction(function () use ($agency, $client) {
+            $ids = [$agency->id, $client->id];
+            sort($ids);
+            $locked = Workspace::whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $remaining = (int) $locked[$client->id]->credits_topup;
+            if ($remaining > 0) {
+                [$ok] = app(CreditService::class)->transferToClient($locked[$agency->id], $locked[$client->id], -$remaining);
+                if (! $ok) {
+                    throw new \RuntimeException('Unable to reclaim client credits.');
+                }
+            }
+            $locked[$client->id]->forceFill(['funding_mode' => Workspace::FUNDING_POOLED])->save();
+        });
 
         return response()->json(['data' => ['client' => $this->shape($client->fresh(), false)], 'meta' => []]);
     }
@@ -546,18 +543,12 @@ class ClientWorkspaceController extends Controller
             'role' => ['required', \Illuminate\Validation\Rule::in(array_keys(User::CLIENT_SEATS))],
         ]);
 
-        $user = User::query()->whereKey($userId)
-            ->where('workspace_id', $client->getKey())
-            ->whereIn('role', array_keys(User::CLIENT_SEATS))
-            ->first();
-
-        if (! $user) {
-            return $this->error('not_found', 'That person does not have access to this workspace.', 404);
+        $changed = DB::table('workspace_memberships')->where('workspace_id', $client->id)->where('user_id', $userId)->whereNull('revoked_at')->update(['role' => $v['role'], 'updated_at' => now()]);
+        if (! $changed) {
+            return $this->error('not_found', 'That person does not have access.', 404);
         }
 
-        $user->forceFill(['role' => $v['role']])->save();
-
-        return response()->json(['data' => ['viewer' => $this->shapeViewer($user->fresh())], 'meta' => []]);
+        return response()->json(['data' => ['viewer' => $this->shapeViewer(User::findOrFail($userId), $client->id)], 'meta' => []]);
     }
 
     /**
@@ -578,8 +569,7 @@ class ClientWorkspaceController extends Controller
         $perPage = min(100, max(10, (int) $request->query('per_page', 25)));
 
         $paginator = User::query()
-            ->where('workspace_id', $client->getKey())
-            ->whereIn('role', array_keys(User::CLIENT_SEATS))
+            ->whereIn('id', app(\App\Services\Agency\WorkspaceAccess::class)->memberIds($client->id))
             ->when($q !== '', fn ($query) => $query->where(function ($w) use ($q): void {
                 $w->where('email', 'like', "%{$q}%")->orWhere('name', 'like', "%{$q}%");
             }))
@@ -587,7 +577,7 @@ class ClientWorkspaceController extends Controller
             ->paginate($perPage, ['*'], 'page', max(1, (int) $request->query('page', 1)));
 
         return response()->json(['data' => [
-            'viewers' => collect($paginator->items())->map(fn (User $u) => $this->shapeViewer($u))->all(),
+            'viewers' => collect($paginator->items())->map(fn (User $u) => $this->shapeViewer($u, $client->id))->all(),
         ], 'meta' => ['pagination' => [
             'current_page' => $paginator->currentPage(),
             'last_page' => $paginator->lastPage(),
@@ -598,12 +588,7 @@ class ClientWorkspaceController extends Controller
 
     private function homeWorkspace(User $user): ?Workspace
     {
-        $active = Workspace::find($user->workspace_id);
-        if (! $active) {
-            return null;
-        }
-
-        return $active->parent_workspace_id ? $active->parent : $active;
+        return app(\App\Services\Agency\WorkspaceAccess::class)->agency($user);
     }
 
     private function ownedClient(Request $request, int $id): ?Workspace
@@ -634,10 +619,7 @@ class ClientWorkspaceController extends Controller
                 : app(CreditService::class)->spentThisMonth((int) $w->getKey(), (int) ($w->parent_workspace_id ?: $w->getKey())),
             // A count, not the list. A client with a hundred members would
             // otherwise put a hundred rows inside one row of this list.
-            'members' => $isAgency ? 0 : User::query()
-                ->where('workspace_id', $w->getKey())
-                ->whereIn('role', array_keys(User::CLIENT_SEATS))
-                ->count(),
+            'members' => $isAgency ? 0 : count(app(\App\Services\Agency\WorkspaceAccess::class)->memberIds($w->id)),
             'funding_mode' => $isAgency ? null : (string) ($w->funding_mode ?: Workspace::FUNDING_POOLED),
             // Only a funded client has a balance of its own; a pooled one
             // reports null rather than zero, which would read as "spent out".

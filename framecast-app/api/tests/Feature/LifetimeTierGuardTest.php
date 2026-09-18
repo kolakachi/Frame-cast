@@ -48,6 +48,10 @@ class LifetimeTierGuardTest extends TestCase
         });
         Schema::create('credit_ledger', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('workspace_id'); $t->string('operation');
+            foreach (['spent_by_workspace_id', 'user_id', 'project_id', 'scene_id'] as $column) {
+                $t->unsignedBigInteger($column)->nullable();
+            }
+            $t->decimal('upstream_cost_usd', 12, 6)->nullable();
             $t->integer('credits'); $t->integer('balance_after')->nullable();
             $t->json('metadata')->nullable(); $t->timestamps();
         });

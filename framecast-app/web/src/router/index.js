@@ -32,6 +32,8 @@ import AppSumoActivateView from '../views/AppSumoActivateView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
+  { path: '/client-work', name: 'client-work', component: () => import('../views/ClientWorkView.vue'), meta: { requiresAuth: true } },
+  { path: '/delivery/:token', name: 'client-delivery', component: () => import('../views/ClientDeliveryView.vue'), meta: { public: true } },
   { path: '/', redirect: '/dashboard' },
   { path: '/onboarding', name: 'onboarding', component: OnboardingView, meta: { requiresAuth: true, skipOnboardingGuard: true } },
   { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
@@ -127,12 +129,15 @@ router.beforeEach(async function (to) {
     }
   }
 
+  if (["client", "client_editor", "client_admin"].includes(authStore.user?.role) && to.name === "dashboard") return { name: "client-work" };
+
   // Redirect unonboarded users to the wizard (except the wizard itself,
   // auth routes, and public-share/approval pages that anyone — incl.
   // unonboarded users hitting a share link — should see).
   if (
     authStore.isAuthenticated &&
     !authStore.isOnboarded &&
+    !["client", "client_editor", "client_admin"].includes(authStore.user?.role) &&
     !to.meta.skipOnboardingGuard &&
     !to.meta.guestOnly &&
     !to.meta.public

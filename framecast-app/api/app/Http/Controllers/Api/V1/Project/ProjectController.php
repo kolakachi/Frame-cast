@@ -35,7 +35,8 @@ class ProjectController extends Controller
     public function __construct(
         private readonly WorkspaceUsageService $usageService,
         private readonly CreditService $credits,
-    ) {}
+    ) {
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -865,6 +866,7 @@ class ProjectController extends Controller
 
         $sceneCount     = max(1, min(8, (int) ($validated['scenes_count'] ?? 1)));
         $promptText     = trim($validated['prompt']);
+        $promptText .= "\n\n".app(\App\Services\Agency\ClientContext::class)->prompt((int) $user->workspace_id);
 
         // Resolve reference images (workspace-scoped) to signed URLs so the
         // PLANNER can SEE them — scene visuals then describe what the images
@@ -1136,6 +1138,7 @@ class ProjectController extends Controller
         }
 
         $promptText  = trim($validated['prompt']);
+        $promptText .= "\n\n".app(\App\Services\Agency\ClientContext::class)->prompt((int) $user->workspace_id);
         $aspectRatio = $validated['aspect_ratio'] ?? '9:16';
         $title       = $validated['title']
             ?? \Illuminate\Support\Str::limit($promptText, 60, '');
