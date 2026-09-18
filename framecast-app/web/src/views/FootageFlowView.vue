@@ -132,10 +132,16 @@ const treatmentBadge = { new: "New performance", rebuilt: "Rebuilt", reused: "Re
 // ── intake actions ───────────────────────────────────────────────────────
 function selectSource({ item }) {
   if (item?.id && item._type === "asset") {
+    if (item.asset_type !== 'video' && !String(item.mime_type || '').startsWith('video/')) {
+      errorMessage.value = 'Choose a video for My Footage. Images can be added as product assets in UGC.';
+      sourcePicker.value = false;
+      return;
+    }
+    errorMessage.value = '';
     sourceAsset.value = {
       id: item.id,
       title: item.title || "Untitled",
-      thumbnail_url: item.thumbnail_url || item.storage_url,
+      thumbnail_url: item.thumbnail_url || null,
       duration_seconds: item.duration_seconds,
     };
   }
@@ -352,7 +358,8 @@ onMounted(() => {
           <div class="ff-card">
             <template v-if="intakeMode === 'upload'">
               <div v-if="sourceAsset" class="ff-source">
-                <img v-if="sourceAsset.thumbnail_url" :src="sourceAsset.thumbnail_url" alt="" />
+                <video v-if="sourceUrl" class="ff-source-video" :src="sourceUrl" controls playsinline preload="metadata" @error="sourcePreviewError = 'This browser could not play the preview. You can still try analysing the video.'" />
+                <span v-else class="ff-video-placeholder">Video selected</span>
                 <div>
                   <b>{{ sourceAsset.title }}</b>
                   <span v-if="sourceAsset.duration_seconds" class="ff-muted">{{ Math.round(sourceAsset.duration_seconds) }}s</span>
@@ -373,12 +380,14 @@ onMounted(() => {
               </div>
               <p class="ff-muted">We download it server-side into your assets. Page links (YouTube, TikTok) can't be fetched — use the file itself.</p>
               <div v-if="sourceAsset && intakeMode === 'link'" class="ff-source" style="margin-top: 10px">
-                <img v-if="sourceAsset.thumbnail_url" :src="sourceAsset.thumbnail_url" alt="" />
+                <video v-if="sourceUrl" class="ff-source-video" :src="sourceUrl" controls playsinline preload="metadata" @error="sourcePreviewError = 'This browser could not play the preview. You can still try analysing the video.'" />
+                <span v-else class="ff-video-placeholder">Video selected</span>
                 <div><b>{{ sourceAsset.title }}</b> <span class="ff-muted">fetched ✓</span></div>
               </div>
             </template>
           </div>
 
+          <p v-if="sourceAsset && sourcePreviewError" class="ff-muted" role="status">{{ sourcePreviewError }}</p>
           <div class="ff-card">
             <label class="ff-label" for="ff-brief">What do you want to change?</label>
             <textarea id="ff-brief" v-model="brief" rows="4" maxlength="2000"
@@ -850,4 +859,11 @@ onMounted(() => {
 .ff-col-detail { flex: 2 1 360px; min-width: 0; }
 .ff-col-side { flex: 1 1 230px; min-width: 0; }
 @media (max-width: 760px) { .ff-cols { display: flex; flex-direction: column; } .ff-col-list, .ff-col-detail, .ff-col-side { width: 100%; flex: auto; } .ff-compare { grid-template-columns: 1fr; } }
+
+.ff-source { flex-wrap: wrap; min-width: 0; }
+.ff-source > div { flex: 1 1 160px; min-width: 0; }
+.ff-source b { overflow-wrap: anywhere; }
+.ff-source > button { flex-shrink: 0; }
+.ff-source-video { flex: 0 0 100%; width: 100%; max-height: 260px; border-radius: 10px; background: #08080b; object-fit: contain; }
+.ff-video-placeholder { flex: 0 0 100%; padding: 20px; border-radius: 10px; background: var(--color-bg-deep); color: var(--color-text-muted); font-size: 13px; }
 </style>
