@@ -404,26 +404,30 @@ class CreditService
     // extraction is free, vision is billed per page. One combined limit would
     // either strangle the cheap path or leave the expensive one exposed.
     // null = unlimited.
+    // ugc_takes_month caps generated UGC takes per calendar month. It exists
+    // because the cheapest text-led shape can quote zero credits and export is
+    // included, so without a cap that path is a finished video for free with
+    // nothing bounding the volume. Null = no cap.
     public const PLAN_LIMITS = [
-        'free'       => ['max_duration_seconds' => 60,  'max_characters' => 1,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => false, 'pdf_page_limit' => 5, 'pdf_vision_page_limit' => 0],
-        'starter'    => ['max_duration_seconds' => 180, 'max_characters' => 3,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => true, 'pdf_page_limit' => 20, 'pdf_vision_page_limit' => 5],
-        'creator'    => ['max_duration_seconds' => 300, 'max_characters' => 10, 'max_brand_kits' => 3,  'max_channels' => 3, 'social_publishing' => true, 'pdf_page_limit' => 50, 'pdf_vision_page_limit' => 15],
-        'pro'        => ['max_duration_seconds' => 600, 'max_characters' => 50, 'max_brand_kits' => 10, 'max_channels' => 10,'social_publishing' => true, 'pdf_page_limit' => 150, 'pdf_vision_page_limit' => 40],
-        'agency'     => ['max_duration_seconds' => 600, 'max_characters' => null,'max_brand_kits' => null,'max_channels' => null,'social_publishing' => true, 'pdf_page_limit' => null, 'pdf_vision_page_limit' => 100],
-        'enterprise' => ['max_duration_seconds' => 600, 'max_characters' => null,'max_brand_kits' => null,'max_channels' => null,'social_publishing' => true, 'pdf_page_limit' => null, 'pdf_vision_page_limit' => null],
-        'studio'     => ['max_duration_seconds' => 300, 'max_characters' => 10, 'max_brand_kits' => 3,  'max_channels' => 3, 'social_publishing' => true, 'pdf_page_limit' => 50, 'pdf_vision_page_limit' => 15],
-        'scale'      => ['max_duration_seconds' => 600, 'max_characters' => 50, 'max_brand_kits' => 10, 'max_channels' => 10,'social_publishing' => true, 'pdf_page_limit' => 150, 'pdf_vision_page_limit' => 40],
+        'free'       => ['max_duration_seconds' => 60,  'max_characters' => 1,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => false, 'pdf_page_limit' => 5, 'pdf_vision_page_limit' => 0, 'ugc_takes_month' => 3],
+        'starter'    => ['max_duration_seconds' => 180, 'max_characters' => 3,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => true, 'pdf_page_limit' => 20, 'pdf_vision_page_limit' => 5, 'ugc_takes_month' => 30],
+        'creator'    => ['max_duration_seconds' => 300, 'max_characters' => 10, 'max_brand_kits' => 3,  'max_channels' => 3, 'social_publishing' => true, 'pdf_page_limit' => 50, 'pdf_vision_page_limit' => 15, 'ugc_takes_month' => 60],
+        'pro'        => ['max_duration_seconds' => 600, 'max_characters' => 50, 'max_brand_kits' => 10, 'max_channels' => 10,'social_publishing' => true, 'pdf_page_limit' => 150, 'pdf_vision_page_limit' => 40, 'ugc_takes_month' => 150],
+        'agency'     => ['max_duration_seconds' => 600, 'max_characters' => null,'max_brand_kits' => null,'max_channels' => null,'social_publishing' => true, 'pdf_page_limit' => null, 'pdf_vision_page_limit' => 100, 'ugc_takes_month' => null],
+        'enterprise' => ['max_duration_seconds' => 600, 'max_characters' => null,'max_brand_kits' => null,'max_channels' => null,'social_publishing' => true, 'pdf_page_limit' => null, 'pdf_vision_page_limit' => null, 'ugc_takes_month' => null],
+        'studio'     => ['max_duration_seconds' => 300, 'max_characters' => 10, 'max_brand_kits' => 3,  'max_channels' => 3, 'social_publishing' => true, 'pdf_page_limit' => 50, 'pdf_vision_page_limit' => 15, 'ugc_takes_month' => 60],
+        'scale'      => ['max_duration_seconds' => 600, 'max_characters' => 50, 'max_brand_kits' => 10, 'max_channels' => 10,'social_publishing' => true, 'pdf_page_limit' => 150, 'pdf_vision_page_limit' => 40, 'ugc_takes_month' => 150],
         // AppSumo LTD tiers — own limits (they differ from the subscription
         // tiers of the same name), one-time credit bucket, never renews.
-        'appsumo_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'pdf_vision_page_limit' => 5],
-        'appsumo_creator' => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'pdf_vision_page_limit' => 15],
-        'appsumo_agency'  => ['max_duration_seconds' => 600, 'max_characters' => 10, 'max_brand_kits' => null, 'max_channels' => null, 'social_publishing' => true, 'pdf_page_limit' => null, 'pdf_vision_page_limit' => 100],
+        'appsumo_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'pdf_vision_page_limit' => 5, 'ugc_takes_month' => 30],
+        'appsumo_creator' => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'pdf_vision_page_limit' => 15, 'ugc_takes_month' => 60],
+        'appsumo_agency'  => ['max_duration_seconds' => 600, 'max_characters' => 10, 'max_brand_kits' => null, 'max_channels' => null, 'social_publishing' => true, 'pdf_page_limit' => null, 'pdf_vision_page_limit' => 100, 'ugc_takes_month' => 150],
         // Direct lifetime tiers ($89/$199/$399). Same product as the AppSumo
         // LTDs, sold from our own checkout — identical limits, separate keys so
         // reporting can tell the two cohorts apart.
-        'lifetime_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'pdf_vision_page_limit' => 5],
-        'lifetime_creator' => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'pdf_vision_page_limit' => 15],
-        'lifetime_agency'  => ['max_duration_seconds' => 600, 'max_characters' => 10, 'max_brand_kits' => null, 'max_channels' => null, 'social_publishing' => true, 'pdf_page_limit' => null, 'pdf_vision_page_limit' => 100],
+        'lifetime_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'pdf_vision_page_limit' => 5, 'ugc_takes_month' => 30],
+        'lifetime_creator' => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'pdf_vision_page_limit' => 15, 'ugc_takes_month' => 60],
+        'lifetime_agency'  => ['max_duration_seconds' => 600, 'max_characters' => 10, 'max_brand_kits' => null, 'max_channels' => null, 'social_publishing' => true, 'pdf_page_limit' => null, 'pdf_vision_page_limit' => 100, 'ugc_takes_month' => 150],
     ];
 
     /**

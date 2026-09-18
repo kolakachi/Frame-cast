@@ -351,6 +351,25 @@ class UgcController extends Controller
 
         $castCount = max(1, $characters->count());
         $takes = count($plans) * $castCount;
+
+        // The monthly cap is what bounds the near-free shapes: a text-led take
+        // on stock footage quotes zero credits and export is included, so
+        // credits alone bound nothing on that path.
+        $capService = app(CreditService::class);
+        $monthlyCap = $capService->limitFor((int) $user->workspace_id, 'ugc_takes_month');
+        if ($monthlyCap !== null) {
+            $usedThisMonth = Project::query()
+                ->where('workspace_id', $user->workspace_id)
+                ->whereNotNull('visual_brief->ugc_format')
+                ->where('created_at', '>=', now()->startOfMonth())
+                ->count();
+            if ($usedThisMonth + $takes > (int) $monthlyCap) {
+                throw ValidationException::withMessages(['takes' => sprintf(
+                    'Your plan includes %d UGC takes a month; you have used %d and this run adds %d. The count resets on the 1st.',
+                    (int) $monthlyCap, $usedThisMonth, $takes,
+                )]);
+            }
+        }
         if ($takes > self::MAX_TAKES_PER_RUN) {
             throw ValidationException::withMessages([
                 'variants' => sprintf(
