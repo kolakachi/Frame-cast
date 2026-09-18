@@ -164,6 +164,45 @@ class ClientHubController extends Controller
         ]]);
     }
 
+    public function draftText(Request $r, ?int $id = null)
+    {
+        $v = $r->validate([
+            'field' => ['required', Rule::in(['audience', 'goals', 'products', 'approved_claims', 'restrictions', 'preferences', 'pronunciations', 'request_brief', 'delivery_message'])],
+            'instruction' => ['required', 'string', 'min:3', 'max:3000'],
+            'current' => ['nullable', 'string', 'max:10000'],
+            'context' => ['nullable', 'string', 'max:20000'],
+        ]);
+        $w = $this->workspace($r, $id, $v['field'] !== 'request_brief');
+        abort_unless($w->status === 'active', 422, 'Restore this client before drafting text.');
+        if ($v['field'] === 'delivery_message') {
+            abort_unless($id, 403);
+        }
+        $user = clone $r->user();
+        $user->setRawAttributes(array_merge($user->getAttributes(), ['workspace_id' => $w->id]), true);
+        $user->setRelation('workspace', $w);
+        abort_if(app(\App\Services\WorkspaceUsageService::class)->hasExceededApiBudget($user), 422, 'This workspace has reached its AI usage budget.');
+        $limit = match ($v['field']) {
+            'request_brief' => 10000, 'delivery_message' => 4000,
+            'products', 'approved_claims', 'restrictions' => 5000, default => 3000,
+        };
+        try {
+            $result = app(\App\Services\Generation\AI\AIGenerationAdapter::class)->generate('client_field_draft', [
+                'field' => str_replace('_', ' ', $v['field']),
+                'context' => json_encode(['saved_context' => app(ClientContext::class)->prompt($w->id), 'working_notes' => $v['context'] ?? '', 'current_text' => $v['current'] ?? '', 'instruction' => $v['instruction']], JSON_UNESCAPED_UNICODE),
+                'limit' => $limit,
+            ], 1000, 0.4, ['usage_context' => ['workspace_id' => $w->id, 'user_id' => $user->id, 'operation' => 'client_field_draft']]);
+            $text = trim((string) ($result['content'] ?? ''));
+            if ($text === '' || ($result['provider_key'] ?? '') === 'local_fallback') {
+                return $this->error('draft_failed', 'No draft was returned. Please try again.', 502);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            return $this->error('draft_failed', 'Could not write a draft right now. Your text has not changed.', 502);
+        }
+
+        return response()->json(['data' => ['text' => mb_substr($text, 0, $limit)]]);
+    }
+
     public function profile(Request $r, ?int $id = null)
     {
         $w = $this->workspace($r, $id, true);
