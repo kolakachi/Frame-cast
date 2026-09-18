@@ -118,6 +118,79 @@ function removeFootage(id) {
   footageAssets.value = footageAssets.value.filter((a) => a.id !== id);
 }
 
+// ── Shots the script moved out from under ───────────────────────────────
+const staleCount = computed(
+  () => (plan.value?.segments ?? []).filter((s) => s.stale).length
+);
+const redirecting = ref(false);
+async function redirectStale() {
+  if (!plan.value || redirecting.value) return;
+  redirecting.value = true;
+  errorMessage.value = "";
+  try {
+    const { data } = await api.post("/ugc/reanchor", {
+      format: plan.value.format,
+      segments: plan.value.segments,
+    });
+    plan.value = { ...plan.value, ...data.data };
+    reviewed.value = false;
+  } catch (e) {
+    errorMessage.value =
+      e?.response?.data?.errors?.segments?.[0] ||
+      e?.response?.data?.error?.message ||
+      "Could not re-direct those shots.";
+  } finally {
+    redirecting.value = false;
+  }
+}
+
+// ── Alternative openings ────────────────────────────────────────────────
+const variants = ref([]);        // [{ label, segments, script, credits_per_character }]
+const chosenVariants = ref([]);  // labels the user wants to run alongside
+const variantCount = ref(3);
+const writingVariants = ref(false);
+
+async function writeVariants() {
+  if (!plan.value || writingVariants.value) return;
+  writingVariants.value = true;
+  errorMessage.value = "";
+  try {
+    const { data } = await api.post("/ugc/variants", {
+      format: plan.value.format,
+      segments: plan.value.segments,
+      count: Number(variantCount.value),
+      product: product.value,
+      context: context.value,
+    });
+    variants.value = data.data.variants ?? [];
+    chosenVariants.value = [];
+  } catch (e) {
+    errorMessage.value =
+      e?.response?.data?.errors?.variants?.[0] ||
+      e?.response?.data?.errors?.segments?.[0] ||
+      e?.response?.data?.error?.message ||
+      "Could not write alternative openings.";
+  } finally {
+    writingVariants.value = false;
+  }
+}
+
+function toggleVariant(label) {
+  chosenVariants.value = chosenVariants.value.includes(label)
+    ? chosenVariants.value.filter((l) => l !== label)
+    : [...chosenVariants.value, label];
+  // A different number of takes is a different price and a different run.
+  reviewed.value = false;
+}
+
+const selectedVariants = computed(() =>
+  variants.value.filter((v) => chosenVariants.value.includes(v.label))
+);
+// One take per opening per character — the arithmetic the server caps at ten.
+const takeCount = computed(
+  () => (1 + selectedVariants.value.length) * Math.max(selected.value.length, 1)
+);
+
 const productPicker = ref(false);
 const productAsset = ref(null);   // { id, thumbnail_url, title }
 const formatOptions = [
@@ -495,6 +568,11 @@ async function generate() {
       format: plan.value.format,
       character_ids: selected.value.map((c) => c.id),
       segments: plan.value.segments,
+      // The chosen openings run alongside the reviewed plan, one take each
+      // per character. The server caps the product of the two.
+      ...(selectedVariants.value.length
+        ? { variants: selectedVariants.value.map((v) => ({ label: v.label, segments: v.segments })) }
+        : {}),
       aspect_ratio: aspectRatio.value,
       language: language.value,
       voices: voiceByCharacter.value,
@@ -821,6 +899,20 @@ onMounted(() => {
               {{ plan.format }} · Edit the directions, then validate the
               estimate.
             </p>
+
+            <!-- A shot still pointed at a line the script no longer contains.
+                 Detected server-side on every re-price; repairable in one tap. -->
+            <div v-if="staleCount" class="ugc-stale-bar">
+              <span>
+                {{ staleCount }} shot{{ staleCount === 1 ? '' : 's' }}
+                {{ staleCount === 1 ? 'is' : 'are' }} still directed at
+                {{ staleCount === 1 ? 'a line' : 'lines' }} the script no longer contains.
+              </span>
+              <button class="ugc-btn" type="button" :disabled="redirecting" @click="redirectStale">
+                {{ redirecting ? 'Re-directing…' : 'Re-direct them' }}
+              </button>
+            </div>
+
             <ol class="ugc-segs">
               <li v-for="(seg, i) in plan.segments" :key="i" class="ugc-seg">
                 <span
@@ -837,6 +929,12 @@ onMounted(() => {
                       : "Cut-away"
                   }}
                   · {{ seg.seconds }}s
+                </span>
+                <span v-if="seg.stale" class="ugc-seg-stale" title="Its visual answers a line that is no longer spoken">
+                  answers a line that is gone
+                </span>
+                <span v-else-if="seg.source === 'upload' && seg.asset_id" class="ugc-seg-yours">
+                  your footage
                 </span>
                 <div class="ugc-fields ugc-shot-fields">
                   <label v-if="seg.kind !== 'reaction'">
@@ -1006,6 +1104,41 @@ onMounted(() => {
                 </div>
               </li>
             </ol>
+
+            <!-- One idea, several openings. The rest of the ad is untouched;
+                 each opening is one more take per character. -->
+            <div class="ugc-variants">
+              <div class="ugc-variants-h">
+                <b>Try other openings</b>
+                <select v-model="variantCount" class="ugc-mini-select" aria-label="How many openings">
+                  <option :value="2">2</option>
+                  <option :value="3">3</option>
+                  <option :value="4">4</option>
+                </select>
+                <button class="ugc-btn" type="button" :disabled="writingVariants" @click="writeVariants">
+                  {{ writingVariants ? 'Writing…' : (variants.length ? 'Rewrite' : 'Write them') }}
+                </button>
+              </div>
+
+              <ul v-if="variants.length" class="ugc-variant-list">
+                <li
+                  v-for="v in variants"
+                  :key="v.label"
+                  :class="['ugc-variant', chosenVariants.includes(v.label) ? 'is-on' : '']"
+                  @click="toggleVariant(v.label)"
+                >
+                  <span class="ugc-variant-label">{{ v.label }}</span>
+                  <span class="ugc-variant-line">{{ v.segments[0].script_text }}</span>
+                  <span class="ugc-variant-cr">{{ v.credits_per_character }} cr</span>
+                </li>
+              </ul>
+              <p v-if="variants.length" class="ugc-hint" style="margin-top:8px">
+                {{ takeCount }} take{{ takeCount === 1 ? '' : 's' }} in this run —
+                {{ 1 + selectedVariants.length }} opening{{ selectedVariants.length ? 's' : '' }}
+                across {{ Math.max(selected.length, 1) }}
+                character{{ Math.max(selected.length, 1) === 1 ? '' : 's' }}.
+              </p>
+            </div>
             <div class="ugc-card-f">
               <button
                 class="ugc-btn"
@@ -2342,4 +2475,86 @@ onMounted(() => {
   padding: 0 2px;
 }
 .ugc-footage-item button:hover { color: #f87171; }
+
+/* ── A shot the script moved out from under ─────────────────────────── */
+.ugc-stale-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 9px;
+  background: rgba(251, 191, 36, 0.08);
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+}
+.ugc-stale-bar span { flex: 1; min-width: 200px; }
+
+.ugc-seg-stale,
+.ugc-seg-yours {
+  font-family: "Space Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 5px;
+  margin-left: 6px;
+}
+.ugc-seg-stale { color: #fbbf24; background: rgba(251, 191, 36, 0.12); }
+/* Their own clip, which is the cheap and better answer where one exists. */
+.ugc-seg-yours { color: #34d399; background: rgba(52, 211, 153, 0.12); }
+
+/* ── Openings ───────────────────────────────────────────────────────── */
+.ugc-variants {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+.ugc-variants-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ugc-variants-h b { font-size: 13px; font-weight: 600; flex: 1; }
+.ugc-mini-select {
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+.ugc-variant-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ugc-variant {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-bg-card);
+  cursor: pointer;
+  transition: 0.15s;
+}
+.ugc-variant:hover { border-color: var(--color-border-active); }
+.ugc-variant.is-on { border-color: var(--color-accent); background: rgba(255, 107, 53, 0.08); }
+.ugc-variant-label {
+  font-family: "Space Mono", monospace;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-accent);
+  flex: 0 0 auto;
+}
+.ugc-variant-line {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+}
+.ugc-variant-cr {
+  font-family: "Space Mono", monospace;
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  flex: 0 0 auto;
+}
 </style>
