@@ -740,7 +740,10 @@ class UgcController extends Controller
                 'script_text' => $seg['script_text'], 'duration_seconds' => $seg['seconds'],
                 'voice_settings_json' => ['voice_id' => $voiceId, 'provider' => 'google',
                     'speed' => $seg['speed'] ?? 1.0,
-                    'voice_prompt' => $seg['voice_direction'], 'enabled' => ! $reaction],
+                    'voice_prompt' => $seg['voice_direction'],
+                    // A silent card has no line to read — leaving voice
+                    // enabled sent '' to the TTS engine.
+                    'enabled' => ! $reaction && trim((string) $seg['script_text']) !== ''],
                 'caption_settings_json' => [
                     'enabled' => ! $reaction, 'style_key' => 'impact', 'highlight_mode' => 'line_by_line',
                     'position' => 'bottom_third', 'font' => 'Arial', 'highlight_color' => '#ffffff',
@@ -786,6 +789,8 @@ class UgcController extends Controller
                 )->afterCommit();
             }
         }
+        // Dispatched even for a fully silent take: the job skips wordless
+        // scenes and is also the finalizer that flips ready_for_review.
         if (! $reaction) {
             GenerateTTSJob::dispatch($project->id)->afterCommit();
         }

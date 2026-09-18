@@ -117,6 +117,14 @@ class GenerateTTSJob implements ShouldQueue
             $language = $project->primary_language ?: 'en';
             $sceneText = (string) ($scene->script_text ?: '');
 
+            // A wordless scene (a silent text-led card) has nothing to
+            // synthesise. Sending '' to the engine came back as a content
+            // flag, failed the job, and marked the whole take failed.
+            if (trim($sceneText) === '' || ! data_get($existingVoiceSettings, 'enabled', true)) {
+                $done++;
+                continue;
+            }
+
             $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
                 // Engine routing + voice direction. The router falls back to
                 // inferring the engine from the voice id when provider is absent;
