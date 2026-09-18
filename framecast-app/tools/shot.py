@@ -121,7 +121,12 @@ def main():
     wait_for = sys.argv[sys.argv.index("--wait-for") + 1] if "--wait-for" in sys.argv else None
     # --click fires a click per occurrence, in order, after the page settles.
     # Sheets and overlays only exist once something opens them.
-    clicks = [sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--click"]
+    # Interaction ops run in the order they appear on the command line, so a
+    # flow can interleave clicks, JS and waits: --js fill --wait-again .plan
+    # --js pick. Long-lived in-page promises are fragile over CDP; an outside
+    # poll (--wait-again) is not.
+    ops = [(a[2:], sys.argv[i + 1]) for i, a in enumerate(sys.argv) if a in ("--click", "--js", "--wait-again")]
+    clicks = []
     auth = None
     if "--auth" in sys.argv:
         auth = pathlib.Path(sys.argv[sys.argv.index("--auth") + 1]).read_text().strip()
@@ -179,7 +184,28 @@ def main():
     else:
         time.sleep(2.5)
 
-    for n, sel in enumerate(clicks):
+    for n, (kind, arg) in enumerate(ops):
+        if kind == "js":
+            send(s, 80 + n, "Runtime.evaluate", {"returnByValue": True, "awaitPromise": True,
+                 "expression": arg})
+            r = wait(gen, 80 + n, timeout=180).get("result", {}).get("result", {}).get("value")
+            print(f"--js -> {r!r}")
+            time.sleep(0.6)
+            continue
+        if kind == "wait-again":
+            # Three minutes: a planning call that trips the self-repair
+            # retry legitimately runs past two.
+            for _ in range(360):
+                send(s, 96, "Runtime.evaluate", {"returnByValue": True, "expression":
+                     "!!document.querySelector(" + json.dumps(arg) + ")"})
+                if wait(gen, 96)["result"]["result"]["value"]:
+                    break
+                time.sleep(0.5)
+            else:
+                print(f"!! --wait-again {arg} never appeared")
+            time.sleep(1.0)
+            continue
+        sel = arg
         send(s, 50 + n, "Runtime.evaluate", {"returnByValue": True, "expression":
              "(() => { const q = " + json.dumps(sel) + ";"
              # text=Foo clicks the first clickable whose text is exactly Foo —

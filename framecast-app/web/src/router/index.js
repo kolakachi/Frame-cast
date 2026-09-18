@@ -59,6 +59,10 @@ const routes = [
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
   { path: '/series', name: 'series', component: SeriesView, meta: { requiresAuth: true } },
   { path: '/ugc-ads', name: 'ugc-ads', component: UgcAdsView, meta: { requiresAuth: true, internalOnly: true } },
+  // The run and review screens are route-addressable so "you can leave this
+  // page — we'll keep working" is actually true.
+  { path: '/ugc-ads/run/:runId', name: 'ugc-run', component: () => import('../views/UgcRunView.vue'), meta: { requiresAuth: true, internalOnly: true } },
+  { path: '/ugc-ads/review/:projectId', name: 'ugc-review', component: () => import('../views/UgcReviewView.vue'), meta: { requiresAuth: true, internalOnly: true } },
   // The same pipeline, entered by someone who has the footage and needs the
   // arrangement. They would never look inside something called UGC Ads, and a
   // second implementation would be two to maintain — so it is one view with a

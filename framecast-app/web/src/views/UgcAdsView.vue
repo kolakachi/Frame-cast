@@ -18,12 +18,14 @@ const authStore = useAuthStore();
 // out for a phone and why the brief and the review read as equally urgent.
 // The cards below were already one per stage, so this arranges them rather
 // than rewriting them.
+// Three screens, per the wyvstudio-ugc-html mockups: say what you're making,
+// review the plan as passages, then approve the cost and generate. Script,
+// shots and cast are no longer separate stops — the script rides the brief
+// (as a tab) and cast sits beside the plan it presents.
 const STEPS = [
-  { key: "brief", label: "Brief", hint: "Product, audience, format" },
-  { key: "script", label: "Script", hint: "The words, or let us write them" },
-  { key: "shots", label: "Shots", hint: "What the camera does" },
-  { key: "cast", label: "Cast & voice", hint: "Who presents it" },
-  { key: "review", label: "Review", hint: "Cost and consent" },
+  { key: "brief", label: "Brief", hint: "What are we making" },
+  { key: "plan", label: "Plan", hint: "Passages, cast and voice" },
+  { key: "approve", label: "Approve & generate", hint: "Cost and consent" },
 ];
 const step = ref(0);
 
@@ -33,6 +35,15 @@ const MAX_CHARACTERS = 5;
 const script = ref("");
 const product = ref("");
 const context = ref("");
+// How the brief starts: their own words, an exact script, or a product link
+// we read for them. The tab only decides which field leads — all three feed
+// the same plan.
+const briefMode = ref("idea");
+const linkUrl = ref("");
+const readingLink = ref(false);
+const linkFound = ref(null); // { product, context, must_include, source_url }
+const mustInclude = ref("");
+const avoid = ref("");
 const format = ref("auto");
 const duration = ref(30);
 const language = ref("en");
@@ -46,7 +57,11 @@ const voicePreviewUrl = ref({}); // character id -> sample url
 const suggesting = ref(null); // which brief field is being written
 const loadingVoice = ref(null); // character id currently loading a sample
 const reviewed = ref(false);
-const consent = ref(false);
+// Two separate confirmations, per the mockup: rights to the presenter's
+// likeness and voice, and accuracy of the product facts. One combined
+// checkbox let people attest to something they had not read.
+const consentLikeness = ref(false);
+const consentFacts = ref(false);
 const quoting = ref(false);
 const quotedFingerprint = ref("");
 const footageShot = ref(null);
@@ -315,10 +330,8 @@ const missingFootage = computed(() =>
 // complete is still reachable backwards — this gates forward motion, it does
 // not lock you out of your own brief.
 const stepReady = computed(() => [
-  Boolean(product.value.trim() || context.value.trim()),
-  true,                                   // script is optional; the director writes one
-  Boolean(plan.value?.segments?.length),
-  noCast.value || selected.value.length > 0,
+  Boolean(product.value.trim() || context.value.trim() || script.value.trim()),
+  Boolean(plan.value?.segments?.length) && (noCast.value || selected.value.length > 0),
   canGenerate.value,
 ]);
 const furthestStep = computed(() => {
@@ -343,7 +356,8 @@ const canGenerate = computed(
     quoteCurrent.value &&
     (noCast.value || selected.value.length > 0) &&
     reviewed.value &&
-    consent.value &&
+    consentLikeness.value &&
+    consentFacts.value &&
     !missingFootage.value &&
     !generating.value &&
     !quoting.value &&
@@ -352,7 +366,7 @@ const canGenerate = computed(
 
 let inputRevision = 0;
 watch(
-  [script, product, context, format, duration, language, footageLabels],
+  [script, product, context, mustInclude, avoid, format, duration, language, footageLabels],
   () => {
     inputRevision++;
     plan.value = null;
@@ -438,6 +452,43 @@ function setFilter(key, value) {
   loadCharacters();
 }
 
+// Read a product page into the brief. What we found is shown back and
+// editable — never silently assumed correct.
+async function readLink() {
+  if (!linkUrl.value.trim() || readingLink.value) return;
+  readingLink.value = true;
+  errorMessage.value = "";
+  try {
+    const { data } = await api.post("/ugc/read-link", { url: linkUrl.value.trim() });
+    const found = data?.data ?? null;
+    linkFound.value = found;
+    if (found?.product) product.value = found.product;
+    if (found?.context) context.value = found.context;
+    if (found?.must_include) mustInclude.value = found.must_include;
+  } catch (err) {
+    linkFound.value = null;
+    errorMessage.value = apiErrorMessage(err, "Could not read that page. Paste the product details instead.");
+  } finally {
+    readingLink.value = false;
+  }
+}
+
+// "See the proposed plan →": plan from the brief, then move only if a plan
+// actually arrived — a failed plan keeps you on the brief with the error.
+async function advanceFromBrief() {
+  if (!stepReady.value[0] || planning.value) return;
+  if (!plan.value) await makePlan();
+  if (plan.value) goStep(1);
+}
+
+// "Approve plan → see cost": revalidate the (possibly edited) plan so the
+// cost screen always prices what is actually on the table.
+async function advanceFromPlan() {
+  if (!stepReady.value[1] || quoting.value) return;
+  if (!quoteCurrent.value) await reprice();
+  if (quoteCurrent.value) goStep(2);
+}
+
 // ── planning + generation ────────────────────────────────────────────
 async function makePlan() {
   if (!script.value.trim() && !context.value.trim()) return;
@@ -449,7 +500,10 @@ async function makePlan() {
     const { data } = await api.post("/ugc/plan", {
       script: script.value,
       product: product.value,
-      context: context.value,
+      context:
+        context.value +
+        (mustInclude.value.trim() ? `\nMust include: ${mustInclude.value.trim()}` : "") +
+        (avoid.value.trim() ? `\nAvoid: ${avoid.value.trim()}` : ""),
       format: format.value,
       duration_seconds: Number(duration.value),
       language: language.value,
@@ -622,7 +676,7 @@ async function generate() {
       language: language.value,
       voices: voiceByCharacter.value,
       product_asset_id: productAsset.value?.id ?? null,
-      consent: consent.value,
+      consent: consentLikeness.value && consentFacts.value,
       reviewed: reviewed.value,
       credits_per_character: perCharacter.value,
     });
@@ -630,6 +684,10 @@ async function generate() {
     reviewed.value = false;
     loadTakes();
     await loadBalance();
+    // The run has its own screen: per-scene progress, retries, and the door
+    // to review — this page's job ended when the run started.
+    const runId = data?.data?.run_id;
+    if (runId) router.push({ name: "ugc-run", params: { runId } });
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, "Could not start the run.");
   } finally {
@@ -708,6 +766,65 @@ onMounted(() => {
 
           <div v-show="step === 0" class="ugc-step-body">
           <div class="ugc-card ugc-fields">
+            <h2 class="ugc-card-t">What are we making?</h2>
+            <p class="ugc-hint" style="margin:0 0 10px">Start however is easiest. We'll ask for anything else we need once we see it.</p>
+            <div class="ugc-seg-group ugc-brief-tabs">
+              <button type="button" :class="['ugc-seg-btn', briefMode === 'idea' ? 'on' : '']" @click="briefMode = 'idea'">Describe an idea</button>
+              <button type="button" :class="['ugc-seg-btn', briefMode === 'script' ? 'on' : '']" @click="briefMode = 'script'">Paste an exact script</button>
+              <button type="button" :class="['ugc-seg-btn', briefMode === 'link' ? 'on' : '']" @click="briefMode = 'link'">Start from a product link</button>
+            </div>
+
+            <template v-if="briefMode === 'idea'">
+              <label>
+                <span class="ugc-label-row">
+                  Tell us what you want, in your own words
+                  <button class="ugc-suggest" type="button" :disabled="suggesting === 'context'" @click="suggest('context')">
+                    {{ suggesting === "context" ? "thinking…" : "✨ suggest" }}
+                  </button>
+                </span>
+                <textarea
+                  v-model="context"
+                  maxlength="1500"
+                  placeholder="A real customer explaining why she switched — warm, a little funny, no medical claims."
+                />
+              </label>
+              <p class="ugc-hint">We'll propose a script and shot plan from this. Nothing is generated yet.</p>
+            </template>
+
+            <template v-else-if="briefMode === 'script'">
+              <label>
+                <span class="ugc-label-row">
+                  Paste your script
+                  <span class="ugc-card-c">{{ scriptLength }} / {{ MAX_SCRIPT }}</span>
+                </span>
+                <textarea
+                  v-model="script"
+                  class="ugc-script"
+                  :maxlength="MAX_SCRIPT"
+                  placeholder="Hi, I'm Mia. Three months ago I was averaging four hours of sleep a night..."
+                ></textarea>
+              </label>
+              <p class="ugc-hint">Exact wording is preserved — every word, in order, unchanged.</p>
+            </template>
+
+            <template v-else>
+              <label>Product page or store link
+                <input v-model="linkUrl" type="url" maxlength="2000" placeholder="https://fernwell.com/products/sleep-plus" />
+              </label>
+              <div class="ugc-row">
+                <button class="ugc-btn" type="button" :disabled="!linkUrl.trim() || readingLink" @click="readLink">
+                  {{ readingLink ? 'Reading the page…' : 'Read the page' }}
+                </button>
+              </div>
+              <p v-if="!linkFound" class="ugc-hint">We'll read the page and show you what we found before assuming any of it is right.</p>
+              <div v-else class="ugc-shape">
+                <div class="ugc-shape-h">Here's what we read — correct anything that's off</div>
+                <p class="ugc-hint" style="margin:6px 0 0">The product and idea fields below were filled from the page and stay yours to edit.</p>
+              </div>
+            </template>
+          </div>
+
+<div class="ugc-card ugc-fields">
             <h2 class="ugc-card-t">{{ ownedEntry ? 'Your material' : 'Starting point' }}</h2>
             <p class="ugc-hint" style="margin:0 0 10px">
               {{ ownedEntry
@@ -773,95 +890,48 @@ onMounted(() => {
           </div>
 
           <div class="ugc-card ugc-fields">
-            <h2 class="ugc-card-t">Creative brief</h2>
+            <h2 class="ugc-card-t">Details &amp; direction</h2>
+            <label>
+              <span class="ugc-label-row">
+                Product / app
+                <button class="ugc-suggest" type="button" :disabled="suggesting === 'product'" @click="suggest('product')">
+                  {{ suggesting === "product" ? "thinking…" : "✨ suggest" }}
+                </button>
+              </span>
+              <input v-model="product" maxlength="200" placeholder="What are we showing?" />
+            </label>
+            <label v-if="briefMode !== 'idea'">
+              <span class="ugc-label-row">
+                Audience, idea and desired reaction
+                <button class="ugc-suggest" type="button" :disabled="suggesting === 'context'" @click="suggest('context')">
+                  {{ suggesting === "context" ? "thinking…" : "✨ suggest" }}
+                </button>
+              </span>
+              <textarea v-model="context" maxlength="1500" placeholder="Who is this for, and what should they feel?" />
+            </label>
+            <div class="ugc-two">
+              <label>Must include
+                <input v-model="mustInclude" maxlength="200" placeholder="14-day money-back guarantee" />
+              </label>
+              <label>Avoid
+                <input v-model="avoid" maxlength="200" placeholder="Medical or clinical claims" />
+              </label>
+            </div>
             <label
               >Format<UiSelect
                 v-model="format"
-                :options="
-                  formatOptions.map(([value, label]) => ({ value, label }))
-                "
+                :options="formatOptions.map(([value, label]) => ({ value, label }))"
                 aria-label="Format"
                 drop="down"
             /></label>
             <label>
               <span class="ugc-label-row">
-                Product / app
-                <button
-                  class="ugc-suggest"
-                  type="button"
-                  :disabled="suggesting === 'product'"
-                  @click="suggest('product')"
-                >
-                  {{ suggesting === "product" ? "thinking…" : "✨ suggest" }}
-                </button>
-              </span>
-              <input
-                v-model="product"
-                maxlength="200"
-                placeholder="What are we showing?"
-              />
-            </label>
-            <label>
-              <span class="ugc-label-row">
-                Audience, idea and desired reaction
-                <button
-                  class="ugc-suggest"
-                  type="button"
-                  :disabled="suggesting === 'context'"
-                  @click="suggest('context')"
-                >
-                  {{ suggesting === "context" ? "thinking…" : "✨ suggest" }}
-                </button>
-              </span>
-              <textarea
-                v-model="context"
-                maxlength="1500"
-                placeholder="e.g. A founder looks worried, then relieved. POV: you almost gave up on your app. Casual selfie, not a polished ad."
-              />
-            </label>
-            <label v-if="format === 'reaction'"
-              >Target seconds<UiSelect
-                v-model.number="duration"
-                :options="[
-                  { value: 5, label: '5 seconds' },
-                  { value: 10, label: '10 seconds' },
-                ]"
-                aria-label="Target seconds"
-                drop="down"
-            /></label>
-            <label v-else
-              >Target seconds<input
-                v-model.number="duration"
-                type="number"
-                min="5"
-                :max="format === 'direct_camera' ? 60 : 180"
-            /></label>
-            <label
-              >Language<input
-                v-model="language"
-                maxlength="12"
-                placeholder="en"
-            /></label>
-            <label>
-              <span class="ugc-label-row">
                 Available footage (one description per line)
-                <button
-                  class="ugc-suggest"
-                  type="button"
-                  :disabled="suggesting === 'available_footage'"
-                  @click="suggest('available_footage')"
-                >
-                  {{
-                    suggesting === "available_footage"
-                      ? "thinking…"
-                      : "✨ suggest"
-                  }}
+                <button class="ugc-suggest" type="button" :disabled="suggesting === 'available_footage'" @click="suggest('available_footage')">
+                  {{ suggesting === "available_footage" ? "thinking…" : "✨ suggest" }}
                 </button>
               </span>
-              <textarea
-                v-model="footageLabels"
-                :placeholder="'My app screen recording\nProduct close-up'"
-              />
+              <textarea v-model="footageLabels" :placeholder="'My app screen recording\nProduct close-up'" />
             </label>
             <label>
               <span class="ugc-label-row">Product photo (optional)</span>
@@ -876,62 +946,56 @@ onMounted(() => {
               </span>
               <span class="ugc-hint">Composited onto the actor so they hold or wear your actual product.</span>
             </label>
-            <p class="ugc-hint">
-              The director chooses shots only where needed. Reactions use
-              action-directed animation without speech; talking takes use
-              lip-sync. Actual actions still depend on the video model.
-            </p>
+          </div>
+
+          <div class="ugc-card ugc-fields">
+            <h2 class="ugc-card-t">Delivery</h2>
+            <label>Target length
+              <span class="ugc-seg-group">
+                <button
+                  v-for="secs in (format === 'reaction' ? [5, 10] : [15, 30, 60])"
+                  :key="secs"
+                  type="button"
+                  :class="['ugc-seg-btn', duration === secs ? 'on' : '']"
+                  @click="duration = secs"
+                >{{ secs }}s</button>
+              </span>
+            </label>
+            <label v-if="format !== 'reaction'">Custom seconds
+              <input v-model.number="duration" type="number" min="5" :max="format === 'direct_camera' ? 60 : 180" />
+            </label>
+            <span class="ugc-hint">Approximate — not a hard cutoff yet.</span>
+            <label>Aspect ratio
+              <span class="ugc-seg-group">
+                <button
+                  v-for="r in ['9:16', '1:1', '16:9']"
+                  :key="r"
+                  :class="['ugc-seg-btn', aspectRatio === r ? 'on' : '']"
+                  type="button"
+                  @click="aspectRatio = r"
+                >{{ r }}</button>
+              </span>
+            </label>
+            <label>Language<input v-model="language" maxlength="12" placeholder="en" /></label>
+          </div>
+
+          <div class="ugc-card-f ugc-brief-cta">
+            <button class="ugc-btn ugc-btn-primary" type="button" :disabled="!stepReady[0] || planning" @click="advanceFromBrief">
+              {{ planning ? 'Planning…' : 'See the proposed plan →' }}
+            </button>
+            <span class="ugc-hint">Nothing is generated yet — this only plans the video.</span>
           </div>
           </div>
 
           <div v-show="step === 1" class="ugc-step-body">
-          <div class="ugc-card">
-            <div class="ugc-card-h">
-              <span class="ugc-card-t">Exact spoken script (optional)</span>
-              <button
-                class="ugc-suggest"
-                type="button"
-                :disabled="suggesting === 'script'"
-                @click="suggest('script')"
-              >
-                {{ suggesting === "script" ? "thinking…" : "✨ suggest" }}
-              </button>
-              <span class="ugc-card-c"
-                >{{ scriptLength }} / {{ MAX_SCRIPT }}</span
-              >
-            </div>
-            <textarea
-              v-model="script"
-              class="ugc-script"
-              :maxlength="MAX_SCRIPT"
-              placeholder="Leave empty to write from your brief. For silent reactions, put the idea in the brief above, not here."
-            ></textarea>
-            <div class="ugc-card-f">
-              <button
-                class="ugc-btn"
-                :disabled="
-                  (!script.trim() && !context.trim()) || planning || generating
-                "
-                @click="makePlan"
-              >
-                {{
-                  planning
-                    ? "Planning…"
-                    : plan
-                    ? "Re-plan shots"
-                    : "Plan the shots"
-                }}
-              </button>
-              <span v-if="plan" class="ugc-hint">
-                {{ plan.segments.length }} segments · {{ onCameraCount }} on
-                camera
-              </span>
+          <div v-if="plan" class="ugc-plan-head">
+            <h2 class="ugc-card-t">Here's the plan</h2>
+            <div class="ugc-plan-pills">
+              <span class="ugc-kind on">{{ plan.format }}</span>
+              <span class="ugc-kind roll">~{{ (plan.segments ?? []).reduce((t, x) => t + Number(x.seconds || 0), 0) }}s</span>
+              <span class="ugc-kind roll">{{ aspectRatio }}</span>
             </div>
           </div>
-
-          </div>
-
-          <div v-show="step === 2" class="ugc-step-body">
           <!-- the plan, as something to adjust rather than accept -->
           <div v-if="plan" class="ugc-card">
             <div class="ugc-card-h">
@@ -1206,47 +1270,24 @@ onMounted(() => {
             </p>
           </div>
 
-          </div>
-
-          <div v-show="step === 3" class="ugc-step-body">
-          <div class="ugc-card">
+          <!-- Cast &amp; voice belongs beside the plan it presents. -->
+          <div v-if="!noCast" class="ugc-card">
             <div class="ugc-card-h">
-              <span class="ugc-card-t">Characters</span>
-              <span class="ugc-card-c">{{
-                noCast
-                  ? "no presenter in this format"
-                  : selected.length
-                  ? `${selected.length} selected`
-                  : "none"
-              }}</span>
+              <span class="ugc-card-t">Cast &amp; voice</span>
+              <span class="ugc-card-c">{{ selected.length ? `${selected.length} selected` : "Shown because someone is seen and heard" }}</span>
             </div>
             <div v-for="c in selected" :key="c.id" class="ugc-ch">
               <div class="ugc-ch-av">
-                <img
-                  v-if="c.reference_asset?.thumbnail_url"
-                  :src="c.reference_asset.thumbnail_url"
-                  alt=""
-                />
+                <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" alt="" />
                 <span v-else>☺</span>
               </div>
               <div class="ugc-ch-m">
                 <div class="ugc-ch-n">{{ c.name }}</div>
-                <div class="ugc-ch-s">
-                  {{ (c.situations || []).join(" · ") || c.age_group || "—" }}
-                </div>
-
-                <!-- Voice sits with the person it belongs to, not in Output. -->
+                <div class="ugc-ch-s">{{ (c.situations || []).join(" · ") || c.age_group || "—" }}</div>
                 <div v-if="plan?.format !== 'reaction'" class="ugc-ch-voice">
                   <UiSelect
                     :model-value="voiceByCharacter[c.id] || ''"
-                    :options="
-                      [{ value: '', label: 'Voice — automatic' }].concat(
-                        voices.map((v) => ({
-                          value: v.provider_voice_key,
-                          label: v.name,
-                        }))
-                      )
-                    "
+                    :options="[{ value: '', label: 'Voice — automatic' }].concat(voices.map((v) => ({ value: v.provider_voice_key, label: v.name })))"
                     :aria-label="`Voice for ${c.name}`"
                     drop="down"
                     @update:model-value="(val) => setVoice(c.id, val)"
@@ -1258,96 +1299,87 @@ onMounted(() => {
                     :disabled="loadingVoice === c.id"
                     @click="previewVoice(c)"
                   >
-                    {{ loadingVoice === c.id ? "…" : "▶ Hear" }}
+                    {{ loadingVoice === c.id ? "…" : "▶ Hear sample" }}
                   </button>
-                  <audio
-                    v-if="voicePreviewUrl[c.id]"
-                    class="ugc-audio"
-                    :src="voicePreviewUrl[c.id]"
-                    controls
-                  />
+                  <audio v-if="voicePreviewUrl[c.id]" class="ugc-audio" :src="voicePreviewUrl[c.id]" controls />
                 </div>
               </div>
-              <button
-                class="ugc-ch-x"
-                type="button"
-                @click="toggleCharacter(c)"
-              >
-                ✕
-              </button>
+              <button class="ugc-ch-x" type="button" @click="toggleCharacter(c)">✕</button>
             </div>
             <div class="ugc-card-f">
-              <button class="ugc-btn" @click="openPicker">
-                ＋ Add characters
-              </button>
+              <button class="ugc-btn" @click="openPicker">＋ Add characters</button>
             </div>
           </div>
+          <p v-else-if="plan" class="ugc-hint">
+            No presenter in this format — the words on screen carry the ad, so there is nobody to cast.
+          </p>
 
+          <div class="ugc-card-f ugc-brief-cta">
+            <button class="ugc-btn ugc-btn-primary" type="button" :disabled="!stepReady[1] || quoting" @click="advanceFromPlan">
+              {{ quoting ? 'Checking…' : 'Approve plan → see cost' }}
+            </button>
+          </div>
           </div>
 
-          <div v-show="step === 4" class="ugc-step-body">
+          <div v-show="step === 2" class="ugc-step-body">
           <div class="ugc-card">
-            <div class="ugc-card-h"><span class="ugc-card-t">Output</span></div>
-            <div class="ugc-out">
-              <span v-if="plan?.format !== 'reaction'" class="ugc-hint">
-                Each character has its own voice, set beside them above. Samples
-                are generic, not a rehearsal of this script.
-              </span>
-              <div class="ugc-seg-group">
-                <button
-                  v-for="r in ['9:16', '1:1', '16:9']"
-                  :key="r"
-                  :class="['ugc-seg-btn', aspectRatio === r ? 'on' : '']"
-                  type="button"
-                  @click="aspectRatio = r"
-                >
-                  {{ r }}
-                </button>
+            <div class="ugc-card-h"><span class="ugc-card-t">Ready to generate</span></div>
+            <p class="ugc-hint" style="margin:0 0 10px">This is what you're approving. Nothing outside this scope will be generated without a new cost decision.</p>
+            <div v-if="plan" class="ugc-summary">
+              <div class="ugc-summary-row"><span>Format</span><b>{{ plan.format }}</b></div>
+              <div class="ugc-summary-row"><span>Length</span><b>~{{ (plan.segments ?? []).reduce((t, x) => t + Number(x.seconds || 0), 0) }} seconds</b></div>
+              <div class="ugc-summary-row"><span>{{ noCast ? 'Presenter' : (selected.length === 1 ? 'Presenter' : 'Presenters') }}</span>
+                <b>{{ noCast ? 'None — text carries the ad' : selected.map((c) => c.name).join(', ') || '—' }}</b></div>
+              <div class="ugc-summary-row"><span>Assets used</span>
+                <b>{{ [productAsset ? 'product photo' : null, footageAssets.length ? `${footageAssets.length} clip${footageAssets.length === 1 ? '' : 's'} of your footage` : null].filter(Boolean).join(', ') || 'none' }}</b></div>
+              <div class="ugc-summary-row"><span>Output</span><b>{{ aspectRatio }} · {{ language }}</b></div>
+              <div v-if="mustInclude.trim() || avoid.trim()" class="ugc-plan-pills" style="margin-top:8px">
+                <span v-if="mustInclude.trim()" class="ugc-kind on">Must include: {{ mustInclude }}</span>
+                <span v-if="avoid.trim()" class="ugc-kind roll">Avoid: {{ avoid }}</span>
               </div>
             </div>
+          </div>
 
-            <div class="ugc-gen">
-              <span v-if="!plan || !selected.length" class="ugc-math">
-                Add a brief, review the shot plan, and pick at least one
-                character.
-              </span>
-              <span v-else class="ugc-math">
-                {{ takeCount }} take{{ takeCount > 1 ? "s" : "" }}<template
-                  v-if="selectedVariants.length"
-                > ({{ 1 + selectedVariants.length }} openings ×
-                {{ castCount }} cast)</template> ≈
-                <b>{{ totalCredits }} credits estimated</b>
-              </span>
-
-              <div v-if="plan" class="ugc-fields">
-                <label class="ugc-check"
-                  ><input
-                    v-model="reviewed"
-                    type="checkbox"
-                    :disabled="!quoteCurrent"
-                  />
-                  I reviewed the shots and estimate. Start with one character to
-                  check the performance.</label
-                >
-                <label class="ugc-check"
-                  ><input v-model="consent" type="checkbox" /> I have permission
-                  to use these characters and footage for this generated
-                  video.</label
-                >
-                <span v-if="missingFootage" class="ugc-hint"
-                  >Select the required footage before generating.</span
-                >
+          <div class="ugc-card">
+            <div class="ugc-card-h"><span class="ugc-card-t">Estimated cost</span></div>
+            <div v-if="plan" class="ugc-summary">
+              <div class="ugc-summary-row"><span>Base take{{ noCast ? '' : ' (per presenter)' }}</span><b>{{ perCharacter }} credits</b></div>
+              <div v-if="selectedVariants.length" class="ugc-summary-row">
+                <span>{{ selectedVariants.length }} alternative opening{{ selectedVariants.length === 1 ? '' : 's' }}</span>
+                <b>+ {{ variantCreditsPerCast }} credits</b>
               </div>
+              <div v-if="!noCast && selected.length > 1" class="ugc-summary-row"><span>× {{ selected.length }} presenters</span><b></b></div>
+              <div class="ugc-summary-row ugc-summary-total"><span>{{ takeCount }} take{{ takeCount === 1 ? '' : 's' }} — total</span><b>{{ totalCredits }} credits</b></div>
+            </div>
+            <p class="ugc-hint">
+              The exact total, not a range — charged only for what succeeds. A failed step is retried free.
+              Revision choices you make after review are their own cost decision.
+            </p>
+            <span v-if="!quoteCurrent" class="ugc-hint">Plan changed since this estimate. <button class="ugc-suggest" type="button" :disabled="quoting" @click="reprice">Re-check it</button></span>
+          </div>
 
-              <div class="ugc-gen-row">
-                <button
-                  class="ugc-btn ugc-btn-primary"
-                  :disabled="!canGenerate"
-                  @click="generate"
-                >
-                  {{ generating ? "Starting…" : "Generate takes" }}
-                </button>
-              </div>
+          <div class="ugc-card">
+            <div class="ugc-card-h"><span class="ugc-card-t">Before we start</span></div>
+            <div class="ugc-fields">
+              <label class="ugc-check"
+                ><input v-model="reviewed" type="checkbox" :disabled="!quoteCurrent" />
+                I reviewed the plan and the estimate.</label
+              >
+              <label class="ugc-check"
+                ><input v-model="consentLikeness" type="checkbox" />
+                I confirm I have the right to use {{ noCast ? 'the footage in this video' : (selected.length === 1 ? `${selected[0]?.name}'s likeness and voice` : "these presenters' likenesses and voices") }} in this video.</label
+              >
+              <label class="ugc-check"
+                ><input v-model="consentFacts" type="checkbox" />
+                I confirm the product facts I supplied are accurate.</label
+              >
+              <span v-if="missingFootage" class="ugc-hint">Select the required footage on the plan before generating.</span>
+            </div>
+            <div class="ugc-gen-row">
+              <button class="ugc-btn ugc-btn-primary" :disabled="!canGenerate" @click="generate">
+                {{ generating ? "Starting…" : "Generate video" }}
+              </button>
+              <span v-if="!canGenerate && plan" class="ugc-hint">Confirm the checks above to continue.</span>
             </div>
           </div>
           </div>
@@ -2607,5 +2639,47 @@ onMounted(() => {
   font-size: 10.5px;
   color: var(--color-text-muted);
   flex: 0 0 auto;
+}
+
+/* ── mockup-flow additions ─────────────────────────────────────────────── */
+.ugc-brief-tabs { margin-bottom: 14px; }
+.ugc-two { display: flex; gap: 12px; }
+.ugc-two > label { flex: 1; }
+.ugc-brief-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+.ugc-plan-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.ugc-plan-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.ugc-summary { display: flex; flex-direction: column; }
+.ugc-summary-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 13px;
+}
+.ugc-summary-row span { color: var(--color-text-muted); }
+.ugc-summary-row:last-child { border-bottom: none; }
+.ugc-summary-total {
+  background: var(--color-primary-soft, rgba(20, 99, 86, 0.08));
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 6px;
+  border-bottom: none;
+  font-size: 14px;
+}
+@media (max-width: 640px) {
+  .ugc-two { flex-direction: column; }
 }
 </style>

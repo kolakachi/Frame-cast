@@ -304,6 +304,9 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/reference', [UgcController::class, 'reference']);
             Route::post('/variants', [UgcController::class, 'variants']);
             Route::post('/generate', [UgcController::class, 'generate']);
+            Route::post('/read-link', [UgcController::class, 'readLink']);
+            Route::post('/fetch-video', [UgcController::class, 'fetchVideo']);
+            Route::post('/scenes/{sceneId}/retry', [UgcController::class, 'sceneRetry'])->whereNumber('sceneId');
         });
 
         Route::prefix('/admin')->middleware(['admin', 'admin.ip'])->group(function (): void {
