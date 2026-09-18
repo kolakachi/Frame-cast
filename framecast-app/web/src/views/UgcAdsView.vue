@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
 import UiSelect from "../components/UiSelect.vue";
@@ -10,6 +10,21 @@ import { apiErrorMessage } from "../composables/apiError";
 
 const router = useRouter();
 const authStore = useAuthStore();
+
+// ── Wizard ──────────────────────────────────────────────────────────────
+// Five steps, per ugc-steps-mockup.html. The page was one long screen: every
+// field for every stage visible at once, which is why it had never been laid
+// out for a phone and why the brief and the review read as equally urgent.
+// The cards below were already one per stage, so this arranges them rather
+// than rewriting them.
+const STEPS = [
+  { key: "brief", label: "Brief", hint: "Product, audience, format" },
+  { key: "script", label: "Script", hint: "The words, or let us write them" },
+  { key: "shots", label: "Shots", hint: "What the camera does" },
+  { key: "cast", label: "Cast & voice", hint: "Who presents it" },
+  { key: "review", label: "Review", hint: "Cost and consent" },
+];
+const step = ref(0);
 
 const MAX_SCRIPT = 1500;
 const MAX_CHARACTERS = 5;
@@ -130,6 +145,33 @@ const missingFootage = computed(() =>
     (s) => s.kind === "b_roll" && s.source !== "generate" && !s.asset_id
   )
 );
+// What each step needs before the next one means anything. A step you cannot
+// complete is still reachable backwards — this gates forward motion, it does
+// not lock you out of your own brief.
+const stepReady = computed(() => [
+  Boolean(product.value.trim() || context.value.trim()),
+  true,                                   // script is optional; the director writes one
+  Boolean(plan.value?.segments?.length),
+  selected.value.length > 0,
+  canGenerate.value,
+]);
+const furthestStep = computed(() => {
+  let i = 0;
+  while (i < STEPS.length - 1 && stepReady.value[i]) i += 1;
+  return i;
+});
+function canGoStep(i) {
+  return i <= furthestStep.value;
+}
+function goStep(i) {
+  if (!canGoStep(i)) return;
+  step.value = i;
+  // The rail is above the fold on a phone; the fields are not.
+  nextTick(() => document.querySelector(".ugc-step-body")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+}
+function nextStep() { goStep(Math.min(step.value + 1, STEPS.length - 1)); }
+function prevStep() { goStep(Math.max(step.value - 1, 0)); }
+
 const canGenerate = computed(
   () =>
     quoteCurrent.value &&
@@ -448,6 +490,24 @@ onMounted(() => {
       <div class="ugc-body">
         <!-- build column -->
         <section class="ugc-build">
+        <!-- Step rail. Horizontal and scrollable on a phone, where it is the
+             only thing telling you how far through you are. -->
+        <nav class="ugc-steps" aria-label="Setup steps">
+          <button
+            v-for="(st, i) in STEPS"
+            :key="st.key"
+            type="button"
+            :class="['ugc-step', i === step ? 'is-current' : '', i < furthestStep && i !== step ? 'is-done' : '', !canGoStep(i) ? 'is-locked' : '']"
+            :aria-current="i === step ? 'step' : undefined"
+            :disabled="!canGoStep(i)"
+            @click="goStep(i)"
+          >
+            <span class="ugc-step-n">{{ i < furthestStep && i !== step ? '✓' : String(i + 1).padStart(2, '0') }}</span>
+            <span class="ugc-step-t"><b>{{ st.label }}</b></span>
+          </button>
+        </nav>
+
+          <div v-show="step === 0" class="ugc-step-body">
           <div class="ugc-card ugc-fields">
             <h2 class="ugc-card-t">Creative brief</h2>
             <label
@@ -558,6 +618,9 @@ onMounted(() => {
               lip-sync. Actual actions still depend on the video model.
             </p>
           </div>
+          </div>
+
+          <div v-show="step === 1" class="ugc-step-body">
           <div class="ugc-card">
             <div class="ugc-card-h">
               <span class="ugc-card-t">Exact spoken script (optional)</span>
@@ -602,6 +665,9 @@ onMounted(() => {
             </div>
           </div>
 
+          </div>
+
+          <div v-show="step === 2" class="ugc-step-body">
           <!-- the plan, as something to adjust rather than accept -->
           <div v-if="plan" class="ugc-card">
             <div class="ugc-card-h">
@@ -821,6 +887,9 @@ onMounted(() => {
             </p>
           </div>
 
+          </div>
+
+          <div v-show="step === 3" class="ugc-step-body">
           <div class="ugc-card">
             <div class="ugc-card-h">
               <span class="ugc-card-t">Characters</span>
@@ -891,6 +960,9 @@ onMounted(() => {
             </div>
           </div>
 
+          </div>
+
+          <div v-show="step === 4" class="ugc-step-body">
           <div class="ugc-card">
             <div class="ugc-card-h"><span class="ugc-card-t">Output</span></div>
             <div class="ugc-out">
@@ -952,6 +1024,21 @@ onMounted(() => {
                 </button>
               </div>
             </div>
+          </div>
+          </div>
+
+          <!-- Back / Continue. The generate button lives in step 5's own card,
+               so Continue stops at Review rather than pretending to submit. -->
+          <div class="ugc-nav">
+            <button v-if="step > 0" class="ugc-nav-back" type="button" @click="prevStep">← Back</button>
+            <span class="ugc-nav-where">Step {{ step + 1 }} of {{ STEPS.length }}</span>
+            <button
+              v-if="step < STEPS.length - 1"
+              class="ugc-nav-next"
+              type="button"
+              :disabled="!stepReady[step]"
+              @click="nextStep"
+            >{{ stepReady[step] ? `Continue → ${STEPS[step + 1].label}` : `Add ${STEPS[step].hint.toLowerCase()} to continue` }}</button>
           </div>
         </section>
 
@@ -1898,5 +1985,129 @@ onMounted(() => {
 }
 .ugc-m-foot .ugc-btn-primary {
   margin-left: auto;
+}
+
+/* ── Wizard ─────────────────────────────────────────────────────────────
+   The rail is the only thing on a phone telling you how far through you are,
+   so it scrolls horizontally rather than wrapping into a block that pushes
+   the fields off screen. */
+.ugc-steps {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ugc-step {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: 0.15s;
+}
+.ugc-step:hover:not(:disabled) { border-color: var(--color-border-active); }
+.ugc-step.is-current {
+  border-color: var(--color-accent);
+  background: rgba(255, 107, 53, 0.08);
+  color: var(--color-text-primary);
+}
+.ugc-step.is-done .ugc-step-n { color: #34d399; border-color: rgba(52, 211, 153, 0.4); }
+.ugc-step.is-locked { opacity: 0.45; cursor: not-allowed; }
+
+.ugc-step-n {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  font-family: "Space Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.ugc-step.is-current .ugc-step-n { border-color: var(--color-accent); color: var(--color-accent); }
+.ugc-step-t b { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+
+.ugc-step-body { display: flex; flex-direction: column; gap: 14px; }
+
+.ugc-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+.ugc-nav-where {
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-right: auto;
+}
+.ugc-nav-back,
+.ugc-nav-next {
+  border-radius: 9px;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-primary);
+}
+.ugc-nav-next {
+  border-color: transparent;
+  background: var(--color-accent);
+  color: #fff;
+}
+/* Disabled says what is still needed, so it is a label rather than a wall. */
+.ugc-nav-next:disabled {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  font-weight: 400;
+}
+
+/* ── Phone ──────────────────────────────────────────────────────────────
+   This screen had no media queries at all: a two-column layout and a full
+   page of fields at any width. The wizard is what makes one column work —
+   one stage per screen instead of five stacked. */
+@media (max-width: 860px) {
+  .ugc-shell { margin-left: 0; }
+
+  /* .ugc-body is a flex row and .ugc-build a fixed 480px column, so at 430px
+     the page was 540px wide and the fixed shell bars stretched with it. */
+  .ugc-body {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .ugc-build,
+  .ugc-stage {
+    width: auto;
+    min-width: 0;
+  }
+
+  /* The shell bar already names the screen and shows the balance; the page
+     header repeated both, and the beta badge is not worth a row of its own. */
+  .ugc-top { display: none; }
+
+  .ugc-step { padding: 8px 10px; }
+
+  .ugc-nav { flex-wrap: wrap; }
+  .ugc-nav-where { order: -1; flex: 1 0 100%; margin: 0; }
+  .ugc-nav-back, .ugc-nav-next { flex: 1; min-height: 44px; }
 }
 </style>
