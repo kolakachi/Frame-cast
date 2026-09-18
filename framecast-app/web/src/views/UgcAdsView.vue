@@ -57,6 +57,9 @@ const formatOptions = [
   ["demo", "Product / app demonstration"],
   ["story", "Story with deliberate cuts"],
   ["reaction", "Silent reaction + headline (5 or 10 seconds)"],
+  // Cheapest by an order of magnitude: stills, a camera move and captions,
+  // with no video model running at all.
+  ["text_led", "Text-led cards — no presenter, no video model"],
 ];
 const selected = ref([]); // chosen characters
 const aspectRatio = ref("9:16");

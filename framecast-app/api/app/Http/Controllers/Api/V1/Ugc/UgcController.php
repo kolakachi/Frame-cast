@@ -83,7 +83,7 @@ class UgcController extends Controller
 
         return response()->json(['data' => [
             'format' => $v['format'], 'segments' => $segments, 'script' => UgcPlan::script($segments),
-            'credits_per_character' => UgcPlan::quote($segments), 'warnings' => UgcPlan::warnings($segments),
+            'credits_per_character' => UgcPlan::quote($segments), 'warnings' => UgcPlan::warnings($segments, $v['format']),
             'stale_shots' => UgcPlan::staleCount($segments),
         ], 'meta' => []]);
     }
@@ -101,7 +101,7 @@ class UgcController extends Controller
 
         return response()->json(['data' => [
             'format' => $v['format'], 'segments' => $segments, 'script' => UgcPlan::script($segments),
-            'credits_per_character' => UgcPlan::quote($segments), 'warnings' => UgcPlan::warnings($segments),
+            'credits_per_character' => UgcPlan::quote($segments), 'warnings' => UgcPlan::warnings($segments, $v['format']),
             'stale_shots' => UgcPlan::staleCount($segments),
         ], 'meta' => []]);
     }

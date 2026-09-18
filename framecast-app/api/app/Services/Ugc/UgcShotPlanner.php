@@ -37,7 +37,7 @@ class UgcShotPlanner
                 'format' => $chosen, 'script' => $spoken, 'segments' => $segments,
                 'credits_per_character' => UgcPlan::quote($segments),
                 'reasoning' => mb_substr((string) ($parsed['reasoning'] ?? ''), 0, 600),
-                'warnings' => UgcPlan::warnings($segments),
+                'warnings' => UgcPlan::warnings($segments, $chosen),
             ];
         } catch (\Throwable $e) {
             Log::warning('UGC director returned no usable plan', ['error' => mb_substr($e->getMessage(), 0, 200)]);

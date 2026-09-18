@@ -9,7 +9,16 @@ use Illuminate\Validation\ValidationException;
 /** Shared validation and pricing for both planning and execution. */
 final class UgcPlan
 {
-    public const FORMATS = ['direct_camera', 'demo', 'story', 'reaction'];
+    public const FORMATS = ['direct_camera', 'demo', 'story', 'reaction', 'text_led'];
+
+    /**
+     * Formats whose shots are stills, captions and camera move — no generated
+     * video seconds at all. A talking face is ~96% of a long take's cost and
+     * scales with its length; a still does not, so a text-led ad of the same
+     * runtime costs a fraction and the arithmetic is in UgcPlan::quote()
+     * already. This only has to stop video being planned into it.
+     */
+    public const STILL_ONLY_FORMATS = ['text_led'];
 
     /**
      * What a shot's visual is doing for the words it serves. Stored so that a
@@ -69,7 +78,12 @@ final class UgcPlan
             // the director to invent words for a shot that works better
             // without them. It stays disallowed in direct_camera and story,
             // where a silent shot is a mistake rather than a choice.
-            $silentCutawayAllowed = $kind === 'b_roll' && $format === 'demo' && $headlineFor($seg) !== '';
+            // A text-led shot can carry a headline alone: the words on screen
+            // are the ad, and narration over them is a choice rather than the
+            // point. In demo it stays the exception it always was.
+            $silentCutawayAllowed = $kind === 'b_roll'
+                && in_array($format, ['demo', ...self::STILL_ONLY_FORMATS], true)
+                && $headlineFor($seg) !== '';
 
             if ($kind === 'reaction') {
                 if ($format !== 'reaction' || $text !== '' || ! in_array($seconds, [5.0, 10.0], true) || $motion === '') {
@@ -138,6 +152,19 @@ final class UgcPlan
         }
         if ($format === 'direct_camera' && (count($out) !== 1 || $out[0]['kind'] !== 'on_camera')) {
             self::invalid('Direct-to-camera uses one continuous talking take (up to 60 seconds).');
+        }
+        if (in_array($format, self::STILL_ONLY_FORMATS, true)) {
+            if (count($out) > 6) {
+                self::invalid('A text-led ad is up to six cards. More than that is a story, not a caption.');
+            }
+            foreach ($out as $seg) {
+                if ($seg['kind'] !== 'b_roll') {
+                    self::invalid('A text-led ad has no presenter — every shot is a still with words on it. Choose another format to put someone on camera.');
+                }
+            }
+            if (! array_filter($out, fn ($s) => $s['headline'] !== '')) {
+                self::invalid('A text-led ad needs at least one headline. The words on screen are the ad.');
+            }
         }
         if (count(array_filter($out, fn ($s) => $s['kind'] === 'on_camera')) > 4) {
             self::invalid('Use at most four deliberate talking takes. Shots are not silently converted to cutaways.');
@@ -227,8 +254,9 @@ final class UgcPlan
         return $total;
     }
 
-    public static function warnings(array $segments): array
+    public static function warnings(array $segments, string $format = ''): array
     {
+        $stillOnly = in_array($format, self::STILL_ONLY_FORMATS, true);
         $warnings = ['Credits are an estimate: spoken duration is confirmed after speech synthesis. Review one take before generating a large batch.'];
         foreach ($segments as $i => $seg) {
             if ($seg['kind'] === 'b_roll' && $seg['source'] !== 'generate' && ! $seg['asset_id']) {
@@ -238,6 +266,9 @@ final class UgcPlan
         // The talking face is ~96% of a long take, and it is linear in
         // seconds. Saying so where the plan is priced is the difference
         // between a customer choosing the expensive shape and discovering it.
+        if ($stillOnly ?? false) {
+            $warnings[] = 'No video model runs for this ad: the motion is the camera move over each still and the captions on top. That is why it costs a fraction of a take with a presenter.';
+        }
         $onCamera = self::onCameraSeconds($segments);
         if ($onCamera > self::HOOK_SECONDS + 7) {
             $saving = CreditService::spokespersonCost($onCamera) - CreditService::spokespersonCost(self::HOOK_SECONDS);
