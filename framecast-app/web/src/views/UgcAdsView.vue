@@ -49,6 +49,69 @@ const consent = ref(false);
 const quoting = ref(false);
 const quotedFingerprint = ref("");
 const footageShot = ref(null);
+// ── Starting point ──────────────────────────────────────────────────────
+// From the mockup's first step. The choice decides what we are allowed to do
+// with the source: an ad someone else made gives us its shape and nothing
+// else, while footage they own can be used outright.
+const START_POINTS = [
+  { key: "scratch", label: "From scratch", hint: "Describe the product and we plan the ad" },
+  { key: "found", label: "From an ad I like", hint: "We copy the structure only — never its footage or words" },
+  { key: "owned", label: "From my own footage", hint: "Your clips, arranged into an ad" },
+];
+const startPoint = ref("scratch");
+
+// The reference we read a shape off, and what we understood from it.
+const referencePicker = ref(false);
+const referenceAsset = ref(null);
+const referenceShape = ref(null);   // { shape, beats: [...] }
+const readingReference = ref(false);
+const referenceError = ref("");
+
+// Their own clips, offered to the director by id.
+const footagePicker = ref(false);
+const footageAssets = ref([]);      // [{ id, title, thumbnail_url }]
+
+async function readReference() {
+  if (!referenceAsset.value || readingReference.value) return;
+  readingReference.value = true;
+  referenceError.value = "";
+  try {
+    const res = await api.post("/ugc/reference", { asset_id: referenceAsset.value.id });
+    referenceShape.value = res.data?.data?.reference ?? null;
+  } catch (e) {
+    referenceError.value =
+      e?.response?.data?.errors?.reference?.[0] ||
+      e?.response?.data?.error?.message ||
+      "Could not read that video. Try another, or plan from a brief.";
+    referenceShape.value = null;
+  } finally {
+    readingReference.value = false;
+  }
+}
+
+function selectReference({ item }) {
+  if (item?.id && item._type === "asset") {
+    referenceAsset.value = { id: item.id, title: item.title, thumbnail_url: item.thumbnail_url || item.storage_url };
+    referenceShape.value = null;
+    readReference();
+  }
+  referencePicker.value = false;
+}
+
+function selectFootageAsset({ item }) {
+  if (item?.id && item._type === "asset" && !footageAssets.value.some((a) => a.id === item.id)) {
+    footageAssets.value.push({
+      id: item.id,
+      title: item.title || "Untitled",
+      thumbnail_url: item.thumbnail_url || item.storage_url,
+    });
+  }
+  footagePicker.value = false;
+}
+function removeFootage(id) {
+  footageAssets.value = footageAssets.value.filter((a) => a.id !== id);
+}
+
 const productPicker = ref(false);
 const productAsset = ref(null);   // { id, thumbnail_url, title }
 const formatOptions = [
@@ -280,6 +343,10 @@ async function makePlan() {
         .split("\n")
         .map((s) => s.trim())
         .filter(Boolean),
+      // The shape read off a reference, and the clips they own. Either may be
+      // absent; the director plans from the brief alone when both are.
+      ...(referenceShape.value ? { reference: referenceShape.value } : {}),
+      ...(footageAssets.value.length ? { footage_asset_ids: footageAssets.value.map((a) => a.id) } : {}),
     });
     if (revision !== inputRevision) return;
     plan.value = data?.data ?? null;
@@ -511,6 +578,67 @@ onMounted(() => {
         </nav>
 
           <div v-show="step === 0" class="ugc-step-body">
+          <div class="ugc-card ugc-fields">
+            <h2 class="ugc-card-t">Starting point</h2>
+            <p class="ugc-hint" style="margin:0 0 10px">This decides what we are allowed to do with the source.</p>
+            <div class="ugc-starts">
+              <button
+                v-for="sp in START_POINTS"
+                :key="sp.key"
+                type="button"
+                :class="['ugc-start', startPoint === sp.key ? 'is-on' : '']"
+                @click="startPoint = sp.key"
+              >
+                <b>{{ sp.label }}</b>
+                <span>{{ sp.hint }}</span>
+              </button>
+            </div>
+
+            <!-- An ad they admire. We read its shape; its footage and words stay theirs. -->
+            <template v-if="startPoint === 'found'">
+              <label class="ugc-label" style="margin-top:14px">Reference ad</label>
+              <div class="ugc-row">
+                <img v-if="referenceAsset?.thumbnail_url" :src="referenceAsset.thumbnail_url" alt="" class="ugc-product-thumb" />
+                <button class="ugc-btn" type="button" @click="referencePicker = true">
+                  {{ referenceAsset ? 'Choose another' : 'Choose a video' }}
+                </button>
+                <span v-if="readingReference" class="ugc-hint">Reading its structure…</span>
+              </div>
+              <p v-if="referenceError" class="ugc-error-inline">{{ referenceError }}</p>
+
+              <!-- What we understood, so they can see it before it shapes the plan. -->
+              <div v-if="referenceShape" class="ugc-shape">
+                <div class="ugc-shape-h">{{ referenceShape.shape || 'Structure read' }}</div>
+                <ol class="ugc-beats">
+                  <li v-for="(b, i) in referenceShape.beats" :key="i">
+                    <b>{{ b.role }}</b>
+                    <span v-if="b.end > b.start" class="ugc-beat-secs">{{ Math.round(b.end - b.start) }}s</span>
+                    <span>{{ b.does }}</span>
+                  </li>
+                </ol>
+                <p class="ugc-hint">We use this shape only. None of its wording, footage or claims are reused.</p>
+              </div>
+            </template>
+
+            <!-- Footage they own. Assigned to shots by the director. -->
+            <template v-if="startPoint !== 'scratch'">
+              <label class="ugc-label" style="margin-top:14px">
+                Your footage <span class="ugc-opt">({{ startPoint === 'owned' ? 'the ad is built from these' : 'optional' }})</span>
+              </label>
+              <div class="ugc-footage">
+                <div v-for="a in footageAssets" :key="a.id" class="ugc-footage-item">
+                  <img v-if="a.thumbnail_url" :src="a.thumbnail_url" alt="" />
+                  <span>{{ a.title }}</span>
+                  <button type="button" aria-label="Remove" @click="removeFootage(a.id)">×</button>
+                </div>
+                <button class="ugc-btn" type="button" @click="footagePicker = true">+ Add a clip</button>
+              </div>
+              <p class="ugc-hint">
+                Your own product beats anything we would generate of it, and using it costs nothing.
+              </p>
+            </template>
+          </div>
+
           <div class="ugc-card ugc-fields">
             <h2 class="ugc-card-t">Creative brief</h2>
             <label
@@ -1095,6 +1223,18 @@ onMounted(() => {
         :visible="footageShot !== null"
         @close="footageShot = null"
         @select="selectFootage"
+      />
+      <MediaPickerModal
+        mode="visual"
+        :visible="referencePicker"
+        @close="referencePicker = false"
+        @select="selectReference"
+      />
+      <MediaPickerModal
+        mode="visual"
+        :visible="footagePicker"
+        @close="footagePicker = false"
+        @select="selectFootageAsset"
       />
       <MediaPickerModal
         mode="visual"
@@ -2113,4 +2253,83 @@ onMounted(() => {
   .ugc-nav-where { order: -1; flex: 1 0 100%; margin: 0; }
   .ugc-nav-back, .ugc-nav-next { flex: 1; min-height: 44px; }
 }
+
+/* ── Starting point ─────────────────────────────────────────────────── */
+.ugc-starts { display: flex; flex-direction: column; gap: 8px; }
+.ugc-start {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.ugc-start:hover { border-color: var(--color-border-active); }
+.ugc-start.is-on {
+  border-color: var(--color-accent);
+  background: rgba(255, 107, 53, 0.08);
+  color: var(--color-text-primary);
+}
+.ugc-start b { font-size: 13.5px; font-weight: 600; }
+.ugc-start span { font-size: 11.5px; color: var(--color-text-muted); }
+
+.ugc-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ugc-error-inline { font-size: 12px; color: #f87171; margin: 8px 0 0; }
+
+/* What we read off the reference, shown before it shapes anything. */
+.ugc-shape {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg-elevated);
+}
+.ugc-shape-h { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.ugc-beats { margin: 0 0 8px; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+.ugc-beats li { font-size: 12px; color: var(--color-text-secondary); }
+.ugc-beats b {
+  font-family: "Space Mono", monospace;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-accent);
+  margin-right: 6px;
+}
+.ugc-beat-secs {
+  font-family: "Space Mono", monospace;
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  margin-right: 6px;
+}
+
+.ugc-footage { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ugc-footage-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 7px 5px 5px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-card);
+  font-size: 12px;
+  max-width: 220px;
+}
+.ugc-footage-item img { width: 26px; height: 26px; border-radius: 5px; object-fit: cover; flex: 0 0 auto; }
+.ugc-footage-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ugc-footage-item button {
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.ugc-footage-item button:hover { color: #f87171; }
 </style>
