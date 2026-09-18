@@ -27,6 +27,7 @@ class UgcReference
     public function __construct(
         private readonly AIGenerationAdapter $ai,
         private readonly MediaTranscriptionService $transcription,
+        private readonly ?UgcFrameSampler $frames = null,
     ) {}
 
     /**
@@ -34,22 +35,31 @@ class UgcReference
      */
     public function read(Asset $asset): array
     {
-        $timed = $this->transcription->transcribeAssetWithTimestamps($asset);
-        $segments = array_values(array_filter((array) ($timed['segments'] ?? [])));
+        $duration = (float) ($asset->duration_seconds ?? 0);
+        // Pictures first: they are what a transcript cannot give us, and they
+        // are the only thing a silent ad has.
+        $frames = $this->frames?->sample($asset, $duration) ?? [];
 
-        if ($segments === []) {
-            // Silent or music-only. Structure could still be read from frames,
-            // which this does not do yet — say so rather than returning an
-            // invented shape.
+        $segments = [];
+        try {
+            $timed = $this->transcription->transcribeAssetWithTimestamps($asset);
+            $segments = array_values(array_filter((array) ($timed['segments'] ?? [])));
+        } catch (\Throwable $e) {
+            // A silent reference fails transcription rather than returning
+            // nothing. With frames in hand that is survivable.
+            Log::info('UGC reference has no usable transcript', ['error' => mb_substr($e->getMessage(), 0, 120)]);
+        }
+
+        if ($segments === [] && $frames === []) {
             throw ValidationException::withMessages([
-                'reference' => 'No speech was found in that video, so there is nothing to read its structure from yet. Upload one with a voiceover, or describe the ad you have in mind instead.',
+                'reference' => 'Nothing could be read from that file — no speech, and no frames either. Check it plays, or describe the ad you have in mind instead.',
             ]);
         }
 
         try {
             $result = $this->ai->generate('ugc_reference_read', [
-                'duration' => (string) round((float) ($asset->duration_seconds ?? 0), 1),
-                'transcript_json' => json_encode(
+                'duration' => (string) round($duration, 1),
+                'transcript_json' => $segments === [] ? 'none — this reference has no speech' : json_encode(
                     array_map(fn ($s) => [
                         'start' => round((float) ($s['start'] ?? 0), 2),
                         'end' => round((float) ($s['end'] ?? 0), 2),
@@ -57,7 +67,15 @@ class UgcReference
                     ], $segments),
                     JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
                 ),
-            ], 2500, 0.2, ['operation' => 'ugc_reference_read']);
+                'frame_times' => $frames === []
+                    ? 'none'
+                    : implode(', ', array_map(fn ($f) => $f['at'].'s', $frames)),
+            ], 2500, 0.2, [
+                'operation' => 'ugc_reference_read',
+                // The frames themselves, in the order their times are listed.
+                'images' => array_map(fn ($f) => ['url' => $f['url'], 'title' => 'Frame at '.$f['at'].'s'], $frames),
+                'image_detail' => 'low',
+            ]);
 
             $content = trim((string) ($result['content'] ?? $result['text'] ?? ''));
             $content = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $content);

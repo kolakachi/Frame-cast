@@ -112,9 +112,11 @@ You read an existing short ad and write down what it is doing, beat by beat, so 
 Return JSON only:
 {"duration":30,"shape":"one sentence on how the ad is built","beats":[{"start":0,"end":2.5,"role":"hook|problem|proof|demonstration|contrast|cta","does":"what this beat is for, in the ad's own logic","on_screen":"what a viewer sees, described generically","spoken":"the words said here, verbatim from the transcript"}]}
 Between three and eight beats. role is what the beat does for the argument, not what is on screen. does explains why the beat exists — "names the cost of the problem before the product appears", not "person talks". on_screen stays generic — "a phone screen showing a list", never a brand, logo, slogan or person's name, because the new ad cannot use them.
-Timings come from the transcript you are given. A beat boundary falls where the argument turns, not every sentence. If the transcript is thin, infer fewer beats rather than inventing detail. Never invent statistics, testimonials or product capabilities: you are describing structure, and the claims belong to whoever made the original.
+You are given frames sampled through the ad, in order, with the times they were taken, and the transcript if it has one. Read both: the frames say what a viewer sees — where it cuts, when the product first appears, whether a card of text is carrying the claim — and the transcript says what is being argued and when. A beat boundary can fall at a visible cut as readily as at a sentence ending. Describe only what is actually in the frames; do not guess at footage between them.
+An ad with no speech is still readable: take the beats from what changes on screen, and leave spoken empty.
+Timings come from the frames and transcript you are given. A beat boundary falls where the argument turns, not every sentence. If the transcript is thin, infer fewer beats rather than inventing detail. Never invent statistics, testimonials or product capabilities: you are describing structure, and the claims belong to whoever made the original.
 PROMPT,
-                'user' => "Read this ad's structure.\nStated duration: {{duration}} seconds\nTranscript with timings (JSON):\n{{transcript_json}}",
+                'user' => "Read this ad's structure.\nStated duration: {{duration}} seconds\nFrames attached, taken at: {{frame_times}}\nTranscript with timings (JSON):\n{{transcript_json}}",
             ],
             'ugc_shot_plan' => [
                 'system' => <<<'PROMPT'

@@ -17,14 +17,24 @@ use Tests\TestCase;
  */
 class UgcReferenceTest extends TestCase
 {
-    private function reader(string $reply, array $segments = [['start' => 0, 'end' => 3, 'text' => 'I used to sleep badly.']]): UgcReference
-    {
+    private function reader(
+        string $reply,
+        array $segments = [['start' => 0, 'end' => 3, 'text' => 'I used to sleep badly.']],
+        array $frames = [],
+    ): UgcReference {
         $ai = new class($reply) implements AIGenerationAdapter
         {
             public function __construct(private string $reply) {}
 
+            public array $vars = [];
+
+            public array $options = [];
+
             public function generate(string $k, array $v, int $m = 900, float $t = 0.4, array $o = []): array
             {
+                $this->vars = $v;
+                $this->options = $o;
+
                 return ['content' => $this->reply];
             }
         };
@@ -38,8 +48,22 @@ class UgcReferenceTest extends TestCase
             }
         };
 
-        return new UgcReference($ai, $transcription);
+        $sampler = new class($frames) extends \App\Services\Ugc\UgcFrameSampler
+        {
+            public function __construct(private array $frames) {}
+
+            public function sample(Asset $asset, float $durationSeconds): array
+            {
+                return $this->frames;
+            }
+        };
+
+        $this->lastAi = $ai;
+
+        return new UgcReference($ai, $transcription, $sampler);
     }
+
+    private ?object $lastAi = null;
 
     private function asset(): Asset
     {
@@ -85,10 +109,31 @@ class UgcReferenceTest extends TestCase
         $this->assertCount(8, $this->reader($reply)->read($this->asset())['beats']);
     }
 
-    public function test_a_silent_video_is_refused_rather_than_invented(): void
+    public function test_a_silent_video_is_read_from_its_frames(): void
+    {
+        $frames = [['url' => 'data:image/jpeg;base64,AAA', 'at' => 0.0],
+                   ['url' => 'data:image/jpeg;base64,BBB', 'at' => 3.0]];
+
+        $out = $this->reader($this->goodReply(), [], $frames)->read($this->asset());
+
+        $this->assertCount(3, $out['beats'], 'no speech is not the same as nothing to read');
+    }
+
+    public function test_the_frames_are_actually_sent_to_the_model(): void
+    {
+        $frames = [['url' => 'data:image/jpeg;base64,AAA', 'at' => 0.0],
+                   ['url' => 'data:image/jpeg;base64,BBB', 'at' => 3.0]];
+
+        $this->reader($this->goodReply(), [], $frames)->read($this->asset());
+
+        $this->assertCount(2, $this->lastAi->options['images'] ?? []);
+        $this->assertSame('0s, 3s', $this->lastAi->vars['frame_times'] ?? '');
+    }
+
+    public function test_with_neither_speech_nor_frames_it_gives_up(): void
     {
         $this->expectException(ValidationException::class);
-        $this->reader($this->goodReply(), [])->read($this->asset());
+        $this->reader($this->goodReply(), [], [])->read($this->asset());
     }
 
     public function test_an_unreadable_reply_spends_nothing_and_says_so(): void
