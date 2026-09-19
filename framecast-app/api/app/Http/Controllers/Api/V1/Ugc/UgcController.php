@@ -103,6 +103,7 @@ class UgcController extends Controller
             $thumbType = $thumbAssetId ? Asset::query()->whereKey($thumbAssetId)->value('asset_type') : null;
             $row = ['id' => $project->id, 'character' => $project->title, 'scenes' => $project->scenes->count(),
                 'thumbnail_url' => $thumbUrl, 'thumbnail_type' => $thumbType, 'created_at' => $project->created_at?->toIso8601String(),
+                'format' => data_get($project->visual_brief, 'ugc_format'),
                 'credits' => data_get($project->visual_brief, 'ugc_estimated_credits', 0),
                 'variant' => data_get($project->visual_brief, 'ugc_variant'),
                 'run_id' => data_get($project->visual_brief, 'ugc_run_id'),

@@ -211,7 +211,10 @@ onBeforeUnmount(() => {
             >
               {{ t.status === "generating" ? "Review opens when it's ready" : "Go to review →" }}
             </button>
-            <button class="run-btn run-btn-ghost" type="button" @click="openEditor(t)">Open in editor</button>
+            <button
+              v-if="!['one_shot', 'restyle'].includes(t.format)"
+              class="run-btn run-btn-ghost" type="button" @click="openEditor(t)"
+            >Open in editor</button>
           </div>
         </section>
 

@@ -1746,6 +1746,47 @@ class ProjectController extends Controller
             return $this->error('export_blocked', 'At least one scene is required before export.', 422);
         }
 
+        // A whole-video take (one-shot, restyle) already IS the finished
+        // file: its scene visual carries picture and voice together. The
+        // scene renderer would refuse it (script with no voice track) and,
+        // worse, strip the native audio. Export hands over the video itself.
+        if (in_array(data_get($project->visual_brief, 'ugc_format'), ['one_shot', 'restyle'], true)) {
+            $visual = $scenes->first()?->visual_asset_id
+                ? Asset::query()->whereKey($scenes->first()->visual_asset_id)->first()
+                : null;
+            if (! $visual) {
+                return $this->error('export_blocked', 'The video has not finished generating yet.', 422);
+            }
+            $titleSlug = Str::slug(Str::limit((string) $project->title, 40, '')) ?: 'take';
+            $exportJob = ExportJob::query()->create([
+                'workspace_id' => $project->workspace_id,
+                'project_id' => $project->getKey(),
+                'variant_id' => null,
+                'aspect_ratio' => $project->aspect_ratio ?: '9:16',
+                'language' => $project->primary_language ?: 'en',
+                'file_name' => "{$titleSlug}-".($project->aspect_ratio ?: '9:16').'.mp4',
+                'watermark_enabled' => false,
+                'status' => 'completed',
+                'progress_percent' => 100,
+                'output_asset_id' => $visual->getKey(),
+                'priority' => 0,
+                'queued_at' => now(),
+                'started_at' => now(),
+                'completed_at' => now(),
+            ]);
+
+            $payload = $this->serializeExportJob(
+                $exportJob->fresh(),
+                Asset::query()->whereKey($visual->getKey())->get()->keyBy('id'),
+            );
+
+            return response()->json(['data' => [
+                'export_job' => $payload,
+                'export_jobs' => [$payload],
+                'skipped_aspect_ratios' => [],
+            ], 'meta' => []]);
+        }
+
         $visualOptionalTypes = ['text_card', 'waveform'];
 
         foreach ($scenes as $scene) {

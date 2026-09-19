@@ -57,6 +57,9 @@ let disposed = false;
 
 const impact = computed(() => TARGETS.find((t) => t.id === target.value)?.impact ?? "");
 const downloadUrl = computed(() => canExport.value && exportJob.value?.status === "completed" ? exportJob.value?.output_asset?.storage_url : null);
+// A one-shot or restyled take is a finished video; the scene editor would
+// re-compose it (and mute the baked-in voice). Its doors stay shut here.
+const wholeVideo = computed(() => ["one_shot", "restyle"].includes(project.value?.visual_brief?.ugc_format));
 const activePreview = computed(() => (activeScene.value ? previews.value[activeScene.value] : null));
 const activeSceneRow = computed(() => scenes.value.find((s) => s.id === activeScene.value));
 
@@ -298,7 +301,7 @@ onBeforeUnmount(() => {
           <p v-if="activeSceneRow?.script_text" class="rev-muted">{{ activeSceneRow.script_text }}</p>
           <audio v-if="activePreview?.audio_url" class="rev-audio" :src="activePreview.audio_url" controls />
           <p class="rev-muted">Scene preview · Captions and music are composed in the exported video.</p>
-          <div class="rev-scenes">
+          <div v-if="scenes.length > 1" class="rev-scenes">
             <button
               v-for="s in scenes"
               :key="s.id"
@@ -382,7 +385,7 @@ onBeforeUnmount(() => {
               </p>
             </div>
             <div class="rev-done-a">
-              <button class="rev-btn" type="button" @click="openEditor">Continue editing project</button>
+              <button v-if="!wholeVideo" class="rev-btn" type="button" @click="openEditor">Continue editing project</button>
               <a
                 v-if="downloadUrl"
                 class="rev-btn rev-btn-primary"
