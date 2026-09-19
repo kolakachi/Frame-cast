@@ -310,8 +310,14 @@ class UgcController extends Controller
             // A still-only format has no presenter, so casting is optional
             // there — and anything sent anyway is ignored below rather than
             // fanned out into identical presenter-less takes.
+            // Casting is required when someone is actually on camera — not
+            // by format label. A demo assembled purely from clips (reused
+            // footage) has nobody to cast, same as a text-led run.
             'character_ids' => [
-                Rule::requiredIf(fn () => ! in_array($request->input('format'), UgcPlan::STILL_ONLY_FORMATS, true)),
+                Rule::requiredIf(fn () => (bool) array_filter(
+                    (array) $request->input('segments', []),
+                    fn ($s) => (($s['kind'] ?? '') !== 'b_roll'),
+                )),
                 'array', 'min:1', 'max:5',
             ],
             // Extra openings to run alongside the reviewed plan. Each is a
@@ -374,7 +380,9 @@ class UgcController extends Controller
             }
             $stillOnly = in_array($v['format'], UgcPlan::STILL_ONLY_FORMATS, true);
             $characters = collect();
-            if (! $stillOnly) {
+            // Casting follows the requiredIf above: present when someone is
+            // on camera, absent for still-only runs AND clip-only demos.
+            if (! $stillOnly && ! empty($v['character_ids'])) {
                 $characters = Character::query()->whereIn('id', $v['character_ids'])->where('status', 'active')
                     ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
                         ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->get();
