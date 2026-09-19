@@ -56,7 +56,20 @@ class UgcShotPlanner
             if (! in_array($chosen, UgcPlan::FORMATS, true) || ($format !== 'auto' && $format !== $chosen)) {
                 throw new \UnexpectedValueException('Director returned a different format.');
             }
-            $segments = UgcPlan::normalise($parsed['segments'] ?? [], $chosen);
+            $raw = (array) ($parsed['segments'] ?? []);
+            // The director sometimes writes a spoken 'reaction' inside a
+            // demo/story — a hybrid the validator rightly refuses. A reaction
+            // that speaks IS an on-camera beat; coerce rather than fail the
+            // whole plan over a label.
+            if ($chosen !== 'reaction') {
+                foreach ($raw as $i => $seg) {
+                    if (is_array($seg) && ($seg['kind'] ?? '') === 'reaction'
+                        && trim((string) ($seg['script_text'] ?? '')) !== '') {
+                        $raw[$i]['kind'] = 'on_camera';
+                    }
+                }
+            }
+            $segments = UgcPlan::normalise($raw, $chosen);
             // A model that names a clip we never offered would show the user
             // footage assigned to a shot that cannot be generated — and an id
             // from another workspace would be worse than that. Only ids from
