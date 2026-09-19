@@ -499,11 +499,10 @@ onBeforeUnmount(() => {
         UGC Ads
         <span class="ws-soon-badge">Beta</span>
       </button>
-      <!-- Same pipeline as UGC Ads, named for the person who arrives with
-           footage rather than a product description. They would not think to
-           look inside "UGC Ads" for it. -->
+      <!-- Hidden for launch (2026-09-19): UGC is the single pathway; the
+           own-footage door lives inside it. Routes stay for direct links. -->
       <button
-        v-if="isInternal"
+        v-if="false"
         :class="['nav-item', activePage === 'from-my-footage' ? 'active' : '']"
         data-tooltip="From My Footage"
         type="button"
