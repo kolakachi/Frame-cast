@@ -298,6 +298,23 @@ const onCameraCount = computed(
     (plan.value?.segments ?? []).filter((s) => s.kind === "on_camera").length
 );
 const perCharacter = computed(() => plan.value?.credits_per_character ?? 0);
+// ── One-full-video lane ──────────────────────────────────────────────────
+// Spoken plans up to 30s generate as ONE fluid video on Seedance 2.5 —
+// no scenes, the presenter speaks natively. Mirrors the server's quote:
+// max(4, ceil(total seconds)) × the engine rate.
+const ONESHOT_RATE = 18; // cr/s, Seedance 2.5 (mirrors /credit-costs)
+const planSeconds = computed(() =>
+  (plan.value?.segments ?? []).reduce((t, x) => t + Math.max(1, Number(x.seconds || 0)), 0)
+);
+const oneShotEligible = computed(
+  () =>
+    !!plan.value &&
+    plan.value.format !== "text_led" &&
+    planSeconds.value <= 30 &&
+    (plan.value.segments ?? []).some((x) => (x.script_text || "").trim() !== "")
+);
+const oneShotSeconds = computed(() => Math.max(4, Math.ceil(planSeconds.value)));
+const oneShotCredits = computed(() => oneShotSeconds.value * ONESHOT_RATE);
 // The run is the base plan plus every ticked opening, each a full take per
 // presenter. Base x characters alone showed a number smaller than the charge
 // — the same shape of bug a customer was refunded for on music.
@@ -660,6 +677,30 @@ async function generate() {
   generating.value = true;
   errorMessage.value = "";
   try {
+    // The one-video lane: spoken plans become a single fluid generation.
+    if (oneShotEligible.value) {
+      const presenter = selected.value[0];
+      const { data } = await api.post("/ugc/generate-one-shot", {
+        format: plan.value.format,
+        segments: plan.value.segments,
+        script: plan.value.script,
+        presenter_description: presenter
+          ? [presenter.name, presenter.description].filter(Boolean).join(" — ")
+          : "",
+        product: product.value,
+        tone: context.value.slice(0, 200),
+        language: language.value,
+        consent: true,
+        reviewed: true,
+        credits: oneShotCredits.value,
+      });
+      reviewed.value = false;
+      loadTakes();
+      await loadBalance();
+      const runId = data?.data?.run_id;
+      if (runId) router.push({ name: "ugc-run", params: { runId } });
+      return;
+    }
     const payload = {
       script: plan.value.script,
       format: plan.value.format,
@@ -1387,7 +1428,11 @@ onMounted(() => {
 
           <div class="ugc-card">
             <div class="ugc-card-h"><span class="ugc-card-t">Estimated cost</span></div>
-            <div v-if="plan" class="ugc-summary">
+            <div v-if="plan && oneShotEligible" class="ugc-summary">
+              <div class="ugc-summary-row"><span>One fluid video · {{ oneShotSeconds }}s · presenter speaks natively</span><b>{{ ONESHOT_RATE }} cr/s</b></div>
+              <div class="ugc-summary-row ugc-summary-total"><span>1 take — total</span><b>{{ oneShotCredits }} credits</b></div>
+            </div>
+            <div v-else-if="plan" class="ugc-summary">
               <div class="ugc-summary-row"><span>Base take{{ noCast ? '' : ' (per presenter)' }}</span><b>{{ perCharacter }} credits</b></div>
               <div v-if="selectedVariants.length" class="ugc-summary-row">
                 <span>{{ selectedVariants.length }} alternative opening{{ selectedVariants.length === 1 ? '' : 's' }}</span>
