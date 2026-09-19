@@ -2703,6 +2703,19 @@ onMounted(() => {
   gap: 12px;
   margin-top: 4px;
 }
+/* The approve cards hold bare content (summary rows, hints, checks) with
+   no inner helper class, so they inherited .ugc-card's zero padding and
+   everything sat flush against the card edges. Give the card children
+   their interior. */
+.ugc-card > .ugc-summary { padding: 6px 18px 16px; }
+.ugc-card > .ugc-hint { display: block; padding: 6px 18px 0; }
+.ugc-card > .ugc-plan-pills { padding: 0 18px 14px; }
+.ugc-card > .ugc-gen-row { padding: 4px 18px 16px; }
+.ugc-card-h { padding: 16px 18px 2px; }
+.ugc-summary-row { padding: 11px 0; }
+.ugc-check { padding: 7px 0; line-height: 1.55; }
+.ugc-gen-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
 .ugc-plan-head {
   padding: 14px 0 6px;
   display: flex;
