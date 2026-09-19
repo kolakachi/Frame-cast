@@ -11,6 +11,7 @@ use App\Services\Ugc\UgcFootageReader;
 use App\Services\Ugc\UgcPlan;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -231,6 +232,91 @@ class FootageController extends Controller
         }
 
         return 'demo';
+    }
+
+    /**
+     * Video-to-video restyle: the whole clip, re-rendered with the user's
+     * instruction and the original motion kept. Own footage only — feeding
+     * someone else's video into a model is exactly what reference-only rights
+     * exist to prevent.
+     */
+    public function restyle(Request $request, int $id): JsonResponse
+    {
+        $session = $this->find($request, $id);
+        $v = $request->validate([
+            'consent_owner' => ['accepted'],
+            'mode' => ['sometimes', Rule::in(\App\Services\Generation\Video\ReplicateModifyVideoAdapter::MODES)],
+            'instruction' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'credits' => ['required', 'integer'],
+        ]);
+
+        if ($session->rights !== 'reuse') {
+            throw ValidationException::withMessages(['rights' => 'Restyling feeds the clip itself into a video model, so it needs footage you own. Switch the source to "Reuse directly", or use Reference only to rebuild from structure.']);
+        }
+        $source = $session->sourceAsset;
+        $duration = (float) ($source->duration_seconds ?? 0);
+        if ($duration <= 0 || $duration > \App\Services\Generation\Video\ReplicateModifyVideoAdapter::MAX_SECONDS) {
+            throw ValidationException::withMessages(['source' => sprintf(
+                'Restyle handles clips up to %d seconds; this one is %s. Trim it first.',
+                \App\Services\Generation\Video\ReplicateModifyVideoAdapter::MAX_SECONDS,
+                $duration > 0 ? round($duration).'s' : 'of unknown length',
+            )]);
+        }
+
+        $instruction = trim((string) ($v['instruction'] ?? '')) ?: trim((string) $session->brief);
+        if ($instruction === '') {
+            throw ValidationException::withMessages(['instruction' => 'Say what should change — that sentence is the whole instruction.']);
+        }
+
+        $quote = (int) ceil($duration) * \App\Services\CreditService::VIDEO_RESTYLE_PER_SECOND;
+        if ((int) $v['credits'] !== $quote) {
+            throw ValidationException::withMessages(['credits' => "The price changed — this restyle is {$quote} credits. Review and approve again."]);
+        }
+        $svc = app(\App\Services\CreditService::class);
+        if ($svc->balance((int) $session->workspace_id) < $quote) {
+            throw ValidationException::withMessages(['credits' => "This restyle needs {$quote} credits."]);
+        }
+
+        $runId = (string) Str::uuid();
+        $project = \App\Models\Project::query()->create([
+            'workspace_id' => $session->workspace_id,
+            'created_by_user_id' => $request->user()->id,
+            'title' => mb_substr('Restyle — '.$instruction, 0, 120),
+            'aspect_ratio' => '9:16',
+            'duration_target_seconds' => (int) ceil($duration),
+            'status' => 'generating',
+            'source_type' => 'video_upload',
+            'primary_language' => 'en',
+            'source_content_raw' => $instruction,
+            'visual_brief' => [
+                'ugc_format' => 'restyle',
+                'ugc_estimated_credits' => $quote,
+                'ugc_run_id' => $runId,
+            ],
+        ]);
+        $scene = \App\Models\Scene::query()->create([
+            'project_id' => $project->id, 'scene_order' => 1, 'scene_type' => 'narration',
+            'label' => 'Restyled clip', 'script_text' => '', 'duration_seconds' => $duration,
+            'voice_settings_json' => ['enabled' => false],
+            'caption_settings_json' => ['enabled' => false],
+            'visual_type' => 'video', 'status' => 'draft',
+            'image_generation_settings_json' => [
+                'in_progress' => true, 'ugc_kind' => 'b_roll',
+                'restyle_mode' => $v['mode'] ?? 'flex_1',
+                'generation_started_at' => now()->toIso8601String(),
+            ],
+        ]);
+        \App\Jobs\RestyleVideoJob::dispatch(
+            $session->id, $project->id, $scene->id, $instruction, $v['mode'] ?? 'flex_1', $quote,
+        )->afterCommit();
+
+        $session->forceFill(['run_id' => $runId, 'status' => 'producing', 'consent_json' => [
+            'owner' => true, 'at' => now()->toIso8601String(), 'user_id' => $request->user()->id,
+        ]])->save();
+
+        return response()->json(['data' => [
+            'session' => $session, 'run_id' => $runId, 'project_id' => $project->id, 'credits_quoted' => $quote,
+        ], 'meta' => []], 201);
     }
 
     /** Plan passages as produceable segments — reused ones keep the source clip. */

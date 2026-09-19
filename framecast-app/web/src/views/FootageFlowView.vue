@@ -74,6 +74,35 @@ const presenters = ref([]);
 const answers = ref({});
 const producing = ref(false);
 
+// ── restyle (video-to-video) ─────────────────────────────────────────────
+// Own footage only: the clip itself goes through the video model with the
+// brief as the instruction; motion and timing stay, subjects change.
+const RESTYLE_PER_SECOND = 8; // mirrors CreditService::VIDEO_RESTYLE_PER_SECOND via /credit-costs
+const restyleMode = ref("flex_1");
+const restyling = ref(false);
+const restyleCredits = computed(() => Math.ceil(sourceAsset.value?.duration_seconds ?? 0) * RESTYLE_PER_SECOND);
+const canRestyle = computed(
+  () => rights.value === "reuse" && (sourceAsset.value?.duration_seconds ?? 0) > 0 && (sourceAsset.value?.duration_seconds ?? 31) <= 30
+);
+async function restyle() {
+  if (restyling.value) return;
+  restyling.value = true;
+  errorMessage.value = "";
+  try {
+    const { data } = await api.post(`/ugc/footage/${session.value.id}/restyle`, {
+      consent_owner: true,
+      mode: restyleMode.value,
+      credits: restyleCredits.value,
+    });
+    const runId = data?.data?.run_id;
+    if (runId) router.push({ name: "ugc-run", params: { runId } });
+  } catch (err) {
+    errorMessage.value = apiErrorMessage(err, "Could not start the restyle.");
+  } finally {
+    restyling.value = false;
+  }
+}
+
 const passages = computed(() => corrected.value?.passages ?? []);
 const activeRow = computed(() => passages.value.find((p) => p.id === activePassage.value));
 const unclearCount = computed(() => passages.value.filter((p) => p.kind === "unclear" && !p.dropped).length);
@@ -506,6 +535,26 @@ onMounted(() => {
       <!-- ── 3 · Target plan ────────────────────────────────────────────── -->
       <div v-else-if="screen === 'plan'" class="ff-body">
         <h1>Plan your version</h1>
+        <div v-if="canRestyle" class="ff-card ff-restyle">
+          <div class="ff-restyle-m">
+            <b>Restyle the video itself</b>
+            <p class="ff-muted">Your clip goes through the video model with your instruction — "{{ session?.brief || 'your brief' }}" — keeping the original motion, timing and soundtrack. No passages, no presenter.</p>
+            <label class="ff-label" style="margin-top:8px">How closely to follow the source</label>
+            <div class="ff-pills">
+              <button v-for="m in ['adhere_1', 'flex_1', 'reimagine_1']" :key="m" type="button"
+                :class="['ff-pill', 'ff-pill-btn', restyleMode === m ? 'on' : '']" @click="restyleMode = m">
+                {{ { adhere_1: "Very close", flex_1: "Balanced", reimagine_1: "Loose" }[m] }}
+              </button>
+            </div>
+          </div>
+          <div class="ff-restyle-a">
+            <b>{{ restyleCredits }} credits</b>
+            <button class="ff-btn ff-btn-primary" type="button" :disabled="restyling" @click="restyle">
+              {{ restyling ? "Starting…" : "Restyle it →" }}
+            </button>
+            <span class="ff-muted">Charged only if it succeeds. Some content is declined by the model.</span>
+          </div>
+        </div>
         <p class="ff-sub">Here's what stays, what's rebuilt, and what's new — based on "{{ session?.brief || 'your brief' }}".</p>
         <div class="ff-pills">
           <span v-if="plan?.summary?.performed" class="ff-pill">{{ plan.summary.performed }} newly performed</span>
@@ -837,7 +886,12 @@ onMounted(() => {
 }
 .ff-presenter img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 9px; }
 .ff-presenter-blank { font-size: 40px; padding: 20px 0; }
+.ff-restyle { display: flex; gap: 18px; align-items: flex-start; margin-top: 14px; border-color: var(--color-primary); }
+.ff-restyle-m { flex: 1; min-width: 0; }
+.ff-restyle-a { width: 200px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; text-align: right; }
 @media (max-width: 900px) {
+  .ff-restyle { flex-direction: column; }
+  .ff-restyle-a { width: 100%; align-items: flex-start; text-align: left; }
   .ff-main { margin-left: 0; padding: 0 14px 90px; }
   .ff-cols { flex-direction: column; }
   .ff-col-side, .ff-col-list { width: 100%; }

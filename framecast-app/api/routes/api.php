@@ -214,6 +214,7 @@ Route::prefix('v1')->group(function (): void {
 
             return response()->json(['data' => ['costs' => [
                 'ai_music' => \App\Services\CreditService::AI_MUSIC,
+                'video_restyle_per_second' => \App\Services\CreditService::VIDEO_RESTYLE_PER_SECOND,
                 'tts'      => \App\Services\CreditService::TTS_GEMINI,
                 'tts_clone' => \App\Services\CreditService::TTS_CLONE,
                 'pdf_vision_page' => \App\Services\CreditService::PDF_VISION_PAGE,
@@ -317,6 +318,7 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/footage/{id}', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'update'])->whereNumber('id');
             Route::post('/footage/{id}/read', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'read'])->whereNumber('id');
             Route::post('/footage/{id}/plan', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'plan'])->whereNumber('id');
+            Route::post('/footage/{id}/restyle', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'restyle'])->whereNumber('id');
             Route::post('/footage/{id}/produce', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'produce'])->whereNumber('id');
         });
 
