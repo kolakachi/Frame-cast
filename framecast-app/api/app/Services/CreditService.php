@@ -834,7 +834,7 @@ class CreditService
             Workspace::where('id', $workspaceId)->increment('credits_free_granted', $amount);
         }
 
-        rescue(function () use ($workspaceId, $amount, $reason) {
+        rescue(function () use ($workspaceId, $amount, $reason, $grantedVia) {
             CreditLedgerEntry::query()->create([
                 'workspace_id'  => $workspaceId,
                 'operation'     => mb_substr('grant:'.($reason !== '' ? $reason : 'unspecified'), 0, 64),
