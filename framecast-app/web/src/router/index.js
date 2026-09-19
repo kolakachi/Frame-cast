@@ -60,10 +60,13 @@ const routes = [
   { path: '/continue', name: 'continue-checkout', component: () => import('../views/ContinueCheckoutView.vue'), meta: { public: true } },
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
   { path: '/series', name: 'series', component: SeriesView, meta: { requiresAuth: true } },
-  { path: '/ugc-ads', name: 'ugc-ads', component: UgcAdsView, meta: { requiresAuth: true, internalOnly: true } },
+  // UGC Ads lands on the takes listing — management first; creation is a
+  // deliberate step behind "+ New take".
+  { path: '/ugc-ads', name: 'ugc-ads', component: () => import('../views/UgcTakesView.vue'), meta: { requiresAuth: true, internalOnly: true } },
+  { path: '/ugc-ads/new', name: 'ugc-new', component: UgcAdsView, meta: { requiresAuth: true, internalOnly: true } },
   // The run and review screens are route-addressable so "you can leave this
   // page — we'll keep working" is actually true.
-  { path: '/ugc-ads/takes', name: 'ugc-takes', component: () => import('../views/UgcTakesView.vue'), meta: { requiresAuth: true, internalOnly: true } },
+  { path: '/ugc-ads/takes', redirect: '/ugc-ads' },
   { path: '/ugc-ads/run/:runId', name: 'ugc-run', component: () => import('../views/UgcRunView.vue'), meta: { requiresAuth: true, internalOnly: true } },
   { path: '/ugc-ads/review/:projectId', name: 'ugc-review', component: () => import('../views/UgcReviewView.vue'), meta: { requiresAuth: true, internalOnly: true } },
   // The same pipeline, entered by someone who has the footage and needs the

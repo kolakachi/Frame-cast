@@ -1048,19 +1048,6 @@ onMounted(() => {
               {{ planning ? 'Planning…' : 'See the proposed plan →' }}
             </button>
             <p class="ugc-hint ugc-plan-note">Review the plan and production cost before you approve generation.</p>
-            <section class="ugc-card ugc-brief-recent" aria-label="Recent takes">
-              <h2>Recent takes <span class="ugc-card-c">{{ takes.length }}</span></h2>
-              <p v-if="!takes.length" class="ugc-hint">Your generated takes will appear here.</p>
-              <div v-for="t in takes.slice(0, 3)" :key="t.id" class="ugc-recent-row">
-                <div><b>{{ t.character }}</b><p>{{ t.scenes }} scenes · {{ t.credits }} estimated credits</p>
-                  <span>{{ t.status === 'ready_for_review' ? 'Ready to review' : t.status === 'needs_attention' ? 'Needs attention' : 'Generating…' }}</span></div>
-                <button type="button" class="ugc-recent-open" @click="openTake(t)">{{ t.status === 'ready_for_review' ? 'Review →' : 'Open →' }}</button>
-              </div>
-              <details v-if="takes.length > 3" class="ugc-more-takes">
-                <summary>Show {{ takes.length - 3 }} more takes</summary>
-                <button v-for="t in takes.slice(3)" :key="t.id" type="button" class="ugc-recent-extra" @click="openTake(t)">{{ t.character }} →</button>
-              </details>
-            </section>
           </aside>
           </div>
 
@@ -1490,48 +1477,6 @@ onMounted(() => {
         </section>
 
         <!-- takes -->
-        <details v-if="step !== 0" class="ugc-stage">
-          <summary>Recent takes <span class="ugc-card-c">{{ takes.length }}</span></summary>
-          <div class="ugc-stage-h">
-            <span class="ugc-card-t">Takes</span>
-            <span class="ugc-card-c">{{ takes.length }}</span>
-          </div>
-
-          <div v-if="!takes.length" class="ugc-empty">
-            <div class="ugc-empty-i">▢</div>
-            <p>
-              One take per character from the reviewed plan. Inspect motion,
-              voice and text in the editor before exporting.
-            </p>
-          </div>
-
-          <div v-else class="ugc-takes">
-            <div v-for="t in takes" :key="t.id" class="ugc-take">
-              <div class="ugc-take-b">
-                <div class="ugc-ch-n">{{ t.character }}</div>
-                <div class="ugc-take-m">
-                  {{ t.scenes }} scenes · {{ t.credits }} estimated credits ·
-                  {{
-                    t.status === "ready_for_review"
-                      ? "Ready to review"
-                      : t.status === "needs_attention"
-                      ? "Needs attention"
-                      : "Generating…"
-                  }}
-                </div>
-                <div class="ugc-take-a">
-                  <button
-                    class="ugc-btn"
-                    :class="{ 'ugc-btn-primary': t.status !== 'generating' }"
-                    @click="openTake(t)"
-                  >
-                    {{ t.status === "generating" ? "Watch progress →" : "Review take →" }}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
       </div>
 
       <!-- character picker -->
@@ -2743,6 +2688,7 @@ onMounted(() => {
   margin-top: 4px;
 }
 .ugc-plan-head {
+  padding: 14px 0 6px;
   display: flex;
   align-items: center;
   gap: 12px;

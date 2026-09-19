@@ -47,6 +47,16 @@ const STATUS = {
   needs_attention: { label: "Needs a retry", cls: "bad" },
 };
 
+async function remove(take) {
+  if (!window.confirm(`Delete "${take.character}"? This removes the take and its scenes.`)) return;
+  try {
+    await api.delete(`/projects/${take.id}`);
+    takes.value = takes.value.filter((t) => t.id !== take.id);
+  } catch (err) {
+    errorMessage.value = apiErrorMessage(err, "Could not delete that take.");
+  }
+}
+
 function when(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -73,9 +83,9 @@ onBeforeUnmount(() => {
     <main class="tl-main">
       <header class="tl-top">
         <div class="tl-crumb">
-          <router-link :to="{ name: 'ugc-ads' }">UGC Ads</router-link> / <b>Takes</b>
+          <b>UGC Ads</b> — your takes
         </div>
-        <button class="tl-btn tl-btn-primary" type="button" @click="router.push({ name: 'ugc-ads' })">
+        <button class="tl-btn tl-btn-primary" type="button" @click="router.push({ name: 'ugc-new' })">
           + New take
         </button>
       </header>
@@ -84,7 +94,7 @@ onBeforeUnmount(() => {
 
       <div v-if="loaded && !takes.length" class="tl-empty">
         No takes yet. Your first one starts from a brief, a script, or a product link —
-        <router-link :to="{ name: 'ugc-ads' }">make one</router-link>.
+        <router-link :to="{ name: 'ugc-new' }">make one</router-link>.
       </div>
 
       <div class="tl-grid">
@@ -100,6 +110,7 @@ onBeforeUnmount(() => {
             <img v-else-if="t.thumbnail_url" :src="t.thumbnail_url" alt="" loading="lazy" />
             <span v-else class="tl-thumb-empty">{{ t.status === "generating" ? "Generating…" : "▢" }}</span>
             <span :class="['tl-status', STATUS[t.status]?.cls]">{{ STATUS[t.status]?.label ?? t.status }}</span>
+            <span class="tl-del" role="button" aria-label="Delete take" @click.stop="remove(t)">✕</span>
           </div>
           <div class="tl-meta">
             <b class="tl-title">{{ t.character }}</b>
@@ -152,6 +163,13 @@ onBeforeUnmount(() => {
 }
 .tl-status.ok { color: #7fd6a8; }
 .tl-status.bad { color: #ff9b93; }
+.tl-del {
+  position: absolute; right: 10px; top: 10px; width: 26px; height: 26px;
+  display: none; align-items: center; justify-content: center; border-radius: 50%;
+  background: rgba(20, 19, 17, 0.8); color: #e8e4da; font-size: 12px; cursor: pointer;
+}
+.tl-card:hover .tl-del { display: flex; }
+.tl-del:hover { color: #ff9b93; }
 .tl-meta { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px 12px; }
 .tl-title { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-sub { font-size: 12px; color: var(--color-text-muted); }
