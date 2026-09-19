@@ -23,7 +23,7 @@ class ReplicateVeoAdapter
     {
         $input = [
             'prompt' => $prompt,
-            'duration' => max(4, min(8, $seconds)),
+            'duration' => in_array($seconds, [4, 6, 8], true) ? $seconds : (($seconds <= 4) ? 4 : ($seconds <= 6 ? 6 : 8)),
             'aspect_ratio' => '9:16',
             'resolution' => '720p',
             'generate_audio' => true,

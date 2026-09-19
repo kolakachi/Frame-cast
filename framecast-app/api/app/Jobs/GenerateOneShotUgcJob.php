@@ -56,15 +56,33 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $segmentPaths = [];
             $startFrame = null;
             foreach ($this->chunks as $i => $chunk) {
-                $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame);
-                $scene->forceFill(['image_generation_settings_json' => array_merge(
-                    $scene->image_generation_settings_json ?? [],
-                    ['oneshot_segment' => $i + 1, 'oneshot_total' => count($this->chunks), 'oneshot_prediction_id' => $predictionId],
-                )])->save();
+                // Provider containers occasionally die with a bare transport
+                // error (httpx.ReadError, empty error string) — transient, and
+                // worth one automatic retry before failing a multi-segment
+                // take over it.
+                $url = null;
+                $lastTransient = null;
+                for ($attempt = 0; $attempt < 2; $attempt++) {
+                    $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame);
+                    $scene->forceFill(['image_generation_settings_json' => array_merge(
+                        $scene->image_generation_settings_json ?? [],
+                        ['oneshot_segment' => $i + 1, 'oneshot_total' => count($this->chunks), 'oneshot_prediction_id' => $predictionId],
+                    )])->save();
 
-                $url = $veo->pollUntilDone($predictionId);
+                    try {
+                        $url = $veo->pollUntilDone($predictionId);
+                        break;
+                    } catch (\RuntimeException $e) {
+                        $transient = trim(str_replace('Veo generation failed:', '', $e->getMessage())) === ''
+                            || str_contains($e->getMessage(), 'ReadError');
+                        if (! $transient || $attempt === 1) {
+                            throw $e;
+                        }
+                        $lastTransient = $e;
+                    }
+                }
                 if ($url === null || $url === '') {
-                    throw new \RuntimeException(sprintf('Segment %d of %d did not finish in time. Retry the take — nothing was charged.', $i + 1, count($this->chunks)));
+                    throw $lastTransient ?? new \RuntimeException(sprintf('Segment %d of %d did not finish in time. Retry the take — nothing was charged.', $i + 1, count($this->chunks)));
                 }
 
                 $path = tempnam(sys_get_temp_dir(), 'oneshot-').'.mp4';

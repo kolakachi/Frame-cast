@@ -90,9 +90,20 @@ class UgcOneShotCompiler
             $chunks[] = $current;
         }
 
+        // Veo accepts exactly 4, 6 or 8 seconds — snap up to the nearest.
+        $snap = function (float $s): int {
+            foreach ([4, 6, 8] as $allowed) {
+                if (ceil($s) <= $allowed) {
+                    return $allowed;
+                }
+            }
+
+            return self::MAX_SEGMENT_SECONDS;
+        };
+
         return array_map(fn ($c) => [
             'beats' => $c['beats'],
-            'seconds' => (int) min(self::MAX_SEGMENT_SECONDS, max(self::MIN_SEGMENT_SECONDS, ceil($c['seconds']))),
+            'seconds' => $snap($c['seconds']),
         ], $chunks);
     }
 
