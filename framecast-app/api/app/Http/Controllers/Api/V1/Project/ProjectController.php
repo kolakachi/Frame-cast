@@ -55,6 +55,9 @@ class ProjectController extends Controller
 
         $paginator = Project::query()
             ->where('workspace_id', $user->workspace_id)
+            // UGC takes live in their own listing on the UGC page — mixed in
+            // here they read as duplicates and open the wrong surfaces.
+            ->whereNull('visual_brief->ugc_format')
             ->when(! empty($validated['channel_id']), fn ($q) => $q->where('channel_id', (int) $validated['channel_id']))
             ->when(! empty($validated['status']), fn ($q) => $q->where('status', $validated['status']))
             ->whereNotExists(function ($query): void {
