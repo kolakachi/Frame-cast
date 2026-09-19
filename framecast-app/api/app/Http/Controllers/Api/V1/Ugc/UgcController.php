@@ -715,6 +715,7 @@ class UgcController extends Controller
             'script' => ['present', 'nullable', 'string', 'max:1500'],
             'character_id' => ['nullable', 'integer', 'min:1'],
             'presenter_description' => ['nullable', 'string', 'max:400'],
+            'product_asset_id' => ['nullable', 'integer', 'min:1'],
             'setting' => ['nullable', 'string', 'max:300'],
             'product' => ['nullable', 'string', 'max:200'],
             'tone' => ['nullable', 'string', 'max:200'],
@@ -730,12 +731,41 @@ class UgcController extends Controller
             throw ValidationException::withMessages(['segments' => 'A one-take ad needs spoken beats. Silent card plans generate through the standard path.']);
         }
 
+        // The pose sheet: the presenter's reference image and the real
+        // product photo travel into the generation as reference_images, so
+        // the person and the packaging match what the user approved.
+        $referenceImages = [];
+        $dataUri = function (?int $assetId) use ($user): ?string {
+            if (! $assetId) {
+                return null;
+            }
+            $asset = Asset::query()->whereKey($assetId)
+                ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)->orWhereNull('workspace_id'))
+                ->first();
+            if (! $asset || ! str_starts_with((string) $asset->mime_type, 'image/')) {
+                return null;
+            }
+            $stream = app(\App\Services\Media\StorageService::class)->readStream((string) $asset->storage_url);
+            if (! is_resource($stream)) {
+                return null;
+            }
+            $bytes = stream_get_contents($stream, 8 * 1024 * 1024);
+
+            return $bytes ? 'data:'.$asset->mime_type.';base64,'.base64_encode($bytes) : null;
+        };
+        if ($uri = $dataUri($v['product_asset_id'] ?? null)) {
+            $referenceImages[] = $uri;
+        }
+
         $presenter = trim((string) ($v['presenter_description'] ?? ''));
         if ($presenter === '' && ! empty($v['character_id'])) {
             $c = Character::query()->whereKey($v['character_id'])
                 ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
                     ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->first();
             $presenter = $c ? trim($c->name.($c->description ? ' — '.$c->description : '')) : '';
+            if ($c && ($uri = $dataUri((int) $c->reference_asset_id))) {
+                array_unshift($referenceImages, $uri); // presenter first — identity outranks props
+            }
         }
 
         $engine = in_array($request->input('engine'), ['seedance25', 'veo'], true) ? $request->input('engine') : 'seedance25';
@@ -808,6 +838,7 @@ class UgcController extends Controller
             array_map(fn ($c) => ['prompt' => $c['prompt'], 'seconds' => $c['seconds']], $chunks),
             $quote,
             $engine,
+            $referenceImages,
         )->afterCommit();
 
         return response()->json(['data' => [

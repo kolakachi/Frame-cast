@@ -687,6 +687,8 @@ async function generate() {
         presenter_description: presenter
           ? [presenter.name, presenter.description].filter(Boolean).join(" — ")
           : "",
+        character_id: presenter?.id ?? null,
+        product_asset_id: productAsset.value?.id ?? null,
         product: product.value,
         tone: context.value.slice(0, 200),
         language: language.value,

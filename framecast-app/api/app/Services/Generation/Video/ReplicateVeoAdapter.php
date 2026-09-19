@@ -25,7 +25,8 @@ class ReplicateVeoAdapter
         return (string) config('services.replicate.api_token', '') !== '';
     }
 
-    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo'): string
+    /** @param array<int, string> $referenceImages data URIs or URLs; Seedance-only, exclusive with a start frame */
+    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = []): string
     {
         $model = self::ENGINES[$engine] ?? self::ENGINES['veo'];
         $input = [
@@ -43,6 +44,10 @@ class ReplicateVeoAdapter
         }
         if ($imageDataUri !== null) {
             $input['image'] = $imageDataUri;
+        } elseif ($engine === 'seedance25' && $referenceImages !== []) {
+            // The pose sheet: character and product stills the presenter and
+            // packaging must match. Exclusive with a start frame by schema.
+            $input['reference_images'] = array_slice(array_values($referenceImages), 0, 30);
         }
 
         $response = Http::withToken((string) config('services.replicate.api_token'))
