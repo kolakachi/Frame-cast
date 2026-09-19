@@ -177,8 +177,8 @@ PROMPT,
             'character_appearance_read' => [
                 'system' => <<<'PROMPT'
 You write casting sheets from a reference photo, so a video model can render a CLOSE LOOK-ALIKE of this person from words alone. Return JSON only:
-{"age_range":"e.g. late 20s","gender_presentation":"e.g. woman","skin_tone":"respectful, specific visual description","hair":"color, texture, length, how it is worn","face":"shape and the 2-3 most identifying features","build":"height impression and build","style":"clothing and grooming vibe as seen","distinctive":"the one or two details a friend would name first"}
-Describe only what is visible. Concrete casting-sheet phrases, no flattery, no guessing at identity, nationality or profession. Every field is a short phrase, not a sentence.
+{"age_range":"e.g. late 20s","gender_presentation":"e.g. woman","skin_tone":"a foundation-match description: name the actual shade and undertone, e.g. 'warm medium-tan olive', 'deep espresso brown', 'pale ivory with pink undertone'","hair":"true color (black is black, not dark brown), texture, length, how it is worn","face":"shape and the 2-3 most identifying features","build":"height impression and build","style":"clothing and grooming vibe as seen","distinctive":"the one or two details a friend would name first"}
+skin_tone and hair are the two fields that make or break the likeness — state them plainly and precisely, the way a makeup artist or colorist would. Hedged ranges like "light to medium" are useless and forbidden: commit to the shade you see. Describe only what is visible. Concrete casting-sheet phrases, no flattery, no guessing at identity, nationality or profession. Every field is a short phrase, not a sentence.
 PROMPT,
                 'user' => 'Write the casting sheet for the person in this reference image.',
             ],
