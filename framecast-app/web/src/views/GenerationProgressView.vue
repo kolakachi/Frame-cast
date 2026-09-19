@@ -330,6 +330,15 @@ async function loadProjectStatus() {
     const response = await api.get(`/projects/${projectId.value}`)
     const project  = response.data?.data?.project
     if (!project) return
+    // A UGC take has its own progress surface — per-scene rows and retries
+    // on /ugc-ads/run — and lands here only through generic entry points
+    // (dashboard, jobs, videos). Redirect once, at the single door every
+    // path passes through, instead of patching each caller.
+    const ugcRunId = project.visual_brief?.ugc_run_id
+    if (project.visual_brief?.ugc_format && ugcRunId) {
+      router.replace({ name: 'ugc-run', params: { runId: ugcRunId } })
+      return
+    }
     subtitle.value = `${project.title || `Project #${project.id}`} · ${project.primary_language?.toUpperCase?.() || 'EN'} · ${project.aspect_ratio || '9:16'}`
     isOneShot.value = project.source_type === 'prompt'
     const fetchedScenes = response.data?.data?.scenes
