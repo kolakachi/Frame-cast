@@ -815,6 +815,9 @@ class UgcController extends Controller
             // Seedance's renderer from a written casting sheet — a close
             // look-alike, disclosed as such in the UI.
             'cast_style' => ['sometimes', 'string', 'in:exact,variant'],
+            // high routes an exact cast to veo-3.1 non-fast: better renderer,
+            // native product references, 32 cr/s.
+            'fidelity' => ['sometimes', 'string', 'in:standard,high'],
             'request_id' => ['sometimes', 'uuid'],
             'presenter_description' => ['nullable', 'string', 'max:400'],
             'product_asset_id' => ['nullable', 'integer', 'min:1'],
@@ -904,7 +907,7 @@ class UgcController extends Controller
         $characterFrame = null;
         if ($presenterImageAttached) {
             $characterFrame = array_shift($referenceImages); // presenter was unshifted first
-            $engine = 'veo';
+            $engine = ($v['fidelity'] ?? 'standard') === 'high' ? 'veo_hq' : 'veo';
         }
         $style = [
             'presenter' => $presenter,

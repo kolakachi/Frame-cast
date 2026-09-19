@@ -20,6 +20,7 @@ class UgcShotPlanner
         // right response to a near-miss is to hand the director its own
         // error, not to hand the user ours.
         $previousError = '';
+        $startedAt = microtime(true);
         for ($attempt = 0; $attempt < 2; $attempt++) {
             try {
                 return $this->planOnce($scriptText, $product, $context, $durationSeconds,
@@ -29,6 +30,12 @@ class UgcShotPlanner
             } catch (\Throwable $e) {
                 $previousError = mb_substr($e->getMessage(), 0, 300);
                 Log::info('UGC director retrying after invalid plan', ['error' => $previousError]);
+                // A slow first attempt already spent the browser's proxy
+                // window — a repair pass now would answer a dead socket.
+                if ($attempt === 0 && microtime(true) - $startedAt > 45) {
+                    Log::warning('UGC director skipping repair retry: interactive budget spent');
+                    break;
+                }
             }
         }
 

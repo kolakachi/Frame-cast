@@ -51,6 +51,12 @@ class ReplicateClaudeAdapter implements AIGenerationAdapter
             'effort'        => (string) config('services.ai.premium_effort', 'medium'),
         ];
 
+        // Wall-clock budget for the WHOLE call: interactive requests sit
+        // behind Cloudflare's ~100s proxy limit, and a cold premium model
+        // that blows the budget must throw (RoutingTextAdapter then falls
+        // back to the cheap tier in seconds) rather than let the browser
+        // die on a plan the server eventually finishes.
+        $deadline = microtime(true) + 75;
         $start = Http::withToken($token)
             ->withHeaders(['Prefer' => 'wait=55'])
             ->timeout(70)
@@ -63,7 +69,10 @@ class ReplicateClaudeAdapter implements AIGenerationAdapter
         $prediction = $start->json();
         $id = $prediction['id'] ?? null;
 
-        for ($i = 0; $i < 24 && ! in_array($prediction['status'] ?? '', ['succeeded', 'failed', 'canceled'], true); $i++) {
+        while (! in_array($prediction['status'] ?? '', ['succeeded', 'failed', 'canceled'], true)) {
+            if (microtime(true) > $deadline) {
+                throw new RuntimeException('premium text model exceeded its interactive time budget');
+            }
             sleep(3);
             $prediction = Http::withToken($token)->timeout(30)
                 ->get("https://api.replicate.com/v1/predictions/{$id}")->json();

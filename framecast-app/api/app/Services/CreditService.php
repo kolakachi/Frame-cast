@@ -144,7 +144,8 @@ class CreditService
     // upstream): the presenter speaks in the generation itself.
     // Keyed by engine: Seedance 2.5 bills \$0.2312/s at 720p, Veo 3.1
     // Fast ~\$0.15/s — the price difference is real and shown honestly.
-    public const VIDEO_ONESHOT_PER_SECOND = ['seedance25' => 18, 'veo' => 12];
+    // veo_hq = google/veo-3.1 non-fast: \$0.40/s with audio upstream.
+    public const VIDEO_ONESHOT_PER_SECOND = ['seedance25' => 18, 'veo' => 12, 'veo_hq' => 32];
 
     public const VIDEO_RESTYLE_PER_SECOND = [
         'luma' => 15,

@@ -226,6 +226,9 @@ const selected = ref([]); // chosen characters
 // sharper renderer from a written casting sheet — a close look-alike,
 // said plainly on the toggle (18 cr/s).
 const castStyle = ref("exact");
+// Exact casts can step up to google/veo-3.1 non-fast: Google's best
+// renderer, and it takes product photos natively. 32 cr/s.
+const hqFidelity = ref(false);
 // Pre-flight for the variant lane: the casting sheet rendered as a still —
 // roughly who Seedance will cast — for one image generation's credits.
 const variantPreview = ref(null); // { url, sheet, characterId }
@@ -332,7 +335,7 @@ const perCharacter = computed(() => plan.value?.credits_per_character ?? 0);
 // Engine follows the cast: a photoreal character reference is declined by
 // Seedance's moderation, so character-cast takes generate on Veo (12 cr/s,
 // identity via start frame); castless takes use Seedance (18 cr/s).
-const ONESHOT_RATES = { seedance25: 18, veo: 12 };
+const ONESHOT_RATES = { seedance25: 18, veo: 12, veo_hq: 32 };
 const planSeconds = computed(() =>
   (plan.value?.segments ?? []).reduce((t, x) => t + Math.max(1, Number(x.seconds || 0)), 0)
 );
@@ -345,7 +348,9 @@ const oneShotEligible = computed(
 );
 const oneShotSeconds = computed(() => Math.max(4, Math.ceil(planSeconds.value)));
 const oneShotRate = computed(() =>
-  selected.value.length && castStyle.value === "exact" ? ONESHOT_RATES.veo : ONESHOT_RATES.seedance25
+  selected.value.length && castStyle.value === "exact"
+    ? (hqFidelity.value ? ONESHOT_RATES.veo_hq : ONESHOT_RATES.veo)
+    : ONESHOT_RATES.seedance25
 );
 const oneShotCredits = computed(() => oneShotSeconds.value * oneShotRate.value);
 // The run is the base plan plus every ticked opening, each a full take per
@@ -440,7 +445,7 @@ watch(
   // (membership, not object internals), exact-vs-variant, aspect. A voice
   // pick changes the sound, not the estimate — it must not silently clear
   // the tick (that was the "box sometimes unticks" bug).
-  [planFingerprint, () => selected.value.map((c) => c.id).join(","), castStyle, aspectRatio],
+  [planFingerprint, () => selected.value.map((c) => c.id).join(","), castStyle, hqFidelity, aspectRatio],
   () => {
     reviewed.value = false;
   },
@@ -742,6 +747,7 @@ async function generate() {
           : (plan.value.presenter || ""),
         character_id: presenter?.id ?? null,
         cast_style: presenter ? castStyle.value : "exact",
+        fidelity: presenter && castStyle.value === "exact" && hqFidelity.value ? "high" : "standard",
         product_asset_id: productAsset.value?.id ?? null,
         product_asset_ids: productAssets.value.map((a) => a.id),
         product: product.value,
@@ -1180,7 +1186,11 @@ onMounted(() => {
               <label :class="['ugc-style-pill', { on: castStyle === 'exact' }]">
                 <input v-model="castStyle" type="radio" value="exact" />
                 <b>Use this character</b>
-                <span>Their real photo anchors the video — the closest match we can generate · 12 cr/s</span>
+                <span>Their real photo anchors the video — the closest match we can generate · {{ hqFidelity ? 32 : 12 }} cr/s</span>
+                <label v-if="castStyle === 'exact'" class="ugc-check ugc-hq" @click.stop>
+                  <input v-model="hqFidelity" type="checkbox" />
+                  High fidelity — Google's best renderer, product photos ride natively · 32 cr/s
+                </label>
               </label>
               <label :class="['ugc-style-pill', { on: castStyle === 'variant' }]">
                 <input v-model="castStyle" type="radio" value="variant" />
@@ -1895,6 +1905,8 @@ onMounted(() => {
 .ugc-style-pill.on { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
 .ugc-style-pill b { font-size: 13px; }
 .ugc-style-pill span { color: var(--color-text-muted); }
+.ugc-hq { margin-top: 7px; font-size: 12px; }
+.ugc-hq input { position: static; opacity: 1; pointer-events: auto; margin-right: 6px; }
 .ugc-card-f {
   display: flex;
   align-items: center;

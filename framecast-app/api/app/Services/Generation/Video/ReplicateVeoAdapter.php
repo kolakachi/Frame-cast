@@ -18,6 +18,9 @@ class ReplicateVeoAdapter
     public const ENGINES = [
         'seedance25' => 'bytedance/seedance-2.5',
         'veo' => 'google/veo-3.1-fast',
+        // Google's top renderer — and unlike fast it takes reference_images
+        // natively, so HQ exact takes carry face AND product photos.
+        'veo_hq' => 'google/veo-3.1',
     ];
 
     public function configured(): bool
@@ -49,6 +52,11 @@ class ReplicateVeoAdapter
         }
         if ($imageDataUri !== null) {
             $input['image'] = $imageDataUri;
+            // veo-3.1 (non-fast) also accepts reference stills alongside the
+            // start frame — product photos ride natively on the HQ tier.
+            if ($engine === 'veo_hq' && $referenceImages !== []) {
+                $input['reference_images'] = array_slice(array_values($referenceImages), 0, 3);
+            }
         } elseif ($engine === 'seedance25' && $referenceImages !== []) {
             // The pose sheet: character and product stills the presenter and
             // packaging must match. Exclusive with a start frame by schema.
