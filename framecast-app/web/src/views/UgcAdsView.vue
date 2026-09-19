@@ -696,7 +696,7 @@ async function generate() {
         script: plan.value.script,
         presenter_description: presenter
           ? [presenter.name, presenter.description].filter(Boolean).join(" — ")
-          : "",
+          : (plan.value.presenter || ""),
         character_id: presenter?.id ?? null,
         product_asset_id: productAsset.value?.id ?? null,
         product_asset_ids: productAssets.value.map((a) => a.id),
@@ -1132,6 +1132,15 @@ onMounted(() => {
           <p v-else-if="plan" class="ugc-hint">
             No presenter in this format — the words on screen carry the ad, so there is nobody to cast.
           </p>
+
+          <!-- Castless runs: the director's presenter choice, stated and
+               editable, instead of an invisible default. -->
+          <div v-if="plan && !noCast && !selected.length && plan.presenter !== undefined" class="ugc-card ugc-fields">
+            <label>
+              <span class="ugc-label-row">Who fronts this ad <span class="ugc-opt">(the director's pick — edit freely, or cast a character above)</span></span>
+              <textarea v-model="plan.presenter" maxlength="300" rows="2"></textarea>
+            </label>
+          </div>
 
           </aside>
           <div class="ugc-plan-detail">

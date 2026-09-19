@@ -99,6 +99,37 @@ class UgcPlanTest extends TestCase
         (new UgcShotPlanner($ai))->plan('Different words.', format: 'direct_camera');
     }
 
+    public function test_silent_cutaway_is_coerced_not_fatal(): void
+    {
+        // The live director (prod, 2026-09-19) twice wrote a silent generated
+        // b-roll where the rules forbid one and self-repair didn't save it —
+        // the shot gets coerced (demo: brief becomes the burned-in line;
+        // story: the shot is cut), never the whole plan.
+        $silent = $this->shot(['kind' => 'b_roll', 'script_text' => '', 'source' => 'generate']);
+        $ai = $this->createMock(AIGenerationAdapter::class);
+        $ai->method('generate')->willReturn(['content' => json_encode([
+            'format' => 'demo', 'segments' => [$silent, $this->shot()]])]);
+        $plan = (new UgcShotPlanner($ai))->plan('', 'My app', 'Show the product');
+        $this->assertSame(mb_substr($silent['visual_brief'], 0, 80), $plan['segments'][0]['headline']);
+
+        $ai2 = $this->createMock(AIGenerationAdapter::class);
+        $ai2->method('generate')->willReturn(['content' => json_encode([
+            'format' => 'story', 'segments' => [$silent, $this->shot()]])]);
+        $plan2 = (new UgcShotPlanner($ai2))->plan('', 'My app', 'Tell the story');
+        $this->assertCount(1, $plan2['segments']);
+        $this->assertSame('on_camera', $plan2['segments'][0]['kind']);
+    }
+
+    public function test_director_presenter_choice_survives_into_the_plan(): void
+    {
+        $ai = $this->createMock(AIGenerationAdapter::class);
+        $ai->method('generate')->willReturn(['content' => json_encode([
+            'format' => 'direct_camera', 'presenter' => 'A woman in her late 20s, gym-ready, upbeat.',
+            'segments' => [$this->shot()]])]);
+        $plan = (new UgcShotPlanner($ai))->plan('', 'My app', 'Morning routine');
+        $this->assertSame('A woman in her late 20s, gym-ready, upbeat.', $plan['presenter']);
+    }
+
     public function test_ai_receives_brief_and_returns_a_reviewable_reaction(): void
     {
         $ai = $this->createMock(AIGenerationAdapter::class);
