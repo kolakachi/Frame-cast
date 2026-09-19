@@ -20,6 +20,7 @@ use App\Services\Ugc\UgcShotPlanner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -736,6 +737,73 @@ class UgcController extends Controller
      * speaks natively, cuts land at beat boundaries, no scenes assembled.
      * Same caps, balance check and charge-on-success as every take.
      */
+    /**
+     * A still of roughly who Seedance will cast for this character's
+     * variant lane: the cached casting sheet rendered by gpt-image-2 (the
+     * round-trip-proven reconstructor). Costs one image generation —
+     * a fraction of discovering a bad sheet after a full take.
+     */
+    public function variantPreview(Request $request, int $characterId): JsonResponse
+    {
+        $user = $request->user();
+        $character = Character::query()->whereKey($characterId)
+            ->where('status', 'active')
+            ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
+                ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->first();
+        if (! $character) {
+            return $this->error('not_found', 'Character not found.', 404);
+        }
+
+        $credits = app(\App\Services\Generation\Image\ImageAdapterFactory::class)->generationCost('gpt-image-2');
+        $creditService = app(CreditService::class);
+        if ($creditService->balance((int) $user->workspace_id) < $credits) {
+            return $this->error('insufficient_credits', sprintf('This preview costs %d credits.', $credits), 402);
+        }
+
+        $sheetText = app(\App\Services\Ugc\CharacterAppearanceService::class)->text($character);
+        $prompt = sprintf(
+            'Photorealistic vertical selfie-style portrait of %s. Looking into the lens, soft natural light, authentic phone-camera feel',
+            $sheetText,
+        );
+        try {
+            $result = app(\App\Services\Generation\Image\ImageAdapterFactory::class)
+                ->resolve('gpt-image-2')->generate($prompt, 'realistic', '9:16');
+        } catch (\Throwable $e) {
+            return $this->error('generation_failed', 'The preview could not be generated. Nothing was charged.', 502);
+        }
+        $bytes = ! empty($result['image_b64']) ? base64_decode($result['image_b64'])
+            : (! empty($result['image_url']) ? @file_get_contents($result['image_url']) : null);
+        if (! $bytes) {
+            return $this->error('generation_failed', 'The preview could not be generated. Nothing was charged.', 502);
+        }
+
+        $storage = app(\App\Services\Media\StorageService::class);
+        $path = sprintf('workspaces/%d/assets/variant-previews/%s.png', $user->workspace_id, \Illuminate\Support\Str::uuid());
+        $storageUrl = $storage->put($path, $bytes, ['ContentType' => 'image/png']);
+        $asset = Asset::query()->create([
+            'workspace_id' => $user->workspace_id,
+            'asset_type' => 'image',
+            'title' => mb_substr('Variant preview — '.$character->name, 0, 255),
+            'storage_url' => $storageUrl,
+            'mime_type' => 'image/png',
+            'file_size_bytes' => strlen($bytes),
+            'tags' => ['ugc_variant_preview'],
+            'status' => 'active',
+            'created_by_user_id' => $user->getKey(),
+        ]);
+        $creditService->deduct((int) $user->workspace_id, $credits, 'ugc_variant_preview', [
+            'character_id' => $character->getKey(), 'asset_id' => $asset->getKey(),
+        ]);
+
+        return response()->json(['data' => [
+            'asset_id' => $asset->getKey(),
+            'preview_url' => URL::temporarySignedRoute('media.assets.content',
+                now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)), ['assetId' => $asset->getKey()]),
+            'sheet' => $sheetText,
+            'credits_charged' => $credits,
+        ], 'meta' => []]);
+    }
+
     public function generateOneShot(Request $request, \App\Services\CreditService $creditService): JsonResponse
     {
         /** @var User $user */
@@ -805,6 +873,7 @@ class UgcController extends Controller
         // app always supplies one, no generation ever saw the chosen face.
         $presenter = trim((string) ($v['presenter_description'] ?? ''));
         $presenterImageAttached = false;
+        $variantSeed = null;
         if (! empty($v['character_id'])) {
             $c = Character::query()->whereKey($v['character_id'])
                 ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
@@ -814,6 +883,7 @@ class UgcController extends Controller
                 // describes the character in text, and Seedance renders a
                 // close look-alike. Disclosed in the UI as a variant.
                 $presenter = app(\App\Services\Ugc\CharacterAppearanceService::class)->text($c);
+                $variantSeed = crc32('wyv-char-'.$c->getKey()) & 0x7FFFFFFF;
             } elseif ($c) {
                 if ($presenter === '') {
                     $presenter = trim($c->name.($c->description ? ' — '.$c->description : ''));
@@ -910,6 +980,7 @@ class UgcController extends Controller
             $engine,
             $referenceImages,
             $characterFrame,
+            $variantSeed,
         )->afterCommit();
 
         return response()->json(['data' => [

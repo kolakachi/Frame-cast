@@ -308,6 +308,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/variants', [UgcController::class, 'variants']);
             Route::post('/generate', [UgcController::class, 'generate']);
             Route::post('/generate-one-shot', [UgcController::class, 'generateOneShot']);
+            Route::post('/characters/{characterId}/variant-preview', [UgcController::class, 'variantPreview'])->whereNumber('characterId');
             Route::post('/read-link', [UgcController::class, 'readLink']);
             Route::post('/fetch-video', [UgcController::class, 'fetchVideo']);
             Route::post('/scenes/{sceneId}/retry', [UgcController::class, 'sceneRetry'])->whereNumber('sceneId');

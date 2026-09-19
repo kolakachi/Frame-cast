@@ -26,7 +26,7 @@ class ReplicateVeoAdapter
     }
 
     /** @param array<int, string> $referenceImages data URIs or URLs; Seedance-only, exclusive with a start frame */
-    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = []): string
+    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null): string
     {
         $model = self::ENGINES[$engine] ?? self::ENGINES['veo'];
         $input = [
@@ -38,6 +38,11 @@ class ReplicateVeoAdapter
         if ($engine === 'seedance25') {
             $input['duration'] = max(4, min(30, $seconds));
             $input['watermark'] = false;
+            // A per-character seed nudges repeat variant takes toward the
+            // same rendition of the casting sheet (probe: small but free).
+            if ($seed !== null) {
+                $input['seed'] = $seed;
+            }
         } else {
             // Veo accepts exactly 4, 6 or 8 seconds.
             $input['duration'] = in_array($seconds, [4, 6, 8], true) ? $seconds : (($seconds <= 4) ? 4 : ($seconds <= 6 ? 6 : 8));

@@ -44,6 +44,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
         public readonly array $referenceImages = [],
         /** Chunk 0's start frame — how a cast character anchors identity on Veo. */
         public readonly ?string $initialStartFrame = null,
+        /** Per-character seed for Seedance variant takes. */
+        public readonly ?int $seed = null,
     ) {
         $this->onQueue('generation');
     }
@@ -68,7 +70,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $url = null;
                 $lastTransient = null;
                 for ($attempt = 0; $attempt < 2; $attempt++) {
-                    $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame, $this->engine, $i === 0 ? $this->referenceImages : []);
+                    $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame, $this->engine, $i === 0 ? $this->referenceImages : [], $this->seed);
                     $scene->forceFill(['image_generation_settings_json' => array_merge(
                         $scene->image_generation_settings_json ?? [],
                         ['oneshot_segment' => $i + 1, 'oneshot_total' => count($this->chunks), 'oneshot_prediction_id' => $predictionId],

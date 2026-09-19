@@ -226,6 +226,27 @@ const selected = ref([]); // chosen characters
 // sharper renderer from a written casting sheet — a close look-alike,
 // said plainly on the toggle (18 cr/s).
 const castStyle = ref("exact");
+// Pre-flight for the variant lane: the casting sheet rendered as a still —
+// roughly who Seedance will cast — for one image generation's credits.
+const variantPreview = ref(null); // { url, sheet, characterId }
+const variantPreviewLoading = ref(false);
+async function previewVariant() {
+  const presenter = selected.value[0];
+  if (!presenter || variantPreviewLoading.value) return;
+  variantPreviewLoading.value = true;
+  try {
+    const { data } = await api.post(`/ugc/characters/${presenter.id}/variant-preview`);
+    variantPreview.value = {
+      url: data?.data?.preview_url,
+      sheet: data?.data?.sheet,
+      characterId: presenter.id,
+    };
+  } catch (err) {
+    errorMessage.value = apiErrorMessage(err, "Could not generate the preview.");
+  } finally {
+    variantPreviewLoading.value = false;
+  }
+}
 const aspectRatio = ref("9:16");
 const plan = ref(null); // { segments, reasoning, credits_per_character }
 // A still-only plan has no presenter, so the cast step neither gates nor
@@ -1163,6 +1184,15 @@ onMounted(() => {
                 <span>A written casting sheet recreates their look — a close look-alike, not an exact match · 18 cr/s</span>
               </label>
             </div>
+            <div v-if="castStyle === 'variant' && selected.length" class="ugc-variant-preview">
+              <button class="ugc-btn ugc-btn-sm" type="button" :disabled="variantPreviewLoading" @click="previewVariant">
+                {{ variantPreviewLoading ? "Rendering…" : "Preview the look-alike" }}
+              </button>
+              <template v-if="variantPreview && variantPreview.characterId === selected[0]?.id">
+                <img :src="variantPreview.url" alt="Variant look-alike preview" />
+                <span class="ugc-hint">Roughly who this take will cast. Not them? Adjust the character's description and preview again.</span>
+              </template>
+            </div>
           </div>
           <p v-else-if="plan" class="ugc-hint">
             No presenter in this format — the words on screen carry the ad, so there is nobody to cast.
@@ -1851,6 +1881,8 @@ onMounted(() => {
   color: var(--color-text-muted);
 }
 .ugc-cast-style { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 18px 16px; }
+.ugc-variant-preview { display: flex; flex-direction: column; gap: 8px; padding: 0 18px 16px; }
+.ugc-variant-preview img { width: 132px; border-radius: 12px; border: 1px solid var(--color-border); }
 .ugc-style-pill {
   flex: 1 1 220px; display: flex; flex-direction: column; gap: 3px; cursor: pointer;
   border: 1px solid var(--color-border); border-radius: 11px; padding: 10px 14px; font-size: 12.5px;
