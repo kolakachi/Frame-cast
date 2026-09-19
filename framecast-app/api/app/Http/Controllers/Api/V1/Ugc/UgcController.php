@@ -773,14 +773,21 @@ class UgcController extends Controller
             }
         }
 
+        // The character's reference image ALWAYS travels when a character is
+        // cast — it was gated behind 'no description supplied', and since the
+        // app always supplies one, no generation ever saw the chosen face.
         $presenter = trim((string) ($v['presenter_description'] ?? ''));
-        if ($presenter === '' && ! empty($v['character_id'])) {
+        if (! empty($v['character_id'])) {
             $c = Character::query()->whereKey($v['character_id'])
                 ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
                     ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->first();
-            $presenter = $c ? trim($c->name.($c->description ? ' — '.$c->description : '')) : '';
-            if ($c && ($uri = $dataUri((int) $c->reference_asset_id))) {
-                array_unshift($referenceImages, $uri); // presenter first — identity outranks props
+            if ($c) {
+                if ($presenter === '') {
+                    $presenter = trim($c->name.($c->description ? ' — '.$c->description : ''));
+                }
+                if ($uri = $dataUri((int) $c->reference_asset_id)) {
+                    array_unshift($referenceImages, $uri); // presenter first — identity outranks props
+                }
             }
         }
 

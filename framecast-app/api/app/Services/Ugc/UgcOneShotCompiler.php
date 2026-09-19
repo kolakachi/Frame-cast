@@ -63,7 +63,7 @@ class UgcOneShotCompiler
 
             $out[] = [
                 'prompt' => $preamble."\n\n".$continuation.implode(' ', $lines)
-                    ."\n\nCasual creator energy, natural imperfect delivery, no studio lighting, no text overlays, no logos or watermarks. Natural room tone.",
+                    ."\n\nCasual creator energy, natural imperfect delivery. The presenter matches the reference person exactly — same face, same hair. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting, no text overlays, no logos or watermarks. Natural room tone.",
                 'seconds' => $chunk['seconds'],
                 'dialogue' => implode(' ', $dialogue),
             ];
@@ -108,7 +108,7 @@ class UgcOneShotCompiler
 ".implode(' ', $lines)
                 ."
 
-Casual creator energy, natural imperfect delivery, no studio lighting, no text overlays, no logos or watermarks. Natural room tone.",
+Casual creator energy, natural imperfect delivery. The presenter matches the reference person exactly — same face, same hair. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting, no text overlays, no logos or watermarks. Natural room tone.",
             'seconds' => max(4, $total),
             'dialogue' => implode(' ', $dialogue),
         ];
