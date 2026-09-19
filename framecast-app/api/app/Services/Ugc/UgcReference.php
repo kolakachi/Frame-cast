@@ -69,6 +69,14 @@ class UgcReference
             ]);
         }
 
+        $audio = $this->frames?->audioProfile($asset) ?? 'unknown';
+        $audioLine = match (true) {
+            $audio === 'none' || $audio === 'silent' => 'no audio — the ad is silent',
+            $segments !== [] => 'audio with speech (transcript below)',
+            $audio === 'audible' => 'audio present — music and/or effects, no speech was transcribed; the soundtrack carries the ad',
+            default => 'could not be measured',
+        };
+
         try {
             $result = $this->ai->generate('ugc_reference_read', [
                 'duration' => (string) round($duration, 1),
@@ -83,6 +91,7 @@ class UgcReference
                 'frame_times' => $frames === []
                     ? 'none'
                     : implode(', ', array_map(fn ($f) => $f['at'].'s', $frames)),
+                'audio_profile' => $audioLine,
             ], 2500, 0.2, [
                 'operation' => 'ugc_reference_read',
                 // The frames themselves, in the order their times are listed.
