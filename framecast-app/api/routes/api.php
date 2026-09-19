@@ -215,6 +215,7 @@ Route::prefix('v1')->group(function (): void {
             return response()->json(['data' => ['costs' => [
                 'ai_music' => \App\Services\CreditService::AI_MUSIC,
                 'video_restyle_per_second' => \App\Services\CreditService::VIDEO_RESTYLE_PER_SECOND, // keyed by engine
+                'video_oneshot_per_second' => \App\Services\CreditService::VIDEO_ONESHOT_PER_SECOND,
                 'tts'      => \App\Services\CreditService::TTS_GEMINI,
                 'tts_clone' => \App\Services\CreditService::TTS_CLONE,
                 'pdf_vision_page' => \App\Services\CreditService::PDF_VISION_PAGE,
@@ -306,6 +307,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/reference', [UgcController::class, 'reference']);
             Route::post('/variants', [UgcController::class, 'variants']);
             Route::post('/generate', [UgcController::class, 'generate']);
+            Route::post('/generate-one-shot', [UgcController::class, 'generateOneShot']);
             Route::post('/read-link', [UgcController::class, 'readLink']);
             Route::post('/fetch-video', [UgcController::class, 'fetchVideo']);
             Route::post('/scenes/{sceneId}/retry', [UgcController::class, 'sceneRetry'])->whereNumber('sceneId');

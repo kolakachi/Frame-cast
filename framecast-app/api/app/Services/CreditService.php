@@ -140,6 +140,10 @@ class CreditService
     // engines' upstream rates differ by 2-3x. Luma Modify (Ray-2) runs
     // ~\$0.10-0.30/s; Runway Aleph 2 bills \$0.336/s flat. At ~\$0.015-0.02
     // per credit sold, the old flat 8cr/s was at or below cost.
+    // One-full-video UGC on Veo 3.1 Fast with native audio (~\$0.15/s
+    // upstream): the presenter speaks in the generation itself.
+    public const VIDEO_ONESHOT_PER_SECOND = 12;
+
     public const VIDEO_RESTYLE_PER_SECOND = [
         'luma' => 15,
         'aleph2' => 30,

@@ -687,6 +687,110 @@ class UgcController extends Controller
         return response()->json(['data' => ['retried' => $retried], 'meta' => []]);
     }
 
+    /**
+     * One-full-video generation: the reviewed plan compiles into screenplay
+     * chunks and generates as a single fluid take on Veo — the presenter
+     * speaks natively, cuts land at beat boundaries, no scenes assembled.
+     * Same caps, balance check and charge-on-success as every take.
+     */
+    public function generateOneShot(Request $request, \App\Services\CreditService $creditService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $v = $request->validate($this->planRules() + [
+            'script' => ['present', 'nullable', 'string', 'max:1500'],
+            'character_id' => ['nullable', 'integer', 'min:1'],
+            'presenter_description' => ['nullable', 'string', 'max:400'],
+            'setting' => ['nullable', 'string', 'max:300'],
+            'product' => ['nullable', 'string', 'max:200'],
+            'tone' => ['nullable', 'string', 'max:200'],
+            'language' => ['sometimes', 'string', 'max:12'],
+            'consent' => ['accepted'],
+            'reviewed' => ['accepted'],
+            'credits' => ['required', 'integer'],
+        ]);
+
+        $segments = UgcPlan::normalise($v['segments'], $v['format']);
+        $spoken = array_values(array_filter($segments, fn ($s) => trim((string) $s['script_text']) !== ''));
+        if ($spoken === []) {
+            throw ValidationException::withMessages(['segments' => 'A one-take ad needs spoken beats. Silent card plans generate through the standard path.']);
+        }
+
+        $presenter = trim((string) ($v['presenter_description'] ?? ''));
+        if ($presenter === '' && ! empty($v['character_id'])) {
+            $c = Character::query()->whereKey($v['character_id'])
+                ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
+                    ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->first();
+            $presenter = $c ? trim($c->name.($c->description ? ' — '.$c->description : '')) : '';
+        }
+
+        $chunks = \App\Services\Ugc\UgcOneShotCompiler::compile($segments, [
+            'presenter' => $presenter,
+            'setting' => trim((string) ($v['setting'] ?? '')),
+            'product' => trim((string) ($v['product'] ?? '')),
+            'tone' => trim((string) ($v['tone'] ?? '')),
+        ]);
+        $totalSeconds = array_sum(array_column($chunks, 'seconds'));
+        $quote = (int) ($totalSeconds * CreditService::VIDEO_ONESHOT_PER_SECOND);
+        if ((int) $v['credits'] !== $quote) {
+            throw ValidationException::withMessages(['credits' => "The estimate changed — this take is {$quote} credits. Review and approve again."]);
+        }
+        if ($creditService->balance((int) $user->workspace_id) < $quote) {
+            throw ValidationException::withMessages(['credits' => "This take needs {$quote} credits."]);
+        }
+        $monthlyCap = $creditService->limitFor((int) $user->workspace_id, 'ugc_takes_month');
+        if ($monthlyCap !== null) {
+            $used = Project::query()->where('workspace_id', $user->workspace_id)
+                ->whereNotNull('visual_brief->ugc_format')->where('created_at', '>=', now()->startOfMonth())->count();
+            if ($used + 1 > (int) $monthlyCap) {
+                throw ValidationException::withMessages(['takes' => sprintf(
+                    'Your plan includes %d UGC takes a month; you have used %d. The count resets on the 1st.', $monthlyCap, $used)]);
+            }
+        }
+
+        $runId = (string) Str::uuid();
+        $script = UgcPlan::script($segments);
+        $project = Project::query()->create([
+            'workspace_id' => $user->workspace_id,
+            'created_by_user_id' => $user->id,
+            'title' => Str::limit($script, 48, '…', preserveWords: true) ?: 'One-take UGC ad',
+            'aspect_ratio' => '9:16',
+            'duration_target_seconds' => (int) $totalSeconds,
+            'status' => 'generating',
+            'source_type' => 'script',
+            'primary_language' => $v['language'] ?? 'en',
+            'source_content_raw' => $script,
+            'visual_brief' => [
+                'ugc_format' => 'one_shot',
+                'ugc_estimated_credits' => $quote,
+                'ugc_run_id' => $runId,
+            ],
+        ]);
+        $scene = Scene::query()->create([
+            'project_id' => $project->id, 'scene_order' => 1, 'scene_type' => 'narration',
+            'label' => 'One-take ad', 'script_text' => $script, 'duration_seconds' => $totalSeconds,
+            'voice_settings_json' => ['enabled' => false],
+            'caption_settings_json' => ['enabled' => false],
+            'visual_type' => 'video', 'status' => 'draft',
+            'image_generation_settings_json' => [
+                'in_progress' => true, 'ugc_kind' => 'on_camera',
+                'generation_started_at' => now()->toIso8601String(),
+            ],
+        ]);
+        \App\Jobs\GenerateOneShotUgcJob::dispatch(
+            $project->id, $scene->id,
+            array_map(fn ($c) => ['prompt' => $c['prompt'], 'seconds' => $c['seconds']], $chunks),
+            $quote,
+        )->afterCommit();
+
+        return response()->json(['data' => [
+            'takes' => [[ 'id' => $project->id, 'character' => $project->title,
+                'scenes' => 1, 'credits' => $quote, 'status' => 'generating',
+                'run_id' => $runId, 'variant' => null ]],
+            'credits_quoted' => $quote, 'run_id' => $runId,
+        ], 'meta' => []], 201);
+    }
+
     private function planRules(): array
     {
         return [
