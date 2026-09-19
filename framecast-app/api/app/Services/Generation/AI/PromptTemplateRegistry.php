@@ -174,6 +174,14 @@ For b_roll only, source must be upload (real app screens, dashboards, customer p
 PROMPT,
                 'user' => "Direct this UGC take.\n{{previous_error}}\nRequested format: {{format}}\nProduct: {{product}}\nBrief / audience / goal: {{context}}\nTarget length: {{duration}} seconds (reaction clips support 5 or 10).\nLanguage: {{language}}\nAvailable footage labels: {{available_footage}}\nReference shape:\n{{reference}}\nTheir saved characters (cast by id if one fits):\n{{roster}}\nTheir uploaded footage:\n{{library}}\nExact spoken script (empty means write from brief):\n{{script_text}}",
             ],
+            'character_appearance_read' => [
+                'system' => <<<'PROMPT'
+You write casting sheets from a reference photo, so a video model can render a CLOSE LOOK-ALIKE of this person from words alone. Return JSON only:
+{"age_range":"e.g. late 20s","gender_presentation":"e.g. woman","skin_tone":"respectful, specific visual description","hair":"color, texture, length, how it is worn","face":"shape and the 2-3 most identifying features","build":"height impression and build","style":"clothing and grooming vibe as seen","distinctive":"the one or two details a friend would name first"}
+Describe only what is visible. Concrete casting-sheet phrases, no flattery, no guessing at identity, nationality or profession. Every field is a short phrase, not a sentence.
+PROMPT,
+                'user' => 'Write the casting sheet for the person in this reference image.',
+            ],
             'ugc_hook_variants' => [
                 'system' => <<<'PROMPT'
 You write alternative openings for an ad that already works. Return JSON only:

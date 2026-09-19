@@ -743,6 +743,10 @@ class UgcController extends Controller
         $v = $request->validate($this->planRules() + [
             'script' => ['present', 'nullable', 'string', 'max:1500'],
             'character_id' => ['nullable', 'integer', 'min:1'],
+            // exact = Veo anchored to the character's real face; variant =
+            // Seedance's renderer from a written casting sheet — a close
+            // look-alike, disclosed as such in the UI.
+            'cast_style' => ['sometimes', 'string', 'in:exact,variant'],
             'presenter_description' => ['nullable', 'string', 'max:400'],
             'product_asset_id' => ['nullable', 'integer', 'min:1'],
             // Several angles teach the model the product's geometry — one
@@ -805,7 +809,12 @@ class UgcController extends Controller
             $c = Character::query()->whereKey($v['character_id'])
                 ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
                     ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->first();
-            if ($c) {
+            if ($c && ($v['cast_style'] ?? 'exact') === 'variant') {
+                // No face image goes anywhere: the cached casting sheet
+                // describes the character in text, and Seedance renders a
+                // close look-alike. Disclosed in the UI as a variant.
+                $presenter = app(\App\Services\Ugc\CharacterAppearanceService::class)->text($c);
+            } elseif ($c) {
                 if ($presenter === '') {
                     $presenter = trim($c->name.($c->description ? ' — '.$c->description : ''));
                 }

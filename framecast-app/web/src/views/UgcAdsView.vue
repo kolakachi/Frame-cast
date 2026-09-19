@@ -319,7 +319,9 @@ const oneShotEligible = computed(
     (plan.value.segments ?? []).some((x) => (x.script_text || "").trim() !== "")
 );
 const oneShotSeconds = computed(() => Math.max(4, Math.ceil(planSeconds.value)));
-const oneShotRate = computed(() => (selected.value.length ? ONESHOT_RATES.veo : ONESHOT_RATES.seedance25));
+const oneShotRate = computed(() =>
+  selected.value.length && castStyle.value === "exact" ? ONESHOT_RATES.veo : ONESHOT_RATES.seedance25
+);
 const oneShotCredits = computed(() => oneShotSeconds.value * oneShotRate.value);
 // The run is the base plan plus every ticked opening, each a full take per
 // presenter. Base x characters alone showed a number smaller than the charge
@@ -471,6 +473,10 @@ const isSelected = (c) => selected.value.some((x) => x.id === c.id);
 // a manual choice: swap or remove it freely, and an empty slot falls back
 // to the plan's written presenter.
 const directorCastId = ref(null);
+// exact = Veo anchored to the real face (12 cr/s); variant = Seedance's
+// sharper renderer from a written casting sheet — a close look-alike,
+// said plainly on the toggle (18 cr/s).
+const castStyle = ref("exact");
 async function applyDirectorCast() {
   const id = plan.value?.presenter_character_id;
   if (!id || noCast.value || selected.value.length) return;
@@ -719,6 +725,7 @@ async function generate() {
           ? [presenter.name, presenter.description].filter(Boolean).join(" — ")
           : (plan.value.presenter || ""),
         character_id: presenter?.id ?? null,
+        cast_style: presenter ? castStyle.value : "exact",
         product_asset_id: productAsset.value?.id ?? null,
         product_asset_ids: productAssets.value.map((a) => a.id),
         product: product.value,
@@ -1152,6 +1159,18 @@ onMounted(() => {
                 Cast by the director from your saved characters — swap or remove freely.
               </span>
             </div>
+            <div v-if="selected.length && oneShotEligible" class="ugc-cast-style">
+              <label :class="['ugc-style-pill', { on: castStyle === 'exact' }]">
+                <input v-model="castStyle" type="radio" value="exact" />
+                <b>Exact match</b>
+                <span>Their real face anchors the video · 12 cr/s</span>
+              </label>
+              <label :class="['ugc-style-pill', { on: castStyle === 'variant' }]">
+                <input v-model="castStyle" type="radio" value="variant" />
+                <b>Sharper renderer, close variant</b>
+                <span>A written casting sheet recreates their look — a close look-alike, not an exact match · 18 cr/s</span>
+              </label>
+            </div>
           </div>
           <p v-else-if="plan" class="ugc-hint">
             No presenter in this format — the words on screen carry the ad, so there is nobody to cast.
@@ -1555,6 +1574,10 @@ onMounted(() => {
         <div class="ugc-modal">
           <aside class="ugc-m-rail">
             <div class="ugc-m-t">Add characters</div>
+            <p class="ugc-hint" style="margin: 6px 0 2px">
+              Depending on the engine you choose, your character may appear as a close
+              look-alike rather than an exact match — you'll see which before generating.
+            </p>
 
             <div class="ugc-facet">
               <div class="ugc-facet-h">Source</div>
@@ -1835,6 +1858,15 @@ onMounted(() => {
   font: 10.5px var(--font-mono);
   color: var(--color-text-muted);
 }
+.ugc-cast-style { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 18px 16px; }
+.ugc-style-pill {
+  flex: 1 1 220px; display: flex; flex-direction: column; gap: 3px; cursor: pointer;
+  border: 1px solid var(--color-border); border-radius: 11px; padding: 10px 14px; font-size: 12.5px;
+}
+.ugc-style-pill input { position: absolute; opacity: 0; pointer-events: none; }
+.ugc-style-pill.on { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
+.ugc-style-pill b { font-size: 13px; }
+.ugc-style-pill span { color: var(--color-text-muted); }
 .ugc-card-f {
   display: flex;
   align-items: center;

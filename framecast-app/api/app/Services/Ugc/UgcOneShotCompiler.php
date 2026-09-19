@@ -63,7 +63,7 @@ class UgcOneShotCompiler
 
             $out[] = [
                 'prompt' => $preamble."\n\n".$continuation.implode(' ', $lines)
-                    ."\n\nCasual creator energy, natural imperfect delivery. The presenter matches the reference person exactly — same face, same hair. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting, no text overlays, no logos or watermarks. Natural room tone.",
+                    ."\n\nCasual creator energy, natural imperfect delivery. A single continuous take — no cuts, no camera zoom, natural head movement. The presenter matches the reference person exactly where one is shown, and stays the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. Hands stay at a natural medium distance from the camera, fingers relaxed. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting, no text overlays, no logos or watermarks. Natural room tone.",
                 'seconds' => $chunk['seconds'],
                 'dialogue' => implode(' ', $dialogue),
             ];
@@ -108,7 +108,7 @@ class UgcOneShotCompiler
 ".implode(' ', $lines)
                 ."
 
-Casual creator energy, natural imperfect delivery. The presenter matches the reference person exactly — same face, same hair. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting, no text overlays, no logos or watermarks. Natural room tone.",
+Casual creator energy, natural imperfect delivery. A single continuous take — no cuts, no camera zoom, natural head movement. The presenter matches the reference person exactly where one is shown, and stays the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. Hands stay at a natural medium distance from the camera, fingers relaxed. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting, no text overlays, no logos or watermarks. Natural room tone.",
             'seconds' => max(4, $total),
             'dialogue' => implode(' ', $dialogue),
         ];
