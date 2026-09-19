@@ -75,13 +75,25 @@ class CharacterAppearanceService
             return trim($character->name.($character->description ? ' — '.$character->description : ''));
         }
 
-        $parts = [];
-        foreach (self::FIELDS as $field) {
+        // Written as a sentence, not telegraphic fragments — video models
+        // weight fluent descriptions better, and the identity-critical
+        // fields (skin, hair) get explicit nouns they cannot skim past.
+        $lead = trim(implode(', ', array_filter([
+            $sheet['gender_presentation'] ?? 'person', $sheet['age_range'] ?? null,
+        ])), ', ');
+        $parts = ['a '.$lead];
+        if (isset($sheet['skin_tone'])) {
+            $parts[0] .= ' with '.$sheet['skin_tone'].' skin';
+        }
+        if (isset($sheet['hair'])) {
+            $parts[0] .= (isset($sheet['skin_tone']) ? ' and ' : ' with ').$sheet['hair'].' hair';
+        }
+        foreach (['face', 'build', 'style', 'distinctive'] as $field) {
             if (isset($sheet[$field])) {
                 $parts[] = $sheet[$field];
             }
         }
 
-        return ucfirst(implode('; ', $parts));
+        return implode('; ', $parts);
     }
 }
