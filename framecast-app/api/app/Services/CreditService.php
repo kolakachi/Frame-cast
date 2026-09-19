@@ -142,7 +142,9 @@ class CreditService
     // per credit sold, the old flat 8cr/s was at or below cost.
     // One-full-video UGC on Veo 3.1 Fast with native audio (~\$0.15/s
     // upstream): the presenter speaks in the generation itself.
-    public const VIDEO_ONESHOT_PER_SECOND = 12;
+    // Keyed by engine: Seedance 2.5 bills \$0.2312/s at 720p, Veo 3.1
+    // Fast ~\$0.15/s — the price difference is real and shown honestly.
+    public const VIDEO_ONESHOT_PER_SECOND = ['seedance25' => 18, 'veo' => 12];
 
     public const VIDEO_RESTYLE_PER_SECOND = [
         'luma' => 15,

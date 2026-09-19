@@ -743,7 +743,7 @@ class UgcController extends Controller
             ? [$single]
             : \App\Services\Ugc\UgcOneShotCompiler::compile($segments, $style);
         $totalSeconds = array_sum(array_column($chunks, 'seconds'));
-        $quote = (int) ($totalSeconds * CreditService::VIDEO_ONESHOT_PER_SECOND);
+        $quote = (int) ($totalSeconds * CreditService::VIDEO_ONESHOT_PER_SECOND[$engine]);
         if ((int) $v['credits'] !== $quote) {
             throw ValidationException::withMessages(['credits' => "The estimate changed — this take is {$quote} credits. Review and approve again."]);
         }
