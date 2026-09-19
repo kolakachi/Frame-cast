@@ -2496,6 +2496,9 @@ class ProjectController extends Controller
             'source_content_raw' => $project->source_content_raw,
             'source_content_normalized' => $project->source_content_normalized,
             'source_image_asset_ids' => $project->source_image_asset_ids,
+            // The UGC surfaces key off this (whole-video takes hide the
+            // editor; generic progress redirects to the run screen).
+            'visual_brief' => $project->visual_brief,
             'visual_type' => $this->projectVisualTypeFromGenerationMode($project->visual_generation_mode),
             'visual_generation_mode' => $project->visual_generation_mode,
             'ai_broll_style' => $project->ai_broll_style,

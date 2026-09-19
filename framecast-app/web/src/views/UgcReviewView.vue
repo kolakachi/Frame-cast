@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
+import SchedulePostModal from "../components/SchedulePostModal.vue";
 import api from "../services/api";
 import { useAuthStore } from "../stores/auth";
 import { apiErrorMessage } from "../composables/apiError";
@@ -60,6 +61,63 @@ const downloadUrl = computed(() => canExport.value && exportJob.value?.status ==
 // A one-shot or restyled take is a finished video; the scene editor would
 // re-compose it (and mute the baked-in voice). Its doors stay shut here.
 const wholeVideo = computed(() => ["one_shot", "restyle"].includes(project.value?.visual_brief?.ugc_format));
+
+// ── post-export actions: schedule, approval, share ──────────────────────
+const scheduleOpen = ref(false);
+const approvalOpen = ref(false);
+const approvalForm = ref({ email: "", name: "", message: "" });
+const approvalSubmitting = ref(false);
+const approvalResult = ref(null);
+const approvalError = ref("");
+const sharePending = ref(false);
+const shareToast = ref("");
+
+async function submitApproval() {
+  if (approvalSubmitting.value) return;
+  if (!approvalForm.value.email.trim()) {
+    approvalError.value = "Reviewer email is required.";
+    return;
+  }
+  approvalSubmitting.value = true;
+  approvalError.value = "";
+  try {
+    const res = await api.post("/approvals", {
+      project_id: projectId.value,
+      export_job_id: exportJob.value?.id ?? null,
+      reviewer_email: approvalForm.value.email.trim(),
+      reviewer_name: approvalForm.value.name.trim() || null,
+      comment: approvalForm.value.message.trim() || null,
+      expires_in_days: 7,
+    });
+    approvalResult.value = res.data?.data?.public_url ?? "sent";
+  } catch (err) {
+    approvalError.value = apiErrorMessage(err, "Could not send the approval link.");
+  } finally {
+    approvalSubmitting.value = false;
+  }
+}
+
+async function copyShareLink() {
+  if (sharePending.value) return;
+  sharePending.value = true;
+  try {
+    const res = await api.post(`/projects/${projectId.value}/share`, { enabled: true });
+    const url = res.data?.data?.share_url;
+    if (url) {
+      try {
+        await navigator.clipboard.writeText(url);
+        shareToast.value = "Copied!";
+      } catch {
+        shareToast.value = url; // clipboard blocked — show it to copy by hand
+      }
+      setTimeout(() => (shareToast.value = ""), 4000);
+    }
+  } catch (err) {
+    errorMessage.value = apiErrorMessage(err, "Could not create the share link.");
+  } finally {
+    sharePending.value = false;
+  }
+}
 const activePreview = computed(() => (activeScene.value ? previews.value[activeScene.value] : null));
 const activeSceneRow = computed(() => scenes.value.find((s) => s.id === activeScene.value));
 
@@ -386,12 +444,23 @@ onBeforeUnmount(() => {
             </div>
             <div class="rev-done-a">
               <button v-if="!wholeVideo" class="rev-btn" type="button" @click="openEditor">Continue editing project</button>
-              <a
-                v-if="downloadUrl"
-                class="rev-btn rev-btn-primary"
-                :href="downloadUrl"
-                :download="exportJob?.file_name || 'video.mp4'"
-              >Download video</a>
+              <template v-if="downloadUrl">
+                <span class="rev-pillrow">
+                  <b>Export ready</b>
+                  <span class="rev-dot">·</span>
+                  <a :href="downloadUrl" target="_blank" rel="noopener">Open ↗</a>
+                  <a :href="downloadUrl" :download="exportJob?.file_name || 'video.mp4'">Download ↓</a>
+                  <span class="rev-dot">·</span>
+                  <button type="button" @click="scheduleOpen = true">📅 Schedule</button>
+                  <span class="rev-dot">·</span>
+                  <button type="button" @click="approvalOpen = true">📝 Send for approval</button>
+                  <span class="rev-dot">·</span>
+                  <button type="button" :disabled="sharePending" @click="copyShareLink">
+                    {{ sharePending ? "…" : "🔗 Copy share link" }}
+                  </button>
+                  <span v-if="shareToast" class="rev-share-toast">{{ shareToast }}</span>
+                </span>
+              </template>
               <button
                 v-else
                 class="rev-btn rev-btn-primary"
@@ -404,6 +473,38 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </section>
+      </div>
+      <SchedulePostModal
+        v-if="scheduleOpen"
+        :export-job-id="exportJob?.id ?? null"
+        @close="scheduleOpen = false"
+        @scheduled="scheduleOpen = false"
+      />
+
+      <div v-if="approvalOpen" class="rev-scrim" @click.self="approvalOpen = false">
+        <div class="rev-modal">
+          <h3>Send for approval</h3>
+          <template v-if="!approvalResult">
+            <p class="rev-muted">A unique review link is emailed to your reviewer — no WyvStudio account needed.</p>
+            <label>Reviewer email *<input v-model="approvalForm.email" type="email" placeholder="client@example.com" /></label>
+            <label>Reviewer name (optional)<input v-model="approvalForm.name" type="text" /></label>
+            <label>Note (optional)<textarea v-model="approvalForm.message" rows="3"></textarea></label>
+            <p v-if="approvalError" class="rev-error" style="margin:0">{{ approvalError }}</p>
+            <div class="rev-modal-f">
+              <button class="rev-btn" type="button" @click="approvalOpen = false">Cancel</button>
+              <button class="rev-btn rev-btn-primary" type="button" :disabled="approvalSubmitting" @click="submitApproval">
+                {{ approvalSubmitting ? "Sending…" : "Send link" }}
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <p>Approval link sent{{ approvalResult !== "sent" ? " — you can also copy it:" : "." }}</p>
+            <input v-if="approvalResult !== 'sent'" :value="approvalResult" readonly @focus="$event.target.select()" />
+            <div class="rev-modal-f">
+              <button class="rev-btn rev-btn-primary" type="button" @click="approvalOpen = false; approvalResult = null">Done</button>
+            </div>
+          </template>
+        </div>
       </div>
     </main>
   </div>
@@ -485,6 +586,27 @@ onBeforeUnmount(() => {
 .rev-muted { font-size: 12.5px; color: var(--color-text-muted); margin: 4px 0 0; }
 .rev-done { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .rev-done-a { display: flex; gap: 10px; flex-wrap: wrap; }
+.rev-pillrow {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px;
+}
+.rev-pillrow a, .rev-pillrow button {
+  border: none; background: none; color: var(--color-primary); font-size: 13px;
+  font-weight: 600; cursor: pointer; text-decoration: none; padding: 0;
+}
+.rev-pillrow b { color: var(--color-success, #1f7a4d); }
+.rev-dot { color: var(--color-text-muted); }
+.rev-share-toast { font-size: 12px; color: var(--color-text-muted); word-break: break-all; }
+.rev-modal {
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 16px;
+  padding: 20px; width: min(460px, 100%); display: flex; flex-direction: column; gap: 12px;
+}
+.rev-modal h3 { margin: 0; font-size: 16px; }
+.rev-modal label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--color-text-muted); }
+.rev-modal input, .rev-modal textarea {
+  border: 1px solid var(--color-border); border-radius: 9px; padding: 10px 12px;
+  font-size: 13.5px; font-family: inherit; background: var(--color-bg); color: var(--color-text);
+}
+.rev-modal-f { display: flex; justify-content: flex-end; gap: 10px; }
 @media (max-width: 860px) {
   .rev-main { margin-left: 0; }
   .rev-body { flex-direction: column; }
