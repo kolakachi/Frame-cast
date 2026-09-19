@@ -44,7 +44,13 @@ class UgcShotPlanner
             $result = $this->ai->generate('ugc_shot_plan', [
                 'script_text' => trim($scriptText), 'product' => $product, 'context' => $context,
                 'duration' => (string) $durationSeconds, 'language' => $language,
-                'available_footage' => implode(', ', $availableFootage), 'format' => $format,
+                'available_footage' => implode(', ', $availableFootage),
+                // With a multi-beat reference, reaction is off the menu, not
+                // merely discouraged — the whole point of the reference is
+                // its structure, and reaction is by definition one shot.
+                'format' => $format === 'auto' && count($reference['beats'] ?? []) > 1
+                    ? 'auto — choose from direct_camera, demo, story or text_led; reaction is NOT available because the reference has multiple beats'
+                    : $format,
                 'reference' => $this->referenceBrief($reference),
                 'library' => $this->libraryBrief($library),
                 'previous_error' => $previousError !== ''
@@ -55,6 +61,12 @@ class UgcShotPlanner
             $chosen = (string) ($parsed['format'] ?? '');
             if (! in_array($chosen, UgcPlan::FORMATS, true) || ($format !== 'auto' && $format !== $chosen)) {
                 throw new \UnexpectedValueException('Director returned a different format.');
+            }
+            if ($chosen === 'reaction' && count($reference['beats'] ?? []) > 1) {
+                throw new \UnexpectedValueException(sprintf(
+                    'The reference has %d beats; the single-shot reaction format discards its structure. Choose demo or story and mirror the beats.',
+                    count($reference['beats']),
+                ));
             }
             $raw = (array) ($parsed['segments'] ?? []);
             // The director sometimes writes a spoken 'reaction' inside a
