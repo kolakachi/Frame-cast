@@ -471,6 +471,10 @@ function openPicker() {
 function toggleCharacter(c) {
   const i = selected.value.findIndex((x) => x.id === c.id);
   if (i >= 0) selected.value.splice(i, 1);
+  // A one-take ad has a single presenter and only the first selection ever
+  // generates — stacking a second silently ignored it (the "didn't respect
+  // my avatar" bug). Picking another character now replaces the cast.
+  else if (oneShotEligible.value) selected.value = [c];
   else if (selected.value.length < MAX_CHARACTERS) selected.value.push(c);
   reviewed.value = false;
 }
@@ -592,6 +596,12 @@ function selectFootage({ item }) {
 }
 
 function selectProduct({ item }) {
+  if (item?.asset_type === "video" || (item?.mime_type || "").startsWith("video/")) {
+    errorMessage.value =
+      "Product references are photos — a clip can't ride a one-take generation. Pick stills of the product (front, back, held in hand).";
+    productPicker.value = false;
+    return;
+  }
   if (item?.id && item._type === "asset" && !productAssets.value.some((a) => a.id === item.id)) {
     const entry = { id: item.id, thumbnail_url: item.thumbnail_url || item.storage_url, title: item.title };
     productAssets.value = [...productAssets.value, entry].slice(0, 5);
