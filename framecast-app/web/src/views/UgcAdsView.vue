@@ -2753,6 +2753,17 @@ onMounted(() => {
 }
 .ugc-optional summary { cursor: pointer; }
 .ugc-optional[open] summary { margin-bottom: 16px; }
+/* Chrome slots a details' children into an internal ::details-content box,
+   so the flex gap declared on .ugc-fields never reaches the fields — they
+   rendered flush against each other. Recreate the rhythm inside. */
+.ugc-optional::details-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+@supports not selector(::details-content) {
+  .ugc-optional[open] > *:not(summary) { margin-top: 10px; }
+}
 
 /* Brief reference: compact inputs with a live summary and primary action beside them. */
 .ugc-at-0 .ugc-brief-layout { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(270px, 1fr); max-width: none; gap: 24px; align-items: start; }

@@ -711,7 +711,14 @@ class UgcController extends Controller
     {
         $reaction = $v['format'] === 'reaction';
         $script = UgcPlan::script($segments);
-        $title = trim((string) ($v['title'] ?? '')) ?: Str::limit($script ?: $segments[0]['headline'], 48, '');
+        // Cut at a word boundary with a visible ellipsis — a title chopped
+        // mid-word ("one content idea i") reads as a bug on every take card.
+        $title = trim((string) ($v['title'] ?? '')) ?: Str::limit($script ?: $segments[0]['headline'], 48, '…', preserveWords: true);
+        // A silent clip-only take has neither script nor headlines — a blank
+        // card title reads as a rendering bug.
+        if ($title === '') {
+            $title = 'Assembled from your footage';
+        }
         $project = Project::query()->create([
             'workspace_id' => $user->workspace_id, 'created_by_user_id' => $user->id,
             // The variant's angle in the title, or six takes on one screen are
