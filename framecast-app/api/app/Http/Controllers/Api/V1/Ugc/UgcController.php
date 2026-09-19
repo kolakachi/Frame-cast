@@ -172,10 +172,33 @@ class UgcController extends Controller
             ];
         }
 
+        // The saved characters, descriptions only — the director casts the
+        // best audience fit from text; no image leaves the workspace. Same
+        // scope the picker shows: workspace library plus stock actors.
+        $roster = [];
+        foreach (\App\Models\Character::query()
+            ->where('status', 'active')->where('is_auto', false)
+            // Only faces the pipeline can anchor: a pick without a reference
+            // image would generate a stranger under a saved character's name.
+            ->whereNotNull('reference_asset_id')
+            ->where(fn ($q) => $q->where('workspace_id', $workspaceId)->orWhere('is_stock', true))
+            ->orderByDesc('workspace_id')->limit(40)
+            ->get(['id', 'name', 'description', 'style', 'gender', 'age_group', 'situations']) as $c) {
+            $roster[] = [
+                'id' => $c->getKey(),
+                'name' => mb_substr((string) $c->name, 0, 80),
+                'description' => mb_substr((string) ($c->description ?? ''), 0, 300),
+                'style' => mb_substr((string) ($c->style ?? ''), 0, 60),
+                'gender' => mb_substr((string) ($c->gender ?? ''), 0, 32),
+                'age_group' => mb_substr((string) ($c->age_group ?? ''), 0, 32),
+                'situations' => array_slice((array) ($c->situations ?? []), 0, 6),
+            ];
+        }
+
         return response()->json(['data' => $planner->plan(
             (string) ($v['script'] ?? ''), (string) ($v['product'] ?? ''), (string) ($v['context'] ?? ''),
             $v['duration_seconds'], $v['language'] ?? 'en', $v['available_footage'] ?? [], $v['format'],
-            $v['reference'] ?? [], $library,
+            $v['reference'] ?? [], $library, $roster,
         ), 'meta' => []]);
     }
 
@@ -777,6 +800,7 @@ class UgcController extends Controller
         // cast — it was gated behind 'no description supplied', and since the
         // app always supplies one, no generation ever saw the chosen face.
         $presenter = trim((string) ($v['presenter_description'] ?? ''));
+        $presenterImageAttached = false;
         if (! empty($v['character_id'])) {
             $c = Character::query()->whereKey($v['character_id'])
                 ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
@@ -787,6 +811,7 @@ class UgcController extends Controller
                 }
                 if ($uri = $dataUri((int) $c->reference_asset_id)) {
                     array_unshift($referenceImages, $uri); // presenter first — identity outranks props
+                    $presenterImageAttached = true;
                 }
             }
         }
@@ -797,7 +822,7 @@ class UgcController extends Controller
         // without the face. A cast character therefore anchors identity as a
         // Veo START FRAME instead, which accepts person images happily.
         $characterFrame = null;
-        if ($referenceImages !== [] && ! empty($v['character_id'])) {
+        if ($presenterImageAttached) {
             $characterFrame = array_shift($referenceImages); // presenter was unshifted first
             $engine = 'veo';
         }

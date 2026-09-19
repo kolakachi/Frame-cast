@@ -186,7 +186,7 @@ class CharacterController extends Controller
 
     public function show(Request $request, int $characterId): JsonResponse
     {
-        $character = $this->resolve($request, $characterId);
+        $character = $this->resolve($request, $characterId, includeStock: true);
         if (! $character) {
             return $this->error('not_found', 'Character not found.', 404);
         }
@@ -414,7 +414,7 @@ class CharacterController extends Controller
         ];
     }
 
-    private function resolve(Request $request, int $characterId): ?Character
+    private function resolve(Request $request, int $characterId, bool $includeStock = false): ?Character
     {
         /** @var User $user */
         $user = $request->user();
@@ -423,7 +423,12 @@ class CharacterController extends Controller
             ->with('referenceAsset')
             ->withCount('scenes')
             ->whereKey($characterId)
-            ->where('workspace_id', $user->workspace_id)
+            // Owned rows only by default — this resolver also guards update
+            // and destroy, and a stock actor is a shared global row nobody
+            // may mutate. Read paths opt in to the index's wider visibility.
+            ->where(fn ($q) => $includeStock
+                ? $q->where('workspace_id', $user->workspace_id)->orWhere('is_stock', true)
+                : $q->where('workspace_id', $user->workspace_id))
             ->first();
     }
 

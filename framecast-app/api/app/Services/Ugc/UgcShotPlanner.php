@@ -13,7 +13,7 @@ class UgcShotPlanner
 
     public function plan(string $scriptText, string $product = '', string $context = '', int $durationSeconds = 30,
         string $language = 'en', array $availableFootage = [], string $format = 'auto', array $reference = [],
-        array $library = []): array
+        array $library = [], array $roster = []): array
     {
         // One self-repair attempt. The first real run failed on a rule the
         // prompt states tersely — a silent cutaway outside demo — and the
@@ -23,7 +23,7 @@ class UgcShotPlanner
         for ($attempt = 0; $attempt < 2; $attempt++) {
             try {
                 return $this->planOnce($scriptText, $product, $context, $durationSeconds,
-                    $language, $availableFootage, $format, $reference, $library, $previousError);
+                    $language, $availableFootage, $format, $reference, $library, $roster, $previousError);
             } catch (ValidationException $e) {
                 throw $e; // planOnce only throws this for the terminal failure
             } catch (\Throwable $e) {
@@ -38,7 +38,7 @@ class UgcShotPlanner
 
     private function planOnce(string $scriptText, string $product, string $context, int $durationSeconds,
         string $language, array $availableFootage, string $format, array $reference,
-        array $library, string $previousError): array
+        array $library, array $roster, string $previousError): array
     {
         try {
             $result = $this->ai->generate('ugc_shot_plan', [
@@ -53,6 +53,7 @@ class UgcShotPlanner
                     : $format,
                 'reference' => $this->referenceBrief($reference),
                 'library' => $this->libraryBrief($library),
+                'roster' => $this->rosterBrief($roster),
                 'previous_error' => $previousError !== ''
                     ? 'Your previous plan was rejected: '.$previousError.' Return a corrected plan that fixes exactly this.'
                     : '',
@@ -115,6 +116,11 @@ class UgcShotPlanner
             return [
                 'format' => $chosen, 'script' => $spoken, 'segments' => $segments,
                 'presenter' => mb_substr(trim((string) ($parsed['presenter'] ?? '')), 0, 300),
+                // Only a character we actually offered — the model never
+                // invents ids, same rule as footage assets.
+                'presenter_character_id' => in_array((int) ($parsed['presenter_character_id'] ?? 0),
+                    array_map(fn ($c) => (int) $c['id'], $roster), true)
+                    ? (int) $parsed['presenter_character_id'] : null,
                 'credits_per_character' => UgcPlan::quote($segments),
                 'reasoning' => mb_substr((string) ($parsed['reasoning'] ?? ''), 0, 600),
                 'warnings' => UgcPlan::warnings($segments, $chosen),
@@ -161,6 +167,31 @@ class UgcShotPlanner
      *
      * @param  array<int, array<string, mixed>>  $library
      */
+    /** The saved characters as text only — the director casts from
+     *  descriptions; no images ever reach the text model. */
+    private function rosterBrief(array $roster): string
+    {
+        if ($roster === []) {
+            return 'none saved — describe the presenter from the brief';
+        }
+        $lines = [];
+        foreach ($roster as $c) {
+            $traits = implode(', ', array_filter([
+                (string) ($c['gender'] ?? ''), (string) ($c['age_group'] ?? ''), (string) ($c['style'] ?? ''),
+            ]));
+            $situations = implode(', ', array_filter((array) ($c['situations'] ?? [])));
+            $lines[] = sprintf('- id %d — %s%s: %s%s',
+                (int) ($c['id'] ?? 0),
+                (string) ($c['name'] ?? 'Unnamed'),
+                $traits !== '' ? ' ('.$traits.')' : '',
+                (string) ($c['description'] ?? ''),
+                $situations !== '' ? ' Good for: '.$situations.'.' : '',
+            );
+        }
+
+        return implode("\n", $lines);
+    }
+
     private function libraryBrief(array $library): string
     {
         if ($library === []) {

@@ -130,6 +130,25 @@ class UgcPlanTest extends TestCase
         $this->assertSame('A woman in her late 20s, gym-ready, upbeat.', $plan['presenter']);
     }
 
+    public function test_director_casts_only_from_the_offered_roster(): void
+    {
+        $reply = fn (int $id) => ['content' => json_encode([
+            'format' => 'direct_camera', 'presenter' => 'A warm creator in her 20s.',
+            'presenter_character_id' => $id, 'segments' => [$this->shot()]])];
+        $roster = [['id' => 7, 'name' => 'Isla', 'description' => 'Warm, relatable, late 20s.']];
+
+        $ai = $this->createMock(AIGenerationAdapter::class);
+        $ai->method('generate')->willReturn($reply(7));
+        $plan = (new UgcShotPlanner($ai))->plan('', 'My app', 'Morning routine', roster: $roster);
+        $this->assertSame(7, $plan['presenter_character_id']);
+
+        // An invented id — one we never offered — must not survive.
+        $ai2 = $this->createMock(AIGenerationAdapter::class);
+        $ai2->method('generate')->willReturn($reply(99));
+        $plan2 = (new UgcShotPlanner($ai2))->plan('', 'My app', 'Morning routine', roster: $roster);
+        $this->assertNull($plan2['presenter_character_id']);
+    }
+
     public function test_ai_receives_brief_and_returns_a_reviewable_reaction(): void
     {
         $ai = $this->createMock(AIGenerationAdapter::class);

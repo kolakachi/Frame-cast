@@ -466,6 +466,26 @@ function toggleCharacter(c) {
 
 const isSelected = (c) => selected.value.some((x) => x.id === c.id);
 
+// The director casts from the saved roster too — descriptions only, no
+// image leaves the workspace. The pick lands in the cast slot exactly like
+// a manual choice: swap or remove it freely, and an empty slot falls back
+// to the plan's written presenter.
+const directorCastId = ref(null);
+async function applyDirectorCast() {
+  const id = plan.value?.presenter_character_id;
+  if (!id || noCast.value || selected.value.length) return;
+  try {
+    const { data } = await api.get(`/characters/${id}`);
+    const c = data?.data?.character;
+    if (c && !selected.value.length) {
+      selected.value.push(c);
+      directorCastId.value = c.id;
+    }
+  } catch {
+    /* an unavailable pick simply stays uncast */
+  }
+}
+
 function setFilter(key, value) {
   filters.value[key] = filters.value[key] === value ? "" : value;
   loadCharacters();
@@ -543,6 +563,7 @@ async function makePlan() {
     plan.value = data?.data ?? null;
     clearVariants();
     quotedFingerprint.value = planFingerprint.value;
+    applyDirectorCast();
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, "Could not plan the shots.");
   } finally {
@@ -1127,6 +1148,9 @@ onMounted(() => {
             </div>
             <div class="ugc-card-f">
               <button class="ugc-btn" @click="openPicker">＋ Add characters</button>
+              <span v-if="selected.length === 1 && selected[0].id === directorCastId" class="ugc-hint">
+                Cast by the director from your saved characters — swap or remove freely.
+              </span>
             </div>
           </div>
           <p v-else-if="plan" class="ugc-hint">
