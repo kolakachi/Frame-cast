@@ -39,6 +39,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         public readonly int $sceneId,
         public readonly array $chunks,
         public readonly int $credits,
+        public readonly string $engine = 'veo',
     ) {
         $this->onQueue('generation');
     }
@@ -63,7 +64,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $url = null;
                 $lastTransient = null;
                 for ($attempt = 0; $attempt < 2; $attempt++) {
-                    $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame);
+                    $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame, $this->engine);
                     $scene->forceFill(['image_generation_settings_json' => array_merge(
                         $scene->image_generation_settings_json ?? [],
                         ['oneshot_segment' => $i + 1, 'oneshot_total' => count($this->chunks), 'oneshot_prediction_id' => $predictionId],

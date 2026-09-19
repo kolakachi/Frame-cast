@@ -14,27 +14,40 @@ class ReplicateVeoAdapter
 {
     public const MODEL = 'google/veo-3.1-fast';
 
+    /** One-shot engines. Seedance 2.5 generates up to 30s in one pass. */
+    public const ENGINES = [
+        'seedance25' => 'bytedance/seedance-2.5',
+        'veo' => 'google/veo-3.1-fast',
+    ];
+
     public function configured(): bool
     {
         return (string) config('services.replicate.api_token', '') !== '';
     }
 
-    public function start(string $prompt, int $seconds, ?string $imageDataUri = null): string
+    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo'): string
     {
+        $model = self::ENGINES[$engine] ?? self::ENGINES['veo'];
         $input = [
             'prompt' => $prompt,
-            'duration' => in_array($seconds, [4, 6, 8], true) ? $seconds : (($seconds <= 4) ? 4 : ($seconds <= 6 ? 6 : 8)),
             'aspect_ratio' => '9:16',
             'resolution' => '720p',
             'generate_audio' => true,
         ];
+        if ($engine === 'seedance25') {
+            $input['duration'] = max(4, min(30, $seconds));
+            $input['watermark'] = false;
+        } else {
+            // Veo accepts exactly 4, 6 or 8 seconds.
+            $input['duration'] = in_array($seconds, [4, 6, 8], true) ? $seconds : (($seconds <= 4) ? 4 : ($seconds <= 6 ? 6 : 8));
+        }
         if ($imageDataUri !== null) {
             $input['image'] = $imageDataUri;
         }
 
         $response = Http::withToken((string) config('services.replicate.api_token'))
             ->timeout(60)
-            ->post('https://api.replicate.com/v1/models/'.self::MODEL.'/predictions', ['input' => $input]);
+            ->post('https://api.replicate.com/v1/models/'.$model.'/predictions', ['input' => $input]);
 
         $id = (string) data_get($response->json(), 'id');
         if (! $response->successful() || $id === '') {

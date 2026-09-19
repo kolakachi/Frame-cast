@@ -724,12 +724,24 @@ class UgcController extends Controller
             $presenter = $c ? trim($c->name.($c->description ? ' — '.$c->description : '')) : '';
         }
 
-        $chunks = \App\Services\Ugc\UgcOneShotCompiler::compile($segments, [
+        $engine = in_array($request->input('engine'), ['seedance25', 'veo'], true) ? $request->input('engine') : 'seedance25';
+        $style = [
             'presenter' => $presenter,
             'setting' => trim((string) ($v['setting'] ?? '')),
             'product' => trim((string) ($v['product'] ?? '')),
             'tone' => trim((string) ($v['tone'] ?? '')),
-        ]);
+        ];
+        // Seedance 2.5 makes the whole ad in one generation (≤30s) — the
+        // purest one-take. Longer plans, or explicit choice, chain on Veo.
+        $single = $engine === 'seedance25'
+            ? \App\Services\Ugc\UgcOneShotCompiler::compileSingle($segments, $style)
+            : null;
+        if ($engine === 'seedance25' && $single === null) {
+            $engine = 'veo';
+        }
+        $chunks = $single !== null
+            ? [$single]
+            : \App\Services\Ugc\UgcOneShotCompiler::compile($segments, $style);
         $totalSeconds = array_sum(array_column($chunks, 'seconds'));
         $quote = (int) ($totalSeconds * CreditService::VIDEO_ONESHOT_PER_SECOND);
         if ((int) $v['credits'] !== $quote) {
@@ -781,6 +793,7 @@ class UgcController extends Controller
             $project->id, $scene->id,
             array_map(fn ($c) => ['prompt' => $c['prompt'], 'seconds' => $c['seconds']], $chunks),
             $quote,
+            $engine,
         )->afterCommit();
 
         return response()->json(['data' => [

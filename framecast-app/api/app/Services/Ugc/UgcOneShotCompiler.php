@@ -72,6 +72,48 @@ class UgcOneShotCompiler
         return $out;
     }
 
+    /**
+     * The whole plan as ONE generation — for engines that produce up to 30
+     * seconds natively (Seedance 2.5). No chunking, no handoff frames: the
+     * purest one-take, cuts directed in-prose at beat boundaries.
+     *
+     * @return array{prompt: string, seconds: int, dialogue: string}|null null when the plan exceeds the cap
+     */
+    public static function compileSingle(array $beats, array $style = [], int $maxSeconds = 30): ?array
+    {
+        $beats = array_values(array_filter($beats, fn ($b) => is_array($b)));
+        if ($beats === []) {
+            return null;
+        }
+        $total = (int) ceil(array_sum(array_map(fn ($b) => max(1.0, (float) ($b['seconds'] ?? 3)), $beats)));
+        if ($total > $maxSeconds) {
+            return null;
+        }
+
+        $lines = [];
+        $dialogue = [];
+        foreach ($beats as $j => $beat) {
+            $lines[] = ($j === 0 ? ucfirst(self::framing($beat)) : 'Cut to '.self::framing($beat)).'.';
+            $said = trim((string) ($beat['script_text'] ?? ''));
+            if ($said !== '') {
+                $delivery = trim((string) ($beat['voice_direction'] ?? ''));
+                $lines[] = ($delivery !== '' ? 'The presenter says, '.lcfirst(rtrim($delivery, '.')).': ' : 'The presenter says: ').'"'.$said.'"';
+                $dialogue[] = $said;
+            }
+        }
+
+        return [
+            'prompt' => self::preamble($style)."
+
+".implode(' ', $lines)
+                ."
+
+Casual creator energy, natural imperfect delivery, no studio lighting, no text overlays, no logos or watermarks. Natural room tone.",
+            'seconds' => max(4, $total),
+            'dialogue' => implode(' ', $dialogue),
+        ];
+    }
+
     /** Beats greedily packed into 4–8s generations, cuts kept inside chunks. */
     private static function pack(array $beats): array
     {
