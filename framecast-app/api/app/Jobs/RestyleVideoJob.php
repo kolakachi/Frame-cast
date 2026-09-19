@@ -41,6 +41,7 @@ class RestyleVideoJob implements ShouldQueue
         public readonly string $prompt,
         public readonly string $mode,
         public readonly int $credits,
+        public readonly string $engine = 'luma',
     ) {
         $this->onQueue('generation');
     }
@@ -66,10 +67,10 @@ class RestyleVideoJob implements ShouldQueue
             }
             file_put_contents($srcPath, $stream);
 
-            $staged = $adapter->uploadSource($srcPath);
+            $staged = $adapter->uploadSource($srcPath, $this->engine);
             $stagedKey = $staged['key'];
 
-            $predictionId = $adapter->start($staged['url'], $this->prompt, $this->mode);
+            $predictionId = $adapter->start($staged['url'], $this->prompt, $this->mode, $this->engine);
             $scene->forceFill(['image_generation_settings_json' => array_merge(
                 $scene->image_generation_settings_json ?? [],
                 ['restyle_prediction_id' => $predictionId],

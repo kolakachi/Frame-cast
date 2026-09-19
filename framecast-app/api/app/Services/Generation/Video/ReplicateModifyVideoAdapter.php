@@ -22,7 +22,16 @@ class ReplicateModifyVideoAdapter
 {
     public const MODEL = 'luma/modify-video';
 
+    /** Engine key -> Replicate model. Aleph 2 passed content Luma's moderation refused. */
+    public const ENGINES = [
+        'luma' => 'luma/modify-video',
+        'aleph2' => 'runwayml/aleph-2',
+    ];
+
     public const MAX_SECONDS = 30;
+
+    // Aleph 2 caps input at 16MB (Luma allows 100MB).
+    public const ALEPH_MAX_BYTES = 16 * 1024 * 1024;
 
     public const MODES = [
         'adhere_1', 'adhere_2', 'adhere_3',
@@ -47,9 +56,22 @@ class ReplicateModifyVideoAdapter
      *
      * @return array{url: string, key: string}
      */
-    public function uploadSource(string $localPath): array
+    public function uploadSource(string $localPath, string $engine = 'luma'): array
     {
         $prepared = $this->ensureMinResolution($localPath);
+        // Aleph 2 refuses inputs over 16MB; recompress rather than reject.
+        if ($engine === 'aleph2' && filesize($prepared) > self::ALEPH_MAX_BYTES - 512 * 1024) {
+            $shrunk = sys_get_temp_dir().'/restyle-shrink-'.uniqid().'.mp4';
+            $result = Process::timeout(300)->run([
+                'ffmpeg', '-y', '-i', $prepared, '-c:v', 'libx264', '-preset', 'fast', '-crf', '26', '-c:a', 'copy', $shrunk,
+            ]);
+            if ($result->successful() && is_file($shrunk) && filesize($shrunk) < filesize($prepared)) {
+                if ($prepared !== $localPath) {
+                    @unlink($prepared);
+                }
+                $prepared = $shrunk;
+            }
+        }
         $key = 'restyle-sources/'.\Illuminate\Support\Str::uuid().'.mp4';
 
         try {
@@ -93,14 +115,19 @@ class ReplicateModifyVideoAdapter
     }
 
     /** Submit the restyle and return the prediction id. Throws on refusal. */
-    public function start(string $videoUrl, string $prompt, string $mode = 'flex_1'): string
+    public function start(string $videoUrl, string $prompt, string $mode = 'flex_1', string $engine = 'luma'): string
     {
+        $model = self::ENGINES[$engine] ?? self::ENGINES['luma'];
         $mode = in_array($mode, self::MODES, true) ? $mode : 'flex_1';
+        // Aleph 2 has no adherence knob — the prompt is the whole control.
+        $input = $engine === 'aleph2'
+            ? ['video' => $videoUrl, 'prompt' => $prompt]
+            : ['video' => $videoUrl, 'prompt' => $prompt, 'mode' => $mode];
 
         $response = Http::withToken((string) config('services.replicate.api_token'))
             ->timeout(60)
-            ->post('https://api.replicate.com/v1/models/'.self::MODEL.'/predictions', [
-                'input' => ['video' => $videoUrl, 'prompt' => $prompt, 'mode' => $mode],
+            ->post('https://api.replicate.com/v1/models/'.$model.'/predictions', [
+                'input' => $input,
             ]);
 
         $id = (string) data_get($response->json(), 'id');

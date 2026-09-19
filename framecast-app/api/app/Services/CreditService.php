@@ -136,9 +136,14 @@ class CreditService
     // Spokesperson (VEED Fabric) is PER-SECOND — Fabric bills per second, so
     // any flat charge sells long clips below cost (see spokespersonCost). The
     // constant is the 5s minimum, used as the pre-flight/estimate default.
-    // Luma Modify (Ray-2) video-to-video restyle: upstream bills per output
-    // second at 720p, so we do too. A 15s reel is 120 credits.
-    public const VIDEO_RESTYLE_PER_SECOND = 8;
+    // Video-to-video restyle, priced per output second PER ENGINE — the
+    // engines' upstream rates differ by 2-3x. Luma Modify (Ray-2) runs
+    // ~\$0.10-0.30/s; Runway Aleph 2 bills \$0.336/s flat. At ~\$0.015-0.02
+    // per credit sold, the old flat 8cr/s was at or below cost.
+    public const VIDEO_RESTYLE_PER_SECOND = [
+        'luma' => 15,
+        'aleph2' => 30,
+    ];
 
     public const VIDEO_SPOKESPERSON  = 120;  // 5s minimum — VEED Fabric 1.0 480p (image+audio lip-sync); real cost is per second, see spokespersonCost()
 

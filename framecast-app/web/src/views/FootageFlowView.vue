@@ -77,10 +77,14 @@ const producing = ref(false);
 // ── restyle (video-to-video) ─────────────────────────────────────────────
 // Own footage only: the clip itself goes through the video model with the
 // brief as the instruction; motion and timing stay, subjects change.
-const RESTYLE_PER_SECOND = 8; // mirrors CreditService::VIDEO_RESTYLE_PER_SECOND via /credit-costs
+// mirrors CreditService::VIDEO_RESTYLE_PER_SECOND via /credit-costs
+const RESTYLE_PER_SECOND = { luma: 15, aleph2: 30 };
+const restyleEngine = ref("aleph2");
 const restyleMode = ref("flex_1");
 const restyling = ref(false);
-const restyleCredits = computed(() => Math.ceil(sourceAsset.value?.duration_seconds ?? 0) * RESTYLE_PER_SECOND);
+const restyleCredits = computed(
+  () => Math.ceil(sourceAsset.value?.duration_seconds ?? 0) * RESTYLE_PER_SECOND[restyleEngine.value]
+);
 const canRestyle = computed(
   () => rights.value === "reuse" && (sourceAsset.value?.duration_seconds ?? 0) > 0 && (sourceAsset.value?.duration_seconds ?? 31) <= 30
 );
@@ -91,6 +95,7 @@ async function restyle() {
   try {
     const { data } = await api.post(`/ugc/footage/${session.value.id}/restyle`, {
       consent_owner: true,
+      engine: restyleEngine.value,
       mode: restyleMode.value,
       credits: restyleCredits.value,
     });
@@ -539,8 +544,17 @@ onMounted(() => {
           <div class="ff-restyle-m">
             <b>Restyle the video itself</b>
             <p class="ff-muted">Your clip goes through the video model with your instruction — "{{ session?.brief || 'your brief' }}" — keeping the original motion, timing and soundtrack. No passages, no presenter.</p>
-            <label class="ff-label" style="margin-top:8px">How closely to follow the source</label>
+            <label class="ff-label" style="margin-top:8px">Engine</label>
             <div class="ff-pills">
+              <button type="button" :class="['ff-pill', 'ff-pill-btn', restyleEngine === 'aleph2' ? 'on' : '']" @click="restyleEngine = 'aleph2'">
+                Runway Aleph 2 — strongest edits · {{ RESTYLE_PER_SECOND.aleph2 }} cr/s
+              </button>
+              <button type="button" :class="['ff-pill', 'ff-pill-btn', restyleEngine === 'luma' ? 'on' : '']" @click="restyleEngine = 'luma'">
+                Luma Modify — cheaper · {{ RESTYLE_PER_SECOND.luma }} cr/s
+              </button>
+            </div>
+            <label v-if="restyleEngine === 'luma'" class="ff-label" style="margin-top:8px">How closely to follow the source</label>
+            <div v-if="restyleEngine === 'luma'" class="ff-pills">
               <button v-for="m in ['adhere_1', 'flex_1', 'reimagine_1']" :key="m" type="button"
                 :class="['ff-pill', 'ff-pill-btn', restyleMode === m ? 'on' : '']" @click="restyleMode = m">
                 {{ { adhere_1: "Very close", flex_1: "Balanced", reimagine_1: "Loose" }[m] }}

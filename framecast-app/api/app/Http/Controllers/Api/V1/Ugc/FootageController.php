@@ -245,6 +245,7 @@ class FootageController extends Controller
         $session = $this->find($request, $id);
         $v = $request->validate([
             'consent_owner' => ['accepted'],
+            'engine' => ['sometimes', Rule::in(['luma', 'aleph2'])],
             'mode' => ['sometimes', Rule::in(\App\Services\Generation\Video\ReplicateModifyVideoAdapter::MODES)],
             'instruction' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'credits' => ['required', 'integer'],
@@ -268,7 +269,8 @@ class FootageController extends Controller
             throw ValidationException::withMessages(['instruction' => 'Say what should change — that sentence is the whole instruction.']);
         }
 
-        $quote = (int) ceil($duration) * \App\Services\CreditService::VIDEO_RESTYLE_PER_SECOND;
+        $engine = $v['engine'] ?? 'luma';
+        $quote = (int) ceil($duration) * \App\Services\CreditService::VIDEO_RESTYLE_PER_SECOND[$engine];
         if ((int) $v['credits'] !== $quote) {
             throw ValidationException::withMessages(['credits' => "The price changed — this restyle is {$quote} credits. Review and approve again."]);
         }
@@ -303,11 +305,12 @@ class FootageController extends Controller
             'image_generation_settings_json' => [
                 'in_progress' => true, 'ugc_kind' => 'b_roll',
                 'restyle_mode' => $v['mode'] ?? 'flex_1',
+                'restyle_engine' => $engine,
                 'generation_started_at' => now()->toIso8601String(),
             ],
         ]);
         \App\Jobs\RestyleVideoJob::dispatch(
-            $session->id, $project->id, $scene->id, $instruction, $v['mode'] ?? 'flex_1', $quote,
+            $session->id, $project->id, $scene->id, $instruction, $v['mode'] ?? 'flex_1', $quote, $engine,
         )->afterCommit();
 
         $session->forceFill(['run_id' => $runId, 'status' => 'producing', 'consent_json' => [

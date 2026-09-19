@@ -214,7 +214,7 @@ Route::prefix('v1')->group(function (): void {
 
             return response()->json(['data' => ['costs' => [
                 'ai_music' => \App\Services\CreditService::AI_MUSIC,
-                'video_restyle_per_second' => \App\Services\CreditService::VIDEO_RESTYLE_PER_SECOND,
+                'video_restyle_per_second' => \App\Services\CreditService::VIDEO_RESTYLE_PER_SECOND, // keyed by engine
                 'tts'      => \App\Services\CreditService::TTS_GEMINI,
                 'tts_clone' => \App\Services\CreditService::TTS_CLONE,
                 'pdf_vision_page' => \App\Services\CreditService::PDF_VISION_PAGE,
