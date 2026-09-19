@@ -54,6 +54,7 @@ class UgcController extends Controller
             $working = false;
             $failed = $project->status === 'failed';
             $sceneRows = [];
+            $thumbAssetId = null;
             foreach ($project->scenes->sortBy('scene_order') as $scene) {
                 $settings = $scene->image_generation_settings_json ?? [];
                 $voice = $scene->voice_settings_json ?? [];
@@ -81,9 +82,22 @@ class UgcController extends Controller
                         'preview_asset_id' => $scene->visual_asset_id,
                     ];
                 }
+                // First finished visual carries the take's card thumbnail.
+                if ($thumbAssetId === null && $scene->visual_asset_id && $sceneError === '') {
+                    $thumbAssetId = (int) $scene->visual_asset_id;
+                }
             }
 
+            $thumbUrl = $thumbAssetId ? \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                'media.assets.content', now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)),
+                ['assetId' => $thumbAssetId],
+            ) : null;
+            // A one-shot take's visual is a video; the card must know which
+            // element to render — an <img> pointed at an mp4 shows a broken
+            // glyph.
+            $thumbType = $thumbAssetId ? Asset::query()->whereKey($thumbAssetId)->value('asset_type') : null;
             $row = ['id' => $project->id, 'character' => $project->title, 'scenes' => $project->scenes->count(),
+                'thumbnail_url' => $thumbUrl, 'thumbnail_type' => $thumbType, 'created_at' => $project->created_at?->toIso8601String(),
                 'credits' => data_get($project->visual_brief, 'ugc_estimated_credits', 0),
                 'variant' => data_get($project->visual_brief, 'ugc_variant'),
                 'run_id' => data_get($project->visual_brief, 'ugc_run_id'),

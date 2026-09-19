@@ -1069,7 +1069,12 @@ onMounted(() => {
               <span class="ugc-kind on">{{ plan.format }}</span>
               <span class="ugc-kind roll">~{{ (plan.segments ?? []).reduce((t, x) => t + Number(x.seconds || 0), 0) }}s</span>
               <span class="ugc-kind roll">{{ aspectRatio }}</span>
+              <span v-if="oneShotEligible" class="ugc-kind on">One fluid take — beats become dialogue, cuts land between them</span>
             </div>
+            <p v-if="oneShotEligible" class="ugc-hint" style="margin:6px 0 0">
+              This generates as a single video: the presenter speaks these lines in one take.
+              Each passage below is a beat of that take, not a separate scene.
+            </p>
           </div>
           <div class="ugc-plan-layout">
           <aside class="ugc-plan-list">
