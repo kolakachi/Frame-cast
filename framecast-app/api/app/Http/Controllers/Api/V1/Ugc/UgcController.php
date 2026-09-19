@@ -722,6 +722,10 @@ class UgcController extends Controller
             'character_id' => ['nullable', 'integer', 'min:1'],
             'presenter_description' => ['nullable', 'string', 'max:400'],
             'product_asset_id' => ['nullable', 'integer', 'min:1'],
+            // Several angles teach the model the product's geometry — one
+            // front shot means it invents the back when the presenter turns it.
+            'product_asset_ids' => ['nullable', 'array', 'max:5'],
+            'product_asset_ids.*' => ['integer', 'min:1'],
             'setting' => ['nullable', 'string', 'max:300'],
             'product' => ['nullable', 'string', 'max:200'],
             'tone' => ['nullable', 'string', 'max:200'],
@@ -759,8 +763,14 @@ class UgcController extends Controller
 
             return $bytes ? 'data:'.$asset->mime_type.';base64,'.base64_encode($bytes) : null;
         };
-        if ($uri = $dataUri($v['product_asset_id'] ?? null)) {
-            $referenceImages[] = $uri;
+        $productIds = array_values(array_unique(array_filter(array_merge(
+            [(int) ($v['product_asset_id'] ?? 0)],
+            array_map('intval', $v['product_asset_ids'] ?? []),
+        ))));
+        foreach (array_slice($productIds, 0, 5) as $pid) {
+            if ($uri = $dataUri($pid)) {
+                $referenceImages[] = $uri;
+            }
         }
 
         $presenter = trim((string) ($v['presenter_description'] ?? ''));

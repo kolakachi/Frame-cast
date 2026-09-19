@@ -208,7 +208,9 @@ const selectedVariants = computed(() =>
 );
 
 const productPicker = ref(false);
-const productAsset = ref(null);   // { id, thumbnail_url, title }
+const productAsset = ref(null);   // first photo — composed path + back-compat
+// Several angles teach the model the product's geometry; up to 5.
+const productAssets = ref([]);    // [{ id, thumbnail_url, title }]
 const formatOptions = [
   ["auto", "Let the director choose"],
   ["direct_camera", "Continuous talking take"],
@@ -574,17 +576,21 @@ function selectFootage({ item }) {
 }
 
 function selectProduct({ item }) {
-  if (item?.id && item._type === "asset") {
-    productAsset.value = {
-      id: item.id,
-      thumbnail_url: item.thumbnail_url || item.storage_url,
-      title: item.title,
-    };
+  if (item?.id && item._type === "asset" && !productAssets.value.some((a) => a.id === item.id)) {
+    const entry = { id: item.id, thumbnail_url: item.thumbnail_url || item.storage_url, title: item.title };
+    productAssets.value = [...productAssets.value, entry].slice(0, 5);
+    productAsset.value = productAssets.value[0];
     // The actor image is rebuilt with the product in it, so a plan approved
     // before this no longer matches what will be generated.
     reviewed.value = false;
   }
   productPicker.value = false;
+}
+
+function removeProduct(id) {
+  productAssets.value = productAssets.value.filter((a) => a.id !== id);
+  productAsset.value = productAssets.value[0] ?? null;
+  reviewed.value = false;
 }
 
 async function previewVoice(character) {
@@ -689,6 +695,7 @@ async function generate() {
           : "",
         character_id: presenter?.id ?? null,
         product_asset_id: productAsset.value?.id ?? null,
+        product_asset_ids: productAssets.value.map((a) => a.id),
         product: product.value,
         tone: context.value.slice(0, 200),
         language: language.value,
@@ -982,13 +989,16 @@ onMounted(() => {
             <label>
               <span class="ugc-label-row">Product photo (optional)</span>
               <span class="ugc-product">
-                <img v-if="productAsset" :src="productAsset.thumbnail_url" alt="" class="ugc-product-thumb" />
-                <button class="ugc-btn" type="button" @click="productPicker = true">
-                  {{ productAsset ? 'Change photo' : 'Choose a photo' }}
+                <span v-for="a in productAssets" :key="a.id" class="ugc-product-item">
+                  <img :src="a.thumbnail_url" alt="" class="ugc-product-thumb" />
+                  <button type="button" aria-label="Remove" @click="removeProduct(a.id)">×</button>
+                </span>
+                <button v-if="productAssets.length < 5" class="ugc-btn" type="button" @click="productPicker = true">
+                  {{ productAssets.length ? '+ Add angle' : 'Choose a photo' }}
                 </button>
-                <button v-if="productAsset" class="ugc-btn" type="button" @click="productAsset = null; reviewed = false">
-                  Remove
-                </button>
+              </span>
+              <span v-if="productAssets.length" class="ugc-hint">
+                {{ productAssets.length }}/5 — front, back and a held-in-hand shot teach the model its shape and size.
               </span>
               <span class="ugc-hint">Composited onto the actor so they hold or wear your actual product.</span>
             </label>
@@ -2678,6 +2688,12 @@ onMounted(() => {
 }
 
 /* ── mockup-flow additions ─────────────────────────────────────────────── */
+.ugc-product-item { position: relative; display: inline-flex; }
+.ugc-product-item button {
+  position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;
+  border-radius: 50%; border: none; background: var(--color-danger, #b3261e);
+  color: #fff; font-size: 11px; line-height: 1; cursor: pointer;
+}
 .ugc-brief-tabs { margin-bottom: 14px; }
 .ugc-two { display: flex; gap: 12px; }
 .ugc-two > label { flex: 1; }
