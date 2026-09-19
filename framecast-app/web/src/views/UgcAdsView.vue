@@ -222,6 +222,10 @@ const formatOptions = [
   ["text_led", "Text-led cards — no presenter, no video model"],
 ];
 const selected = ref([]); // chosen characters
+// exact = Veo anchored to the real face (12 cr/s); variant = Seedance's
+// sharper renderer from a written casting sheet — a close look-alike,
+// said plainly on the toggle (18 cr/s).
+const castStyle = ref("exact");
 const aspectRatio = ref("9:16");
 const plan = ref(null); // { segments, reasoning, credits_per_character }
 // A still-only plan has no presenter, so the cast step neither gates nor
@@ -410,11 +414,16 @@ watch(
   { deep: true, flush: "sync" }
 );
 watch(
-  [planFingerprint, selected, aspectRatio, voiceByCharacter],
+  // "I reviewed the plan and the estimate" attests to the plan and its
+  // price. Invalidate on what moves either: plan content, who is cast
+  // (membership, not object internals), exact-vs-variant, aspect. A voice
+  // pick changes the sound, not the estimate — it must not silently clear
+  // the tick (that was the "box sometimes unticks" bug).
+  [planFingerprint, () => selected.value.map((c) => c.id).join(","), castStyle, aspectRatio],
   () => {
     reviewed.value = false;
   },
-  { deep: true, flush: "sync" }
+  { flush: "sync" }
 );
 watch(
   format,
@@ -473,10 +482,6 @@ const isSelected = (c) => selected.value.some((x) => x.id === c.id);
 // a manual choice: swap or remove it freely, and an empty slot falls back
 // to the plan's written presenter.
 const directorCastId = ref(null);
-// exact = Veo anchored to the real face (12 cr/s); variant = Seedance's
-// sharper renderer from a written casting sheet — a close look-alike,
-// said plainly on the toggle (18 cr/s).
-const castStyle = ref("exact");
 async function applyDirectorCast() {
   const id = plan.value?.presenter_character_id;
   if (!id || noCast.value || selected.value.length) return;
