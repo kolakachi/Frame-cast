@@ -84,6 +84,11 @@ class ReplicateVeoAdapter
             }
             if (in_array($status, ['failed', 'canceled'], true)) {
                 $error = (string) ($p['error'] ?? 'no detail');
+                // The raw provider error carries the E-code that diagnosis
+                // needs; the user-facing copy below deliberately does not.
+                \Illuminate\Support\Facades\Log::info('video generation declined/failed', [
+                    'prediction_id' => $predictionId, 'error' => mb_substr($error, 0, 500),
+                ]);
                 if (str_contains($error, 'E006') || str_contains($error, 'E005') || stripos($error, 'sensitive') !== false) {
                     throw new \RuntimeException('The video model declined this segment — its moderation flags some content even in tasteful ads. Nothing was charged; rephrase the framing and retry.');
                 }

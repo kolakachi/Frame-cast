@@ -815,6 +815,7 @@ class UgcController extends Controller
             // Seedance's renderer from a written casting sheet — a close
             // look-alike, disclosed as such in the UI.
             'cast_style' => ['sometimes', 'string', 'in:exact,variant'],
+            'request_id' => ['sometimes', 'uuid'],
             'presenter_description' => ['nullable', 'string', 'max:400'],
             'product_asset_id' => ['nullable', 'integer', 'min:1'],
             // Several angles teach the model the product's geometry — one
@@ -946,7 +947,35 @@ class UgcController extends Controller
 
         $runId = (string) Str::uuid();
         $script = UgcPlan::script($segments);
-        $project = Project::query()->create([
+        // Idempotency receipt: the unique (workspace_id, request_id) index
+        // makes this claim atomic — a double-click or retried request replays
+        // the first response instead of starting and charging a second take.
+        // Claimed only after every validation passed, so failed submissions
+        // never poison a retry.
+        $requestId = $v['request_id'] ?? (string) Str::uuid();
+        $fingerprint = hash('sha256', json_encode($v));
+        try {
+            DB::table('ugc_run_requests')->insert([
+                'workspace_id' => $user->workspace_id, 'request_id' => $requestId,
+                'fingerprint' => $fingerprint, 'response' => json_encode(['pending' => true]),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            $existing = DB::table('ugc_run_requests')
+                ->where('workspace_id', $user->workspace_id)->where('request_id', $requestId)->first();
+            if ($existing && ! hash_equals((string) $existing->fingerprint, $fingerprint)) {
+                return $this->error('request_changed', 'This submission has already started with a different plan. Start a new run.', 409);
+            }
+            $stored = $existing ? json_decode((string) $existing->response, true) : null;
+            if (is_array($stored) && empty($stored['pending'])) {
+                return response()->json($stored, 200);
+            }
+
+            return $this->error('request_in_flight', 'This take is already starting — give it a moment.', 409);
+        }
+
+        try {
+            $project = Project::query()->create([
             'workspace_id' => $user->workspace_id,
             'created_by_user_id' => $user->id,
             'title' => Str::limit($script, 48, '…', preserveWords: true) ?: 'One-take UGC ad',
@@ -983,12 +1012,22 @@ class UgcController extends Controller
             $variantSeed,
         )->afterCommit();
 
-        return response()->json(['data' => [
+        $payload = ['data' => [
             'takes' => [[ 'id' => $project->id, 'character' => $project->title,
                 'scenes' => 1, 'credits' => $quote, 'status' => 'generating',
                 'run_id' => $runId, 'variant' => null ]],
             'credits_quoted' => $quote, 'run_id' => $runId,
-        ], 'meta' => []], 201);
+        ], 'meta' => []];
+        DB::table('ugc_run_requests')->where('workspace_id', $user->workspace_id)
+            ->where('request_id', $requestId)->update(['response' => json_encode($payload), 'updated_at' => now()]);
+
+            return response()->json($payload, 201);
+        } catch (\Throwable $e) {
+            // Nothing started — release the claim so the same request can retry.
+            DB::table('ugc_run_requests')->where('workspace_id', $user->workspace_id)
+                ->where('request_id', $requestId)->delete();
+            throw $e;
+        }
     }
 
     private function planRules(): array

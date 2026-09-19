@@ -102,6 +102,18 @@ class CharacterImageAdapter implements ImageGenerationAdapter
         // multipart-only and accepts image[] as a repeated multipart field.
         $refs = [];
         foreach ($referenceUrls as $url) {
+            // Callers that already hold bytes pass data: URIs — no fetch.
+            if (str_starts_with((string) $url, 'data:')) {
+                $comma = strpos($url, ',');
+                $meta = $comma !== false ? substr($url, 5, $comma - 5) : '';
+                $bytes = $comma !== false
+                    ? (str_contains($meta, 'base64') ? base64_decode(substr($url, $comma + 1), true) : rawurldecode(substr($url, $comma + 1)))
+                    : false;
+                if (is_string($bytes) && $bytes !== '') {
+                    $refs[] = ['bytes' => $bytes, 'name' => 'reference.'.(str_contains($meta, 'png') ? 'png' : 'jpg')];
+                }
+                continue;
+            }
             $refResponse = Http::timeout(30)->get($url);
             if (! $refResponse->successful()) {
                 Log::warning('CharacterImageAdapter: skipping unreachable reference', [

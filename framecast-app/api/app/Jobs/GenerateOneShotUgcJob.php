@@ -62,6 +62,30 @@ class GenerateOneShotUgcJob implements ShouldQueue
         try {
             $segmentPaths = [];
             $startFrame = $this->initialStartFrame;
+            // veo-3.1-fast has no reference-image inputs, so packaging can
+            // only reach an exact take through the start frame itself:
+            // composite the character holding the product (same /edits
+            // pipeline the multi-scene lane uses). Runs on the worker, its
+            // small image cost is absorbed, and any failure falls back to
+            // the plain character frame.
+            if ($startFrame !== null && $this->referenceImages !== [] && $this->engine === 'veo') {
+                try {
+                    $composite = app(\App\Services\Generation\Image\CharacterImageAdapter::class)->generate(
+                        'Vertical 9:16 selfie-framing still of the person from the first reference image naturally holding the product shown in the other reference images at chest height, label facing the camera, casual lived-in setting, soft daylight, authentic phone-camera feel',
+                        'realistic', '9:16',
+                        ['reference_image_urls' => array_slice(array_merge([$startFrame], $this->referenceImages), 0, 4), 'quality' => 'medium'],
+                    );
+                    $bytes = ! empty($composite['image_b64']) ? base64_decode($composite['image_b64'], true)
+                        : (! empty($composite['image_url']) ? @file_get_contents($composite['image_url']) : null);
+                    if (is_string($bytes) && $bytes !== '') {
+                        $startFrame = 'data:image/png;base64,'.base64_encode($bytes);
+                    }
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('one-shot: product composite failed, plain character frame used', [
+                        'project_id' => $this->projectId, 'error' => mb_substr($e->getMessage(), 0, 200),
+                    ]);
+                }
+            }
             foreach ($this->chunks as $i => $chunk) {
                 // Provider containers occasionally die with a bare transport
                 // error (httpx.ReadError, empty error string) — transient, and

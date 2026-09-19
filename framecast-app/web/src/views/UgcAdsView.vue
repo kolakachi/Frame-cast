@@ -733,7 +733,7 @@ async function generate() {
     // The one-video lane: spoken plans become a single fluid generation.
     if (oneShotEligible.value) {
       const presenter = selected.value[0];
-      const { data } = await api.post("/ugc/generate-one-shot", {
+      const oneShotPayload = {
         format: plan.value.format,
         segments: plan.value.segments,
         script: plan.value.script,
@@ -750,6 +750,10 @@ async function generate() {
         consent: true,
         reviewed: true,
         credits: oneShotCredits.value,
+      };
+      const { data } = await api.post("/ugc/generate-one-shot", {
+        ...oneShotPayload,
+        request_id: requestKey(oneShotPayload),
       });
       reviewed.value = false;
       loadTakes();
@@ -1175,13 +1179,13 @@ onMounted(() => {
             <div v-if="selected.length && oneShotEligible" class="ugc-cast-style">
               <label :class="['ugc-style-pill', { on: castStyle === 'exact' }]">
                 <input v-model="castStyle" type="radio" value="exact" />
-                <b>Exact match</b>
-                <span>Their real face anchors the video · 12 cr/s</span>
+                <b>Use this character</b>
+                <span>Their real photo anchors the video — the closest match we can generate · 12 cr/s</span>
               </label>
               <label :class="['ugc-style-pill', { on: castStyle === 'variant' }]">
                 <input v-model="castStyle" type="radio" value="variant" />
-                <b>Sharper renderer, close variant</b>
-                <span>A written casting sheet recreates their look — a close look-alike, not an exact match · 18 cr/s</span>
+                <b>New presenter, inspired by them</b>
+                <span>Sharper renderer casts a new person in their likeness from a written description — a look-alike, never them · 18 cr/s</span>
               </label>
             </div>
             <div v-if="castStyle === 'variant' && selected.length" class="ugc-variant-preview">

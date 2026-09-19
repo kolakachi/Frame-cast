@@ -249,6 +249,12 @@ class CharacterController extends Controller
         }
 
         $character->fill($validated);
+        // The cached casting sheet was read off the old face/description —
+        // stale after either changes, and "adjust and preview again" must
+        // actually re-read.
+        if ($character->isDirty(['reference_asset_id', 'description'])) {
+            $character->appearance_json = null;
+        }
         $character->save();
         $character->load('referenceAsset')->loadCount('scenes');
 
