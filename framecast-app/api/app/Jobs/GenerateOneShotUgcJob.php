@@ -42,6 +42,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
         public readonly string $engine = 'veo',
         /** @var array<int, string> data URIs for Seedance reference_images */
         public readonly array $referenceImages = [],
+        /** Chunk 0's start frame — how a cast character anchors identity on Veo. */
+        public readonly ?string $initialStartFrame = null,
     ) {
         $this->onQueue('generation');
     }
@@ -57,7 +59,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         $temps = [];
         try {
             $segmentPaths = [];
-            $startFrame = null;
+            $startFrame = $this->initialStartFrame;
             foreach ($this->chunks as $i => $chunk) {
                 // Provider containers occasionally die with a bare transport
                 // error (httpx.ReadError, empty error string) — transient, and

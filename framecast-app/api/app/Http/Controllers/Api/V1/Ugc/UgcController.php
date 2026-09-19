@@ -792,6 +792,15 @@ class UgcController extends Controller
         }
 
         $engine = in_array($request->input('engine'), ['seedance25', 'veo'], true) ? $request->input('engine') : 'seedance25';
+        // Proven A/B: Seedance's moderation declines photoreal faces in its
+        // reference set (deepfake protection) — the exact same prompt passes
+        // without the face. A cast character therefore anchors identity as a
+        // Veo START FRAME instead, which accepts person images happily.
+        $characterFrame = null;
+        if ($referenceImages !== [] && ! empty($v['character_id'])) {
+            $characterFrame = array_shift($referenceImages); // presenter was unshifted first
+            $engine = 'veo';
+        }
         $style = [
             'presenter' => $presenter,
             'setting' => trim((string) ($v['setting'] ?? '')),
@@ -809,8 +818,12 @@ class UgcController extends Controller
         $chunks = $single !== null
             ? [$single]
             : \App\Services\Ugc\UgcOneShotCompiler::compile($segments, $style);
+        // Quote from the PLAN's seconds, not the snapped chunk sum — chunk
+        // snapping (4/6/8 on Veo) can exceed the plan by a few seconds, and
+        // that overage is ours to absorb, not the user's to re-approve.
+        $planSeconds = max(4, (int) ceil(array_sum(array_map(fn ($s) => max(1, (float) $s['seconds']), $segments))));
         $totalSeconds = array_sum(array_column($chunks, 'seconds'));
-        $quote = (int) ($totalSeconds * CreditService::VIDEO_ONESHOT_PER_SECOND[$engine]);
+        $quote = (int) ($planSeconds * CreditService::VIDEO_ONESHOT_PER_SECOND[$engine]);
         if ((int) $v['credits'] !== $quote) {
             throw ValidationException::withMessages(['credits' => "The estimate changed — this take is {$quote} credits. Review and approve again."]);
         }
@@ -862,6 +875,7 @@ class UgcController extends Controller
             $quote,
             $engine,
             $referenceImages,
+            $characterFrame,
         )->afterCommit();
 
         return response()->json(['data' => [

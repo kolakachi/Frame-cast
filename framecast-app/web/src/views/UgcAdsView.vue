@@ -304,7 +304,10 @@ const perCharacter = computed(() => plan.value?.credits_per_character ?? 0);
 // Spoken plans up to 30s generate as ONE fluid video on Seedance 2.5 —
 // no scenes, the presenter speaks natively. Mirrors the server's quote:
 // max(4, ceil(total seconds)) × the engine rate.
-const ONESHOT_RATE = 18; // cr/s, Seedance 2.5 (mirrors /credit-costs)
+// Engine follows the cast: a photoreal character reference is declined by
+// Seedance's moderation, so character-cast takes generate on Veo (12 cr/s,
+// identity via start frame); castless takes use Seedance (18 cr/s).
+const ONESHOT_RATES = { seedance25: 18, veo: 12 };
 const planSeconds = computed(() =>
   (plan.value?.segments ?? []).reduce((t, x) => t + Math.max(1, Number(x.seconds || 0)), 0)
 );
@@ -316,7 +319,8 @@ const oneShotEligible = computed(
     (plan.value.segments ?? []).some((x) => (x.script_text || "").trim() !== "")
 );
 const oneShotSeconds = computed(() => Math.max(4, Math.ceil(planSeconds.value)));
-const oneShotCredits = computed(() => oneShotSeconds.value * ONESHOT_RATE);
+const oneShotRate = computed(() => (selected.value.length ? ONESHOT_RATES.veo : ONESHOT_RATES.seedance25));
+const oneShotCredits = computed(() => oneShotSeconds.value * oneShotRate.value);
 // The run is the base plan plus every ticked opening, each a full take per
 // presenter. Base x characters alone showed a number smaller than the charge
 // — the same shape of bug a customer was refunded for on music.
@@ -1433,7 +1437,7 @@ onMounted(() => {
           <div class="ugc-card">
             <div class="ugc-card-h"><span class="ugc-card-t">Estimated cost</span></div>
             <div v-if="plan && oneShotEligible" class="ugc-summary">
-              <div class="ugc-summary-row"><span>One fluid video · {{ oneShotSeconds }}s · presenter speaks natively</span><b>{{ ONESHOT_RATE }} cr/s</b></div>
+              <div class="ugc-summary-row"><span>One fluid video · {{ oneShotSeconds }}s · presenter speaks natively</span><b>{{ oneShotRate }} cr/s</b></div>
               <div class="ugc-summary-row ugc-summary-total"><span>1 take — total</span><b>{{ oneShotCredits }} credits</b></div>
             </div>
             <div v-else-if="plan" class="ugc-summary">
