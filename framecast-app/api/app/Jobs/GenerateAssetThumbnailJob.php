@@ -24,6 +24,22 @@ class GenerateAssetThumbnailJob implements ShouldQueue
             return;
         }
 
+        // An image IS its own thumbnail — the serializer signs the original.
+        // A branded card standing in for the user's actual upload reads as
+        // their media failing to show.
+        if ($asset->asset_type === 'image') {
+            $asset->forceFill(['thumbnail_url' => null])->save();
+
+            return;
+        }
+
+        // A video gets a real poster frame; the branded card is only the
+        // fallback when extraction fails (and the honest face of audio,
+        // voices and templates, which have no frame to show).
+        if ($asset->asset_type === 'video' && $this->posterFrame($asset)) {
+            return;
+        }
+
         $label = strtoupper(str_replace('_', ' ', $asset->asset_type));
         $title = trim((string) $asset->title);
         $title = mb_substr($title !== '' ? $title : 'Framecast Asset', 0, 26);
@@ -56,6 +72,47 @@ SVG;
         $asset->forceFill([
             'thumbnail_url' => 'data:image/svg+xml;base64,'.base64_encode($svg),
         ])->save();
+    }
+
+    private function posterFrame(Asset $asset): bool
+    {
+        $storage = app(\App\Services\Media\StorageService::class);
+        $temps = [];
+        try {
+            $bytes = $storage->get((string) $asset->storage_url);
+            if (! $bytes) {
+                return false;
+            }
+            $src = tempnam(sys_get_temp_dir(), 'thumb-src-').'.mp4';
+            $out = tempnam(sys_get_temp_dir(), 'thumb-out-').'.jpg';
+            $temps = [$src, $out];
+            file_put_contents($src, $bytes);
+            $result = \Illuminate\Support\Facades\Process::timeout(45)->run([
+                'ffmpeg', '-y', '-ss', '1', '-i', $src, '-frames:v', '1',
+                '-vf', "scale='min(800,iw)':-2", '-q:v', '4', $out,
+            ]);
+            if (! $result->successful() || ! filesize($out)) {
+                // A clip shorter than a second has no frame at 1s.
+                $retry = \Illuminate\Support\Facades\Process::timeout(45)->run([
+                    'ffmpeg', '-y', '-i', $src, '-frames:v', '1',
+                    '-vf', "scale='min(800,iw)':-2", '-q:v', '4', $out,
+                ]);
+                if (! $retry->successful() || ! filesize($out)) {
+                    return false;
+                }
+            }
+            $path = sprintf('workspaces/%d/assets/thumbs/%s.jpg', $asset->workspace_id, \Illuminate\Support\Str::uuid());
+            $url = $storage->put($path, file_get_contents($out), ['ContentType' => 'image/jpeg']);
+            $asset->forceFill(['thumbnail_url' => $url])->save();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        } finally {
+            foreach ($temps as $t) {
+                @unlink($t);
+            }
+        }
     }
 
     public function failed(\Throwable $exception): void

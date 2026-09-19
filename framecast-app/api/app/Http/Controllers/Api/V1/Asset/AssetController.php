@@ -536,13 +536,47 @@ class AssetController extends Controller
 
     private function safeThumbnailUrl(Asset $asset): ?string
     {
+        // An image is its own thumbnail — always, so legacy rows that still
+        // hold a branded placeholder card show the real upload instantly.
+        if ($asset->asset_type === 'image' && $asset->storage_url) {
+            return $this->signedAssetUrl($asset);
+        }
         $url = trim((string) $asset->thumbnail_url);
         if ($url === '') return null;
         // data: URIs (SVG placeholders) are fine for the browser
         if (str_starts_with($url, 'data:')) return $url;
-        // Managed storage URLs (minio://, b2://, bare paths) cannot be used directly
-        if (app(StorageService::class)->isManagedUrl($url)) return null;
+        // Managed storage (real poster frames) serves through the signed route.
+        if (app(StorageService::class)->isManagedUrl($url)) {
+            return URL::temporarySignedRoute(
+                'media.assets.thumbnail',
+                now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)),
+                ['assetId' => $asset->getKey()],
+            );
+        }
         return $url;
+    }
+
+    public function thumbnail(Request $request, int $assetId): StreamedResponse|RedirectResponse|\Illuminate\Http\JsonResponse
+    {
+        $asset = Asset::query()->whereKey($assetId)->first();
+        $storage = app(StorageService::class);
+        $url = trim((string) $asset?->thumbnail_url);
+        if (! $asset || $url === '' || ! $storage->isManagedUrl($url)) {
+            return response()->json(['error' => ['code' => 'not_found', 'message' => 'No thumbnail.']], 404);
+        }
+        try {
+            $stream = $storage->readStream($url);
+        } catch (\Throwable) {
+            return response()->json(['error' => ['code' => 'asset_missing', 'message' => 'Thumbnail could not be retrieved.']], 404);
+        }
+        if (! is_resource($stream)) {
+            return response()->json(['error' => ['code' => 'stream_failed', 'message' => 'Unable to open thumbnail stream.']], 502);
+        }
+
+        return $this->streamMedia($request, $stream, $storage->size($url), [
+            'Content-Type' => 'image/jpeg',
+            'Cache-Control' => 'private, max-age=86400',
+        ]);
     }
 
     private function signedAssetUrl(Asset $asset): string

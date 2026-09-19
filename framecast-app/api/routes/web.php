@@ -23,6 +23,11 @@ Route::get('/media/assets/{assetId}', [AssetController::class, 'content'])
     ->middleware('signed')
     ->name('media.assets.content');
 
+Route::get('/media/assets/{assetId}/thumbnail', [AssetController::class, 'thumbnail'])
+    ->whereNumber('assetId')
+    ->middleware('signed')
+    ->name('media.assets.thumbnail');
+
 Route::get('/media/sfx/{soundId}', [SfxController::class, 'stream'])
     ->whereNumber('soundId')
     ->middleware('signed')
