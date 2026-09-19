@@ -1187,10 +1187,6 @@ onMounted(() => {
                 <input v-model="castStyle" type="radio" value="exact" />
                 <b>Use this character</b>
                 <span>Their real photo anchors the video — the closest match we can generate · {{ hqFidelity ? 32 : 12 }} cr/s</span>
-                <label v-if="castStyle === 'exact'" class="ugc-check ugc-hq" @click.stop>
-                  <input v-model="hqFidelity" type="checkbox" />
-                  High fidelity — Google's best renderer, product photos ride natively · 32 cr/s
-                </label>
               </label>
               <label :class="['ugc-style-pill', { on: castStyle === 'variant' }]">
                 <input v-model="castStyle" type="radio" value="variant" />
@@ -1198,6 +1194,10 @@ onMounted(() => {
                 <span>Sharper renderer casts a new person in their likeness from a written description — a look-alike, never them · 18 cr/s</span>
               </label>
             </div>
+            <label v-if="castStyle === 'exact' && selected.length" class="ugc-check ugc-hq-row">
+              <input v-model="hqFidelity" type="checkbox" />
+              <span><b>High fidelity</b> — Google's best renderer, product photos ride natively · 32 cr/s</span>
+            </label>
             <div v-if="castStyle === 'variant' && selected.length" class="ugc-variant-preview">
               <button class="ugc-btn ugc-btn-sm" type="button" :disabled="variantPreviewLoading" @click="previewVariant">
                 {{ variantPreviewLoading ? "Rendering…" : "Preview the look-alike" }}
@@ -1905,8 +1905,11 @@ onMounted(() => {
 .ugc-style-pill.on { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
 .ugc-style-pill b { font-size: 13px; }
 .ugc-style-pill span { color: var(--color-text-muted); }
-.ugc-hq { margin-top: 7px; font-size: 12px; }
-.ugc-hq input { position: static; opacity: 1; pointer-events: auto; margin-right: 6px; }
+.ugc-hq-row {
+  display: flex; align-items: center; gap: 8px; margin: 0 18px 16px;
+  padding: 9px 14px; font-size: 12.5px; border: 1px dashed var(--color-border); border-radius: 11px;
+}
+.ugc-hq-row b { font-weight: 700; }
 .ugc-card-f {
   display: flex;
   align-items: center;
