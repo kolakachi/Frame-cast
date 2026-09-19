@@ -23,7 +23,23 @@ async function load() {
   try {
     const { data } = await api.get("/ugc/takes");
     if (disposed) return;
-    takes.value = data?.data?.takes ?? [];
+    const fresh = data?.data?.takes ?? [];
+    // Merge IN PLACE: replacing the array re-mounts every card, and each
+    // poll re-signs thumbnail URLs — so <video> thumbs flashed and
+    // re-downloaded every 10s. Same-id takes keep object identity and
+    // their first thumbnail URL; only changed fields patch through.
+    if (!takes.value.length) {
+      takes.value = fresh;
+    } else {
+      const byId = new Map(takes.value.map((t) => [t.id, t]));
+      takes.value = fresh.map((f) => {
+        const cur = byId.get(f.id);
+        if (!cur) return f;
+        const keepThumb = cur.thumbnail_url && f.thumbnail_type === cur.thumbnail_type;
+        Object.assign(cur, f, keepThumb ? { thumbnail_url: cur.thumbnail_url } : {});
+        return cur;
+      });
+    }
     loaded.value = true;
   } catch (err) {
     if (!loaded.value) errorMessage.value = apiErrorMessage(err, "Could not load your takes.");

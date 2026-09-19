@@ -60,7 +60,12 @@ class UgcController extends Controller
                 $voice = $scene->voice_settings_json ?? [];
                 $sceneError = trim((string) (($settings['last_error'] ?? '') ?: ($settings['animation_last_error'] ?? '') ?: ($voice['last_error'] ?? '')));
                 $failed = $failed || $sceneError !== '';
-                $actor = in_array($settings['ugc_kind'] ?? '', ['on_camera', 'reaction'], true);
+                // A whole-video take (one-shot, restyle) delivers its scene
+                // visual AS the finished video — no lip-sync leg exists to
+                // wait for, and demanding one reported these takes as
+                // generating forever.
+                $wholeVideo = in_array(data_get($project->visual_brief, 'ugc_format'), ['one_shot', 'restyle'], true);
+                $actor = ! $wholeVideo && in_array($settings['ugc_kind'] ?? '', ['on_camera', 'reaction'], true);
                 $spoken = trim((string) $scene->script_text) !== '' && ($voice['enabled'] ?? true);
                 $visualBusy = ! empty($settings['in_progress']) || ! empty($settings['animation_in_progress']);
                 $visualDone = $scene->visual_asset_id && ! $visualBusy && (! $actor || ! empty($settings['animation_video_asset_id']));
