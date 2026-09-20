@@ -12,16 +12,27 @@ It's a separate pathway from the multi-scene editor. Find it under **UGC Ads** i
 
 ## Make one in four steps
 
-1. Open **UGC Ads** and click **＋ New take**.
-2. Describe the product and the ad (or paste a script), pick a length, and review the proposed plan.
-3. Choose [how the presenter is made](./choose-a-presenter), review the exact credit cost, and approve.
-4. Generate. The finished ad lands in your takes list — open it to review, download, schedule, or share.
+**1. Describe the ad.** Open **UGC Ads → ＋ New take**, and tell it what you want in a sentence (or paste an exact script, or start from a product link). Pick a length and aspect ratio.
+
+![The UGC brief screen — describe the ad, pick a starting point and length](/img/howto/ugc-describe.png)
+
+**2. Get the plan.** Click **See the proposed plan** and the director drafts a script and shot plan from your brief. Nothing is generated yet — this only plans the video.
+
+![The plan step — the director drafts a script and shot plan from your brief](/img/howto/ugc-plan.png)
+
+**3. Choose a presenter and approve.** [Pick how the presenter is made](./choose-a-presenter), review the exact credit cost, and approve.
+
+**4. Review the finished ad.** It lands in your takes list — open it to watch, request a change, download, schedule, or share.
+
+![The review screen — a finished ad with revise and export options](/img/howto/ugc-review.png)
 
 Nothing is generated, and no credits are spent, until you approve the plan.
 
 ## Your takes, managed in one place
 
 Opening **UGC Ads** lands you on your takes library, not a blank form — every ad you've made, with its status, so you can review, re-open, or delete them. Start a new one any time with **＋ New take**.
+
+![The UGC takes library — every ad you've made, with its status](/img/howto/ugc-takes.png)
 
 ## Good to know
 

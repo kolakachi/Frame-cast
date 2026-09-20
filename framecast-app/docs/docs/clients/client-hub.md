@@ -10,6 +10,10 @@ If you make videos for brands — your own or clients' — the **client hub** ke
 
 Agencies can go a step further and give each client its own workspace, budget, and viewer access.
 
+Open **Clients** in the sidebar and add one by name — it inherits your brand to start, and you can fund it with its own credits or leave it on your shared balance.
+
+![The Clients screen — add a client workspace by name](/img/howto/clients-add.png)
+
 ## What's inside
 
 - **Overview** — activity and what's outstanding at a glance.
