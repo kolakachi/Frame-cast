@@ -1,19 +1,5 @@
-/*
- * Affiliate capture for the marketing site.
- *
- * The app lives on a different host, so nothing here can set a cookie the app
- * will read: it would be third-party in that context and blocked by default in
- * Safari and Firefox. The API cannot be called from here either — CORS admits
- * only app.wyvstudio.com.
- *
- * So the code travels the only way that crosses hosts reliably: in the URL.
- * It is remembered locally the moment someone arrives, and then added to every
- * link pointing at the app, including ones added to the page later. The app
- * records it on arrival, where the request is same-origin and the cookie
- * sticks.
- *
- * Last click wins, matching the server, and matching what affiliates expect.
- */
+/* Capture on the marketing origin and carry a stable visit ID into the app.
+ * The handoff sets the app cookie; both requests count as the same arrival. */
 (function () {
   'use strict';
 
@@ -32,15 +18,15 @@
         window.localStorage.removeItem(KEY);
         return null;
       }
-      return saved.code;
+      return saved;
     } catch (e) {
       return null; // private window, or storage disabled
     }
   }
 
-  function write(code) {
+  function write(saved) {
     try {
-      window.localStorage.setItem(KEY, JSON.stringify({ code: code, at: Date.now() }));
+      window.localStorage.setItem(KEY, JSON.stringify(saved));
     } catch (e) {
       /* nothing to do: the link decoration below still works for this visit */
     }
@@ -51,11 +37,34 @@
   var params = new URLSearchParams(window.location.search);
   var incoming = (params.get('ref') || params.get('aff') || '').trim();
   if (incoming && /^[A-Za-z0-9_-]{1,32}$/.test(incoming)) {
-    write(incoming);
+    write({ code: incoming, at: Date.now(), event_id: crypto.randomUUID(), pending: true });
   }
 
-  var code = incoming || read();
-  if (!code) return;
+  var saved = read();
+  // Keep capture working when browser storage is unavailable.
+  if (incoming && /^[A-Za-z0-9_-]{1,32}$/.test(incoming) && (!saved || saved.code !== incoming)) {
+    saved = { code: incoming, at: Date.now(), event_id: crypto.randomUUID(), pending: true };
+  }
+  if (!saved) return;
+  var code = saved.code;
+  var attempts = 0;
+  function capture() {
+    if (!saved.pending || attempts >= 3) return;
+    attempts++;
+    fetch('/api/v1/affiliate/click', {
+      method: 'POST', credentials: 'same-origin', keepalive: true,
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ code: code, event_id: saved.event_id, landing_path: location.pathname.slice(0, 255) })
+    }).then(function (response) {
+      if (!response.ok) throw new Error('Tracking unavailable');
+      return response.json();
+    }).then(function () {
+      saved.pending = false;
+      write(saved);
+    }).catch(function () { setTimeout(capture, attempts * 1500); });
+  }
+  capture();
+  window.addEventListener('online', function () { attempts = 0; capture(); });
 
   function decorate(anchor) {
     if (!anchor || !anchor.href || anchor.dataset.wyvAff === '1') return;
@@ -70,6 +79,7 @@
     // is more deliberate than a remembered one.
     if (!url.searchParams.has('aff')) {
       url.searchParams.set('aff', code);
+      if (saved.event_id) url.searchParams.set('aff_visit', saved.event_id);
       anchor.href = url.toString();
     }
     anchor.dataset.wyvAff = '1';
@@ -93,8 +103,7 @@
       .observe(document.documentElement, { childList: true, subtree: true });
   }
 
-  // Anything that navigates without going through an <a> — a button handler,
-  // say — still gets the code appended at the last moment.
+  // Refresh links at click time as well as when they are inserted.
   document.addEventListener('click', function (event) {
     var anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
     if (anchor) decorate(anchor);

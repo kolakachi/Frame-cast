@@ -112,6 +112,9 @@ class BillingController extends Controller
             return response()->json(['error' => ['code' => 'plan_not_configured', 'message' => 'This plan is not configured for checkout yet.']], 422);
         }
 
+        $attribution = app(\App\Services\Affiliate\AffiliateAttribution::class);
+        // Preserve an earned referral; use the browser only for unassigned workspaces.
+        $attribution->attributeWorkspace($workspace, $attribution->fromCookie($request));
         $base    = rtrim((string) config('app.frontend_url'), '/');
         $url = $kelviq->createCheckoutSession(
             (int) $workspace->getKey(),
@@ -123,6 +126,7 @@ class BillingController extends Controller
             // here would be a loop with no way out — on /plans they can pick a
             // different plan instead.
             "{$base}/plans?billing=cancelled",
+            $workspace->affiliate_code,
         );
 
         if (! $url) {

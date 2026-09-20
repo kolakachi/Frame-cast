@@ -60,7 +60,8 @@ trait BuildsAffiliateSchema
         Schema::create('affiliate_clicks', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('affiliate_id'); $t->timestamp('clicked_at')->nullable();
             $t->string('landing_path')->nullable(); $t->string('referer')->nullable();
-            $t->string('visitor_hash')->nullable(); $t->timestamps();
+            $t->string('visitor_hash')->nullable(); $t->uuid('event_id')->nullable();
+            $t->unique(['affiliate_id', 'event_id']); $t->timestamps();
         });
 
         Schema::create('affiliate_conversions', function (Blueprint $t) {

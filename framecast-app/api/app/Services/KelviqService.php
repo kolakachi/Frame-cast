@@ -85,6 +85,13 @@ class KelviqService
         $eventId = (string) ($event['id'] ?? '');
         $type    = (string) ($event['type'] ?? '');
 
+        // Commission recovery is independent of entitlement processing. A replay
+        // can repair a missing commission without granting a paid top-up twice.
+        $sale = $event['data']['object'] ?? null;
+        if ($type === 'checkout.completed' && is_array($sale)) {
+            $this->recordAffiliateConversion($sale, $sale['plan']['identifier'] ?? null);
+        }
+
         if ($eventId !== '' && ! $this->claimEvent($eventId, $type)) {
             return; // already processed
         }
@@ -358,54 +365,52 @@ class KelviqService
      */
     private function recordAffiliateConversion(array $object, ?string $planId): void
     {
-        rescue(function () use ($object, $planId) {
-            $attribution = app(\App\Services\Affiliate\AffiliateAttribution::class);
+        $attribution = app(\App\Services\Affiliate\AffiliateAttribution::class);
 
-            $metadata = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
-            $email = $object['customer']['email'] ?? null;
-            $workspace = $this->resolveWorkspace($object);
+        $metadata = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
+        $email = $object['customer']['email'] ?? null;
+        $workspace = $this->resolveWorkspace($object);
 
-            // No cookie here — a webhook is a server calling us, not the buyer's
-            // browser. Metadata and the workspace are what survive that trip,
-            // which is exactly why the code is put into the checkout.
-            [$affiliate, $source] = $attribution->resolveForSale($metadata, $workspace, null);
-            if (! $affiliate) {
-                return;
-            }
+        // No cookie here — a webhook is a server calling us, not the buyer's
+        // browser. Metadata and the workspace are what survive that trip,
+        // which is exactly why the code is put into the checkout.
+        [$affiliate, $source] = $attribution->resolveForSale($metadata, $workspace, null);
+        if (! $affiliate) {
+            return;
+        }
 
-            $orderId = (string) ($object['order_id'] ?? $object['id'] ?? '');
+        $orderId = (string) ($object['order_id'] ?? $object['id'] ?? '');
 
-            $amount = (float) ($object['amount'] ?? $object['amount_total'] ?? 0);
-            if ($amount <= 0 && isset($object['amount_total_units'])) {
-                $amount = ((int) $object['amount_total_units']) / 100;
-            }
+        $amount = (float) ($object['amount'] ?? $object['amount_total'] ?? 0);
+        if ($amount <= 0 && isset($object['amount_total_units'])) {
+            $amount = ((int) $object['amount_total_units']) / 100;
+        }
 
-            // Ask Kelviq what the sale actually was. The webhook gives one
-            // gross figure, so tax otherwise has to be guessed from a
-            // configured rate — correct for a British buyer at 20% and wrong
-            // for everyone else. Null falls back to that estimate.
-            $breakdown = $this->fetchOrderBreakdown($orderId);
+        // Ask Kelviq what the sale actually was. The webhook gives one
+        // gross figure, so tax otherwise has to be guessed from a
+        // configured rate — correct for a British buyer at 20% and wrong
+        // for everyone else. Null falls back to that estimate.
+        $breakdown = $this->fetchOrderBreakdown($orderId);
 
-            $conversion = $attribution->recordConversion(
-                $affiliate,
-                $source,
-                $workspace,
-                is_string($email) ? $email : null,
-                $orderId,
-                $planId,
-                $amount,
-                (string) ($object['currency'] ?? 'USD'),
-                $breakdown,
-            );
+        $conversion = $attribution->recordConversion(
+            $affiliate,
+            $source,
+            $workspace,
+            is_string($email) ? $email : null,
+            $orderId,
+            $planId,
+            $amount,
+            (string) ($object['currency'] ?? 'USD'),
+            $breakdown,
+        );
 
-            if ($conversion) {
-                Log::info('Affiliate conversion recorded', [
-                    'affiliate_id' => $affiliate->getKey(),
-                    'order_id'     => $conversion->order_id,
-                    'source'       => $source,
-                ]);
-            }
-        }, null, false);
+        if ($conversion) {
+            Log::info('Affiliate conversion recorded', [
+                'affiliate_id' => $affiliate->getKey(),
+                'order_id'     => $conversion->order_id,
+                'source'       => $source,
+            ]);
+        }
     }
 
     /**
@@ -470,12 +475,6 @@ class KelviqService
     private function handleCheckoutCompleted(array $object): void
     {
         $planId = $object['plan']['identifier'] ?? null;
-
-        // Record the commission before anything else can fail. The order and
-        // its amount are both in hand here, and this is the last moment at
-        // which the affiliate is still knowable — afterwards there is only a
-        // workspace, and workspaces change hands, get merged and get deleted.
-        $this->recordAffiliateConversion($object, $planId);
 
         // Lifetime purchase: set the tier permanently and grant its one-time
         // credit bucket. No subscription is created, so nothing renews and

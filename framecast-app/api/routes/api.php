@@ -107,7 +107,11 @@ Route::prefix('v1')->group(function (): void {
         \Illuminate\Http\Request $request,
         \App\Services\Affiliate\AffiliateAttribution $attribution,
     ) {
-        $validated = $request->validate(['code' => ['required', 'string', 'max:32']]);
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'max:32', 'regex:/^[A-Za-z0-9_-]+$/'],
+            'event_id' => ['nullable', 'uuid'],
+            'landing_path' => ['nullable', 'string', 'max:255'],
+        ]);
         $code = $attribution->recordClick($request, $validated['code']);
 
         $response = response()->json(['data' => ['tracked' => $code !== null], 'meta' => []]);

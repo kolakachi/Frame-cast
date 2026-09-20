@@ -9,7 +9,7 @@ class AffiliateClick extends Model
 {
     public $timestamps = false;
 
-    protected $fillable = ['affiliate_id', 'landing_path', 'referer', 'visitor_hash', 'clicked_at'];
+    protected $fillable = ['affiliate_id', 'event_id', 'landing_path', 'referer', 'visitor_hash', 'clicked_at'];
 
     protected function casts(): array
     {

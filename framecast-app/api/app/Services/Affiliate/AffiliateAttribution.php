@@ -53,14 +53,24 @@ class AffiliateAttribution
             return null;
         }
 
-        // Best-effort: a failed click log must never cost the visit.
-        rescue(fn () => AffiliateClick::query()->create([
+        // Acknowledged visits must be durable.
+        $eventId = $request->input('event_id');
+        $attributes = [
             'affiliate_id' => $affiliate->getKey(),
-            'landing_path' => mb_substr((string) $request->path(), 0, 255),
+            'landing_path' => mb_substr((string) $request->input('landing_path', $request->path()), 0, 255),
             'referer'      => mb_substr((string) $request->headers->get('referer', ''), 0, 255) ?: null,
             'visitor_hash' => $this->visitorHash($request),
             'clicked_at'   => now(),
-        ]), null, false);
+        ];
+        // A marketing arrival and its app handoff share one event ID.
+        // Fail visibly so the browser can retry instead of acknowledging a lost visit.
+        if ($eventId) {
+            AffiliateClick::query()->firstOrCreate(
+                ['affiliate_id' => $affiliate->getKey(), 'event_id' => $eventId], $attributes,
+            );
+        } else {
+            AffiliateClick::query()->create($attributes);
+        }
 
         return $affiliate->code;
     }
@@ -87,10 +97,9 @@ class AffiliateAttribution
             return;
         }
 
-        $workspace->forceFill([
-            'affiliate_code' => $code,
-            'affiliate_attributed_at' => now(),
-        ])->save();
+        Workspace::query()->whereKey($workspace->getKey())->whereNull('affiliate_code')
+            ->update(['affiliate_code' => $code, 'affiliate_attributed_at' => now()]);
+        $workspace->refresh();
     }
 
     /**
@@ -210,14 +219,20 @@ class AffiliateAttribution
                 'eligible_at'        => now()->addDays((int) config('affiliates.hold_days', 21)),
             ]);
         } catch (\Throwable $e) {
-            // A lost commission row is worse than a noisy log.
+            // A concurrent delivery may have already recorded this order.
+            if ($e instanceof \Illuminate\Database\QueryException
+                && in_array((string) $e->getCode(), ['23000', '23505'], true)
+                && $orderId && AffiliateConversion::query()->where('order_id', $orderId)->exists()) {
+                return null;
+            }
+            // A lost commission must leave the webhook retryable.
             Log::error('AffiliateAttribution: could not record a conversion', [
                 'affiliate_id' => $affiliate->getKey(),
                 'order_id'     => $orderId,
                 'error'        => $e->getMessage(),
             ]);
 
-            return null;
+            throw $e;
         }
     }
 
