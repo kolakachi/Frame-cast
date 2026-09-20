@@ -1,4 +1,5 @@
 <script setup>
+import { canGenerateOneShot } from "../services/ugcGenerationMode.js";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
@@ -218,6 +219,11 @@ const productPicker = ref(false);
 const productAsset = ref(null);   // first photo — composed path + back-compat
 // Several angles teach the model the product's geometry; up to 5.
 const productAssets = ref([]);    // [{ id, thumbnail_url, title }]
+// Demo-embed: a real screen recording cut into the ad. It rides in as a
+// Seedance reference video (video_in), so a demo forces the castless
+// Seedance path — a photoreal cast can't share the generation with it.
+const demoPicker = ref(false);
+const demoAsset = ref(null);      // { id, thumbnail_url, title }
 const formatOptions = [
   ["auto", "Let the director choose"],
   ["direct_camera", "Continuous talking take"],
@@ -241,7 +247,8 @@ const aspectRatio = ref("9:16");
 const plan = ref(null); // { segments, reasoning, credits_per_character }
 // A still-only plan has no presenter, so the cast step neither gates nor
 // multiplies anything.
-const noCast = computed(() => plan.value?.format === "text_led");
+const noCast = computed(() => plan.value?.format === "text_led" ||
+  (!!plan.value?.segments?.length && plan.value.segments.every((s) => s.kind === "b_roll")));
 watch(() => plan.value?.segments, () => { selectedPassage.value = 0; });
 const planning = ref(false);
 const generating = ref(false);
@@ -326,15 +333,13 @@ const ONESHOT_RATES = { seedance25: 33, seedance25_480: 15, veo: 22, veo_hq: 58 
 const planSeconds = computed(() =>
   (plan.value?.segments ?? []).reduce((t, x) => t + Math.max(1, Number(x.seconds || 0)), 0)
 );
-const oneShotEligible = computed(
-  () =>
-    !!plan.value &&
-    plan.value.format !== "text_led" &&
-    planSeconds.value <= 30 &&
-    (plan.value.segments ?? []).some((x) => (x.script_text || "").trim() !== "")
-);
+const oneShotEligible = computed(() => canGenerateOneShot(plan.value));
 const oneShotSeconds = computed(() => Math.max(4, Math.ceil(planSeconds.value)));
+const hasDemo = computed(() => !!demoAsset.value);
 const oneShotRate = computed(() => {
+  // A demo take is a normal 720p Seedance render (the real clip is spliced
+  // in post) — castless and full-quality, outranking cast/draft choices.
+  if (hasDemo.value) return ONESHOT_RATES.seedance25;
   if (castEngine.value === "veo" && selected.value.length) return ONESHOT_RATES.veo_hq;
   return draftQuality.value ? ONESHOT_RATES.seedance25_480 : ONESHOT_RATES.seedance25;
 });
@@ -345,7 +350,7 @@ const oneShotCredits = computed(() => oneShotSeconds.value * oneShotRate.value);
 const variantCreditsPerCast = computed(() =>
   selectedVariants.value.reduce((sum, v) => sum + (v.credits_per_character ?? 0), 0)
 );
-const castCount = computed(() => (noCast.value || castEngine.value === "seedance" ? 1 : selected.value.length));
+const castCount = computed(() => (noCast.value || (oneShotEligible.value && castEngine.value === "seedance") ? 1 : selected.value.length));
 const totalCredits = computed(
   () => (perCharacter.value + variantCreditsPerCast.value) * castCount.value
 );
@@ -369,7 +374,7 @@ const missingFootage = computed(() =>
 // not lock you out of your own brief.
 const stepReady = computed(() => [
   Boolean(product.value.trim() || context.value.trim() || script.value.trim()),
-  Boolean(plan.value?.segments?.length) && (noCast.value || castEngine.value === "seedance" || selected.value.length > 0),
+  Boolean(plan.value?.segments?.length) && (noCast.value || (oneShotEligible.value && castEngine.value === "seedance") || selected.value.length > 0),
   canGenerate.value,
 ]);
 const furthestStep = computed(() => {
@@ -391,11 +396,12 @@ function prevStep() { goStep(Math.max(step.value - 1, 0)); }
 const canGenerate = computed(
   () =>
     quoteCurrent.value &&
-    (noCast.value || castEngine.value === "seedance" || selected.value.length > 0) &&
+    (noCast.value || (oneShotEligible.value && castEngine.value === "seedance") || selected.value.length > 0) &&
     reviewed.value &&
     consentLikeness.value &&
     consentFacts.value &&
     !missingFootage.value &&
+    !(hasDemo.value && !oneShotEligible.value) &&
     !generating.value &&
     !quoting.value &&
     !planning.value
@@ -431,7 +437,7 @@ watch(
   // (membership, not object internals), exact-vs-variant, aspect. A voice
   // pick changes the sound, not the estimate — it must not silently clear
   // the tick (that was the "box sometimes unticks" bug).
-  [planFingerprint, () => selected.value.map((c) => c.id).join(","), castEngine, draftQuality, aspectRatio],
+  [planFingerprint, () => selected.value.map((c) => c.id).join(","), castEngine, draftQuality, aspectRatio, () => demoAsset.value?.id ?? 0],
   () => {
     reviewed.value = false;
   },
@@ -636,6 +642,29 @@ function removeProduct(id) {
   reviewed.value = false;
 }
 
+function selectDemo({ item }) {
+  demoPicker.value = false;
+  const isVideo = item?.asset_type === "video" || (item?.mime_type || "").startsWith("video/");
+  if (!item?.id || item._type !== "asset" || !isVideo) {
+    errorMessage.value = "A demo needs a video clip — pick a screen recording or product-in-use clip.";
+    return;
+  }
+  if (Number(item.duration_seconds || 0) > 30) {
+    errorMessage.value = "The demo clip is longer than 30 seconds — trim it to 30s or under and re-upload.";
+    return;
+  }
+  demoAsset.value = { id: item.id, thumbnail_url: item.thumbnail_url || item.storage_url, title: item.title };
+  // A demo is castless Seedance — drop any Veo cast/draft choice to match.
+  castEngine.value = "seedance";
+  draftQuality.value = false;
+  reviewed.value = false;
+}
+
+function removeDemo() {
+  demoAsset.value = null;
+  reviewed.value = false;
+}
+
 async function previewVoice(character) {
   const key = voiceByCharacter.value[character.id];
   const profile = voices.value.find((v) => v.provider_voice_key === key);
@@ -743,6 +772,7 @@ async function generate() {
         quality: castEngine.value === "seedance" && draftQuality.value ? "draft" : "full",
         product_asset_id: productAsset.value?.id ?? null,
         product_asset_ids: productAssets.value.map((a) => a.id),
+        demo_asset_id: demoAsset.value?.id ?? null,
         product: product.value,
         tone: context.value.slice(0, 200),
         language: language.value,
@@ -766,7 +796,7 @@ async function generate() {
       format: plan.value.format,
       // A still-only run casts nobody; sending an empty list would fail the
       // conditional requirement rather than express it.
-      ...(noCast.value && !selected.value.length
+      ...(noCast.value
         ? {}
         : { character_ids: selected.value.map((c) => c.id) }),
       segments: plan.value.segments,
@@ -1053,6 +1083,24 @@ onMounted(() => {
               </span>
               <span class="ugc-hint">Composited onto the actor so they hold or wear your actual product.</span>
             </label>
+
+            <label>
+              <span class="ugc-label-row">Demo clip <span class="ugc-opt">(optional · app or product in use)</span></span>
+              <span class="ugc-product">
+                <span v-if="demoAsset" class="ugc-product-item">
+                  <img :src="demoAsset.thumbnail_url" alt="" class="ugc-product-thumb" />
+                  <button type="button" aria-label="Remove" @click="removeDemo">×</button>
+                </span>
+                <button v-else class="ugc-btn" type="button" @click="demoPicker = true">Choose a clip</button>
+              </span>
+              <span class="ugc-hint">
+                A real screen recording — the ad cuts to it mid-way and shows it exactly as recorded, then back to the presenter.
+                A demo take is a castless {{ ONESHOT_RATES.seedance25 }} cr/s presenter render and can't share the take with your own character.
+              </span>
+              <span v-if="hasDemo && duration > 30" class="ugc-hint ugc-warn">
+                Demo ads are a single ≤30s take — pick a 15s or 30s length below to keep the demo clip.
+              </span>
+            </label>
           </details>
 
           <div class="ugc-card ugc-fields">
@@ -1145,11 +1193,13 @@ onMounted(() => {
 
             <!-- Model first: the engine decides whether a real character is
                  available to cast. -->
-            <div class="ugc-cast-style">
-              <label :class="['ugc-style-pill', { on: castEngine === 'veo' }]">
-                <input v-model="castEngine" type="radio" value="veo" />
+            <p v-if="!oneShotEligible" class="ugc-hint">This video is assembled shot by shot so your selected footage stays intact. Choose a presenter for any on-camera shots.</p>
+            <div v-if="oneShotEligible" class="ugc-cast-style">
+              <label :class="['ugc-style-pill', { on: castEngine === 'veo', disabled: hasDemo }]">
+                <input v-model="castEngine" type="radio" value="veo" :disabled="hasDemo" />
                 <b>Use one of your characters</b>
-                <span>Their real face, dropped into any scene the ad needs — Google's best renderer · 58 cr/s</span>
+                <span v-if="hasDemo">Not available with a demo clip — a demo runs castless on Seedance.</span>
+                <span v-else>Their real face, dropped into any scene the ad needs — Google's best renderer · 58 cr/s</span>
               </label>
               <label :class="['ugc-style-pill', { on: castEngine === 'seedance' }]">
                 <input v-model="castEngine" type="radio" value="seedance" />
@@ -1157,12 +1207,12 @@ onMounted(() => {
                 <span>We create a fitting presenter for the ad — no character needed · {{ draftQuality ? 15 : 33 }} cr/s</span>
               </label>
             </div>
-            <label v-if="castEngine === 'seedance'" class="ugc-check ugc-draft-row">
+            <label v-if="oneShotEligible && castEngine === 'seedance'" class="ugc-check ugc-draft-row">
               <input v-model="draftQuality" type="checkbox" />
               <span><b>Draft quality</b> — 480p at half the credits, to preview a concept before a full 720p take · 15 cr/s</span>
             </label>
 
-            <div v-for="c in selected" :key="c.id" v-show="castEngine === 'veo'" class="ugc-ch">
+            <div v-for="c in selected" :key="c.id" v-show="castEngine === 'veo' || !oneShotEligible" class="ugc-ch">
               <div class="ugc-ch-av">
                 <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" alt="" />
                 <span v-else>☺</span>
@@ -1192,18 +1242,18 @@ onMounted(() => {
               </div>
               <button class="ugc-ch-x" type="button" @click="toggleCharacter(c)">✕</button>
             </div>
-            <div v-if="castEngine === 'veo'" class="ugc-card-f">
+            <div v-if="castEngine === 'veo' || !oneShotEligible" class="ugc-card-f">
               <button class="ugc-btn" @click="openPicker">{{ selected.length ? "＋ Swap character" : "＋ Pick a character" }}</button>
               <span v-if="!selected.length" class="ugc-hint">Choose a character to front this ad — their face carries into the scene.</span>
             </div>
           </div>
           <p v-else-if="plan" class="ugc-hint">
-            No presenter in this format — the words on screen carry the ad, so there is nobody to cast.
+            This plan has no on-camera presenter. Your selected visuals carry the video.
           </p>
 
           <!-- Seedance castless: the director's presenter choice, stated and
                editable, instead of an invisible default. -->
-          <div v-if="plan && !noCast && castEngine === 'seedance' && plan.presenter !== undefined" class="ugc-card ugc-fields">
+          <div v-if="plan && oneShotEligible && !noCast && castEngine === 'seedance' && plan.presenter !== undefined" class="ugc-card ugc-fields">
             <label>
               <span class="ugc-label-row">Who fronts this ad <span class="ugc-opt">(the director's pick — edit freely)</span></span>
               <textarea v-model="plan.presenter" maxlength="300" rows="2"></textarea>
@@ -1500,7 +1550,7 @@ onMounted(() => {
               <div class="ugc-summary-row"><span>Format</span><b>{{ plan.format }}</b></div>
               <div class="ugc-summary-row"><span>Length</span><b>~{{ (plan.segments ?? []).reduce((t, x) => t + Number(x.seconds || 0), 0) }} seconds</b></div>
               <div class="ugc-summary-row"><span>Presenter</span>
-                <b>{{ noCast ? 'None — text carries the ad' : (castEngine === 'veo' ? (selected.map((c) => c.name).join(', ') || '—') : 'We\'ll cast a fitting presenter') }}</b></div>
+                <b>{{ noCast ? 'None — visuals only' : ((castEngine === 'veo' || !oneShotEligible) ? (selected.map((c) => c.name).join(', ') || '—') : 'We\'ll cast a fitting presenter') }}</b></div>
               <div class="ugc-summary-row"><span>Assets used</span>
                 <b>{{ [productAsset ? 'product photo' : null, footageAssets.length ? `${footageAssets.length} clip${footageAssets.length === 1 ? '' : 's'} of your footage` : null].filter(Boolean).join(', ') || 'none' }}</b></div>
               <div class="ugc-summary-row"><span>Output</span><b>{{ aspectRatio }} · {{ language }}</b></div>
@@ -1548,6 +1598,7 @@ onMounted(() => {
                 ><input v-model="consentFacts" type="checkbox" />
                 I confirm the product facts I supplied are accurate.</label
               >
+              <span v-if="hasDemo && !oneShotEligible" class="ugc-hint">Remove the separate demo clip and assign it to a My footage shot in the plan before generating.</span>
               <span v-if="missingFootage" class="ugc-hint">Select the required footage on the plan before generating.</span>
             </div>
             <div class="ugc-gen-row">
@@ -1594,6 +1645,12 @@ onMounted(() => {
         :visible="productPicker"
         @close="productPicker = false"
         @select="selectProduct"
+      />
+      <MediaPickerModal
+        mode="visual"
+        :visible="demoPicker"
+        @close="demoPicker = false"
+        @select="selectDemo"
       />
       <div v-if="pickerOpen" class="ugc-scrim" @click.self="pickerOpen = false">
         <div class="ugc-modal">
@@ -2147,6 +2204,7 @@ onMounted(() => {
   font-size: 11px;
   color: var(--color-text-muted);
 }
+.ugc-hint.ugc-warn { color: var(--color-danger, #b3261e); }
 
 /* ── Form controls ────────────────────────────────────────────────
    Browser defaults ignore the palette entirely: a native select paints a

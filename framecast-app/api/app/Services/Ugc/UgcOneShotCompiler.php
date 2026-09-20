@@ -93,6 +93,7 @@ class UgcOneShotCompiler
         }
 
         $pron = PronunciationMap::parse((string) ($style['pronunciations'] ?? ''));
+        $demo = ! empty($style['demo']);
         $lines = [];
         $dialogue = [];
         foreach ($beats as $j => $beat) {
@@ -107,10 +108,21 @@ class UgcOneShotCompiler
             }
         }
 
+        // A real demo clip is spliced over a mid-ad window in post, and the
+        // presenter's voice plays under it — so the VO needs a natural beat
+        // that invites the cutaway ("watch this"), not a described insert.
+        // Digital products (an app or site) have no physical object to hold,
+        // and any interface the model paints on a phone/laptop screen comes
+        // back as garbled, wrong text — so the presenter must keep every
+        // device screen off-camera; the REAL interface is the spliced cutaway.
+        $demoLine = $demo
+            ? ' Midway, the presenter says something that invites showing the product in action — \'here, let me show you\' — and keeps narrating naturally for a few seconds, then returns to talking to the camera. The presenter never holds up, tilts or points a phone, tablet or laptop screen toward the camera to show the product: any interface rendered on a device screen would come out as unreadable, wrong text. Keep every device screen off-camera or turned away — the real interface is shown only in the cutaway.'
+            : '';
+
         return [
             'prompt' => self::preamble($style)."
 
-".implode(' ', $lines)
+".implode(' ', $lines).$demoLine
                 ."
 
 Casual creator energy, natural imperfect delivery. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the presenter's face and identity from the reference image — the setting, framing, wardrobe changes and action come from this description, never from the reference's own background. The presenter matches the reference person's face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. Hands stay at a natural medium distance from the camera, fingers relaxed. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting, no overlaid text, graphics or watermarks — the product's own packaging, label and branding stay visible and legible. Natural room tone.",

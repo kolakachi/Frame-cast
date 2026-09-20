@@ -29,7 +29,7 @@ class ReplicateVeoAdapter
     }
 
     /** @param array<int, string> $referenceImages data URIs or URLs; Seedance-only, exclusive with a start frame */
-    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null, string $resolution = '720p'): string
+    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null, string $resolution = '720p', array $referenceVideos = []): string
     {
         $model = self::ENGINES[$engine] ?? self::ENGINES['veo'];
         $input = [
@@ -67,6 +67,14 @@ class ReplicateVeoAdapter
             // The pose sheet: character and product stills the presenter and
             // packaging must match. Exclusive with a start frame by schema.
             $input['reference_images'] = array_slice(array_values($referenceImages), 0, 30);
+        }
+        // A real demo/screen-recording clip embedded as [Video1..]. This is
+        // the video_in path — reference videos moderate cleanly when they
+        // carry no face — and Seedance forces an adaptive output ratio for
+        // any task that takes a video input (fixed ratios 422).
+        if ($engine === 'seedance25' && $referenceVideos !== []) {
+            $input['reference_videos'] = array_slice(array_values($referenceVideos), 0, 10);
+            $input['aspect_ratio'] = 'adaptive';
         }
 
         $response = Http::withToken((string) config('services.replicate.api_token'))

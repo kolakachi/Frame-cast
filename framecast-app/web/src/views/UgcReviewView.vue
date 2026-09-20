@@ -314,10 +314,6 @@ function openEditor() {
 }
 
 onMounted(() => {
-  if (!authStore.user?.is_internal) {
-    router.replace({ name: "dashboard" });
-    return;
-  }
   load();
 });
 onBeforeUnmount(() => {

@@ -62,7 +62,7 @@ class CreditService
      * PRD.md ("Higher tier jobs are dequeued first"), but was never built:
      * every export was created with priority 0 and nothing ordered by it.
      */
-    public const PRIORITY_EXPORT_TIERS = ['agency', 'enterprise', 'scale', 'appsumo_agency'];
+    public const PRIORITY_EXPORT_TIERS = ['pro', 'agency', 'enterprise', 'scale', 'appsumo_agency', 'lifetime_agency'];
 
     /**
      * Queue an export should run on.

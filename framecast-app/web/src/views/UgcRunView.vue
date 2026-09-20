@@ -117,10 +117,6 @@ const elapsedLabel = computed(() => {
 });
 
 onMounted(() => {
-  if (!authStore.user?.is_internal) {
-    router.replace({ name: "dashboard" });
-    return;
-  }
   load();
   clock = setInterval(() => {
     elapsed.value = Math.floor((Date.now() - startedAt) / 1000);

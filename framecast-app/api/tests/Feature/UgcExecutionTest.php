@@ -59,6 +59,7 @@ class UgcExecutionTest extends TestCase
         $reference->save();
         $credits = $this->createMock(CreditService::class);
         $credits->method('balance')->willReturn(100000);
+        $credits->method('limitFor')->willReturnCallback(fn ($id, $key) => in_array($key, ['ugc_ads', 'custom_characters'], true) ? true : null);
         $this->app->instance(CreditService::class, $credits);
     }
 
@@ -81,6 +82,25 @@ class UgcExecutionTest extends TestCase
             'visual_brief' => 'Kitchen selfie, casual sweater, window light.', 'headline' => 'One useful idea',
             'voice_direction' => 'Warm and curious.', 'motion_prompt' => '', 'source' => null,
             'speed' => 1.0], $changes);
+    }
+
+    public function test_free_cannot_generate_and_starter_cannot_use_custom_cast(): void
+    {
+        foreach ([false, true] as $paid) {
+            $credits = $this->createMock(CreditService::class);
+            $credits->method('limitFor')->willReturnCallback(fn ($id, $key) => $key === 'ugc_ads' ? $paid : false);
+            $this->app->instance(CreditService::class, $credits);
+            try {
+                $response = (new UgcController)->generate($this->request([$this->shot()], 'direct_camera'));
+                $this->assertFalse($paid);
+                $this->assertSame(402, $response->status());
+            } catch (ValidationException $e) {
+                $this->assertTrue($paid);
+                $this->assertArrayHasKey('character_ids', $e->errors());
+            }
+        }
+        $this->assertSame(0, Project::count());
+        Bus::assertNothingDispatched();
     }
 
     public function test_replayed_submission_returns_the_same_run_without_more_jobs(): void
@@ -173,6 +193,27 @@ class UgcExecutionTest extends TestCase
         $this->assertNotEmpty($scene->caption_settings_json['ugc_headline']['lines']);
         $this->assertSame('reaction', $scene->image_generation_settings_json['ugc_kind']);
         $this->assertStringContainsString('Kitchen selfie', $scene->visual_prompt);
+    }
+
+    public function test_one_shot_rejects_reused_footage_before_creating_or_dispatching(): void
+    {
+        $credits = $this->createMock(CreditService::class);
+        $credits->method('limitFor')->willReturn(true);
+        $this->app->instance(CreditService::class, $credits);
+        foreach (['upload', 'stock'] as $source) {
+            $request = $this->request([
+                $this->shot(['kind' => 'b_roll', 'source' => $source, 'asset_id' => 10]),
+            ], 'demo', ['credits' => 165]);
+            try {
+                (new UgcController)->generateOneShot($request, $credits);
+                $this->fail('A one-shot request must not discard selected footage.');
+            } catch (ValidationException $e) {
+                $this->assertArrayHasKey('segments', $e->errors());
+                $this->assertStringContainsString('shot by shot', $e->errors()['segments'][0]);
+            }
+        }
+        $this->assertSame(0, Project::count());
+        Bus::assertNothingDispatched();
     }
 
     public function test_uploaded_cutaway_uses_real_asset_and_never_dispatches_an_image(): void

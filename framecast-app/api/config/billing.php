@@ -94,7 +94,7 @@ return [
             'lifetime_agency'  => 'Agency — $399 one-time, 20,000 credits',
             'starter' => 'Starter — $29/month',
             'creator' => 'Creator — $59/month',
-            'pro'     => 'Pro — $79/month',
+            'pro'     => 'Pro — $99/month',
             'agency'  => 'Agency — $199/month',
         ],
 

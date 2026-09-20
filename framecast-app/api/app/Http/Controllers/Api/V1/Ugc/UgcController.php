@@ -361,6 +361,9 @@ class UgcController extends Controller
 
     public function generate(Request $request): JsonResponse
     {
+        if ($gate = $this->ugcGate($request)) {
+            return $gate;
+        }
         /** @var User $user */
         $user = $request->user();
         $v = $request->validate($this->planRules() + [
@@ -447,6 +450,11 @@ class UgcController extends Controller
                         ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->get();
                 if ($characters->count() !== count($v['character_ids']) || $characters->contains(fn ($c) => ! $c->reference_asset_id)) {
                     throw ValidationException::withMessages(['character_ids' => 'Choose accessible, active characters with reference images.']);
+                }
+                if ($characters->contains(fn ($c) => ! $c->is_stock)
+                    && ! app(CreditService::class)->limitFor((int) $user->workspace_id, 'custom_characters')) {
+                    throw ValidationException::withMessages(['character_ids' =>
+                        'Your plan supports stock presenters. Upgrade to Creator to use your own characters.']);
                 }
                 $referenceIds = $characters->pluck('reference_asset_id')->unique();
                 $references = Asset::query()->whereIn('id', $referenceIds)->where('asset_type', 'image')
@@ -845,6 +853,8 @@ class UgcController extends Controller
             // front shot means it invents the back when the presenter turns it.
             'product_asset_ids' => ['nullable', 'array', 'max:5'],
             'product_asset_ids.*' => ['integer', 'min:1'],
+            // A real screen recording cut into the ad (video_in / Seedance).
+            'demo_asset_id' => ['nullable', 'integer', 'min:1'],
             'setting' => ['nullable', 'string', 'max:300'],
             'product' => ['nullable', 'string', 'max:200'],
             'tone' => ['nullable', 'string', 'max:200'],
@@ -855,6 +865,14 @@ class UgcController extends Controller
         ]);
 
         $segments = UgcPlan::normalise($v['segments'], $v['format']);
+        // One-shot models synthesize every visual. Reused assets must go
+        // through the composed lane, which attaches the actual file per scene.
+        foreach ($segments as $segment) {
+            if ($segment['kind'] === 'b_roll' && $segment['source'] !== 'generate') {
+                throw ValidationException::withMessages(['segments' =>
+                    'This plan uses existing footage. Generate it shot by shot to preserve the selected clips.']);
+            }
+        }
         $spoken = array_values(array_filter($segments, fn ($s) => trim((string) $s['script_text']) !== ''));
         if ($spoken === []) {
             throw ValidationException::withMessages(['segments' => 'A one-take ad needs spoken beats. Silent card plans generate through the standard path.']);
@@ -938,6 +956,27 @@ class UgcController extends Controller
         if ($presenterImageAttached) {
             $engine = 'veo_hq';
         }
+        // Demo-embed: a real screen recording spliced full-frame over a
+        // mid-ad window in POST (ffmpeg), so the ACTUAL recording shows —
+        // crisp and unchanged — while the presenter keeps talking. Seedance
+        // renders the castless presenter take; the clip is never fed to the
+        // model (it recreates UIs with garbled text), so a demo is castless.
+        $demoStorageUrl = null;
+        if (! empty($v['demo_asset_id'])) {
+            $demoAsset = Asset::query()->whereKey($v['demo_asset_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->where('asset_type', 'video')->first();
+            if (! $demoAsset) {
+                throw ValidationException::withMessages(['demo_asset_id' => 'That demo clip could not be found in this workspace.']);
+            }
+            if ($demoAsset->duration_seconds && (float) $demoAsset->duration_seconds > 30.0) {
+                throw ValidationException::withMessages(['demo_asset_id' => 'The demo clip is longer than 30 seconds — trim it and upload a shorter cut.']);
+            }
+            $demoStorageUrl = (string) $demoAsset->storage_url;
+            $engine = 'seedance25';          // castless presenter take
+            $presenterImageAttached = false; // no cast face alongside a demo
+            $variantSeed = null;
+        }
         // Pronunciation notes from the client brief respell brand/product
         // names in the spoken dialogue only (the voice model reads them).
         $pronNotes = (string) (json_decode(
@@ -950,12 +989,20 @@ class UgcController extends Controller
             'product' => trim((string) ($v['product'] ?? '')),
             'tone' => trim((string) ($v['tone'] ?? '')),
             'pronunciations' => $pronNotes,
+            'demo' => $demoStorageUrl !== null,
         ];
         // Seedance 2.5 makes the whole ad in one generation (≤30s) — the
         // purest one-take. Longer plans, or explicit choice, chain on Veo.
         $single = $engine === 'seedance25'
             ? \App\Services\Ugc\UgcOneShotCompiler::compileSingle($segments, $style)
             : null;
+        // A demo-embed ad can only be the single Seedance take (video_in has
+        // no Veo equivalent here) — refuse rather than silently dropping the
+        // demo clip by falling back to the chained Veo path.
+        if ($demoStorageUrl !== null && $single === null) {
+            throw ValidationException::withMessages(['demo_asset_id' =>
+                'A demo-embed ad must be 30 seconds or under — shorten the plan to include the demo clip.']);
+        }
         if ($engine === 'seedance25' && $single === null) {
             $engine = 'veo';
         }
@@ -968,8 +1015,10 @@ class UgcController extends Controller
         $planSeconds = max(4, (int) ceil(array_sum(array_map(fn ($s) => max(1, (float) $s['seconds']), $segments))));
         $totalSeconds = array_sum(array_column($chunks, 'seconds'));
         // Draft is a Seedance-only 480p tier; Veo always renders 720p.
-        $isDraft = $engine === 'seedance25' && ($v['quality'] ?? 'full') === 'draft';
+        $isDraft = $engine === 'seedance25' && $demoStorageUrl === null && ($v['quality'] ?? 'full') === 'draft';
         $resolution = $isDraft ? '480p' : '720p';
+        // A demo take is a normal 720p Seedance render (the clip is spliced in
+        // post, not sent to the model) — no video_in premium; draft is off.
         $perSecond = $isDraft ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : CreditService::VIDEO_ONESHOT_PER_SECOND[$engine];
         $quote = (int) ($planSeconds * $perSecond);
         if ((int) $v['credits'] !== $quote) {
@@ -1054,6 +1103,7 @@ class UgcController extends Controller
             $characterFrame,
             $variantSeed,
             $resolution,
+            $demoStorageUrl,
         )->afterCommit();
 
         $payload = ['data' => [

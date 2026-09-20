@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
+import ConfirmDialog from "../components/ConfirmDialog.vue";
 import api from "../services/api";
 import { useAuthStore } from "../stores/auth";
 import { useWorkspaceStore } from "../stores/workspace";
@@ -17,6 +18,9 @@ const workspaceStore = useWorkspaceStore();
 const canUgc = computed(() => workspaceStore.capabilities?.ugc_ads !== false);
 
 const takes = ref([]);
+// Delete goes through an in-app modal (ConfirmDialog), never a native alert.
+const confirmState = ref(null);
+const confirmPending = ref(false);
 const loaded = ref(false);
 const errorMessage = ref("");
 let timer = null;
@@ -67,13 +71,28 @@ const STATUS = {
   needs_attention: { label: "Needs a retry", cls: "bad" },
 };
 
-async function remove(take) {
-  if (!window.confirm(`Delete "${take.character}"? This removes the take and its scenes.`)) return;
+function remove(take) {
+  confirmState.value = {
+    title: "Delete this take?",
+    message: `“${take.character}” and its scenes will be permanently removed. This can’t be undone.`,
+    confirmLabel: "Delete take",
+    run: async () => {
+      await api.delete(`/projects/${take.id}`);
+      takes.value = takes.value.filter((t) => t.id !== take.id);
+    },
+  };
+}
+
+async function confirmYes() {
+  if (!confirmState.value || confirmPending.value) return;
+  confirmPending.value = true;
   try {
-    await api.delete(`/projects/${take.id}`);
-    takes.value = takes.value.filter((t) => t.id !== take.id);
+    await confirmState.value.run();
+    confirmState.value = null;
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, "Could not delete that take.");
+  } finally {
+    confirmPending.value = false;
   }
 }
 
@@ -146,6 +165,17 @@ onBeforeUnmount(() => {
       </div>
       </template>
     </main>
+
+    <ConfirmDialog
+      :open="!!confirmState"
+      :title="confirmState?.title ?? ''"
+      :message="confirmState?.message ?? ''"
+      :confirm-label="confirmState?.confirmLabel ?? 'Confirm'"
+      :destructive="true"
+      :pending="confirmPending"
+      @close="confirmPending || (confirmState = null)"
+      @confirm="confirmYes"
+    />
   </div>
 </template>
 

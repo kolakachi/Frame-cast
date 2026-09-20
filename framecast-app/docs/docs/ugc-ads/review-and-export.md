@@ -6,9 +6,7 @@ description: Review a generated take, approve changes and export the latest vers
 
 # Review, revise and export
 
-:::caution Current review-screen availability
-The dedicated **Review & revise** screen is currently restricted to internal accounts, even though paid accounts can create UGC ads. If opening a ready take returns you to Dashboard, this is an access limitation, not evidence that the render failed. Contact support with the take/project ID; do not generate another paid take to try to unlock it.
-:::
+
 
 The screenshots below demonstrate the review interface where enabled. Watch the completed video from beginning to end before downloading or sending it to a client.
 

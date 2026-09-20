@@ -48,6 +48,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
         public readonly ?int $seed = null,
         /** 480p (draft) or 720p — Seedance only; Veo stays 720p. */
         public readonly string $resolution = '720p',
+        /** Storage URL of a real demo clip, spliced over a window in post
+         *  (ffmpeg) so the ACTUAL recording shows — not a model recreation. */
+        public readonly ?string $demoStorageUrl = null,
     ) {
         $this->onQueue('generation');
     }
@@ -145,6 +148,13 @@ class GenerateOneShotUgcJob implements ShouldQueue
 
             $finalPath = $this->concat($segmentPaths, $temps);
 
+            // Post-composite: splice the ACTUAL demo clip full-frame over a
+            // mid-ad window while the presenter's voice keeps playing — the
+            // real recording, crisp and unchanged, not a model recreation.
+            if ($this->demoStorageUrl !== null) {
+                $finalPath = $this->compositeDemo($finalPath, $this->demoStorageUrl, $storage, $temps);
+            }
+
             $storagePath = sprintf('workspaces/%d/assets/ugc-oneshot/%s.mp4', $project->workspace_id, Str::uuid());
             $storageUrl = $storage->put($storagePath, file_get_contents($finalPath), ['ContentType' => 'video/mp4']);
 
@@ -196,6 +206,74 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 ['in_progress' => false, 'last_error' => mb_substr($e->getMessage(), 0, 300)],
             )])->save();
         });
+    }
+
+    /**
+     * Splice the real demo clip over a centred mid-ad window: the ACTUAL
+     * recording plays full-frame (letterboxed to the ad's frame) while the
+     * presenter's voice continues underneath, then the ad cuts back. Nothing
+     * generative — the clip is shown exactly as recorded.
+     */
+    private function compositeDemo(string $basePath, string $demoStorageUrl, StorageService $storage, array &$temps): string
+    {
+        $demoPath = tempnam(sys_get_temp_dir(), 'oneshot-demo-').'.mp4';
+        $temps[] = $demoPath;
+        $stream = $storage->readStream($demoStorageUrl);
+        if (! is_resource($stream)) {
+            throw new \RuntimeException('The demo clip could not be read for compositing.');
+        }
+        file_put_contents($demoPath, $stream);
+        if (is_resource($stream)) {
+            @fclose($stream);
+        }
+        if (! filesize($demoPath)) {
+            throw new \RuntimeException('The demo clip came back empty.');
+        }
+
+        // Base geometry + both durations drive the placement.
+        $dims = Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', $basePath]);
+        [$w, $h] = array_pad(array_map('intval', explode('x', trim($dims->output()))), 2, 0);
+        $baseLen = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error',
+            '-show_entries', 'format=duration', '-of', 'csv=p=0', $basePath])->output());
+        $demoLen = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error',
+            '-show_entries', 'format=duration', '-of', 'csv=p=0', $demoPath])->output());
+        if ($w < 2 || $h < 2 || $baseLen <= 0 || $demoLen <= 0) {
+            throw new \RuntimeException('Could not measure the ad or demo clip for compositing.');
+        }
+
+        // Keep a presenter head and tail; centre the demo in what remains.
+        $head = 3.0;
+        $tail = 2.0;
+        $avail = $baseLen - $head - $tail;
+        if ($avail < 1.5) {
+            // Too short to fit a cutaway — fail loudly (free retry) rather than
+            // silently ship a demo-less take someone paid the demo for.
+            throw new \RuntimeException('The ad is too short to fit the demo clip — lengthen the ad or shorten the demo, then retry. Nothing was charged.');
+        }
+        $window = round(min($demoLen, $avail), 2);
+        $start = round($head + max(0.0, ($avail - $window) / 2), 2);
+        $end = round($start + $window, 2);
+
+        $graph = sprintf(
+            '[1:v]trim=0:%s,setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=decrease,'
+            .'pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black,setpts=PTS+%s/TB[demo];'
+            .'[0:v][demo]overlay=enable=\'between(t,%s,%s)\':x=0:y=0[outv]',
+            $window, $w, $h, $w, $h, $start, $start, $end,
+        );
+
+        $out = tempnam(sys_get_temp_dir(), 'oneshot-demo-out-').'.mp4';
+        $temps[] = $out;
+        $run = Process::timeout(600)->run([
+            'ffmpeg', '-y', '-i', $basePath, '-i', $demoPath,
+            '-filter_complex', $graph, '-map', '[outv]', '-map', '0:a?',
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-c:a', 'aac', $out,
+        ]);
+        if (! $run->successful() || ! filesize($out)) {
+            throw new \RuntimeException('The demo clip could not be composited into the ad.');
+        }
+
+        return $out;
     }
 
     /** Segments share codec/resolution by construction; concat without re-encode, re-encode as fallback. */
