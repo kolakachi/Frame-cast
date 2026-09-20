@@ -123,8 +123,23 @@ class UgcController extends Controller
         return response()->json(['data' => ['takes' => $takes], 'meta' => []]);
     }
 
+    // UGC ads are a paid feature — Free accounts must upgrade. Applied at the
+    // entry points (plan) and the spend points (generate) so a Free user can
+    // never reach a take, whatever path they take.
+    private function ugcGate(Request $request): ?JsonResponse
+    {
+        if (! app(CreditService::class)->limitFor((int) $request->user()->workspace_id, 'ugc_ads')) {
+            return $this->error('upgrade_required', 'UGC ads are available on paid plans. Upgrade to start making them.', 402);
+        }
+
+        return null;
+    }
+
     public function plan(Request $request, UgcShotPlanner $planner): JsonResponse
     {
+        if ($gate = $this->ugcGate($request)) {
+            return $gate;
+        }
         $v = $request->validate([
             'script' => ['nullable', 'string', 'max:1500', 'required_without:context'],
             'product' => ['nullable', 'string', 'max:200'],
@@ -806,6 +821,9 @@ class UgcController extends Controller
 
     public function generateOneShot(Request $request, \App\Services\CreditService $creditService): JsonResponse
     {
+        if ($gate = $this->ugcGate($request)) {
+            return $gate;
+        }
         /** @var User $user */
         $user = $request->user();
         $v = $request->validate($this->planRules() + [

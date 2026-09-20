@@ -276,6 +276,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/changelog/seen', [\App\Http\Controllers\Api\V1\System\ChangelogController::class, 'markSeen']);
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])->whereNumber('notificationId');
+        Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
         Route::get('/voice-profiles', [VoiceProfileController::class, 'index']);
         Route::post('/voice-profiles', [VoiceProfileController::class, 'store']);
         Route::post('/voice-profiles/clone', [VoiceProfileController::class, 'clone']);

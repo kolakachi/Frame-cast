@@ -69,6 +69,22 @@ class NotificationController extends Controller
         ]);
     }
 
+    public function markAllRead(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $count = WorkspaceNotification::query()
+            ->where('workspace_id', $user->workspace_id)
+            ->where(function ($query) use ($user): void {
+                $query->whereNull('user_id')->orWhere('user_id', $user->getKey());
+            })
+            ->where('is_read', false)
+            ->update(['is_read' => true, 'read_at' => now()]);
+
+        return response()->json(['data' => ['marked' => $count], 'meta' => []]);
+    }
+
     /**
      * @return array<string, mixed>
      */
