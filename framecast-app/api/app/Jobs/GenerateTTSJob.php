@@ -368,7 +368,7 @@ class GenerateTTSJob implements ShouldQueue
      */
     private function cloneAudioUrl(int $workspaceId, string $voiceId, string $provider): ?string
     {
-        if (! str_contains($provider, 'chatterbox') && ! str_starts_with($voiceId, 'clone-')) {
+        if (! str_contains($provider, 'chatterbox') && ! str_starts_with(strtolower($voiceId), 'clone-')) {
             return null;
         }
 
