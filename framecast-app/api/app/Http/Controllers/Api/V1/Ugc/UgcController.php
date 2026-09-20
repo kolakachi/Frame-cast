@@ -884,6 +884,14 @@ class UgcController extends Controller
             $c = Character::query()->whereKey($v['character_id'])
                 ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
                     ->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))->first();
+            // Own-face gate — UGC only, editor untouched: casting YOUR OWN
+            // (non-stock) character in a UGC take is a Creator capability.
+            // Stock presenters stay open to every tier.
+            if ($c && ! $c->is_stock && ! $creditService->limitFor((int) $user->workspace_id, 'custom_characters')) {
+                $planTier = $creditService->planTier((int) $user->workspace_id);
+                throw ValidationException::withMessages(['character_id' =>
+                    'Casting your own character in a UGC ad is a Creator feature. On your '.$planTier.' plan, pick one of the stock presenters — or upgrade to Creator to use your own.']);
+            }
             if ($c && ($v['cast_style'] ?? 'exact') === 'variant') {
                 // No face image goes anywhere: the cached casting sheet
                 // describes the character in text, and Seedance renders a
