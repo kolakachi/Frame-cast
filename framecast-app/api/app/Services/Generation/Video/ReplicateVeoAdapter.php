@@ -29,13 +29,14 @@ class ReplicateVeoAdapter
     }
 
     /** @param array<int, string> $referenceImages data URIs or URLs; Seedance-only, exclusive with a start frame */
-    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null): string
+    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null, string $resolution = '720p'): string
     {
         $model = self::ENGINES[$engine] ?? self::ENGINES['veo'];
         $input = [
             'prompt' => $prompt,
             'aspect_ratio' => '9:16',
-            'resolution' => '720p',
+            // Seedance offers 480p (draft) and 720p; Veo stays 720p.
+            'resolution' => in_array($resolution, ['480p', '720p'], true) ? $resolution : '720p',
             'generate_audio' => true,
         ];
         if ($engine === 'seedance25') {

@@ -818,6 +818,8 @@ class UgcController extends Controller
             // high routes an exact cast to veo-3.1 non-fast: better renderer,
             // native product references, 32 cr/s.
             'fidelity' => ['sometimes', 'string', 'in:standard,high'],
+            // draft = Seedance 480p at half the rate; full = 720p.
+            'quality' => ['sometimes', 'string', 'in:draft,full'],
             'request_id' => ['sometimes', 'uuid'],
             'presenter_description' => ['nullable', 'string', 'max:400'],
             'product_asset_id' => ['nullable', 'integer', 'min:1'],
@@ -939,7 +941,11 @@ class UgcController extends Controller
         // that overage is ours to absorb, not the user's to re-approve.
         $planSeconds = max(4, (int) ceil(array_sum(array_map(fn ($s) => max(1, (float) $s['seconds']), $segments))));
         $totalSeconds = array_sum(array_column($chunks, 'seconds'));
-        $quote = (int) ($planSeconds * CreditService::VIDEO_ONESHOT_PER_SECOND[$engine]);
+        // Draft is a Seedance-only 480p tier; Veo always renders 720p.
+        $isDraft = $engine === 'seedance25' && ($v['quality'] ?? 'full') === 'draft';
+        $resolution = $isDraft ? '480p' : '720p';
+        $perSecond = $isDraft ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : CreditService::VIDEO_ONESHOT_PER_SECOND[$engine];
+        $quote = (int) ($planSeconds * $perSecond);
         if ((int) $v['credits'] !== $quote) {
             throw ValidationException::withMessages(['credits' => "The estimate changed — this take is {$quote} credits. Review and approve again."]);
         }
@@ -1021,6 +1027,7 @@ class UgcController extends Controller
             $referenceImages,
             $characterFrame,
             $variantSeed,
+            $resolution,
         )->afterCommit();
 
         $payload = ['data' => [

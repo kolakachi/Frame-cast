@@ -46,6 +46,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
         public readonly ?string $initialStartFrame = null,
         /** Per-character seed for Seedance variant takes. */
         public readonly ?int $seed = null,
+        /** 480p (draft) or 720p — Seedance only; Veo stays 720p. */
+        public readonly string $resolution = '720p',
     ) {
         $this->onQueue('generation');
     }
@@ -99,7 +101,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     // scene stays creative — no start frame on chunk 0). Other
                     // engines only need refs on chunk 0.
                     $chunkRefs = ($this->engine === 'veo_hq' || $i === 0) ? $this->referenceImages : [];
-                    $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed);
+                    $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution);
                     $scene->forceFill(['image_generation_settings_json' => array_merge(
                         $scene->image_generation_settings_json ?? [],
                         ['oneshot_segment' => $i + 1, 'oneshot_total' => count($this->chunks), 'oneshot_prediction_id' => $predictionId],

@@ -227,6 +227,9 @@ const selected = ref([]); // chosen characters
 // scene (google/veo-3.1, face in reference_images, 32 cr/s); Seedance
 // invents a fitting presenter with no character (castless, 18 cr/s).
 const castEngine = ref("seedance"); // 'veo' | 'seedance'
+// Seedance draft renders at 480p for half the credits — a cheap preview
+// pass before committing to a full 720p take.
+const draftQuality = ref(false);
 const aspectRatio = ref("9:16");
 const plan = ref(null); // { segments, reasoning, credits_per_character }
 // A still-only plan has no presenter, so the cast step neither gates nor
@@ -312,7 +315,7 @@ const perCharacter = computed(() => plan.value?.credits_per_character ?? 0);
 // Engine follows the cast: a photoreal character reference is declined by
 // Seedance's moderation, so character-cast takes generate on Veo (12 cr/s,
 // identity via start frame); castless takes use Seedance (18 cr/s).
-const ONESHOT_RATES = { seedance25: 18, veo: 12, veo_hq: 32 };
+const ONESHOT_RATES = { seedance25: 18, seedance25_480: 9, veo: 12, veo_hq: 32 };
 const planSeconds = computed(() =>
   (plan.value?.segments ?? []).reduce((t, x) => t + Math.max(1, Number(x.seconds || 0)), 0)
 );
@@ -324,9 +327,10 @@ const oneShotEligible = computed(
     (plan.value.segments ?? []).some((x) => (x.script_text || "").trim() !== "")
 );
 const oneShotSeconds = computed(() => Math.max(4, Math.ceil(planSeconds.value)));
-const oneShotRate = computed(() =>
-  castEngine.value === "veo" && selected.value.length ? ONESHOT_RATES.veo_hq : ONESHOT_RATES.seedance25
-);
+const oneShotRate = computed(() => {
+  if (castEngine.value === "veo" && selected.value.length) return ONESHOT_RATES.veo_hq;
+  return draftQuality.value ? ONESHOT_RATES.seedance25_480 : ONESHOT_RATES.seedance25;
+});
 const oneShotCredits = computed(() => oneShotSeconds.value * oneShotRate.value);
 // The run is the base plan plus every ticked opening, each a full take per
 // presenter. Base x characters alone showed a number smaller than the charge
@@ -420,7 +424,7 @@ watch(
   // (membership, not object internals), exact-vs-variant, aspect. A voice
   // pick changes the sound, not the estimate — it must not silently clear
   // the tick (that was the "box sometimes unticks" bug).
-  [planFingerprint, () => selected.value.map((c) => c.id).join(","), castEngine, aspectRatio],
+  [planFingerprint, () => selected.value.map((c) => c.id).join(","), castEngine, draftQuality, aspectRatio],
   () => {
     reviewed.value = false;
   },
@@ -724,6 +728,7 @@ async function generate() {
           : (plan.value.presenter || ""),
         character_id: presenter?.id ?? null,
         engine: castEngine.value === "veo" ? "veo" : "seedance25",
+        quality: castEngine.value === "seedance" && draftQuality.value ? "draft" : "full",
         product_asset_id: productAsset.value?.id ?? null,
         product_asset_ids: productAssets.value.map((a) => a.id),
         product: product.value,
@@ -1137,9 +1142,13 @@ onMounted(() => {
               <label :class="['ugc-style-pill', { on: castEngine === 'seedance' }]">
                 <input v-model="castEngine" type="radio" value="seedance" />
                 <b>Let us cast a presenter</b>
-                <span>We create a fitting presenter for the ad — no character needed · 18 cr/s</span>
+                <span>We create a fitting presenter for the ad — no character needed · {{ draftQuality ? 9 : 18 }} cr/s</span>
               </label>
             </div>
+            <label v-if="castEngine === 'seedance'" class="ugc-check ugc-draft-row">
+              <input v-model="draftQuality" type="checkbox" />
+              <span><b>Draft quality</b> — 480p at half the credits, to preview a concept before a full 720p take · 9 cr/s</span>
+            </label>
 
             <div v-for="c in selected" :key="c.id" v-show="castEngine === 'veo'" class="ugc-ch">
               <div class="ugc-ch-av">
@@ -1871,6 +1880,11 @@ onMounted(() => {
 .ugc-style-pill.on { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
 .ugc-style-pill b { font-size: 13px; }
 .ugc-style-pill span { color: var(--color-text-muted); }
+.ugc-draft-row {
+  display: flex; align-items: center; gap: 8px; margin: 0 18px 16px;
+  padding: 9px 14px; font-size: 12.5px; border: 1px dashed var(--color-border); border-radius: 11px;
+}
+.ugc-draft-row b { font-weight: 700; }
 
 .ugc-card-f {
   display: flex;

@@ -147,6 +147,10 @@ class CreditService
     // veo_hq = google/veo-3.1 non-fast: \$0.40/s with audio upstream.
     public const VIDEO_ONESHOT_PER_SECOND = ['seedance25' => 18, 'veo' => 12, 'veo_hq' => 32];
 
+    // Seedance at 480p (draft): ~\$0.1028/s upstream vs \$0.2312/s at 720p,
+    // so half the rate, same margin structure.
+    public const VIDEO_ONESHOT_SEEDANCE_DRAFT = 9;
+
     public const VIDEO_RESTYLE_PER_SECOND = [
         'luma' => 15,
         'aleph2' => 30,
