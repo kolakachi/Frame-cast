@@ -145,11 +145,14 @@ class CreditService
     // Keyed by engine: Seedance 2.5 bills \$0.2312/s at 720p, Veo 3.1
     // Fast ~\$0.15/s — the price difference is real and shown honestly.
     // veo_hq = google/veo-3.1 non-fast: \$0.40/s with audio upstream.
-    public const VIDEO_ONESHOT_PER_SECOND = ['seedance25' => 18, 'veo' => 12, 'veo_hq' => 32];
+    // 50%-margin floor: 2 x COGS / \$0.014 (the cheapest pack's per-credit
+    // price), so margin holds >=50% for every pack. Seedance 720p \$0.2312/s,
+    // Veo-fast \$0.15/s, Veo-3.1 \$0.40/s (all with audio).
+    public const VIDEO_ONESHOT_PER_SECOND = ['seedance25' => 33, 'veo' => 22, 'veo_hq' => 58];
 
     // Seedance at 480p (draft): ~\$0.1028/s upstream vs \$0.2312/s at 720p,
     // so half the rate, same margin structure.
-    public const VIDEO_ONESHOT_SEEDANCE_DRAFT = 9;
+    public const VIDEO_ONESHOT_SEEDANCE_DRAFT = 15; // 480p \$0.1028/s at the 50% floor
 
     public const VIDEO_RESTYLE_PER_SECOND = [
         'luma' => 15,

@@ -224,8 +224,8 @@ const formatOptions = [
 const selected = ref([]); // chosen characters
 // Model-first: the user picks the engine, and that decides whether a real
 // character is available. Veo carries a real cast face into any creative
-// scene (google/veo-3.1, face in reference_images, 32 cr/s); Seedance
-// invents a fitting presenter with no character (castless, 18 cr/s).
+// scene (google/veo-3.1, face in reference_images, 58 cr/s); Seedance
+// invents a fitting presenter with no character (castless, 33 cr/s).
 const castEngine = ref("seedance"); // 'veo' | 'seedance'
 // Seedance draft renders at 480p for half the credits — a cheap preview
 // pass before committing to a full 720p take.
@@ -315,7 +315,7 @@ const perCharacter = computed(() => plan.value?.credits_per_character ?? 0);
 // Engine follows the cast: a photoreal character reference is declined by
 // Seedance's moderation, so character-cast takes generate on Veo (12 cr/s,
 // identity via start frame); castless takes use Seedance (18 cr/s).
-const ONESHOT_RATES = { seedance25: 18, seedance25_480: 9, veo: 12, veo_hq: 32 };
+const ONESHOT_RATES = { seedance25: 33, seedance25_480: 15, veo: 22, veo_hq: 58 };
 const planSeconds = computed(() =>
   (plan.value?.segments ?? []).reduce((t, x) => t + Math.max(1, Number(x.seconds || 0)), 0)
 );
@@ -1137,17 +1137,17 @@ onMounted(() => {
               <label :class="['ugc-style-pill', { on: castEngine === 'veo' }]">
                 <input v-model="castEngine" type="radio" value="veo" />
                 <b>Use one of your characters</b>
-                <span>Their real face, dropped into any scene the ad needs — Google's best renderer · 32 cr/s</span>
+                <span>Their real face, dropped into any scene the ad needs — Google's best renderer · 58 cr/s</span>
               </label>
               <label :class="['ugc-style-pill', { on: castEngine === 'seedance' }]">
                 <input v-model="castEngine" type="radio" value="seedance" />
                 <b>Let us cast a presenter</b>
-                <span>We create a fitting presenter for the ad — no character needed · {{ draftQuality ? 9 : 18 }} cr/s</span>
+                <span>We create a fitting presenter for the ad — no character needed · {{ draftQuality ? 15 : 33 }} cr/s</span>
               </label>
             </div>
             <label v-if="castEngine === 'seedance'" class="ugc-check ugc-draft-row">
               <input v-model="draftQuality" type="checkbox" />
-              <span><b>Draft quality</b> — 480p at half the credits, to preview a concept before a full 720p take · 9 cr/s</span>
+              <span><b>Draft quality</b> — 480p at half the credits, to preview a concept before a full 720p take · 15 cr/s</span>
             </label>
 
             <div v-for="c in selected" :key="c.id" v-show="castEngine === 'veo'" class="ugc-ch">
