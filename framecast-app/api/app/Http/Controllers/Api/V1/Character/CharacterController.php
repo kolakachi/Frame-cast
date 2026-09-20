@@ -89,6 +89,21 @@ class CharacterController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        // ── Own-face gate ─────────────────────────────────────────────────
+        // Creating a character (uploading your own face) is a Creator-tier
+        // capability. Starter and Free use the shared stock roster; they
+        // upgrade to bring their own presenter on screen.
+        if (! app(CreditService::class)->limitFor((int) $user->workspace_id, 'custom_characters')) {
+            $planTier = app(CreditService::class)->planTier((int) $user->workspace_id);
+            return response()->json([
+                'error' => [
+                    'code'    => 'plan_capability',
+                    'message' => 'Bringing your own character is a Creator feature. On your '.$planTier.' plan you can use any of the stock presenters — upgrade to Creator to upload your own face.',
+                    'context' => ['plan' => $planTier, 'capability' => 'custom_characters', 'upgrade_to' => 'creator'],
+                ],
+            ], 402);
+        }
+
         // ── Plan cap guard ────────────────────────────────────────────────
         // Free tier = 1 character, Starter = 3, etc. (see CreditService::PLAN_LIMITS).
         $maxCharacters = app(CreditService::class)->limitFor((int) $user->workspace_id, 'max_characters');
