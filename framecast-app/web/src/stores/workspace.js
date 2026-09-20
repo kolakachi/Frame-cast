@@ -50,6 +50,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       return labels[tier] ?? tier.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     },
     planTier: (state) => state.workspace?.plan_tier ?? null,
+    capabilities: (state) => state.workspace?.capabilities ?? null,
     workspaceName: (state) => state.workspace?.name ?? 'My Workspace',
   },
 

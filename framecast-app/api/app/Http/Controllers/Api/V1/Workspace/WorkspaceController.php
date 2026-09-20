@@ -157,6 +157,10 @@ class WorkspaceController extends Controller
             'name' => $workspace->name,
             'owner_user_id' => $workspace->owner_user_id,
             'plan_tier' => $workspace->plan_tier,
+            // Plan capabilities so the UI can gate features up front (e.g.
+            // lock custom characters for Starter) instead of failing at spend.
+            'capabilities' => \App\Services\CreditService::PLAN_LIMITS[$workspace->plan_tier]
+                ?? \App\Services\CreditService::PLAN_LIMITS['free'],
             'status' => $workspace->status,
             'created_at' => $workspace->created_at?->toIso8601String(),
             'updated_at' => $workspace->updated_at?->toIso8601String(),

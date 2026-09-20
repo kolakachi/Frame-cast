@@ -6,11 +6,16 @@ import UiSelect from "../components/UiSelect.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
 import api from "../services/api";
 import { useAuthStore } from "../stores/auth";
+import { useWorkspaceStore } from "../stores/workspace";
 import { apiErrorMessage } from "../composables/apiError";
 
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
+const workspaceStore = useWorkspaceStore();
+// Own (non-stock) characters are a Creator capability; only lock when the
+// plan explicitly disallows it (unknown = don't block, the server enforces).
+const canOwnCharacter = computed(() => workspaceStore.capabilities?.custom_characters !== false);
 
 // ── Wizard ──────────────────────────────────────────────────────────────
 // Three screens, per the wyvstudio-ugc-html mockups: say what you're making,
@@ -474,6 +479,11 @@ function openPicker() {
 }
 
 function toggleCharacter(c) {
+  if (!c.is_stock && !canOwnCharacter.value) {
+    errorMessage.value =
+      "Casting your own character in a UGC ad is a Creator feature — pick a stock presenter, or upgrade to Creator to use your own.";
+    return;
+  }
   const i = selected.value.findIndex((x) => x.id === c.id);
   if (i >= 0) selected.value.splice(i, 1);
   // A one-take ad has a single presenter and only the first selection ever
@@ -1676,7 +1686,7 @@ onMounted(() => {
               <button
                 v-for="c in characters"
                 :key="c.id"
-                :class="['ugc-pc', isSelected(c) ? 'on' : '']"
+                :class="['ugc-pc', isSelected(c) ? 'on' : '', (!c.is_stock && !canOwnCharacter) ? 'locked' : '']"
                 type="button"
                 @click="toggleCharacter(c)"
               >
@@ -1691,8 +1701,8 @@ onMounted(() => {
                 </div>
                 <div class="ugc-pc-n">
                   {{ c.name }}
-                  <i :class="['ugc-mini', c.is_stock ? 'stock' : '']">{{
-                    c.is_stock ? "STOCK" : "MINE"
+                  <i :class="['ugc-mini', c.is_stock ? 'stock' : ((!canOwnCharacter) ? 'creator' : '')]">{{
+                    c.is_stock ? "STOCK" : ((!canOwnCharacter) ? "CREATOR" : "MINE")
                   }}</i>
                 </div>
                 <div class="ugc-pc-s">
@@ -1880,6 +1890,9 @@ onMounted(() => {
 .ugc-style-pill.on { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
 .ugc-style-pill b { font-size: 13px; }
 .ugc-style-pill span { color: var(--color-text-muted); }
+.ugc-pc.locked { opacity: 0.55; }
+.ugc-pc.locked .ugc-pc-f { filter: grayscale(0.6); }
+.ugc-mini.creator { background: var(--color-primary); color: #fff; }
 .ugc-draft-row {
   display: flex; align-items: center; gap: 8px; margin: 0 18px 16px;
   padding: 9px 14px; font-size: 12.5px; border: 1px dashed var(--color-border); border-radius: 11px;
