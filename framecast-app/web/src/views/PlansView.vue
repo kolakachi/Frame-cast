@@ -19,12 +19,10 @@ const checkoutPending = ref("");
 async function logout() { await authStore.logout(); router.push({ name: "login" }); }
 
 // ── Catalogue ─────────────────────────────────────────────
-// Short counts use the same conservative ~300 credits/short the pricing page
-// quotes — above the measured median, so nobody is promised more than they get.
 const ONE_TIME = [
-  { key: "lifetime_starter", rank: 1, name: "Starter", price: "$89",  credits: 4000,  shorts: 13, blurb: "Enough to find your footing.", feats: ["1 channel", "2 characters", "All visual modes", "No watermark"] },
-  { key: "lifetime_creator", rank: 2, name: "Creator", price: "$199", credits: 12000, shorts: 40, blurb: "The one most people need.", feats: ["3 channels", "5 characters", "Series mode", "Social publishing"], popular: true },
-  { key: "lifetime_agency",  rank: 3, name: "Agency",  price: "$399", credits: 20000, shorts: 66, blurb: "For running several brands.", feats: ["Unlimited channels", "10 characters", "Priority export", "Everything included"] },
+  { key: "lifetime_starter", rank: 1, name: "Starter", price: "$89",  credits: 4000, blurb: "Enough to find your footing.", feats: ["1 channel", "2 characters", "All visual modes", "No watermark"] },
+  { key: "lifetime_creator", rank: 2, name: "Creator", price: "$199", credits: 12000, blurb: "The one most people need.", feats: ["3 channels", "5 characters", "Series mode", "Social publishing"], popular: true },
+  { key: "lifetime_agency",  rank: 3, name: "Agency",  price: "$399", credits: 20000, blurb: "For running several brands.", feats: ["Unlimited channels", "10 characters", "Priority export", "Everything included"] },
 ];
 
 const MONTHLY = [
@@ -181,7 +179,7 @@ onMounted(async () => {
                 <div v-if="p.popular" class="plan-tag">Most popular</div>
                 <div class="plan-name">{{ p.name }}</div>
                 <div class="plan-price">{{ p.price }}<span class="plan-per">once</span></div>
-                <div class="plan-credits">{{ p.credits.toLocaleString() }} credits ≈ {{ p.shorts }} shorts</div>
+                <div class="plan-credits">{{ p.credits.toLocaleString() }} credits</div>
                 <div class="plan-blurb">{{ p.blurb }}</div>
                 <ul class="plan-feats">
                   <li v-for="f in p.feats" :key="f">{{ f }}</li>
@@ -194,10 +192,6 @@ onMounted(async () => {
                 >{{ checkoutPending === p.key ? 'Opening checkout…' : `Get ${p.name}` }}</button>
               </div>
             </div>
-            <p class="plans-note">
-              Short counts assume a 30-second video with AI visuals at ~300 credits.
-              Stock-footage shorts cost a fraction of that and go much further.
-            </p>
           </section>
 
           <!-- MONTHLY -->
