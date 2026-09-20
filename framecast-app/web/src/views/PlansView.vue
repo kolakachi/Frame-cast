@@ -146,6 +146,24 @@ onMounted(async () => {
         </div>
 
         <template v-if="!loading">
+          <!-- Draft-and-publish framing: credits go further than the "full ad"
+               count implies, because you iterate cheap and only spend full on winners. -->
+          <div class="plans-workflow">
+            <div class="pw-lead">Your credits go further than they look</div>
+            <div class="pw-modes">
+              <div class="pw-mode">
+                <span class="pw-badge draft">Draft · 480p</span>
+                <p>Spin up concepts and test hooks at <b>less than half the credits</b>. Try lots of angles cheaply.</p>
+              </div>
+              <div class="pw-arrow">→</div>
+              <div class="pw-mode">
+                <span class="pw-badge full">Publish · 720p</span>
+                <p>Found the winner? Render it in <b>full quality</b> — spend the credits only on the one you'll post.</p>
+              </div>
+            </div>
+            <p class="pw-foot">Iterate in draft, publish in full. A Starter month is ~9 drafts to explore, then your best few in full.</p>
+          </div>
+
           <!-- Already on the largest pack — nothing to sell, so say so. -->
           <div v-if="atTopTier" class="plans-note top-tier">
             You're on our largest one-time plan. To add credits, use a top-up in
@@ -288,4 +306,20 @@ onMounted(async () => {
 .plans-foot { margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--color-border); font-size: 13px; color: var(--color-text-muted); }
 .plans-note a, .plans-foot a { color: var(--color-accent); text-decoration: none; }
 .plans-note a:hover, .plans-foot a:hover { text-decoration: underline; }
+
+.plans-workflow {
+  margin: 4px 0 22px; padding: 16px 18px; border-radius: 14px;
+  border: 1px solid var(--color-border); background: var(--color-surface, rgba(255,255,255,0.02));
+}
+.pw-lead { font-weight: 700; font-size: 14.5px; margin-bottom: 12px; }
+.pw-modes { display: flex; align-items: stretch; gap: 14px; flex-wrap: wrap; }
+.pw-mode { flex: 1 1 240px; min-width: 220px; }
+.pw-mode p { margin: 6px 0 0; font-size: 13px; color: var(--color-text-muted); line-height: 1.45; }
+.pw-badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  padding: 3px 9px; border-radius: 999px; }
+.pw-badge.draft { background: color-mix(in srgb, var(--color-text-muted) 18%, transparent); color: var(--color-text); }
+.pw-badge.full { background: var(--color-primary); color: #fff; }
+.pw-arrow { align-self: center; font-size: 20px; color: var(--color-text-muted); }
+.pw-foot { margin: 12px 0 0; font-size: 12.5px; color: var(--color-text-muted); }
+@media (max-width: 620px) { .pw-arrow { display: none; } }
 </style>
