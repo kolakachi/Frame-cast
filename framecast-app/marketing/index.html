@@ -3077,6 +3077,7 @@
             <span class="nav-logo-text"><span>Wyv</span>Studio</span>
         </a>
         <div class="nav-links">
+            <a href="#ugc-showcase">UGC ads</a>
             <a href="#how-it-works">How it works</a>
             <a href="#features">Features</a>
             <a href="#use-cases">Use cases</a>
@@ -3458,6 +3459,75 @@
     </section>
 
 
+
+
+    <!-- ── UGC SHOWCASE ── -->
+    <style>
+      #ugc-showcase { padding: 100px 24px; }
+      #ugc-showcase .ugcs-head { max-width: 720px; margin: 0 auto 44px; text-align: center; }
+      #ugc-showcase .ugcs-eyebrow { display:inline-block; font-size:12px; font-weight:700; letter-spacing:.08em;
+        text-transform:uppercase; color:var(--accent); background:var(--accent-soft); padding:5px 12px; border-radius:999px; margin-bottom:16px; }
+      #ugc-showcase h2 { font-size: clamp(28px, 4vw, 42px); line-height:1.1; margin:0 0 14px; color:var(--text); }
+      #ugc-showcase .ugcs-sub { font-size:16px; line-height:1.55; color:var(--text-dim); margin:0; }
+      .ugcs-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:18px; max-width:1000px; margin:0 auto; }
+      .ugcs-cell { margin:0; border:1px solid var(--border); border-radius:16px; overflow:hidden; background:var(--surface); }
+      .ugcs-v { width:100%; aspect-ratio:9/16; object-fit:cover; display:block; background:#141311; }
+      .ugcs-cell figcaption, .ugcs-widecell figcaption { font-size:13px; color:var(--text-dim); padding:11px 14px; text-align:left; }
+      .ugcs-wide { display:grid; grid-template-columns:repeat(2, 1fr); gap:18px; max-width:1000px; margin:18px auto 0; }
+      .ugcs-widecell { margin:0; border:1px solid var(--border); border-radius:16px; overflow:hidden; background:var(--surface); }
+      .ugcs-w { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; background:#141311; }
+      .ugcs-cta { text-align:center; margin-top:40px; }
+      .ugcs-cta a { display:inline-block; background:var(--accent); color:#fff; font-weight:700; font-size:15px;
+        padding:13px 26px; border-radius:10px; text-decoration:none; }
+      @media (max-width: 820px) { .ugcs-grid { grid-template-columns:repeat(2,1fr); } .ugcs-wide { grid-template-columns:1fr; } }
+      @media (max-width: 480px) { .ugcs-grid { grid-template-columns:repeat(2,1fr); gap:12px; } }
+    </style>
+    <section id="ugc-showcase">
+      <div class="container">
+        <div class="ugcs-head">
+          <span class="ugcs-eyebrow">Real output</span>
+          <h2>UGC ads, made in WyvStudio</h2>
+          <p class="ugcs-sub">Every clip here was generated from a brief — one continuous take, the presenter speaking natively. No shoot, no editing, no timeline. Pick a presenter, describe the ad, and post the result.</p>
+        </div>
+        <div class="ugcs-grid">
+          <figure class="ugcs-cell">
+            <video class="ugcs-v" src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/ugc-1.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/ugc-1.jpg" autoplay muted loop playsinline preload="none"></video>
+            <figcaption>Direct-to-camera ad</figcaption>
+          </figure>
+          <figure class="ugcs-cell">
+            <video class="ugcs-v" src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/stock-presenter.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/stock-presenter.jpg" autoplay muted loop playsinline preload="none"></video>
+            <figcaption>Presenter we cast for you</figcaption>
+          </figure>
+          <figure class="ugcs-cell">
+            <video class="ugcs-v" src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/any-scene.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/any-scene.jpg" autoplay muted loop playsinline preload="none"></video>
+            <figcaption>Your character, any scene</figcaption>
+          </figure>
+          <figure class="ugcs-cell">
+            <video class="ugcs-v" src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/ugc-2.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/ugc-2.jpg" autoplay muted loop playsinline preload="none"></video>
+            <figcaption>Product testimonial</figcaption>
+          </figure>
+          <figure class="ugcs-cell">
+            <video class="ugcs-v" src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/product-ad.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/product-ad.jpg" autoplay muted loop playsinline preload="none"></video>
+            <figcaption>Product in hand</figcaption>
+          </figure>
+          <figure class="ugcs-cell">
+            <video class="ugcs-v" src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/ugc-3.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/ugc-3.jpg" autoplay muted loop playsinline preload="none"></video>
+            <figcaption>One spoken take</figcaption>
+          </figure>
+        </div>
+        <div class="ugcs-wide">
+          <figure class="ugcs-widecell">
+            <video class="ugcs-w" src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/creative-scene.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/creative-scene.jpg" autoplay muted loop playsinline preload="none"></video>
+            <figcaption>Same face → a brand-new scene</figcaption>
+          </figure>
+          <figure class="ugcs-widecell">
+            <video class="ugcs-w" src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/app-demo.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/app-demo.jpg" autoplay muted loop playsinline preload="none"></video>
+            <figcaption>Embed a real app or product demo</figcaption>
+          </figure>
+        </div>
+        <div class="ugcs-cta"><a href="https://app.wyvstudio.com/ugc-ads/new">Make your first UGC ad →</a></div>
+      </div>
+    </section>
 
     <!-- ── FEATURES ── -->
     <section id="features" style="padding:100px 24px">
