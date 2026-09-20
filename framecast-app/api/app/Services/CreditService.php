@@ -360,10 +360,10 @@ class CreditService
     // (CREDIT_CALIBRATION.md §5). Clears ~50% margin even all-Kling worst case.
     public const PLAN_CREDITS = [
         'free'       => 0,      // one-time 200 via grant, never resets
-        'starter'    => 1500,
-        'creator'    => 3000,
+        'starter'    => 2000,
+        'creator'    => 4000,
         'pro'        => 6500,
-        'agency'     => 13000,
+        'agency'     => 13500,
         'enterprise' => 50000,
         // Lifetime tiers get NO monthly allocation. Their credits are a
         // one-time bucket in credits_topup, same as the AppSumo LTDs — a

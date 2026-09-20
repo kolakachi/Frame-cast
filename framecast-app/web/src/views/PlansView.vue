@@ -28,10 +28,10 @@ const ONE_TIME = [
 ];
 
 const MONTHLY = [
-  { key: "starter", name: "Starter", price: "$19",  credits: 1500,  feats: ["1 channel", "2 characters"] },
-  { key: "creator", name: "Creator", price: "$39",  credits: 3000,  feats: ["3 channels", "5 characters"], popular: true },
-  { key: "pro",     name: "Pro",     price: "$79",  credits: 6500,  feats: ["5 channels", "10 characters"] },
-  { key: "agency",  name: "Agency",  price: "$149", credits: 13000, feats: ["Unlimited channels", "Credit rollover"] },
+  { key: "starter", name: "Starter", price: "$29",  credits: 2000,  feats: ["1 channel", "Stock presenters"] },
+  { key: "creator", name: "Creator", price: "$59",  credits: 4000,  feats: ["3 channels", "Upload your own face"], popular: true },
+  { key: "pro",     name: "Pro",     price: "$99",  credits: 6500,  feats: ["5 channels", "10 characters"] },
+  { key: "agency",  name: "Agency",  price: "$199", credits: 13500, feats: ["Unlimited channels", "Credit rollover"] },
 ];
 
 // ── Entitlements ──────────────────────────────────────────
