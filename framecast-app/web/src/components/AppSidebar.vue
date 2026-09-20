@@ -692,6 +692,19 @@ onBeforeUnmount(() => {
       <WhatsNew />
       <FeedbackButton />
       <a
+        class="docs-link"
+        href="https://docs.wyvstudio.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Read the WyvStudio documentation"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+        </svg>
+        <span class="docs-label">Documentation</span>
+      </a>
+      <a
         class="community-link"
         href="https://www.facebook.com/groups/893816426910556/"
         target="_blank"
@@ -1190,6 +1203,9 @@ onBeforeUnmount(() => {
   color: var(--color-text-secondary);
 }
 
+.docs-link { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: 7px; color: var(--color-text-muted, #8b8b9a); font-size: 12px; font-weight: 600; text-decoration: none; transition: .15s; }
+.docs-link:hover { background: rgba(255,255,255,.06); color: var(--color-text, #ececf3); }
+.sidebar.collapsed .docs-label { display: none; }
 .community-link { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: 7px; color: #60a5fa; font-size: 12px; font-weight: 600; text-decoration: none; transition: .15s; }
 .community-link:hover { background: rgba(96,165,250,.1); }
 .sidebar.collapsed .community-label { display: none; }

@@ -30,6 +30,40 @@ return [
     'entries' => [
 
         [
+            'slug'  => '2026-09-20-ugc-ads',
+            'date'  => '2026-09-20',
+            'tag'   => 'new',
+            'title' => 'UGC ads — a creator-style video ad in one take',
+            'body'  => 'Make a scroll-stopping, talking-creator video ad from a brief. Describe '
+                .'the product, pick who fronts it — one of our stock presenters, or your own '
+                .'character on the Creator plan — and get a finished ad where the person talks '
+                .'to camera and sells, with no shoot and no editing. Test hooks cheaply in draft '
+                .'(480p) and render your winner in full 720p. Find it under UGC Ads in the sidebar.',
+        ],
+
+        [
+            'slug'  => '2026-09-16-clients-and-agencies',
+            'date'  => '2026-09-16',
+            'tag'   => 'new',
+            'title' => 'Manage clients and run an agency',
+            'body'  => 'If you make videos for brands, each client now gets its own space: a brief '
+                .'the AI writes from, a reference library, incoming video requests, and a delivery '
+                .'page where the client reviews and approves finished work. On the Agency plan you '
+                .'can fund each client with credits, set a spend cap, and invite viewers. Find it '
+                .'under Clients.',
+        ],
+
+        [
+            'slug'  => '2026-09-18-mobile-app',
+            'date'  => '2026-09-18',
+            'tag'   => 'improved',
+            'title' => 'The whole app now works on your phone',
+            'body'  => 'WyvStudio now has a proper mobile layout — a bottom tab bar and a slide-out '
+                .'menu — so you can start a video, check your jobs, and manage your calendar from '
+                .'your phone, not just a desktop.',
+        ],
+
+        [
             'slug'  => '2026-09-06-instagram-and-facebook-publishing',
             'date'  => '2026-09-06',
             'tag'   => 'new',
