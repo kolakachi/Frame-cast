@@ -910,11 +910,18 @@ class UgcController extends Controller
         if ($presenterImageAttached) {
             $engine = 'veo_hq';
         }
+        // Pronunciation notes from the client brief respell brand/product
+        // names in the spoken dialogue only (the voice model reads them).
+        $pronNotes = (string) (json_decode(
+            (string) (DB::table('client_profiles')->where('workspace_id', $user->workspace_id)->value('brief') ?? '{}'),
+            true,
+        )['pronunciations'] ?? '');
         $style = [
             'presenter' => $presenter,
             'setting' => trim((string) ($v['setting'] ?? '')),
             'product' => trim((string) ($v['product'] ?? '')),
             'tone' => trim((string) ($v['tone'] ?? '')),
+            'pronunciations' => $pronNotes,
         ];
         // Seedance 2.5 makes the whole ad in one generation (≤30s) — the
         // purest one-take. Longer plans, or explicit choice, chain on Veo.

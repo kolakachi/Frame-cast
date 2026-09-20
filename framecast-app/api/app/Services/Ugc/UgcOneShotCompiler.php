@@ -34,6 +34,7 @@ class UgcOneShotCompiler
 
         $chunks = self::pack($beats);
         $preamble = self::preamble($style);
+        $pron = PronunciationMap::parse((string) ($style['pronunciations'] ?? ''));
 
         $out = [];
         foreach ($chunks as $i => $chunk) {
@@ -50,7 +51,8 @@ class UgcOneShotCompiler
                     // here; dropping it lost "holds up the bottle").
                     $lines[] = ucfirst(self::framing($beat)).'.';
                 }
-                $said = trim((string) ($beat['script_text'] ?? ''));
+                // Respell only what the voice model hears; stored text stays.
+                $said = PronunciationMap::apply(trim((string) ($beat['script_text'] ?? '')), $pron);
                 if ($said !== '') {
                     $delivery = trim((string) ($beat['voice_direction'] ?? ''));
                     $lines[] = ($delivery !== '' ? 'The presenter says, '.lcfirst(rtrim($delivery, '.')).': ' : 'The presenter says: ')
@@ -90,11 +92,14 @@ class UgcOneShotCompiler
             return null;
         }
 
+        $pron = PronunciationMap::parse((string) ($style['pronunciations'] ?? ''));
         $lines = [];
         $dialogue = [];
         foreach ($beats as $j => $beat) {
             $lines[] = ($j === 0 ? ucfirst(self::framing($beat)) : 'Cut to '.self::framing($beat)).'.';
-            $said = trim((string) ($beat['script_text'] ?? ''));
+            // Respell brand/product names only in the copy the voice model
+            // reads — the stored script and captions keep real spelling.
+            $said = PronunciationMap::apply(trim((string) ($beat['script_text'] ?? '')), $pron);
             if ($said !== '') {
                 $delivery = trim((string) ($beat['voice_direction'] ?? ''));
                 $lines[] = ($delivery !== '' ? 'The presenter says, '.lcfirst(rtrim($delivery, '.')).': ' : 'The presenter says: ').'"'.$said.'"';
