@@ -1024,7 +1024,7 @@ onMounted(() => {
               <div v-for="row in usageProgress" :key="row.label" class="usage-bar-container">
                 <div class="usage-label-row">
                   <span class="usage-label">{{ row.label }}</span>
-                  <span class="usage-count" :style="{ color: row.color }">{{ row.used }} / {{ row.limit }}</span>
+                  <span class="usage-count" :style="{ color: row.color }">{{ row.used }} / {{ row.limit ?? 'Unlimited' }}</span>
                 </div>
                 <div class="usage-bar">
                   <div class="usage-fill" :style="{ width: row.pct + '%', background: row.color }"></div>

@@ -30,6 +30,7 @@ function meterPct(used, limit) {
 }
 
 function meterClass(used, limit) {
+  if (limit == null) return 'meter-ok'
   if (used > limit) return 'meter-danger'
   const pct = meterPct(used, limit)
   if (pct >= 90) return 'meter-danger'
@@ -38,6 +39,7 @@ function meterClass(used, limit) {
 }
 
 function remaining(used, limit) {
+  if (limit == null) return { over: false, count: "Unlimited" }
   const diff = limit - used
   if (diff < 0) return { over: true, count: Math.abs(diff) }
   return { over: false, count: diff }
@@ -183,10 +185,10 @@ onMounted(async () => {
                 </div>
               </div>
 
-              <div class="usage-card" :class="{ 'usage-over': usage.active_channels > usage.channel_limit }">
+              <div class="usage-card" :class="{ 'usage-over': usage.channel_limit != null && usage.active_channels > usage.channel_limit }">
                 <div class="usage-label">
                   <span>Channels</span>
-                  <span class="usage-count">{{ usage.active_channels }} / {{ usage.channel_limit }}</span>
+                  <span class="usage-count">{{ usage.active_channels }} / {{ usage.channel_limit ?? 'Unlimited' }}</span>
                 </div>
                 <div class="meter-track">
                   <div class="meter-fill" :class="meterClass(usage.active_channels, usage.channel_limit)" :style="{ width: meterPct(usage.active_channels, usage.channel_limit) + '%' }"></div>
