@@ -1,48 +1,35 @@
 ---
-sidebar_position: 3
-title: Quality, caps & limits
-description: Draft vs full quality, how long an ad can be, how many you can make, and what the content rules are.
+sidebar_position: 4
+title: Quality, credits and limits
+description: Understand draft quality, approval, monthly caps and the difference between retries and revisions.
 ---
 
-# Quality, caps & limits
+# Quality, credits and limits
 
-## Draft vs full quality
+## Draft and full quality
 
-When we cast a presenter for you (Seedance), you can toggle **Draft quality**:
+Where available on the invented-presenter path, **Draft quality** uses 480p to explore a concept at a lower quoted cost. Full quality uses 720p on that path. Check the displayed estimate when changing quality or presenter options.
 
-- **Draft — 480p, half the credits.** Test hooks and angles cheaply. Spin up several concepts, find the winner.
-- **Full — 720p.** Render the keeper you'll actually post.
+Draft is a separate generation, not a guarantee that a later full-quality take will reproduce every frame or the same invented face. Use draft to assess the script and creative direction, then review the full result again.
 
-The workflow that gets the most from your credits: **iterate in draft, publish in full.**
+## Length and monthly takes
 
-## Length & monthly caps
+The format and engine determine the permitted duration. Some formats allow longer ads assembled from several clips; silent reactions use 5 or 10 seconds. Follow the length control and validation in the app rather than assuming every format supports three minutes.
 
-Ads run up to about **3 minutes**. A single continuous take is best kept to ~30 seconds; longer ads are stitched from several generations behind the scenes.
+UGC generation requires a paid plan. Monthly take allowances and credits are separate: having credits does not override a plan's take limit. Check the current allowance in your account and the generation screen, including any legacy or lifetime plan entitlement.
 
-:::info UGC ads are a paid feature
-Free accounts can **see** UGC ads but need to upgrade to any paid plan to make one.
-:::
+Product references allow up to five still images; plans can contain up to twelve beats. Keep each spoken passage short enough to deliver naturally in its allotted time.
 
-| Plan | Takes / month | Max length | Upload your own face |
-|---|---|---|---|
-| Free | — (upgrade required) | — | — |
-| Starter | 30 | up to 3 min | — (stock presenters) |
-| Creator | 60 | up to 3 min | ✓ |
-| Pro | 150 | up to 3 min | ✓ |
-| Agency | Unlimited | up to 3 min | ✓ |
+## Review the price before production
 
-Each ad can carry up to **5 product photos** (stills, not clips), and a plan can hold up to 12 beats.
+On **Approve & generate**, verify the complete scope and total. Alternative openings or additional presenters, where offered, can create additional takes. A change to the plan or production settings can require a new cost decision.
 
-## Content rules
+## Retry versus revision
 
-The video models apply their own content moderation and will decline some material even in tasteful ads — weapons, explicit or skin-heavy content, and similar. **Nothing is charged for a declined take**; rephrase the framing and retry.
+A **retry** attempts a failed generation step. A **revision** changes what you want after reviewing the result and can incur a new production cost. Preview and approve a revision's cost before applying it. Do not interpret “retry free” as unlimited free creative changes or assume every model decline can be solved by resubmitting unchanged inputs.
 
-A few specifics:
+## Check the finished result
 
-- **No burned-in text, logos, or watermarks** are added — but the product's own packaging and branding stay visible and legible.
-- **Real faces run on the character (Veo) path**, never the invented-presenter one.
-- Casting a character asks you to confirm you hold the rights to that likeness and voice.
+Models can decline inputs or produce incorrect words, labels, hands, faces or product details. Use [Troubleshooting](./troubleshooting) if generation fails.
 
-## Getting brand names pronounced right
-
-Add pronunciation notes to your [client brief](/clients/the-client-brief) — for example, *WyvStudio: "wiv studio"*. Those are respelled only in the words the presenter **speaks**; your written script and any on-screen text keep the real spelling.
+Caption overlays and the product's actual packaging are different things. Check typography in the final export; generated packaging text is not guaranteed to be legible. Add confirmed pronunciation guidance to the [client brief](/clients/the-client-brief), and listen to the spoken result rather than assuming the notes guarantee pronunciation.

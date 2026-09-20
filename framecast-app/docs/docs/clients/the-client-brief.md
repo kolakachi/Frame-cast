@@ -1,32 +1,37 @@
 ---
 sidebar_position: 2
-title: The client brief
-description: The brand facts the AI uses as background when it writes scripts and plans ads.
+title: Complete the client brief
+description: Save accurate brand context and attach reference assets before producing new work.
 ---
 
-# The client brief
+# Complete the client brief
 
-The brief is a set of brand facts the AI uses as **background** when it writes scripts and plans ads for that client. Fill in what you know — every field has an AI draft helper, and you can attach reference files (product shots, screen recordings) to the brief's library.
+Open the client, then **Client brief**. The saved brief provides context for supported script and planning workflows in that workspace. It does not rewrite existing projects when you change it.
 
-## The fields
+[![Completed fictional client brief with field guidance and AI drafting controls](/img/howto/clients-brief-guide.png)](/img/howto/clients-brief-guide.png)
 
-- **Audience** — who the video is for, their needs and familiarity with the product.
-- **Goals** — the outcome and the action you want viewers to take.
-- **Products** — accurate product details and offers (prices only when confirmed).
-- **Approved claims** — only messaging the client has verified.
-- **Restrictions** — topics, wording, or treatments the brand does not allow.
-- **Preferences** — tone, pacing, visual style, examples they like.
-- **Pronunciations** — how brand and product names should sound (e.g. *WyvStudio: "wiv studio"*).
+*Select a screenshot to view it at full size. Screenshots use illustrative demo data.*
 
-## How the brief changes what gets generated
+## Fill in the facts
 
-Two ways:
+| Field | Example for Acme Skincare |
+|---|---|
+| Audience | Busy adults seeking a simple daily routine |
+| Goals | Introduce the cleanser; invite viewers to explore the range |
+| Products and offers | Exact product name, confirmed features and current offer |
+| Approved messaging and claims | Fragrance-free, confirmed from the label |
+| Brand restrictions | No medical claims or invented customer testimonials |
+| Creative preferences | Warm delivery, daylight and clear product views |
+| Pronunciation notes | Acme: “ACK-mee” |
 
-1. **It steers the writing.** The brief's facts are added as background context to every script and ad plan for that client, so the output reflects the audience, goals, and preferences you supplied.
-2. **Its files become footage.** Anything you attach to the brief's library becomes material the director can use directly in a video.
+Use **Write with AI** where available to draft wording. Review and apply the suggestion, then **save the brief**. An AI suggestion is not approval or substantiation of a product claim.
 
-And **pronunciation notes are applied to the spoken voice**, so brand names sound right in UGC ads and voiceovers.
+## Attach useful references
 
-:::caution Approved claims and restrictions guide, they don't guarantee
-These fields steer the AI, but always review the finished script yourself. They are guidance to the model, not a legal or compliance guarantee.
-:::
+Upload a reference or select existing **Reference assets**. Include useful product photos, logos, footage and other creative context. After upload, save the brief to retain the selection; upload alone does not finish attaching it to the saved brief.
+
+Selected assets become available to supported production workflows. They are **not automatically included in every video**. Check the specific ad's plan and asset selections, especially when a generation mode accepts stills but not footage.
+
+## Before creating the next video
+
+Confirm you are in the right client workspace, save the brief and then start the request or video. Review generated scripts against the approved messaging and restrictions. Listen to brand names in the finished audio: pronunciation notes guide delivery but do not guarantee it.

@@ -1,41 +1,51 @@
 ---
 sidebar_position: 1
-title: What is a UGC ad
-description: A single, continuous creator-style video ad — born as one finished clip, with the voice generated inside it.
+title: Create your first UGC ad
+description: Turn a brief into a reviewed plan, a generated take and an exported ad.
 ---
 
-# What is a UGC ad
+# Create your first UGC ad
 
-A **UGC ad** is one continuous, creator-style video — a single person talking to the camera the way a real customer would, born as a finished clip with the voice generated inside it. There's no timeline to edit and no scenes to assemble: you give a brief or a script, approve the plan and the cost, and get a ready-to-post ad.
+UGC Ads creates **creator-style ads** from your idea, script, product information or existing material. You can make a talking-presenter ad, a demonstration, a story, a silent reaction, or text-led cards. An AI presenter is not an actual customer testimonial: use factual product messaging rather than inventing a person's experience.
 
-It's a separate pathway from the multi-scene editor. Find it under **UGC Ads** in the sidebar. UGC ads are a **paid feature** — Free accounts can see it, but need to upgrade to a paid plan to make one.
+Open **UGC Ads** in the sidebar, then **＋ New take**. Generation requires a paid plan and sufficient credits. This guide uses a fictional brand, **Acme Skincare**; screenshots show demo data in the app's interface.
 
-## Make one in four steps
+## 1. Describe what you need
 
-**1. Describe the ad.** Open **UGC Ads → ＋ New take**, and tell it what you want in a sentence (or paste an exact script, or start from a product link). Pick a length and aspect ratio.
+Choose **Describe an idea**, **Paste an exact script**, or **Start from a product link**. For a first ad, try:
 
-![The UGC brief screen — describe the ad, pick a starting point and length](/img/howto/ugc-describe.png)
+> Make a 15-second vertical introduction to Acme Daily Cleanser for busy adults. Use a warm, conversational presenter. Mention that it is fragrance-free and finish with “Explore the Acme range”. Do not make medical claims.
 
-**2. Get the plan.** Click **See the proposed plan** and the director drafts a script and shot plan from your brief. Nothing is generated yet — this only plans the video.
+Include the audience, confirmed product facts, desired tone and call to action. If you use **Write with AI**, review its draft before continuing. For a product URL, check the information read from the page; paste the details yourself if it cannot be read.
 
-![The plan step — the director drafts a script and shot plan from your brief](/img/howto/ugc-plan.png)
+[![UGC brief with a completed example and delivery choices](/img/howto/ugc-brief-guide.png)](/img/howto/ugc-brief-guide.png)
 
-**3. Choose a presenter and approve.** [Pick how the presenter is made](./choose-a-presenter), review the exact credit cost, and approve.
+*Select a screenshot to view it at full size. Screenshots use illustrative demo data.*
 
-**4. Review the finished ad.** It lands in your takes list — open it to watch, request a change, download, schedule, or share.
+Choose the [starting point and format](./starting-points-and-assets), target length, aspect ratio and language. Expand **More direction** for additional guidance. Use 9:16 for a vertical placement, 1:1 for square, or 16:9 for landscape.
 
-![The review screen — a finished ad with revise and export options](/img/howto/ugc-review.png)
+## 2. Review the proposed plan
 
-Nothing is generated, and no credits are spent, until you approve the plan.
+Click **See the proposed plan**. Wait for the actual **Plan** step: a loading message on Brief is not yet a finished plan.
 
-## Your takes, managed in one place
+[![A completed UGC plan with script passages and presenter choices](/img/howto/ugc-plan-guide.png)](/img/howto/ugc-plan-guide.png)
 
-Opening **UGC Ads** lands you on your takes library, not a blank form — every ad you've made, with its status, so you can review, re-open, or delete them. Start a new one any time with **＋ New take**.
+Read the script aloud. Check the product facts, opening, call to action, shot directions and time allowed for each passage. Edit the passages that need work, then validate the plan and cost again when prompted. Choose [how the presenter is made](./choose-a-presenter), or use a format without a presenter.
 
-![The UGC takes library — every ad you've made, with its status](/img/howto/ugc-takes.png)
+## 3. Approve the scope and price
 
-## Good to know
+Continue to **Approve & generate**. Check the output, assets, presenter and total credits. Confirm the required review and rights statements, then generate. If you go back and change the plan, presenter or other production choices, review the updated estimate before approving again.
 
-- A take is **one fluid video**, not a slideshow. The presenter speaks natively — the voice is part of the generation.
-- You approve a plan and an exact price *before* anything renders. A failed step charges nothing and can be retried free.
-- Add up to **5 product photos** so the model learns the product's shape from several angles.
+[![Approval screen showing the proposed scope, credit total and confirmations](/img/howto/ugc-approve-guide.png)](/img/howto/ugc-approve-guide.png)
+
+The example price in a screenshot is illustrative. **The current estimate in your app is the price to review**, not a fixed rate in this guide.
+
+## 4. Review and export
+
+Follow progress, then open the completed take where review access is enabled. See the [current review-screen access limitation](./review-and-export) if a ready take redirects you to Dashboard. Check the full video before exporting: words, pronunciation, face consistency, product appearance and pacing. Follow [Review, revise and export](./review-and-export) to make changes or prepare a download.
+
+A generated preview and a completed export are different stages. Sharing, scheduling and client approval may remain unavailable until the export is ready.
+
+## Where your work goes
+
+Return to **UGC Ads** to find your takes. Open a ready take for review or a running take to follow progress. If a take needs a retry, use the [troubleshooting guide](./troubleshooting). Long ads may be assembled from several generations; they are not necessarily a single uninterrupted shot.

@@ -1,30 +1,40 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 title: Choose a presenter
-description: Pick the engine first — an invented presenter, or your own character dropped into any scene.
+description: Choose an invented presenter or one of your saved characters and understand the difference.
 ---
 
 # Choose a presenter
 
-On the plan screen you pick **how the presenter is made** first, and that decides what casting is available.
+On **Plan**, choose how the presenter is made. This choice determines whether you select a saved character or describe a new presenter.
 
-## Let us cast a presenter (Seedance)
+[![Presenter choices beside the completed UGC plan](/img/howto/ugc-plan-guide.png)](/img/howto/ugc-plan-guide.png)
 
-We create a fitting presenter for the ad — no character needed. The director picks a look that suits the product and audience, and you can edit that description before approving. Available on **every plan**.
+*Select a screenshot to view it at full size. Screenshots use illustrative demo data.*
 
-This is the fastest, most free-flowing option: one continuous generation, an invented person, a natural setting.
+## Let us cast a presenter
 
-## Use one of your characters (Veo)
+The Seedance path invents a presenter from the plan and appearance description. No saved character is required. Review and edit the description for the age range, clothing, setting and delivery you want.
 
-A real face, carried into any scene the ad needs. The presenter's face is preserved while the setting, wardrobe, and action come from the plan — so the same character can be at a kitchen counter in one ad and a city street in the next.
+A description can guide appearance, but does not lock a particular person's face across different generations. Use this option when the creative fit matters more than repeating a saved identity.
 
-- **Stock presenters** — a shared roster of ready-made presenters, filterable by gender, age, and setting. Available on **every plan**.
-- **Your own character** — upload a photo of yourself, a founder, or a brand spokesperson. **Uploading your own face is a Creator feature**; Free and Starter use the stock roster. See [Characters](/characters/create-a-character) to add one.
+## Use one of your characters
 
-:::note Why real faces use the Veo path
-The invented-presenter engine (Seedance) declines photoreal faces by design, so casting a real character always runs on the Veo path. This is automatic — you just pick the character.
-:::
+The character path uses Veo and your selected character reference to guide appearance. Choose a stock presenter or, where your plan permits, your own character. See [Create a character](/characters/create-a-character).
 
-## Casting your own likeness
+1. Select the character option on Plan.
+2. Open the character picker and choose the presenter.
+3. Check the selection shown back on the plan.
+4. Review the new cost before generating.
 
-When you cast a character, you confirm you have the right to use that person's face and voice. Only cast people who have agreed to appear.
+Reference conditioning improves consistency; it does not guarantee an identical face, wardrobe or product in every shot. Review the finished take, especially when it spans multiple generated clips.
+
+Custom character uploads require the relevant plan capability. If the picker offers only stock characters, check your plan before trying to upload your own.
+
+## Voice and consent
+
+Review any voice or delivery controls available for the selected format. Native-audio generation produces speech within the video; do not assume a voice-library selection guarantees the same cloned voice on every generation path. Listen to the result before delivery.
+
+Only select a likeness and voice you have permission to use. Complete the required consent confirmation before generating.
+
+Text-led formats have nobody to cast. Silent reactions do not need spoken dialogue.

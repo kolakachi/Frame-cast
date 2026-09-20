@@ -1,28 +1,34 @@
 ---
 sidebar_position: 3
-title: Requests, delivery & funding
-description: How video requests come in, how you deliver finished work, and how agencies fund a client.
+title: Manage creative requests
+description: Submit a request, assign an editor and connect it to the project that will produce the video.
 ---
 
-# Requests, delivery & funding
+# Manage creative requests
 
-## Requests
+Open the client's **Requests** section. An invited client can submit a request, or the agency can create one on their behalf.
 
-A client — or you, on their behalf — submits a **video request** with a title, brief, and due date. You start it into a project, produce the video, and it moves through the request's status as you work.
+## Submit a request
 
-Starting a request creates a draft project. **No credits are spent** until you actually produce the video.
+1. Enter a recognizable **Video title**.
+2. Add an optional **Due date**. This is a production deadline, not a scheduled publication time.
+3. Write the **Brief**: audience, message, format, call to action and constraints.
+4. Upload or select attachments, then click **Submit request**.
 
-## Delivery & review
+For example: “Create a 15-second vertical introduction to Daily Cleanser. Show the bottle clearly, mention the confirmed fragrance-free claim, and end with ‘Explore the Acme range’.”
 
-Finished work is delivered back through the client's **delivery page**, where they can review and approve it. Approvals are tracked, so you always know what's signed off and what's still pending.
+[![Creative request form and an existing request with editor, status and project controls](/img/howto/clients-requests-guide.png)](/img/howto/clients-requests-guide.png)
 
-## Funding a client *(agency)*
+*Select a screenshot to view it at full size. Screenshots use illustrative demo data.*
 
-On an agency plan you can:
+## Assign and start the work
 
-- **Transfer credits** into a client workspace so they (or your team) can generate against a dedicated balance.
-- **Set a spend cap** to control how much a client can burn.
-- **Invite viewers** to a client workspace with limited access.
-- **Reclaim unused credits** back to your own balance.
+Agency managers can set **Assigned editor**, **Status**, **Project** and **Due date** on the request. Choose a linked project if work already exists. Otherwise use **Create draft from request**, then **Open project** to continue production.
 
-Each client's balance is kept separate from yours, so one client's usage never draws down another's.
+Creating the draft does not generate a video or spend generation credits. Review and complete the project before approving production costs. An assignment identifies responsibility; the person must also have appropriate workspace access.
+
+## Keep the status useful
+
+Use requested, in progress, in review, delivered or cancelled to reflect the work's actual state. Check the linked project and status after each handoff; a due date or status label does not by itself generate, approve or deliver a video.
+
+After production, [export and request approval](./review-and-approval). Once that version is approved, [create the delivery package](./delivery-and-handoff).

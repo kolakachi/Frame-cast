@@ -1,27 +1,43 @@
 ---
 sidebar_position: 1
-title: The client hub
-description: Keep each brand you make videos for separate — its brief, files, requests, and delivery.
+title: Set up a client workspace
+description: Create a client workspace and find its brief, requests, reviews, delivery and budget.
 ---
 
-# The client hub
+# Set up a client workspace
 
-If you make videos for brands — your own or clients' — the **client hub** keeps each brand separate: its brief, its reference files, the video requests coming in, and the finished work you deliver back.
+Use **Clients** to manage separate workspaces for the brands your agency serves. Projects, brand information, assets and people are scoped to the selected workspace. Client management requires an account with the relevant agency capability; check your plan if Clients or Add client is unavailable.
 
-Agencies can go a step further and give each client its own workspace, budget, and viewer access.
+The examples in this section use fictional **Bright Studio** and **Acme Skincare** demo records.
 
-Open **Clients** in the sidebar and add one by name — it inherits your brand to start, and you can fund it with its own credits or leave it on your shared balance.
+## Create and open a client
 
-![The Clients screen — add a client workspace by name](/img/howto/clients-add.png)
+1. Open **Clients** in the sidebar.
+2. Enter the client's name and click **Add client**. Check the active-client allowance shown on the page.
+3. Open the new client's detail page. Review the inherited brand settings and complete the [client brief](./the-client-brief).
+4. Choose a [funding mode and monthly cap](./funding-and-spending).
+5. [Invite people](./people-and-access) with the access they need.
 
-## What's inside
+[![Populated client overview with requests, projects and recent activity](/img/howto/clients-overview-guide.png)](/img/howto/clients-overview-guide.png)
 
-- **Overview** — activity and what's outstanding at a glance.
-- **Client brief** — the brand facts the AI uses when it writes scripts and plans ads. See [The client brief](./the-client-brief).
-- **Requests** — video work coming in, with titles, briefs, and due dates.
-- **Reviews & Delivery** — approve finished work and deliver it to the client. See [Requests & delivery](./requests-and-delivery).
-- **Spending & Access** *(agency)* — fund a client, set a spend cap, invite viewers.
+*Select a screenshot to view it at full size. Screenshots use illustrative demo data.*
 
-## Why it matters
+## Know which workspace you are using
 
-Everything the AI writes for a client is shaped by that client's brief and reference library — so a video for one brand doesn't leak the tone, claims, or products of another. Switch clients and the context switches with you.
+The client detail page is the agency's management view. **Open workspace** switches into the client's production workspace. Confirm the workspace name before creating a video or uploading brand assets. Switch back to your agency workspace when managing other clients.
+
+## Find the right section
+
+| Section | What you do there |
+|---|---|
+| Overview | Check upcoming requests, projects, activity and lifecycle actions |
+| Client brief | Save audience, products, approved messaging, preferences and reference assets |
+| Requests | Submit briefs, assign editors and create or link projects |
+| Reviews | Open version-specific review links and check decisions |
+| Delivery | Package approved exports and supporting files |
+| Spending | See credit consumption by project for the displayed month |
+| Access & budget | Allocate or reclaim credits, set a cap and manage people |
+
+Follow the workflow: **brief → request → production → export → review → approved version → delivery**. A request's due date is a work deadline, not a publishing schedule.
+
+To pause a relationship or free an active client slot, see [Pause, archive or offboard](./client-lifecycle).
