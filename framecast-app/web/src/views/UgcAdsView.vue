@@ -222,34 +222,11 @@ const formatOptions = [
   ["text_led", "Text-led cards — no presenter, no video model"],
 ];
 const selected = ref([]); // chosen characters
-// exact = Veo anchored to the real face (12 cr/s); variant = Seedance's
-// sharper renderer from a written casting sheet — a close look-alike,
-// said plainly on the toggle (18 cr/s).
-const castStyle = ref("exact");
-// Exact casts can step up to google/veo-3.1 non-fast: Google's best
-// renderer, and it takes product photos natively. 32 cr/s.
-const hqFidelity = ref(false);
-// Pre-flight for the variant lane: the casting sheet rendered as a still —
-// roughly who Seedance will cast — for one image generation's credits.
-const variantPreview = ref(null); // { url, sheet, characterId }
-const variantPreviewLoading = ref(false);
-async function previewVariant() {
-  const presenter = selected.value[0];
-  if (!presenter || variantPreviewLoading.value) return;
-  variantPreviewLoading.value = true;
-  try {
-    const { data } = await api.post(`/ugc/characters/${presenter.id}/variant-preview`);
-    variantPreview.value = {
-      url: data?.data?.preview_url,
-      sheet: data?.data?.sheet,
-      characterId: presenter.id,
-    };
-  } catch (err) {
-    errorMessage.value = apiErrorMessage(err, "Could not generate the preview.");
-  } finally {
-    variantPreviewLoading.value = false;
-  }
-}
+// Model-first: the user picks the engine, and that decides whether a real
+// character is available. Veo carries a real cast face into any creative
+// scene (google/veo-3.1, face in reference_images, 32 cr/s); Seedance
+// invents a fitting presenter with no character (castless, 18 cr/s).
+const castEngine = ref("seedance"); // 'veo' | 'seedance'
 const aspectRatio = ref("9:16");
 const plan = ref(null); // { segments, reasoning, credits_per_character }
 // A still-only plan has no presenter, so the cast step neither gates nor
@@ -348,9 +325,7 @@ const oneShotEligible = computed(
 );
 const oneShotSeconds = computed(() => Math.max(4, Math.ceil(planSeconds.value)));
 const oneShotRate = computed(() =>
-  selected.value.length && castStyle.value === "exact"
-    ? (hqFidelity.value ? ONESHOT_RATES.veo_hq : ONESHOT_RATES.veo)
-    : ONESHOT_RATES.seedance25
+  castEngine.value === "veo" && selected.value.length ? ONESHOT_RATES.veo_hq : ONESHOT_RATES.seedance25
 );
 const oneShotCredits = computed(() => oneShotSeconds.value * oneShotRate.value);
 // The run is the base plan plus every ticked opening, each a full take per
@@ -359,7 +334,7 @@ const oneShotCredits = computed(() => oneShotSeconds.value * oneShotRate.value);
 const variantCreditsPerCast = computed(() =>
   selectedVariants.value.reduce((sum, v) => sum + (v.credits_per_character ?? 0), 0)
 );
-const castCount = computed(() => (noCast.value ? 1 : selected.value.length));
+const castCount = computed(() => (noCast.value || castEngine.value === "seedance" ? 1 : selected.value.length));
 const totalCredits = computed(
   () => (perCharacter.value + variantCreditsPerCast.value) * castCount.value
 );
@@ -383,7 +358,7 @@ const missingFootage = computed(() =>
 // not lock you out of your own brief.
 const stepReady = computed(() => [
   Boolean(product.value.trim() || context.value.trim() || script.value.trim()),
-  Boolean(plan.value?.segments?.length) && (noCast.value || selected.value.length > 0),
+  Boolean(plan.value?.segments?.length) && (noCast.value || castEngine.value === "seedance" || selected.value.length > 0),
   canGenerate.value,
 ]);
 const furthestStep = computed(() => {
@@ -405,7 +380,7 @@ function prevStep() { goStep(Math.max(step.value - 1, 0)); }
 const canGenerate = computed(
   () =>
     quoteCurrent.value &&
-    (noCast.value || selected.value.length > 0) &&
+    (noCast.value || castEngine.value === "seedance" || selected.value.length > 0) &&
     reviewed.value &&
     consentLikeness.value &&
     consentFacts.value &&
@@ -445,7 +420,7 @@ watch(
   // (membership, not object internals), exact-vs-variant, aspect. A voice
   // pick changes the sound, not the estimate — it must not silently clear
   // the tick (that was the "box sometimes unticks" bug).
-  [planFingerprint, () => selected.value.map((c) => c.id).join(","), castStyle, hqFidelity, aspectRatio],
+  [planFingerprint, () => selected.value.map((c) => c.id).join(","), castEngine, aspectRatio],
   () => {
     reviewed.value = false;
   },
@@ -737,7 +712,9 @@ async function generate() {
   try {
     // The one-video lane: spoken plans become a single fluid generation.
     if (oneShotEligible.value) {
-      const presenter = selected.value[0];
+      // Veo carries the chosen character; Seedance is castless and takes the
+      // director's written presenter instead.
+      const presenter = castEngine.value === "veo" ? selected.value[0] : null;
       const oneShotPayload = {
         format: plan.value.format,
         segments: plan.value.segments,
@@ -746,8 +723,7 @@ async function generate() {
           ? [presenter.name, presenter.description].filter(Boolean).join(" — ")
           : (plan.value.presenter || ""),
         character_id: presenter?.id ?? null,
-        cast_style: presenter ? castStyle.value : "exact",
-        fidelity: presenter && castStyle.value === "exact" && hqFidelity.value ? "high" : "standard",
+        engine: castEngine.value === "veo" ? "veo" : "seedance25",
         product_asset_id: productAsset.value?.id ?? null,
         product_asset_ids: productAssets.value.map((a) => a.id),
         product: product.value,
@@ -1147,9 +1123,25 @@ onMounted(() => {
           <div v-if="!noCast" class="ugc-card">
             <div class="ugc-card-h">
               <span class="ugc-card-t">Cast &amp; voice</span>
-              <span class="ugc-card-c">{{ selected.length ? `${selected.length} selected` : "Shown because someone is seen and heard" }}</span>
+              <span class="ugc-card-c">Pick how the presenter is made</span>
             </div>
-            <div v-for="c in selected" :key="c.id" class="ugc-ch">
+
+            <!-- Model first: the engine decides whether a real character is
+                 available to cast. -->
+            <div class="ugc-cast-style">
+              <label :class="['ugc-style-pill', { on: castEngine === 'veo' }]">
+                <input v-model="castEngine" type="radio" value="veo" />
+                <b>Use one of your characters</b>
+                <span>Their real face, dropped into any scene the ad needs — Google's best renderer · 32 cr/s</span>
+              </label>
+              <label :class="['ugc-style-pill', { on: castEngine === 'seedance' }]">
+                <input v-model="castEngine" type="radio" value="seedance" />
+                <b>Let us cast a presenter</b>
+                <span>We create a fitting presenter for the ad — no character needed · 18 cr/s</span>
+              </label>
+            </div>
+
+            <div v-for="c in selected" :key="c.id" v-show="castEngine === 'veo'" class="ugc-ch">
               <div class="ugc-ch-av">
                 <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" alt="" />
                 <span v-else>☺</span>
@@ -1179,44 +1171,20 @@ onMounted(() => {
               </div>
               <button class="ugc-ch-x" type="button" @click="toggleCharacter(c)">✕</button>
             </div>
-            <div class="ugc-card-f">
-              <button class="ugc-btn" @click="openPicker">＋ Add characters</button>
-            </div>
-            <div v-if="selected.length && oneShotEligible" class="ugc-cast-style">
-              <label :class="['ugc-style-pill', { on: castStyle === 'exact' }]">
-                <input v-model="castStyle" type="radio" value="exact" />
-                <b>Use this character</b>
-                <span>Their real photo anchors the video — the closest match we can generate · {{ hqFidelity ? 32 : 12 }} cr/s</span>
-              </label>
-              <label :class="['ugc-style-pill', { on: castStyle === 'variant' }]">
-                <input v-model="castStyle" type="radio" value="variant" />
-                <b>New presenter, inspired by them</b>
-                <span>Sharper renderer casts a new person in their likeness from a written description — a look-alike, never them · 18 cr/s</span>
-              </label>
-            </div>
-            <label v-if="castStyle === 'exact' && selected.length" class="ugc-check ugc-hq-row">
-              <input v-model="hqFidelity" type="checkbox" />
-              <span><b>High fidelity</b> — Google's best renderer, product photos ride natively · 32 cr/s</span>
-            </label>
-            <div v-if="castStyle === 'variant' && selected.length" class="ugc-variant-preview">
-              <button class="ugc-btn ugc-btn-sm" type="button" :disabled="variantPreviewLoading" @click="previewVariant">
-                {{ variantPreviewLoading ? "Rendering…" : "Preview the look-alike" }}
-              </button>
-              <template v-if="variantPreview && variantPreview.characterId === selected[0]?.id">
-                <img :src="variantPreview.url" alt="Variant look-alike preview" />
-                <span class="ugc-hint">Roughly who this take will cast. Not them? Adjust the character's description and preview again.</span>
-              </template>
+            <div v-if="castEngine === 'veo'" class="ugc-card-f">
+              <button class="ugc-btn" @click="openPicker">{{ selected.length ? "＋ Swap character" : "＋ Pick a character" }}</button>
+              <span v-if="!selected.length" class="ugc-hint">Choose a character to front this ad — their face carries into the scene.</span>
             </div>
           </div>
           <p v-else-if="plan" class="ugc-hint">
             No presenter in this format — the words on screen carry the ad, so there is nobody to cast.
           </p>
 
-          <!-- Castless runs: the director's presenter choice, stated and
+          <!-- Seedance castless: the director's presenter choice, stated and
                editable, instead of an invisible default. -->
-          <div v-if="plan && !noCast && !selected.length && plan.presenter !== undefined" class="ugc-card ugc-fields">
+          <div v-if="plan && !noCast && castEngine === 'seedance' && plan.presenter !== undefined" class="ugc-card ugc-fields">
             <label>
-              <span class="ugc-label-row">Who fronts this ad <span class="ugc-opt">(the director's pick — edit freely, or cast a character above)</span></span>
+              <span class="ugc-label-row">Who fronts this ad <span class="ugc-opt">(the director's pick — edit freely)</span></span>
               <textarea v-model="plan.presenter" maxlength="300" rows="2"></textarea>
             </label>
           </div>
@@ -1510,8 +1478,8 @@ onMounted(() => {
             <div v-if="plan" class="ugc-summary">
               <div class="ugc-summary-row"><span>Format</span><b>{{ plan.format }}</b></div>
               <div class="ugc-summary-row"><span>Length</span><b>~{{ (plan.segments ?? []).reduce((t, x) => t + Number(x.seconds || 0), 0) }} seconds</b></div>
-              <div class="ugc-summary-row"><span>{{ noCast ? 'Presenter' : (selected.length === 1 ? 'Presenter' : 'Presenters') }}</span>
-                <b>{{ noCast ? 'None — text carries the ad' : selected.map((c) => c.name).join(', ') || '—' }}</b></div>
+              <div class="ugc-summary-row"><span>Presenter</span>
+                <b>{{ noCast ? 'None — text carries the ad' : (castEngine === 'veo' ? (selected.map((c) => c.name).join(', ') || '—') : 'We\'ll cast a fitting presenter') }}</b></div>
               <div class="ugc-summary-row"><span>Assets used</span>
                 <b>{{ [productAsset ? 'product photo' : null, footageAssets.length ? `${footageAssets.length} clip${footageAssets.length === 1 ? '' : 's'} of your footage` : null].filter(Boolean).join(', ') || 'none' }}</b></div>
               <div class="ugc-summary-row"><span>Output</span><b>{{ aspectRatio }} · {{ language }}</b></div>
@@ -1895,8 +1863,6 @@ onMounted(() => {
   color: var(--color-text-muted);
 }
 .ugc-cast-style { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 18px 16px; }
-.ugc-variant-preview { display: flex; flex-direction: column; gap: 8px; padding: 0 18px 16px; }
-.ugc-variant-preview img { width: 132px; border-radius: 12px; border: 1px solid var(--color-border); }
 .ugc-style-pill {
   flex: 1 1 220px; display: flex; flex-direction: column; gap: 3px; cursor: pointer;
   border: 1px solid var(--color-border); border-radius: 11px; padding: 10px 14px; font-size: 12.5px;
@@ -1905,11 +1871,7 @@ onMounted(() => {
 .ugc-style-pill.on { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
 .ugc-style-pill b { font-size: 13px; }
 .ugc-style-pill span { color: var(--color-text-muted); }
-.ugc-hq-row {
-  display: flex; align-items: center; gap: 8px; margin: 0 18px 16px;
-  padding: 9px 14px; font-size: 12.5px; border: 1px dashed var(--color-border); border-radius: 11px;
-}
-.ugc-hq-row b { font-weight: 700; }
+
 .ugc-card-f {
   display: flex;
   align-items: center;

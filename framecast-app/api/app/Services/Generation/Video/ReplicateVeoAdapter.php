@@ -57,6 +57,11 @@ class ReplicateVeoAdapter
             if ($engine === 'veo_hq' && $referenceImages !== []) {
                 $input['reference_images'] = array_slice(array_values($referenceImages), 0, 3);
             }
+        } elseif ($engine === 'veo_hq' && $referenceImages !== []) {
+            // Character face (and product) as reference WITHOUT a start frame:
+            // the model keeps the face but invents the scene from the prompt,
+            // so the take is creative rather than locked to a still's setting.
+            $input['reference_images'] = array_slice(array_values($referenceImages), 0, 3);
         } elseif ($engine === 'seedance25' && $referenceImages !== []) {
             // The pose sheet: character and product stills the presenter and
             // packaging must match. Exclusive with a start frame by schema.

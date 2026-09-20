@@ -94,7 +94,12 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $url = null;
                 $lastTransient = null;
                 for ($attempt = 0; $attempt < 2; $attempt++) {
-                    $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame, $this->engine, $i === 0 ? $this->referenceImages : [], $this->seed);
+                    // veo_hq keeps the character face as a reference on
+                    // EVERY chunk so identity holds across the chain (the
+                    // scene stays creative — no start frame on chunk 0). Other
+                    // engines only need refs on chunk 0.
+                    $chunkRefs = ($this->engine === 'veo_hq' || $i === 0) ? $this->referenceImages : [];
+                    $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed);
                     $scene->forceFill(['image_generation_settings_json' => array_merge(
                         $scene->image_generation_settings_json ?? [],
                         ['oneshot_segment' => $i + 1, 'oneshot_total' => count($this->chunks), 'oneshot_prediction_id' => $predictionId],

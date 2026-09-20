@@ -900,14 +900,15 @@ class UgcController extends Controller
         }
 
         $engine = in_array($request->input('engine'), ['seedance25', 'veo'], true) ? $request->input('engine') : 'seedance25';
-        // Proven A/B: Seedance's moderation declines photoreal faces in its
-        // reference set (deepfake protection) — the exact same prompt passes
-        // without the face. A cast character therefore anchors identity as a
-        // Veo START FRAME instead, which accepts person images happily.
+        // A cast character runs on veo-3.1 (non-fast) with the face in
+        // reference_images — the model keeps the face but INVENTS the scene
+        // from the plan, so the take is creative rather than frozen to the
+        // reference still's setting. No start frame; the face persists across
+        // chunks. (Seedance declines photoreal faces, so a real cast is
+        // always Veo.) Product photos ride in the same reference set.
         $characterFrame = null;
         if ($presenterImageAttached) {
-            $characterFrame = array_shift($referenceImages); // presenter was unshifted first
-            $engine = ($v['fidelity'] ?? 'standard') === 'high' ? 'veo_hq' : 'veo';
+            $engine = 'veo_hq';
         }
         $style = [
             'presenter' => $presenter,
