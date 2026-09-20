@@ -296,10 +296,10 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/fonts', [FontController::class, 'index']);
         Route::get('/visual-styles', [ImageStyleController::class, 'index']);
         Route::get('/image-generation/styles', [ImageStyleController::class, 'index']);
-        // UGC ads — built but not released. 'internal' answers 404 for
-        // everyone outside the team, so a customer who finds the route sees
-        // nothing rather than a locked door.
-        Route::prefix('/ugc')->middleware('internal')->group(function (): void {
+        // UGC ads — released. Available to every plan except Free, which is
+        // gated inside the controller (ugcGate) with an upgrade prompt so a
+        // Free user can see the feature but not spend on it.
+        Route::prefix('/ugc')->group(function (): void {
             Route::get('/takes', [UgcController::class, 'takes']);
             Route::post('/plan', [UgcController::class, 'plan']);
             Route::post('/suggest', [UgcController::class, 'suggest']);

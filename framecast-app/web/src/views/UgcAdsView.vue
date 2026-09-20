@@ -16,6 +16,8 @@ const workspaceStore = useWorkspaceStore();
 // Own (non-stock) characters are a Creator capability; only lock when the
 // plan explicitly disallows it (unknown = don't block, the server enforces).
 const canOwnCharacter = computed(() => workspaceStore.capabilities?.custom_characters !== false);
+// UGC is paid-only; Free is sent to the takes page, which shows the upgrade wall.
+const canUgc = computed(() => workspaceStore.capabilities?.ugc_ads !== false);
 
 // ── Wizard ──────────────────────────────────────────────────────────────
 // Three screens, per the wyvstudio-ugc-html mockups: say what you're making,
@@ -809,8 +811,8 @@ function openTake(take) {
 }
 
 onMounted(() => {
-  if (!authStore.user?.is_internal) {
-    router.replace({ name: "dashboard" });
+  if (!canUgc.value) {
+    router.replace({ name: "ugc-ads" });
     return;
   }
   loadBalance();

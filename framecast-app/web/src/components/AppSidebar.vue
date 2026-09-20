@@ -477,7 +477,6 @@ onBeforeUnmount(() => {
         Series
       </button>
       <button
-        v-if="isInternal"
         :class="['nav-item', activePage === 'ugc-ads' ? 'active' : '']"
         data-tooltip="UGC Ads"
         type="button"

@@ -1,9 +1,10 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
 import api from "../services/api";
 import { useAuthStore } from "../stores/auth";
+import { useWorkspaceStore } from "../stores/workspace";
 import { apiErrorMessage } from "../composables/apiError";
 
 // The takes library: UGC's own first-class listing, now that takes no
@@ -11,6 +12,9 @@ import { apiErrorMessage } from "../composables/apiError";
 
 const router = useRouter();
 const authStore = useAuthStore();
+const workspaceStore = useWorkspaceStore();
+// UGC is a paid feature — Free plans see the page but hit an upgrade wall.
+const canUgc = computed(() => workspaceStore.capabilities?.ugc_ads !== false);
 
 const takes = ref([]);
 const loaded = ref(false);
@@ -80,11 +84,7 @@ function when(iso) {
 }
 
 onMounted(() => {
-  if (!authStore.user?.is_internal) {
-    router.replace({ name: "dashboard" });
-    return;
-  }
-  load();
+  if (canUgc.value) load();
 });
 onBeforeUnmount(() => {
   disposed = true;
@@ -101,11 +101,18 @@ onBeforeUnmount(() => {
         <div class="tl-crumb">
           <b>UGC Ads</b> — your takes
         </div>
-        <button class="tl-btn tl-btn-primary" type="button" @click="router.push({ name: 'ugc-new' })">
+        <button v-if="canUgc" class="tl-btn tl-btn-primary" type="button" @click="router.push({ name: 'ugc-new' })">
           + New take
         </button>
       </header>
 
+      <div v-if="!canUgc" class="tl-upsell">
+        <h2>UGC ads are a paid feature</h2>
+        <p>Make scroll-stopping, creator-style video ads — pick a presenter, describe the ad, and post the result. Upgrade to any paid plan to start.</p>
+        <button class="tl-btn tl-btn-primary" type="button" @click="router.push({ name: 'plans' })">See plans →</button>
+      </div>
+
+      <template v-else>
       <div v-if="errorMessage" class="tl-error">{{ errorMessage }}</div>
 
       <div v-if="loaded && !takes.length" class="tl-empty">
@@ -137,6 +144,7 @@ onBeforeUnmount(() => {
           </div>
         </button>
       </div>
+      </template>
     </main>
   </div>
 </template>
@@ -158,6 +166,9 @@ onBeforeUnmount(() => {
   background: var(--color-danger-soft, rgba(179, 38, 30, 0.08)); color: var(--color-danger, #b3261e);
 }
 .tl-empty { padding: 40px 0; font-size: 14px; color: var(--color-text-muted); }
+.tl-upsell { max-width: 460px; margin: 60px auto; text-align: center; padding: 32px 24px; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); }
+.tl-upsell h2 { font-size: 20px; margin: 0 0 10px; }
+.tl-upsell p { font-size: 14px; color: var(--color-text-muted); line-height: 1.5; margin: 0 0 20px; }
 .tl-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 16px; padding-top: 20px;

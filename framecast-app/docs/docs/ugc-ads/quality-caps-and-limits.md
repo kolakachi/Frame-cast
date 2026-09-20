@@ -17,11 +17,15 @@ The workflow that gets the most from your credits: **iterate in draft, publish i
 
 ## Length & monthly caps
 
-Ads run up to about **3 minutes** (Free is capped at 60 seconds). A single continuous take is best kept to ~30 seconds; longer ads are stitched from several generations behind the scenes.
+Ads run up to about **3 minutes**. A single continuous take is best kept to ~30 seconds; longer ads are stitched from several generations behind the scenes.
+
+:::info UGC ads are a paid feature
+Free accounts can **see** UGC ads but need to upgrade to any paid plan to make one.
+:::
 
 | Plan | Takes / month | Max length | Upload your own face |
 |---|---|---|---|
-| Free | 3 | 60s | — (stock presenters) |
+| Free | — (upgrade required) | — | — |
 | Starter | 30 | up to 3 min | — (stock presenters) |
 | Creator | 60 | up to 3 min | ✓ |
 | Pro | 150 | up to 3 min | ✓ |

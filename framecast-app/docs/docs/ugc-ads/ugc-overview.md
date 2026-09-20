@@ -8,7 +8,7 @@ description: A single, continuous creator-style video ad — born as one finishe
 
 A **UGC ad** is one continuous, creator-style video — a single person talking to the camera the way a real customer would, born as a finished clip with the voice generated inside it. There's no timeline to edit and no scenes to assemble: you give a brief or a script, approve the plan and the cost, and get a ready-to-post ad.
 
-It's a separate pathway from the multi-scene editor. Find it under **UGC Ads** in the sidebar.
+It's a separate pathway from the multi-scene editor. Find it under **UGC Ads** in the sidebar. UGC ads are a **paid feature** — Free accounts can see it, but need to upgrade to a paid plan to make one.
 
 ## Make one in four steps
 
