@@ -3077,9 +3077,9 @@
             <span class="nav-logo-text"><span>Wyv</span>Studio</span>
         </a>
         <div class="nav-links">
-            <a href="#ugc-showcase">UGC ads</a>
             <a href="#how-it-works">How it works</a>
             <a href="#features">Features</a>
+            <a href="#ugc-showcase">UGC ads</a>
             <a href="#use-cases">Use cases</a>
             <a href="#pricing">Pricing</a>
         </div>
@@ -3500,9 +3500,6 @@
       .ugcs-media.playing .ugcs-btn .ic-pause { display:block; }
       .ugcs-media.playing .ugcs-btn { opacity:0; }
       .ugcs-media.playing .ugcs-play:hover .ugcs-btn { opacity:1; }
-      .ugcs-hint { position:absolute; bottom:8px; right:8px; font-size:11px; font-weight:600; color:#fff;
-        background:rgba(0,0,0,.55); padding:3px 8px; border-radius:999px; pointer-events:none; }
-      .ugcs-media.playing .ugcs-hint { display:none; }
     </style>
     <section id="ugc-showcase">
       <div class="container">
@@ -3569,10 +3566,6 @@
             + '</span>';
           media.appendChild(btn);
 
-          var hint = document.createElement('div');
-          hint.className = 'ugcs-hint';
-          hint.textContent = '\uD83D\uDD0A Tap for sound';
-          media.appendChild(hint);
 
           // Custom play/pause only — never enable native controls, so there is
           // no seek bar, no download menu, no fullscreen. Also block the
