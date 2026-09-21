@@ -457,6 +457,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{projectId}', [ProjectController::class, 'show'])->whereNumber('projectId');
             Route::patch('/{projectId}', [ProjectController::class, 'update'])->whereNumber('projectId');
             Route::post('/{projectId}/editor-opened', [ProjectController::class, 'editorOpened'])->whereNumber('projectId');
+            Route::get('/{projectId}/exports/{exportId}/freshness', [ProjectController::class, 'exportFreshness'])->whereNumber(['projectId', 'exportId']);
             Route::get('/{projectId}/exports', [ProjectController::class, 'exports'])->whereNumber('projectId');
             Route::get('/{projectId}/variants', [VariantController::class, 'index'])->whereNumber('projectId');
             Route::post('/{projectId}/variants', [VariantController::class, 'store'])->whereNumber('projectId');

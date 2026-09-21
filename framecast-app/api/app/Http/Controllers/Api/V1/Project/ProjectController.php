@@ -1946,6 +1946,18 @@ class ProjectController extends Controller
         ], 202);
     }
 
+    public function exportFreshness(Request $request, int $projectId, int $exportId): JsonResponse
+    {
+        $project = Project::query()->where('workspace_id', $request->user()->workspace_id)->find($projectId);
+        $export = $project ? ExportJob::query()->where('project_id', $projectId)
+            ->where('workspace_id', $request->user()->workspace_id)->find($exportId) : null;
+        if (! $project || ! $export) return $this->error('not_found', 'Export not found.', 404);
+        if ($export->status !== 'completed' || ! $export->output_asset_id) {
+            return $this->error('export_unavailable', 'This exported video is not available. Update the video first.', 422);
+        }
+        return response()->json(['data' => app(\App\Services\Export\ExportFreshnessService::class)->check($project, $export), 'meta' => []]);
+    }
+
     public function editorOpened(Request $request, int $projectId): JsonResponse
     {
         return DB::transaction(function () use ($request, $projectId): JsonResponse {

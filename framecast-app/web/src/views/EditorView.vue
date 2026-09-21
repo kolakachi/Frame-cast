@@ -10,6 +10,8 @@ import AppSidebar from "../components/AppSidebar.vue";
 import EditorSkeleton from "../components/skeletons/EditorSkeleton.vue";
 import EditorTimeline from "../components/EditorTimeline.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
+import ExportUpdateModal from "../components/ExportUpdateModal.vue";
+import { useExportActionGuard } from "../composables/useExportActionGuard";
 import SchedulePostModal from "../components/SchedulePostModal.vue";
 import UiSelect from "../components/UiSelect.vue";
 import VoiceCloneModal from "../components/VoiceCloneModal.vue";
@@ -284,7 +286,7 @@ async function cruiseApplyAction(msg, actionIndex = 0) {
     // Output tools hand off to a UI surface. schedule_post opens the composer
     // (the user still picks account + date + now/later/draft = consent).
     if (out?.navigate?.type === 'schedule') {
-      scheduleModalOpen.value = true
+      await requestExportAction('schedule')
     } else if (out?.navigate?.type === 'export') {
       // Reflect the assistant-triggered export in the UI right away — the
       // Export button flips to "Exporting…" and the progress pill appears
@@ -1060,6 +1062,7 @@ const notifications = ref([]);
 const notificationToasts = ref([]);
 const exportJobs      = ref([]);
 const scheduleModalOpen = ref(false);
+const deliveryExport = ref(null);
 
 // Approval link state
 const approvalModalOpen = ref(false);
@@ -1075,7 +1078,7 @@ async function submitApproval() {
   try {
     const res = await api.post('/approvals', {
       project_id:      Number(route.params.projectId),
-      export_job_id:   latestExportJob.value?.id ?? null,
+      export_job_id:   deliveryExport.value?.id ?? latestExportJob.value?.id ?? null,
       reviewer_email:  approvalForm.value.email.trim(),
       reviewer_name:   approvalForm.value.name.trim() || null,
       comment:         approvalForm.value.message.trim() || null,
@@ -1321,6 +1324,8 @@ const musicSaveError = ref("");
 const sceneVoiceVolume = ref(100);
 const sceneSoundVolume = ref(100);
 let sceneVoiceVolumeSaveTimer = null;
+const volumeSavesPending = ref(0);
+const volumeSaveError = ref('');
 let sceneSoundVolumeSaveTimer = null;
 // Audiogram settings
 const audiogramStyle = ref("bars");
@@ -2654,6 +2659,43 @@ function trackVideoDownloaded(via) {
 const latestExportDownloadUrl = computed(
   () => latestExportJob.value?.output_asset?.storage_url ?? null
 );
+function hasPendingExportChanges() {
+  return [scriptSaveState, voiceSaveState, captionSaveState, motionSaveState,
+    musicSaveState, audiogramSaveState, visualStyleSaveState, customVisualStyleSaveState]
+    .some(state => ['pending', 'saving', 'error'].includes(state.value))
+    || Boolean(musicSaveTimer || sceneVoiceVolumeSaveTimer || sceneSoundVolumeSaveTimer || audiogramSaveTimer)
+    || volumeSavesPending.value > 0 || Boolean(volumeSaveError.value || musicSaveError.value)
+    || Boolean(activeScene.value && sceneScriptDraft.value !== (activeScene.value.script_text || ''));
+}
+
+async function performExportAction(action, job) {
+  deliveryExport.value = job;
+  mobileSheet.value = null;
+  if (action === 'schedule') { scheduleModalOpen.value = true; return; }
+  if (action === 'approval') { approvalModalOpen.value = true; return; }
+  if (action === 'share') { await toggleShareLink(); return; }
+  const url = action === 'download' ? (job.download_url || job.output_asset?.storage_url) : job.output_asset?.storage_url;
+  if (!url) return;
+  trackVideoDownloaded(action);
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  if (action === 'download') link.download = job.file_name || 'video.mp4';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+const { warning: exportWarning, checking: exportActionChecking, request: requestExportAction,
+  cancel: cancelExportAction, continuePrevious: continueExportAction, updateFirst: updateExportAction } = useExportActionGuard({
+  projectId: () => projectId.value,
+  getExport: () => latestExportJob.value,
+  hasPendingChanges: hasPendingExportChanges,
+  perform: performExportAction,
+  update: queueExport,
+});
+
 // Resume-failed: scan scenes for image / animation failures so we can
 // surface a banner that re-runs everything in one click. Mirrors the
 // backend's needs_visual + animation_last_error classification in
@@ -4440,38 +4482,50 @@ function syncSceneVoiceVolume() {
 
 function scheduleSceneVoiceVolumeSave() {
   syncSceneVoiceVolume();
+  const scene = activeScene.value;
+  if (!scene) return;
+  const sceneId = scene.id;
+  const volume = sceneVoiceVolume.value;
+  const settings = { ...(scene.voice_settings_json || scene.voice_settings || {}), volume };
   clearTimeout(sceneVoiceVolumeSaveTimer);
+  volumeSaveError.value = '';
   sceneVoiceVolumeSaveTimer = setTimeout(async () => {
-    if (!activeScene.value) return;
-    const currentVoiceSettings = activeScene.value.voice_settings || activeScene.value.voice_settings_json || {};
+    sceneVoiceVolumeSaveTimer = null;
+    volumeSavesPending.value++;
     try {
-      const response = await api.patch(`/scenes/${activeScene.value.id}`, {
-        voice_settings_json: { ...currentVoiceSettings, volume: sceneVoiceVolume.value },
-      });
-      const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
-      if (updatedScene) replaceSceneInCollection(updatedScene);
-    } catch (err) { console.error("Failed to save voice volume", err); }
+      const response = await api.patch(`/scenes/${sceneId}`, { voice_settings_json: settings });
+      const updated = normalizeScenePayload(response.data?.data?.scene ?? null);
+      if (updated) replaceSceneInCollection(updated);
+    } catch { volumeSaveError.value = 'Audio volume could not be saved. Adjust it again before updating the video.'; }
+    finally { volumeSavesPending.value--; }
   }, 500);
 }
 
 function scheduleSceneSoundVolumeSave() {
+  syncSceneSoundVolume();
+  const scene = activeScene.value;
+  if (!scene) return;
+  const sceneId = scene.id;
+  const volume = sceneSoundVolume.value;
+  const settings = { ...(scene.sound_settings_json || {}), volume };
   clearTimeout(sceneSoundVolumeSaveTimer);
+  volumeSaveError.value = '';
   sceneSoundVolumeSaveTimer = setTimeout(async () => {
-    if (!activeScene.value) return;
-    const current = activeScene.value.sound_settings_json || {};
+    sceneSoundVolumeSaveTimer = null;
+    volumeSavesPending.value++;
     try {
-      const response = await api.patch(`/scenes/${activeScene.value.id}`, {
-        sound_settings_json: { ...current, volume: sceneSoundVolume.value },
-      });
-      const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
-      if (updatedScene) replaceSceneInCollection(updatedScene);
-    } catch (err) { console.error("Failed to save sound volume", err); }
+      const response = await api.patch(`/scenes/${sceneId}`, { sound_settings_json: settings });
+      const updated = normalizeScenePayload(response.data?.data?.scene ?? null);
+      if (updated) replaceSceneInCollection(updated);
+    } catch { volumeSaveError.value = 'Audio volume could not be saved. Adjust it again before updating the video.'; }
+    finally { volumeSavesPending.value--; }
   }, 500);
 }
 
 async function saveAudiogramSettings({ apply = false } = {}) {
   if (!activeScene.value) return;
   clearTimeout(audiogramSaveTimer);
+  audiogramSaveTimer = null;
   audiogramSaveState.value = "saving";
   const existing = activeScene.value.image_generation_settings ?? activeScene.value.image_generation_settings_json ?? {};
   const payload = {
@@ -4577,6 +4631,7 @@ async function assignAssetVisual(asset, visualType) {
 }
 
 async function persistMusicSettings() {
+  musicSaveTimer = null;
   if (!project.value) return;
   musicSaveState.value = "saving";
   musicSaveError.value = "";
@@ -6581,7 +6636,11 @@ async function pollSceneUntilVisual(sceneId, attempt = 0) {
 }
 
 async function queueExport() {
-  if (!project.value || exportPending.value) return;
+  if (!project.value || exportPending.value || exportInProgress.value) return null;
+  if (exportBlockerMessage.value) {
+    pushToast({ id: `export-blocked-${Date.now()}`, title: 'Video needs attention', message: exportBlockerMessage.value });
+    return null;
+  }
 
   const flushed = await flushActiveSceneDrafts();
   if (flushed === false) return;
@@ -6626,6 +6685,7 @@ async function queueExport() {
         exportState.value = "idle";
       }
     }, 2500);
+    return first;
   } catch (requestError) {
     exportState.value = "error";
     const message =
@@ -7036,7 +7096,7 @@ async function flushActiveSceneDrafts() {
       highlight_mode: captionHighlightDraft.value,
       position: captionPositionDraft.value,
       font: captionFontDraft.value,
-      highlight_color: savedCaptions.highlight_color || "#ff6b35",
+      highlight_color: captionHighlightColorDraft.value,
       color: captionColorDraft.value,
       size: captionSizeDraft.value,
       preset_id: savedCaptions.preset_id || null,
@@ -7066,6 +7126,12 @@ async function flushActiveSceneDrafts() {
     return false;
   }
 
+  const deadline = Date.now() + 15000;
+  while (hasPendingExportChanges() && Date.now() < deadline) {
+    if ([scriptSaveState, voiceSaveState, captionSaveState, motionSaveState, audiogramSaveState].some(state => state.value === 'error') || musicSaveError.value || volumeSaveError.value) return false;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  if (hasPendingExportChanges()) return false;
   return (
     scriptSaveState.value !== "error" &&
     voiceSaveState.value !== "error" &&
@@ -7281,25 +7347,20 @@ onBeforeUnmount(() => {
               </span>
               <template v-if="latestExportJob.status === 'completed' && latestExportDownloadUrl">
                 <span class="export-pill-sep">·</span>
-                <a
-                  :href="latestExportDownloadUrl"
-                  target="_blank"
-                  rel="noopener"
+                <button type="button"
                   class="export-pill-link"
-                  @click="trackVideoDownloaded('open')"
-                >Open ↗</a>
-                <a
-                  :href="latestExportDownloadUrl"
-                  :download="latestExportJob.file_name || 'export.mp4'"
+                  @click.prevent="requestExportAction('open')"
+                >Open ↗</button>
+                <button type="button"
                   class="export-pill-link"
-                  @click="trackVideoDownloaded('download')"
-                >Download ↓</a>
+                  @click.prevent="requestExportAction('download')"
+                >Download ↓</button>
                 <span class="export-pill-sep">·</span>
-                <button class="export-pill-link export-pill-schedule" @click="scheduleModalOpen = true">📅 Schedule</button>
+                <button class="export-pill-link export-pill-schedule" @click="requestExportAction('schedule')">📅 Schedule</button>
                 <span class="export-pill-sep">·</span>
-                <button class="export-pill-link" @click="approvalModalOpen = true">📝 Send for approval</button>
+                <button class="export-pill-link" @click="requestExportAction('approval')">📝 Send for approval</button>
                 <span class="export-pill-sep">·</span>
-                <button class="export-pill-link" @click="toggleShareLink" :disabled="shareTogglePending" :title="project?.is_shared ? 'Public link is on — click again to copy' : 'Generate a public link anyone can watch'">
+                <button class="export-pill-link" @click="requestExportAction('share')" :disabled="shareTogglePending" :title="project?.is_shared ? 'Public link is on — click again to copy' : 'Generate a public link anyone can watch'">
                   {{ shareTogglePending ? '…' : (project?.is_shared ? '🔗 Copy share link' : '🔗 Share publicly') }}
                 </button>
                 <span v-if="shareCopiedToast" class="export-pill-sep">·</span>
@@ -8070,38 +8131,33 @@ onBeforeUnmount(() => {
             </div>
             <div class="ed-projsheet-body">
               <template v-if="latestExportDownloadUrl">
-                <a
+                <button type="button"
                   class="ed-prow"
-                  :href="latestExportDownloadUrl"
-                  target="_blank"
-                  rel="noopener"
-                  @click="trackVideoDownloaded('open'); mobileSheet = null"
+                  @click.prevent="requestExportAction('open')"
                 >
                   <span class="ed-prow-ic">↗</span>
                   <span class="ed-prow-b"><b>Open in new tab</b></span>
                   <span class="ed-prow-rt">›</span>
-                </a>
-                <a
+                </button>
+                <button type="button"
                   class="ed-prow"
-                  :href="latestExportDownloadUrl"
-                  :download="latestExportJob?.file_name || 'export.mp4'"
-                  @click="trackVideoDownloaded('download'); mobileSheet = null"
+                  @click.prevent="requestExportAction('download')"
                 >
                   <span class="ed-prow-ic">↓</span>
                   <span class="ed-prow-b"><b>Download</b><span>MP4 · {{ latestExportJob?.file_name || '1080p' }}</span></span>
                   <span class="ed-prow-rt">›</span>
-                </a>
-                <button class="ed-prow" type="button" @click="mobileSheet = null; scheduleModalOpen = true">
+                </button>
+                <button class="ed-prow" type="button" @click="requestExportAction('schedule')">
                   <span class="ed-prow-ic">🗓</span>
                   <span class="ed-prow-b"><b>Schedule</b><span>Post to a connected channel</span></span>
                   <span class="ed-prow-rt">›</span>
                 </button>
-                <button class="ed-prow" type="button" @click="mobileSheet = null; approvalModalOpen = true">
+                <button class="ed-prow" type="button" @click="requestExportAction('approval')">
                   <span class="ed-prow-ic">✎</span>
                   <span class="ed-prow-b"><b>Send for approval</b></span>
                   <span class="ed-prow-rt">›</span>
                 </button>
-                <button class="ed-prow" type="button" :disabled="shareTogglePending" @click="toggleShareLink">
+                <button class="ed-prow" type="button" :disabled="shareTogglePending" @click="requestExportAction('share')">
                   <span class="ed-prow-ic">🔗</span>
                   <span class="ed-prow-b">
                     <b>{{ project?.is_shared ? 'Copy share link' : 'Share publicly' }}</b>
@@ -10091,7 +10147,7 @@ onBeforeUnmount(() => {
     />
     <SchedulePostModal
       v-if="scheduleModalOpen"
-      :export-job-id="latestExportJob?.id ?? null"
+      :export-job-id="deliveryExport?.id ?? latestExportJob?.id ?? null"
       @close="scheduleModalOpen = false"
       @scheduled="onPostScheduled"
     />
@@ -10587,6 +10643,7 @@ onBeforeUnmount(() => {
     <!-- Clone a voice without leaving the editor -->
     <VoiceCloneModal v-if="showCloneModal" @close="showCloneModal = false" @created="onVoiceCloned" />
   </main>
+  <ExportUpdateModal :warning="exportWarning" @cancel="cancelExportAction" @continue="continueExportAction" @update="updateExportAction" />
 </template>
 
 <style scoped>

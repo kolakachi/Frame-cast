@@ -11,6 +11,13 @@ class ExportJob extends Model
     /** Export outcome analytics — see Project::booted for the rationale. */
     protected static function booted(): void
     {
+        static::creating(function (ExportJob $job): void {
+            // Nullable migration allows older queued workers and rolling deploys.
+            if ($job->project_id && \Illuminate\Support\Facades\Schema::hasColumn('export_jobs', 'source_fingerprint')) {
+                $project = Project::find($job->project_id);
+                if ($project) $job->source_fingerprint = app(\App\Services\Export\ExportFreshnessService::class)->fingerprint($project);
+            }
+        });
         static::updated(function (ExportJob $job): void {
             if (! $job->wasChanged('status') || ! in_array($job->status, ['completed', 'failed'], true)) {
                 return;
