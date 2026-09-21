@@ -2,7 +2,6 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import api from '../services/api'
 import { resumePendingCheckout } from '../composables/resumeCheckout'
 
 const route = useRoute()
@@ -10,48 +9,6 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const state = ref('verifying') // 'verifying' | 'expired' | 'error' | 'checkout'
-
-const LIFETIME_PLANS = ['lifetime_starter', 'lifetime_creator', 'lifetime_agency']
-const MONTHLY_PLANS = ['starter', 'creator', 'pro', 'agency']
-
-/**
- * Redeem a plan choice parked at registration into a Kelviq checkout redirect.
- * Returns true when the browser is being sent to Kelviq, false to carry on to
- * the dashboard. The stash is cleared either way so a stale choice can't
- * hijack a later sign-in.
- */
-async function resumeStashedPlan() {
-  let plan = ''
-  try {
-    plan = localStorage.getItem('wyv_pending_plan') ?? ''
-    localStorage.removeItem('wyv_pending_plan')
-  } catch {
-    return false
-  }
-  if (!plan) return false
-
-  const body = plan === 'ugc_pass'
-    ? { pass: true }
-    : LIFETIME_PLANS.includes(plan)
-      ? { lifetime: plan }
-      : MONTHLY_PLANS.includes(plan)
-        ? { plan }
-        : null
-  if (!body) return false
-
-  try {
-    state.value = 'checkout'
-    const { data } = await api.post('/billing/kelviq/checkout', body)
-    if (data?.data?.url) {
-      window.location.href = data.data.url
-      return true
-    }
-  } catch {
-    // Fall through — Settings has a button for every plan.
-  }
-  state.value = 'verifying'
-  return false
-}
 
 onMounted(async () => {
   const token = route.query.token
@@ -64,16 +21,7 @@ onMounted(async () => {
   try {
     await authStore.verifyMagicLink(token)
 
-    // Someone who clicked a price on the site parked their choice before going
-    // to their inbox. Now that they're authenticated the workspace exists, so
-    // the checkout can finally be created — send them straight to Kelviq
-    // instead of dropping them on a dashboard with no memory of what they came
-    // to buy. Any failure just falls through to the dashboard, where Settings
-    // carries a button for every plan.
-    // Fresh registration: the plan is still in this browser's stash.
-    if (await resumeStashedPlan()) return
-    // Returning sign-in, or a different device: the unfinished checkout is
-    // recorded against the workspace.
+    // Resume the selected purchase before entering the app, on any device.
     if (await resumePendingCheckout()) return
 
     router.replace({ name: 'dashboard' })

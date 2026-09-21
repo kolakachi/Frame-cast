@@ -52,6 +52,7 @@ Route::prefix('v1')->group(function (): void {
 
     Route::prefix('/auth')->group(function (): void {
         Route::post('/login', [AuthController::class, 'login']);
+        Route::post('/register', [AuthController::class, 'register']);
         Route::post('/magic-link', [AuthController::class, 'magicLink']);
         Route::get('/magic-link/verify', [AuthController::class, 'verifyMagicLink']);
         Route::post('/refresh', [AuthController::class, 'refresh']);

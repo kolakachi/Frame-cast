@@ -26,58 +26,59 @@ const MONTHLY = ['starter', 'creator', 'pro', 'agency']
 
 const state = ref('working') // 'working' | 'failed'
 
-onMounted(async () => {
-  const plan = route.query.pass ? 'ugc_pass' : String(route.query.plan ?? '')
-  const known = plan === 'ugc_pass' || LIFETIME.includes(plan) || MONTHLY.includes(plan)
+const errorMessage = ref('')
 
-  if (known) {
-    try {
-      // Parked before anything can redirect: MagicLinkView reads this after a
-      // sign-in and finishes the job there.
-      localStorage.setItem('wyv_pending_plan', plan)
-    } catch {
-      // Private window or storage blocked — a signed-in visitor still gets
-      // sent to Kelviq below; a signed-out one lands on the plans page.
-    }
+async function startCheckout() {
+  state.value = 'working'
+  errorMessage.value = ''
+  let plan = route.query.pass ? 'ugc_pass' : String(route.query.plan ?? '')
+  const known = value => value === 'ugc_pass' || LIFETIME.includes(value) || MONTHLY.includes(value)
+  if (known(plan)) {
+    try { localStorage.setItem('wyv_pending_plan', plan) } catch { /* optional cache */ }
   }
-
   if (!authStore.isAuthenticated) {
-    return router.replace({ name: known ? 'login' : 'plans' })
+    return router.replace({ name: 'login', query: known(plan) ? { plan } : {} })
   }
-
-  if (!known) {
-    return router.replace({ name: 'plans' })
-  }
-
   try {
-    const body = plan === 'ugc_pass'
-      ? { pass: true }
-      : (LIFETIME.includes(plan) ? { lifetime: plan } : { plan })
-    const { data } = await api.post('/billing/kelviq/checkout', body)
-    if (data?.data?.url) {
-      // Consumed — a stale choice must not hijack a later sign-in.
-      try { localStorage.removeItem('wyv_pending_plan') } catch { /* ignore */ }
-      window.location.href = data.data.url
-      return
+    if (!known(plan)) {
+      const { data } = await api.get('/billing/status')
+      const billing = data?.data?.billing
+      if (!billing) throw new Error('Unable to check your selected plan.')
+      if (!billing.checkout_required) return router.replace({ name: 'dashboard' })
+      plan = billing.checkout_plan || billing.pending_checkout?.plan || ''
+      if (!known(plan)) return router.replace({ name: 'plans' })
     }
-  } catch {
-    // Fall through to the plans page rather than stranding them here.
+    const body = plan === 'ugc_pass' ? { pass: true }
+      : LIFETIME.includes(plan) ? { lifetime: plan } : { plan }
+    const { data } = await api.post('/billing/kelviq/checkout', body)
+    if (!data?.data?.url) throw new Error('Payment did not return a checkout link.')
+    try { localStorage.removeItem('wyv_pending_plan') } catch { /* optional cache */ }
+    window.location.href = data.data.url
+  } catch (error) {
+    errorMessage.value = error.response?.data?.error?.message || error.message || 'Please try again.'
+    state.value = 'failed'
   }
+}
 
-  state.value = 'failed'
-  router.replace({ name: 'plans' })
-})
+onMounted(startCheckout)
+
 </script>
 
 <template>
   <div class="continue-wrap">
-    <p>{{ state === 'failed' ? 'Taking you to the plans page…' : 'Taking you to checkout…' }}</p>
+    <template v-if="state === 'failed'">
+      <h1>We couldn’t open payment</h1>
+      <p role="alert">{{ errorMessage }}</p>
+      <button class="auth-btn-primary" @click="startCheckout">Retry payment</button>
+      <router-link class="auth-link" :to="{ name: 'plans' }">Choose another plan</router-link>
+    </template>
+    <p v-else>Taking you to secure checkout…</p>
   </div>
 </template>
 
 <style scoped>
 .continue-wrap {
-  min-height: 60vh; display: flex; align-items: center; justify-content: center;
+  min-height: 60vh; display: flex; flex-direction: column; gap: 20px; padding: 24px; text-align: center; align-items: center; justify-content: center;
   color: var(--color-text-secondary, #a1a1b5); font-size: 14px;
 }
 </style>

@@ -38,7 +38,7 @@ const routes = [
   { path: '/onboarding', name: 'onboarding', component: OnboardingView, meta: { requiresAuth: true, skipOnboardingGuard: true } },
   { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
   { path: '/register', name: 'register', component: RegisterView, meta: { guestOnly: true } },
-  { path: '/auth/magic', name: 'magic-link', component: MagicLinkView },
+  { path: '/auth/magic', name: 'magic-link', component: MagicLinkView, meta: { public: true } },
   // AppSumo LTD activation — public (buyer may be logged out or in); not
   // guestOnly so an existing user can attach a license without being bounced.
   { path: '/appsumo/activate', name: 'appsumo-activate', component: AppSumoActivateView, meta: { public: true } },
@@ -54,7 +54,7 @@ const routes = [
   { path: '/assets', name: 'asset-library', component: AssetLibraryView, meta: { requiresAuth: true } },
   { path: '/workspace', name: 'workspace', component: WorkspaceView, meta: { requiresAuth: true } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true } },
-  { path: '/plans', name: 'plans', component: PlansView, meta: { requiresAuth: true } },
+  { path: '/plans', name: 'plans', component: PlansView, meta: { requiresAuth: true, skipOnboardingGuard: true } },
   // Landing point for "finish checkout" email links. Public so a signed-out
   // click keeps the plan instead of losing it to the login redirect.
   { path: '/continue', name: 'continue-checkout', component: () => import('../views/ContinueCheckoutView.vue'), meta: { public: true } },
@@ -110,6 +110,7 @@ router.beforeEach(async function (to) {
   }
 
   if (to.meta.guestOnly && authStore.isAuthenticated) {
+    if (to.query.pass || to.query.plan) return { name: 'continue-checkout', query: to.query }
     return { name: 'dashboard' }
   }
 

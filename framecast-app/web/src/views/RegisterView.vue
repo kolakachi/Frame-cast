@@ -1,22 +1,19 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../services/api";
 
 const authStore = useAuthStore();
 const route = useRoute();
+const router = useRouter();
 
-const state = ref("idle"); // 'idle' | 'loading' | 'sent' | 'error'
+const state = ref("idle"); // 'idle' | 'loading' | 'error'
 const errorMessage = ref("");
 
 const form = reactive({ name: "", email: "", password: "" });
 
-// The pricing page sends ?plan=lifetime_starter (etc). Registration is magic
-// link, so the user leaves for their inbox and comes back on a fresh page load
-// with no query string — the intent has to be parked somewhere that survives
-// that. Stashed here, picked up after login, and turned into a Kelviq checkout
-// so clicking a price on the site actually ends at a payment page.
+// Keep the selected offer through account creation and checkout retries.
 const PLAN_LABELS = {
   lifetime_starter: "Starter — $89, 4,000 credits",
   lifetime_creator: "Creator — $199, 12,000 credits",
@@ -26,7 +23,7 @@ const PLAN_LABELS = {
   pro: "Pro — $99/month",
   agency: "Agency — $199/month",
   // The $9 pass arrives as ?pass=1 rather than a plan key, but travels the
-  // same road: parked here, picked up after the magic link, turned into a
+  // same road: parked here, picked up after account creation, turned into a
   // checkout. Without an entry here the signup gate bounced the buyer back to
   // pricing — the landing offer led nowhere.
   ugc_pass: "UGC Test Pass — $9, 600 credits",
@@ -47,8 +44,7 @@ onMounted(async () => {
     try {
       localStorage.setItem("wyv_pending_plan", plan);
     } catch {
-      // Private window or storage blocked — the plan is simply forgotten and
-      // the user lands on Settings, where every plan has a button.
+      // The API also persists the plan; the browser cache is optional.
     }
   }
 
@@ -73,17 +69,21 @@ async function submit() {
   state.value = "loading";
   errorMessage.value = "";
   try {
-    await authStore.requestMagicLink(
+    await authStore.register(
       form.email,
       form.name,
       form.password || null,
       pendingPlan.value || null
     );
-    state.value = "sent";
+    if (pendingPlan.value) {
+      await router.replace({ name: 'continue-checkout', query: { plan: pendingPlan.value } });
+    } else {
+      await router.replace({ name: 'dashboard' });
+    }
   } catch (err) {
     state.value = "error";
     errorMessage.value =
-      err.response?.data?.error?.message ??
+      err.response?.data?.error?.message ?? Object.values(err.response?.data?.errors ?? {}).flat()[0] ??
       "Unable to create account. Try again.";
   }
 }
@@ -102,29 +102,6 @@ async function submit() {
         <p class="auth-subtitle auth-subtitle-compact centered">Getting your plan ready.</p>
       </template>
 
-      <template v-else-if="state === 'sent'">
-        <div class="auth-magic-icon">✉</div>
-        <h1 class="auth-title centered">Check your email</h1>
-        <p class="auth-subtitle centered">
-          We sent a magic link to<br />
-          <span class="auth-email-highlight">{{
-            form.email || "you@example.com"
-          }}</span>
-        </p>
-        <p v-if="pendingPlanLabel" class="auth-subtitle centered">
-          Open it and we'll take you straight to checkout for
-          <strong>{{ pendingPlanLabel }}</strong>.
-        </p>
-        <div class="auth-note centered">
-          Click the link to activate your account. It expires in 15 minutes.
-        </div>
-        <div class="auth-footer auth-footer-compact centered">
-          <router-link class="auth-link" :to="{ name: 'login' }"
-            >← Back to login</router-link
-          >
-        </div>
-      </template>
-
       <template v-else>
         <div class="auth-logo">W</div>
         <h1 class="auth-title">Create your account</h1>
@@ -134,7 +111,7 @@ async function submit() {
 
         <div v-if="pendingPlanLabel" class="auth-plan-note">
           You're signing up for <strong>{{ pendingPlanLabel }}</strong>. We'll take
-          you to secure checkout right after you confirm your email.
+          you to secure checkout as soon as your account is created.
         </div>
 
         <div v-if="state === 'error'" class="auth-error">
@@ -190,7 +167,7 @@ async function submit() {
 
         <div class="auth-footer">
           Already have an account?
-          <router-link class="auth-link" :to="{ name: 'login' }"
+          <router-link class="auth-link" :to="{ name: 'login', query: pendingPlan ? { plan: pendingPlan } : {} }"
             >Sign in</router-link
           >
         </div>

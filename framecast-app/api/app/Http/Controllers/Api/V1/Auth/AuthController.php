@@ -66,11 +66,21 @@ class AuthController extends Controller
         return $this->issueSessionResponse($user, $request);
     }
 
+    public function register(Request $request): JsonResponse
+    {
+        return $this->startSignupOrMagicLink($request, true);
+    }
+
     public function magicLink(Request $request): JsonResponse
+    {
+        return $this->startSignupOrMagicLink($request, false);
+    }
+
+    private function startSignupOrMagicLink(Request $request, bool $register): JsonResponse
     {
         $validated = $request->validate([
             'email' => ['required', 'email:rfc,dns'],
-            'name' => ['nullable', 'string', 'max:255'],
+            'name' => [$register ? 'required' : 'nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'min:8'],
             // Referral code from a /?ref=<code> share link. Attributed to the
             // new workspace; the referrer earns credits when this account
@@ -82,10 +92,11 @@ class AuthController extends Controller
             // Plan chosen on the pricing page. A key only — the label shown in
             // the email is looked up server-side, so the client cannot put its
             // own text (a different price, say) into a mail sent by us.
-            'plan' => ['nullable', 'string', 'max:64'],
+            'plan' => [$register && config('billing.require_plan_on_register') ? 'required' : 'nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(config('billing.kelviq.plan_labels', [])))],
         ]);
 
-        $email = strtolower($validated['email']);
+        $validated['email'] = strtolower($validated['email']);
+        $email = $validated['email'];
         $ip    = (string) $request->ip();
 
         // ── Abuse defenses ──────────────────────────────────────────────
@@ -137,7 +148,10 @@ class AuthController extends Controller
             }
         }
 
-        $user = $this->findOrCreateUser($validated);
+        if ($register && $existingByEmail) {
+            return $this->error('account_exists', 'An account with this email already exists. Sign in to continue to payment.', 409);
+        }
+        $user = $this->findOrCreateUser($validated, $register);
 
         // Bump the signup-IP counter ONLY when the user is brand new.
         if (! $existingByEmail) {
@@ -163,12 +177,18 @@ class AuthController extends Controller
         // Remember what they came to buy. The browser stash covers the happy
         // path — register, open the inbox, come back — but dies with a change
         // of device or a cleared cache, and a follow-up email has no browser to
-        // read. Recorded only for a brand-new account, and only for a plan we
-        // actually sell.
-        if (! $existingByEmail && isset($validated['plan'])
+        // read. Persist explicit choices for new or unpaid accounts, and only
+        // for plans we actually sell.
+        if ((! $existingByEmail || ($user->workspace?->plan_tier ?? 'free') === 'free') && isset($validated['plan'])
             && isset(config('billing.kelviq.plan_labels')[$validated['plan']])
             && $user->workspace) {
-            rescue(fn () => $user->workspace->forceFill(['intended_plan' => $validated['plan']])->save(), null, false);
+            $user->workspace->forceFill(['intended_plan' => $validated['plan']])->save();
+        }
+
+        // Only a newly created account may receive a session without authenticating.
+        // Existing accounts (including concurrent signups) must prove ownership.
+        if ($register) {
+            return $this->issueSessionResponse($user, $request);
         }
 
         // Expire any previous unused tokens for this user
@@ -486,10 +506,10 @@ class AuthController extends Controller
         return $this->sessionResponse($user, $session, $refreshToken);
     }
 
-    private function findOrCreateUser(array $validated): User
+    private function findOrCreateUser(array $validated, bool $onlyNew = false): User
     {
         try {
-            return DB::transaction(function () use ($validated): User {
+            return DB::transaction(function () use ($validated, $onlyNew): User {
                 // Lock the row if it exists to prevent race conditions
                 $existingUser = User::query()
                     ->where('email', strtolower($validated['email']))
@@ -497,13 +517,15 @@ class AuthController extends Controller
                     ->first();
 
                 if ($existingUser) {
+                    if ($onlyNew) {
+                        throw \Illuminate\Validation\ValidationException::withMessages(['email' => 'An account with this email already exists. Sign in to continue.']);
+                    }
                     $updates = [];
                     if (! empty($validated['name']) && ! $existingUser->name) {
                         $updates['name'] = $validated['name'];
                     }
-                    if (! empty($validated['password']) && ! $existingUser->password_hash) {
-                        $updates['password_hash'] = Hash::make($validated['password']);
-                    }
+                    // An unauthenticated magic-link request must never set an existing
+                    // account's password. Password changes require authenticated reset.
                     if ($updates !== []) {
                         $existingUser->fill($updates)->save();
                     }
@@ -572,6 +594,9 @@ class AuthController extends Controller
                 return $user->load('workspace');
             });
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            if ($onlyNew) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['email' => 'An account with this email already exists. Sign in to continue.']);
+            }
             // Two simultaneous requests for the same email — the other request won the race.
             // Just return the now-existing user.
             return User::query()->where('email', strtolower($validated['email']))->with('workspace')->firstOrFail();

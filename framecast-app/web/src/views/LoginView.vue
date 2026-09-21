@@ -1,10 +1,18 @@
 <script setup>
 import { ref, reactive } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import { resumePendingCheckout } from "../composables/resumeCheckout";
 
 const router = useRouter();
+const route = useRoute();
+let selectedPlan = route.query.pass ? 'ugc_pass' : String(route.query.plan ?? '');
+if (!selectedPlan) {
+  try { selectedPlan = localStorage.getItem('wyv_pending_plan') || ''; } catch { /* optional cache */ }
+}
+if (selectedPlan) {
+  try { localStorage.setItem('wyv_pending_plan', selectedPlan); } catch { /* optional cache */ }
+}
 const authStore = useAuthStore();
 
 const mode = ref("magic"); // 'magic' | 'password'
@@ -19,7 +27,7 @@ async function submitMagicLink() {
   state.value = "loading";
   errorMessage.value = "";
   try {
-    await authStore.requestMagicLink(form.email);
+    await authStore.requestMagicLink(form.email, null, null, selectedPlan || null);
     state.value = "sent";
   } catch (err) {
     state.value = "error";
