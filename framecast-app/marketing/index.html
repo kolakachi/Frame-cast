@@ -2482,6 +2482,55 @@
         }
 
         /* ── PRICING ── */
+        /* The $9 pass. A compact bordered box rather than a line of small
+           print — quiet enough to sit under the plans without anchoring the
+           product cheap, solid enough to be seen by someone about to leave. */
+        .try-box {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            max-width: 560px;
+            margin: 26px auto 0;
+            padding: 18px 22px;
+            border: 1px solid rgba(255, 107, 53, 0.4);
+            border-radius: 14px;
+            background: rgba(255, 107, 53, 0.06);
+            text-align: left;
+        }
+
+        .try-copy { flex: 1; min-width: 220px; }
+
+        .try-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .try-sub {
+            margin-top: 4px;
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--text-dim);
+        }
+
+        .try-cta {
+            flex-shrink: 0;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 700;
+            font-size: 15px;
+            padding: 12px 22px;
+            border-radius: 10px;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 480px) {
+            .try-box { flex-direction: column; align-items: stretch; text-align: center; }
+            .try-cta { text-align: center; }
+        }
+
         .pay-toggle {
             display: inline-flex;
             gap: 4px;
@@ -4601,10 +4650,12 @@
                 14-day full refund.
                 One-time plans are a single payment with a one-time credit bucket — no monthly refill, nothing to
                 cancel. Payments via Kelviq.</div>
-            <div style="margin-top:18px;text-align:center;font-size:14px;color:var(--text-dim)">
-                Just want to try it? <a href="https://app.wyvstudio.com/register?pass=1"
-                    style="color:var(--accent);font-weight:600;text-decoration:none">Make one UGC ad for $9 →</a>
-                <span style="display:block;margin-top:4px;font-size:12.5px">600 credits, one per customer. No subscription.</span>
+            <div class="try-box">
+                <div class="try-copy">
+                    <div class="try-title">Just want to try it?</div>
+                    <div class="try-sub">600 credits — one 15-second UGC ad, or two drafts. One per customer, no subscription.</div>
+                </div>
+                <a class="try-cta" href="https://app.wyvstudio.com/register?pass=1">Try it for $9</a>
             </div>
 
             <script>
