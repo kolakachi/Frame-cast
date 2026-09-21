@@ -126,6 +126,24 @@ class UgcController extends Controller
     // UGC ads are a paid feature — Free accounts must upgrade. Applied at the
     // entry points (plan) and the spend points (generate) so a Free user can
     // never reach a take, whatever path they take.
+    /**
+     * Takes a Test Pass holder has actually paid for, from the credit ledger.
+     *
+     * Charges land as `ugc_oneshot`; a generation that fails refunds itself
+     * and lands `refund:ugc_oneshot`. Netting the two means a take that never
+     * delivered costs neither credits nor allowance, and neither deleting the
+     * project nor crossing into a new month hands the allowance back.
+     */
+    private function passTakesUsed(int $workspaceId): int
+    {
+        $charged = \App\Models\CreditLedgerEntry::query()
+            ->where('workspace_id', $workspaceId)->where('operation', 'ugc_oneshot')->count();
+        $refunded = \App\Models\CreditLedgerEntry::query()
+            ->where('workspace_id', $workspaceId)->where('operation', 'refund:ugc_oneshot')->count();
+
+        return max(0, $charged - $refunded);
+    }
+
     private function ugcGate(Request $request): ?JsonResponse
     {
         if (! app(CreditService::class)->limitFor((int) $request->user()->workspace_id, 'ugc_ads')) {
@@ -440,6 +458,17 @@ class UgcController extends Controller
             if (! UgcPlan::sameScript((string) ($v['script'] ?? ''), UgcPlan::script($segments))) {
                 throw ValidationException::withMessages(['script' => 'The script and shot plan differ. Review and re-price the latest plan.']);
             }
+            // The Test Pass promises ads up to 15 seconds. The one-shot lane
+            // enforced it; this lane is a second door to the same product and
+            // must not offer different limits.
+            if (app(CreditService::class)->planTier((int) $user->workspace_id) === 'ugc_pass') {
+                $planSecondsTotal = array_sum(array_map(fn ($seg) => max(1, (float) ($seg['seconds'] ?? 0)), $segments));
+                if ($planSecondsTotal > 15) {
+                    throw ValidationException::withMessages(['segments' =>
+                        'The UGC Test Pass makes ads up to 15 seconds. Shorten the plan, or upgrade for longer ads.']);
+                }
+            }
+
             $stillOnly = in_array($v['format'], UgcPlan::STILL_ONLY_FORMATS, true);
             $characters = collect();
             // Casting follows the requiredIf above: present when someone is
@@ -1051,7 +1080,19 @@ class UgcController extends Controller
             throw ValidationException::withMessages(['credits' => "This take needs {$quote} credits."]);
         }
         $monthlyCap = $creditService->limitFor((int) $user->workspace_id, 'ugc_takes_month');
-        if ($monthlyCap !== null) {
+        if ($isTestPass) {
+            // The pass allows two takes FOR THE PASS, not two a month — and it
+            // is counted from the credit ledger, not from projects. Projects
+            // can be deleted (which would hand back the allowance) and a month
+            // boundary would quietly reissue it. Ledger rows survive both, and
+            // a refunded failure carries a matching refund row, so a take that
+            // never delivered does not spend the allowance.
+            $charged = $this->passTakesUsed((int) $user->workspace_id);
+            if ($charged + 1 > (int) ($monthlyCap ?? 2)) {
+                throw ValidationException::withMessages(['takes' => sprintf(
+                    'The UGC Test Pass covers %d takes and you have used %d. Pick a plan to keep going.', $monthlyCap ?? 2, $charged)]);
+            }
+        } elseif ($monthlyCap !== null) {
             $used = Project::query()->where('workspace_id', $user->workspace_id)
                 ->whereNotNull('visual_brief->ugc_format')->where('created_at', '>=', now()->startOfMonth())->count();
             if ($used + 1 > (int) $monthlyCap) {

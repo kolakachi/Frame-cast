@@ -560,10 +560,19 @@ class KelviqService
         // One per customer. The ledger is the record: a grant:ugc_pass row
         // means they have had it, whatever their tier says now — they may have
         // upgraded since, or spent the pass out.
-        $hadPass = \App\Models\CreditLedgerEntry::query()
-            ->where('workspace_id', $workspace->getKey())
-            ->where('operation', 'grant:ugc_pass')
-            ->exists();
+        //
+        // Read under a row lock on the workspace: two webhooks for the same
+        // buyer (a provider retry racing the original) would otherwise both
+        // find no pass and both grant one. The lock serialises them, so the
+        // second sees the first's row and falls through to credits-only.
+        $hadPass = DB::transaction(function () use ($workspace): bool {
+            Workspace::query()->whereKey($workspace->getKey())->lockForUpdate()->first();
+
+            return \App\Models\CreditLedgerEntry::query()
+                ->where('workspace_id', $workspace->getKey())
+                ->where('operation', 'grant:ugc_pass')
+                ->exists();
+        });
         if ($hadPass) {
             // They paid. Checkout refuses a second pass, so this is a race, a
             // stale tab or a direct link — but the money is real either way and

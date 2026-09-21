@@ -57,6 +57,7 @@ class SendAbandonedCheckoutEmailsJob implements ShouldQueue, ShouldBeUnique
         'lifetime_starter' => 'Starter — $89 one-time',
         'lifetime_creator' => 'Creator — $199 one-time',
         'lifetime_agency'  => 'Agency — $399 one-time',
+        'ugc_pass'         => 'the UGC Test Pass — $9 one-time',
         'starter'          => 'Starter — $19/month',
         'creator'          => 'Creator — $39/month',
         'pro'              => 'Pro — $79/month',

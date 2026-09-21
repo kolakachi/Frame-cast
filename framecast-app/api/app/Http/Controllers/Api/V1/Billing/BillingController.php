@@ -164,7 +164,9 @@ class BillingController extends Controller
             && $workspace->pending_checkout_reminded_at->gt(now()->subDays(14));
 
         $workspace->forceFill(array_merge([
-            'pending_checkout_plan' => $validated['lifetime'] ?? $validated['plan'] ?? $validated['topup'] ?? null,
+            'pending_checkout_plan' => ! empty($validated['pass'])
+                ? 'ugc_pass'
+                : ($validated['lifetime'] ?? $validated['plan'] ?? $validated['topup'] ?? null),
             'pending_checkout_at'   => now(),
         ], $recentlyReminded ? [] : ['pending_checkout_reminded_at' => null]))->save();
 

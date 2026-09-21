@@ -19,6 +19,15 @@ const workspaceStore = useWorkspaceStore();
 const canOwnCharacter = computed(() => workspaceStore.capabilities?.custom_characters !== false);
 // UGC is paid-only; Free is sent to the takes page, which shows the upgrade wall.
 const canUgc = computed(() => workspaceStore.capabilities?.ugc_ads !== false);
+// On the $9 Test Pass the only supported shape is a 15s castless Seedance ad.
+// Offering the rest and failing at submit wastes the one thing they bought.
+const isTestPass = computed(() => workspaceStore.workspace?.plan_tier === "ugc_pass");
+const passCredits = computed(() => workspaceStore.usage?.credits_balance ?? null);
+watch(isTestPass, (on) => {
+  // The default is 30s; a pass holder would otherwise build a plan the server
+  // refuses at the last step.
+  if (on) { duration.value = 15; castEngine.value = "seedance"; }
+}, { immediate: true });
 
 // ── Wizard ──────────────────────────────────────────────────────────────
 // Three screens, per the wyvstudio-ugc-html mockups: say what you're making,
@@ -1109,7 +1118,7 @@ onMounted(() => {
             <label>Target length
               <span class="ugc-seg-group">
                 <button
-                  v-for="secs in (format === 'reaction' ? [5, 10] : [15, 30, 60])"
+                  v-for="secs in (isTestPass ? [15] : (format === 'reaction' ? [5, 10] : [15, 30, 60]))"
                   :key="secs"
                   type="button"
                   :class="['ugc-seg-btn', duration === secs ? 'on' : '']"
@@ -1185,6 +1194,12 @@ onMounted(() => {
               <small v-if="seg.stale" class="ugc-seg-stale">Needs re-directing</small>
             </button>
           <!-- Cast &amp; voice belongs beside the plan it presents. -->
+          <div v-if="isTestPass" class="ugc-pass-note">
+            <b>UGC Test Pass</b> — one 15-second ad, or two drafts.
+            <template v-if="passCredits !== null">{{ passCredits.toLocaleString() }} credits left.</template>
+            Presenters are generated for you; your own face and longer ads need a plan.
+          </div>
+
           <div v-if="!noCast" class="ugc-card">
             <div class="ugc-card-h">
               <span class="ugc-card-t">Cast &amp; voice</span>
@@ -1195,7 +1210,7 @@ onMounted(() => {
                  available to cast. -->
             <p v-if="!oneShotEligible" class="ugc-hint">This video is assembled shot by shot so your selected footage stays intact. Choose a presenter for any on-camera shots.</p>
             <div v-if="oneShotEligible" class="ugc-cast-style">
-              <label :class="['ugc-style-pill', { on: castEngine === 'veo', disabled: hasDemo }]">
+              <label v-if="!isTestPass" :class="['ugc-style-pill', { on: castEngine === 'veo', disabled: hasDemo }]">
                 <input v-model="castEngine" type="radio" value="veo" :disabled="hasDemo" />
                 <b>Use one of your characters</b>
                 <span v-if="hasDemo">Not available with a demo clip — a demo runs castless on Seedance.</span>
@@ -2200,6 +2215,12 @@ onMounted(() => {
   opacity: 0.45;
   cursor: not-allowed;
 }
+.ugc-pass-note {
+  margin: 0 0 14px; padding: 12px 16px; border-radius: 12px; font-size: 13px; line-height: 1.5;
+  border: 1px solid rgba(255, 107, 53, 0.35); background: rgba(255, 107, 53, 0.08);
+  color: var(--color-text-secondary);
+}
+.ugc-pass-note b { color: var(--color-text-primary); }
 .ugc-hint {
   font-size: 11px;
   color: var(--color-text-muted);
