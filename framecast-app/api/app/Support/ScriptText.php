@@ -71,4 +71,51 @@ final class ScriptText
         // something was wrong with the pattern, not the script.
         return trim($out) === '' ? trim($script) : $out;
     }
+
+    /** Ways a model opens a decline. Anchored, so only a lead-in counts. */
+    private const DECLINE = '(?:can(?:\'|\x{2019})?t|cannot|can\s+not|won(?:\'|\x{2019})?t|will\s+not|am\s+not\s+able\s+to|am\s+unable\s+to)(?:\s+be\s+able\s+to)?';
+
+    /** The thing being declined — the word that proves it's about the task. */
+    private const TASK = '(?:write|create|produce|generate|make|provide|fulfil|fulfill|help(?:\s+you)?\s+with|assist(?:\s+you)?\s+with|continue\s+with)';
+
+    /**
+     * True when the model declined the brief instead of writing a script.
+     *
+     * A refusal used to be stored as script_text and the whole pipeline —
+     * title, hooks, scene breakdown, TTS, images — ran on it. The customer
+     * got a finished video of whatever example topic the refusal suggested,
+     * never saw the decline, and rated it 1/5 ("the AI did not follow my
+     * prompt"). Catching it at the source is the only place it stays cheap.
+     *
+     * Deliberately narrow, like stripPreamble. The decline has to open the
+     * text AND name the task, so a script that legitimately contains "I can't
+     * help but notice…" or "I can't believe this works" is left alone — the
+     * pattern requires "help with", not a bare "help".
+     */
+    public static function looksLikeRefusal(string $script): bool
+    {
+        $out = ltrim($script);
+
+        if ($out === '') {
+            return false;
+        }
+
+        $patterns = [
+            // "I can't write this one —", "I'm sorry, but I cannot create that"
+            '/^(?:(?:i(?:\'|\x{2019})?m\s+|i\s+am\s+)?sorry[,.!\s\x{2014}\x{2013}-]+)?(?:but\s+)?i\s+'
+                .self::DECLINE.'\s+'.self::TASK.'\b/iu',
+            // "I'm not comfortable producing this"
+            '/^(?:i(?:\'|\x{2019})?m|i\s+am)\s+not\s+comfortable\b/iu',
+            // "As an AI language model, I…"
+            '/^as\s+an\s+ai\b/iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $out) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

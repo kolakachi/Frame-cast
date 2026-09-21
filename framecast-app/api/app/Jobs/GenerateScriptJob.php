@@ -106,10 +106,35 @@ class GenerateScriptJob implements ShouldQueue
             // removes the occasional conversational handover ("Here's your
             // hook, …") that was otherwise stored as part of the script and
             // shown in the editor.
+            $script = \App\Support\Utf8::clean($result['content']);
+
+            // The model sometimes declines the brief rather than writing a
+            // script. That refusal was saved here verbatim and the rest of the
+            // pipeline ran on it — title, hooks, scenes, TTS, images — so the
+            // customer was charged for a finished video of whatever example
+            // topic the decline happened to suggest, never saw that anything
+            // had gone wrong, and rated it 1/5. Stop at the source: no script
+            // is saved, no scene breakdown is queued, no script credit is spent.
+            if (\App\Support\ScriptText::looksLikeRefusal($script)) {
+                \Illuminate\Support\Facades\Log::warning('Script generation declined the brief', [
+                    'project_id' => $project->getKey(),
+                    'refusal'    => Str::limit($script, 500, ''),
+                ]);
+
+                $project->forceFill(['status' => 'failed'])->save();
+
+                GenerationProgressed::dispatch(
+                    $this->projectId,
+                    'script',
+                    'failed',
+                    "We couldn't write a script for this brief. Try rephrasing it, or describe a different topic to cover.",
+                );
+
+                return;
+            }
+
             $project->forceFill([
-                'script_text' => \App\Support\ScriptText::stripPreamble(
-                    \App\Support\Utf8::clean($result['content'])
-                ),
+                'script_text' => \App\Support\ScriptText::stripPreamble($script),
             ])->save();
         }
 
