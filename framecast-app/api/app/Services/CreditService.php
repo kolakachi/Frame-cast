@@ -775,7 +775,7 @@ class CreditService
             }
 
             $remaining   = $amount;
-            $fromMonthly = min($remaining, (int) $workspace->credits_monthly);
+            $fromMonthly = min($remaining, $workspace->spendableMonthlyCredits());
             $remaining  -= $fromMonthly;
             $fromTopup   = min($remaining, (int) $workspace->credits_topup);
 
@@ -915,18 +915,25 @@ class CreditService
      */
     public function resetMonthly(Workspace $workspace): void
     {
-        $anchor = $workspace->billing_renews_at?->copy() ?? now();
-        do {
-            $anchor->addMonth();
-        } while ($anchor->isPast());
-
-        $workspace->update([
-            'credits_monthly'   => self::refilledMonthlyCredits(
-                (string) $workspace->plan_tier,
-                (int) $workspace->credits_monthly,
-            ),
-            'billing_renews_at' => $anchor,
-        ]);
+        DB::transaction(function () use ($workspace) {
+            $ws = Workspace::whereKey($workspace->id)->lockForUpdate()->firstOrFail();
+            // Provider-backed plans can only be refilled by paid invoice reconciliation.
+            if ($ws->kelviq_subscription_id || ! in_array($ws->getRawOriginal('plan_tier'), config('billing.manual_monthly_tiers', ['enterprise']), true)
+                || $ws->plan_status !== 'active' || ! $ws->billing_renews_at || $ws->billing_renews_at->isFuture()) {
+                return;
+            }
+            $anchor = $ws->billing_renews_at->copy();
+            do {
+                $anchor->addMonthNoOverflow();
+            } while ($anchor->lte(now()));
+            $before = (int) $ws->credits_monthly;
+            $after = self::refilledMonthlyCredits($ws->plan_tier, $before);
+            $ws->forceFill(['credits_monthly' => $after, 'billing_renews_at' => $anchor])->save();
+            CreditLedgerEntry::create(['workspace_id' => $ws->id, 'operation' => 'grant:monthly_manual',
+                'credits' => $before - $after, 'balance_after' => $after + (int) $ws->credits_topup,
+                'metadata' => ['period_end' => $anchor->toIso8601String(), 'monthly_before' => $before, 'monthly_after' => $after],
+            ]);
+        });
     }
 
     /**

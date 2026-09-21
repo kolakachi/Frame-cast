@@ -15,8 +15,8 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Reset monthly credits for any workspace whose billing cycle has rolled over.
-// Runs every hour so resets happen within an hour of the billing_renews_at.
+// Reconcile provider-paid invoices hourly; clock-only allocations are limited
+// to explicitly configured manually managed plans.
 Schedule::job(new ResetMonthlyCreditsJob())->hourly()->name('reset-monthly-credits')->withoutOverlapping();
 
 // Advance the day-1/3/7/14 onboarding email sequence. Day-0 is sent inline

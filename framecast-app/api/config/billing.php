@@ -1,6 +1,9 @@
 <?php
 
 return [
+    // Only explicitly managed plans refill without provider invoice evidence.
+    'manual_monthly_tiers' => ['enterprise'],
+
 
     /*
      * Registration gate. While marketing campaigns are running, a new signup

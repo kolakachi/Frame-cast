@@ -22,21 +22,25 @@ class ResetMonthlyCreditsJob implements ShouldQueue
 
     public function handle(CreditService $credits): void
     {
-        $due = Workspace::query()
-            ->whereNotNull('billing_renews_at')
-            ->where('billing_renews_at', '<=', now())
-            ->where('plan_status', 'active')
-            ->where('plan_tier', '!=', 'free')
-            ->get();
-
-        $resetCount = 0;
-        foreach ($due as $workspace) {
-            $credits->resetMonthly($workspace);
-            $resetCount++;
-        }
-
-        if ($resetCount > 0) {
-            Log::info('ResetMonthlyCreditsJob: reset workspaces', ['count' => $resetCount]);
-        }
+        // Reconcile subscriptions even after cancellation/failure, so a recovered
+        // payment or a missed webhook can restore access. One failure cannot stop others.
+        Workspace::query()->whereNotNull('kelviq_subscription_id')->chunkById(100, function ($workspaces) {
+            foreach ($workspaces as $workspace) {
+                try {
+                    ReconcileSubscriptionJob::dispatch((int) $workspace->id);
+                } catch (\Throwable $error) {
+                    report($error);
+                    Log::warning('Subscription reconciliation failed', ['workspace_id' => $workspace->id]);
+                }
+            }
+        });
+        Workspace::query()->whereNull('kelviq_subscription_id')
+            ->whereIn('plan_tier', config('billing.manual_monthly_tiers', ['enterprise']))
+            ->where('plan_status', 'active')->where('billing_renews_at', '<=', now())
+            ->chunkById(100, function ($workspaces) use ($credits) {
+                foreach ($workspaces as $workspace) {
+                    $credits->resetMonthly($workspace);
+                }
+            });
     }
 }

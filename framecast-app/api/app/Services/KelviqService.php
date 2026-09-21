@@ -4,9 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Models\Workspace;
-use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -127,6 +125,7 @@ class KelviqService
                 'subscription.updated',
                 'subscription.plan_changed' => $this->applySubscription($object),
                 'subscription.cancelled'    => $this->markCancelled($object),
+                'invoice.payment_failed',
                 'invoice.paid'              => $this->handleRenewal($object),
                 'checkout.completed'        => $this->handleCheckoutCompleted($object),
                 default                     => null,
@@ -199,183 +198,37 @@ class KelviqService
 
     private function applySubscription(array $object): void
     {
-        // Same as lifetime: a monthly plan bought straight from a checkout link
-        // arrives before any account exists.
         $workspace = $this->resolveWorkspace($object) ?? $this->provisionFromEvent($object);
         if (! $workspace) {
-            // Diagnostics are keys and flags only — never the raw body, which
-            // carries customer name, email and billing address.
-            Log::warning('KelviqService: subscription event — no workspace', [
-                'object_id'      => $object['id'] ?? null,
-                'object_keys'    => array_keys($object),
-                'has_metadata_ws' => isset($object['metadata']['workspace_id']),
-                'customer_keys'  => is_array($object['customer'] ?? null) ? array_keys($object['customer']) : null,
-            ]);
-            return;
+            throw new \RuntimeException('Subscription has no matching workspace.');
         }
-
-        $planId = $object['plan']['identifier'] ?? null;
-        $tier   = config('billing.kelviq.plan_tiers')[$planId] ?? null;
-        if (! $tier) {
-            Log::warning('KelviqService: unknown plan identifier', [
-                'plan'         => $planId,
-                'workspace_id' => $workspace->getKey(),
-                'plan_keys'    => is_array($object['plan'] ?? null) ? array_keys($object['plan']) : null,
-                'object_keys'  => array_keys($object),
-            ]);
-            return;
-        }
-
-        // Kelviq keeps `status` at "active" for a cancel-at-period-end and
-        // signals the cancellation out-of-band via canceled_at /
-        // cancellation_reason. Reading `status` alone therefore records a
-        // cancelled subscriber as active and overstates MRR until the period
-        // actually lapses — and a `subscription.cancelled` event may never
-        // arrive at all (a merchant-initiated cancel arrives as .updated).
-        $cancelled = $this->isCancelled($object);
-        $status    = $cancelled ? 'cancelled' : (string) ($object['status'] ?? 'active');
-
-        Log::info('KelviqService: applying subscription', [
-            'workspace_id' => $workspace->getKey(),
-            'plan'         => $planId,
-            'raw_status'   => $object['status'] ?? null,
-            'cancelled'    => $cancelled,
-            'object_keys'  => array_keys($object),
-        ]);
-
-        $workspace = Workspace::query()->whereKey($workspace->getKey())->lockForUpdate()->firstOrFail();
-        $previousTier = $workspace->plan_tier;
-        $update = [
-            'kelviq_account_id'      => $object['customer']['id'] ?? $workspace->kelviq_account_id,
-            'kelviq_subscription_id' => $object['id'] ?? $workspace->kelviq_subscription_id,
-            'plan_tier'              => $tier,
-            'plan_status'            => $status,
-        ];
-        // Refill on tier change (SET, so it's idempotent). Deliberately NOT a
-        // rollover-aware add: rollover is a renewal benefit, and adding here
-        // would let anyone farm credits by toggling plans.
-        if ($previousTier !== $tier) {
-            $update['credits_monthly']   = CreditService::PLAN_CREDITS[$tier] ?? 0;
-            $update['billing_renews_at'] = $this->periodEnd($object);
-        }
-        $workspace->forceFill($update)->save();
-        $this->clearPendingCheckout($workspace);
-
-        // First paid activation. Claimed once inside, because this handler also
-        // runs for every subsequent plan change and webhook redelivery.
-        if (! $cancelled && $status === 'active') {
-            \App\Services\Onboarding\WelcomeMail::sendOnce($workspace);
-        }
-
-        // First free -> paid conversion rewards the referrer (idempotent).
-        if ($previousTier === 'free' && $tier !== 'free') {
-            rescue(fn () => app(RewardService::class)->referralConversion($workspace->fresh()));
+        app(\App\Services\Billing\SubscriptionRenewal::class)->reconcile($workspace, (string) ($object['id'] ?? ''));
+        if ($workspace->fresh()->kelviq_subscription_id === ($object['id'] ?? null) && ! empty($object['customer']['id'])) {
+            $workspace->forceFill(['kelviq_account_id' => $object['customer']['id']])->save();
         }
     }
 
-    /**
-     * Is this subscription cancelled — including cancelled-but-still-running
-     * until the period ends?
-     *
-     * `status` alone is not the signal: Kelviq reports "active" right up to the
-     * end date and marks the cancellation with canceled_at / cancellation_reason
-     * (and nextInvoiceDate: null). Accepts both the webhook's snake_case and the
-     * REST API's camelCase spellings.
-     */
-    private function isCancelled(array $object): bool
-    {
-        $status = strtolower(trim((string) ($object['status'] ?? '')));
-        if (in_array($status, ['cancelled', 'canceled'], true)) {
-            return true;
-        }
-
-        foreach (['canceled_at', 'canceledAt', 'cancelled_at', 'cancellation_reason', 'cancellationReason'] as $key) {
-            if (! empty($object[$key])) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** Recurring charge — refill the current plan's monthly allocation. */
     private function handleRenewal(array $object): void
     {
+        $id = $object['subscription_id'] ?? $object['subscription']['id'] ?? null;
+        if (! $id) {
+            return;
+        } // One-time invoices do not allocate monthly credits.
         $workspace = $this->resolveWorkspace($object);
-        if (! $workspace || $workspace->plan_tier === 'free') {
-            return;
+        if (! $workspace) {
+            throw new \RuntimeException('Invoice has no matching workspace.');
         }
-
-        $workspace = Workspace::query()->whereKey($workspace->getKey())->lockForUpdate()->firstOrFail();
-        $periodEnd = $this->periodEnd($object);
-
-        // Two paths refill: this webhook and the hourly ResetMonthlyCreditsJob
-        // (which fires when a webhook is late or lost). A renewal date already
-        // at or past this period's end means that period was refilled — and on
-        // rollover tiers the refill ADDS, so doing it twice would double-grant.
-        if ($workspace->billing_renews_at && $workspace->billing_renews_at->greaterThanOrEqualTo($periodEnd)) {
-            Log::info('KelviqService: renewal already applied for this period', [
-                'workspace_id' => $workspace->getKey(),
-                'period_end'   => $periodEnd->toIso8601String(),
-            ]);
-
-            return;
-        }
-
-        $workspace->forceFill([
-            'credits_monthly'   => CreditService::refilledMonthlyCredits(
-                (string) $workspace->plan_tier,
-                (int) $workspace->credits_monthly,
-            ),
-            'billing_renews_at' => $periodEnd,
-        ])->save();
-    }
-
-    /**
-     * The real end of the paid period, taken from the event rather than clock
-     * arithmetic. `now()->addMonth()` drifted the renewal date forward by
-     * however long the webhook took to arrive (or be replayed) — a rerun hours
-     * later silently bought the customer extra paid time.
-     *
-     * Kelviq sends snake_case in webhooks and camelCase in REST responses, so
-     * accept both. Falls back to a month out only if the event carries nothing.
-     */
-    private function periodEnd(array $object): CarbonInterface
-    {
-        $candidates = [
-            $object['billing_period_end_time']       ?? null,
-            $object['subscription']['next_invoice_date'] ?? null,
-            $object['subscription']['nextInvoiceDate']   ?? null,
-            $object['subscription']['billing_period_end_time'] ?? null,
-            $object['next_invoice_date']             ?? null,
-            $object['nextInvoiceDate']               ?? null,
-            $object['billingPeriodEndTime']          ?? null,
-        ];
-
-        foreach ($candidates as $value) {
-            if (! $value) {
-                continue;
-            }
-            $parsed = rescue(fn () => Carbon::parse($value), null, false);
-            if ($parsed) {
-                return $parsed;
-            }
-        }
-
-        Log::warning('KelviqService: no period end on event, falling back to +1 month', [
-            'object_id' => $object['id'] ?? null,
-        ]);
-
-        return now()->addMonth();
+        app(\App\Services\Billing\SubscriptionRenewal::class)->reconcile($workspace, (string) $id);
     }
 
     private function markCancelled(array $object): void
     {
+        // Read the current provider state rather than trusting a delayed cancellation.
         $workspace = $this->resolveWorkspace($object);
-        if ($workspace) {
-            // Keep access/credits until the period ends; just record the status.
-            $workspace->forceFill(['plan_status' => 'cancelled'])->save();
+        if (! $workspace) {
+            throw new \RuntimeException('Cancellation has no matching workspace.');
         }
+        app(\App\Services\Billing\SubscriptionRenewal::class)->reconcile($workspace, (string) ($object['id'] ?? ''));
     }
 
     /**

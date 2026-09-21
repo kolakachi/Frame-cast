@@ -38,7 +38,7 @@ class LifetimeTierGuardTest extends TestCase
             $t->string('pending_checkout_plan')->nullable(); $t->timestamp('pending_checkout_at')->nullable();
             $t->timestamp('pending_checkout_reminded_at')->nullable();
             $t->string('kelviq_account_id')->nullable(); $t->string('kelviq_subscription_id')->nullable();
-            $t->timestamp('welcome_email_sent_at')->nullable(); $t->timestamps();
+            $t->timestamp('billing_renews_at')->nullable(); $t->timestamp('welcome_email_sent_at')->nullable(); $t->timestamps();
         });
         Schema::create('appsumo_licenses', function (Blueprint $t) {
             $t->id(); $t->string('license_key'); $t->unsignedBigInteger('workspace_id')->nullable();
@@ -460,7 +460,7 @@ class LifetimeTierGuardTest extends TestCase
         $this->assertFalse($confirmed());
         DB::table('billing_checkout_attempts')->where('id', $attempt)->update(['paid_at' => now()]);
         $this->assertFalse($confirmed(), 'Checkout receipt alone must not race subscription activation');
-        $ws->forceFill(['plan_tier' => 'starter', 'kelviq_subscription_id' => 'sub-paid'])->save();
+        $ws->forceFill(['plan_tier' => 'starter', 'kelviq_subscription_id' => 'sub-paid', 'billing_renews_at' => now()->addMonth()])->save();
         $this->assertTrue($confirmed());
         $request->setUserResolver(fn () => new \App\Models\User(['workspace_id' => $ws->id + 1]));
         $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);

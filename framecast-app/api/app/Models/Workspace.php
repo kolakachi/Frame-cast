@@ -51,6 +51,8 @@ class Workspace extends Model
     ];
 
     protected $casts = [
+        'subscription_ends_at' => 'datetime',
+        'billing_state_version' => 'datetime',
         'plan_renews_at'    => 'datetime',
         'billing_renews_at' => 'datetime',
         'credits_monthly'   => 'integer',
@@ -63,9 +65,41 @@ class Workspace extends Model
         'pending_checkout_reminded_at' => 'datetime',
     ];
 
+    /** All capability consumers see effective access, including agency clients. */
+    public function getPlanTierAttribute($value): string
+    {
+        if ($this->parent_workspace_id) {
+            return $this->parent?->plan_tier ?? 'free';
+        }
+        if ($this->hasExpiredSubscription()) {
+            return 'free';
+        }
+
+        return (string) ($value ?: 'free');
+    }
+
+    public function hasExpiredSubscription(): bool
+    {
+        $tier = (string) ($this->attributes['plan_tier'] ?? 'free');
+        if (! $this->kelviq_subscription_id || ! in_array($tier, ['starter', 'creator', 'pro', 'agency', 'studio', 'scale'], true)) {
+            return false;
+        }
+        if (! in_array(strtolower((string) $this->plan_status), ['active', 'past_due', 'cancelled', 'canceled'], true)) {
+            return true;
+        }
+
+        return ! $this->billing_renews_at || $this->billing_renews_at->lte(now())
+            || ($this->subscription_ends_at && $this->subscription_ends_at->lte(now()));
+    }
+
+    public function spendableMonthlyCredits(): int
+    {
+        return $this->hasExpiredSubscription() ? 0 : max(0, (int) $this->credits_monthly);
+    }
+
     public function creditsBalance(): int
     {
-        return max(0, (int) $this->credits_monthly + (int) $this->credits_topup);
+        return max(0, $this->spendableMonthlyCredits() + (int) $this->credits_topup);
     }
 
     /** The agency this client workspace belongs to, if it is one. */
