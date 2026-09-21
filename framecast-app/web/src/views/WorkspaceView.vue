@@ -213,19 +213,6 @@ onMounted(async () => {
                 </div>
               </div>
 
-              <div class="usage-card" :class="{ 'usage-over': usage.dub_languages_used > usage.dub_languages_limit }">
-                <div class="usage-label">
-                  <span>Dub Languages</span>
-                  <span class="usage-count">{{ usage.dub_languages_used }} / {{ usage.dub_languages_limit }}</span>
-                </div>
-                <div class="meter-track">
-                  <div class="meter-fill" :class="meterClass(usage.dub_languages_used, usage.dub_languages_limit)" :style="{ width: meterPct(usage.dub_languages_used, usage.dub_languages_limit) + '%' }"></div>
-                </div>
-                <div :class="['usage-sub', remaining(usage.dub_languages_used, usage.dub_languages_limit).over ? 'sub-over' : '']">
-                  <template v-if="remaining(usage.dub_languages_used, usage.dub_languages_limit).over">{{ remaining(usage.dub_languages_used, usage.dub_languages_limit).count }} over limit</template>
-                  <template v-else>{{ remaining(usage.dub_languages_used, usage.dub_languages_limit).count }} languages remaining</template>
-                </div>
-              </div>
             </div>
           </section>
 

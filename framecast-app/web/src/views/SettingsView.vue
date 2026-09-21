@@ -513,7 +513,6 @@ const usageProgress = computed(() => {
   return [
     { label: 'Renders',        used: usage.value.renders_used,       limit: usage.value.render_limit,          pct: pct(usage.value.renders_used, usage.value.render_limit),                color: '#34d399' },
     { label: 'Voice Minutes',  used: usage.value.voice_minutes_used,  limit: usage.value.voice_minutes_limit,   pct: pct(usage.value.voice_minutes_used, usage.value.voice_minutes_limit),    color: '#60a5fa' },
-    { label: 'Dub Languages',  used: usage.value.dub_languages_used || 0, limit: usage.value.dub_languages_limit || 3, pct: pct(usage.value.dub_languages_used || 0, usage.value.dub_languages_limit || 3), color: '#a78bfa' },
     { label: 'Active Channels',used: usage.value.active_channels,     limit: usage.value.channel_limit,         pct: pct(usage.value.active_channels, usage.value.channel_limit),             color: '#fbbf24' },
   ]
 })

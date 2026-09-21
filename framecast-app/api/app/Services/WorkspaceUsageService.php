@@ -22,6 +22,23 @@ class WorkspaceUsageService
     public const VOICE_CLONING_LIMIT = 2;
 
     /**
+     * Per-tier allowances.
+     *
+     * Two keys here are deliberately NOT enforced, and are no longer shown to
+     * customers either:
+     *
+     *  - dub_languages_limit — nothing blocks a workspace making videos in more
+     *    languages than its tier lists. Localisation is already paid for in
+     *    credits, so the cap protects no cost; it only penalised the
+     *    international customers we most want. The usage meters that displayed
+     *    it were removed rather than left advertising a rule we do not apply.
+     *  - ai_image_quality — the request validator accepts any quality from any
+     *    tier. Higher quality costs more credits, so credits are the limiter
+     *    (the same decision already recorded for pdf_vision_page_limit). It is
+     *    shown in the admin plan view only, never to a customer.
+     *
+     * Enforce either one before putting it back in front of a customer.
+     *
      * @return array<string, array<string, int|float|string>>
      */
     public static function plans(): array
