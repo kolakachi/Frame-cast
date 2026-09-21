@@ -859,21 +859,32 @@ class ClientWorkspaceTest extends TestCase
     }
 
 
-    public function test_a_failed_ledger_write_is_loud_but_never_costs_the_credits(): void
+    public function test_a_failed_ledger_write_takes_the_grant_with_it_and_is_never_silent(): void
     {
-        // Both halves matter. The grant must stand — a logging failure must not
-        // cost a customer credits they paid for — and it must no longer be
-        // silent, which is why a lost purchase went unnoticed for fifteen days.
-        \Illuminate\Support\Facades\Log::spy();
-
+        // The contract changed when grants became atomic, and the reason the
+        // old one existed still holds: a purchase must never be lost quietly.
+        //
+        // Credits used to land whatever happened, with the failure logged. That
+        // left a workspace holding credits nothing could account for. Now the
+        // money and its record move together or not at all, and the failure
+        // raises — which is safe precisely because the webhook that drove it is
+        // itself transactional: the rollback un-claims the event, and the
+        // provider redelivers until both halves succeed.
+        //
+        // The one outcome still forbidden is the original incident: a grant
+        // going astray with nobody told, unnoticed for fifteen days.
         $a = $this->agency(credits: 1000);
         Schema::drop('credit_ledger');   // make every ledger write fail
 
-        app(CreditService::class)->grant((int) $a->getKey(), 500, 'topup_kelviq');
+        try {
+            app(CreditService::class)->grant((int) $a->getKey(), 500, 'topup_kelviq');
+            $this->fail('A ledger write failure must never pass silently');
+        } catch (\Illuminate\Database\QueryException) {
+            // Loud, as intended — the caller (or the webhook) can retry.
+        }
 
-        $this->assertSame(1500, (int) $a->fresh()->credits_topup, 'the credits still arrived');
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('error')
-            ->withArgs(fn (string $m) => str_contains($m, 'ledger write failed'));
+        $this->assertSame(1000, (int) $a->fresh()->credits_topup,
+            'credits and their ledger row land together, or neither does');
     }
 
 }
