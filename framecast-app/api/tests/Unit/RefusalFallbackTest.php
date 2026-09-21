@@ -24,16 +24,16 @@ class RefusalFallbackTest extends TestCase
         $premium->method('generate')->willReturn(['content' => $premiumSays]);
 
         $cheap = $this->createMock(OpenAIGenerationAdapter::class);
-        $cheap->method('generate')->willReturn(['content' => $cheapSays]);
+        $cheap->expects($this->never())->method('generate')->willReturn(['content' => $cheapSays]);
 
         return (new RoutingTextAdapter($cheap, $premium))->generate('script_from_prompt', []);
     }
 
-    public function test_a_decline_is_retried_on_the_other_model(): void
+    public function test_a_decline_is_returned_without_trying_another_model(): void
     {
         $result = $this->route(self::REFUSAL, 'Three things likable people never do.');
 
-        $this->assertSame('Three things likable people never do.', $result['content']);
+        $this->assertSame(self::REFUSAL, $result['content']);
     }
 
     public function test_two_declines_give_up_rather_than_shopping_for_a_yes(): void
@@ -60,4 +60,14 @@ class RefusalFallbackTest extends TestCase
 
         $this->assertSame($json, $this->route($json, '{}')['content']);
     }
+    public function test_transport_failure_can_use_the_fallback(): void
+    {
+        $premium = $this->createMock(ReplicateClaudeAdapter::class);
+        $premium->method('generate')->willThrowException(new \RuntimeException('timeout'));
+        $cheap = $this->createMock(OpenAIGenerationAdapter::class);
+        $cheap->expects($this->once())->method('generate')->willReturn(['content' => 'A supported script.']);
+        $result = (new RoutingTextAdapter($cheap, $premium))->generate('script_from_prompt', []);
+        $this->assertSame('A supported script.', $result['content']);
+    }
+
 }

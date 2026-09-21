@@ -104,6 +104,8 @@ class GenerationProgressed implements ShouldBroadcastNow
                 $stageEntry['message'] = $this->message;
             }
 
+            if (isset($this->meta['validation_reason'])) $stageEntry['validation_reason'] = $this->meta['validation_reason'];
+
             // Persist done/total counts from meta so page-refresh can restore them.
             if (isset($this->meta['done']))  $stageEntry['done']  = $this->meta['done'];
             if (isset($this->meta['total'])) $stageEntry['total'] = $this->meta['total'];

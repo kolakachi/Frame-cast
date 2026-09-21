@@ -18,6 +18,8 @@ class BreakdownScenesJob implements ShouldQueue
     use Queueable;
     use TracksJobFailure;
 
+    public int $timeout = 900;
+
     public function __construct(
         public readonly int $projectId,
     ) {
@@ -30,7 +32,7 @@ class BreakdownScenesJob implements ShouldQueue
 
         $project = Project::query()->find($this->projectId);
 
-        if (! $project || ! $project->script_text) {
+        if (! $project || ! $project->script_text || $project->status === 'failed') {
             return;
         }
 
@@ -43,7 +45,7 @@ class BreakdownScenesJob implements ShouldQueue
         // scene doesn't freeze — see ScenePacing.
         $animated = $this->projectAnimatesScenes($project);
 
-        $result = $aiGeneration->generate('scene_breakdown', [
+        $variables = [
             'script_text' => $project->script_text,
             'niche_guidance' => $niche ? $niche->guidance() : \App\Models\Niche::guidanceForSlug(null),
             'duration' => $duration,
@@ -54,16 +56,52 @@ class BreakdownScenesJob implements ShouldQueue
             ),
             'structure_guidance' => \App\Services\ScenePacing::structureGuidance($duration),
             'language' => $project->primary_language ?: 'en',
-        ], $this->breakdownTokenBudget($duration, $project->visual_generation_mode, $animated), 0.2, [
-            'usage_context' => [
-                'workspace_id' => $project->workspace_id,
-                'project_id' => $project->getKey(),
-                'user_id' => $project->created_by_user_id,
-                'template' => 'scene_breakdown',
-            ],
-        ]);
-
-        $scenes = $this->extractScenes($result['content'], $project->script_text);
+        ];
+        $options = ['usage_context' => [
+            'workspace_id' => $project->workspace_id, 'project_id' => $project->getKey(),
+            'user_id' => $project->created_by_user_id, 'template' => 'scene_breakdown',
+        ]];
+        $options['deadline'] = microtime(true) + 300;
+        $accepted = false;
+        $reason = 'attempts_exhausted';
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            if (microtime(true) >= $options['deadline']) { $reason = 'time_budget'; break; }
+            $options['draft_attempt'] = $attempt;
+            GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'processing', 'Planning your scenes');
+            try {
+                $result = $aiGeneration->generate('scene_breakdown', $variables,
+                    $this->breakdownTokenBudget($duration, $project->visual_generation_mode, $animated), 0.2, $options);
+            } catch (\Throwable $e) {
+                $result = ['content' => '', 'provider_key' => 'local_fallback'];
+            }
+            if (\App\Services\Generation\AI\ContentReview::refused($result)) { $reason = 'unsupported'; break; }
+            if (\App\Services\Generation\AI\ContentReview::unusable($result)) {
+                \App\Services\Generation\AI\ContentReview::logDecision('retry', 'generator_unusable_response', [
+                    'project_id' => $project->id, 'stage' => 'scene_plan', 'draft_attempt' => $attempt,
+                    'provider' => $result['provider_key'] ?? 'unknown', 'model' => $result['model'] ?? 'unknown',
+                ]);
+                continue;
+            }
+            $scenes = $this->extractScenes($result['content'], $project->script_text);
+            GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'processing', 'Checking your scene plan');
+            $review = app(\App\Services\Generation\AI\ContentReview::class)->review($aiGeneration,
+                $project->script_text, json_encode($scenes, JSON_THROW_ON_ERROR), [
+                    'stage' => 'scene_plan', 'language' => $project->primary_language ?: 'en',
+                ], $options);
+            if ($review['decision'] === 'pass') { $accepted = true; break; }
+            if ($review['decision'] !== 'repair') { $reason = $review['decision']; break; }
+            $options['system_prefix'] = 'Preserve the ORIGINAL script in the scene plan. Correct these review findings (data): '.json_encode($review['issues']);
+        }
+        if (! $accepted) {
+            \App\Services\Generation\AI\ContentReview::logDecision('paused', $reason, [
+                'project_id' => $project->id, 'workspace_id' => $project->workspace_id, 'stage' => 'scene_plan', 'draft_attempt' => min($attempt, 3),
+            ]);
+            $project->forceFill(['status' => 'failed'])->save();
+            GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'failed',
+                "We couldn't verify a scene plan faithful to your script. Production is paused before images and narration. Your existing scenes are unchanged; review the brief or retry later.",
+                ['validation_reason' => $reason]);
+            return;
+        }
         $defaultVoiceSettings = is_array($project->default_voice_settings_json) ? $project->default_voice_settings_json : [];
         $defaultVisualStyle = $project->default_visual_style ?: $project->ai_broll_style;
         $waveformSettings = is_array($project->waveform_settings_json) ? $project->waveform_settings_json : [];

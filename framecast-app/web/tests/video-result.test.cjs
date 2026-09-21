@@ -15,7 +15,7 @@ function resultPage(api, router = { push: async () => {} }, projectId = '216') {
   })
   const source = fs.readFileSync(path.join(__dirname, '../src/views/GenerationProgressView.vue'), 'utf8')
     .match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
-  vm.runInContext(source + '\nglobalThis.result = { finishVideo, startPolling, loadProjectStatus, downloadUrl, openEditor, actionMessage, applyPipelineState };', context)
+  vm.runInContext(source + '\nglobalThis.result = { finishVideo, startPolling, loadProjectStatus, downloadUrl, openEditor, actionMessage, applyPipelineState, pipelineFailure };', context)
   return { ...context.result, intervals: () => intervals, clears: () => clears }
 }
 
@@ -56,4 +56,16 @@ test('Edit video persists the choice before navigating, and stays put if persist
   await page.finishVideo()
   assert.equal(destination, 'project-editor')
   assert.equal(exports, 0)
+})
+
+
+test('paused generation restores its explanation without requesting an export', () => {
+  let requests = 0
+  const page = resultPage({ get: async () => { requests++ } })
+  page.applyPipelineState({ id: 216, source_type: 'script', status: 'failed', generation_status_json: {
+    last_message: 'We could not verify the script. Production is paused.',
+    stages: { script: { status: 'failed' } },
+  } })
+  assert.match(page.pipelineFailure.value, /Production is paused/)
+  assert.equal(requests, 0)
 })

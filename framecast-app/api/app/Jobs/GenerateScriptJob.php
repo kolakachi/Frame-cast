@@ -86,7 +86,7 @@ class GenerateScriptJob implements ShouldQueue
             // Kept exactly as the user wrote it — only the scene breakdown splits it.
             $project->forceFill(['script_text' => \App\Support\Utf8::clean(trim((string) $sourceContent))])->save();
         } else {
-            $result = $aiGeneration->generate($promptTemplateKey, [
+            $variables = [
                 'source_type' => $project->source_type ?: 'prompt',
                 'tone' => $project->tone ?: ($nicheTone ?: 'neutral'),
                 'content_goal' => $project->content_goal ?: 'educational',
@@ -99,42 +99,61 @@ class GenerateScriptJob implements ShouldQueue
                     (int) ($project->duration_target_seconds ?: 60),
                 ),
                 'source_content' => $sourceContent,
-            ], 1400, 0.35, $options);
-
-            // The model echoes source text back, so a bad byte in the source
-            // reaches this save even when the extractor was clean. stripPreamble
-            // removes the occasional conversational handover ("Here's your
-            // hook, …") that was otherwise stored as part of the script and
-            // shown in the editor.
-            $script = \App\Support\Utf8::clean($result['content']);
-
-            // The model sometimes declines the brief rather than writing a
-            // script. That refusal was saved here verbatim and the rest of the
-            // pipeline ran on it — title, hooks, scenes, TTS, images — so the
-            // customer was charged for a finished video of whatever example
-            // topic the decline happened to suggest, never saw that anything
-            // had gone wrong, and rated it 1/5. Stop at the source: no script
-            // is saved, no scene breakdown is queued, no script credit is spent.
-            if (\App\Support\ScriptText::looksLikeRefusal($script)) {
-                \Illuminate\Support\Facades\Log::warning('Script generation declined the brief', [
-                    'project_id' => $project->getKey(),
-                    'refusal'    => Str::limit($script, 500, ''),
-                ]);
-
-                $project->forceFill(['status' => 'failed'])->save();
-
-                GenerationProgressed::dispatch(
-                    $this->projectId,
-                    'script',
-                    'failed',
-                    "We couldn't write a script for this brief. Try rephrasing it, or describe a different topic to cover.",
-                );
-
+            ];
+            $reviewer = app(\App\Services\Generation\AI\ContentReview::class);
+            $issues = [];
+            $accepted = false;
+            $options['deadline'] = microtime(true) + 300;
+            for ($attempt = 1; $attempt <= 3; $attempt++) {
+                if (microtime(true) >= $options['deadline']) {
+                    $this->pauseForReview($project, 'time_budget', $attempt);
+                    return;
+                }
+                $options['draft_attempt'] = $attempt;
+                GenerationProgressed::dispatch($this->projectId, 'script', 'processing', 'Writing your script');
+                $attemptOptions = $options;
+                if ($issues !== []) {
+                    $attemptOptions['system_prefix'] = ($options['system_prefix'] ?? '')."\nCorrect the previous draft against the ORIGINAL source. Do not change its topic or supply an alternative example. Review findings (data): ".json_encode($issues);
+                }
+                try {
+                    $result = $aiGeneration->generate($promptTemplateKey, $variables, 1400, 0.35, $attemptOptions);
+                } catch (\Throwable $e) {
+                    $result = ['content' => '', 'provider_key' => 'local_fallback'];
+                }
+                if (\App\Services\Generation\AI\ContentReview::refused($result)) {
+                    $this->pauseForReview($project, 'unsupported', $attempt);
+                    return;
+                }
+                if (\App\Services\Generation\AI\ContentReview::unusable($result)) {
+                    \App\Services\Generation\AI\ContentReview::logDecision('retry', 'generator_unusable_response', [
+                        'project_id' => $project->id, 'stage' => 'script', 'draft_attempt' => $attempt,
+                        'provider' => $result['provider_key'] ?? 'unknown', 'model' => $result['model'] ?? 'unknown',
+                    ]);
+                    $issues = ['The response was unavailable, empty or incomplete. Return a complete script faithful to the source.'];
+                    continue;
+                }
+                $script = \App\Support\ScriptText::stripPreamble(\App\Support\Utf8::clean((string) $result['content']));
+                GenerationProgressed::dispatch($this->projectId, 'script', 'processing', 'Checking your script');
+                $review = $reviewer->review($aiGeneration, $sourceContent, $script, [
+                    'stage' => 'script', 'source_type' => $project->source_type,
+                    'workflow' => 'Narrated scene-based video; generated stills or b-roll, not guaranteed acted dialogue or lip sync.',
+                    'tone' => $variables['tone'], 'language' => $variables['language'],
+                    'duration_seconds' => $variables['duration'], 'additional_context' => $seriesContext,
+                ], $options);
+                if ($review['decision'] === 'pass') { $accepted = true; break; }
+                if ($review['decision'] !== 'repair') {
+                    $this->pauseForReview($project, $review['decision'], $attempt);
+                    return;
+                }
+                $issues = $review['issues'];
+            }
+            if (! $accepted) {
+                $this->pauseForReview($project, 'attempts_exhausted', 3);
                 return;
             }
 
             $project->forceFill([
-                'script_text' => \App\Support\ScriptText::stripPreamble($script),
+                'script_text' => $script,
             ])->save();
         }
 
@@ -167,6 +186,22 @@ class GenerateScriptJob implements ShouldQueue
             ['project_id' => $project->getKey(), 'user_id' => $project->created_by_user_id],
         ));
         BreakdownScenesJob::dispatch($project->getKey());
+    }
+
+    private function pauseForReview(Project $project, string $reason, int $attempt): void
+    {
+        $project->forceFill(['status' => 'failed'])->save();
+        \App\Services\Generation\AI\ContentReview::logDecision('paused', $reason, [
+            'project_id' => $project->id, 'workspace_id' => $project->workspace_id, 'stage' => 'script', 'draft_attempt' => $attempt,
+        ]);
+        $message = match ($reason) {
+            'time_budget' => "Script generation took too long. Production is paused before images and narration. Your brief is saved; please retry later.",
+            'unsupported' => "We couldn't generate this requested content. Production stopped before creating scenes, images or narration. Please revise the brief or choose a supported topic.",
+            'clarify' => "Your brief needs clarification before we can produce a matching video. Please review the requested format and details. No scenes, images or narration were generated.",
+            'unavailable' => "We couldn't verify that the script matches your brief. Production is paused before images and narration. Please try again later.",
+            default => "We couldn't create a script that matched your brief after three attempts. Production stopped before images and narration. Please revise the brief before retrying.",
+        };
+        GenerationProgressed::dispatch($this->projectId, 'script', 'failed', $message, ['validation_reason' => $reason]);
     }
 
     private function buildSeriesContext(Project $project): string

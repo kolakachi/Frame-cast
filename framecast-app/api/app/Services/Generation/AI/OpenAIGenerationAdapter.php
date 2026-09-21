@@ -33,14 +33,16 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
         if ($apiKey === '') {
             return [
                 'content' => $this->fallbackContent($promptTemplateKey, $variables),
-                'provider_key' => 'openai',
-                'model' => $model,
+                'provider_key' => 'local_fallback',
+                'model' => 'deterministic',
                 'tokens_used' => 0,
             ];
         }
 
         try {
-            $response = Http::timeout(45)
+            $remaining = (float) ($options['deadline'] ?? INF) - microtime(true);
+            if ($remaining <= 0) throw new RuntimeException('Text generation time budget exhausted.');
+            $response = Http::timeout(min(45, max(0.1, $remaining)))
                 ->withToken($apiKey)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model' => $model,
@@ -66,7 +68,9 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
             $completionTokens = (int) data_get($json, 'usage.completion_tokens', 0);
             $totalTokens = (int) data_get($json, 'usage.total_tokens', 0);
 
-            if ($content === '') {
+            $refusal = data_get($json, 'choices.0.message.refusal');
+            $finishReason = data_get($json, 'choices.0.finish_reason');
+            if ($content === '' && ! $refusal && $finishReason !== 'content_filter') {
                 throw new RuntimeException('OpenAI generation returned empty content.');
             }
 
@@ -88,6 +92,8 @@ class OpenAIGenerationAdapter implements AIGenerationAdapter
                 'provider_key' => 'openai',
                 'model' => $model,
                 'tokens_used' => $totalTokens,
+                'refusal' => $refusal,
+                'finish_reason' => $finishReason,
             ];
         } catch (Throwable $exception) {
             $this->usage->record([

@@ -13,6 +13,7 @@ const connected  = ref(false)
 const finishing = ref(false)
 const exportJob = ref(null)
 const finishError = ref('')
+const pipelineFailure = ref('')
 const exportRequestPending = ref(false)
 const downloadUrl = computed(() => exportJob.value?.status === 'completed' ? exportJob.value.output_asset?.storage_url : null)
 const scheduleOpen = ref(false)
@@ -188,6 +189,7 @@ function previousStageKeys(key) {
 }
 
 function applyStoredGenerationState(project) {
+  pipelineFailure.value = project?.status === 'failed' ? displayMessage(project?.generation_status_json?.last_message || 'Generation paused. Review the brief before retrying.') : ''
   const storedStages = project?.generation_status_json?.stages ?? {}
 
   // Brief-mode stages are sequential (script -> scenes -> hooks -> ...).
@@ -369,7 +371,7 @@ function sceneAnimating(s) {
 }
 
 // Title adapts to the flow: prompt → one-shot, otherwise the brief pipeline.
-const genTitle = computed(() => downloadUrl.value ? 'Your video is ready' : finishError.value ? 'Your video needs attention' : finishing.value ? 'Finishing your video…' : isOneShot.value ? 'Generating your video…' : 'Building from your brief…')
+const genTitle = computed(() => downloadUrl.value ? 'Your video is ready' : pipelineFailure.value ? 'Production paused' : finishError.value ? 'Your video needs attention' : finishing.value ? 'Finishing your video…' : isOneShot.value ? 'Generating your video…' : 'Building from your brief…')
 
 // Whether this generation actually includes an animation pass. Drive this
 // off the real stage list (robust for BOTH flows) — NOT route.query, which
@@ -488,6 +490,10 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
           <button class="gen-foot-btn" :disabled="editorOpening" @click="openEditor">{{ editorOpening ? 'Opening…' : 'Edit video' }}</button>
         </div>
       </section>
+      <div v-if="pipelineFailure && !downloadUrl" class="gen-finish-error" role="alert">
+        <p>{{ pipelineFailure }}</p>
+        <button class="gen-foot-btn" :disabled="editorOpening" @click="openEditor">{{ scenes.length ? 'Review script and scenes' : 'Edit brief' }}</button>
+      </div>
       <p v-if="actionMessage" class="gen-action-message" role="status">{{ actionMessage }}</p>
       <div v-if="finishError" class="gen-finish-error" role="alert">
         <p>{{ finishError }}</p>
@@ -514,7 +520,7 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
             <span v-else-if="stage.status === 'active'" class="gen-tl-pulse"></span>
           </span>
           <span class="gen-tl-name">
-            {{ stage.label }}<span v-if="stage.status === 'active'" class="gen-tl-active"> · in progress</span>
+            {{ stage.status === 'active' && stage.statusText.startsWith('Checking ') ? stage.statusText : stage.label }}<span v-if="stage.status === 'active'" class="gen-tl-active"> · in progress</span>
           </span>
           <span v-if="countLabel(stage)" class="gen-tl-count">{{ countLabel(stage) }}</span>
         </div>
@@ -552,8 +558,8 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 
       <!-- Footer: reassurance + dashboard escape -->
       <div class="gen-foot">
-        <button v-if="!downloadUrl && stages.some(s => s.status === 'failed')" class="gen-foot-btn" @click="openEditor">Review scenes in editor</button>
-        <span class="gen-foot-note">{{ downloadUrl ? 'Your finished video is saved to this project.' : 'You can leave this page — generation and finishing continue in the background.' }}</span>
+        <button v-if="!pipelineFailure && !downloadUrl && stages.some(s => s.status === 'failed')" class="gen-foot-btn" @click="openEditor">Review scenes in editor</button>
+        <span class="gen-foot-note">{{ downloadUrl ? 'Your finished video is saved to this project.' : pipelineFailure ? 'Production is paused. Your brief is saved.' : 'You can leave this page — generation and finishing continue in the background.' }}</span>
         <button class="gen-foot-btn" type="button" @click="router.push({ name: 'dashboard' })">← Back to Dashboard</button>
       </div>
     </div>

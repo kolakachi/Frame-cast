@@ -56,10 +56,11 @@ class ReplicateClaudeAdapter implements AIGenerationAdapter
         // that blows the budget must throw (RoutingTextAdapter then falls
         // back to the cheap tier in seconds) rather than let the browser
         // die on a plan the server eventually finishes.
-        $deadline = microtime(true) + 75;
+        $deadline = min(microtime(true) + 75, (float) ($options['deadline'] ?? INF));
+        if ($deadline <= microtime(true)) throw new RuntimeException('Text generation time budget exhausted.');
         $start = Http::withToken($token)
             ->withHeaders(['Prefer' => 'wait=55'])
-            ->timeout(70)
+            ->timeout(min(70, max(0.1, $deadline - microtime(true))))
             ->post("https://api.replicate.com/v1/models/{$model}/predictions", ['input' => $input]);
 
         if (! $start->successful()) {
@@ -73,8 +74,9 @@ class ReplicateClaudeAdapter implements AIGenerationAdapter
             if (microtime(true) > $deadline) {
                 throw new RuntimeException('premium text model exceeded its interactive time budget');
             }
-            sleep(3);
-            $prediction = Http::withToken($token)->timeout(30)
+            usleep((int) (min(3, max(0, $deadline - microtime(true))) * 1000000));
+            if (microtime(true) >= $deadline) throw new RuntimeException('Text generation time budget exhausted.');
+            $prediction = Http::withToken($token)->timeout(min(30, max(0.1, $deadline - microtime(true))))
                 ->get("https://api.replicate.com/v1/predictions/{$id}")->json();
         }
 
