@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useWorkspaceStore } from '../stores/workspace'
 import api from '../services/api'
 import { allTimezones, detectedTimezone, zoneLabel } from '../composables/timezones'
 import AppSidebar from '../components/AppSidebar.vue'
@@ -10,6 +11,9 @@ import SettingsSkeleton from '../components/skeletons/SettingsSkeleton.vue'
 import LimitModal from '../components/LimitModal.vue'
 
 const router = useRouter()
+const workspaceStore = useWorkspaceStore()
+// Publishing (and therefore connecting) is a paid capability.
+const canPublish = computed(() => workspaceStore.capabilities?.social_publishing !== false)
 const route = useRoute()
 const authStore = useAuthStore()
 
@@ -351,30 +355,16 @@ const BASE_PLATFORMS = [
   { key: 'facebook',  label: 'Facebook Reels',   icon: 'f', note: 'Publish Reels to your Facebook Page' },
 ]
 
-// Meta publishing is held behind the team until App Review grants Advanced
-// Access. Until then Meta only honours the permissions for app admins,
-// developers and testers — everyone else would walk through the whole OAuth
-// flow just to be refused by Facebook. Showing "Coming soon" is honest and
-// spares them a dead end. Internal accounts keep the live flow so we can
-// finish review and record the reviewer screencast.
-const META_PLATFORMS = ['instagram', 'facebook']
-const INTERNAL_EMAIL_DOMAIN = '@wyvstudio.com'
+// Meta App Review granted Advanced Access, so Instagram and Facebook are live
+// for everyone — the "Coming soon" hold that stood in for the review period is
+// gone. Publishing itself stays a paid capability (see canPublish below).
 
 // Admins count as internal regardless of email domain — the founder's account
 // is on a personal address and an email-only rule would lock it out of the very
 // flow needed to finish App Review.
-const isInternalUser = computed(() => {
-  const email = String(authStore.user?.email ?? '').trim().toLowerCase()
-  const role  = String(authStore.user?.role ?? '').toLowerCase()
 
-  return email.endsWith(INTERNAL_EMAIL_DOMAIN) || ['admin', 'super_admin'].includes(role)
-})
 
-const PLATFORMS = computed(() => BASE_PLATFORMS.map((plat) => (
-  META_PLATFORMS.includes(plat.key) && !isInternalUser.value
-    ? { ...plat, comingSoon: true }
-    : plat
-)))
+const PLATFORMS = computed(() => BASE_PLATFORMS)
 
 function accountForPlatform(platform) {
   return socialAccounts.value.find(a => a.platform === platform) ?? null
@@ -950,6 +940,14 @@ onMounted(() => {
             <div class="section-title">Connected Accounts</div>
             <div class="settings-section-desc">Connect your social accounts to schedule and publish videos directly from WyvStudio.</div>
 
+            <div v-if="!canPublish" class="upgrade-note">
+              <div>
+                <b>Publishing is a paid feature.</b>
+                Connect YouTube, TikTok, Instagram and Facebook and post straight from WyvStudio on any paid plan.
+              </div>
+              <button class="settings-btn settings-btn-sm settings-btn-primary" type="button" @click="router.push({ name: 'plans' })">See plans →</button>
+            </div>
+
             <div class="connect-grid">
               <div
                 v-for="plat in PLATFORMS"
@@ -970,8 +968,8 @@ onMounted(() => {
                   </div>
                 </div>
                 <div class="connect-card-actions">
-                  <template v-if="plat.comingSoon">
-                    <span class="plan-status-badge" style="color:#5a5a68">Coming soon</span>
+                  <template v-if="!canPublish">
+                    <button class="settings-btn settings-btn-sm" type="button" @click="router.push({ name: 'plans' })">Upgrade to connect</button>
                   </template>
                   <template v-else-if="accountForPlatform(plat.key)">
                     <span class="plan-status-badge" style="color:#34d399">● Connected</span>
@@ -1841,4 +1839,12 @@ onMounted(() => {
   color: #ff8888;
 }
 .del-confirm:not(:disabled):hover { background: rgba(220,80,80,0.25); }
+.upgrade-note {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin: 14px 0 18px; padding: 14px 18px; border-radius: 12px;
+  border: 1px solid var(--color-border); border-left: 3px solid var(--color-accent);
+  background: var(--color-bg-card); font-size: 13.5px; color: var(--color-text-secondary);
+}
+.upgrade-note b { color: var(--color-text-primary); }
+.upgrade-note button { margin-left: auto; white-space: nowrap; }
 </style>

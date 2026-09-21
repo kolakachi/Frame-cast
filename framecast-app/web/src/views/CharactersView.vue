@@ -2,12 +2,17 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import { useWorkspaceStore } from "../stores/workspace";
 import api from "../services/api";
 import AppSidebar from "../components/AppSidebar.vue";
 import GridSkeleton from "../components/skeletons/GridSkeleton.vue";
 import NotifBell from "../components/NotifBell.vue";
 
 const router = useRouter();
+const workspaceStore = useWorkspaceStore();
+// A plan that allows zero characters cannot create one. null = unlimited.
+const characterCap = computed(() => workspaceStore.capabilities?.max_characters ?? null);
+const canCreateCharacter = computed(() => characterCap.value === null || characterCap.value > 0);
 const authStore = useAuthStore();
 
 const mePayload = ref(null);
@@ -575,9 +580,20 @@ async function confirmDelete() {
           <span class="bc-page">Characters</span>
         </div>
         <div class="topbar-right">
-          <button class="btn btn-primary btn-sm" type="button" @click="openCreate">
+          <button
+            v-if="canCreateCharacter"
+            class="btn btn-primary btn-sm"
+            type="button"
+            @click="openCreate"
+          >
             <span style="font-weight:700">＋</span> New Character
           </button>
+          <button
+            v-else
+            class="btn btn-primary btn-sm"
+            type="button"
+            @click="router.push({ name: 'plans' })"
+          >Upgrade to add characters</button>
           <NotifBell />
         </div>
       </div>

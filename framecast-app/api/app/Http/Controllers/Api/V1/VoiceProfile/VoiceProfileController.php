@@ -152,7 +152,11 @@ class VoiceProfileController extends Controller
             return response()->json([
                 'error' => [
                     'code'    => 'voice_cloning_limit',
-                    'message' => "Your plan includes {$usage['voice_cloning_limit']} cloned voice(s). Upgrade or remove one to add another.",
+                    // "includes 0 cloned voice(s)" reads like a bug to someone
+                    // on a plan that simply has no cloning. Say what it is.
+                    'message' => (int) ($usage['voice_cloning_limit'] ?? 0) === 0
+                        ? 'Voice cloning is available on paid plans. Upgrade to clone your own voice.'
+                        : "Your plan includes {$usage['voice_cloning_limit']} cloned voice(s). Upgrade or remove one to add another.",
                     'context' => ['used' => $usage['voice_cloning_used'], 'limit' => $usage['voice_cloning_limit']],
                 ],
             ], 402);

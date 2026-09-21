@@ -42,6 +42,18 @@ class SocialAccountController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        // Publishing is a paid capability, so connecting is too: letting a free
+        // account finish an OAuth round trip only to be refused at the moment
+        // it schedules a post is a worse experience than saying so up front.
+        if (! app(\App\Services\CreditService::class)->canPublishToSocial((int) $user->workspace_id)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'upgrade_required',
+                    'message' => 'Connecting a social account and publishing from WyvStudio are available on paid plans. Upgrade to connect your channels.',
+                ],
+            ], 402);
+        }
+
         // State encodes workspace + nonce — verified in callback
         $state = base64_encode(json_encode([
             'workspace_id' => $user->workspace_id,

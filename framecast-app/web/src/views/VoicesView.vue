@@ -1,7 +1,8 @@
 <script setup>
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import { useWorkspaceStore } from "../stores/workspace";
 import api from "../services/api";
 import AppSidebar from "../components/AppSidebar.vue";
 import GridSkeleton from "../components/skeletons/GridSkeleton.vue";
@@ -9,6 +10,11 @@ import NotifBell from "../components/NotifBell.vue";
 import VoiceCloneModal from "../components/VoiceCloneModal.vue";
 
 const router = useRouter();
+const workspaceStore = useWorkspaceStore();
+// Cloning is a Creator-and-above allowance (free and Starter are zero). When
+// usage has not loaded we allow the click — the server still gates it, and a
+// wrongly-hidden button is worse than one honest error.
+const canClone = computed(() => (workspaceStore.usage?.voice_cloning_limit ?? 1) > 0);
 const authStore = useAuthStore();
 
 const mePayload = ref(null);
@@ -78,8 +84,8 @@ onMounted(async () => {
           <span class="bc-page">Voices</span>
         </div>
         <div class="topbar-right">
-          <button class="btn btn-primary btn-sm" type="button" @click="openClone">
-            <span style="font-weight:700">＋</span> Clone a voice
+          <button class="btn btn-primary btn-sm" type="button" @click="canClone ? openClone() : router.push({ name: 'plans' })">
+            <span style="font-weight:700">＋</span> {{ canClone ? 'Clone a voice' : 'Upgrade to clone' }}
           </button>
           <NotifBell />
         </div>
@@ -87,6 +93,13 @@ onMounted(async () => {
 
       <div class="content">
         <div v-if="error" class="banner error">{{ error }}</div>
+        <div v-if="!canClone" class="upgrade-note">
+          <div>
+            <b>Voice cloning is a Creator feature.</b>
+            Upload a short sample and use your own voice on any scene — available on Creator and above.
+          </div>
+          <button class="btn btn-primary btn-sm" type="button" @click="router.push({ name: 'plans' })">See plans →</button>
+        </div>
         <GridSkeleton v-if="loading" layout="row" :count="6" :min="260" :row-thumb="40" :lines="2" />
 
         <template v-else>
@@ -97,8 +110,8 @@ onMounted(async () => {
                    phone shell hides that topbar — so once a workspace had one
                    cloned voice the empty state went away and with it the only
                    way to clone another. -->
-              <button class="btn btn-primary btn-sm intro-clone" type="button" @click="openClone">
-                <span style="font-weight:700">＋</span> Clone a voice
+              <button class="btn btn-primary btn-sm intro-clone" type="button" @click="canClone ? openClone() : router.push({ name: 'plans' })">
+                <span style="font-weight:700">＋</span> {{ canClone ? 'Clone a voice' : 'Upgrade to clone' }}
               </button>
             </div>
             <div class="intro-body">
@@ -113,7 +126,7 @@ onMounted(async () => {
             <div class="empty-body">
               Clone a voice from a short sample, then pick it in the editor's voice panel.
             </div>
-            <button class="btn btn-primary" type="button" @click="openClone">＋ Clone your first voice</button>
+            <button class="btn btn-primary" type="button" @click="canClone ? openClone() : router.push({ name: 'plans' })">{{ canClone ? "＋ Clone your first voice" : "Upgrade to clone a voice" }}</button>
           </div>
 
           <div v-else class="voice-grid">
@@ -251,4 +264,12 @@ onMounted(async () => {
   .v-foot { gap: 8px; }
   .v-foot .btn { flex: 1; min-height: 44px; }
 }
+.upgrade-note {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin: 0 0 18px; padding: 14px 18px; border-radius: 12px;
+  border: 1px solid var(--color-border); border-left: 3px solid var(--color-accent);
+  background: var(--color-bg-card); font-size: 13.5px; color: var(--color-text-secondary);
+}
+.upgrade-note b { color: var(--color-text-primary); }
+.upgrade-note button { margin-left: auto; white-space: nowrap; }
 </style>
