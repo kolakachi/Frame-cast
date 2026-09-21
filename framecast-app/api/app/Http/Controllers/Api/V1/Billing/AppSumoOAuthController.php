@@ -26,12 +26,19 @@ class AppSumoOAuthController extends Controller
     public function __construct(private readonly AppSumoService $appsumo) {}
 
     /** GET /api/v1/appsumo/oauth/callback?code=... */
-    public function callback(Request $request): RedirectResponse
+    public function callback(Request $request): \Symfony\Component\HttpFoundation\Response
     {
         $base = rtrim((string) config('appsumo.activate_redirect'), '/');
         $code = (string) $request->query('code', '');
 
-        if ($code === '' || ! $this->appsumo->isConfigured()) {
+        // A request with no OAuth code is AppSumo's redirect-URL reachability
+        // probe (or a stray hit), not a real return — a genuine callback always
+        // carries ?code=. Answer a plain 200 so the health check passes for any
+        // method it uses, without redirecting to an error page.
+        if ($code === '') {
+            return response('ok', 200);
+        }
+        if (! $this->appsumo->isConfigured()) {
             return redirect()->away($base.'?error=oauth');
         }
 

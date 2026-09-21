@@ -43,7 +43,7 @@ Route::prefix('v1')->group(function (): void {
     // controllers. Webhook is HMAC-signed; OAuth callback + activate finish
     // account creation for a purchased license.
     Route::post('/webhooks/appsumo', \App\Http\Controllers\Api\V1\Billing\AppSumoWebhookController::class);
-    Route::get('/appsumo/oauth/callback', [\App\Http\Controllers\Api\V1\Billing\AppSumoOAuthController::class, 'callback']);
+    Route::match(['get', 'post'], '/appsumo/oauth/callback', [\App\Http\Controllers\Api\V1\Billing\AppSumoOAuthController::class, 'callback']);
     Route::post('/appsumo/activate', [\App\Http\Controllers\Api\V1\Billing\AppSumoOAuthController::class, 'activate']);
 
     // Public content-report endpoint (anyone can submit, no auth required).
