@@ -10,6 +10,15 @@ namespace App\Services\Generation\AI;
  * lives in config so promoting a template is an edit, not a refactor. Any
  * premium failure falls back to the cheap adapter: a slightly blander script
  * beats a failed generation, always.
+ *
+ * "Failure" includes a refusal. A model that declines the brief returns HTTP
+ * 200 with the decline as its content — no error, no flag — so the fallback
+ * below never fired and the refusal was written into the video as if it were
+ * a script. Models draw the line in different places, and most declines on a
+ * marketing brief are false positives, so a decline is retried once on the
+ * other tier. If both decline, the refusal is returned unchanged and the
+ * caller (GenerateScriptJob) fails the project with a message the user can
+ * act on. Two tries, then stop — never a hunt for a model that will say yes.
  */
 class RoutingTextAdapter implements AIGenerationAdapter
 {
@@ -25,7 +34,16 @@ class RoutingTextAdapter implements AIGenerationAdapter
 
         if (in_array($promptTemplateKey, $premiumTemplates, true) && (string) config('services.replicate.api_token') !== '') {
             try {
-                return $this->premium->generate($promptTemplateKey, $variables, $maxTokens, $temperature, $options);
+                $result = $this->premium->generate($promptTemplateKey, $variables, $maxTokens, $temperature, $options);
+
+                if (! \App\Support\ScriptText::looksLikeRefusal((string) ($result['content'] ?? ''))) {
+                    return $result;
+                }
+
+                \Illuminate\Support\Facades\Log::warning('premium text model declined the brief; retrying on the cheap tier', [
+                    'template' => $promptTemplateKey,
+                    'refusal'  => mb_substr((string) ($result['content'] ?? ''), 0, 200),
+                ]);
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('premium text model fell back to cheap tier', [
                     'template' => $promptTemplateKey,
