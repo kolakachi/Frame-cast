@@ -2,12 +2,14 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import { useWorkspaceStore } from "../stores/workspace";
 import api from "../services/api";
 import AppSidebar from "../components/AppSidebar.vue";
 import NotifBell from "../components/NotifBell.vue";
 
 const router = useRouter();
 const authStore = useAuthStore();
+const workspaceStore = useWorkspaceStore();
 
 const mePayload = ref(null);
 const billing = ref(null);
@@ -15,6 +17,8 @@ const usage = ref(null);
 const loading = ref(true);
 const error = ref("");
 const checkoutPending = ref("");
+// The pass buys the UGC gate, so it is pointless to anyone who already has it.
+const hasUgcAccess = computed(() => workspaceStore.capabilities?.ugc_ads === true);
 
 async function logout() { await authStore.logout(); router.push({ name: "login" }); }
 
@@ -235,6 +239,19 @@ onMounted(async () => {
             >{{ checkoutPending === 'portal' ? 'Opening…' : 'Open billing portal' }}</button>
           </section>
 
+          <!-- Deliberately a row under the packs, not a plan card: a $9 option
+               sitting beside the packs anchors the whole product cheap. This
+               only catches someone who was about to leave. -->
+          <div v-if="!hasUgcAccess" class="pass-row">
+            <div>
+              <div class="pass-title">Just want to try UGC? <span class="pass-tag">$9 once</span></div>
+              <div class="pass-sub">600 credits — one 15-second ad, or two drafts. No watermark, no subscription. One per customer.</div>
+            </div>
+            <button class="plan-btn" :disabled="checkoutPending === 'pass'" @click="startCheckout({ pass: true }, 'pass')">
+              {{ checkoutPending === 'pass' ? 'Starting…' : 'Get the Test Pass' }}
+            </button>
+          </div>
+
           <div class="plans-foot">
             Prefer to just add credits? Top-up packs are in
             <router-link to="/settings">Settings</router-link>.
@@ -316,4 +333,16 @@ onMounted(async () => {
 .pw-arrow { align-self: center; font-size: 20px; color: var(--color-text-muted); }
 .pw-foot { margin: 12px 0 0; font-size: 12.5px; color: var(--color-text-muted); }
 @media (max-width: 620px) { .pw-arrow { display: none; } }
+.pass-row {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  margin: 18px auto 0; max-width: 760px; padding: 16px 20px; border-radius: 14px;
+  border: 1px dashed rgba(255, 107, 53, 0.45); background: rgba(255, 107, 53, 0.07);
+}
+.pass-title { font-weight: 600; font-size: 15px; color: var(--color-text-primary); }
+.pass-tag {
+  margin-left: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+  background: var(--color-accent); color: #0a0a0f; padding: 2px 8px; border-radius: 999px;
+}
+.pass-sub { margin-top: 4px; font-size: 12.5px; color: var(--color-text-secondary); }
+.pass-row button { margin-left: auto; white-space: nowrap; }
 </style>

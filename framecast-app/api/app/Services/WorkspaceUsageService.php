@@ -56,6 +56,20 @@ class WorkspaceUsageService
                 'watermark'           => true,
                 'ai_image_quality'    => ['medium'],
             ],
+            // Bought, so the ad they make is clean — a watermarked sample is
+            // not something anyone can post, and posting it is the whole point.
+            'ugc_pass' => [
+                'name'                => 'UGC Test Pass',
+                'credits_monthly'     => 0,      // one-time 600 at purchase
+                'render_limit'        => 10,
+                'voice_minutes_limit' => 20,
+                'dub_languages_limit' => 1,
+                'channel_limit'       => 1,
+                'voice_cloning_limit' => 0,
+                'api_budget_usd'      => 25.0,
+                'watermark'           => false,
+                'ai_image_quality'    => ['medium'],
+            ],
             'starter' => [
                 'name'                => 'Starter',
                 'render_limit'        => 50,

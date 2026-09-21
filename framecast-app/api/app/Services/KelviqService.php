@@ -371,7 +371,10 @@ class KelviqService
         // $8/500 pack nets ~$0.30 against ~$3.50 of provider cost — underwater
         // by construction. Affiliates are paid when their referral buys a plan,
         // which is both the real sale and the high-margin one.
-        if ($planId !== null && array_key_exists($planId, (array) config('billing.kelviq.topup_plans', []))) {
+        if ($planId !== null && (
+            array_key_exists($planId, (array) config('billing.kelviq.topup_plans', []))
+            || $planId === (string) config('billing.kelviq.ugc_pass_plan')
+        )) {
             return;
         }
 
@@ -489,6 +492,15 @@ class KelviqService
         // Lifetime purchase: set the tier permanently and grant its one-time
         // credit bucket. No subscription is created, so nothing renews and
         // credits_monthly stays 0 — the same shape as an AppSumo licence.
+        // The UGC Test Pass is a one-time purchase like a lifetime pack, but
+        // capped to one per customer: a pass someone can re-buy is a monthly
+        // plan they renew by hand, at a price that undercuts Starter.
+        if ($planId !== '' && $planId === (string) config('billing.kelviq.ugc_pass_plan')) {
+            $this->applyUgcTestPass($object, (int) config('billing.kelviq.ugc_pass_credits', 600));
+
+            return;
+        }
+
         $lifetime = config('billing.kelviq.lifetime_plans')[$planId] ?? null;
         if ($lifetime) {
             $this->applyLifetimePurchase($object, $planId, $lifetime);
@@ -524,6 +536,58 @@ class KelviqService
             'pending_checkout_at'          => null,
             'pending_checkout_reminded_at' => null,
         ])->save();
+    }
+
+    /**
+     * The $9 UGC Test Pass: buy the UGC gate once, with 600 credits.
+     *
+     * Deliberately not routed through applyLifetimePurchase. That method
+     * treats a one-time purchase as a pack *upgrade* and replaces the buyer's
+     * existing bucket — which would have charged a Starter holder $9 to lose
+     * their remaining lifetime credits. A pass is an add-on, not a swap.
+     */
+    private function applyUgcTestPass(array $object, int $credits): void
+    {
+        // Often someone's first contact with us: bought from the site with no
+        // account yet, so build one rather than dropping a paid order.
+        $workspace = $this->resolveWorkspace($object) ?? $this->provisionFromEvent($object);
+        if (! $workspace) {
+            Log::warning('KelviqService: UGC Test Pass — no workspace');
+
+            return;
+        }
+
+        // One per customer. The ledger is the record: a grant:ugc_pass row
+        // means they have had it, whatever their tier says now — they may have
+        // upgraded since, or spent the pass out.
+        $hadPass = \App\Models\CreditLedgerEntry::query()
+            ->where('workspace_id', $workspace->getKey())
+            ->where('operation', 'grant:ugc_pass')
+            ->exists();
+        if ($hadPass) {
+            Log::info('KelviqService: second UGC Test Pass refused — one per customer', [
+                'workspace_id' => $workspace->getKey(),
+            ]);
+            $this->clearPendingCheckout($workspace);
+
+            return;
+        }
+
+        // Someone already on a plan with UGC does not need the gate this buys.
+        // They paid, so they get the credits — but their tier is left alone.
+        if (! $this->credits->limitFor((int) $workspace->getKey(), 'ugc_ads')) {
+            $workspace->forceFill([
+                'plan_tier'       => 'ugc_pass',
+                'plan_source'     => 'ugc_pass',
+                'plan_status'     => 'active',
+                'status'          => 'active',
+                'plan_renews_at'  => null,
+                'credits_monthly' => 0,
+            ])->save();
+        }
+
+        $this->credits->grant((int) $workspace->getKey(), $credits, 'ugc_pass');
+        $this->clearPendingCheckout($workspace);
     }
 
     /**

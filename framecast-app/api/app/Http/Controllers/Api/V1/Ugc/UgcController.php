@@ -946,6 +946,14 @@ class UgcController extends Controller
         }
 
         $engine = in_array($request->input('engine'), ['seedance25', 'veo'], true) ? $request->input('engine') : 'seedance25';
+
+        // The $9 Test Pass buys a look at the product, not the whole catalogue:
+        // Seedance only (Veo HQ costs nearly twice as much per second and would
+        // empty the 600 credits in one take) and no cast character.
+        $isTestPass = $creditService->planTier((int) $user->workspace_id) === 'ugc_pass';
+        if ($isTestPass) {
+            $engine = 'seedance25';
+        }
         // A cast character runs on veo-3.1 (non-fast) with the face in
         // reference_images — the model keeps the face but INVENTS the scene
         // from the plan, so the take is creative rather than frozen to the
@@ -1021,6 +1029,13 @@ class UgcController extends Controller
         // post, not sent to the model) — no video_in premium; draft is off.
         $perSecond = $isDraft ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : CreditService::VIDEO_ONESHOT_PER_SECOND[$engine];
         $quote = (int) ($planSeconds * $perSecond);
+        // 15 seconds a take on the Test Pass — the length the offer promises,
+        // and what keeps 600 credits worth one full-quality ad or two drafts.
+        if ($isTestPass && $planSeconds > 15) {
+            throw ValidationException::withMessages(['segments' =>
+                'The UGC Test Pass makes ads up to 15 seconds. Shorten the plan, or upgrade for longer ads.']);
+        }
+
         if ((int) $v['credits'] !== $quote) {
             throw ValidationException::withMessages(['credits' => "The estimate changed — this take is {$quote} credits. Review and approve again."]);
         }

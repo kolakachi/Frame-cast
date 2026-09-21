@@ -236,4 +236,49 @@ class LifetimeTierGuardTest extends TestCase
 
         $this->assertSame(12000, (int) $w->fresh()->credits_topup, 'a redelivered webhook must not pay twice');
     }
+
+    // ── UGC Test Pass ($9, one per customer) ────────────────────────
+
+    private function buyTestPass(Workspace $w): void
+    {
+        $m = new \ReflectionMethod(KelviqService::class, 'applyUgcTestPass');
+        $m->setAccessible(true);
+        $m->invoke(app(KelviqService::class),
+            ['id' => 'ord_'.bin2hex(random_bytes(3)), 'metadata' => ['workspace_id' => (string) $w->getKey()]], 600);
+    }
+
+    public function test_the_test_pass_grants_ugc_access_and_600_credits(): void
+    {
+        $w = $this->ws(['plan_tier' => 'free', 'plan_source' => null, 'credits_topup' => 200]);
+
+        $this->buyTestPass($w);
+
+        $this->assertSame('ugc_pass', $w->fresh()->plan_tier);
+        $this->assertSame(800, (int) $w->fresh()->credits_topup, 'the 600 lands on top of what they had');
+        $this->assertTrue(app(CreditService::class)->limitFor((int) $w->getKey(), 'ugc_ads'), 'the pass buys the UGC gate');
+        $this->assertFalse((bool) app(CreditService::class)->limitFor((int) $w->getKey(), 'custom_characters'), 'but not an own-face cast');
+        $this->assertSame(0, (int) app(CreditService::class)->limitFor((int) $w->getKey(), 'max_characters'), 'and no characters');
+    }
+
+    public function test_a_second_test_pass_is_refused(): void
+    {
+        $w = $this->ws(['plan_tier' => 'free', 'plan_source' => null, 'credits_topup' => 0]);
+
+        $this->buyTestPass($w);
+        $this->buyTestPass($w);
+
+        $this->assertSame(600, (int) $w->fresh()->credits_topup, 'one pass per customer — the second grants nothing');
+    }
+
+    public function test_the_test_pass_never_writes_a_paying_customer_down(): void
+    {
+        // Ranked with Free, so a Starter who buys the pass keeps Starter —
+        // they still get the credits they paid for.
+        $w = $this->ws(['plan_tier' => 'lifetime_starter', 'plan_source' => 'lifetime', 'credits_topup' => 1000]);
+
+        $this->buyTestPass($w);
+
+        $this->assertSame('lifetime_starter', $w->fresh()->plan_tier, 'a pass never writes a paying customer down');
+        $this->assertSame(1600, (int) $w->fresh()->credits_topup, 'and never swallows the bucket they already paid for');
+    }
 }

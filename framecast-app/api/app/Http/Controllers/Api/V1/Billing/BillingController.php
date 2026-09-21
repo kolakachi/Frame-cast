@@ -83,12 +83,18 @@ class BillingController extends Controller
             'plan'     => ['sometimes', 'string', 'in:starter,creator,pro,agency'],
             'topup'    => ['sometimes', 'string', 'in:small,medium,large,xl'],
             'lifetime' => ['sometimes', 'string', 'in:lifetime_starter,lifetime_creator,lifetime_agency'],
+            'pass'     => ['sometimes', 'boolean'],
         ]);
 
         $planTiers  = config('billing.kelviq.plan_tiers', []);
         $topupPlans = config('billing.kelviq.topup_plans', []);
 
-        if (! empty($validated['lifetime'])) {
+        if (! empty($validated['pass'])) {
+            // The $9 UGC Test Pass — one-time, one per customer (enforced when
+            // the webhook lands, so a second checkout simply grants nothing).
+            $identifier   = (string) config('billing.kelviq.ugc_pass_plan');
+            $chargePeriod = 'ONE_TIME';
+        } elseif (! empty($validated['lifetime'])) {
             // One-time purchase: buys the tier outright plus its credit bucket.
             $identifier = null;
             foreach (config('billing.kelviq.lifetime_plans', []) as $planId => $meta) {

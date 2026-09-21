@@ -19,6 +19,23 @@ const canUgc = computed(() => workspaceStore.capabilities?.ugc_ads !== false);
 
 const takes = ref([]);
 // Delete goes through an in-app modal (ConfirmDialog), never a native alert.
+const passPending = ref(false);
+// The $9 Test Pass is the low-friction door for someone who came here to make
+// an ad: a plan page is a bigger decision than they arrived ready to make.
+async function buyTestPass() {
+  if (passPending.value) return;
+  passPending.value = true;
+  try {
+    const { data } = await api.post("/billing/kelviq/checkout", { pass: true });
+    if (data?.data?.url) { window.location.href = data.data.url; return; }
+    errorMessage.value = "Could not start checkout. Please try again.";
+  } catch (err) {
+    errorMessage.value = apiErrorMessage(err, "Could not start checkout.");
+  } finally {
+    passPending.value = false;
+  }
+}
+
 const confirmState = ref(null);
 const confirmPending = ref(false);
 const loaded = ref(false);
@@ -126,9 +143,13 @@ onBeforeUnmount(() => {
       </header>
 
       <div v-if="!canUgc" class="tl-upsell">
-        <h2>UGC ads are a paid feature</h2>
-        <p>Make scroll-stopping, creator-style video ads — pick a presenter, describe the ad, and post the result. Upgrade to any paid plan to start.</p>
-        <button class="tl-btn tl-btn-primary" type="button" @click="router.push({ name: 'plans' })">See plans →</button>
+        <h2>Try your first UGC ad</h2>
+        <p>A real presenter talking to camera, with the voice generated inside the video. The Test Pass gets you
+          <b>600 credits — one 15-second ad, or two drafts</b> to try hooks first. No watermark, no subscription.</p>
+        <button class="tl-btn tl-btn-primary" type="button" :disabled="passPending" @click="buyTestPass">
+          {{ passPending ? 'Starting…' : 'Get the UGC Test Pass — $9' }}
+        </button>
+        <div class="tl-upsell-sub">Pay once · one per customer · <a href="#" @click.prevent="router.push({ name: 'plans' })">or see all plans</a></div>
       </div>
 
       <template v-else>
@@ -198,6 +219,8 @@ onBeforeUnmount(() => {
 .tl-empty { padding: 40px 0; font-size: 14px; color: var(--color-text-muted); }
 .tl-upsell { max-width: 460px; margin: 60px auto; text-align: center; padding: 32px 24px; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); }
 .tl-upsell h2 { font-size: 20px; margin: 0 0 10px; }
+.tl-upsell-sub { margin-top: 12px; font-size: 12.5px; color: var(--color-text-muted); }
+.tl-upsell-sub a { color: var(--color-text-secondary); text-decoration: underline; }
 .tl-upsell p { font-size: 14px; color: var(--color-text-muted); line-height: 1.5; margin: 0 0 20px; }
 .tl-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));

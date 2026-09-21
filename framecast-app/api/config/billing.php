@@ -98,6 +98,12 @@ return [
             'agency'  => 'Agency — $199/month',
         ],
 
+        // The $9 UGC Test Pass rides the one-time path so it can be bought
+        // straight from the site with no account yet — but its tier grants
+        // only the UGC gate, so nothing else is unlocked by paying.
+        'ugc_pass_plan' => env('KELVIQ_PLAN_UGC_PASS', 'wyvstudio-ugc-pass'),
+        'ugc_pass_credits' => 600,
+
         'lifetime_plans' => [
             env('KELVIQ_PLAN_LIFETIME_STARTER', 'wyvstudio-lifetime-starter') => ['tier' => 'lifetime_starter', 'credits' => 4000],
             env('KELVIQ_PLAN_LIFETIME_CREATOR', 'wyvstudio-lifetime-creator') => ['tier' => 'lifetime_creator', 'credits' => 12000],
