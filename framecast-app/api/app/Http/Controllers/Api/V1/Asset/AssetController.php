@@ -366,7 +366,7 @@ class AssetController extends Controller
         if ($path === null) {
             $externalUrl = trim($rawStorageUrl);
             if (filter_var($externalUrl, FILTER_VALIDATE_URL)) {
-                if ($this->shouldProxyAudio($asset)) {
+                if ($this->shouldProxyAudio($asset) || $request->boolean('download')) {
                     return $this->streamExternalAsset($request, $externalUrl, $asset);
                 }
 
@@ -385,7 +385,7 @@ class AssetController extends Controller
         $isVideoMedia = ($asset->asset_type ?? '') === 'video'
             || str_starts_with((string) ($asset->mime_type ?? ''), 'video/');
 
-        if ($isVideoMedia) {
+        if ($isVideoMedia && ! $request->boolean('download')) {
             try {
                 return redirect()->away($storageService->url($rawStorageUrl));
             } catch (\Throwable) {
@@ -417,7 +417,7 @@ class AssetController extends Controller
             'Content-Type' => $asset->mime_type ?: 'application/octet-stream',
             'Cache-Control' => 'private, max-age=3600',
             'Accept-Ranges' => 'bytes',
-            'Content-Disposition' => 'inline; filename="'.$this->downloadName($asset).'"',
+            'Content-Disposition' => ($request->boolean('download') ? 'attachment' : 'inline').'; filename="'.$this->downloadName($asset).'"',
         ]);
     }
 
@@ -645,7 +645,7 @@ class AssetController extends Controller
         $headers = [
             'Content-Type' => $response->header('Content-Type') ?: ($asset->mime_type ?: 'application/octet-stream'),
             'Cache-Control' => 'private, max-age=3600',
-            'Content-Disposition' => 'inline; filename="'.$this->downloadName($asset).'"',
+            'Content-Disposition' => ($request->boolean('download') ? 'attachment' : 'inline').'; filename="'.$this->downloadName($asset).'"',
         ];
 
         // Only claim what the origin actually offered. Advertising range

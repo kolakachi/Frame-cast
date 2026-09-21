@@ -21,6 +21,7 @@ const project = ref(null);
 const scenes = ref([]);
 const previews = ref({}); // scene id -> { visual_url, audio_url }
 const activeScene = ref(null);
+const showFinished = ref(true);
 const errorMessage = ref("");
 const notice = ref("");
 
@@ -221,6 +222,7 @@ async function refreshStatus() {
       const { data: projectData } = await api.get(`/projects/${projectId.value}`);
       scenes.value = (projectData?.data?.scenes ?? []).slice().sort((a,b) => a.scene_order - b.scene_order);
       if (activeScene.value) await selectScene(activeScene.value);
+      await loadExports();
     }
   } catch {
     statusKnown.value = false;
@@ -274,20 +276,28 @@ async function queueExport() {
 }
 
 async function loadExports() {
+  if (disposed) return;
   try {
     const { data } = await api.get(`/projects/${projectId.value}/exports`);
     const jobs = data?.data?.export_jobs ?? [];
-    const latest = jobs.find(job => revisionExportId.value !== null
+    let latest = jobs.find(job => revisionExportId.value !== null
       ? Number(job.id) > Number(revisionExportId.value)
       : !revisionAt.value || (job.queued_at && Date.parse(job.queued_at) >= Date.parse(revisionAt.value))) ?? null;
     if (!canExport.value) return;
+    // Initial finishing is idempotent server-side. Revisions stay explicit.
+    if (!latest && !revisionAt.value && !revisionExportId.value) {
+      const response = await api.post(`/projects/${projectId.value}/export`, { initial: true });
+      latest = response.data?.data?.export_job ?? null;
+      if (!latest) { clearTimeout(exportTimer); exportTimer = setTimeout(loadExports, 5000); }
+    }
     exportJob.value = null;
-    if (latest && ["completed", "queued", "processing"].includes(latest.status)) {
+    if (latest && ["completed", "queued", "processing", "failed"].includes(latest.status)) {
       exportJob.value = latest;
-      if (latest.status !== "completed") { exporting.value = true; pollExport(); }
+      if (!["completed", "failed"].includes(latest.status)) { exporting.value = true; pollExport(); }
+      if (latest.status === "failed") errorMessage.value = latest.failure_reason || "Could not finish this video. You can retry.";
     }
   } catch {
-    /* absence of a past export is normal */
+    errorMessage.value = "Could not check the finished video. Please refresh or try finishing it again.";
   }
 }
 
@@ -342,8 +352,9 @@ onBeforeUnmount(() => {
       <div class="rev-body">
         <section class="rev-preview">
           <div class="rev-frame">
+            <video v-if="downloadUrl && showFinished" :src="downloadUrl" controls playsinline aria-label="Finished video" />
             <video
-              v-if="activePreview?.visual_url && (activePreview?.visual_type === 'video' || String(activePreview.visual_url).match(/\.(mp4|webm|mov)(\?|$)/i))"
+              v-else-if="activePreview?.visual_url && (activePreview?.visual_type === 'video' || String(activePreview.visual_url).match(/\.(mp4|webm|mov)(\?|$)/i))"
               :src="activePreview.visual_url"
               controls
               playsinline
@@ -352,16 +363,17 @@ onBeforeUnmount(() => {
             <div v-else class="rev-frame-empty">Preview loads per scene — pick one below</div>
 
           </div>
-          <p v-if="activeSceneRow?.script_text" class="rev-muted">{{ activeSceneRow.script_text }}</p>
-          <audio v-if="activePreview?.audio_url" class="rev-audio" :src="activePreview.audio_url" controls />
-          <p class="rev-muted">Scene preview · Captions and music are composed in the exported video.</p>
-          <div v-if="scenes.length > 1" class="rev-scenes">
+          <p v-if="(!downloadUrl || !showFinished) && activeSceneRow?.script_text" class="rev-muted">{{ activeSceneRow.script_text }}</p>
+          <audio v-if="(!downloadUrl || !showFinished) && activePreview?.audio_url" class="rev-audio" :src="activePreview.audio_url" controls />
+          <p class="rev-muted">{{ downloadUrl && showFinished ? "Finished video · Ready to download" : "Scene preview · Your finished video will include captions and music." }}</p>
+          <div v-if="scenes.length > 1 || downloadUrl" class="rev-scenes">
+            <button v-if="downloadUrl" type="button" :class="['rev-scene-chip', showFinished ? 'on' : '']" @click="showFinished = true">Finished video</button>
             <button
               v-for="s in scenes"
               :key="s.id"
               type="button"
-              :class="['rev-scene-chip', s.id === activeScene ? 'on' : '']"
-              @click="selectScene(s.id)"
+              :class="['rev-scene-chip', !showFinished && s.id === activeScene ? 'on' : '']"
+              @click="showFinished = false; selectScene(s.id)"
             >
               {{ s.label || `Scene ${s.scene_order}` }}
             </button>
@@ -432,20 +444,20 @@ onBeforeUnmount(() => {
 
           <div class="rev-card rev-done">
             <div>
-              <h3>Happy with it?</h3>
-              <p class="rev-muted">Download the file or keep editing the project. Sharing and scheduling become available after export.</p>
+              <h3>{{ downloadUrl ? "Your video is ready" : exporting ? "Finishing your video…" : "Finish your video" }}</h3>
+              <p class="rev-muted">Download your finished video, or make changes before sharing.</p>
               <p v-if="exportJob && exportJob.status !== 'completed'" class="rev-muted">
                 Export {{ exportJob.status }} — {{ exportJob.progress_percent ?? 0 }}%
               </p>
             </div>
             <div class="rev-done-a">
-              <button v-if="!wholeVideo" class="rev-btn" type="button" @click="openEditor">Continue editing project</button>
+              <button v-if="!wholeVideo" class="rev-btn" type="button" @click="openEditor">Edit video</button>
               <template v-if="downloadUrl">
                 <span class="rev-pillrow">
-                  <b>Export ready</b>
+                  <b>Video ready</b>
                   <span class="rev-dot">·</span>
                   <a :href="downloadUrl" target="_blank" rel="noopener">Open ↗</a>
-                  <a :href="downloadUrl" :download="exportJob?.file_name || 'video.mp4'">Download ↓</a>
+                  <a :href="exportJob?.download_url || downloadUrl" :download="exportJob?.file_name || 'video.mp4'" class="rev-btn rev-btn-primary">Download video ↓</a>
                   <span class="rev-dot">·</span>
                   <button type="button" @click="scheduleOpen = true">📅 Schedule</button>
                   <span class="rev-dot">·</span>
@@ -464,7 +476,7 @@ onBeforeUnmount(() => {
                 :disabled="!canExport || exporting || (exportJob && exportJob.status !== 'failed')"
                 @click="queueExport"
               >
-                {{ exportJob && exportJob.status !== "failed" ? "Exporting…" : "Export & download" }}
+                {{ exportJob && exportJob.status !== "failed" ? "Finishing video…" : revisionAt ? "Update video" : "Finish video" }}
               </button>
             </div>
           </div>

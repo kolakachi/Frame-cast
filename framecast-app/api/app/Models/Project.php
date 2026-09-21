@@ -19,6 +19,9 @@ class Project extends Model
     protected static function booted(): void
     {
         static::created(function (Project $project): void {
+            if ($project->status === 'generating') {
+                \App\Jobs\FinishGeneratedVideoJob::dispatch((int) $project->id)->delay(now()->addSeconds(30))->afterCommit();
+            }
             \App\Services\Analytics\PostHogService::capture(
                 $project->created_by_user_id,
                 'project_created',
@@ -35,6 +38,9 @@ class Project extends Model
         static::updated(function (Project $project): void {
             if (! $project->wasChanged('status')) {
                 return;
+            }
+            if ($project->status === 'ready_for_review' && $project->source_type !== 'blank') {
+                \App\Jobs\FinishGeneratedVideoJob::dispatch((int) $project->id)->delay(now()->addSeconds(10))->afterCommit();
             }
             $event = match ($project->status) {
                 'ready_for_review' => 'project_ready',

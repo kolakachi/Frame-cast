@@ -672,7 +672,7 @@ class GenerateAIImageJob implements ShouldQueue
     private function ugcSettings(Scene $scene): array
     {
         return array_filter($scene->image_generation_settings_json ?? [],
-            fn ($key) => str_starts_with($key, 'ugc_'), ARRAY_FILTER_USE_KEY);
+            fn ($key) => str_starts_with($key, 'ugc_') || in_array($key, ['auto_animate', 'include_music', 'animation_tier'], true), ARRAY_FILTER_USE_KEY);
     }
 
     private function buildPrompt(Scene $scene, bool $includeCharacterDescription = true): string

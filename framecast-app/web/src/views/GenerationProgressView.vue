@@ -8,7 +8,11 @@ const route  = useRoute()
 const router = useRouter()
 const projectId  = computed(() => route.params.projectId)
 const connected  = ref(false)
-const isTransitioningToEditor = ref(false)
+const finishing = ref(false)
+const exportJob = ref(null)
+const finishError = ref('')
+const exportRequestPending = ref(false)
+const downloadUrl = computed(() => exportJob.value?.status === 'completed' ? exportJob.value.output_asset?.storage_url : null)
 const subtitle   = ref(`Project #${projectId.value}`)
 // Narration: scenes are re-pulled on every poll/mount, so this is
 // refresh-safe by construction — the assistant's play-by-play is always
@@ -213,24 +217,7 @@ function applyPipelineState(project) {
   applyStoredGenerationState(project)
 
   if (project?.status === 'ready_for_review') {
-    // For one-shot projects: the project flips to ready_for_review when
-    // TTS finishes (GenerateTTSJob:158/170), but image+music+animation
-    // run in parallel and frequently outlast TTS. Auto-routing here
-    // means landing in the editor mid-generation with "generating image"
-    // and "cancel animation" still showing. Block the open until every
-    // stage in the one-shot list is terminal (complete OR failed).
-    // updateStageFromEvent's all-done check trips the transition once
-    // the slowest tail (usually animation, ~70s) lands.
-    if (project.source_type === 'prompt') {
-      const anyStillRunning = stages.value.some(
-        (s) => s.key !== 'preview_assembly'
-          && (s.status === 'active' || s.status === 'pending'),
-      )
-      if (anyStillRunning) return
-    }
-
-    stages.value.forEach((s) => markStage(s.key, 'complete', 'Done'))
-    maybeOpenEditor()
+    finishVideo()
     return
   }
 
@@ -251,78 +238,41 @@ function applyPipelineState(project) {
   }
 }
 
-function maybeOpenEditor() {
-  if (isTransitioningToEditor.value) return
-  isTransitioningToEditor.value = true
-  window.setTimeout(() => {
-    router.push({ name: 'project-editor', params: { projectId: projectId.value } })
-  }, 1200)
+async function finishVideo(retry = false) {
+  if (exportRequestPending.value) return
+  exportRequestPending.value = true
+  finishing.value = true
+  try {
+    if (retry) {
+      finishError.value = ''
+      const { data } = await api.post(`/projects/${projectId.value}/export`, {})
+      exportJob.value = data?.data?.export_job ?? null
+    } else {
+      const { data } = await api.get(`/projects/${projectId.value}/exports`)
+      exportJob.value = data?.data?.export_jobs?.[0] ?? null
+      if (!exportJob.value) {
+        const response = await api.post(`/projects/${projectId.value}/export`, { initial: true })
+        exportJob.value = response.data?.data?.export_job ?? null
+      }
+    }
+    const job = exportJob.value
+    finishError.value = job?.status === 'failed' ? (job.failure_reason || 'We couldn’t finish the file. Retry to use the content already generated.') : ''
+    if (job) {
+      markStage('preview_assembly', job.status === 'completed' ? 'complete' : job.status === 'failed' ? 'failed' : 'active')
+    }
+    if (downloadUrl.value) {
+      stages.value.forEach(stage => { if (stage.status !== 'failed') markStage(stage.key, 'complete') })
+    }
+  } catch (error) {
+    finishError.value = error.response?.data?.error?.message || 'Could not check the finished video. Please try again.'
+  } finally {
+    exportRequestPending.value = false
+  }
 }
 
 function updateStageFromEvent(payload) {
-  const stageMap = {
-    transcription: 'transcription',
-    script: 'script', scene_breakdown: 'scene_breakdown',
-    hooks: 'hooks', hooks_scoring: 'hooks_scoring',
-    visual_match: 'visual_match', ai_image: 'ai_image', tts: 'tts',
-    animation: 'animation', ai_music: 'ai_music',
-  }
-
-  const key  = stageMap[payload.stage]
-  if (!key) return
-  // Ignore events for stages this project's pipeline doesn't include.
-  // (e.g. brief-mode project getting a stray 'animation' event from a
-  // user manually animating a scene mid-generation.)
-  if (!stageByKey(key)) return
-
-  const done  = payload.done  ?? null
-  const total = payload.total ?? null
-
-  if (payload.status === 'processing') {
-    const countStr = done !== null && total !== null ? `${done} / ${total}` : ''
-    const label    = stageByKey(key)?.label ?? 'Processing'
-    markStage(key, 'active', countStr ? `${label}… ${countStr}` : `${label}…`, done, total)
-    return
-  }
-
-  if (payload.status === 'completed') {
-    const completedText =
-      key === 'scene_breakdown' && total ? `${total} scene${total !== 1 ? 's' : ''}` : 'Done'
-    markStage(key, 'complete', completedText, done, total)
-
-    // Open the editor once every stage in this project's pipeline is
-    // terminal. For brief-mode that's effectively when tts finishes
-    // (no later stages run); for one-shot we wait on the slowest tail
-    // (typically music or animation, both ~30-60s).
-    const allDoneOrSkipped = stages.value.every(
-      (s) => s.status === 'complete' || s.status === 'failed',
-    )
-    if (allDoneOrSkipped) {
-      markStage('preview_assembly', 'complete', 'Done')
-      maybeOpenEditor()
-    } else if (key === 'tts' && !stageByKey('ai_music') && !stageByKey('animation')) {
-      // Legacy brief-mode shortcut: tts is the last real stage, so
-      // jump to editor without waiting on the preview_assembly fake.
-      markStage('preview_assembly', 'complete', 'Done')
-      maybeOpenEditor()
-    }
-    return
-  }
-
-  if (payload.status === 'failed') {
-    markStage(key, 'failed', displayMessage(payload.message) || 'Failed')
-    // For one-shot, music failure is non-fatal — if it fails, treat as
-    // done so the wrap-up + editor transition still fire.
-    if (key === 'ai_music') {
-      const allDoneOrSkipped = stages.value.every(
-        (s) => s.status === 'complete' || s.status === 'failed',
-      )
-      if (allDoneOrSkipped) {
-        markStage('preview_assembly', 'complete', 'Done')
-        maybeOpenEditor()
-      }
-    }
-  }
+  markStage(payload.stage, normalizeEventStatus(payload.status), displayMessage(payload.message), payload.done ?? null, payload.total ?? null)
+  if (['completed', 'failed'].includes(payload.status)) loadProjectStatus()
 }
 
 async function loadProjectStatus() {
@@ -401,7 +351,7 @@ function sceneAnimating(s) {
 }
 
 // Title adapts to the flow: prompt → one-shot, otherwise the brief pipeline.
-const genTitle = computed(() => (isOneShot.value ? 'Generating your video…' : 'Building from your brief…'))
+const genTitle = computed(() => downloadUrl.value ? 'Your video is ready' : finishError.value ? 'Your video needs attention' : finishing.value ? 'Finishing your video…' : isOneShot.value ? 'Generating your video…' : 'Building from your brief…')
 
 // Whether this generation actually includes an animation pass. Drive this
 // off the real stage list (robust for BOTH flows) — NOT route.query, which
@@ -430,11 +380,12 @@ function sceneReady(s) {
 // One conversational line tied to whatever stage is currently active, so the
 // page reads like the assistant narrating its own work — for BOTH flows.
 const narrationLine = computed(() => {
-  if (isTransitioningToEditor.value) return 'All set — opening the editor…'
+  if (downloadUrl.value) return 'Watch your finished video, download it, or make changes.'
+  if (finishing.value) return exportJob.value ? `Finishing your video · ${exportJob.value.progress_percent || 0}%` : 'Waiting for all your visuals and audio to finish…'
   const active = stages.value.find((s) => s.status === 'active')
   if (!active) {
     return stages.value.every((s) => s.status === 'complete')
-      ? 'All set — opening the editor…'
+      ? 'Preparing your download…'
       : 'Getting things ready…'
   }
   const n = scenes.value.length
@@ -486,14 +437,27 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
         <div class="gen-subtitle">{{ subtitle }}</div>
       </div>
 
+      <section v-if="downloadUrl" class="gen-result">
+        <video :src="downloadUrl" controls playsinline preload="metadata" aria-label="Finished video"></video>
+        <div class="gen-result-actions">
+          <a class="gen-download" :href="exportJob.download_url || downloadUrl" :download="exportJob.file_name">Download video</a>
+          <button class="gen-foot-btn" @click="router.push({ name: 'project-editor', params: { projectId } })">Edit video</button>
+        </div>
+      </section>
+      <div v-if="finishError" class="gen-finish-error" role="alert">
+        <p>{{ finishError }}</p>
+        <button class="gen-foot-btn" :disabled="exportRequestPending" @click="finishVideo(true)">Retry finishing video</button>
+        <button class="gen-foot-btn" @click="router.push({ name: 'project-editor', params: { projectId } })">Edit video</button>
+      </div>
+
       <!-- Overall progress bar (inline % to the right) -->
-      <div class="gen-progress-row">
+      <div v-if="!downloadUrl" class="gen-progress-row">
         <div class="gen-progress"><div class="gen-progress-fill" :style="{ width: `${progressPercent}%` }"></div></div>
         <span class="gen-progress-label">{{ progressPercent }}%</span>
       </div>
 
       <!-- Stage timeline — connected dots -->
-      <div class="gen-timeline">
+      <div v-if="!downloadUrl" class="gen-timeline">
         <div
           v-for="(stage, i) in stages"
           :key="stage.key"
@@ -513,7 +477,7 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 
       <!-- Assistant narration + scene reveal. Shows once scenes exist — for
            one-shot that's immediately; for the brief flow, after breakdown. -->
-      <template v-if="scenes.length">
+      <template v-if="scenes.length && !downloadUrl">
         <div v-if="narrationLine" class="gen-narration-line"><span class="gen-narration-bot">🤖</span> {{ narrationLine }}</div>
         <div class="gen-scene-cards">
           <div
@@ -543,7 +507,8 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 
       <!-- Footer: reassurance + dashboard escape -->
       <div class="gen-foot">
-        <span class="gen-foot-note">You can leave this page — generation continues in the background.</span>
+        <button v-if="!downloadUrl && stages.some(s => s.status === 'failed')" class="gen-foot-btn" @click="router.push({ name: 'project-editor', params: { projectId } })">Review scenes in editor</button>
+        <span class="gen-foot-note">{{ downloadUrl ? 'Your finished video is saved to this project.' : 'You can leave this page — generation and finishing continue in the background.' }}</span>
         <button class="gen-foot-btn" type="button" @click="router.push({ name: 'dashboard' })">← Back to Dashboard</button>
       </div>
     </div>
@@ -551,8 +516,14 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 </template>
 
 <style scoped>
+.gen-result video { width: 100%; max-height: 55vh; object-fit: contain; background: #000; border-radius: 12px; }
+.gen-result-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 20px 0; }
+.gen-download { background: var(--color-accent, #ff6b35); color: white; border-radius: 8px; padding: 12px 20px; text-decoration: none; font-weight: 600; }
+.gen-finish-error { padding: 16px; margin-bottom: 16px; border: 1px solid #f87171; border-radius: 12px; }
+.gen-finish-error button + button { margin-left: 12px; }
+
 .gen-overlay { position: fixed; inset: 0; background: rgba(10,10,15,0.97); z-index: 200; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
-.gen-panel { width: 500px; max-width: calc(100vw - 32px); }
+.gen-panel { width: 560px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
 .gen-header { margin-bottom: 28px; }
 .gen-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: var(--color-text-primary); }
 .gen-subtitle { color: var(--color-text-muted); font-size: 13px; }

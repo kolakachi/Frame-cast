@@ -1721,12 +1721,18 @@ class ProjectController extends Controller
         $this->reconcileStaleExports((int) $project->getKey());
 
         $validated = $request->validate([
+            'initial' => ['sometimes', 'boolean'],
             'aspect_ratio' => ['nullable', Rule::in(['9:16', '1:1', '4:5', '16:9'])],
             'aspect_ratios' => ['nullable', 'array', 'max:4'],
             'aspect_ratios.*' => [Rule::in(['9:16', '1:1', '4:5', '16:9'])],
             'language' => ['nullable', 'string', 'max:16'],
             'watermark_enabled' => ['nullable', 'boolean'],
         ]);
+
+        if (! empty($validated['initial'])) {
+            $job = app(\App\Services\Export\ProjectExportService::class)->finishInitial($project);
+            return response()->json(['data' => ['export_job' => $job ? $this->serializeExportJob($job, Asset::query()->whereKey($job->output_asset_id)->get()->keyBy('id')) : null], 'meta' => []], $job ? 200 : 202);
+        }
 
         $scenes = Scene::query()
             ->where('project_id', $project->getKey())
@@ -2377,6 +2383,10 @@ class ProjectController extends Controller
             'started_at' => $exportJob->started_at?->toIso8601String(),
             'completed_at' => $exportJob->completed_at?->toIso8601String(),
             'output_asset' => $outputAsset ? $this->serializeAsset($outputAsset) : null,
+            'download_url' => $outputAsset ? \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                'media.assets.content', now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)),
+                ['assetId' => $outputAsset->getKey(), 'download' => 1],
+            ) : null,
         ];
     }
 

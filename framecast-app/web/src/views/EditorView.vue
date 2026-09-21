@@ -7323,7 +7323,7 @@ onBeforeUnmount(() => {
                 :disabled="exportInProgress || !!exportBlockerMessage"
                 @click="openExportMenu"
               >
-                {{ exportInProgress ? "Exporting..." : "Export" }}
+                {{ exportInProgress ? "Finishing…" : latestExportJob ? "Update video" : "Finish video" }}
               </button>
               <div v-if="exportMenuOpen" class="export-format-menu" style="position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:264px;background:var(--surface,#15151b);border:1px solid var(--border,#2a2a33);border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.55);padding:14px;text-align:left">
                 <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim,#9a9aa5);margin-bottom:10px">Export formats</div>
@@ -8053,7 +8053,7 @@ onBeforeUnmount(() => {
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
                 <path d="M10 13V4M6 7.6L10 3.6l4 4M3.6 13.4v2.2a1.4 1.4 0 001.4 1.4h10a1.4 1.4 0 001.4-1.4v-2.2" />
               </svg>
-              Export
+              {{ latestExportJob ? "Update video" : "Finish video" }}
             </button>
           </nav>
 

@@ -180,7 +180,7 @@ function openProject(project) {
 
   // generation_pending covers scenes still rendering images/animations after
   // project.status has already flipped to ready_for_review.
-  if (project.status === 'generating' || project.generation_pending) {
+  if (project.status === 'generating' || project.generation_pending || (project.status === 'ready_for_review' && project.source_type !== 'blank')) {
     router.push({ name: 'generation-progress', params: { projectId: project.id } })
     return
   }
