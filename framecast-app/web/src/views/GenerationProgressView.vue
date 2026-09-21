@@ -150,6 +150,9 @@ function markStage(key, status, statusText = '', done = null, total = null) {
 }
 
 function countLabel(stage) {
+  if (stage.key === 'preview_assembly' && exportJob.value) {
+    return `${Math.round(Math.min(100, Math.max(0, Number(exportJob.value.progress_percent) || 0)))}%`
+  }
   if (stage.done === null || stage.total === null) return ''
   if (stage.status === 'complete' && stage.key === 'scene_breakdown')
     return `${stage.total} scene${stage.total !== 1 ? 's' : ''}`
@@ -381,7 +384,7 @@ function sceneReady(s) {
 // page reads like the assistant narrating its own work — for BOTH flows.
 const narrationLine = computed(() => {
   if (downloadUrl.value) return 'Watch your finished video, download it, or make changes.'
-  if (finishing.value) return exportJob.value ? `Finishing your video · ${exportJob.value.progress_percent || 0}%` : 'Waiting for all your visuals and audio to finish…'
+  if (finishing.value) return exportJob.value ? 'Finishing your video…' : 'Waiting for all your visuals and audio to finish…'
   const active = stages.value.find((s) => s.status === 'active')
   if (!active) {
     return stages.value.every((s) => s.status === 'complete')
