@@ -197,10 +197,44 @@ class CharacterController extends Controller
         ]);
     }
 
+
+    /**
+     * True when the plan allows no characters at all.
+     *
+     * Deliberately not a "has hit the cap" check: a Creator sitting at 10/10
+     * must still be able to rename or re-render the ten they own. This is the
+     * harder question — whether the workspace may have characters at all —
+     * and it is what gates editing, not just creating.
+     */
+    private function characterFeatureLocked(User $user): bool
+    {
+        $max = app(CreditService::class)->limitFor((int) $user->workspace_id, 'max_characters');
+
+        return $max !== null && (int) $max === 0;
+    }
+
+    private function characterLockedResponse(): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code'    => 'upgrade_required',
+                'message' => 'Characters are available on paid plans. Upgrade to create and edit your own.',
+            ],
+        ], 402);
+    }
+
     public function update(Request $request, int $characterId): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
+
+        // The page is locked for plans that allow no characters, but the API
+        // was not: an account that kept a character from an earlier plan could
+        // still edit it — and re-render its image, which spends credits on a
+        // feature the plan does not include.
+        if ($this->characterFeatureLocked($user)) {
+            return $this->characterLockedResponse();
+        }
 
         $character = $this->resolve($request, $characterId);
         if (! $character) {
@@ -293,6 +327,14 @@ class CharacterController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+
+        // The page is locked for plans that allow no characters, but the API
+        // was not: an account that kept a character from an earlier plan could
+        // still edit it — and re-render its image, which spends credits on a
+        // feature the plan does not include.
+        if ($this->characterFeatureLocked($user)) {
+            return $this->characterLockedResponse();
+        }
 
         $character = $this->resolve($request, $characterId);
         if (! $character) {
