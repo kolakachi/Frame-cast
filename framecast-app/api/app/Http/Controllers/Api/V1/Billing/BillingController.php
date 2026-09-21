@@ -90,8 +90,19 @@ class BillingController extends Controller
         $topupPlans = config('billing.kelviq.topup_plans', []);
 
         if (! empty($validated['pass'])) {
-            // The $9 UGC Test Pass — one-time, one per customer (enforced when
-            // the webhook lands, so a second checkout simply grants nothing).
+            // The $9 UGC Test Pass — one per customer, refused HERE so nobody
+            // can pay for something the webhook would then decline to grant.
+            $hadPass = \App\Models\CreditLedgerEntry::query()
+                ->where('workspace_id', $request->user()->workspace_id)
+                ->where('operation', 'grant:ugc_pass')
+                ->exists();
+            if ($hadPass) {
+                return response()->json(['error' => [
+                    'code'    => 'pass_already_used',
+                    'message' => 'You have already used your UGC Test Pass. Pick a plan to keep making ads.',
+                ]], 409);
+            }
+
             $identifier   = (string) config('billing.kelviq.ugc_pass_plan');
             $chargePeriod = 'ONE_TIME';
         } elseif (! empty($validated['lifetime'])) {

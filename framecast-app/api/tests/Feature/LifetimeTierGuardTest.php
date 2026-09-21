@@ -260,14 +260,20 @@ class LifetimeTierGuardTest extends TestCase
         $this->assertSame(0, (int) app(CreditService::class)->limitFor((int) $w->getKey(), 'max_characters'), 'and no characters');
     }
 
-    public function test_a_second_test_pass_is_refused(): void
+    public function test_a_duplicate_test_pass_still_hands_over_the_credits_paid_for(): void
     {
+        // Checkout refuses a second pass, so reaching here means a race, a
+        // stale tab or a direct link. The money is real: keeping it and
+        // granting nothing is the one outcome that is never acceptable.
         $w = $this->ws(['plan_tier' => 'free', 'plan_source' => null, 'credits_topup' => 0]);
 
         $this->buyTestPass($w);
         $this->buyTestPass($w);
 
-        $this->assertSame(600, (int) $w->fresh()->credits_topup, 'one pass per customer — the second grants nothing');
+        $this->assertSame(1200, (int) $w->fresh()->credits_topup, 'both payments deliver their credits');
+        $this->assertSame(1, \App\Models\CreditLedgerEntry::query()
+            ->where('workspace_id', $w->getKey())->where('operation', 'grant:ugc_pass')->count(),
+            'but the pass itself is only ever granted once');
     }
 
     public function test_the_test_pass_never_writes_a_paying_customer_down(): void

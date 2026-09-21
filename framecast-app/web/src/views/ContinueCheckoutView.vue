@@ -50,8 +50,10 @@ onMounted(async () => {
   }
 
   try {
-    const { data } = await api.post('/billing/kelviq/checkout',
-      LIFETIME.includes(plan) ? { lifetime: plan } : { plan })
+    const body = plan === 'ugc_pass'
+      ? { pass: true }
+      : (LIFETIME.includes(plan) ? { lifetime: plan } : { plan })
+    const { data } = await api.post('/billing/kelviq/checkout', body)
     if (data?.data?.url) {
       // Consumed — a stale choice must not hijack a later sign-in.
       try { localStorage.removeItem('wyv_pending_plan') } catch { /* ignore */ }

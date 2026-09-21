@@ -951,9 +951,6 @@ class UgcController extends Controller
         // Seedance only (Veo HQ costs nearly twice as much per second and would
         // empty the 600 credits in one take) and no cast character.
         $isTestPass = $creditService->planTier((int) $user->workspace_id) === 'ugc_pass';
-        if ($isTestPass) {
-            $engine = 'seedance25';
-        }
         // A cast character runs on veo-3.1 (non-fast) with the face in
         // reference_images — the model keeps the face but INVENTS the scene
         // from the plan, so the take is creative rather than frozen to the
@@ -963,6 +960,17 @@ class UgcController extends Controller
         $characterFrame = null;
         if ($presenterImageAttached) {
             $engine = 'veo_hq';
+        }
+
+        // The Test Pass is Seedance-only, and this has to sit AFTER the cast
+        // switch above: a stock character attaches a reference image, which
+        // flipped the engine to Veo HQ — 58 credits a second against a 600
+        // credit pass. Own characters are already blocked by custom_characters;
+        // stock ones came through this door.
+        if ($isTestPass) {
+            $engine = 'seedance25';
+            $presenterImageAttached = false;
+            $referenceImages = [];
         }
         // Demo-embed: a real screen recording spliced full-frame over a
         // mid-ad window in POST (ffmpeg), so the ACTUAL recording shows —

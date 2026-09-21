@@ -565,9 +565,14 @@ class KelviqService
             ->where('operation', 'grant:ugc_pass')
             ->exists();
         if ($hadPass) {
-            Log::info('KelviqService: second UGC Test Pass refused — one per customer', [
+            // They paid. Checkout refuses a second pass, so this is a race, a
+            // stale tab or a direct link — but the money is real either way and
+            // taking it for nothing is not an option. The pass itself is not
+            // re-granted (they have had it); the credits they just bought are.
+            Log::warning('KelviqService: duplicate UGC Test Pass — granting credits only', [
                 'workspace_id' => $workspace->getKey(),
             ]);
+            $this->credits->grant((int) $workspace->getKey(), $credits, 'ugc_pass_duplicate');
             $this->clearPendingCheckout($workspace);
 
             return;

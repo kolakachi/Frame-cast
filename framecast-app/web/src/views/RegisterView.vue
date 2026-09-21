@@ -25,6 +25,11 @@ const PLAN_LABELS = {
   creator: "Creator — $59/month",
   pro: "Pro — $99/month",
   agency: "Agency — $199/month",
+  // The $9 pass arrives as ?pass=1 rather than a plan key, but travels the
+  // same road: parked here, picked up after the magic link, turned into a
+  // checkout. Without an entry here the signup gate bounced the buyer back to
+  // pricing — the landing offer led nowhere.
+  ugc_pass: "UGC Test Pass — $9, 600 credits",
 };
 
 const pendingPlan = ref("");
@@ -36,7 +41,7 @@ const pendingPlanLabel = computed(() => PLAN_LABELS[pendingPlan.value] ?? "");
 const checkingPolicy = ref(true);
 
 onMounted(async () => {
-  const plan = String(route.query.plan ?? "");
+  const plan = route.query.pass ? "ugc_pass" : String(route.query.plan ?? "");
   if (PLAN_LABELS[plan]) {
     pendingPlan.value = plan;
     try {
