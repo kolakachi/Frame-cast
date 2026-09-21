@@ -84,22 +84,22 @@ onMounted(async () => {
           <span class="bc-page">Voices</span>
         </div>
         <div class="topbar-right">
-          <button class="btn btn-primary btn-sm" type="button" @click="canClone ? openClone() : router.push({ name: 'plans' })">
-            <span style="font-weight:700">＋</span> {{ canClone ? 'Clone a voice' : 'Upgrade to clone' }}
+          <button v-if="canClone" class="btn btn-primary btn-sm" type="button" @click="openClone">
+            <span style="font-weight:700">＋</span> Clone a voice
           </button>
           <NotifBell />
         </div>
       </div>
 
       <div class="content">
-        <div v-if="error" class="banner error">{{ error }}</div>
-        <div v-if="!canClone" class="upgrade-note">
-          <div>
-            <b>Voice cloning is a Creator feature.</b>
-            Upload a short sample and use your own voice on any scene — available on Creator and above.
-          </div>
+        <div v-if="!canClone" class="lock-wall">
+          <h2>Voice cloning is a Creator feature</h2>
+          <p>Upload a short sample and use your own voice as the voiceover on any scene. Available on Creator and above.</p>
           <button class="btn btn-primary btn-sm" type="button" @click="router.push({ name: 'plans' })">See plans →</button>
         </div>
+
+        <template v-else>
+        <div v-if="error" class="banner error">{{ error }}</div>
         <GridSkeleton v-if="loading" layout="row" :count="6" :min="260" :row-thumb="40" :lines="2" />
 
         <template v-else>
@@ -139,6 +139,7 @@ onMounted(async () => {
               <button class="voice-del" type="button" title="Delete" @click="deleteTarget = v">✕</button>
             </article>
           </div>
+        </template>
         </template>
       </div>
     </main>
@@ -264,6 +265,12 @@ onMounted(async () => {
   .v-foot { gap: 8px; }
   .v-foot .btn { flex: 1; min-height: 44px; }
 }
+.lock-wall {
+  max-width: 460px; margin: 60px auto; text-align: center; padding: 32px 24px;
+  border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-bg-card);
+}
+.lock-wall h2 { font-size: 20px; margin: 0 0 10px; }
+.lock-wall p { font-size: 14px; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 20px; }
 .upgrade-note {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   margin: 0 0 18px; padding: 14px 18px; border-radius: 12px;

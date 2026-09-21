@@ -588,17 +588,18 @@ async function confirmDelete() {
           >
             <span style="font-weight:700">＋</span> New Character
           </button>
-          <button
-            v-else
-            class="btn btn-primary btn-sm"
-            type="button"
-            @click="router.push({ name: 'plans' })"
-          >Upgrade to add characters</button>
           <NotifBell />
         </div>
       </div>
 
       <div class="content">
+        <div v-if="!canCreateCharacter" class="lock-wall">
+          <h2>Characters are a paid feature</h2>
+          <p>Build reusable AI presenters — one face and voice you can drop into any scene, across every video. Upgrade to any paid plan to start.</p>
+          <button class="btn btn-primary btn-sm" type="button" @click="router.push({ name: 'plans' })">See plans →</button>
+        </div>
+
+        <template v-else>
         <div v-if="error" class="banner error">{{ error }}</div>
         <GridSkeleton v-if="loading" :stats="3" header :count="8" :min="200" ratio="1 / 1" :lines="2" />
 
@@ -669,6 +670,7 @@ async function confirmDelete() {
               </article>
             </div>
           </section>
+        </template>
         </template>
       </div>
     </main>
@@ -1313,4 +1315,10 @@ async function confirmDelete() {
   .cv-foot { bottom: calc(-18px - env(safe-area-inset-bottom)); }
   .cv-foot .btn { flex: 1; min-height: 44px; }
 }
+.lock-wall {
+  max-width: 460px; margin: 60px auto; text-align: center; padding: 32px 24px;
+  border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-bg-card);
+}
+.lock-wall h2 { font-size: 20px; margin: 0 0 10px; }
+.lock-wall p { font-size: 14px; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 20px; }
 </style>

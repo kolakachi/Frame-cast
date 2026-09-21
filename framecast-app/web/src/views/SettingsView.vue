@@ -940,14 +940,13 @@ onMounted(() => {
             <div class="section-title">Connected Accounts</div>
             <div class="settings-section-desc">Connect your social accounts to schedule and publish videos directly from WyvStudio.</div>
 
-            <div v-if="!canPublish" class="upgrade-note">
-              <div>
-                <b>Publishing is a paid feature.</b>
-                Connect YouTube, TikTok, Instagram and Facebook and post straight from WyvStudio on any paid plan.
-              </div>
+            <div v-if="!canPublish" class="lock-wall">
+              <h2>Publishing is a paid feature</h2>
+              <p>Connect YouTube, TikTok, Instagram and Facebook, then schedule and post straight from WyvStudio. Upgrade to any paid plan to connect your channels.</p>
               <button class="settings-btn settings-btn-sm settings-btn-primary" type="button" @click="router.push({ name: 'plans' })">See plans →</button>
             </div>
 
+            <template v-else>
             <div class="connect-grid">
               <div
                 v-for="plat in PLATFORMS"
@@ -968,10 +967,7 @@ onMounted(() => {
                   </div>
                 </div>
                 <div class="connect-card-actions">
-                  <template v-if="!canPublish">
-                    <button class="settings-btn settings-btn-sm" type="button" @click="router.push({ name: 'plans' })">Upgrade to connect</button>
-                  </template>
-                  <template v-else-if="accountForPlatform(plat.key)">
+                  <template v-if="accountForPlatform(plat.key)">
                     <span class="plan-status-badge" style="color:#34d399">● Connected</span>
                     <button
                       class="settings-btn settings-btn-sm settings-btn-danger"
@@ -989,6 +985,7 @@ onMounted(() => {
             <div class="settings-hint">
               WyvStudio only requests permissions to upload and post videos. We never read your messages, contacts, or follower list.
             </div>
+            </template>
           </div>
 
           <!-- Usage & Billing -->
@@ -1839,6 +1836,12 @@ onMounted(() => {
   color: #ff8888;
 }
 .del-confirm:not(:disabled):hover { background: rgba(220,80,80,0.25); }
+.lock-wall {
+  max-width: 460px; margin: 60px auto; text-align: center; padding: 32px 24px;
+  border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-bg-card);
+}
+.lock-wall h2 { font-size: 20px; margin: 0 0 10px; }
+.lock-wall p { font-size: 14px; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 20px; }
 .upgrade-note {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   margin: 14px 0 18px; padding: 14px 18px; border-radius: 12px;
