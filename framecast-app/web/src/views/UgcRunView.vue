@@ -107,8 +107,11 @@ function kindLabel(kind) {
 function openReview(take) {
   router.push({ name: "ugc-review", params: { projectId: take.id }, query: route.query.footage ? { footage: route.query.footage } : {} });
 }
-function openEditor(take) {
-  router.push({ name: "project-editor", params: { projectId: take.id } });
+async function openEditor(take) {
+  try {
+    if (Number(take.id) >= 216) await api.post(`/projects/${take.id}/editor-opened`);
+    await router.push({ name: "project-editor", params: { projectId: take.id } });
+  } catch { errorMessage.value = "Could not open the editor. Please try again."; }
 }
 
 const elapsedLabel = computed(() => {

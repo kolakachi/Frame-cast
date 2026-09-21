@@ -150,6 +150,7 @@ class ProjectExportService
     /** One initial file per project, even when several jobs/tabs finish together. */
     public function finishInitial(Project $project): ?ExportJob
     {
+        if (! $project->usesAutomaticFinish()) return null;
         return DB::transaction(function () use ($project) {
             // Serialize automatic quota reservations across this workspace.
             Workspace::query()->whereKey($project->workspace_id)->lockForUpdate()->first();

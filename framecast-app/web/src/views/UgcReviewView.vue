@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppSidebar from "../components/AppSidebar.vue";
+import FinishedVideoPlayer from "../components/FinishedVideoPlayer.vue";
 import SchedulePostModal from "../components/SchedulePostModal.vue";
 import api from "../services/api";
 import { useAuthStore } from "../stores/auth";
@@ -285,7 +286,7 @@ async function loadExports() {
       : !revisionAt.value || (job.queued_at && Date.parse(job.queued_at) >= Date.parse(revisionAt.value))) ?? null;
     if (!canExport.value) return;
     // Initial finishing is idempotent server-side. Revisions stay explicit.
-    if (!latest && !revisionAt.value && !revisionExportId.value) {
+    if (projectId.value >= 216 && !latest && !revisionAt.value && !revisionExportId.value) {
       const response = await api.post(`/projects/${projectId.value}/export`, { initial: true });
       latest = response.data?.data?.export_job ?? null;
       if (!latest) { clearTimeout(exportTimer); exportTimer = setTimeout(loadExports, 5000); }
@@ -319,8 +320,11 @@ function pollExport() {
   }, 5000);
 }
 
-function openEditor() {
-  router.push({ name: "project-editor", params: { projectId: projectId.value } });
+async function openEditor() {
+  try {
+    if (projectId.value >= 216) await api.post(`/projects/${projectId.value}/editor-opened`);
+    await router.push({ name: "project-editor", params: { projectId: projectId.value } });
+  } catch { errorMessage.value = "Could not open the editor. Please try again."; }
 }
 
 onMounted(() => {
@@ -352,7 +356,8 @@ onBeforeUnmount(() => {
       <div class="rev-body">
         <section class="rev-preview">
           <div class="rev-frame">
-            <video v-if="downloadUrl && showFinished" :src="downloadUrl" controls playsinline aria-label="Finished video" />
+            <FinishedVideoPlayer v-if="projectId >= 216 && downloadUrl && showFinished" :src="downloadUrl" />
+            <video v-else-if="downloadUrl && showFinished" :src="downloadUrl" controls playsinline aria-label="Finished video" />
             <video
               v-else-if="activePreview?.visual_url && (activePreview?.visual_type === 'video' || String(activePreview.visual_url).match(/\.(mp4|webm|mov)(\?|$)/i))"
               :src="activePreview.visual_url"

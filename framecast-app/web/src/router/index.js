@@ -30,6 +30,7 @@ import SampleView from '../views/SampleView.vue'
 import NotFoundView from '../views/NotFoundView.vue'
 import AppSumoActivateView from '../views/AppSumoActivateView.vue'
 import { useAuthStore } from '../stores/auth'
+import api from '../services/api'
 
 const routes = [
   { path: '/client-work', name: 'client-work', component: () => import('../views/ClientWorkView.vue'), meta: { requiresAuth: true } },
@@ -149,6 +150,19 @@ router.beforeEach(async function (to) {
     !to.meta.public
   ) {
     return { name: 'onboarding' }
+  }
+
+  // Generic links (jobs, channels, old bookmarks) use the same result-first
+  // destination as the dashboard until Edit video was explicitly chosen.
+  if (to.name === 'project-editor' && Number(to.params.projectId) >= 216) {
+    try {
+      const { data } = await api.get(`/projects/${to.params.projectId}`)
+      const project = data?.data?.project
+      if (project && project.source_type !== 'blank' && !project.visual_brief?.editor_opened_at
+          && ['generating', 'ready_for_review'].includes(project.status)) {
+        return { name: 'generation-progress', params: { projectId: to.params.projectId } }
+      }
+    } catch { /* The destination handles unavailable projects and API errors. */ }
   }
 
   return true

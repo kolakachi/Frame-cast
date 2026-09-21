@@ -1730,6 +1730,9 @@ class ProjectController extends Controller
         ]);
 
         if (! empty($validated['initial'])) {
+            if (! $project->usesAutomaticFinish()) {
+                return $this->error('automatic_finish_unavailable', 'This project uses the editor and manual export flow.', 422);
+            }
             $job = app(\App\Services\Export\ProjectExportService::class)->finishInitial($project);
             return response()->json(['data' => ['export_job' => $job ? $this->serializeExportJob($job, Asset::query()->whereKey($job->output_asset_id)->get()->keyBy('id')) : null], 'meta' => []], $job ? 200 : 202);
         }
@@ -1941,6 +1944,22 @@ class ProjectController extends Controller
             'data' => ['status' => 'queued'],
             'meta' => [],
         ], 202);
+    }
+
+    public function editorOpened(Request $request, int $projectId): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $projectId): JsonResponse {
+            $project = Project::query()->whereKey($projectId)
+                ->where('workspace_id', $request->user()->workspace_id)->lockForUpdate()->first();
+            if (! $project) return $this->error('not_found', 'Project not found.', 404);
+            $brief = $project->visual_brief ?? [];
+            if ($project->usesAutomaticFinish() && empty($brief['editor_opened_at'])) {
+                $project->forceFill(['visual_brief' => [
+                    ...$brief, 'editor_opened_at' => now()->toIso8601String(),
+                ]])->save();
+            }
+            return response()->json(['data' => ['editor_opened' => true], 'meta' => []]);
+        });
     }
 
     public function update(Request $request, int $projectId): JsonResponse

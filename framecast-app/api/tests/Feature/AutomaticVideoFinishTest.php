@@ -42,6 +42,7 @@ class AutomaticVideoFinishTest extends TestCase
                 $t->timestamps();
             });
         }
+        DB::table('projects')->insert(['id' => 215, 'workspace_id' => 1, 'status' => 'ready_for_review', 'source_type' => 'script']);
         DB::table('workspaces')->insert(['id' => 1, 'plan_tier' => 'free']);
         DB::table('users')->insert(['id' => 1, 'workspace_id' => 99]);
         $usage = $this->createMock(WorkspaceUsageService::class);
@@ -61,9 +62,25 @@ class AutomaticVideoFinishTest extends TestCase
         return $project;
     }
 
+    public function test_legacy_projects_are_untouched_even_by_already_queued_jobs(): void
+    {
+        $project = Project::findOrFail(215);
+        $this->assertFalse($project->usesAutomaticFinish());
+        $this->assertNull($this->exports->finishInitial($project));
+        $job = new FinishGeneratedVideoJob(215);
+        $job->handle($this->exports);
+        $job->failed(new \RuntimeException('timeout'));
+        $project->update(['status' => 'generating']);
+        $project->update(['status' => 'ready_for_review']);
+        Bus::assertNotDispatched(FinishGeneratedVideoJob::class);
+        Bus::assertNotDispatched(ProcessExportJob::class);
+        $this->assertSame(0, DB::table('export_jobs')->count());
+    }
+
     public function test_initial_export_is_idempotent_and_watermarked_on_free(): void
     {
         $project = $this->project();
+        $this->assertSame(216, $project->id);
         $first = $this->exports->finishInitial($project);
         $again = $this->exports->finishInitial($project);
         $this->assertSame($first->id, $again->id);
@@ -187,6 +204,23 @@ class AutomaticVideoFinishTest extends TestCase
         $job->failed(new \RuntimeException('timeout'));
         $this->assertSame(1, DB::table('export_jobs')->count());
         $this->assertSame('failed', DB::table('export_jobs')->value('status'));
+    }
+
+    public function test_editor_choice_is_persisted_without_overwriting_the_brief(): void
+    {
+        $project = $this->project([], ['ugc_format' => 'demo', 'product' => 'Keep this']);
+        $controller = new \App\Http\Controllers\Api\V1\Project\ProjectController(
+            $this->createMock(WorkspaceUsageService::class), $this->createMock(\App\Services\CreditService::class));
+        $request = \Illuminate\Http\Request::create('/projects/'.$project->id.'/editor-opened', 'POST');
+        $request->setUserResolver(fn () => (new \App\Models\User)->forceFill(['workspace_id' => 1]));
+        $this->assertSame(200, $controller->editorOpened($request, $project->id)->getStatusCode());
+        $brief = $project->fresh()->visual_brief;
+        $this->assertNotEmpty($brief['editor_opened_at']);
+        $this->assertSame('Keep this', $brief['product']);
+        $controller->editorOpened($request, $project->id);
+        $this->assertSame($brief, $project->fresh()->visual_brief);
+        $request->setUserResolver(fn () => (new \App\Models\User)->forceFill(['workspace_id' => 99]));
+        $this->assertSame(404, $controller->editorOpened($request, $project->id)->getStatusCode());
     }
 
     public function test_revisions_do_not_start_an_initial_render(): void

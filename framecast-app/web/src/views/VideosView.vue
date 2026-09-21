@@ -170,7 +170,7 @@ function cancelRename() {
 function openProject(project) {
   // generation_pending covers scenes still rendering images/animations after
   // project.status has already flipped to ready_for_review.
-  if (project.status === 'generating' || project.generation_pending || (project.status === 'ready_for_review' && project.source_type !== 'blank')) {
+  if (project.status === 'generating' || project.generation_pending || (Number(project.id) >= 216 && project.status === 'ready_for_review' && project.source_type !== 'blank' && !project.visual_brief?.editor_opened_at)) {
     router.push({ name: 'generation-progress', params: { projectId: project.id } })
   } else {
     router.push({ name: 'project-editor', params: { projectId: project.id } })

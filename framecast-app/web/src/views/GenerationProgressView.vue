@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
 import { getEcho } from '../services/echo'
+import FinishedVideoPlayer from '../components/FinishedVideoPlayer.vue'
+import SchedulePostModal from '../components/SchedulePostModal.vue'
 
 const route  = useRoute()
 const router = useRouter()
@@ -13,6 +15,10 @@ const exportJob = ref(null)
 const finishError = ref('')
 const exportRequestPending = ref(false)
 const downloadUrl = computed(() => exportJob.value?.status === 'completed' ? exportJob.value.output_asset?.storage_url : null)
+const scheduleOpen = ref(false)
+const actionMessage = ref('')
+const actionPending = ref(false)
+const editorOpening = ref(false)
 const subtitle   = ref(`Project #${projectId.value}`)
 // Narration: scenes are re-pulled on every poll/mount, so this is
 // refresh-safe by construction — the assistant's play-by-play is always
@@ -220,6 +226,11 @@ function applyPipelineState(project) {
   applyStoredGenerationState(project)
 
   if (project?.status === 'ready_for_review') {
+    if (Number(projectId.value) < 216) {
+      if (project.source_type === 'prompt' && stages.value.some(stage => stage.key !== 'preview_assembly' && ['active', 'pending'].includes(stage.status))) return
+      router.replace({ name: 'project-editor', params: { projectId: projectId.value } })
+      return
+    }
     finishVideo()
     return
   }
@@ -242,7 +253,8 @@ function applyPipelineState(project) {
 }
 
 async function finishVideo(retry = false) {
-  if (exportRequestPending.value) return
+  if (Number(projectId.value) < 216) return
+  if (exportRequestPending.value || (downloadUrl.value && !retry)) return
   exportRequestPending.value = true
   finishing.value = true
   try {
@@ -264,6 +276,8 @@ async function finishVideo(retry = false) {
       markStage('preview_assembly', job.status === 'completed' ? 'complete' : job.status === 'failed' ? 'failed' : 'active')
     }
     if (downloadUrl.value) {
+      stopPolling()
+      unsubscribe()
       stages.value.forEach(stage => { if (stage.status !== 'failed') markStage(stage.key, 'complete') })
     }
   } catch (error) {
@@ -279,6 +293,7 @@ function updateStageFromEvent(payload) {
 }
 
 async function loadProjectStatus() {
+  if (downloadUrl.value) return
   try {
     const response = await api.get(`/projects/${projectId.value}`)
     const project  = response.data?.data?.project
@@ -424,10 +439,34 @@ function unsubscribe() {
   if (echo && channelName) echo.leave(channelName)
 }
 
-function startPolling() { pollTimer = window.setInterval(loadProjectStatus, 4000) }
+async function openEditor() {
+  if (editorOpening.value) return
+  editorOpening.value = true
+  try {
+    await api.post(`/projects/${projectId.value}/editor-opened`)
+    await router.push({ name: 'project-editor', params: { projectId: projectId.value } })
+  } catch { actionMessage.value = 'Could not open the editor. Please try again.' }
+  finally { editorOpening.value = false }
+}
+
+async function shareVideo() {
+  if (actionPending.value) return
+  actionPending.value = true
+  actionMessage.value = ''
+  try {
+    const { data } = await api.post(`/projects/${projectId.value}/share`, { enabled: true })
+    const url = data?.data?.share_url
+    if (!url) throw new Error('No link returned')
+    try { await navigator.clipboard.writeText(url); actionMessage.value = 'Share link copied.' }
+    catch { actionMessage.value = url }
+  } catch { actionMessage.value = 'Could not create a share link. Please try again.' }
+  finally { actionPending.value = false }
+}
+
+function startPolling() { if (!downloadUrl.value) pollTimer = window.setInterval(loadProjectStatus, 4000) }
 function stopPolling()  { if (pollTimer) { window.clearInterval(pollTimer); pollTimer = null } }
 
-onMounted(async () => { await loadProjectStatus(); subscribe(); startPolling() })
+onMounted(async () => { await loadProjectStatus(); if (!downloadUrl.value) { subscribe(); startPolling() } })
 onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 </script>
 
@@ -441,16 +480,19 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
       </div>
 
       <section v-if="downloadUrl" class="gen-result">
-        <video :src="downloadUrl" controls playsinline preload="metadata" aria-label="Finished video"></video>
+        <FinishedVideoPlayer :src="downloadUrl" />
         <div class="gen-result-actions">
           <a class="gen-download" :href="exportJob.download_url || downloadUrl" :download="exportJob.file_name">Download video</a>
-          <button class="gen-foot-btn" @click="router.push({ name: 'project-editor', params: { projectId } })">Edit video</button>
+          <button class="gen-foot-btn" :disabled="actionPending" @click="shareVideo">{{ actionPending ? 'Creating link…' : 'Copy share link' }}</button>
+          <button class="gen-foot-btn" @click="scheduleOpen = true">Schedule</button>
+          <button class="gen-foot-btn" :disabled="editorOpening" @click="openEditor">{{ editorOpening ? 'Opening…' : 'Edit video' }}</button>
         </div>
       </section>
+      <p v-if="actionMessage" class="gen-action-message" role="status">{{ actionMessage }}</p>
       <div v-if="finishError" class="gen-finish-error" role="alert">
         <p>{{ finishError }}</p>
         <button class="gen-foot-btn" :disabled="exportRequestPending" @click="finishVideo(true)">Retry finishing video</button>
-        <button class="gen-foot-btn" @click="router.push({ name: 'project-editor', params: { projectId } })">Edit video</button>
+        <button class="gen-foot-btn" :disabled="editorOpening" @click="openEditor">{{ editorOpening ? 'Opening…' : 'Edit video' }}</button>
       </div>
 
       <!-- Overall progress bar (inline % to the right) -->
@@ -510,16 +552,17 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 
       <!-- Footer: reassurance + dashboard escape -->
       <div class="gen-foot">
-        <button v-if="!downloadUrl && stages.some(s => s.status === 'failed')" class="gen-foot-btn" @click="router.push({ name: 'project-editor', params: { projectId } })">Review scenes in editor</button>
+        <button v-if="!downloadUrl && stages.some(s => s.status === 'failed')" class="gen-foot-btn" @click="openEditor">Review scenes in editor</button>
         <span class="gen-foot-note">{{ downloadUrl ? 'Your finished video is saved to this project.' : 'You can leave this page — generation and finishing continue in the background.' }}</span>
         <button class="gen-foot-btn" type="button" @click="router.push({ name: 'dashboard' })">← Back to Dashboard</button>
       </div>
     </div>
   </main>
+  <SchedulePostModal v-if="scheduleOpen" :export-job-id="Number(exportJob.id)" @close="scheduleOpen = false" @scheduled="scheduleOpen = false; actionMessage = 'Video scheduled.'" />
 </template>
 
 <style scoped>
-.gen-result video { width: 100%; max-height: 55vh; object-fit: contain; background: #000; border-radius: 12px; }
+.gen-action-message { color: var(--color-text-secondary); font-size: 13px; overflow-wrap: anywhere; }
 .gen-result-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 20px 0; }
 .gen-download { background: var(--color-accent, #ff6b35); color: white; border-radius: 8px; padding: 12px 20px; text-decoration: none; font-weight: 600; }
 .gen-finish-error { padding: 16px; margin-bottom: 16px; border: 1px solid #f87171; border-radius: 12px; }

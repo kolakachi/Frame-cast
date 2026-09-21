@@ -26,7 +26,7 @@ class FinishGeneratedVideoJob implements ShouldQueue
     public function handle(ProjectExportService $exports): void
     {
         $project = Project::query()->find($this->projectId);
-        if (! $project || in_array($project->status, ['failed', 'draft'], true) || data_get($project->visual_brief, 'ugc_revision_at')) return;
+        if (! $project || ! $project->usesAutomaticFinish() || in_array($project->status, ['failed', 'draft'], true) || data_get($project->visual_brief, 'ugc_revision_at')) return;
         if (! $exports->finishInitial($project)) $this->release(30);
     }
 
@@ -34,7 +34,7 @@ class FinishGeneratedVideoJob implements ShouldQueue
     {
         \Illuminate\Support\Facades\DB::transaction(function () {
             $project = Project::query()->lockForUpdate()->find($this->projectId);
-            if (! $project || $project->status !== 'ready_for_review'
+            if (! $project || ! $project->usesAutomaticFinish() || $project->status !== 'ready_for_review'
                 || \App\Models\ExportJob::query()->where('project_id', $this->projectId)->exists()) return;
             \App\Models\ExportJob::query()->create([
                 'workspace_id' => $project->workspace_id, 'project_id' => $project->id,

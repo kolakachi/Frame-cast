@@ -11,6 +11,13 @@ class Project extends Model
 {
     use HasFactory;
 
+    public const AUTOMATIC_FINISH_MIN_ID = 216;
+
+    public function usesAutomaticFinish(): bool
+    {
+        return (int) $this->getKey() >= self::AUTOMATIC_FINISH_MIN_ID;
+    }
+
     /**
      * Funnel analytics ride the model's own state changes, so every code path
      * — controllers, jobs, Cruise, retries — is covered from one place. These
@@ -19,7 +26,7 @@ class Project extends Model
     protected static function booted(): void
     {
         static::created(function (Project $project): void {
-            if ($project->status === 'generating') {
+            if ($project->usesAutomaticFinish() && $project->status === 'generating') {
                 \App\Jobs\FinishGeneratedVideoJob::dispatch((int) $project->id)->delay(now()->addSeconds(30))->afterCommit();
             }
             \App\Services\Analytics\PostHogService::capture(
@@ -39,7 +46,7 @@ class Project extends Model
             if (! $project->wasChanged('status')) {
                 return;
             }
-            if ($project->status === 'ready_for_review' && $project->source_type !== 'blank') {
+            if ($project->usesAutomaticFinish() && $project->status === 'ready_for_review' && $project->source_type !== 'blank') {
                 \App\Jobs\FinishGeneratedVideoJob::dispatch((int) $project->id)->delay(now()->addSeconds(10))->afterCommit();
             }
             $event = match ($project->status) {
