@@ -82,6 +82,12 @@ class KelviqService
      */
     public function handleEvent(array $event): void
     {
+        // The receipt and entitlement changes commit together, including on crashes.
+        DB::transaction(fn () => $this->processEvent($event));
+    }
+
+    private function processEvent(array $event): void
+    {
         $eventId = (string) ($event['id'] ?? '');
         $type    = (string) ($event['type'] ?? '');
 
@@ -97,6 +103,11 @@ class KelviqService
         }
 
         $object = $event['data']['object'] ?? [];
+        // A checkout can be re-emitted with a different delivery/event ID.
+        if ($type === 'checkout.completed' && ! empty($object['id'])
+            && ! $this->claimEvent('checkout:'.(string) $object['id'], $type)) {
+            return;
+        }
         if (! is_array($object)) {
             // Silently returning here was one of the candidates we couldn't
             // rule out when a cancellation went unrecorded — make it visible.
@@ -120,6 +131,15 @@ class KelviqService
                 'checkout.completed'        => $this->handleCheckoutCompleted($object),
                 default                     => null,
             };
+            if ($type === 'checkout.completed' && ! empty($object['metadata']['checkout_attempt_id'])) {
+                $workspace = $this->resolveWorkspace($object);
+                if (! $workspace) throw new \RuntimeException('Paid checkout has no matching workspace.');
+                DB::table('billing_checkout_attempts')
+                    ->where('id', $object['metadata']['checkout_attempt_id'])
+                    ->where('workspace_id', $workspace->getKey())
+                    ->where('provider_plan', $object['plan']['identifier'] ?? '')
+                    ->update(['paid_at' => now(), 'updated_at' => now()]);
+            }
         } catch (\Throwable $e) {
             // Don't let a failed attempt permanently burn the event id — a
             // retry/rerun must be able to process it.
@@ -140,14 +160,14 @@ class KelviqService
     private function claimEvent(string $eventId, string $type): bool
     {
         try {
-            DB::table('processed_webhook_events')->insert([
+            DB::transaction(fn () => DB::table('processed_webhook_events')->insert([
                 'provider'     => 'kelviq',
                 'event_id'     => $eventId,
                 'type'         => $type !== '' ? $type : null,
                 'processed_at' => now(),
                 'created_at'   => now(),
                 'updated_at'   => now(),
-            ]);
+            ]));
 
             return true;
         } catch (QueryException $e) {
@@ -223,6 +243,7 @@ class KelviqService
             'object_keys'  => array_keys($object),
         ]);
 
+        $workspace = Workspace::query()->whereKey($workspace->getKey())->lockForUpdate()->firstOrFail();
         $previousTier = $workspace->plan_tier;
         $update = [
             'kelviq_account_id'      => $object['customer']['id'] ?? $workspace->kelviq_account_id,
@@ -285,6 +306,7 @@ class KelviqService
             return;
         }
 
+        $workspace = Workspace::query()->whereKey($workspace->getKey())->lockForUpdate()->firstOrFail();
         $periodEnd = $this->periodEnd($object);
 
         // Two paths refill: this webhook and the hourly ResetMonthlyCreditsJob
@@ -510,12 +532,15 @@ class KelviqService
 
         $credits = config('billing.kelviq.topup_plans')[$planId] ?? null;
         if (! $credits) {
+            if (! empty($object['metadata']['checkout_attempt_id'])
+                && ! isset(config('billing.kelviq.plan_tiers', [])[$planId])) {
+                throw new \RuntimeException('Paid checkout plan is no longer configured.');
+            }
             return; // not a top-up (subscription checkout is handled by subscription.*)
         }
         $workspace = $this->resolveWorkspace($object);
         if (! $workspace) {
-            Log::warning('KelviqService: top-up — no workspace', ['plan' => $planId]);
-            return;
+            throw new \RuntimeException('Paid top-up has no matching workspace.');
         }
         $this->credits->grant((int) $workspace->getKey(), (int) $credits, 'topup_kelviq');
         $this->clearPendingCheckout($workspace);
@@ -568,9 +593,7 @@ class KelviqService
         // account yet, so build one rather than dropping a paid order.
         $workspace = $this->resolveWorkspace($object) ?? $this->provisionFromEvent($object);
         if (! $workspace) {
-            Log::warning('KelviqService: UGC Test Pass — no workspace');
-
-            return;
+            throw new \RuntimeException('Paid UGC pass has no matching workspace.');
         }
 
         // One per customer. The ledger is the record: a grant:ugc_pass row
@@ -608,20 +631,7 @@ class KelviqService
                 ])->save();
             }
 
-            // Write the receipt HERE rather than relying on grant()'s own
-            // ledger row, which is wrapped in rescue() and therefore silent on
-            // failure. The receipt is what stops a second grant, so it has to
-            // live or die with the credits it records: inside this
-            // transaction, and fatal if it cannot be written.
-            \App\Models\CreditLedgerEntry::query()->create([
-                'workspace_id'  => $workspace->getKey(),
-                'operation'     => 'grant:ugc_pass',
-                'credits'       => -$credits,
-                'balance_after' => $this->credits->balance((int) $workspace->getKey()) + $credits,
-                'metadata'      => ['reason' => 'ugc_pass'],
-            ]);
-
-            $this->credits->grant((int) $workspace->getKey(), $credits, 'ugc_pass_credits');
+            $this->credits->grant((int) $workspace->getKey(), $credits, 'ugc_pass');
 
             return false;
         });
@@ -661,11 +671,10 @@ class KelviqService
         // dropping a paid order.
         $workspace = $this->resolveWorkspace($object) ?? $this->provisionFromEvent($object);
         if (! $workspace) {
-            Log::warning('KelviqService: lifetime — no workspace', ['plan' => $planId]);
-
-            return;
+            throw new \RuntimeException('Paid lifetime purchase has no matching workspace.');
         }
 
+        $workspace = Workspace::query()->whereKey($workspace->getKey())->lockForUpdate()->firstOrFail();
         $previousTier = (string) $workspace->plan_tier;
         $already = $workspace->plan_source === 'lifetime' && $workspace->plan_tier === $lifetime['tier'];
 
@@ -906,6 +915,7 @@ class KelviqService
         string $successUrl,
         ?string $cancelUrl = null,
         ?string $affiliateCode = null,
+        ?string $checkoutAttemptId = null,
     ): ?string {
         $key = (string) config('billing.kelviq.server_api_key', '');
         if ($key === '') {
@@ -924,6 +934,7 @@ class KelviqService
             'metadata'       => array_filter([
                 'workspace_id'   => (string) $workspaceId,
                 'affiliate_code' => $affiliateCode,
+                'checkout_attempt_id' => $checkoutAttemptId,
             ]),
         ];
         if ($cancelUrl) {

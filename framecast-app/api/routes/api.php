@@ -150,6 +150,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/workspaces/clients/usage', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'usage']);
         Route::post('/workspaces/switch/{id}', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'switch'])->whereNumber('id');
 
+        Route::get('/billing/confirmation/{attempt}', [BillingController::class, 'confirmation'])->whereUuid('attempt');
         Route::get('/billing/status', [BillingController::class, 'status']);
         Route::post('/billing/portal', [BillingController::class, 'portal']);
         // Kelviq (MOR) hosted checkout — returns a checkoutUrl to redirect to.

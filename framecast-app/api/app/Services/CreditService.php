@@ -857,26 +857,21 @@ class CreditService
         $grantedVia = $workspaceId;
         $workspaceId = $this->poolId($workspaceId);
 
-        Workspace::where('id', $workspaceId)->increment('credits_topup', $amount);
-
-        if ($reason === 'registration') {
-            Workspace::where('id', $workspaceId)->increment('credits_free_granted', $amount);
-        }
-
-        rescue(function () use ($workspaceId, $amount, $reason, $grantedVia) {
+        DB::transaction(function () use ($workspaceId, $amount, $reason, $grantedVia) {
+            Workspace::query()->whereKey($workspaceId)->lockForUpdate()->firstOrFail();
+            Workspace::where('id', $workspaceId)->increment('credits_topup', $amount);
+            if ($reason === 'registration') {
+                Workspace::where('id', $workspaceId)->increment('credits_free_granted', $amount);
+            }
             CreditLedgerEntry::query()->create([
-                'workspace_id'  => $workspaceId,
-                'operation'     => mb_substr('grant:'.($reason !== '' ? $reason : 'unspecified'), 0, 64),
-                'credits'       => -$amount, // negative = credit going INTO the workspace
+                'workspace_id' => $workspaceId,
+                'operation' => mb_substr('grant:'.($reason !== '' ? $reason : 'unspecified'), 0, 64),
+                'credits' => -$amount,
                 'balance_after' => $this->balance($workspaceId),
-                'metadata'      => ['reason' => $reason]
+                'metadata' => ['reason' => $reason]
                     + ($grantedVia !== $workspaceId ? ['granted_via_workspace_id' => $grantedVia] : []),
             ]);
-        }, $this->ledgerWriteFailed('grant', [
-            'workspace_id' => $workspaceId,
-            'amount' => $amount,
-            'reason' => $reason,
-        ]), false);
+        });
     }
 
     /**

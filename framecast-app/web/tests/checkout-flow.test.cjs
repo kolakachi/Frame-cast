@@ -11,7 +11,8 @@ function harness(file, exposed, overrides = {}) {
   const context = vm.createContext({
     ref: value => ({ value }), reactive: value => value,
     computed: callback => ({ get value() { return callback() } }),
-    onMounted: callback => callbacks.push(callback),
+    onMounted: callback => callbacks.push(callback), onUnmounted: () => {},
+    setTimeout: () => 1, clearTimeout: () => {},
     useRoute: () => ({ query: { pass: '1' } }),
     useRouter: () => ({ replace: async value => redirects.push(value) }),
     useAuthStore: () => ({ isAuthenticated: true }),
@@ -86,4 +87,33 @@ test('router preserves checkout selection and exempts magic links/plans from onb
     const meta = vm.runInContext('(' + line.match(/meta: (\{[^}]+\})/)[1] + ')', context)
     assert.equal(await guard({ name, meta, query: {} }), true)
   }
+})
+
+test('confirmation waits for verified server receipt before onboarding', async () => {
+  let confirmed = false
+  const h = harness('views/PaymentConfirmationView.vue', 'checkPayment, state', {
+    useRoute: () => ({ query: { attempt: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' } }),
+    useAuthStore: () => ({ isAuthenticated: true, isOnboarded: false, refreshUser: async () => {} }),
+    api: { get: async () => ({ data: { data: { confirmed } } }) },
+  })
+  await h.api.checkPayment()
+  assert.equal(h.redirects.length, 0)
+  confirmed = true
+  await h.api.checkPayment()
+  assert.equal(h.redirects[0].name, 'onboarding')
+})
+test('delayed confirmation stops polling and offers checking without another charge', async () => {
+  const h = harness('views/PaymentConfirmationView.vue', 'checkPayment, state', {
+    api: { get: async () => ({ data: { data: { confirmed: false } } }) },
+  })
+  for (let i = 0; i < 20; i++) await h.api.checkPayment()
+  assert.equal(h.api.state.value, 'delayed')
+  assert.equal(h.redirects.length, 0)
+})
+test('sign-in resumes a pending payment confirmation before starting another checkout', async () => {
+  const h = harness('composables/resumeCheckout.js', 'resumePendingCheckout')
+  const attempt = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
+  h.store.set('wyv_pending_confirmation', attempt)
+  assert.equal(await h.api.resumePendingCheckout(), true)
+  assert.equal(h.context.window.location.href, `/payment/confirm?attempt=${attempt}`)
 })

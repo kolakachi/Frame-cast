@@ -70,8 +70,7 @@ class KelviqWebhookController extends Controller
 
         Log::info('KelviqWebhook: received', ['type' => $type, 'id' => $eventId]);
 
-        // Never let a processing error trigger a Kelviq retry storm; we log and
-        // acknowledge. (Idempotency in KelviqService makes a manual replay safe.)
+        // Transient failures must be retried: returning 200 would lose paid credits.
         $outcome = 'processed';
         $message = null;
         try {
@@ -91,8 +90,9 @@ class KelviqWebhookController extends Controller
             signatureValid: true,
             message: $message,
             ip: $request->ip(),
+            httpStatus: $outcome === 'error' ? 500 : 200,
         );
 
-        return response('OK', 200);
+        return response($outcome === 'error' ? 'Please retry' : 'OK', $outcome === 'error' ? 500 : 200);
     }
 }

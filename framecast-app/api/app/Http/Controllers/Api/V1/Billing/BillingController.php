@@ -87,6 +87,21 @@ class BillingController extends Controller
         ]);
     }
 
+    /** Only a verified checkout webhook can mark this exact purchase paid. */
+    public function confirmation(Request $request, string $attempt): JsonResponse
+    {
+        $checkout = \Illuminate\Support\Facades\DB::table('billing_checkout_attempts')
+            ->where('id', $attempt)->where('workspace_id', $request->user()->workspace_id)->first();
+        abort_unless($checkout, 404);
+        $workspace = Workspace::findOrFail($checkout->workspace_id);
+        $monthly = in_array($checkout->plan, ['starter', 'creator', 'pro', 'agency'], true);
+        $ready = $checkout->paid_at !== null && (! $monthly || (
+            $workspace->plan_tier === $checkout->plan && $workspace->plan_status === 'active'
+            && $workspace->kelviq_subscription_id
+        ));
+        return response()->json(['data' => ['confirmed' => (bool) $ready]]);
+    }
+
     /**
      * Create a Kelviq checkout session and return the hosted checkout URL.
      * Body: { plan: starter|creator|pro|agency } for a subscription, OR
@@ -155,17 +170,26 @@ class BillingController extends Controller
         // Preserve an earned referral; use the browser only for unassigned workspaces.
         $attribution->attributeWorkspace($workspace, $attribution->fromCookie($request));
         $base    = rtrim((string) config('app.frontend_url'), '/');
+        $attempt = (string) \Illuminate\Support\Str::uuid();
+        $selection = ! empty($validated['pass']) ? 'ugc_pass'
+            : ($validated['lifetime'] ?? $validated['plan'] ?? $validated['topup']);
+        \Illuminate\Support\Facades\DB::table('billing_checkout_attempts')->insert([
+            'id' => $attempt, 'workspace_id' => $workspace->getKey(),
+            'plan' => $selection, 'provider_plan' => $identifier,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $url = $kelviq->createCheckoutSession(
             (int) $workspace->getKey(),
             (string) $identifier,
             $chargePeriod,
-            "{$base}/settings?billing=success",
+            "{$base}/payment/confirm?attempt={$attempt}",
             // Cancelling lands on the plans page, not Settings. Sign-in sends
             // anyone with an unfinished checkout back to Kelviq, so a dead end
             // here would be a loop with no way out — on /plans they can pick a
             // different plan instead.
             "{$base}/plans?billing=cancelled",
             $workspace->affiliate_code,
+            $attempt,
         );
 
         if (! $url) {

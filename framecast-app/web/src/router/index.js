@@ -57,6 +57,7 @@ const routes = [
   { path: '/plans', name: 'plans', component: PlansView, meta: { requiresAuth: true, skipOnboardingGuard: true } },
   // Landing point for "finish checkout" email links. Public so a signed-out
   // click keeps the plan instead of losing it to the login redirect.
+  { path: '/payment/confirm', name: 'payment-confirmation', component: () => import('../views/PaymentConfirmationView.vue'), meta: { public: true } },
   { path: '/continue', name: 'continue-checkout', component: () => import('../views/ContinueCheckoutView.vue'), meta: { public: true } },
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
   { path: '/series', name: 'series', component: SeriesView, meta: { requiresAuth: true } },

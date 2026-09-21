@@ -18,6 +18,7 @@ class AffiliateTrackingFlowTest extends TestCase
     {
         parent::setUp();
         $this->bootAffiliateSchema('affiliate_flow');
+        (require database_path('migrations/2026_09_21_220000_create_billing_checkout_attempts.php'))->up();
         Affiliate::create(['code'=>'partner','name'=>'Partner','status'=>'active','commission_percent'=>50]);
         Http::preventStrayRequests();
         config(['billing.kelviq.server_api_key'=>'test','billing.kelviq.api_base'=>'https://billing.example']);
@@ -109,10 +110,14 @@ class AffiliateTrackingFlowTest extends TestCase
         // above the credit margin floor, so a percentage of one can exceed what
         // the sale earns — at the 50% rate this suite's affiliate carries, a
         // $9/600 pack would be sold at a loss.
+        try {
         app(KelviqService::class)->handleEvent(['id'=>'evt-topup','type'=>'checkout.completed','data'=>['object'=>[
             'id'=>'order-topup','amount'=>9,'metadata'=>['affiliate_code'=>'partner'],
             'plan'=>['identifier'=>'wyvstudio-new-topup-500'],
         ]]]);
+        } catch (\RuntimeException $error) {
+            $this->assertSame('Paid top-up has no matching workspace.', $error->getMessage());
+        }
         $this->assertSame(0,AffiliateConversion::count(),'A credit top-up must not pay affiliate commission');
 
         // Anything that is not a configured top-up still commissions normally.

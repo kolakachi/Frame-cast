@@ -28,6 +28,7 @@ class OnboardingDay0Welcome extends Mailable implements ShouldQueue
         public readonly User $user,
         public readonly ?Workspace $workspace = null,
     ) {
+        $this->afterCommit();
     }
 
     public function envelope(): Envelope

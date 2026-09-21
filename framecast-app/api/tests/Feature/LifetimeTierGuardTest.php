@@ -405,4 +405,90 @@ class LifetimeTierGuardTest extends TestCase
             fn ($mail) => $mail->hasTo('buyer@example.com') && $mail->creditsAdded === 500 && $mail->balanceAfter === 600);
     }
 
+    private function paymentSchema(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        (require database_path('migrations/2026_09_21_220000_create_billing_checkout_attempts.php'))->up();
+        Schema::create('processed_webhook_events', function (Blueprint $t) {
+            $t->id(); $t->string('provider'); $t->string('event_id')->unique();
+            $t->string('type')->nullable(); $t->timestamp('processed_at'); $t->timestamps();
+        });
+    }
+
+    public function test_paid_grant_and_receipt_roll_back_and_can_be_retried(): void
+    {
+        $this->paymentSchema();
+        $ws = $this->ws(['credits_topup' => 100]);
+        config(['billing.kelviq.topup_plans' => ['test-topup' => 500]]);
+        $attempt = (string) \Illuminate\Support\Str::uuid();
+        DB::table('billing_checkout_attempts')->insert(['id' => $attempt, 'workspace_id' => $ws->id,
+            'plan' => 'small', 'provider_plan' => 'test-topup', 'created_at' => now(), 'updated_at' => now()]);
+        $event = ['id' => 'delivery-1', 'type' => 'checkout.completed', 'data' => ['object' => [
+            'id' => 'checkout-1', 'metadata' => ['workspace_id' => $ws->id, 'checkout_attempt_id' => $attempt],
+            'plan' => ['identifier' => 'test-topup'],
+        ]]];
+        DB::statement("CREATE TRIGGER fail_ledger BEFORE INSERT ON credit_ledger BEGIN SELECT RAISE(ABORT, 'ledger unavailable'); END");
+        try {
+            app(KelviqService::class)->handleEvent($event);
+            $this->fail('Ledger failure must fail the payment transaction');
+        } catch (\Illuminate\Database\QueryException $e) {
+            $this->assertStringContainsString('ledger unavailable', $e->getMessage());
+        }
+        $this->assertSame(100, (int) $ws->fresh()->credits_topup);
+        $this->assertSame(0, DB::table('processed_webhook_events')->count());
+        $this->assertNull(DB::table('billing_checkout_attempts')->value('paid_at'));
+        DB::statement('DROP TRIGGER fail_ledger');
+        app(KelviqService::class)->handleEvent($event);
+        $event['id'] = 'delivery-2';
+        app(KelviqService::class)->handleEvent($event);
+        $this->assertSame(600, (int) $ws->fresh()->credits_topup);
+        $this->assertSame(1, DB::table('credit_ledger')->count());
+        $this->assertNotNull(DB::table('billing_checkout_attempts')->value('paid_at'));
+    }
+
+    public function test_confirmation_waits_for_payment_and_monthly_activation_and_is_workspace_scoped(): void
+    {
+        $this->paymentSchema();
+        $ws = $this->ws(['plan_tier' => 'free']);
+        $attempt = (string) \Illuminate\Support\Str::uuid();
+        DB::table('billing_checkout_attempts')->insert(['id' => $attempt, 'workspace_id' => $ws->id,
+            'plan' => 'starter', 'provider_plan' => 'starter-plan', 'created_at' => now(), 'updated_at' => now()]);
+        $request = \Illuminate\Http\Request::create('/confirmation');
+        $request->setUserResolver(fn () => new \App\Models\User(['workspace_id' => $ws->id]));
+        $controller = app(\App\Http\Controllers\Api\V1\Billing\BillingController::class);
+        $confirmed = fn () => $controller->confirmation($request, $attempt)->getData(true)['data']['confirmed'];
+        $this->assertFalse($confirmed());
+        DB::table('billing_checkout_attempts')->where('id', $attempt)->update(['paid_at' => now()]);
+        $this->assertFalse($confirmed(), 'Checkout receipt alone must not race subscription activation');
+        $ws->forceFill(['plan_tier' => 'starter', 'kelviq_subscription_id' => 'sub-paid'])->save();
+        $this->assertTrue($confirmed());
+        $request->setUserResolver(fn () => new \App\Models\User(['workspace_id' => $ws->id + 1]));
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        $controller->confirmation($request, $attempt);
+    }
+
+    public function test_pass_has_exactly_one_ledger_grant_for_its_credit_movement(): void
+    {
+        $this->paymentSchema();
+        $ws = $this->ws(['plan_tier' => 'free', 'credits_topup' => 0]);
+        config(['billing.kelviq.ugc_pass_plan' => 'pass-test', 'billing.kelviq.ugc_pass_credits' => 600]);
+        app(KelviqService::class)->handleEvent(['id' => 'pass-delivery', 'type' => 'checkout.completed', 'data' => ['object' => [
+            'id' => 'pass-checkout', 'metadata' => ['workspace_id' => $ws->id], 'plan' => ['identifier' => 'pass-test'],
+        ]]]);
+        $this->assertSame(600, (int) $ws->fresh()->credits_topup);
+        $this->assertSame(-600, (int) DB::table('credit_ledger')->sum('credits'));
+        $this->assertSame(1, DB::table('credit_ledger')->where('operation', 'grant:ugc_pass')->count());
+    }
+
+    public function test_webhook_failure_returns_retryable_http_status(): void
+    {
+        $service = $this->createMock(KelviqService::class);
+        $service->method('verifyWebhook')->willReturn(true);
+        $service->method('handleEvent')->willThrowException(new \RuntimeException('temporary outage'));
+        $request = \Illuminate\Http\Request::create('/webhook', 'POST', [], [], [], [],
+            json_encode(['id' => 'delivery-failed', 'type' => 'checkout.completed', 'data' => ['object' => []]]));
+        $response = (new \App\Http\Controllers\Api\V1\Billing\KelviqWebhookController($service))($request);
+        $this->assertSame(500, $response->getStatusCode());
+    }
+
 }
