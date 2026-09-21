@@ -3484,16 +3484,25 @@
       @media (max-width: 480px) { .ugcs-grid { grid-template-columns:repeat(2,1fr); gap:12px; } }
       .ugcs-media { position:relative; line-height:0; }
       .ugcs-play { position:absolute; inset:0; width:100%; border:0; padding:0; margin:0; cursor:pointer;
-        display:flex; align-items:center; justify-content:center; background:rgba(15,12,10,.16); transition:background .15s ease; }
-      .ugcs-play:hover { background:rgba(15,12,10,.28); }
-      .ugcs-play > span { width:58px; height:58px; border-radius:50%; background:var(--accent);
-        box-shadow:0 4px 14px rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; transition:transform .15s ease; }
-      .ugcs-play:hover > span { transform:scale(1.07); }
-      .ugcs-play > span::after { content:""; margin-left:5px; border-style:solid; border-width:10px 0 10px 17px;
-        border-color:transparent transparent transparent #fff; }
+        display:flex; align-items:center; justify-content:center; background:rgba(15,12,10,.18); transition:background .2s ease; }
+      .ugcs-play:hover { background:rgba(15,12,10,.26); }
+      .ugcs-media.playing .ugcs-play { background:transparent; }
+      .ugcs-media.playing .ugcs-play:hover { background:rgba(15,12,10,.10); }
+      .ugcs-btn { width:62px; height:62px; border-radius:50%; background:var(--accent);
+        box-shadow:0 10px 26px rgba(0,0,0,.38), 0 3px 8px rgba(0,0,0,.28);
+        display:flex; align-items:center; justify-content:center;
+        transition:transform .15s ease, opacity .25s ease, box-shadow .15s ease; }
+      .ugcs-play:hover .ugcs-btn { transform:scale(1.07); box-shadow:0 14px 32px rgba(0,0,0,.42), 0 4px 10px rgba(0,0,0,.3); }
+      .ugcs-btn svg { width:26px; height:26px; fill:#fff; display:block; }
+      .ugcs-btn .ic-play { margin-left:3px; }
+      .ugcs-btn .ic-pause { display:none; }
+      .ugcs-media.playing .ugcs-btn .ic-play { display:none; }
+      .ugcs-media.playing .ugcs-btn .ic-pause { display:block; }
+      .ugcs-media.playing .ugcs-btn { opacity:0; }
+      .ugcs-media.playing .ugcs-play:hover .ugcs-btn { opacity:1; }
       .ugcs-hint { position:absolute; bottom:8px; right:8px; font-size:11px; font-weight:600; color:#fff;
         background:rgba(0,0,0,.55); padding:3px 8px; border-radius:999px; pointer-events:none; }
-      .ugcs-media.playing .ugcs-play, .ugcs-media.playing .ugcs-hint { display:none; }
+      .ugcs-media.playing .ugcs-hint { display:none; }
     </style>
     <section id="ugc-showcase">
       <div class="container">
@@ -3553,8 +3562,11 @@
           var btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'ugcs-play';
-          btn.setAttribute('aria-label', 'Play with sound');
-          btn.innerHTML = '<span></span>';
+          btn.setAttribute('aria-label', 'Play or pause');
+          btn.innerHTML = '<span class="ugcs-btn">'
+            + '<svg class="ic-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'
+            + '<svg class="ic-pause" viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>'
+            + '</span>';
           media.appendChild(btn);
 
           var hint = document.createElement('div');
@@ -3562,17 +3574,28 @@
           hint.textContent = '\uD83D\uDD0A Tap for sound';
           media.appendChild(hint);
 
+          // Custom play/pause only — never enable native controls, so there is
+          // no seek bar, no download menu, no fullscreen. Also block the
+          // right-click download and picture-in-picture.
+          v.controls = false;
+          v.setAttribute('controlsList', 'nodownload noplaybackrate');
+          v.setAttribute('disablePictureInPicture', '');
+          v.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
           btn.addEventListener('click', function () {
-            vids.forEach(function (o) {
-              if (o !== v) { o.pause(); o.muted = true; o.controls = false;
-                var m = o.closest('.ugcs-media'); if (m) m.classList.remove('playing'); }
-            });
-            v.muted = false; v.controls = true;
-            media.classList.add('playing');
-            v.play().catch(function () {});
+            if (v.paused) {
+              vids.forEach(function (o) {
+                if (o !== v) { o.pause(); o.muted = true; var m = o.closest('.ugcs-media'); if (m) m.classList.remove('playing'); }
+              });
+              v.muted = false;
+              v.play().catch(function () {});
+            } else {
+              v.pause();
+            }
           });
-          v.addEventListener('pause', function () { if (!v.ended) media.classList.remove('playing'); });
-          v.addEventListener('ended', function () { v.currentTime = 0; v.controls = false; media.classList.remove('playing'); });
+          v.addEventListener('play', function () { media.classList.add('playing'); });
+          v.addEventListener('pause', function () { media.classList.remove('playing'); });
+          v.addEventListener('ended', function () { v.currentTime = 0; media.classList.remove('playing'); });
         });
       })();
     </script>
