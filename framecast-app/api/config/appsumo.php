@@ -46,13 +46,13 @@ return [
     |
     | Pricing (AppSumo LTD):
     |   Tier 1 — Starter — $49  — 4,000 credits — 1 channel  / 1 workspace  / 2 characters
-    |   Tier 2 — Creator — $139 — 12,000 credits — 3 channels / 5 workspaces / 5 characters
+    |   Tier 2 — Creator — $139 — 9,000 credits — 3 channels / 5 workspaces / 5 characters
     |   Tier 3 — Agency  — $299 — 20,000 credits — ∞ channels / ∞ workspaces / 10 characters
     |
     */
     'tiers' => [
         1 => ['plan_tier' => 'appsumo_starter', 'credits' => 4000],
-        2 => ['plan_tier' => 'appsumo_creator', 'credits' => 12000],
+        2 => ['plan_tier' => 'appsumo_creator', 'credits' => 9000],
         3 => ['plan_tier' => 'appsumo_agency',  'credits' => 20000],
     ],
 ];
