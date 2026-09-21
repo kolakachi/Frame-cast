@@ -342,4 +342,42 @@ class LifetimeTierGuardTest extends TestCase
         $reserve->invoke($controller, $ws, 2, 'run-2', 2);
         $this->assertSame(2, \App\Http\Controllers\Api\V1\Ugc\UgcController::passTakesUsed($ws));
     }
+    public function test_failure_release_is_per_project_and_repeat_safe(): void
+    {
+        Schema::create('scenes', function (Blueprint $t) { $t->id(); });
+        $w = $this->ws(['plan_tier' => 'ugc_pass', 'credits_topup' => 600]);
+        $controller = app(\App\Http\Controllers\Api\V1\Ugc\UgcController::class);
+        $reserve = new \ReflectionMethod($controller, 'reservePassTake');
+        $service = app(\App\Services\UgcPassTakeService::class);
+        $reserve->invoke($controller, (int) $w->id, 2, 'batch', 2);
+        $service->attach((int) $w->id, 'batch', 101);
+        $service->attach((int) $w->id, 'batch', 102);
+        $job = new \App\Jobs\GenerateOneShotUgcJob(101, 999, [], 100);
+        $job->failed(new \RuntimeException('provider failed'));
+        $job->failed(new \RuntimeException('same failure delivered again'));
+        $this->assertSame(1, $controller::passTakesUsed((int) $w->id));
+        $this->assertSame(1, DB::table('credit_ledger')->where('operation', 'refund:ugc_pass_take')->count());
+        // A plan change or deleted project cannot prevent release of an existing reservation.
+        $w->forceFill(['plan_tier' => 'starter'])->save();
+        $service->releaseProject(102);
+        $this->assertSame(0, $controller::passTakesUsed((int) $w->id));
+    }
+
+    public function test_request_cleanup_releases_only_its_claims_and_can_retry(): void
+    {
+        $w = $this->ws(['plan_tier' => 'ugc_pass', 'credits_topup' => 600]);
+        $controller = app(\App\Http\Controllers\Api\V1\Ugc\UgcController::class);
+        $reserve = new \ReflectionMethod($controller, 'reservePassTake');
+        $service = app(\App\Services\UgcPassTakeService::class);
+        $reserve->invoke($controller, (int) $w->id, 2, 'retry');
+        $reserve->invoke($controller, (int) $w->id, 2, 'other');
+        $service->releaseRequest((int) $w->id, 'retry');
+        $service->releaseRequest((int) $w->id, 'retry');
+        $this->assertSame(1, $controller::passTakesUsed((int) $w->id));
+        $reserve->invoke($controller, (int) $w->id, 2, 'retry');
+        $service->attach((int) $w->id, 'retry', 103);
+        $service->releaseProject(103);
+        $this->assertSame(1, $controller::passTakesUsed((int) $w->id));
+    }
+
 }

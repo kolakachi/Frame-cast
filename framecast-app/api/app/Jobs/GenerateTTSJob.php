@@ -62,6 +62,7 @@ class GenerateTTSJob implements ShouldQueue
                     ['project_id' => $project->getKey(), 'limit_context' => $ctx],
                 );
             }
+            app(\App\Services\UgcPassTakeService::class)->releaseProject($this->projectId);
             $this->markVoiceError($project, "Voice limit reached for the current workspace plan.");
             GenerationProgressed::dispatch($this->projectId, 'tts', 'failed', 'Voice limit reached for the current workspace plan.', $this->progressMeta());
             app(CruiseActionRunService::class)->markStageFailed(
@@ -340,6 +341,8 @@ class GenerateTTSJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        app(\App\Services\UgcPassTakeService::class)->releaseProject($this->projectId);
+
         $this->recordFailureTrace($exception, 'project', $this->projectId, null, $this->projectId);
 
         if ($this->shouldFinalizeProject) {

@@ -137,7 +137,7 @@ class UgcController extends Controller
      *
      * Marker rows carry zero credits; the charge itself is separate. Both the
      * one-shot and multi-scene lanes claim here, so neither is a way around the
-     * other. A take that fails refunds itself and lands `refund:ugc_oneshot`,
+     * other. A take that fails releases its reservation with `refund:ugc_pass_take`,
      * which is netted off so a generation that never delivered costs nothing.
      */
     private function reservePassTake(int $workspaceId, int $cap, string $requestId, int $count = 1): void
@@ -541,6 +541,17 @@ class UgcController extends Controller
                 ];
             }
 
+            if (app(CreditService::class)->planTier((int) $user->workspace_id) === 'ugc_pass') {
+                foreach ($plans as $index => $plan) {
+                    if (array_sum(array_column($plan['segments'], 'seconds')) > 15) {
+                        throw ValidationException::withMessages([
+                            $index === 0 ? 'segments' : 'variants.'.($index - 1).'.segments' =>
+                                'Every Test Pass take must be 15 seconds or shorter.',
+                        ]);
+                    }
+                }
+            }
+
             // Validate and resolve assets across EVERY plan, including extra openings.
             $assets = [];
             foreach ($plans as $planIndex => $plan) {
@@ -567,7 +578,7 @@ class UgcController extends Controller
                 $this->reservePassTake(
                     (int) $user->workspace_id,
                     (int) (app(CreditService::class)->limitFor((int) $user->workspace_id, 'ugc_takes_month') ?? 2),
-                    (string) ($v['request_id'] ?? Str::uuid()),
+                    $requestId,
                     max(1, (int) $takes),
                 );
             }
@@ -577,7 +588,7 @@ class UgcController extends Controller
             // credits alone bound nothing on that path.
             $capService = app(CreditService::class);
             $monthlyCap = $capService->limitFor((int) $user->workspace_id, 'ugc_takes_month');
-            if ($monthlyCap !== null) {
+            if ($monthlyCap !== null && $capService->planTier((int) $user->workspace_id) !== 'ugc_pass') {
                 $usedThisMonth = Project::query()
                     ->where('workspace_id', $user->workspace_id)
                     ->whereNotNull('visual_brief->ugc_format')
@@ -619,11 +630,11 @@ class UgcController extends Controller
             // follow the whole batch with a single query.
             $runId = (string) Str::uuid();
             // All characters/scene records commit together. No job can see a half-built batch.
-            $projects = DB::transaction(function () use ($user, $characters, $plans, $v, $assets, $runId) {
+            $projects = DB::transaction(function () use ($user, $characters, $plans, $v, $assets, $runId, $requestId) {
                 $built = [];
                 foreach ($plans as $plan) {
                     foreach ($characters->isEmpty() ? [null] : $characters->all() as $character) {
-                        $built[] = $this->buildProject($user, $character, $plan['segments'], $v, $assets, $plan['label'], $runId);
+                        $built[] = $this->buildProject($user, $character, $plan['segments'], $v, $assets, $plan['label'], $runId, $requestId);
                     }
                 }
 
@@ -1212,6 +1223,9 @@ class UgcController extends Controller
                 'generation_started_at' => now()->toIso8601String(),
             ],
         ]);
+        if ($isTestPass) {
+            app(\App\Services\UgcPassTakeService::class)->attach((int) $user->workspace_id, $requestId, (int) $project->id);
+        }
         \App\Jobs\GenerateOneShotUgcJob::dispatch(
             $project->id, $scene->id,
             array_map(fn ($c) => ['prompt' => $c['prompt'], 'seconds' => $c['seconds']], $chunks),
@@ -1235,7 +1249,10 @@ class UgcController extends Controller
 
             return response()->json($payload, 201);
         } catch (\Throwable $e) {
-            // Nothing started — release the claim so the same request can retry.
+            // Release only this request's reservations, once, before allowing a retry.
+            if ($isTestPass) {
+                app(\App\Services\UgcPassTakeService::class)->releaseRequest((int) $user->workspace_id, $requestId);
+            }
             DB::table('ugc_run_requests')->where('workspace_id', $user->workspace_id)
                 ->where('request_id', $requestId)->delete();
             throw $e;
@@ -1262,7 +1279,7 @@ class UgcController extends Controller
         ];
     }
 
-    private function buildProject(User $user, ?Character $character, array $segments, array $v, array $assets, string $variantLabel = '', ?string $runId = null): array
+    private function buildProject(User $user, ?Character $character, array $segments, array $v, array $assets, string $variantLabel = '', ?string $runId = null, ?string $requestId = null): array
     {
         $reaction = $v['format'] === 'reaction';
         $script = UgcPlan::script($segments);
@@ -1291,6 +1308,9 @@ class UgcController extends Controller
                 'ugc_run_id' => $runId,
             ],
         ]);
+        if ($requestId !== null && app(CreditService::class)->planTier((int) $user->workspace_id) === 'ugc_pass') {
+            app(\App\Services\UgcPassTakeService::class)->attach((int) $user->workspace_id, $requestId, (int) $project->id);
+        }
         // Per character first, then a run-wide key for the single-character
         // case, then the character's own gender. Picking a female voice for a
         // male presenter is visible on the lip-sync, so the gender default is

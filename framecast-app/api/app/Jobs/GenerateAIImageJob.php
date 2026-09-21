@@ -117,6 +117,7 @@ class GenerateAIImageJob implements ShouldQueue
                         ],
                     ),
                 ])->save();
+                app(\App\Services\UgcPassTakeService::class)->releaseProject($this->projectId);
                 GenerationProgressed::dispatch($this->projectId, 'ai_image', 'failed', 'Not enough credits to generate this image.', ['scene_id' => $this->sceneId]);
                 app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'ai_image', 'Not enough credits to generate this image.', $this->sceneId);
 
@@ -145,6 +146,7 @@ class GenerateAIImageJob implements ShouldQueue
                         'generation_token' => $this->generationToken,
                     ]),
                 ])->save();
+                app(\App\Services\UgcPassTakeService::class)->releaseProject($this->projectId);
                 GenerationProgressed::dispatch($this->projectId, 'ai_image', 'failed', $safetyBlock, ['scene_id' => $this->sceneId]);
                 app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'ai_image', $safetyBlock, $this->sceneId);
 
@@ -569,6 +571,7 @@ class GenerateAIImageJob implements ShouldQueue
                 ),
             ])->save();
 
+            app(\App\Services\UgcPassTakeService::class)->releaseProject($this->projectId);
             GenerationProgressed::dispatch($this->projectId, 'ai_image', 'failed', $e->getMessage(), [
                 'scene_id' => $this->sceneId,
             ]);
@@ -578,6 +581,8 @@ class GenerateAIImageJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        app(\App\Services\UgcPassTakeService::class)->releaseProject($this->projectId);
+
         $this->recordFailureTrace($exception, 'scene', $this->sceneId, null, $this->projectId);
 
         // Clear the in_progress lock so the scene isn't permanently stuck after a crash/timeout.

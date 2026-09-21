@@ -365,4 +365,85 @@ class UgcExecutionTest extends TestCase
 
         Bus::assertDispatched(GenerateAIImageJob::class, fn ($job) => $job->referenceAssetIds === []);
     }
+    public function test_pass_rejects_an_overlength_variant_before_reserving(): void
+    {
+        $credits = $this->createMock(CreditService::class);
+        $credits->method('planTier')->willReturn('ugc_pass');
+        $credits->method('limitFor')->willReturnCallback(fn ($id, $key) => in_array($key, ['ugc_ads', 'custom_characters'], true) ? true : 2);
+        $this->app->instance(CreditService::class, $credits);
+        try {
+            (new UgcController)->generate($this->request([$this->shot()], 'direct_camera', [
+                'variants' => [['label' => 'Too long', 'segments' => [$this->shot(['seconds' => 20])]]],
+            ]));
+            $this->fail('The variant must obey the same duration limit as the main take');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('variants.0.segments', $e->errors());
+            $this->assertSame(0, Project::count());
+        }
+    }
+
+    public function test_pass_multiscene_replacement_uses_reservations_not_monthly_projects(): void
+    {
+        Schema::create('credit_ledger', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('workspace_id'); $t->unsignedBigInteger('project_id')->nullable();
+            $t->string('operation'); $t->integer('credits'); $t->integer('balance_after');
+            $t->json('metadata')->nullable(); $t->timestamps();
+        });
+        $credits = $this->createMock(CreditService::class);
+        $credits->method('planTier')->willReturn('ugc_pass');
+        $credits->method('balance')->willReturn(600);
+        $credits->method('limitFor')->willReturnCallback(fn ($id, $key) => in_array($key, ['ugc_ads', 'custom_characters'], true) ? true : 2);
+        $this->app->instance(CreditService::class, $credits);
+        $controller = new UgcController;
+        $shot = $this->shot(['kind' => 'b_roll', 'source' => 'generate', 'script_text' => '']);
+        $request = $this->request([$shot], 'demo', [
+            'character_ids' => [1], 'request_id' => (string) \Illuminate\Support\Str::uuid(),
+            'variants' => [['label' => 'Second', 'segments' => [$shot]]],
+        ]);
+        $this->assertSame(201, $controller->generate($request)->status());
+        $this->assertSame(2, $controller::passTakesUsed(1));
+        $this->assertSame(2, DB::table('credit_ledger')->whereNotNull('project_id')->count());
+        $this->assertSame(200, $controller->generate($request)->status());
+        $this->assertSame(2, $controller::passTakesUsed(1));
+        app(\App\Services\UgcPassTakeService::class)->releaseProject((int) Project::first()->id);
+        $replacement = $this->request([$shot], 'demo', [
+            'character_ids' => [1], 'request_id' => (string) \Illuminate\Support\Str::uuid(),
+        ]);
+        $this->assertSame(201, $controller->generate($replacement)->status());
+        $this->assertSame(3, Project::count());
+        $this->assertSame(2, $controller::passTakesUsed(1));
+    }
+
+    public function test_one_shot_creation_failure_returns_the_reserved_take(): void
+    {
+        Schema::create('credit_ledger', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('workspace_id'); $t->unsignedBigInteger('project_id')->nullable();
+            $t->string('operation'); $t->integer('credits'); $t->integer('balance_after');
+            $t->json('metadata')->nullable(); $t->timestamps();
+        });
+        Schema::create('client_profiles', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('workspace_id'); $t->text('brief')->nullable();
+        });
+        $credits = $this->createMock(CreditService::class);
+        $credits->method('planTier')->willReturn('ugc_pass');
+        $credits->method('balance')->willReturn(600);
+        $credits->method('limitFor')->willReturnCallback(fn ($id, $key) => $key === 'ugc_ads' ? true : 2);
+        $this->app->instance(CreditService::class, $credits);
+        $request = $this->request([$this->shot()], 'direct_camera', [
+            'request_id' => (string) \Illuminate\Support\Str::uuid(),
+            'credits' => 5 * CreditService::VIDEO_ONESHOT_PER_SECOND['seedance25'],
+        ]);
+        Schema::drop('projects'); // Inject a database failure after reservation, before dispatch.
+        try {
+            (new UgcController)->generateOneShot($request, $credits);
+            $this->fail('Expected the injected project insert failure');
+        } catch (\Illuminate\Database\QueryException $e) {
+            $this->assertStringContainsString('projects', $e->getMessage());
+        }
+        $this->assertSame(1, DB::table('credit_ledger')->where('operation', 'ugc_pass_take')->count());
+        $this->assertSame(0, UgcController::passTakesUsed(1));
+        $this->assertSame(0, DB::table('ugc_run_requests')->count());
+        Bus::assertNothingDispatched();
+    }
+
 }

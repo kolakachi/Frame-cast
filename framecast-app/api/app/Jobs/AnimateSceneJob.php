@@ -344,6 +344,8 @@ class AnimateSceneJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        app(\App\Services\UgcPassTakeService::class)->releaseProject($this->projectId);
+
         $this->recordFailureTrace($exception, 'scene', $this->sceneId, null, $this->projectId);
         // Covers the paths the catch block can't: retries exhausted, timeout,
         // worker killed. Without it a shared batch leaves scenes stuck

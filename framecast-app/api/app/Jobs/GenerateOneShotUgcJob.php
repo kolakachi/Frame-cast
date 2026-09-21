@@ -220,30 +220,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
      */
     private function releasePassTake(): void
     {
-        $project = Project::query()->find($this->projectId);
-        if (! $project) {
-            return;
-        }
-
-        $workspaceId = (int) $project->workspace_id;
-        if (app(CreditService::class)->planTier($workspaceId) !== 'ugc_pass') {
-            return;
-        }
-
-        // Never release more than was reserved — a retried job must not mint
-        // allowance out of repeated failures.
-        if (\App\Http\Controllers\Api\V1\Ugc\UgcController::passTakesUsed($workspaceId) < 1) {
-            return;
-        }
-
-        \App\Models\CreditLedgerEntry::query()->create([
-            'workspace_id'  => $workspaceId,
-            'project_id'    => $this->projectId,
-            'operation'     => 'refund:ugc_pass_take',
-            'credits'       => 0,
-            'balance_after' => app(CreditService::class)->balance($workspaceId),
-            'metadata'      => ['reason' => 'ugc_pass_take_released', 'project_id' => $this->projectId],
-        ]);
+        app(\App\Services\UgcPassTakeService::class)->releaseProject($this->projectId);
     }
 
     /**
