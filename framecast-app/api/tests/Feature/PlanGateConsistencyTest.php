@@ -26,6 +26,11 @@ class PlanGateConsistencyTest extends TestCase
                 $t->timestamp('completed_at')->nullable(); $t->timestamps();
             });
         }
+        // Voice minutes are metered from the audio TTS actually produced.
+        Schema::create('assets', function (Blueprint $t) {
+            $t->id(); $t->integer('workspace_id')->nullable(); $t->string('asset_type')->nullable();
+            $t->json('tags')->nullable(); $t->float('duration_seconds')->nullable(); $t->timestamps();
+        });
     }
     private function user(string $tier): User
     {
@@ -60,13 +65,14 @@ class PlanGateConsistencyTest extends TestCase
         for ($i = 0; $i < 50; $i++) {
             DB::table('export_jobs')->insert(['project_id' => 1, 'status' => 'completed', 'completed_at' => now()->subMonth()->startOfMonth()]);
         }
-        DB::table('scenes')->insert(['project_id' => 1, 'duration_seconds' => 6000, 'created_at' => now()->subMonth()->startOfMonth()]);
+        DB::table('assets')->insert(['workspace_id' => 1, 'asset_type' => 'audio', 'tags' => json_encode(['tts', 'openai']),
+            'duration_seconds' => 6000, 'created_at' => now()->subMonth()->startOfMonth(), 'updated_at' => now()->subMonth()->startOfMonth()]);
         $service = new WorkspaceUsageService; $user = $this->user('starter');
         $this->assertFalse($service->hasReachedExportLimit($user));
         $this->assertSame(50, $service->exportsRemaining($user));
         $this->assertFalse($service->hasReachedVoiceLimit($user));
         DB::table('export_jobs')->update(['completed_at' => now()]);
-        DB::table('scenes')->update(['created_at' => now()]);
+        DB::table('assets')->update(['created_at' => now()]);
         $this->assertTrue($service->hasReachedExportLimit($user));
         $this->assertTrue($service->hasReachedVoiceLimit($user));
     }
@@ -76,5 +82,30 @@ class PlanGateConsistencyTest extends TestCase
         $credits->method('limitFor')->willReturn(true);
         $this->app->instance(CreditService::class, $credits);
         $this->assertFalse((new WorkspaceUsageService)->hasExceededApiBudget($this->user('starter')));
+    }
+
+    public function test_voice_minutes_meter_reads_synthesised_audio_not_scene_length(): void
+    {
+        DB::table('projects')->insert(['id' => 1, 'workspace_id' => 1]);
+        // A scene long enough to blow the Starter allowance on its own — but
+        // its speech was generated inside the video (a UGC one-shot take), so
+        // no TTS ran and none of it is voice usage.
+        DB::table('scenes')->insert(['project_id' => 1, 'duration_seconds' => 9000, 'created_at' => now()]);
+        $service = new WorkspaceUsageService; $user = $this->user('starter');
+        $this->assertFalse($service->hasReachedVoiceLimit($user), 'Scene length alone must not consume voice minutes');
+        $this->assertSame(0, $service->voiceLimitContext($user)['used']);
+
+        // Uploaded audio is not voice synthesis either.
+        DB::table('assets')->insert(['workspace_id' => 1, 'asset_type' => 'audio', 'tags' => json_encode(['upload']),
+            'duration_seconds' => 9000, 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertFalse($service->hasReachedVoiceLimit($user), 'Only tts-tagged audio counts');
+
+        // Re-synthesising the same scene bills the provider twice, and now counts twice.
+        foreach ([3000, 3100] as $d) {
+            DB::table('assets')->insert(['workspace_id' => 1, 'asset_type' => 'audio', 'tags' => json_encode(['tts', 'openai']),
+                'duration_seconds' => $d, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $this->assertSame(102, $service->voiceLimitContext($user)['used']);
+        $this->assertTrue($service->hasReachedVoiceLimit($user));
     }
 }

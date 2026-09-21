@@ -212,14 +212,36 @@ class WorkspaceUsageService
     /**
      * @return array<string, mixed>
      */
+    /**
+     * Voice seconds actually synthesised for a workspace this month.
+     *
+     * Reads the audio TTS produced, not the length of the scenes that asked
+     * for it. Scene duration was only ever a proxy and it drifted both ways:
+     * re-synthesising a scene after a script edit bills the provider again but
+     * left the count unchanged (38-107% under-counted across live workspaces),
+     * while a scene with voice switched off still contributed its full length
+     * — which is every UGC one-shot take, whose speech is generated inside the
+     * video and uses no TTS at all.
+     *
+     * Scoped by the 'tts' tag so uploaded audio, music and SFX stay out of a
+     * voice allowance, and dated by when the audio was made rather than when
+     * its scene was created.
+     */
+    private function voiceSecondsThisMonth(int $workspaceId): float
+    {
+        return (float) Asset::query()
+            ->where('workspace_id', $workspaceId)
+            ->where('asset_type', 'audio')
+            ->whereJsonContains('tags', 'tts')
+            ->where('created_at', '>=', now()->startOfMonth())
+            ->sum('duration_seconds');
+    }
+
     private function buildSummary(int $workspaceId, string $planTier): array
     {
         $plan = self::plans()[$planTier] ?? self::plans()['free'];
 
-        $voiceSeconds = (float) Scene::query()
-            ->whereHas('project', fn ($query) => $query->where('workspace_id', $workspaceId))
-            ->where('created_at', '>=', now()->startOfMonth())
-            ->sum('duration_seconds');
+        $voiceSeconds = $this->voiceSecondsThisMonth($workspaceId);
 
         $dubLanguagesUsed = Project::query()
             ->where('workspace_id', $workspaceId)
@@ -382,10 +404,7 @@ class WorkspaceUsageService
         $planTier = (string) ($user->workspace?->plan_tier ?: 'free');
         $plan = self::plans()[$planTier] ?? self::plans()['free'];
 
-        $voiceSeconds = (float) Scene::query()
-            ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id))
-            ->where('created_at', '>=', now()->startOfMonth())
-            ->sum('duration_seconds');
+        $voiceSeconds = $this->voiceSecondsThisMonth((int) $user->workspace_id);
 
         return (int) ceil($voiceSeconds / 60) >= (int) $plan['voice_minutes_limit'];
     }
@@ -398,10 +417,7 @@ class WorkspaceUsageService
         $planTier = (string) ($user->workspace?->plan_tier ?: 'free');
         $plan = self::plans()[$planTier] ?? self::plans()['free'];
 
-        $voiceSeconds = (float) Scene::query()
-            ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id))
-            ->where('created_at', '>=', now()->startOfMonth())
-            ->sum('duration_seconds');
+        $voiceSeconds = $this->voiceSecondsThisMonth((int) $user->workspace_id);
 
         return [
             'plan' => (string) $plan['name'],
