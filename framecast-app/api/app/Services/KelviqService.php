@@ -365,6 +365,16 @@ class KelviqService
      */
     private function recordAffiliateConversion(array $object, ?string $planId): void
     {
+        // Commission rewards a PLAN sale, never a credit top-up. Top-ups are
+        // priced a hair above the credit margin floor, so a percentage of one
+        // can exceed what the sale earns: at the 50% rate we actually pay, a
+        // $8/500 pack nets ~$0.30 against ~$3.50 of provider cost — underwater
+        // by construction. Affiliates are paid when their referral buys a plan,
+        // which is both the real sale and the high-margin one.
+        if ($planId !== null && array_key_exists($planId, (array) config('billing.kelviq.topup_plans', []))) {
+            return;
+        }
+
         $attribution = app(\App\Services\Affiliate\AffiliateAttribution::class);
 
         $metadata = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];

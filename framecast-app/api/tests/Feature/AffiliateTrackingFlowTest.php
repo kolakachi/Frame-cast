@@ -95,4 +95,32 @@ class AffiliateTrackingFlowTest extends TestCase
         $this->assertSame(1,AffiliateConversion::count());
         $this->assertSame('order-paid',AffiliateConversion::first()->order_id);
     }
+
+    public function test_credit_topups_pay_no_commission_but_other_sales_still_do(): void
+    {
+        if (! Schema::hasTable('processed_webhook_events')) {
+            Schema::create('processed_webhook_events', function(Blueprint $t) {
+                $t->id();$t->string('provider');$t->string('event_id')->unique();$t->string('type')->nullable();$t->timestamp('processed_at');$t->timestamps();
+            });
+        }
+        config(['billing.kelviq.topup_plans'=>['wyvstudio-new-topup-500'=>500]]);
+
+        // A credit top-up must never create a commission. Top-ups sit a hair
+        // above the credit margin floor, so a percentage of one can exceed what
+        // the sale earns — at the 50% rate this suite's affiliate carries, a
+        // $9/600 pack would be sold at a loss.
+        app(KelviqService::class)->handleEvent(['id'=>'evt-topup','type'=>'checkout.completed','data'=>['object'=>[
+            'id'=>'order-topup','amount'=>9,'metadata'=>['affiliate_code'=>'partner'],
+            'plan'=>['identifier'=>'wyvstudio-new-topup-500'],
+        ]]]);
+        $this->assertSame(0,AffiliateConversion::count(),'A credit top-up must not pay affiliate commission');
+
+        // Anything that is not a configured top-up still commissions normally.
+        app(KelviqService::class)->handleEvent(['id'=>'evt-plan','type'=>'checkout.completed','data'=>['object'=>[
+            'id'=>'order-plan','amount'=>89,'metadata'=>['affiliate_code'=>'partner'],
+            'plan'=>['identifier'=>'wyvstudio-subscription-x'],
+        ]]]);
+        $this->assertSame(1,AffiliateConversion::count());
+        $this->assertSame('order-plan',AffiliateConversion::first()->order_id);
+    }
 }
