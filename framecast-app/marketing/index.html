@@ -3482,6 +3482,18 @@
         padding:13px 26px; border-radius:10px; text-decoration:none; }
       @media (max-width: 820px) { .ugcs-grid { grid-template-columns:repeat(2,1fr); } .ugcs-wide { grid-template-columns:1fr; } }
       @media (max-width: 480px) { .ugcs-grid { grid-template-columns:repeat(2,1fr); gap:12px; } }
+      .ugcs-media { position:relative; line-height:0; }
+      .ugcs-play { position:absolute; inset:0; width:100%; border:0; padding:0; margin:0; cursor:pointer;
+        display:flex; align-items:center; justify-content:center; background:rgba(15,12,10,.16); transition:background .15s ease; }
+      .ugcs-play:hover { background:rgba(15,12,10,.28); }
+      .ugcs-play > span { width:58px; height:58px; border-radius:50%; background:rgba(0,0,0,.6);
+        box-shadow:0 4px 14px rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; transition:transform .15s ease; }
+      .ugcs-play:hover > span { transform:scale(1.07); }
+      .ugcs-play > span::after { content:""; margin-left:5px; border-style:solid; border-width:10px 0 10px 17px;
+        border-color:transparent transparent transparent #fff; }
+      .ugcs-hint { position:absolute; bottom:8px; right:8px; font-size:11px; font-weight:600; color:#fff;
+        background:rgba(0,0,0,.55); padding:3px 8px; border-radius:999px; pointer-events:none; }
+      .ugcs-media.playing .ugcs-play, .ugcs-media.playing .ugcs-hint { display:none; }
     </style>
     <section id="ugc-showcase">
       <div class="container">
@@ -3529,6 +3541,45 @@
         <div class="ugcs-cta"><a href="https://app.wyvstudio.com/ugc-ads/new">Make your first UGC ad →</a></div>
       </div>
     </section>
+    <script>
+      (function () {
+        var vids = document.querySelectorAll('#ugc-showcase video');
+        vids.forEach(function (v) {
+          var media = document.createElement('div');
+          media.className = 'ugcs-media';
+          v.parentNode.insertBefore(media, v);
+          media.appendChild(v);
+
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'ugcs-play';
+          btn.setAttribute('aria-label', 'Play with sound');
+          btn.innerHTML = '<span></span>';
+          media.appendChild(btn);
+
+          var hint = document.createElement('div');
+          hint.className = 'ugcs-hint';
+          hint.textContent = '\uD83D\uDD0A Tap for sound';
+          media.appendChild(hint);
+
+          function preview(o) {
+            var m = o.closest('.ugcs-media');
+            o.controls = false; o.muted = true; o.loop = true;
+            if (m) m.classList.remove('playing');
+            o.play().catch(function () {});
+          }
+          function playWithSound() {
+            vids.forEach(function (o) { if (o !== v) preview(o); });
+            v.muted = false; v.loop = false; v.controls = true; v.currentTime = 0;
+            media.classList.add('playing');
+            v.play().catch(function () {});
+          }
+          btn.addEventListener('click', playWithSound);
+          v.addEventListener('pause', function () { if (!v.ended && !v.muted) media.classList.remove('playing'); });
+          v.addEventListener('ended', function () { preview(v); });
+        });
+      })();
+    </script>
 
     <!-- ── FEATURES ── -->
     <section id="features" style="padding:100px 24px">
