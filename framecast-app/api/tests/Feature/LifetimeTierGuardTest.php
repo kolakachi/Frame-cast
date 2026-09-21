@@ -287,4 +287,59 @@ class LifetimeTierGuardTest extends TestCase
         $this->assertSame('lifetime_starter', $w->fresh()->plan_tier, 'a pass never writes a paying customer down');
         $this->assertSame(1600, (int) $w->fresh()->credits_topup, 'and never swallows the bucket they already paid for');
     }
+
+    // ── Test Pass take allowance ────────────────────────────────────
+
+    public function test_a_pass_take_is_reserved_capped_and_returned_on_failure(): void
+    {
+        $w = $this->ws(['plan_tier' => 'ugc_pass', 'plan_source' => 'ugc_pass', 'credits_topup' => 600]);
+        $ws = (int) $w->getKey();
+        $controller = app(\App\Http\Controllers\Api\V1\Ugc\UgcController::class);
+        $reserve = new \ReflectionMethod(\App\Http\Controllers\Api\V1\Ugc\UgcController::class, 'reservePassTake');
+        $reserve->setAccessible(true);
+
+        $reserve->invoke($controller, $ws, 2, 'req-1');
+        $reserve->invoke($controller, $ws, 2, 'req-2');
+        $this->assertSame(2, \App\Http\Controllers\Api\V1\Ugc\UgcController::passTakesUsed($ws));
+
+        try {
+            $reserve->invoke($controller, $ws, 2, 'req-3');
+            $this->fail('A third take must be refused once the pass is spent');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertStringContainsString('Test Pass covers', $e->getMessage());
+        }
+
+        // A generation that failed hands its take back — credits are charged
+        // on success only, so losing the allowance too would cost the customer
+        // both attempts for no video.
+        \App\Models\CreditLedgerEntry::query()->create([
+            'workspace_id' => $ws, 'operation' => 'refund:ugc_pass_take',
+            'credits' => 0, 'balance_after' => 600,
+        ]);
+        $this->assertSame(1, \App\Http\Controllers\Api\V1\Ugc\UgcController::passTakesUsed($ws));
+
+        $reserve->invoke($controller, $ws, 2, 'req-3');
+        $this->assertSame(2, \App\Http\Controllers\Api\V1\Ugc\UgcController::passTakesUsed($ws));
+    }
+
+    public function test_one_run_reserves_a_take_for_every_take_it_will_make(): void
+    {
+        // A multi-scene run fans out to plans x cast; reserving one claim let a
+        // single submission produce several takes on a two-take pass.
+        $w = $this->ws(['plan_tier' => 'ugc_pass', 'plan_source' => 'ugc_pass', 'credits_topup' => 600]);
+        $ws = (int) $w->getKey();
+        $controller = app(\App\Http\Controllers\Api\V1\Ugc\UgcController::class);
+        $reserve = new \ReflectionMethod(\App\Http\Controllers\Api\V1\Ugc\UgcController::class, 'reservePassTake');
+        $reserve->setAccessible(true);
+
+        try {
+            $reserve->invoke($controller, $ws, 2, 'run-1', 3);
+            $this->fail('A run making three takes must not fit a two-take pass');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertSame(0, \App\Http\Controllers\Api\V1\Ugc\UgcController::passTakesUsed($ws), 'a refused run claims nothing');
+        }
+
+        $reserve->invoke($controller, $ws, 2, 'run-2', 2);
+        $this->assertSame(2, \App\Http\Controllers\Api\V1\Ugc\UgcController::passTakesUsed($ws));
+    }
 }

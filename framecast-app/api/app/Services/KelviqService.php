@@ -592,7 +592,20 @@ class KelviqService
                 ])->save();
             }
 
-            $this->credits->grant((int) $workspace->getKey(), $credits, 'ugc_pass');
+            // Write the receipt HERE rather than relying on grant()'s own
+            // ledger row, which is wrapped in rescue() and therefore silent on
+            // failure. The receipt is what stops a second grant, so it has to
+            // live or die with the credits it records: inside this
+            // transaction, and fatal if it cannot be written.
+            \App\Models\CreditLedgerEntry::query()->create([
+                'workspace_id'  => $workspace->getKey(),
+                'operation'     => 'grant:ugc_pass',
+                'credits'       => -$credits,
+                'balance_after' => $this->credits->balance((int) $workspace->getKey()) + $credits,
+                'metadata'      => ['reason' => 'ugc_pass'],
+            ]);
+
+            $this->credits->grant((int) $workspace->getKey(), $credits, 'ugc_pass_credits');
 
             return false;
         });

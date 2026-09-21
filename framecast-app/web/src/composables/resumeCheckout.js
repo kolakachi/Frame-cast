@@ -40,10 +40,12 @@ export async function resumePendingCheckout() {
   const MONTHLY = ['starter', 'creator', 'pro', 'agency']
   const TOPUP = ['small', 'medium', 'large', 'xl']
 
-  const body = LIFETIME.includes(plan)
-    ? { lifetime: plan }
-    : MONTHLY.includes(plan)
-      ? { plan }
+  const body = plan === 'ugc_pass'
+    ? { pass: true }
+    : LIFETIME.includes(plan)
+      ? { lifetime: plan }
+      : MONTHLY.includes(plan)
+        ? { plan }
       // A top-up is an add-on, not the thing standing between them and the
       // product — never hold someone at the door over one.
       : TOPUP.includes(plan) ? null : null

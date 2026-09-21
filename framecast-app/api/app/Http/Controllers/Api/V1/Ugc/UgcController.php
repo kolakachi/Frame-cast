@@ -140,30 +140,47 @@ class UgcController extends Controller
      * other. A take that fails refunds itself and lands `refund:ugc_oneshot`,
      * which is netted off so a generation that never delivered costs nothing.
      */
-    private function reservePassTake(int $workspaceId, int $cap): void
+    private function reservePassTake(int $workspaceId, int $cap, string $requestId, int $count = 1): void
     {
-        \Illuminate\Support\Facades\DB::transaction(function () use ($workspaceId, $cap): void {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($workspaceId, $cap, $requestId, $count): void {
             \App\Models\Workspace::query()->whereKey($workspaceId)->lockForUpdate()->first();
 
-            $claimed = \App\Models\CreditLedgerEntry::query()
-                ->where('workspace_id', $workspaceId)->where('operation', 'ugc_pass_take')->count();
-            $refunded = \App\Models\CreditLedgerEntry::query()
-                ->where('workspace_id', $workspaceId)->where('operation', 'refund:ugc_oneshot')->count();
-            $used = max(0, $claimed - $refunded);
-
-            if ($used + 1 > $cap) {
+            $used = self::passTakesUsed($workspaceId);
+            if ($used + $count > $cap) {
                 throw ValidationException::withMessages(['takes' => sprintf(
                     'The UGC Test Pass covers %d takes and you have used %d. Pick a plan to keep going.', $cap, $used)]);
             }
 
-            \App\Models\CreditLedgerEntry::query()->create([
-                'workspace_id'  => $workspaceId,
-                'operation'     => 'ugc_pass_take',
-                'credits'       => 0,
-                'balance_after' => app(CreditService::class)->balance($workspaceId),
-                'metadata'      => ['reason' => 'ugc_pass_take_reserved'],
-            ]);
+            $balance = app(CreditService::class)->balance($workspaceId);
+            for ($i = 0; $i < $count; $i++) {
+                \App\Models\CreditLedgerEntry::query()->create([
+                    'workspace_id'  => $workspaceId,
+                    'operation'     => 'ugc_pass_take',
+                    'credits'       => 0,
+                    'balance_after' => $balance,
+                    // Stamped with the request so a reservation can be traced
+                    // back to the submission that made it, and released again.
+                    'metadata'      => ['reason' => 'ugc_pass_take_reserved', 'request_id' => $requestId],
+                ]);
+            }
         });
+    }
+
+    /**
+     * Takes a pass holder has spent: reservations made, less those released.
+     *
+     * A generation that fails releases its reservation (the job charges only
+     * on success, so there is no refund row to net against — the release is
+     * the record). Shared with the job so the two can never disagree.
+     */
+    public static function passTakesUsed(int $workspaceId): int
+    {
+        $claimed = \App\Models\CreditLedgerEntry::query()
+            ->where('workspace_id', $workspaceId)->where('operation', 'ugc_pass_take')->count();
+        $released = \App\Models\CreditLedgerEntry::query()
+            ->where('workspace_id', $workspaceId)->where('operation', 'refund:ugc_pass_take')->count();
+
+        return max(0, $claimed - $released);
     }
 
     private function ugcGate(Request $request): ?JsonResponse
@@ -489,10 +506,6 @@ class UgcController extends Controller
                     throw ValidationException::withMessages(['segments' =>
                         'The UGC Test Pass makes ads up to 15 seconds. Shorten the plan, or upgrade for longer ads.']);
                 }
-                // Same pool as the one-shot lane: this route counted projects
-                // per month, so it both reset and forgave deletions.
-                $this->reservePassTake((int) $user->workspace_id,
-                    (int) (app(CreditService::class)->limitFor((int) $user->workspace_id, 'ugc_takes_month') ?? 2));
             }
 
             $stillOnly = in_array($v['format'], UgcPlan::STILL_ONLY_FORMATS, true);
@@ -546,6 +559,18 @@ class UgcController extends Controller
 
             $castCount = max(1, $characters->count());
             $takes = count($plans) * $castCount;
+
+            // Test Pass: same pool as the one-shot lane, one claim per take
+            // this run will actually produce. A run fans out to plans x cast,
+            // so a single claim let one submission make several.
+            if (app(CreditService::class)->planTier((int) $user->workspace_id) === 'ugc_pass') {
+                $this->reservePassTake(
+                    (int) $user->workspace_id,
+                    (int) (app(CreditService::class)->limitFor((int) $user->workspace_id, 'ugc_takes_month') ?? 2),
+                    (string) ($v['request_id'] ?? Str::uuid()),
+                    max(1, (int) $takes),
+                );
+            }
 
             // The monthly cap is what bounds the near-free shapes: a text-led take
             // on stock footage quotes zero credits and export is included, so
@@ -1112,9 +1137,7 @@ class UgcController extends Controller
             throw ValidationException::withMessages(['credits' => "This take needs {$quote} credits."]);
         }
         $monthlyCap = $creditService->limitFor((int) $user->workspace_id, 'ugc_takes_month');
-        if ($isTestPass) {
-            $this->reservePassTake((int) $user->workspace_id, (int) ($monthlyCap ?? 2));
-        } elseif ($monthlyCap !== null) {
+        if (! $isTestPass && $monthlyCap !== null) {
             $used = Project::query()->where('workspace_id', $user->workspace_id)
                 ->whereNotNull('visual_brief->ugc_format')->where('created_at', '>=', now()->startOfMonth())->count();
             if ($used + 1 > (int) $monthlyCap) {
@@ -1153,6 +1176,15 @@ class UgcController extends Controller
         }
 
         try {
+            // Claim the take only now, behind the idempotency receipt above: a
+            // retried request replays that receipt and never reaches this line,
+            // so one video can never eat both of a pass holder's takes. If
+            // anything below throws, the catch releases the receipt and this
+            // reservation with it.
+            if ($isTestPass) {
+                $this->reservePassTake((int) $user->workspace_id, (int) ($monthlyCap ?? 2), $requestId);
+            }
+
             $project = Project::query()->create([
             'workspace_id' => $user->workspace_id,
             'created_by_user_id' => $user->id,

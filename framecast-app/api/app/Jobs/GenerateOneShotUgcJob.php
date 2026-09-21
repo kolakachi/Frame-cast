@@ -206,6 +206,44 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 ['in_progress' => false, 'last_error' => mb_substr($e->getMessage(), 0, 300)],
             )])->save();
         });
+
+        $this->releasePassTake();
+    }
+
+    /**
+     * Give a Test Pass holder their take back when the generation failed.
+     *
+     * Credits are charged on success only, so a failure costs none — but the
+     * take was reserved up front, and without this a customer could lose both
+     * attempts and never receive a video. The release is its own ledger row;
+     * the reservation count nets the two.
+     */
+    private function releasePassTake(): void
+    {
+        $project = Project::query()->find($this->projectId);
+        if (! $project) {
+            return;
+        }
+
+        $workspaceId = (int) $project->workspace_id;
+        if (app(CreditService::class)->planTier($workspaceId) !== 'ugc_pass') {
+            return;
+        }
+
+        // Never release more than was reserved — a retried job must not mint
+        // allowance out of repeated failures.
+        if (\App\Http\Controllers\Api\V1\Ugc\UgcController::passTakesUsed($workspaceId) < 1) {
+            return;
+        }
+
+        \App\Models\CreditLedgerEntry::query()->create([
+            'workspace_id'  => $workspaceId,
+            'project_id'    => $this->projectId,
+            'operation'     => 'refund:ugc_pass_take',
+            'credits'       => 0,
+            'balance_after' => app(CreditService::class)->balance($workspaceId),
+            'metadata'      => ['reason' => 'ugc_pass_take_released', 'project_id' => $this->projectId],
+        ]);
     }
 
     /**
