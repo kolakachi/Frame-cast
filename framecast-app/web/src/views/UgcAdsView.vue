@@ -23,11 +23,6 @@ const canUgc = computed(() => workspaceStore.capabilities?.ugc_ads !== false);
 // Offering the rest and failing at submit wastes the one thing they bought.
 const isTestPass = computed(() => workspaceStore.workspace?.plan_tier === "ugc_pass");
 const passCredits = computed(() => workspaceStore.usage?.credits_balance ?? null);
-watch(isTestPass, (on) => {
-  // The default is 30s; a pass holder would otherwise build a plan the server
-  // refuses at the last step.
-  if (on) { duration.value = 15; castEngine.value = "seedance"; }
-}, { immediate: true });
 
 // ── Wizard ──────────────────────────────────────────────────────────────
 // Three screens, per the wyvstudio-ugc-html mockups: say what you're making,
@@ -249,6 +244,14 @@ const selected = ref([]); // chosen characters
 // scene (google/veo-3.1, face in reference_images, 58 cr/s); Seedance
 // invents a fitting presenter with no character (castless, 33 cr/s).
 const castEngine = ref("seedance"); // 'veo' | 'seedance'
+
+// Placed below duration and castEngine on purpose: an immediate watcher that
+// reads them from further up the file runs before their `const` is
+// initialised, which threw and took the whole page down for the very buyers
+// it was meant to help.
+watch(isTestPass, (on) => {
+  if (on) { duration.value = 15; castEngine.value = "seedance"; }
+}, { immediate: true });
 // Seedance draft renders at 480p for half the credits — a cheap preview
 // pass before committing to a full 720p take.
 const draftQuality = ref(false);

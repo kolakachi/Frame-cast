@@ -30,11 +30,13 @@ async function resumeStashedPlan() {
   }
   if (!plan) return false
 
-  const body = LIFETIME_PLANS.includes(plan)
-    ? { lifetime: plan }
-    : MONTHLY_PLANS.includes(plan)
-      ? { plan }
-      : null
+  const body = plan === 'ugc_pass'
+    ? { pass: true }
+    : LIFETIME_PLANS.includes(plan)
+      ? { lifetime: plan }
+      : MONTHLY_PLANS.includes(plan)
+        ? { plan }
+        : null
   if (!body) return false
 
   try {

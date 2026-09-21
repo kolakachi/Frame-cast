@@ -27,8 +27,8 @@ const MONTHLY = ['starter', 'creator', 'pro', 'agency']
 const state = ref('working') // 'working' | 'failed'
 
 onMounted(async () => {
-  const plan = String(route.query.plan ?? '')
-  const known = LIFETIME.includes(plan) || MONTHLY.includes(plan)
+  const plan = route.query.pass ? 'ugc_pass' : String(route.query.plan ?? '')
+  const known = plan === 'ugc_pass' || LIFETIME.includes(plan) || MONTHLY.includes(plan)
 
   if (known) {
     try {

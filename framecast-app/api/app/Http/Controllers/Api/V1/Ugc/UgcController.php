@@ -127,21 +127,43 @@ class UgcController extends Controller
     // entry points (plan) and the spend points (generate) so a Free user can
     // never reach a take, whatever path they take.
     /**
-     * Takes a Test Pass holder has actually paid for, from the credit ledger.
+     * Claim one of a Test Pass holder's takes, or refuse.
      *
-     * Charges land as `ugc_oneshot`; a generation that fails refunds itself
-     * and lands `refund:ugc_oneshot`. Netting the two means a take that never
-     * delivered costs neither credits nor allowance, and neither deleting the
-     * project nor crossing into a new month hands the allowance back.
+     * A *reservation*, not a count taken after the fact: the row is written
+     * before the take is dispatched, under a lock, so two submissions racing
+     * each other cannot both find room. Counting completed charges left that
+     * window open — and counting projects left two others, since a project can
+     * be deleted (handing the allowance back) and a month boundary reissued it.
+     *
+     * Marker rows carry zero credits; the charge itself is separate. Both the
+     * one-shot and multi-scene lanes claim here, so neither is a way around the
+     * other. A take that fails refunds itself and lands `refund:ugc_oneshot`,
+     * which is netted off so a generation that never delivered costs nothing.
      */
-    private function passTakesUsed(int $workspaceId): int
+    private function reservePassTake(int $workspaceId, int $cap): void
     {
-        $charged = \App\Models\CreditLedgerEntry::query()
-            ->where('workspace_id', $workspaceId)->where('operation', 'ugc_oneshot')->count();
-        $refunded = \App\Models\CreditLedgerEntry::query()
-            ->where('workspace_id', $workspaceId)->where('operation', 'refund:ugc_oneshot')->count();
+        \Illuminate\Support\Facades\DB::transaction(function () use ($workspaceId, $cap): void {
+            \App\Models\Workspace::query()->whereKey($workspaceId)->lockForUpdate()->first();
 
-        return max(0, $charged - $refunded);
+            $claimed = \App\Models\CreditLedgerEntry::query()
+                ->where('workspace_id', $workspaceId)->where('operation', 'ugc_pass_take')->count();
+            $refunded = \App\Models\CreditLedgerEntry::query()
+                ->where('workspace_id', $workspaceId)->where('operation', 'refund:ugc_oneshot')->count();
+            $used = max(0, $claimed - $refunded);
+
+            if ($used + 1 > $cap) {
+                throw ValidationException::withMessages(['takes' => sprintf(
+                    'The UGC Test Pass covers %d takes and you have used %d. Pick a plan to keep going.', $cap, $used)]);
+            }
+
+            \App\Models\CreditLedgerEntry::query()->create([
+                'workspace_id'  => $workspaceId,
+                'operation'     => 'ugc_pass_take',
+                'credits'       => 0,
+                'balance_after' => app(CreditService::class)->balance($workspaceId),
+                'metadata'      => ['reason' => 'ugc_pass_take_reserved'],
+            ]);
+        });
     }
 
     private function ugcGate(Request $request): ?JsonResponse
@@ -467,6 +489,10 @@ class UgcController extends Controller
                     throw ValidationException::withMessages(['segments' =>
                         'The UGC Test Pass makes ads up to 15 seconds. Shorten the plan, or upgrade for longer ads.']);
                 }
+                // Same pool as the one-shot lane: this route counted projects
+                // per month, so it both reset and forgave deletions.
+                $this->reservePassTake((int) $user->workspace_id,
+                    (int) (app(CreditService::class)->limitFor((int) $user->workspace_id, 'ugc_takes_month') ?? 2));
             }
 
             $stillOnly = in_array($v['format'], UgcPlan::STILL_ONLY_FORMATS, true);
@@ -998,8 +1024,14 @@ class UgcController extends Controller
         // stock ones came through this door.
         if ($isTestPass) {
             $engine = 'seedance25';
-            $presenterImageAttached = false;
-            $referenceImages = [];
+            // Drop ONLY the presenter reference. It was unshifted to the front
+            // of this list, so clearing the whole thing also threw away the
+            // product photos — and an ad that invents the product is exactly
+            // what those photos are there to prevent.
+            if ($presenterImageAttached) {
+                array_shift($referenceImages);
+                $presenterImageAttached = false;
+            }
         }
         // Demo-embed: a real screen recording spliced full-frame over a
         // mid-ad window in POST (ffmpeg), so the ACTUAL recording shows —
@@ -1081,17 +1113,7 @@ class UgcController extends Controller
         }
         $monthlyCap = $creditService->limitFor((int) $user->workspace_id, 'ugc_takes_month');
         if ($isTestPass) {
-            // The pass allows two takes FOR THE PASS, not two a month — and it
-            // is counted from the credit ledger, not from projects. Projects
-            // can be deleted (which would hand back the allowance) and a month
-            // boundary would quietly reissue it. Ledger rows survive both, and
-            // a refunded failure carries a matching refund row, so a take that
-            // never delivered does not spend the allowance.
-            $charged = $this->passTakesUsed((int) $user->workspace_id);
-            if ($charged + 1 > (int) ($monthlyCap ?? 2)) {
-                throw ValidationException::withMessages(['takes' => sprintf(
-                    'The UGC Test Pass covers %d takes and you have used %d. Pick a plan to keep going.', $monthlyCap ?? 2, $charged)]);
-            }
+            $this->reservePassTake((int) $user->workspace_id, (int) ($monthlyCap ?? 2));
         } elseif ($monthlyCap !== null) {
             $used = Project::query()->where('workspace_id', $user->workspace_id)
                 ->whereNotNull('visual_brief->ugc_format')->where('created_at', '>=', now()->startOfMonth())->count();

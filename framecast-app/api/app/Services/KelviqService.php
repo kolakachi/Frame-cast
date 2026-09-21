@@ -565,14 +565,38 @@ class KelviqService
         // buyer (a provider retry racing the original) would otherwise both
         // find no pass and both grant one. The lock serialises them, so the
         // second sees the first's row and falls through to credits-only.
-        $hadPass = DB::transaction(function () use ($workspace): bool {
+        // The lock has to be held across the decision AND the writes it
+        // guards. Locking only long enough to read let a provider retry race
+        // the original: both saw no pass, both granted one.
+        $hadPass = DB::transaction(function () use ($workspace, $credits): bool {
             Workspace::query()->whereKey($workspace->getKey())->lockForUpdate()->first();
 
-            return \App\Models\CreditLedgerEntry::query()
+            $already = \App\Models\CreditLedgerEntry::query()
                 ->where('workspace_id', $workspace->getKey())
                 ->where('operation', 'grant:ugc_pass')
                 ->exists();
+            if ($already) {
+                return true;
+            }
+
+            // Someone already on a plan with UGC does not need the gate this
+            // buys. They paid, so they get the credits — tier left alone.
+            if (! $this->credits->limitFor((int) $workspace->getKey(), 'ugc_ads')) {
+                $workspace->forceFill([
+                    'plan_tier'       => 'ugc_pass',
+                    'plan_source'     => 'ugc_pass',
+                    'plan_status'     => 'active',
+                    'status'          => 'active',
+                    'plan_renews_at'  => null,
+                    'credits_monthly' => 0,
+                ])->save();
+            }
+
+            $this->credits->grant((int) $workspace->getKey(), $credits, 'ugc_pass');
+
+            return false;
         });
+
         if ($hadPass) {
             // They paid. Checkout refuses a second pass, so this is a race, a
             // stale tab or a direct link — but the money is real either way and
@@ -587,20 +611,6 @@ class KelviqService
             return;
         }
 
-        // Someone already on a plan with UGC does not need the gate this buys.
-        // They paid, so they get the credits — but their tier is left alone.
-        if (! $this->credits->limitFor((int) $workspace->getKey(), 'ugc_ads')) {
-            $workspace->forceFill([
-                'plan_tier'       => 'ugc_pass',
-                'plan_source'     => 'ugc_pass',
-                'plan_status'     => 'active',
-                'status'          => 'active',
-                'plan_renews_at'  => null,
-                'credits_monthly' => 0,
-            ])->save();
-        }
-
-        $this->credits->grant((int) $workspace->getKey(), $credits, 'ugc_pass');
         $this->clearPendingCheckout($workspace);
     }
 
