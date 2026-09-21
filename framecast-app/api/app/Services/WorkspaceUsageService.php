@@ -34,7 +34,8 @@ class WorkspaceUsageService
      *    it were removed rather than left advertising a rule we do not apply.
      *  - ai_image_quality — the request validator accepts any quality from any
      *    tier. Higher quality costs more credits, so credits are the limiter
-     *    (the same decision already recorded for pdf_vision_page_limit). It is
+     *    (the same decision recorded for PDF vision pages, whose dead per-tier
+     *    values were deleted outright). It is
      *    shown in the admin plan view only, never to a customer.
      *
      * Enforce either one before putting it back in front of a customer.
