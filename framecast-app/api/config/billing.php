@@ -27,6 +27,10 @@ return [
      */
     'gate_from' => env('BILLING_GATE_FROM', '2026-09-09'),
 
+    // Accounts that are never held at the checkout door, whatever their tier.
+    // Team members who signed up like anyone else live here — comma separated.
+    'gate_exempt_emails' => env('BILLING_GATE_EXEMPT_EMAILS', 'kenoyekitoye@gmail.com'),
+
     /*
     |--------------------------------------------------------------------------
     | Billing provider
@@ -89,6 +93,10 @@ return [
         | say — into an email that arrives from us.
         */
         'plan_labels' => [
+            // Without an entry here the magic-link endpoint refuses to record
+            // intended_plan — which is how a $9 pass buyer reached an empty
+            // free account instead of Kelviq.
+            'ugc_pass'         => 'UGC Test Pass — $9 one-time, 600 credits',
             'lifetime_starter' => 'Starter — $89 one-time, 4,000 credits',
             'lifetime_creator' => 'Creator — $199 one-time, 12,000 credits',
             'lifetime_agency'  => 'Agency — $399 one-time, 20,000 credits',

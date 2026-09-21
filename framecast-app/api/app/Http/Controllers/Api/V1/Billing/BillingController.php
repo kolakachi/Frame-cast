@@ -38,22 +38,44 @@ class BillingController extends Controller
                     'topup_packs'      => config('billing.kelviq.topup_packs', []),
                     // A checkout that was started and never completed. Drives
                     // the "finish your purchase" banner; null once they pay.
+                    // What to charge them for when they are held: the
+                    // checkout they abandoned, else the plan they registered
+                    // wanting. Sent from the server so it survives the trip
+                    // through an inbox and a change of device — the browser's
+                    // localStorage did not, which is how a paying customer
+                    // ended up on a free account.
+                    'checkout_plan' => $workspace->pending_checkout_plan ?: $workspace->intended_plan,
                     'pending_checkout' => $workspace->pending_checkout_at ? [
                         'plan' => $workspace->pending_checkout_plan,
                         'at'   => $workspace->pending_checkout_at->toIso8601String(),
                         // Abandoned upgrade vs abandoned first purchase.
                         'is_upgrade' => ($workspace->plan_tier ?? 'free') !== 'free',
                     ] : null,
-                    // Whether sign-in should send them back to Kelviq. Distinct
-                    // from pending_checkout, which only says a purchase was
-                    // started: the reminder banner is fine for everyone, being
-                    // held at the door is not. Requires an unfinished checkout,
-                    // no paid tier, and a workspace created after the gate went
-                    // up — accounts from before it keep the free tier they
-                    // actually signed up for.
+                    // Whether sign-in should send them back to Kelviq.
+                    //
+                    // No longer limited to an abandoned checkout. Someone who
+                    // registered under the gate and never started one lands in
+                    // exactly the same place — an account with no credits and
+                    // nothing it can do — so they are sent to pay as well.
+                    //
+                    // Two exemptions, and they matter. A paid tier is never
+                    // held at the door. Neither is anyone carrying the free
+                    // registration grant: those credits were only ever issued
+                    // while the free tier was genuinely on offer, which makes
+                    // them the most reliable marker of a customer who was
+                    // promised something we must not now take back.
                     'checkout_required' => (bool) (
-                        $workspace->pending_checkout_at
-                        && ($workspace->plan_tier ?? 'free') === 'free'
+                        ($workspace->plan_tier ?? 'free') === 'free'
+                        && (int) ($workspace->credits_free_granted ?? 0) === 0
+                        // Staff are not customers. An admin, or anyone on the
+                        // exempt list, is never sent to pay to reach their own
+                        // product — a team account would otherwise be held at
+                        // the door every single sign-in.
+                        && ! in_array($user->role, ['super_admin', 'platform_admin'], true)
+                        && ! in_array(mb_strtolower((string) $user->email), array_map(
+                            'mb_strtolower',
+                            array_filter(array_map('trim', explode(',', (string) config('billing.gate_exempt_emails', ''))))
+                        ), true)
                         && $workspace->created_at
                         && $workspace->created_at->gte(
                             \Carbon\Carbon::parse((string) config('billing.gate_from', '2026-09-09'))
