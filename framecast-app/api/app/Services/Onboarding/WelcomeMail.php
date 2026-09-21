@@ -60,6 +60,12 @@ class WelcomeMail
 
         // Queued and rescued: a mail outage must not roll back or fail an
         // account the customer has already paid for.
-        rescue(fn () => Mail::to($user->email)->queue(new OnboardingDay0Welcome($user, $workspace->fresh())));
+        try {
+            Mail::to($user->email)->queue(new OnboardingDay0Welcome($user, $workspace->fresh()));
+        } catch (\Throwable $error) {
+            DB::table('workspaces')->where('id', $workspace->getKey())
+                ->update(['welcome_email_sent_at' => null]);
+            report($error);
+        }
     }
 }

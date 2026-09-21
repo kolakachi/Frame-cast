@@ -119,4 +119,35 @@ class WelcomeMailTest extends TestCase
 
         return (new OnboardingDay0Welcome($user, $ws))->render();
     }
+    public function test_failed_queue_submission_releases_the_welcome_claim(): void
+    {
+        $ws = $this->paidWorkspace();
+        $fake = Mail::getFacadeRoot();
+        Mail::shouldReceive('to')->once()->andThrow(new \RuntimeException('queue unavailable'));
+        WelcomeMail::sendOnce($ws);
+        $this->assertNull($ws->fresh()->welcome_email_sent_at);
+        Mail::swap($fake);
+        WelcomeMail::sendOnce($ws->fresh());
+        Mail::assertQueued(OnboardingDay0Welcome::class, 1);
+    }
+
+    public function test_test_pass_welcome_explains_one_time_credits_and_take_limits(): void
+    {
+        $ws = $this->paidWorkspace(['plan_tier' => 'ugc_pass', 'credits_monthly' => 0]);
+        $ws->setAttribute('credits_topup', 600);
+        $body = $this->render($ws);
+        $this->assertStringContainsString('UGC Test Pass', $body);
+        $this->assertStringContainsString('600 credits', $body);
+        $this->assertStringContainsString('up to two UGC takes', $body);
+        $this->assertStringNotContainsString('renewed every month', $body);
+    }
+
+    public function test_topup_confirmation_contains_the_purchase_snapshot(): void
+    {
+        $body = (new \App\Mail\TopUpConfirmationMail('Ada', 500, 1200, 'Acme'))->render();
+        $this->assertStringContainsString('500 credits', $body);
+        $this->assertStringContainsString('1,200 credits', $body);
+        $this->assertStringContainsString('one-time credit purchase', $body);
+    }
+
 }

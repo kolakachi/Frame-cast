@@ -519,6 +519,22 @@ class KelviqService
         }
         $this->credits->grant((int) $workspace->getKey(), (int) $credits, 'topup_kelviq');
         $this->clearPendingCheckout($workspace);
+        // The webhook event is claimed before this handler runs; redelivery
+        // must not grant credits or queue a second confirmation.
+        $owner = $workspace->owner_user_id
+            ? \App\Models\User::find($workspace->owner_user_id)
+            : \App\Models\User::where('workspace_id', $workspace->getKey())->orderBy('id')->first();
+        if ($owner?->email) {
+            rescue(fn () => \Illuminate\Support\Facades\Mail::to($owner->email)->queue(
+                new \App\Mail\TopUpConfirmationMail(
+                    (string) $owner->name, (int) $credits,
+                    $this->credits->balance((int) $workspace->getKey()), (string) $workspace->name,
+                ),
+            ));
+        } else {
+            Log::warning('Top-up confirmation has no addressable owner', ['workspace_id' => $workspace->getKey()]);
+        }
+
     }
 
     /**
@@ -625,6 +641,7 @@ class KelviqService
         }
 
         $this->clearPendingCheckout($workspace);
+        \App\Services\Onboarding\WelcomeMail::sendOnce($workspace->fresh());
     }
 
     /**

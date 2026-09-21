@@ -383,4 +383,26 @@ class LifetimeTierGuardTest extends TestCase
         $this->assertSame(1, $controller::passTakesUsed((int) $w->id));
     }
 
+    public function test_topup_confirms_credits_once_when_webhook_is_replayed(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        Schema::create('processed_webhook_events', function (Blueprint $t) {
+            $t->id(); $t->string('provider'); $t->string('event_id')->unique();
+            $t->string('type')->nullable(); $t->timestamp('processed_at'); $t->timestamps();
+        });
+        $ws = $this->ws(['credits_topup' => 100, 'credits_monthly' => 0]);
+        \App\Models\User::create(['workspace_id' => $ws->id, 'email' => 'buyer@example.com']);
+        config(['billing.kelviq.topup_plans' => ['test-topup' => 500]]);
+        $event = ['id' => 'topup-event', 'type' => 'checkout.completed', 'data' => ['object' => [
+            'id' => 'topup-order', 'metadata' => ['workspace_id' => $ws->id],
+            'plan' => ['identifier' => 'test-topup'],
+        ]]];
+        app(KelviqService::class)->handleEvent($event);
+        app(KelviqService::class)->handleEvent($event);
+        $this->assertSame(600, (int) $ws->fresh()->credits_topup);
+        \Illuminate\Support\Facades\Mail::assertQueued(\App\Mail\TopUpConfirmationMail::class, 1);
+        \Illuminate\Support\Facades\Mail::assertQueued(\App\Mail\TopUpConfirmationMail::class,
+            fn ($mail) => $mail->hasTo('buyer@example.com') && $mail->creditsAdded === 500 && $mail->balanceAfter === 600);
+    }
+
 }
