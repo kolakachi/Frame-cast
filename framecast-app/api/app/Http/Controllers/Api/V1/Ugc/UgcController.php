@@ -1053,21 +1053,14 @@ class UgcController extends Controller
             $engine = 'veo_hq';
         }
 
-        // The Test Pass is Seedance-only, and this has to sit AFTER the cast
-        // switch above: a stock character attaches a reference image, which
-        // flipped the engine to Veo HQ — 58 credits a second against a 600
-        // credit pass. Own characters are already blocked by custom_characters;
-        // stock ones came through this door.
-        if ($isTestPass) {
+        // The Test Pass defaults to Seedance, which is what makes 600 credits
+        // buy a whole ad. Casting a character is the one thing that overrides
+        // it: a real face cannot be rendered by Seedance at all, so the take
+        // has to go to Veo HQ and cost what Veo HQ costs. The approval step
+        // quotes that before a credit moves, so nobody is surprised — they are
+        // simply told the take needs more than the pass grants.
+        if ($isTestPass && ! $presenterImageAttached) {
             $engine = 'seedance25';
-            // Drop ONLY the presenter reference. It was unshifted to the front
-            // of this list, so clearing the whole thing also threw away the
-            // product photos — and an ad that invents the product is exactly
-            // what those photos are there to prevent.
-            if ($presenterImageAttached) {
-                array_shift($referenceImages);
-                $presenterImageAttached = false;
-            }
         }
         // Demo-embed: a real screen recording spliced full-frame over a
         // mid-ad window in POST (ffmpeg), so the ACTUAL recording shows —

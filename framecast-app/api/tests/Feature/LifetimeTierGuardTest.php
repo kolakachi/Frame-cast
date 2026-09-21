@@ -256,8 +256,11 @@ class LifetimeTierGuardTest extends TestCase
         $this->assertSame('ugc_pass', $w->fresh()->plan_tier);
         $this->assertSame(800, (int) $w->fresh()->credits_topup, 'the 600 lands on top of what they had');
         $this->assertTrue(app(CreditService::class)->limitFor((int) $w->getKey(), 'ugc_ads'), 'the pass buys the UGC gate');
-        $this->assertFalse((bool) app(CreditService::class)->limitFor((int) $w->getKey(), 'custom_characters'), 'but not an own-face cast');
-        $this->assertSame(0, (int) app(CreditService::class)->limitFor((int) $w->getKey(), 'max_characters'), 'and no characters');
+        $this->assertTrue((bool) app(CreditService::class)->limitFor((int) $w->getKey(), 'custom_characters'), 'and a cast of their own');
+        $this->assertSame(1, (int) app(CreditService::class)->limitFor((int) $w->getKey(), 'max_characters'), 'one character to cast');
+        // The things a pass still does not buy — these are what Starter is for.
+        $this->assertFalse((bool) app(CreditService::class)->limitFor((int) $w->getKey(), 'social_publishing'), 'publishing stays paid');
+        $this->assertSame(2, (int) app(CreditService::class)->limitFor((int) $w->getKey(), 'ugc_takes_month'), 'still two takes');
     }
 
     public function test_a_duplicate_test_pass_still_hands_over_the_credits_paid_for(): void

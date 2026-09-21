@@ -1200,7 +1200,8 @@ onMounted(() => {
           <div v-if="isTestPass" class="ugc-pass-note">
             <b>UGC Test Pass</b> — one 15-second ad, or two drafts.
             <template v-if="passCredits !== null">{{ passCredits.toLocaleString() }} credits left.</template>
-            Presenters are generated for you; your own face and longer ads need a plan.
+            A cast character runs on Google's premium renderer, so a 15-second take costs about 870 credits —
+            the approval step quotes it before anything is spent. Longer ads need a plan.
           </div>
 
           <div v-if="!noCast" class="ugc-card">
@@ -1213,7 +1214,7 @@ onMounted(() => {
                  available to cast. -->
             <p v-if="!oneShotEligible" class="ugc-hint">This video is assembled shot by shot so your selected footage stays intact. Choose a presenter for any on-camera shots.</p>
             <div v-if="oneShotEligible" class="ugc-cast-style">
-              <label v-if="!isTestPass" :class="['ugc-style-pill', { on: castEngine === 'veo', disabled: hasDemo }]">
+              <label :class="['ugc-style-pill', { on: castEngine === 'veo', disabled: hasDemo }]">
                 <input v-model="castEngine" type="radio" value="veo" :disabled="hasDemo" />
                 <b>Use one of your characters</b>
                 <span v-if="hasDemo">Not available with a demo clip — a demo runs castless on Seedance.</span>
