@@ -3097,6 +3097,61 @@
             background: #f8f8fc !important;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
         }
+
+        /* ── FOUNDERS CAMPAIGN ──────────────────────────────────────────
+           Everything below is gated on body.promo-on, which promo.js adds
+           only while Date.now() < CAMPAIGN_ENDS. Once that date passes the
+           class never lands: bar, badges, strikethroughs, savings and codes
+           all revert to hidden and prices read $89/$199/$399 again — with no
+           deploy, and no chance of an expired countdown being left running. */
+        .promo-bar { display: none; }
+        body.promo-on .promo-bar {
+            display: flex; position: fixed; top: 0; left: 0; right: 0; z-index: 101;
+            align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+            height: 40px; padding: 0 16px; font-size: 13px; color: var(--text-dim);
+            background: rgba(20, 20, 28, .92); border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+        }
+        body.promo-on nav { top: 40px; }
+        body.promo-on .hero { padding-top: 160px; }
+        .promo-bar .hl { color: var(--text); font-weight: 600; }
+        .promo-bar .pdot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-faint); }
+        .promo-bar .x { background: none; border: 0; color: var(--text-faint); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 6px; }
+        .promo-bar .x:hover { color: var(--text); }
+        @media (max-width: 640px) { .promo-bar .hide-sm { display: none; } }
+        .cd { font-family: "Space Mono", monospace; font-variant-numeric: tabular-nums; }
+        .cd .n { color: var(--accent); font-weight: 700; }
+        .cd .u { color: var(--text-faint); font-size: .75em; margin-right: 7px; }
+        .cd .u:last-child { margin-right: 0; }
+        .promo-offer { display: none; }
+        body.promo-on .promo-offer {
+            display: flex; align-items: center; justify-content: space-between; gap: 20px;
+            flex-wrap: wrap; text-align: left; max-width: 860px; margin: 0 auto 28px;
+            background: var(--surface-2); border: 1px solid rgba(255, 107, 53, .28);
+            border-radius: 14px; padding: 18px 20px;
+        }
+        .promo-offer h3 { margin: 0 0 4px; font-size: 16px; font-weight: 700; color: var(--text); }
+        .promo-offer p { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.55; }
+        .promo-off { display: none; }
+        body.promo-on .promo-off {
+            display: block; position: absolute; top: -12px; right: 14px;
+            background: var(--accent); color: #0a0a0f; font-size: 11px; font-weight: 700;
+            letter-spacing: .04em; padding: 3px 9px; border-radius: 99px;
+        }
+        .promo-was, .promo-now, .promo-save, .promo-code { display: none; }
+        body.promo-on .promo-was { display: inline; color: var(--text-faint); text-decoration: line-through; font-size: 18px; margin-right: 8px; font-weight: 400; }
+        body.promo-on .promo-now { display: inline; }
+        body.promo-on .promo-save { display: block; color: var(--green); font-size: 12.5px; font-weight: 600; margin-top: 6px; }
+        body.promo-on .list-price { display: none; }
+        body.promo-on .promo-code { display: block; margin: 14px 0 0; padding-top: 14px; border-top: 1px dashed rgba(255,255,255,.1); }
+        .promo-code .lbl { display: block; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 6px; }
+        .chip { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+            background: rgba(255, 107, 53, .1); border: 1px dashed rgba(255, 107, 53, .45); border-radius: 8px;
+            padding: 6px 10px; cursor: pointer; font-family: "Space Mono", monospace; font-size: 12px;
+            color: var(--accent); font-weight: 700; letter-spacing: .04em; }
+        .chip:hover { background: rgba(255, 107, 53, .16); }
+        .chip .cp { font-size: 10px; color: var(--text-faint); font-weight: 400; letter-spacing: .03em; }
+        .chip.done { border-style: solid; border-color: var(--green); color: var(--green); background: rgba(52, 211, 153, .1); }
     </style>
 
     <!-- Kelviq is our Merchant of Record on this branch. Kelviq's checkout
@@ -3108,6 +3163,16 @@
 </head>
 
 <body>
+    <!-- Founders campaign bar. Hidden unless promo.js says the window is open. -->
+    <div class="promo-bar" role="region" aria-label="Founders offer">
+        <span class="hl">Founders offer — up to 50% off</span>
+        <span class="pdot hide-sm"></span>
+        <span class="hide-sm">ends <span class="promo-end-date">6 October</span></span>
+        <span class="pdot"></span>
+        <span><span class="cd" id="promo-cd-bar"></span> left</span>
+        <button class="x" type="button" id="promo-dismiss" aria-label="Dismiss offer">&times;</button>
+    </div>
+
     <!-- Animated Background Mesh -->
     <div class="bg-mesh"></div>
 
@@ -4316,10 +4381,21 @@
             <!-- One-time (lifetime) plans. Credits are a ONE-TIME bucket — no
                  monthly refill — which is what keeps this fair alongside the
                  subscriptions and bounds our cost per licence. -->
+            <div class="promo-offer">
+                <div>
+                    <h3>Founders Discount — up to 50% off</h3>
+                    <p>Each plan has its own code, shown on the card. Copy it, then paste it at checkout.
+                       Ends <span class="promo-end-date">6 October</span>, then prices return to normal.</p>
+                </div>
+                <span class="cd" style="font-size:19px" id="promo-cd-offer"></span>
+            </div>
+
             <div id="plans-onetime" class="lifetime-grid">
                 <div class="plan">
                     <div class="plan-name">Starter</div>
-                    <div class="plan-price">$89</div>
+                    <div class="promo-off">49% OFF</div>
+                    <div class="plan-price"><span class="promo-was">$89</span><span class="list-price">$89</span><span class="promo-now">$45</span></div>
+                    <div class="promo-save">You save $44</div>
                     <div class="plan-sub">one-time<br>4,000 credits</div>
                     <hr class="plan-divider">
                     <ul class="plan-feat">
@@ -4330,12 +4406,15 @@
                         <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> All visual modes</li>
                         <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> Social publishing</li>
                     </ul>
+                    <div class="promo-code"><span class="lbl">Your code</span><span class="chip" data-code="FOUNDERSSTARTER">FOUNDERSSTARTER <span class="cp">copy</span></span></div>
                     <a href="https://app.wyvstudio.com/register?plan=lifetime_starter" class="plan-btn">Get Starter</a>
                 </div>
                 <div class="plan hot">
                     <div class="plan-badge">Most popular</div>
                     <div class="plan-name">Creator</div>
-                    <div class="plan-price">$199</div>
+                    <div class="promo-off">25% OFF</div>
+                    <div class="plan-price"><span class="promo-was">$199</span><span class="list-price">$199</span><span class="promo-now">$150</span></div>
+                    <div class="promo-save">You save $49</div>
                     <div class="plan-sub">one-time<br>12,000 credits</div>
                     <hr class="plan-divider">
                     <ul class="plan-feat">
@@ -4346,11 +4425,14 @@
                         <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> All visual modes</li>
                         <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> Social publishing</li>
                     </ul>
+                    <div class="promo-code"><span class="lbl">Your code</span><span class="chip" data-code="FOUNDERSCREATOR">FOUNDERSCREATOR <span class="cp">copy</span></span></div>
                     <a href="https://app.wyvstudio.com/register?plan=lifetime_creator" class="plan-btn featured">Get Creator</a>
                 </div>
                 <div class="plan">
                     <div class="plan-name">Agency</div>
-                    <div class="plan-price">$399</div>
+                    <div class="promo-off">12% OFF</div>
+                    <div class="plan-price"><span class="promo-was">$399</span><span class="list-price">$399</span><span class="promo-now">$350</span></div>
+                    <div class="promo-save">You save $49</div>
                     <div class="plan-sub">one-time<br>20,000 credits</div>
                     <hr class="plan-divider">
                     <ul class="plan-feat">
@@ -4361,6 +4443,7 @@
                         <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> All visual modes</li>
                         <li><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg> Series Mode</li>
                     </ul>
+                    <div class="promo-code"><span class="lbl">Your code</span><span class="chip" data-code="FOUNDERSAGENCY">FOUNDERSAGENCY <span class="cp">copy</span></span></div>
                     <a href="https://app.wyvstudio.com/register?plan=lifetime_agency" class="plan-btn">Get Agency</a>
                 </div>
             </div>
@@ -5151,6 +5234,7 @@
             });
         })();
     </script>
+    <script src="/promo.js" defer></script>
 </body>
 
 </html>
