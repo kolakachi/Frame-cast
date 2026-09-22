@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import { useWorkspaceStore } from "../stores/workspace";
@@ -27,6 +27,8 @@ const createName = ref("");
 const createDescription = ref("");
 const createIdentityStrength = ref("balanced"); // subtle | balanced | strong | locked
 const consentChecked = ref(false); // likeness consent — required when a reference photo is used
+const consentMissing = ref(false);  // set when a save was blocked for want of the tick
+const consentRef = ref(null);       // scrolled into view when that happens
 const createFile = ref(null);             // newly-picked file (replaces existing — legacy single mode)
 const createPreviewUrl = ref("");         // object URL for the newly-picked file
 const existingThumbUrl = ref(null);       // existing primary reference image URL when editing
@@ -39,6 +41,7 @@ const existingReferences = ref([]);       // [{id, storage_url, thumbnail_url}] 
 // True when this character will carry a reference photo (any source) — must
 // match the consent gate in submit so the checkbox is ALWAYS shown when
 // consent is required (legacy single-file uploads were missing it).
+watch(consentChecked, (ticked) => { if (ticked) consentMissing.value = false; });
 const willHaveReference = computed(() =>
   createNewFilePreviews.value.length > 0
   || !!createFile.value
@@ -529,7 +532,13 @@ async function saveCharacter() {
       || (editingId.value && existingReferences.value.length > 0 && !removeExistingImage.value);
     if (hasReference) {
       if (!consentChecked.value) {
-        createError.value = "Please confirm you have the rights and consent to use this person's likeness — tick the box below.";
+        // The modal scrolls and the footer is sticky, so a message rendered in
+        // the body can sit off-screen while the button stays clickable — which
+        // read as "Save does nothing". Take the user to the checkbox instead of
+        // describing where it is.
+        createError.value = "Tick the likeness consent box to save this reference photo.";
+        consentMissing.value = true;
+        nextTick(() => consentRef.value?.scrollIntoView({ behavior: "smooth", block: "center" }));
         return;
       }
       payload.consent = true;
@@ -747,8 +756,8 @@ async function confirmDelete() {
             <div class="cv-hint">First image is the primary reference used today. Extra photos improve future LoRA training. Max 8.</div>
           </div>
 
-          <div v-if="willHaveReference" class="cv-field">
-            <label class="cv-consent">
+          <div v-if="willHaveReference" class="cv-field" ref="consentRef">
+            <label class="cv-consent" :class="{ 'cv-consent-missing': consentMissing }">
               <input type="checkbox" v-model="consentChecked" />
               <span>I confirm I have the rights and consent to use this person's likeness, and that I won't use it to create misleading, deceptive, or explicit content.</span>
             </label>
@@ -771,9 +780,8 @@ async function confirmDelete() {
             <div class="cv-hint">Higher = generated faces stay closer to the reference photo. Locked can look plasticky on small references.</div>
           </div>
 
-          <div v-if="createError" class="cv-error">{{ createError }}</div>
-
           <div class="cv-foot">
+            <div v-if="createError" class="cv-error cv-error-inline" role="alert">{{ createError }}</div>
             <button class="btn btn-ghost btn-sm" type="button" @click="closeCreate">Cancel</button>
             <button class="btn btn-primary btn-sm" type="button" :disabled="createSaving" @click="saveCharacter">
               {{ createSaving ? (createFile ? 'Uploading…' : 'Saving…') : (editingId ? 'Save changes' : 'Create character') }}
@@ -1160,6 +1168,9 @@ async function confirmDelete() {
 .cv-consent { display: flex; gap: 10px; align-items: flex-start; font-size: 12px; line-height: 1.45; cursor: pointer; padding: 10px 12px; border: 1px solid var(--color-border, #2a2a35); border-radius: 8px; }
 .cv-consent input { margin-top: 2px; flex-shrink: 0; }
 .cv-error { font-size: 12.5px; color: #ff6b6b; margin: 8px 0 12px; }
+/* Inside the sticky footer the message travels with the button it belongs to. */
+.cv-error-inline { margin: 0 auto 0 0; text-align: left; flex: 1; }
+.cv-consent-missing { border-color: #ff6b6b; background: rgba(255,107,107,0.08); }
 .cv-foot {
   display: flex; justify-content: flex-end; gap: 8px; align-items: center;
   margin-top: 16px;
