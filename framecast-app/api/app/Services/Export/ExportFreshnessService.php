@@ -11,7 +11,7 @@ class ExportFreshnessService
     {
         $payload = [
             'project' => $project->only(['aspect_ratio', 'primary_language', 'music_asset_id', 'music_settings_json', 'waveform_settings_json']),
-            'scenes' => $project->scenes()->orderBy('scene_order')->orderBy('id')->get()->map(fn ($scene) => $scene->only([
+            'scenes' => ($project->relationLoaded('scenes') ? $project->scenes : $project->scenes()->orderBy('scene_order')->orderBy('id')->get())->map(fn ($scene) => $scene->only([
                 'id', 'label', 'scene_order', 'scene_type', 'script_text', 'duration_seconds',
                 'voice_settings_json', 'caption_settings_json', 'visual_type', 'visual_asset_id',
                 'sound_asset_id', 'sound_settings_json', 'motion_settings_json', 'transition_rule',

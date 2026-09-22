@@ -32,9 +32,18 @@ class ProjectExportService
      */
     public function queue(Project $project, array $opts = []): ExportJob
     {
+        return DB::transaction(function () use ($project, $opts) {
+            Workspace::whereKey($project->workspace_id)->lockForUpdate()->firstOrFail();
+            return $this->queueLocked(Project::whereKey($project->id)->lockForUpdate()->firstOrFail(), $opts);
+        });
+    }
+
+    private function queueLocked(Project $project, array $opts): ExportJob
+    {
         $scenes = Scene::query()
             ->where('project_id', $project->getKey())
             ->orderBy('scene_order')
+            ->lockForUpdate()
             ->get();
 
         $this->assertExportable($project, $scenes);
@@ -44,6 +53,9 @@ class ProjectExportService
         $titleSlug   = Str::slug((string) ($project->title ?: 'framecast-project'));
 
         if (in_array(data_get($project->visual_brief, 'ugc_format'), ['one_shot', 'restyle'], true)) {
+            if ($aspectRatio !== ($project->aspect_ratio ?: '9:16') || $language !== ($project->primary_language ?: 'en')) {
+                throw new RuntimeException('This whole-video take can only be delivered in its original aspect ratio and language. Revise it in the creation flow.');
+            }
             // Keep baked-in dialogue; scene composition would strip native audio.
             if ($this->shouldWatermark($project->workspace_id, false)) {
                 throw new RuntimeException('Your current plan requires a watermark. Upgrade to download this whole-video take.');
@@ -110,7 +122,7 @@ class ProjectExportService
         }
         if ($owner && $this->usage->hasReachedExportLimit($owner)) {
             $ctx = $this->usage->exportLimitContext($owner);
-            throw new RuntimeException("You've used {$ctx['used']} of {$ctx['limit']} exports on the {$ctx['plan']} plan this month.");
+            throw new RuntimeException("You've used {$ctx['used']} of {$ctx['limit']} exports on the {$ctx['plan']} plan this month.", 402);
         }
 
         if ($owner) {
@@ -118,12 +130,13 @@ class ProjectExportService
             $inFlight = ExportJob::query()->where('workspace_id', $project->workspace_id)
                 ->whereIn('status', ['queued', 'processing'])->count();
             if ($remaining !== null && $inFlight >= $remaining) {
-                throw new RuntimeException('Your remaining exports are already being prepared. Wait for them to finish or upgrade your plan.');
+                throw new RuntimeException('Your remaining exports are already being prepared. Wait for them to finish or upgrade your plan.', 402);
             }
         }
 
         if (in_array(data_get($project->visual_brief, 'ugc_format'), ['one_shot', 'restyle'], true)) {
-            if (! Asset::query()->whereKey($scenes->first()->visual_asset_id)->exists()) {
+            if ($scenes->count() !== 1) throw new RuntimeException('A whole-video take must have one scene. Revise it in its creation flow.');
+            if (! Asset::query()->where('workspace_id', $project->workspace_id)->where('asset_type', 'video')->whereKey($scenes->first()->visual_asset_id)->exists()) {
                 throw new RuntimeException('The video has not finished generating yet.');
             }
             return;
@@ -132,6 +145,20 @@ class ProjectExportService
         $visualOptionalTypes = ['text_card', 'waveform'];
         foreach ($scenes as $scene) {
             $settings = $scene->image_generation_settings_json ?? [];
+            foreach ([$scene->visual_asset_id, $scene->sound_asset_id, data_get($scene->voice_settings_json, 'audio_asset_id')] as $assetId) {
+                if ($assetId && ! Asset::where('workspace_id', $project->workspace_id)->whereKey($assetId)->exists()) {
+                    throw new RuntimeException("Scene {$scene->scene_order} references an unavailable asset.");
+                }
+            }
+            if (trim((string) $scene->script_text) !== '' && data_get($scene->voice_settings_json, 'is_outdated')) {
+                throw new RuntimeException("Scene {$scene->scene_order} has outdated narration. Re-record it before exporting.");
+            }
+            if (! empty($settings['animation_outdated'])) {
+                throw new RuntimeException("Scene {$scene->scene_order} has outdated lip sync. Update its talking video before exporting.");
+            }
+            if (! empty($settings['in_progress']) || ! empty($settings['animation_in_progress']) || data_get($scene->voice_settings_json, 'in_progress')) {
+                throw new RuntimeException("Scene {$scene->scene_order} is still generating. Wait before exporting.");
+            }
             if (! empty($settings['last_error']) || ! empty($settings['animation_last_error']) || data_get($scene->voice_settings_json, 'last_error')) {
                 throw new RuntimeException('A scene needs attention. Open the editor to repair it before finishing the video.');
             }

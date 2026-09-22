@@ -15,7 +15,14 @@ class ExportJob extends Model
             // Nullable migration allows older queued workers and rolling deploys.
             if ($job->project_id && \Illuminate\Support\Facades\Schema::hasColumn('export_jobs', 'source_fingerprint')) {
                 $project = Project::find($job->project_id);
-                if ($project) $job->source_fingerprint = app(\App\Services\Export\ExportFreshnessService::class)->fingerprint($project);
+                if ($project) {
+                    if (! $job->variant_id && \Illuminate\Support\Facades\Schema::hasColumn('export_jobs', 'render_snapshot')) {
+                        $job->render_snapshot = \App\Services\Export\ExportSnapshot::capture($project);
+                        $project = \App\Services\Export\ExportSnapshot::project($job);
+                        $project->setRelation('scenes', \App\Services\Export\ExportSnapshot::scenes($job));
+                    }
+                    $job->source_fingerprint = app(\App\Services\Export\ExportFreshnessService::class)->fingerprint($project);
+                }
             }
         });
         static::updated(function (ExportJob $job): void {
@@ -61,6 +68,7 @@ class ExportJob extends Model
     protected function casts(): array
     {
         return [
+            'render_snapshot' => 'array',
             'watermark_enabled' => 'boolean',
             'progress_percent' => 'integer',
             'priority' => 'integer',

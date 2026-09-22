@@ -96,16 +96,13 @@ class ProcessExportJob implements ShouldQueue
         $this->syncBatchJob($exportJob);
         $this->dispatchProgress($exportJob, 'processing', 5, 'Export processing started.');
 
-        $project = Project::query()->find($exportJob->project_id);
+        $project = \App\Services\Export\ExportSnapshot::project($exportJob);
 
         if (! $project) {
             throw new \RuntimeException('Project not found for export.');
         }
 
-        $scenes = Scene::query()
-            ->where('project_id', $project->getKey())
-            ->orderBy('scene_order')
-            ->get();
+        $scenes = \App\Services\Export\ExportSnapshot::scenes($exportJob);
 
         if ($scenes->isEmpty()) {
             throw new \RuntimeException('Project has no scenes to export.');

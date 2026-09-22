@@ -1,6 +1,8 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter, onBeforeRouteLeave } from "vue-router";
+import { editorReadiness } from "../lib/editorReadiness";
+import FinishedVideoPlayer from "../components/FinishedVideoPlayer.vue";
 import api from "../services/api";
 import { getEcho } from "../services/echo";
 import { useAuthStore } from "../stores/auth";
@@ -1166,6 +1168,7 @@ const rewriteApplyPending = ref(false);
 const rewriteError = ref("");
 const sceneDurationDraft = ref("");
 const sceneDurationSaving = ref(false);
+const sceneDurationError = ref("");
 const captionPresets = ref([]);
 const captionPresetSaveOpen = ref(false);
 const captionPresetSaveName = ref("");
@@ -1757,6 +1760,24 @@ watch([isPreviewPlaying, captionAnimationDraft], ([playing, animation]) => {
 watch(playProgress, () => {
   if (!isPreviewPlaying.value) captionClock.value = currentCaptionSeconds();
 });
+const leaveSaveDialog = ref(false);
+const stayInEditorButton = ref(null);
+watch(leaveSaveDialog, async open => {
+  if (open) { await nextTick(); stayInEditorButton.value?.focus(); }
+});
+let resolveLeave = null;
+function chooseLeave(discard) {
+  leaveSaveDialog.value = false;
+  resolveLeave?.(discard);
+  resolveLeave = null;
+}
+onBeforeRouteLeave(async () => {
+  if (!hasPendingExportChanges()) return true;
+  if (await flushActiveSceneDrafts()) return true;
+  leaveSaveDialog.value = true;
+  return new Promise(resolve => { resolveLeave = resolve; });
+});
+
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onViewportResize);
   window.visualViewport?.removeEventListener('resize', onViewportResize);
@@ -2669,6 +2690,7 @@ function hasPendingExportChanges() {
     musicSaveState, audiogramSaveState, visualStyleSaveState, customVisualStyleSaveState]
     .some(state => ['pending', 'saving', 'error'].includes(state.value))
     || Boolean(musicSaveTimer || sceneVoiceVolumeSaveTimer || sceneSoundVolumeSaveTimer || audiogramSaveTimer)
+    || sceneDurationSaving.value || Boolean(sceneDurationError.value)
     || volumeSavesPending.value > 0 || Boolean(volumeSaveError.value || musicSaveError.value)
     || Boolean(activeScene.value && sceneScriptDraft.value !== (activeScene.value.script_text || ''));
 }
@@ -2745,22 +2767,8 @@ async function resumeFailedScenes() {
   }
 }
 
-const exportBlockerMessage = computed(() => {
-  const VISUAL_OPTIONAL = ["text_card", "waveform"];
-  for (const scene of scenes.value) {
-    const label = scene.label || `Scene ${scene.scene_order ?? ""}`;
-    if (!String(scene.script_text || "").trim()) {
-      return `"${label}" has no script — add copy before exporting.`;
-    }
-    if (!scene.visual_asset_id && !VISUAL_OPTIONAL.includes(String(scene.visual_type || ""))) {
-      return `"${label}" is missing a visual — pick a clip or image first.`;
-    }
-    if (!scene.voice_settings?.audio_asset_id) {
-      return `"${label}" has no generated voice — wait for TTS or regenerate.`;
-    }
-  }
-  return null;
-});
+const wholeVideoTake = computed(() => ['one_shot', 'restyle'].includes(project.value?.visual_brief?.ugc_format));
+const exportBlockerMessage = computed(() => editorReadiness(scenes.value, wholeVideoTake.value));
 
 // Per-section error indicators for the active scene
 const activeSceneVisualError = computed(() => {
@@ -5456,13 +5464,15 @@ async function saveSceneDuration() {
   if (!activeScene.value) return;
   const val = parseFloat(sceneDurationDraft.value);
   if (isNaN(val) || val < 1 || val > 600) return;
+  if (activeScene.value?.voice_settings?.audio_asset_id) return;
+  sceneDurationError.value = "";
   sceneDurationSaving.value = true;
   try {
     const response = await api.patch(`/scenes/${activeScene.value.id}`, { duration_seconds: val });
     const updated = normalizeScenePayload(response.data?.data?.scene ?? null);
     if (updated) replaceSceneInCollection(updated);
-  } catch (_) {
-    // non-critical — leave draft value as-is
+  } catch (error) {
+    sceneDurationError.value = error.response?.data?.error?.message || "Duration could not be saved. Try again.";
   } finally {
     sceneDurationSaving.value = false;
   }
@@ -5648,7 +5658,7 @@ async function persistSceneScript(sceneId, scriptText) {
 
     replaceSceneInCollection(updatedScene);
 
-    if (activeSceneId.value === updatedScene.id) {
+    if (activeSceneId.value === updatedScene.id && sceneScriptDraft.value === scriptText) {
       sceneScriptDraft.value = updatedScene.script_text || "";
     }
 
@@ -7078,10 +7088,10 @@ async function moveScene(sceneId, direction) {
 
 async function flushActiveSceneDrafts() {
   const scene = activeScene.value;
-  if (!scene) return true;
+  if (!scene || wholeVideoTake.value) return true;
 
   try {
-    if (scriptSaveTimer || scriptSaveState.value === "pending") {
+    if (scriptSaveTimer || scriptSaveState.value === "pending" || sceneScriptDraft.value !== (scene.script_text || "")) {
       if (scriptSaveTimer) {
         window.clearTimeout(scriptSaveTimer);
         scriptSaveTimer = null;
@@ -7201,14 +7211,7 @@ onMounted(() => {
   loadLipsyncEngines();
   loadCreditCosts();
   beforeUnloadHandler = (event) => {
-    if (
-      scriptSaveState.value === "pending" ||
-      scriptSaveState.value === "saving" ||
-      voiceSaveState.value === "pending" ||
-      voiceSaveState.value === "saving" ||
-      captionSaveState.value === "pending" ||
-      captionSaveState.value === "saving"
-    ) {
+    if (hasPendingExportChanges()) {
       event.preventDefault();
       event.returnValue = "";
     }
@@ -7254,6 +7257,10 @@ onBeforeUnmount(() => {
   if (captionSaveTimer) {
     window.clearTimeout(captionSaveTimer);
   }
+  for (const timer of [musicSaveTimer, sceneVoiceVolumeSaveTimer, sceneSoundVolumeSaveTimer,
+    audiogramSaveTimer, motionSaveTimer, visualStyleSaveTimer, customVisualStyleSaveTimer]) {
+    if (timer) window.clearTimeout(timer);
+  }
   mediaPreloaders.forEach((media) => {
     media.onload = null;
     media.onerror = null;
@@ -7271,6 +7278,14 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="editor-page">
+    <div v-if="leaveSaveDialog" class="leave-save-overlay" @keydown.esc="chooseLeave(false)" role="dialog" aria-modal="true" aria-labelledby="leave-save-title">
+      <div class="leave-save-card">
+        <h2 id="leave-save-title">Some changes could not be saved</h2>
+        <p>Stay here to retry saving, or leave and discard any unsaved changes.</p>
+        <button ref="stayInEditorButton" class="btn btn-primary" @click="chooseLeave(false)">Stay in editor</button>
+        <button class="btn btn-ghost" @click="chooseLeave(true)">Leave without saving</button>
+      </div>
+    </div>
     <EditorSkeleton v-if="loading" />
     <section v-else-if="error" class="state-card error">{{ error }}</section>
 
@@ -7321,7 +7336,14 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <div v-else class="editor-shell">
+    <section v-else-if="wholeVideoTake" class="state-card" style="max-width: 800px; margin: 40px auto;">
+      <h1>{{ projectTitle }}</h1>
+      <p>This take contains baked-in picture and dialogue. Scene edits, captions and alternate export ratios are not supported here. Return to the creation flow to revise the take.</p>
+      <FinishedVideoPlayer v-if="currentVisualUrl" :src="currentVisualUrl" />
+      <button class="btn btn-primary" @click="router.push(`/ugc-ads/review/${project.id}`)">Open take review</button>
+      <button class="btn btn-ghost" @click="router.push({ name: 'dashboard' })">Back to dashboard</button>
+    </section>
+    <div v-else class="editor-shell" :inert="leaveSaveDialog">
       <AppSidebar :user="mePayload" active-page="editor" @logout="logout" />
 
       <div :class="['main', timelineOpen ? 'sidebar-collapsed' : '']">
@@ -8314,6 +8336,7 @@ onBeforeUnmount(() => {
                   <div class="ss-duration-field">
                     <input
                       v-model="sceneDurationDraft"
+                      :disabled="!!activeScene?.voice_settings?.audio_asset_id || sceneDurationSaving"
                       type="number"
                       min="1"
                       max="600"
@@ -8326,7 +8349,9 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="ss-duration-caption">
                   <span v-if="sceneDurationSaving">saving…</span>
-                  <span v-else>Used when no voice is generated</span>
+                  <span v-else-if="sceneDurationError" role="alert">{{ sceneDurationError }}</span>
+                  <span v-else-if="activeScene?.voice_settings?.audio_asset_id">Length follows narration. Edit and re-record the voice to change it.</span>
+                  <span v-else>Duration of this silent scene.</span>
                 </div>
                 <div v-if="scriptSaveCopy()" :class="scriptSaveState === 'error' ? 'script-save-copy error' : 'script-save-copy'">
                   {{ scriptSaveCopy() }}
@@ -15500,4 +15525,9 @@ select.preset-select {
 .xfb-send { align-self: flex-end; background: var(--accent, #ff6b35); color: #fff; border: none; border-radius: 8px; padding: 9px 20px; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; }
 .xfb-send:disabled { opacity: .5; }
 .xfb-thanks { font-size: 17px; font-weight: 700; text-align: center; }
+.leave-save-overlay { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; background: #0009; padding: 24px; }
+.leave-save-card { width: min(480px, 100%); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); background: var(--color-bg-elevated, #181820); }
+.leave-save-card p { margin: 16px 0; }
+.leave-save-card .btn { margin-right: 8px; }
+
 </style>

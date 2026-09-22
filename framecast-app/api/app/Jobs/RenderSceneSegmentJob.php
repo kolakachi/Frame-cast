@@ -52,8 +52,8 @@ class RenderSceneSegmentJob implements ShouldQueue
             return;
         }
 
-        $scene   = Scene::query()->find($this->sceneId);
-        $project = $exportJob->project_id ? Project::query()->find($exportJob->project_id) : null;
+        $scene   = \App\Services\Export\ExportSnapshot::scenes($exportJob)->firstWhere('id', $this->sceneId);
+        $project = $exportJob->project_id ? \App\Services\Export\ExportSnapshot::project($exportJob) : null;
 
         if (! $scene || ! $project) {
             throw new \RuntimeException("Scene or project missing for export segment (scene #{$this->sceneId}).");
@@ -68,10 +68,10 @@ class RenderSceneSegmentJob implements ShouldQueue
 
         try {
             $audioAssetId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
-            $audioAsset   = $audioAssetId > 0 ? Asset::query()->find($audioAssetId) : null;
-            $visualAsset  = $scene->visual_asset_id ? Asset::query()->find((int) $scene->visual_asset_id) : null;
-            $musicAsset   = $project->music_asset_id ? Asset::query()->find((int) $project->music_asset_id) : null;
-            $soundAsset   = $scene->sound_asset_id ? Asset::query()->find((int) $scene->sound_asset_id) : null;
+            $audioAsset   = $audioAssetId > 0 ? \App\Services\Export\ExportSnapshot::asset($exportJob, $audioAssetId) : null;
+            $visualAsset  = $scene->visual_asset_id ? \App\Services\Export\ExportSnapshot::asset($exportJob, (int) $scene->visual_asset_id) : null;
+            $musicAsset   = $project->music_asset_id ? \App\Services\Export\ExportSnapshot::asset($exportJob, (int) $project->music_asset_id) : null;
+            $soundAsset   = $scene->sound_asset_id ? \App\Services\Export\ExportSnapshot::asset($exportJob, (int) $scene->sound_asset_id) : null;
 
             $segmentPath = $this->renderSceneSegment(
                 $project,

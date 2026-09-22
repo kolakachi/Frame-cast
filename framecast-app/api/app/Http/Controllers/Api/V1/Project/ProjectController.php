@@ -1740,159 +1740,34 @@ class ProjectController extends Controller
             return response()->json(['data' => ['export_job' => $job ? $this->serializeExportJob($job, Asset::query()->whereKey($job->output_asset_id)->get()->keyBy('id')) : null], 'meta' => []], $job ? 200 : 202);
         }
 
-        $scenes = Scene::query()
-            ->where('project_id', $project->getKey())
-            ->orderBy('scene_order')
-            ->get();
-
-        if ($this->usageService->hasReachedExportLimit($user)) {
-            $ctx = $this->usageService->exportLimitContext($user);
-            return $this->limitError(
-                'export_limit_reached',
-                "You've used {$ctx['used']} of {$ctx['limit']} exports on the {$ctx['plan']} plan this month.",
-                $ctx,
-            );
+        try {
+            [$jobs, $skipped] = DB::transaction(function () use ($project, $validated, $user) {
+                \App\Models\Workspace::whereKey($project->workspace_id)->lockForUpdate()->firstOrFail();
+                $requested = array_values(array_unique($validated['aspect_ratios'] ?? [$validated['aspect_ratio'] ?? $project->aspect_ratio ?? '9:16']));
+                if (! $requested) $requested = [$project->aspect_ratio ?: '9:16'];
+                $remaining = $this->usageService->exportsRemaining($user);
+                $inFlight = ExportJob::where('workspace_id', $project->workspace_id)->whereIn('status', ['queued', 'processing'])->count();
+                $available = $remaining === null ? count($requested) : max(0, $remaining - $inFlight);
+                $skipped = array_slice($requested, $available);
+                $requested = array_slice($requested, 0, $available);
+                if (! $requested) throw new \RuntimeException('Your export allowance is used or reserved by exports already in progress.', 402);
+                $jobs = [];
+                foreach ($requested as $ratio) {
+                    $jobs[] = app(\App\Services\Export\ProjectExportService::class)->queue($project, [
+                        'aspect_ratio' => $ratio,
+                        'language' => $validated['language'] ?? $project->primary_language ?? 'en',
+                        'watermark_enabled' => $validated['watermark_enabled'] ?? false,
+                    ]);
+                }
+                return [$jobs, $skipped];
+            });
+        } catch (\RuntimeException $e) {
+            if ($e->getCode() === 402) return $this->limitError('export_limit_reached', $e->getMessage(), $this->usageService->exportLimitContext($user));
+            return $this->error('export_blocked', $e->getMessage(), 422);
         }
-
-        if ($scenes->isEmpty()) {
-            return $this->error('export_blocked', 'At least one scene is required before export.', 422);
-        }
-
-        // A whole-video take (one-shot, restyle) already IS the finished
-        // file: its scene visual carries picture and voice together. The
-        // scene renderer would refuse it (script with no voice track) and,
-        // worse, strip the native audio. Export hands over the video itself.
-        if (in_array(data_get($project->visual_brief, 'ugc_format'), ['one_shot', 'restyle'], true)) {
-            $visual = $scenes->first()?->visual_asset_id
-                ? Asset::query()->whereKey($scenes->first()->visual_asset_id)->first()
-                : null;
-            if (! $visual) {
-                return $this->error('export_blocked', 'The video has not finished generating yet.', 422);
-            }
-            $titleSlug = Str::slug(Str::limit((string) $project->title, 40, '')) ?: 'take';
-            $exportJob = ExportJob::query()->create([
-                'workspace_id' => $project->workspace_id,
-                'project_id' => $project->getKey(),
-                'variant_id' => null,
-                'aspect_ratio' => $project->aspect_ratio ?: '9:16',
-                'language' => $project->primary_language ?: 'en',
-                'file_name' => "{$titleSlug}-".($project->aspect_ratio ?: '9:16').'.mp4',
-                'watermark_enabled' => false,
-                'status' => 'completed',
-                'progress_percent' => 100,
-                'output_asset_id' => $visual->getKey(),
-                'priority' => 0,
-                'queued_at' => now(),
-                'started_at' => now(),
-                'completed_at' => now(),
-            ]);
-
-            $payload = $this->serializeExportJob(
-                $exportJob->fresh(),
-                Asset::query()->whereKey($visual->getKey())->get()->keyBy('id'),
-            );
-
-            return response()->json(['data' => [
-                'export_job' => $payload,
-                'export_jobs' => [$payload],
-                'skipped_aspect_ratios' => [],
-            ], 'meta' => []]);
-        }
-
-        $visualOptionalTypes = ['text_card', 'waveform'];
-
-        foreach ($scenes as $scene) {
-            // A scene without words is only an unfinished scene when it also
-            // has nothing to show. The text-led UGC format is silent cards by
-            // design — a still and a headline, no narration — and this gate
-            // used to refuse the whole format at the last step: planned,
-            // generated, priced, unexportable.
-            $headline = trim((string) data_get($scene->caption_settings_json, 'ugc_headline.text', ''));
-            if (trim((string) $scene->script_text) === '' && ! $scene->visual_asset_id && $headline === '') {
-                return $this->error('export_blocked', 'Every scene needs narration, a visual, or a headline before export.', 422);
-            }
-
-            if (! $scene->visual_asset_id && ! in_array((string) $scene->visual_type, $visualOptionalTypes, true)) {
-                return $this->error('export_blocked', 'Missing visual blocks export.', 422);
-            }
-
-            // Only scenes with words need a voice track — silent cards
-            // (text_led UGC) have no narration to have generated.
-            if (trim((string) $scene->script_text) !== '' && ! data_get($scene->voice_settings_json, 'audio_asset_id')) {
-                return $this->error('export_blocked', 'Missing voice blocks export.', 422);
-            }
-        }
-
-        $language = (string) ($validated['language'] ?? $project->primary_language ?? 'en');
-        $titleSlug = Str::slug((string) ($project->title ?: 'framecast-project'));
-        $watermark = $this->shouldWatermark($project->workspace_id, (bool) ($validated['watermark_enabled'] ?? false));
-
-        // C10 — batch export: accept aspect_ratios[] (one render per ratio), fall
-        // back to the singular aspect_ratio, then the project default. Each ratio
-        // re-composites the SAME generated assets at new dimensions (no AI re-gen).
-        $requested = $validated['aspect_ratios'] ?? null;
-        if (empty($requested)) {
-            $requested = [(string) ($validated['aspect_ratio'] ?? $project->aspect_ratio ?? '9:16')];
-        }
-        $requested = array_values(array_unique(array_map('strval', $requested)));
-
-        // Cap the batch to the workspace's remaining export quota (null = unlimited).
-        // Surface anything dropped rather than silently truncating.
-        $remaining = $this->usageService->exportsRemaining($user);
-        $skipped = [];
-        if ($remaining !== null && count($requested) > $remaining) {
-            $skipped = array_values(array_slice($requested, max(0, $remaining)));
-            $requested = array_values(array_slice($requested, 0, max(0, $remaining)));
-        }
-        if (empty($requested)) {
-            $ctx = $this->usageService->exportLimitContext($user);
-            return $this->limitError(
-                'export_limit_reached',
-                "You've used {$ctx['used']} of {$ctx['limit']} exports on the {$ctx['plan']} plan this month.",
-                $ctx,
-            );
-        }
-
-        $jobs = [];
-        foreach ($requested as $aspectRatio) {
-            $exportJob = ExportJob::query()->create([
-                'workspace_id' => $project->workspace_id,
-                'project_id' => $project->getKey(),
-                'variant_id' => null,
-                'aspect_ratio' => $aspectRatio,
-                'language' => $language,
-                'file_name' => "{$titleSlug}-{$aspectRatio}-{$language}.mp4",
-                'watermark_enabled' => $watermark,
-                'status' => 'queued',
-                'progress_percent' => 0,
-                'priority' => CreditService::exportPriorityFor($user->workspace?->plan_tier),
-                'queued_at' => now(),
-            ]);
-
-            rescue(static function () use ($project, $exportJob): void {
-                ExportProgressed::dispatch(
-                    (int) $project->getKey(),
-                    (int) $exportJob->getKey(),
-                    'queued',
-                    0,
-                    'Export queued.',
-                    (string) $exportJob->file_name,
-                    $exportJob->failure_reason
-                );
-            }, false);
-
-            ProcessExportJob::dispatch((int) $exportJob->getKey());
-            $jobs[] = $this->exportJobPayload($exportJob);
-        }
-
-        return response()->json([
-            'data' => [
-                'export_job' => $jobs[0],          // back-compat: single-job callers
-                'export_jobs' => $jobs,
-                'skipped_aspect_ratios' => $skipped,
-            ],
-            'meta' => [],
-        ], 201);
+        $payloads = array_map(fn ($job) => $this->exportJobPayload($job), $jobs);
+        return response()->json(['data' => ['export_job' => $payloads[0], 'export_jobs' => $payloads,
+            'skipped_aspect_ratios' => $skipped], 'meta' => []], 201);
     }
 
     /** @return array<string,mixed> */

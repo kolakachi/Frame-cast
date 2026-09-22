@@ -45,6 +45,7 @@ class AutomaticVideoFinishTest extends TestCase
         DB::table('projects')->insert(['id' => 215, 'workspace_id' => 1, 'status' => 'ready_for_review', 'source_type' => 'script']);
         DB::table('workspaces')->insert(['id' => 1, 'plan_tier' => 'free']);
         DB::table('users')->insert(['id' => 1, 'workspace_id' => 99]);
+        DB::table('assets')->insert([['id'=>10,'workspace_id'=>1,'asset_type'=>'image'], ['id'=>11,'workspace_id'=>1,'asset_type'=>'audio'], ['id'=>99,'workspace_id'=>1,'asset_type'=>'audio']]);
         $usage = $this->createMock(WorkspaceUsageService::class);
         $usage->method('hasReachedExportLimit')->willReturn(false);
         $this->exports = new ProjectExportService($usage);
@@ -122,7 +123,7 @@ class AutomaticVideoFinishTest extends TestCase
     public function test_whole_video_keeps_native_audio_without_rendering(): void
     {
         DB::table('workspaces')->where('id', 1)->update(['plan_tier' => 'creator', 'plan_source' => 'manual']);
-        DB::table('assets')->insert(['id' => 10, 'asset_type' => 'video', 'storage_url' => 'native.mp4']);
+        DB::table('assets')->where('id', 10)->update(['asset_type' => 'video', 'storage_url' => 'native.mp4']);
         $project = $this->project([], ['ugc_format' => 'one_shot']);
         $project->scenes()->first()->update(['voice_settings_json' => []]);
         $job = $this->exports->finishInitial($project);
@@ -164,7 +165,7 @@ class AutomaticVideoFinishTest extends TestCase
 
     public function test_video_download_streams_an_attachment_instead_of_redirecting_to_a_player(): void
     {
-        DB::table('assets')->insert(['id' => 10, 'asset_type' => 'video', 'storage_url' => 'minio://video.mp4']);
+        DB::table('assets')->insert(['id' => 12, 'asset_type' => 'video', 'storage_url' => 'minio://video.mp4']);
         $stream = fopen('php://memory', 'r+');
         fwrite($stream, 'video bytes');
         rewind($stream);

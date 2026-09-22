@@ -50,16 +50,13 @@ class ConcatenateExportJob implements ShouldQueue
             return;
         }
 
-        $project = Project::query()->find($exportJob->project_id);
+        $project = \App\Services\Export\ExportSnapshot::project($exportJob);
 
         if (! $project) {
             throw new \RuntimeException('Project not found for export concatenation.');
         }
 
-        $scenes = Scene::query()
-            ->where('project_id', $project->getKey())
-            ->orderBy('scene_order')
-            ->get();
+        $scenes = \App\Services\Export\ExportSnapshot::scenes($exportJob);
 
         $exportJob->forceFill(['progress_percent' => 88])->save();
         $this->dispatchProgress($exportJob, 'processing', 88, 'Assembling final video…');
@@ -82,7 +79,7 @@ class ConcatenateExportJob implements ShouldQueue
             }
 
             if ($project->music_asset_id) {
-                $musicAsset = Asset::query()->find($project->music_asset_id);
+                $musicAsset = \App\Services\Export\ExportSnapshot::asset($exportJob, (int) $project->music_asset_id);
                 if ($musicAsset) {
                     $musicedFile = $this->tempDir.'/output_music.mp4';
                     $this->applyMusicMix($project, $musicAsset, $outputFile, $musicedFile, $this->tempDir);

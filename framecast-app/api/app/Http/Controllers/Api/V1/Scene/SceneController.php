@@ -185,6 +185,10 @@ class SceneController extends Controller
             return $this->error('not_found', 'Scene not found.', 404);
         }
 
+        if (in_array(data_get($scene->project->visual_brief, 'ugc_format'), ['one_shot', 'restyle'], true)) {
+            return $this->error('whole_video_edit_unsupported', 'This take contains baked-in picture and dialogue. Revise it in its creation flow instead of changing scene settings.', 422);
+        }
+
         $validated = $request->validate([
             'label' => ['sometimes', 'nullable', 'string', 'max:255'],
             'script_text' => ['sometimes', 'nullable', 'string'],
@@ -199,6 +203,8 @@ class SceneController extends Controller
             'transition_rule' => ['sometimes', 'nullable', 'string', 'max:64'],
             'voice_profile_id' => ['sometimes', 'nullable', 'integer'],
             'voice_settings_json' => ['sometimes', 'nullable', 'array'],
+            'voice_settings_json.audio_asset_id' => ['sometimes', 'nullable', 'integer'],
+            'voice_settings_json.volume' => ['sometimes', 'numeric', 'min:0', 'max:200'],
             'caption_settings_json' => ['sometimes', 'nullable', 'array'],
             'caption_settings_json.enabled' => ['sometimes', 'boolean'],
             'caption_settings_json.style_key' => ['sometimes', 'string', 'in:impact,editorial,hacker'],
@@ -258,6 +264,38 @@ class SceneController extends Controller
             if (! $characterExists) {
                 return $this->error('invalid_character', 'Character not found in this workspace.', 422);
             }
+        }
+
+        if (array_key_exists('voice_settings_json', $validated)) {
+            $next = $validated['voice_settings_json'] ?? [];
+            $audioId = $next['audio_asset_id'] ?? null;
+            if ($audioId && ! Asset::query()->whereKey($audioId)->where('workspace_id', $user->workspace_id)->where('asset_type', 'audio')->exists()) {
+                return $this->error('invalid_audio', 'Narration audio not found in this workspace.', 422);
+            }
+            // The browser cannot clear stale status just by saving settings.
+            $old = $scene->voice_settings_json ?? [];
+            $changed = false;
+            foreach (['voice_id', 'provider', 'speed', 'stability', 'voice_prompt', 'language'] as $key) {
+                if (array_key_exists($key, $next) && ($next[$key] ?? null) != ($old[$key] ?? null)) $changed = true;
+            }
+            $next = array_merge($old, $next);
+            $newAudio = $audioId && $audioId != ($old['audio_asset_id'] ?? null);
+            $next['is_outdated'] = ! $newAudio && ($changed || ! empty($old['is_outdated']));
+            $validated['voice_settings_json'] = $next;
+        }
+        if (array_key_exists('script_text', $validated) && $validated['script_text'] !== $scene->script_text) {
+            $voice = $validated['voice_settings_json'] ?? $scene->voice_settings_json ?? [];
+            $voice['is_outdated'] = empty($newAudio);
+            $validated['voice_settings_json'] = $voice;
+            $image = $scene->image_generation_settings_json ?? [];
+            if (! empty($image['animation_video_asset_id']) && ! empty($image['spokesperson_consent'])) {
+                $image['animation_outdated'] = true;
+                $scene->image_generation_settings_json = $image;
+            }
+        }
+        if (array_key_exists('duration_seconds', $validated) && data_get($scene->voice_settings_json, 'audio_asset_id')
+            && (float) $validated['duration_seconds'] !== (float) $scene->duration_seconds) {
+            return $this->error('narration_controls_duration', 'This scene follows its narration length. Edit and regenerate narration to change its duration.', 422);
         }
 
         if (array_key_exists('caption_settings_json', $validated) && is_array($validated['caption_settings_json'])) {
@@ -526,7 +564,7 @@ class SceneController extends Controller
 
         $audioAssetId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
         $audioAsset = $audioAssetId > 0
-            ? Asset::query()->whereKey($audioAssetId)->first()
+            ? Asset::query()->whereKey($audioAssetId)->where('workspace_id', $scene->project->workspace_id)->first()
             : null;
 
         return response()->json([
@@ -1414,7 +1452,7 @@ class SceneController extends Controller
 
         $audioAssetId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
         $audioAsset = $audioAssetId > 0
-            ? Asset::query()->whereKey($audioAssetId)->first()
+            ? Asset::query()->whereKey($audioAssetId)->where('workspace_id', $scene->project->workspace_id)->first()
             : null;
 
         $soundAsset = $scene->sound_asset_id
