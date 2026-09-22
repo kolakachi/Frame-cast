@@ -3139,8 +3139,12 @@
             letter-spacing: .04em; padding: 3px 9px; border-radius: 99px;
         }
         .promo-was, .promo-now, .promo-save, .promo-code { display: none; }
-        body.promo-on .promo-was { display: inline; color: var(--text-faint); text-decoration: line-through; font-size: 18px; margin-right: 8px; font-weight: 400; }
-        body.promo-on .promo-now { display: inline; }
+        body.promo-on .promo-was { display: inline; color: var(--text-faint); text-decoration: line-through;
+            font-size: 17px; font-weight: 400; letter-spacing: 0; margin-right: 10px; vertical-align: 6px; }
+        /* The sale price has to out-shout both the old price beside it and the
+           untouched monthly cards further down the page. */
+        body.promo-on .promo-now { display: inline; font-size: 52px; font-weight: 800; letter-spacing: -2px; line-height: 1; }
+        @media (max-width: 640px) { body.promo-on .promo-now { font-size: 44px; } }
         body.promo-on .promo-save { display: block; color: var(--green); font-size: 12.5px; font-weight: 600; margin-top: 6px; }
         body.promo-on .list-price { display: none; }
         body.promo-on .promo-code { display: block; margin: 14px 0 18px; padding-top: 14px; border-top: 1px dashed rgba(255,255,255,.1); }
