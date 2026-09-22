@@ -202,6 +202,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
         $tier    = (string) ($brief['animate_tier'] ?? 'quick');
         $quality = CreditService::videoQuality($tier, $brief['animate_quality'] ?? null);
 
+        $duration = \App\Services\AnimatedShotPlan::requestSeconds($brief['animation_pacing'] ?? null);
         $fresh = $scene->fresh();
         if (! $fresh || ! $fresh->visual_asset_id) {
             return; // image did not land — nothing to animate
@@ -212,7 +213,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                 'animation_in_progress' => true,
                 'animation_last_error'  => null,
                 'animation_tier'        => $tier,
-                'animation_duration'    => 5,
+                'animation_duration'    => $duration,
                 'animation_quality'     => $quality,
                 'animation_started_at'  => now()->toIso8601String(),
             ]),
@@ -222,7 +223,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             $fresh->getKey(),
             $project->getKey(),
             $tier,
-            5,
+            $duration,
             null,
             quality: $quality,
             sourceAssetId: (int) $fresh->visual_asset_id,

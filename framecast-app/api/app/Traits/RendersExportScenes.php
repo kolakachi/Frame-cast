@@ -138,6 +138,11 @@ trait RendersExportScenes
                 $tail[] = $motionFilter;
                 $tail[] = 'setpts=PTS-STARTPTS';
             }
+            // Pad before captions: narration and captions continue while the last
+            // video frame holds. Never restart a short clip to fill a scene.
+            if ($isVideo) {
+                $tail[] = 'fps=30,tpad=stop_mode=clone:stop_duration='.$durationForFilter;
+            }
             $tail[] = 'trim=duration='.$durationForFilter;
 
             $assFile = null;
@@ -193,7 +198,7 @@ trait RendersExportScenes
                 $cleanupPaths[] = $visualPath;
 
                 if ($isVideo) {
-                    array_push($command, '-stream_loop', '-1', '-i', $visualPath);
+                    array_push($command, '-i', $visualPath);
                 } else {
                     array_push($command, '-loop', '1', '-framerate', '30', '-i', $visualPath);
                 }

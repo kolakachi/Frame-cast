@@ -1121,6 +1121,9 @@ const musicReady = ref(true);
 const pendingScenePlay = ref(false);
 const auditionMusicTrackId = ref(null);
 const currentVisualUrl = ref(null);
+const previewVideoRef = ref(null);
+const previewVideoBackgroundRef = ref(null);
+const previewVideoDuration = ref(0);
 const visualLoadFailed = ref(false);
 const mediaCache = ref({
   visual: {},
@@ -2144,6 +2147,8 @@ const activeSceneVisualIsVideo = computed(() => {
   if (!asset) return false;
   return asset.asset_type === "video" || String(asset.mime_type || "").startsWith("video/");
 });
+const previewVideoShortfall = computed(() => activeSceneVisualIsVideo.value && previewVideoDuration.value > 0
+  ? Math.max(0, sceneDuration(activeScene.value) - previewVideoDuration.value) : 0);
 // True only when the scene visual is a user library asset (not AI broll, not stock/matched)
 const activeSceneVisualIsFromLibrary = computed(() => {
   const asset = activeSceneVisualAsset.value;
@@ -5054,6 +5059,27 @@ function currentSceneAudioOffset() {
   return previewElapsedSecs.value;
 }
 
+// Use the scene clock for both video layers. At EOF keep the last frame;
+// do not replay the action while narration continues.
+function syncSceneVideoPreview() {
+  const offset = currentSceneAudioOffset();
+  for (const video of [previewVideoRef.value, previewVideoBackgroundRef.value]) {
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) continue;
+    const target = Math.min(offset, Math.max(0, video.duration - 0.04));
+    if (Math.abs(video.currentTime - target) > 0.3 || !isPreviewPlaying.value) {
+      video.currentTime = target;
+    }
+    if (isPreviewPlaying.value && offset < video.duration - 0.04) video.play().catch(() => {});
+    else video.pause();
+  }
+}
+function sceneVideoMetadataLoaded() {
+  previewVideoDuration.value = previewVideoRef.value?.duration || 0;
+  syncSceneVideoPreview();
+}
+watch([previewElapsedSecs, isPreviewPlaying, activeSceneId], () => nextTick(syncSceneVideoPreview));
+watch(currentVisualUrl, () => { previewVideoDuration.value = 0; });
+
 function fullPreviewAudioProgress() {
   if (previewMode.value !== "full") return null;
 
@@ -7898,22 +7924,25 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="editor-canvas">
+            <p v-if="previewVideoShortfall > 0.15" class="muted" role="status" style="padding: 8px 12px; font-size: 12px;">
+              This clip ends {{ previewVideoShortfall.toFixed(1) }}s before the narration. Preview and export hold its last frame. Use a longer clip or split the scene for continuous motion.
+            </p>
             <div class="preview-container" :style="previewContainerStyle">
               <div class="preview-video-bg">
                 <template v-if="currentVisualUrl && activeSceneVisualIsVideo">
                   <video
                     :src="currentVisualUrl"
                     class="preview-fit-bg"
-                    autoplay
-                    loop
+                    ref="previewVideoBackgroundRef"
+                    @loadedmetadata="syncSceneVideoPreview"
                     muted
                     playsinline
                   ></video>
                   <video
                     :src="currentVisualUrl"
                     class="preview-image preview-video-contain"
-                    autoplay
-                    loop
+                    ref="previewVideoRef"
+                    @loadedmetadata="sceneVideoMetadataLoaded"
                     muted
                     playsinline
                   ></video>

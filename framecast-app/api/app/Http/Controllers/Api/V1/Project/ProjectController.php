@@ -304,6 +304,7 @@ class ProjectController extends Controller
             // ai_video only: which i2v model animates each scene's still.
             'animate_tier' => ['nullable', Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro', 'veo_fast', 'seedance_25'])],
             'animate_quality' => ['nullable', 'string', 'max:16'],
+            'animation_pacing' => ['nullable', Rule::in(['short', 'long'])],
             'ai_broll_style' => ['nullable', 'string', 'max:64'],
             'visual_style' => ['nullable', 'string', 'max:64'],
             'custom_visual_style' => ['nullable', 'string', 'max:500'],
@@ -375,6 +376,7 @@ class ProjectController extends Controller
             durationSeconds: (int) ($validated['duration_target_seconds'] ?? 60),
             animateTier:   $validated['animate_tier'] ?? null,
             animateQuality: $validated['animate_quality'] ?? null,
+            animationPacing: $validated['animation_pacing'] ?? null,
         );
         $balance = $this->credits->balance((int) $user->workspace_id);
         if ($balance < $estimate['credits_min']) {
@@ -625,6 +627,7 @@ class ProjectController extends Controller
             // MERGES into this column, so the seed survives enrichment.
             'visual_brief' => ($validated['visual_generation_mode'] ?? null) === 'ai_video' ? [
                 'animate_tier'    => $validated['animate_tier'] ?? 'quick',
+                'animation_pacing' => $validated['animation_pacing'] ?? 'short',
                 'animate_quality' => $validated['animate_quality'] ?? null,
             ] : null,
             'ai_broll_style' => $validated['ai_broll_style'] ?? null,

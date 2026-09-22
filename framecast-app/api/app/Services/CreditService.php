@@ -948,14 +948,14 @@ class CreditService
         ?int $durationSeconds = null,
         ?string $animateTier = null,
         ?string $animateQuality = null,
+        ?string $animationPacing = null,
     ): array {
         [$scenesMin, $scenesMax] = $this->estimateSceneCount($sourceType, $sourceContent);
 
-        // Animated projects are paced differently — fewer, longer scenes (see
-        // ScenePacing) — so the scene range comes from the pacing rule, not
-        // from source-content heuristics tuned for 5s still scenes.
+        // Use the same animated pacing as generation so shorter shots are
+        // reflected in the estimate shown before the user creates the project.
         if ($visualMode === 'ai_video') {
-            $target    = \App\Services\ScenePacing::targetScenes($durationSeconds ?: 60, $visualMode, true);
+            $target    = \App\Services\ScenePacing::targetScenes($durationSeconds ?: 60, $visualMode, true, AnimatedShotPlan::clipSeconds($animateTier, $animationPacing));
             $scenesMin = max(\App\Services\ScenePacing::MIN_SCENES, (int) round($target * 0.8));
             $scenesMax = min(\App\Services\ScenePacing::MAX_SCENES, (int) round($target * 1.2));
         }
@@ -972,7 +972,7 @@ class CreditService
             'ai_video' => $aiPerScene + self::animationCost(
                 $animateTier ?: 'quick',
                 self::videoQuality($animateTier ?: 'quick', $animateQuality),
-                5,
+                AnimatedShotPlan::requestSeconds($animationPacing),
             ),
             default => self::STOCK, // stock_video, stock_images, waveform, etc.
         };
@@ -984,6 +984,7 @@ class CreditService
         $mid = (int) round(($min + $max) / 2);
 
         return [
+            'animation_clip_seconds' => $visualMode === 'ai_video' ? AnimatedShotPlan::clipSeconds($animateTier, $animationPacing) : null,
             'scenes_min'        => $scenesMin,
             'scenes_max'        => $scenesMax,
             'credits_min'       => $min,

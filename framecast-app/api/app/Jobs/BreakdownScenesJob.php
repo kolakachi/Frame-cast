@@ -40,10 +40,12 @@ class BreakdownScenesJob implements ShouldQueue
 
         $duration = (int) ($project->duration_target_seconds ?: 60);
 
-        // Animated b-roll bills per scene, so those videos are cut into fewer,
-        // longer scenes. Video visuals loop to fill their segment, so a longer
-        // scene doesn't freeze — see ScenePacing.
+        // Plan animated scenes around clip length; export does not loop footage.
         $animated = $this->projectAnimatesScenes($project);
+        $shotSeconds = \App\Services\AnimatedShotPlan::clipSeconds(
+            data_get($project->visual_brief, 'animate_tier'),
+            data_get($project->visual_brief, 'animation_pacing'),
+        );
 
         $variables = [
             'script_text' => $project->script_text,
@@ -53,6 +55,7 @@ class BreakdownScenesJob implements ShouldQueue
                 $duration,
                 $project->visual_generation_mode,
                 $animated,
+                $shotSeconds,
             ),
             'structure_guidance' => \App\Services\ScenePacing::structureGuidance($duration),
             'language' => $project->primary_language ?: 'en',

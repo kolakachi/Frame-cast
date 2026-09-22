@@ -22,6 +22,7 @@ class CreditEstimateController extends Controller
             'duration_target_seconds' => 'nullable|integer|min:5|max:600',
             'animate_tier'         => 'nullable|string|in:quick,balanced,premium,seedance_lite,seedance_pro,veo_fast,seedance_25',
             'animate_quality'      => 'nullable|string|max:16',
+            'animation_pacing' => 'nullable|string|in:short,long',
         ]);
 
         /** @var User $user */
@@ -35,6 +36,7 @@ class CreditEstimateController extends Controller
             durationSeconds: (int) $request->input('duration_target_seconds', 60),
             animateTier:   $request->input('animate_tier'),
             animateQuality: $request->input('animate_quality'),
+            animationPacing: $request->input('animation_pacing'),
         );
 
         $balance    = $this->credits->balance((int) $user->workspace_id);

@@ -174,7 +174,7 @@ class ReplicateI2VAdapter implements I2VAdapter
             'provider_key'     => $this->providerKey(),
             'model_slug'       => $modelSlug,
             'video_url'        => (string) $videoUrl,
-            'duration_seconds' => $durationSeconds,
+            'duration_seconds' => (int) $input['duration'],
             'width'            => null,
             'height'           => null,
         ];

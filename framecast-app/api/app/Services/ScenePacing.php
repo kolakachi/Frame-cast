@@ -12,12 +12,9 @@ namespace App\Services;
  * into fewer scenes therefore produces the same video with longer scenes, not
  * a shorter one.
  *
- * That matters because cost scales with scene COUNT, not runtime: every scene
- * is its own image and, if animated, its own video render. Animated b-roll at
- * 50-125 credits a scene is the most expensive thing the product makes, so an
- * animated video is deliberately cut into fewer, longer scenes. Video visuals
- * loop to fill their segment (`-stream_loop -1`), so a 5s clip covers a 10s
- * scene without freezing.
+ * Plan animated shots around the short generated clip, rather than relying on
+ * replay to cover narration. Actual speech may still run longer; the renderer
+ * holds the final frame instead of repeating the action.
  */
 class ScenePacing
 {
@@ -25,11 +22,10 @@ class ScenePacing
      * Seconds of screen time per scene, by how the visuals are produced.
      *
      * Stills are cheap, so they can cut fast — which also looks better, since
-     * a static image outstays its welcome quickly. Animated scenes hold longer
-     * because each one is a paid render.
+     * a static image outstays its welcome quickly. Animated scenes should fit their short generated clips.
      */
     public const SECONDS_PER_SCENE = [
-        'animated'     => 10.0,  // i2v b-roll — 50-125 cr per scene
+        'animated'     => 5.0,  // i2v b-roll — 50-125 cr per scene
         'ai_images'    => 5.0,   // generated stills — ~16 cr per scene
         'stock'        => 5.0,   // stock clips — included
         'stock_images' => 5.0,
@@ -120,18 +116,18 @@ class ScenePacing
     }
 
     /** Scenes to aim for at this length and visual mode. */
-    public static function targetScenes(int $durationSeconds, ?string $visualMode, bool $animated = false): int
+    public static function targetScenes(int $durationSeconds, ?string $visualMode, bool $animated = false, ?float $animatedShotSeconds = null): int
     {
-        $perScene = self::secondsPerScene($visualMode, $animated);
+        $perScene = self::secondsPerScene($visualMode, $animated, $animatedShotSeconds);
         $target   = (int) round(max(1, $durationSeconds) / $perScene);
 
         return max(self::MIN_SCENES, min(self::MAX_SCENES, $target));
     }
 
-    public static function secondsPerScene(?string $visualMode, bool $animated = false): float
+    public static function secondsPerScene(?string $visualMode, bool $animated = false, ?float $animatedShotSeconds = null): float
     {
         if ($animated) {
-            return self::SECONDS_PER_SCENE['animated'];
+            return $animatedShotSeconds ?? self::SECONDS_PER_SCENE['animated'];
         }
 
         return self::SECONDS_PER_SCENE[$visualMode ?? ''] ?? self::DEFAULT_SECONDS_PER_SCENE;
@@ -145,15 +141,15 @@ class ScenePacing
      * doubling the runtime added only 2.5 scenes and silently stretched each
      * one instead. A stated target with a tolerance removes the guess.
      */
-    public static function guidance(int $durationSeconds, ?string $visualMode, bool $animated = false): string
+    public static function guidance(int $durationSeconds, ?string $visualMode, bool $animated = false, ?float $animatedShotSeconds = null): string
     {
-        $target   = self::targetScenes($durationSeconds, $visualMode, $animated);
-        $perScene = self::secondsPerScene($visualMode, $animated);
+        $target   = self::targetScenes($durationSeconds, $visualMode, $animated, $animatedShotSeconds);
+        $perScene = self::secondsPerScene($visualMode, $animated, $animatedShotSeconds);
         $low      = max(self::MIN_SCENES, (int) round($target * 0.8));
         $high     = min(self::MAX_SCENES, (int) round($target * 1.2));
 
         $note = $animated
-            ? ' Each scene is an expensive animated render, so prefer fewer, longer scenes — never pad the count.'
+            ? ' Each animated shot has about '.$perScene.' seconds of footage. Keep narration concise per shot; split longer explanations across distinct shots without dropping any script. Never assume the animation can loop.'
             : '';
 
         return sprintf(

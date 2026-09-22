@@ -94,6 +94,7 @@ const globalVisualMode = ref('ai_images') // 'stock_video' | 'stock_images' | 'a
 // The video model is the real price lever — a 4x spread per scene — so it is
 // an explicit choice, never a hidden default.
 const animateTier = ref('quick')
+const animationPacing = ref('short')
 
 // ── Audiogram (waveform) look, pickable at creation ────────────────────
 // Same catalogs as the editor's audiogram panel; the choice lands in
@@ -130,29 +131,41 @@ const ANIMATE_TIER_OPTIONS = [
 // Server-priced quote for AI Video. Local arithmetic is NOT trusted for this
 // mode — per-scene cost is image + animation and scene count follows the
 // animated pacing rule, both of which live in the backend. Quote = charge.
-const aiVideoEstimate = ref(null)
+const aiVideoEstimates = ref({})
+const aiVideoEstimate = computed(() => aiVideoEstimates.value[animationPacing.value] ?? null)
 const aiVideoEstimateLoading = ref(false)
 let aiVideoEstimateTimer = null
+let aiVideoEstimateRequest = 0
 async function refreshAiVideoEstimate() {
   if (globalVisualMode.value !== 'ai_video') return
+  const requestId = ++aiVideoEstimateRequest
   aiVideoEstimateLoading.value = true
+  const payload = {
+    source_type: wizardSourceType.value || 'prompt',
+    source_content_raw: (wizardSourceType.value === 'prompt' ? promptText.value : '') || null,
+    visual_generation_mode: 'ai_video',
+    duration_target_seconds: Number(durationTargetSeconds.value || 60),
+    animate_tier: animateTier.value,
+  }
   try {
-    const res = await api.post('/projects/estimate-credits', {
-      source_type: wizardSourceType.value || 'prompt',
-      source_content_raw: (wizardSourceType.value === 'prompt' ? promptText.value : '') || null,
-      visual_generation_mode: 'ai_video',
-      duration_target_seconds: Number(durationTargetSeconds.value || 60),
-      animate_tier: animateTier.value,
-    })
-    aiVideoEstimate.value = res?.data?.data ?? null
-  } catch { aiVideoEstimate.value = null }
-  finally { aiVideoEstimateLoading.value = false }
+    const choices = await Promise.all(['short', 'long'].map(async pacing => {
+      const res = await api.post('/projects/estimate-credits', { ...payload, animation_pacing: pacing })
+      return [pacing, res?.data?.data]
+    }))
+    if (requestId === aiVideoEstimateRequest) aiVideoEstimates.value = Object.fromEntries(choices)
+  } catch {
+    if (requestId === aiVideoEstimateRequest) aiVideoEstimates.value = {}
+  } finally {
+    if (requestId === aiVideoEstimateRequest) aiVideoEstimateLoading.value = false
+  }
 }
 watch([globalVisualMode, animateTier, durationTargetSeconds], () => {
-  if (globalVisualMode.value !== 'ai_video') { aiVideoEstimate.value = null; return }
+  ++aiVideoEstimateRequest
+  aiVideoEstimates.value = {}
   clearTimeout(aiVideoEstimateTimer)
-  aiVideoEstimateTimer = setTimeout(refreshAiVideoEstimate, 250)
-})
+  aiVideoEstimateLoading.value = globalVisualMode.value === 'ai_video'
+  if (globalVisualMode.value === 'ai_video') aiVideoEstimateTimer = setTimeout(refreshAiVideoEstimate, 250)
+}, { flush: 'sync' })
 const brandKits = ref([])
 // Voice picker — selected at wizard time, applied to every generated scene
 // as default_voice_settings_json.voice_id. Loaded from /voice-profiles on
@@ -1070,6 +1083,10 @@ async function submitOneShot() {
 }
 
 async function submitWizardProject() {
+  if (globalVisualMode.value === 'ai_video' && (aiVideoEstimateLoading.value || !aiVideoEstimate.value)) {
+    wizardCreateError.value = 'Wait for a current animation estimate before generating.'
+    return
+  }
   wizardCreateState.value = 'loading'
   wizardCreateError.value = ''
 
@@ -1121,7 +1138,7 @@ async function submitWizardProject() {
       // ai_video sends the MODE, not visual_type — the controller derives the
       // scene type from the mode, and a visual_type here would stomp it.
       ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'ai_video'
-        ? { visual_generation_mode: 'ai_video', ai_broll_style: aiBrollStyle.value, animate_tier: animateTier.value }
+        ? { visual_generation_mode: 'ai_video', ai_broll_style: aiBrollStyle.value, animate_tier: animateTier.value, animation_pacing: animationPacing.value }
         : {}),
       ...(sourceType !== 'images' && sourceType !== 'blank' && globalVisualMode.value === 'stock_images'
         ? { visual_type: projectVisualTypeForMode('stock_images') }
@@ -1999,10 +2016,25 @@ defineExpose({ open })
                 >
                   <span class="anim-tier-name">{{ t.label }}</span>
                   <span class="anim-tier-sub">{{ t.sub }}</span>
-                  <span class="anim-tier-cost">{{ t.cr }} cr / scene</span>
+
                 </button>
               </div>
 
+              <p class="muted">Choose the pace of your animated shots. Both options keep the same target video length.</p>
+              <div class="anim-tier-grid" role="group" aria-label="Animation pacing">
+                <button v-for="pace in ['short', 'long']" :key="pace" type="button"
+                  :class="['anim-tier-card', animationPacing === pace ? 'selected' : '']"
+                  :aria-pressed="animationPacing === pace" @click="animationPacing = pace">
+                  <span class="anim-tier-name">{{ pace === 'short' ? 'More short shots' : 'Fewer long shots' }}</span>
+                  <template v-if="aiVideoEstimates[pace]">
+                    <span class="anim-tier-sub">{{ aiVideoEstimates[pace].animation_clip_seconds }}s clips · about {{ aiVideoEstimates[pace].scenes_min }}–{{ aiVideoEstimates[pace].scenes_max }} scenes</span>
+                    <span class="anim-tier-cost">{{ aiVideoEstimates[pace].credits_min }}–{{ aiVideoEstimates[pace].credits_max }} credits estimated</span>
+                  </template>
+                  <span v-else class="anim-tier-sub">{{ aiVideoEstimateLoading ? 'Calculating…' : 'Estimate unavailable' }}</span>
+                </button>
+              </div>
+              <p class="muted">Short shots change visuals more often. Long shots keep each action on screen longer. Narration that outlasts a clip holds its last frame instead of repeating.</p>
+              <button v-if="!aiVideoEstimateLoading && !aiVideoEstimate" type="button" class="btn btn-ghost" @click="refreshAiVideoEstimate">Retry estimate</button>
               <div class="anim-cost-line" v-if="aiVideoEstimateLoading">Working out the cost…</div>
               <div class="anim-cost-line" v-else-if="aiVideoEstimate">
                 ~{{ aiVideoEstimate.scenes_min }}–{{ aiVideoEstimate.scenes_max }} animated scenes ·
@@ -2012,7 +2044,7 @@ defineExpose({ open })
                 </template>
               </div>
               <div v-if="Number(durationTargetSeconds) >= 120" class="anim-cost-warn">
-                Long videos multiply this quickly — a 3-minute AI Video runs 14–22 animated scenes.
+                Longer videos need more footage. Review the estimate for your selected model and pacing before generating.
                 Consider 60–90s, or AI Images with animation added to key scenes in the editor.
               </div>
             </template>
@@ -2155,7 +2187,7 @@ defineExpose({ open })
             v-else
             class="btn btn-primary"
             type="button"
-            :disabled="wizardCreateState === 'loading' || pdfCheckPending || pdfDoomed"
+            :disabled="wizardCreateState === 'loading' || pdfCheckPending || pdfDoomed || (globalVisualMode === 'ai_video' && (aiVideoEstimateLoading || !aiVideoEstimate))"
             @click="submitWizardProject"
           >
             {{ wizardCreateState === 'loading'
