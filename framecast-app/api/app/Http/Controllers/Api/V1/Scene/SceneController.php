@@ -892,6 +892,94 @@ class SceneController extends Controller
         }
     }
 
+    /**
+     * Change one thing about the scene's existing image, keeping the rest.
+     *
+     * Regenerating rolls a new picture; this corrects the one they have. Same
+     * price per call — the point is needing fewer calls. See EditSceneImageJob.
+     */
+    public function editImage(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        if (! $scene->visual_asset_id) {
+            return $this->error('nothing_to_edit', 'This scene has no image to edit yet. Generate one first.', 422);
+        }
+
+        if ($this->usageService->hasExceededApiBudget($user)) {
+            $ctx = $this->usageService->apiBudgetContext($user);
+
+            return $this->limitError(
+                'api_budget_exceeded',
+                "Your workspace has reached its \${$ctx['budget_usd']} AI budget for the {$ctx['plan']} plan this month.",
+                $ctx,
+            );
+        }
+
+        $validated = $request->validate([
+            'instruction' => ['required', 'string', 'min:3', 'max:500'],
+            'model_key'   => ['sometimes', 'nullable', 'string', 'in:' . implode(',', array_keys(\App\Services\Generation\Image\ImageAdapterFactory::AVAILABLE))],
+        ]);
+
+        // Only one generation per scene at a time, with the same staleness
+        // allowance the regenerate path uses for a crashed job.
+        $settings = $scene->image_generation_settings_json ?? [];
+        if (! empty($settings['in_progress'])) {
+            $startedAt = isset($settings['generation_started_at'])
+                ? \Carbon\Carbon::parse($settings['generation_started_at'])
+                : null;
+            if ($startedAt !== null && $startedAt->diffInMinutes(now()) < 5) {
+                return $this->error('generation_in_progress', 'This scene is already being worked on.', 409);
+            }
+        }
+
+        // Screen before spending anything — the instruction is free text.
+        $block = app(\App\Services\Moderation\ContentSafetyService::class)->screenText(
+            $validated['instruction'],
+            [
+                'workspace_id' => (int) $user->workspace_id,
+                'user_id'      => (int) $user->getKey(),
+                'scene_id'     => (int) $scene->getKey(),
+                'project_id'   => (int) $scene->project_id,
+                'operation'    => 'edit_image',
+            ],
+        );
+        if ($block !== null) {
+            return $this->error('content_blocked', $block, 422);
+        }
+
+        // Quote must equal the charge, so read it from the same place the job does.
+        $cost    = app(\App\Services\Generation\Image\ImageAdapterFactory::class)
+            ->referenceGenerationCost(($validated['model_key'] ?? null) ?: \App\Jobs\EditSceneImageJob::EDIT_MODEL);
+        $balance = $this->credits->balance((int) $user->workspace_id);
+
+        if ($balance < $cost) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'insufficient_credits',
+                    'message' => "You need {$cost} credits to edit this image. Your balance is {$balance}.",
+                    'context' => ['balance' => $balance, 'required' => $cost, 'shortage' => $cost - $balance],
+                ],
+            ], 402);
+        }
+
+        \App\Jobs\EditSceneImageJob::dispatch(
+            (int) $scene->getKey(),
+            (int) $scene->project_id,
+            $validated['instruction'],
+            $validated['model_key'] ?? null,
+        );
+
+        return response()->json(['data' => ['queued' => true, 'credits' => $cost], 'meta' => []], 202);
+    }
+
     public function generateImage(Request $request, int $sceneId): JsonResponse
     {
         /** @var User $user */

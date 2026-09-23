@@ -6212,6 +6212,34 @@ async function submitBulkStyle() {
   }
 }
 
+// Edit the image the scene already has, rather than rolling a new one. The
+// reroll path discards the picture; this corrects it and costs less (10cr vs
+// 16cr), so the fix for a small flaw stops being a fresh gamble.
+const editInstruction = ref("");
+const editPending = ref(false);
+const editError = ref("");
+const EDIT_SUGGESTIONS = ['Wider shot', 'Remove text', 'Brighter', 'Different background'];
+
+async function editSceneImage() {
+  const instruction = editInstruction.value.trim();
+  if (!activeScene.value || editPending.value || instruction.length < 3) return;
+
+  editPending.value = true;
+  editError.value = "";
+
+  try {
+    await api.post(`/scenes/${activeScene.value.id}/edit-image`, { instruction });
+    editInstruction.value = "";
+    pollSceneUntilVisual(activeScene.value.id);
+  } catch (err) {
+    // 409 means something is already running on this scene — not an error to show.
+    if (err.response?.status === 409) return;
+    editError.value = err.response?.data?.error?.message ?? "That edit could not be applied.";
+  } finally {
+    editPending.value = false;
+  }
+}
+
 async function generateAIImage() {
   if (!activeScene.value || aiImagePending.value || activeSceneAIImagePending.value) return;
 
@@ -8698,6 +8726,31 @@ onBeforeUnmount(() => {
                     <button class="btn btn-primary btn-sm" type="button" :disabled="aiImagePending || activeSceneAIImagePending" @click="generateAIImage">
                       {{ (aiImagePending || activeSceneAIImagePending) ? '✦ Generating…' : '✦ Generate' }}
                     </button>
+                  </div>
+                  <div v-if="activeScene?.visual_type === 'ai_image' && activeScene?.visual_asset_id" class="edit-image-box">
+                    <div class="micro-label" style="margin-bottom:4px;">
+                      Edit this image <span style="font-weight:400;opacity:.5;">(keeps the shot, changes what you name)</span>
+                    </div>
+                    <textarea
+                      v-model="editInstruction"
+                      class="ai-prompt-area"
+                      rows="2"
+                      maxlength="500"
+                      placeholder="Remove the text on the wall behind her…"
+                    ></textarea>
+                    <div class="edit-chips">
+                      <button v-for="s in EDIT_SUGGESTIONS" :key="s" class="edit-chip" type="button" @click="editInstruction = s">{{ s }}</button>
+                    </div>
+                    <button
+                      class="btn btn-primary btn-sm"
+                      style="width:100%;margin-top:8px;"
+                      type="button"
+                      :disabled="editPending || activeSceneAIImagePending || editInstruction.trim().length < 3"
+                      @click="editSceneImage"
+                    >
+                      {{ editPending ? 'Applying…' : 'Apply edit' }}
+                    </button>
+                    <div v-if="editError" class="ai-image-error">{{ editError }}</div>
                   </div>
                   <div v-if="activeScene?.visual_type === 'ai_image'" class="ai-image-actions">
                     <button class="btn btn-ghost btn-sm" style="flex:1;" type="button" :disabled="aiImagePending || activeSceneAIImagePending || activeSceneAnimationPending" @click="generateAIImage">
@@ -12147,7 +12200,15 @@ button {
 /* Slightly taller picker trigger in panel so labels don't crowd the
    caret / cost chip. Adds breathing room when stacked under labels. */
 .picker-wrap + .micro-label,
-.picker-wrap + .ai-image-actions { margin-top: 16px; }
+.picker-wrap + .edit-image-box { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--color-border); }
+.edit-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.edit-chip {
+  background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 99px;
+  padding: 4px 10px; font-size: 11.5px; color: var(--color-text-secondary);
+  cursor: pointer; font-family: inherit;
+}
+.edit-chip:hover { border-color: var(--color-border-active); color: var(--color-text-primary); }
+.ai-image-actions { margin-top: 16px; }
 
 /* Style picker grid (used by "Add scene" inline) — slightly more
    spacing so the small thumbnails breathe. */
