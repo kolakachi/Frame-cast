@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\CloneSampleProjectJob;
 use App\Jobs\ProvisionWorkspaceDefaultsJob;
+use App\Exceptions\AppSumoLicenseAlreadyClaimed;
 use App\Models\AppSumoLicense;
 use App\Models\User;
 use App\Models\Workspace;
@@ -251,7 +252,33 @@ class AppSumoService
         }
 
         $email = strtolower(trim($email));
-        $user  = User::query()->where('email', $email)->with('workspace')->first();
+
+        // A licence that already sits on a workspace must stay there. Without
+        // this, opening the activation link again and typing a different
+        // address re-pointed the licence at a brand-new workspace — and since
+        // credits are granted once per licence, that workspace got the paid
+        // tier and an empty wallet while the original kept the credits and
+        // lost its licence. The buyer saw their lifetime deal become a free
+        // plan, with AppSumo still showing it as activated.
+        if ($license->workspace_id) {
+            $owner = User::query()->where('workspace_id', $license->workspace_id)->orderBy('id')->first();
+
+            if ($owner && strtolower((string) $owner->email) !== $email) {
+                throw new AppSumoLicenseAlreadyClaimed(
+                    AppSumoLicenseAlreadyClaimed::mask((string) $owner->email),
+                );
+            }
+
+            // Same buyer clicking twice — idempotent, and still worth running
+            // applyTierToWorkspace in case an earlier attempt died mid-grant.
+            if ($owner) {
+                $this->applyTierToWorkspace($license->fresh('workspace'));
+
+                return $owner->fresh('workspace');
+            }
+        }
+
+        $user = User::query()->where('email', $email)->with('workspace')->first();
 
         if (! $user) {
             $workspace = Workspace::query()->create([

@@ -54,6 +54,8 @@ async function submit() {
         "Your activation link has expired. Please start again from your AppSumo account.",
       license_not_found_or_deactivated:
         "This license isn't active. If you were refunded, it's no longer valid.",
+      // The server knows which address holds it; its message names the account.
+      license_already_claimed: data?.message,
     };
     errorMessage.value =
       map[code] || data?.message || "We couldn't activate your account. Please try again.";

@@ -76,12 +76,22 @@ class AppSumoOAuthController extends Controller
             return response()->json(['error' => 'invalid_or_expired_token'], 422);
         }
 
-        $user = $this->appsumo->linkAndProvision(
-            $licenseKey,
-            $validated['email'],
-            $validated['password'],
-            $validated['name'] ?? null,
-        );
+        try {
+            $user = $this->appsumo->linkAndProvision(
+                $licenseKey,
+                $validated['email'],
+                $validated['password'],
+                $validated['name'] ?? null,
+            );
+        } catch (\App\Exceptions\AppSumoLicenseAlreadyClaimed $e) {
+            // Not an error on the buyer's part — they already own this. Tell
+            // them where it lives rather than letting them activate again.
+            return response()->json([
+                'error'   => 'license_already_claimed',
+                'message' => 'This deal is already active on '.$e->maskedEmail.'. Sign in with that address instead.',
+                'context' => ['masked_email' => $e->maskedEmail],
+            ], 409);
+        }
 
         if (! $user) {
             return response()->json(['error' => 'license_not_found_or_deactivated'], 409);
