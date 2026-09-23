@@ -173,7 +173,8 @@ class SubscriptionRenewalTest extends TestCase
         $this->assertTrue((bool) app(CreditService::class)->limitFor($ws->id, 'ugc_ads'));
         Carbon::setTestNow('2026-10-21 10:00:00');
         $this->assertFalse((bool) app(CreditService::class)->limitFor($ws->id, 'ugc_ads'));
-        $this->assertFalse(app(CreditService::class)->canPublishToSocial($ws->id));
+        // Not canPublishToSocial — free can publish too, so it proves nothing here.
+        $this->assertFalse((bool) app(CreditService::class)->limitFor($ws->id, 'custom_characters'));
         $this->assertSame(250, $ws->fresh()->creditsBalance());
     }
 

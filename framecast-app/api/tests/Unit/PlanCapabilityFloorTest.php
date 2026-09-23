@@ -54,6 +54,33 @@ class PlanCapabilityFloorTest extends TestCase
         }
     }
 
+    /**
+     * Free is the floor. Anything we charge for must do at least as much —
+     * a $9 pass that could not publish while free could is the shape of
+     * mistake this catches.
+     */
+    public function test_nothing_we_charge_for_offers_less_than_free(): void
+    {
+        $free = CreditService::PLAN_LIMITS['free'];
+
+        foreach (CreditService::PLAN_LIMITS as $tier => $limits) {
+            if ($tier === 'free') {
+                continue;
+            }
+
+            foreach ($free as $capability => $granted) {
+                if ($granted !== true) {
+                    continue;
+                }
+
+                $this->assertTrue(
+                    $limits[$capability] ?? false,
+                    "{$tier} does not grant '{$capability}', but the free tier does.",
+                );
+            }
+        }
+    }
+
     public function test_free_still_cannot(): void
     {
         $this->assertFalse(CreditService::PLAN_LIMITS['free']['custom_characters']);

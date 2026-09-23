@@ -434,11 +434,11 @@ class CreditService
     // included, so without a cap that path is a finished video for free with
     // nothing bounding the volume. Null = no cap.
     public const PLAN_LIMITS = [
-        'free'       => ['max_duration_seconds' => 60,  'max_characters' => 0,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => false, 'pdf_page_limit' => 5, 'ugc_takes_month' => 3, 'custom_characters' => false, 'ugc_ads' => false],
+        'free'       => ['max_duration_seconds' => 60,  'max_characters' => 0,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => true, 'pdf_page_limit' => 5, 'ugc_takes_month' => 3, 'custom_characters' => false, 'ugc_ads' => false],
         // UGC Test Pass — $9 once. Buys the UGC gate and nothing else: every
         // other allowance stays at Free. Seedance only and 15s a take are
         // enforced in UgcController, since neither is a plan-limit shape.
-        'ugc_pass'   => ['max_duration_seconds' => 60,  'max_characters' => 1,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => false, 'pdf_page_limit' => 5, 'ugc_takes_month' => 2, 'custom_characters' => true,  'ugc_ads' => true],
+        'ugc_pass'   => ['max_duration_seconds' => 60,  'max_characters' => 1,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => true, 'pdf_page_limit' => 5, 'ugc_takes_month' => 2, 'custom_characters' => true,  'ugc_ads' => true],
         'starter'    => ['max_duration_seconds' => 180, 'max_characters' => 3,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => true, 'pdf_page_limit' => 20, 'ugc_takes_month' => 30, 'custom_characters' => true , 'ugc_ads' => true],
         'creator'    => ['max_duration_seconds' => 300, 'max_characters' => 10, 'max_brand_kits' => 3,  'max_channels' => 3, 'social_publishing' => true, 'pdf_page_limit' => 50, 'ugc_takes_month' => 60, 'custom_characters' => true, 'ugc_ads' => true],
         'pro'        => ['max_duration_seconds' => 600, 'max_characters' => 50, 'max_brand_kits' => 10, 'max_channels' => 10,'social_publishing' => true, 'pdf_page_limit' => 150, 'ugc_takes_month' => 150, 'custom_characters' => true, 'ugc_ads' => true],

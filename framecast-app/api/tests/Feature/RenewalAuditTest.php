@@ -218,7 +218,9 @@ class RenewalAuditTest extends TestCase
 
         $this->assertFalse((bool) app(CreditService::class)->limitFor($ws->id, 'ugc_ads'),
             'paid features must not outlive the period that was paid for');
-        $this->assertFalse(app(CreditService::class)->canPublishToSocial($ws->id));
+        // Social publishing is available on every tier including free, so it is
+        // no longer evidence of a paid plan. Custom characters still are.
+        $this->assertFalse((bool) app(CreditService::class)->limitFor($ws->id, 'custom_characters'));
     }
 
     // ── 6. pending is not paid ──────────────────────────────────────
