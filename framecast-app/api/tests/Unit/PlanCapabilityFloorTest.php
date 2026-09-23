@@ -55,6 +55,21 @@ class PlanCapabilityFloorTest extends TestCase
     }
 
     /**
+     * Withholding something free accounts get, on purpose.
+     *
+     * The test pass is a trial of UGC ads, not a way to run a channel, so
+     * publishing is held back for Starter. Note the side effect: plan_tier
+     * moves free -> ugc_pass on purchase, so a buyer who could publish for
+     * free loses that by paying. That is a product decision, recorded here
+     * so it stays a decision rather than becoming an accident.
+     *
+     * @var list<array{0:string,1:string}>
+     */
+    private const DELIBERATE_EXCEPTIONS = [
+        ['ugc_pass', 'social_publishing'],
+    ];
+
+    /**
      * Free is the floor. Anything we charge for must do at least as much —
      * a $9 pass that could not publish while free could is the shape of
      * mistake this catches.
@@ -69,7 +84,7 @@ class PlanCapabilityFloorTest extends TestCase
             }
 
             foreach ($free as $capability => $granted) {
-                if ($granted !== true) {
+                if ($granted !== true || in_array([$tier, $capability], self::DELIBERATE_EXCEPTIONS, true)) {
                     continue;
                 }
 

@@ -258,11 +258,10 @@ class LifetimeTierGuardTest extends TestCase
         $this->assertTrue(app(CreditService::class)->limitFor((int) $w->getKey(), 'ugc_ads'), 'the pass buys the UGC gate');
         $this->assertTrue((bool) app(CreditService::class)->limitFor((int) $w->getKey(), 'custom_characters'), 'and a cast of their own');
         $this->assertSame(1, (int) app(CreditService::class)->limitFor((int) $w->getKey(), 'max_characters'), 'one character to cast');
-        // Publishing used to be withheld here on the reasoning that it "stays
-        // paid". It is available on free now that the platform integrations are
-        // approved, so withholding it from a paying pass would put a $9 customer
-        // below a free one — see PlanCapabilityFloorTest.
-        $this->assertTrue((bool) app(CreditService::class)->limitFor((int) $w->getKey(), 'social_publishing'), 'a paying pass publishes at least as much as free');
+        // Deliberately withheld: the pass is a trial of UGC ads, not a way to
+        // run a channel. Free accounts CAN publish, so buying the pass gives
+        // this up — see DELIBERATE_EXCEPTIONS in PlanCapabilityFloorTest.
+        $this->assertFalse((bool) app(CreditService::class)->limitFor((int) $w->getKey(), 'social_publishing'), 'publishing is what Starter is for');
         // What the pass still does not buy — these are what Starter is for.
         $this->assertSame(2, (int) app(CreditService::class)->limitFor((int) $w->getKey(), 'ugc_takes_month'), 'still two takes');
         $this->assertSame(60, (int) app(CreditService::class)->limitFor((int) $w->getKey(), 'max_duration_seconds'), 'still a one-minute ceiling');
