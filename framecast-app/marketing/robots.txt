@@ -5,6 +5,10 @@ Allow: /
 Disallow: /logo
 Disallow: /logo-export
 
+# Campaign landing page — reachable by direct link, not for indexing.
+Disallow: /starter
+Disallow: /starter.html
+
 # App routes live on app.wyvstudio.com — keep crawlers off any accidental
 # proxy paths that might reach them via this domain.
 Disallow: /api/
