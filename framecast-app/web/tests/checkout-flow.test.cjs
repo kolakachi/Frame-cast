@@ -56,10 +56,11 @@ test('magic/password sign-in uses server intent on another device', async () => 
   assert.equal(await h.api.resumePendingCheckout(), true)
   assert.equal(h.context.window.location.href, '/continue?plan=ugc_pass')
 })
-test('billing failure goes to retry screen rather than dashboard', async () => {
+test('billing failure rechecks eligibility without forcing a cached plan', async () => {
   const h = harness('composables/resumeCheckout.js', 'resumePendingCheckout', {
     api: { get: async () => { throw new Error('offline') } },
   })
+  h.store.set('wyv_pending_plan', 'ugc_pass')
   assert.equal(await h.api.resumePendingCheckout(), true)
   assert.equal(h.context.window.location.href, '/continue')
 })
@@ -111,9 +112,48 @@ test('delayed confirmation stops polling and offers checking without another cha
   assert.equal(h.redirects.length, 0)
 })
 test('sign-in resumes a pending payment confirmation before starting another checkout', async () => {
-  const h = harness('composables/resumeCheckout.js', 'resumePendingCheckout')
+  const h = harness('composables/resumeCheckout.js', 'resumePendingCheckout', {
+    api: { get: async () => ({ data: { data: { billing: { checkout_required: true } } } }) },
+  })
   const attempt = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
   h.store.set('wyv_pending_confirmation', attempt)
   assert.equal(await h.api.resumePendingCheckout(), true)
   assert.equal(h.context.window.location.href, `/payment/confirm?attempt=${attempt}`)
+})
+
+for (const role of ['super_admin', 'platform_admin']) {
+  test(`${role} is never forced to checkout by stale browser hints or billing outage`, async () => {
+    const h = harness('composables/resumeCheckout.js', 'resumePendingCheckout', {
+      useAuthStore: () => ({ user: { role } }),
+      api: { get: async () => { throw new Error('offline') } },
+    })
+    h.store.set('wyv_pending_plan', 'lifetime_starter')
+    h.store.set('wyv_pending_confirmation', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
+    assert.equal(await h.api.resumePendingCheckout(), false)
+    assert.equal(h.context.window.location.href, '')
+    assert.equal(h.store.size, 0)
+  })
+}
+test('server exemption beats stale plan and confirmation for paid or grandfathered customers', async () => {
+  const h = harness('composables/resumeCheckout.js', 'resumePendingCheckout', {
+    api: { get: async () => ({ data: { data: { billing: { checkout_required: false } } } }) },
+  })
+  h.store.set('wyv_pending_plan', 'ugc_pass')
+  h.store.set('wyv_pending_confirmation', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
+  assert.equal(await h.api.resumePendingCheckout(), false)
+  assert.equal(h.context.window.location.href, '')
+  assert.equal(h.store.size, 0)
+})
+test('required checkout uses account plan and ignores another account confirmation', async () => {
+  const h = harness('composables/resumeCheckout.js', 'resumePendingCheckout', {
+    api: { get: async url => {
+      if (url.includes('/confirmation/')) throw { response: { status: 404 } }
+      return { data: { data: { billing: { checkout_required: true, checkout_plan: 'creator' } } } }
+    } },
+  })
+  h.store.set('wyv_pending_plan', 'ugc_pass')
+  h.store.set('wyv_pending_confirmation', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
+  assert.equal(await h.api.resumePendingCheckout(), true)
+  assert.equal(h.context.window.location.href, '/continue?plan=creator')
+  assert.equal(h.store.has('wyv_pending_confirmation'), false)
 })

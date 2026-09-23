@@ -53,6 +53,8 @@ export const useAuthStore = defineStore('auth', {
       // the stashed admin token) would leak into the next login.
       window.localStorage.removeItem('framecast.impersonating')
       window.localStorage.removeItem('framecast.admin_return')
+      window.localStorage.removeItem('wyv_pending_plan')
+      window.localStorage.removeItem('wyv_pending_confirmation')
       this.accessToken = null
       this.user = null
       window.localStorage.removeItem(STORAGE_KEY)
