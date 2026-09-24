@@ -496,7 +496,6 @@ onBeforeUnmount(() => {
           ></path>
         </svg>
         UGC Ads
-        <span class="ws-soon-badge">Beta</span>
       </button>
       <!-- Hidden for launch (2026-09-19): UGC is the single pathway; the
            own-footage door lives inside it. Routes stay for direct links. -->

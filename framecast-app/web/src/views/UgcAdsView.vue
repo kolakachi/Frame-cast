@@ -881,7 +881,6 @@ onMounted(() => {
     <main class="ugc-main">
       <header class="ugc-top">
         <div class="ugc-crumb"><b>{{ pageName }}</b></div>
-        <span class="ugc-beta">BETA · INTERNAL</span>
         <div v-if="balance !== null" class="ugc-credits">
           {{ balance.toLocaleString() }} credits
         </div>
@@ -1883,14 +1882,6 @@ onMounted(() => {
   color: var(--color-text-primary);
   font-weight: 500;
 }
-.ugc-beta {
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: rgba(255, 107, 53, 0.13);
-  color: var(--color-accent);
-  font: 10px var(--font-mono);
-  letter-spacing: 0.4px;
-}
 .ugc-credits {
   margin-left: auto;
   font: 12px var(--font-mono);
@@ -2702,7 +2693,7 @@ onMounted(() => {
   }
 
   /* The shell bar already names the screen and shows the balance; the page
-     header repeated both, and the beta badge is not worth a row of its own. */
+     header repeated both, so on phones it is not worth a row of its own. */
   .ugc-top { display: none; }
 
   .ugc-step { padding: 8px 10px; }
