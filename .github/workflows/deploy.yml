@@ -58,13 +58,45 @@ jobs:
             STALE=$(docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_framecast-app-' || true)
             if [ -n "$STALE" ]; then
               echo "    found: $STALE"
-              echo "$STALE" | xargs -r docker rm -f
+              echo "$STALE" | xargs -r docker rm -f || true
             else
               echo '    none'
             fi
 
+            # `docker rm -f` returns as soon as the removal is ACCEPTED, not when
+            # it has finished. Starting `up` against a container still being torn
+            # down fails the whole deploy with "removal of container ... is
+            # already in progress", and leaves every service in Created — the
+            # site goes down and stays down until someone runs `up` by hand.
+            # That is what took production out on 22 and 24 September.
+            echo '==> Waiting for removals to finish...'
+            for i in $(seq 1 60); do
+              LEFT=$(docker ps -a --format '{{.Names}}' | grep -cE '^[0-9a-f]{12}_framecast-app-' || true)
+              [ "$LEFT" = "0" ] && { echo "    clear after ${i}s"; break; }
+              [ "$i" = "60" ] && echo "    WARNING: $LEFT still present after 60s, continuing anyway"
+              sleep 1
+            done
+
+            # A removal can still land mid-`up` (a crashed worker being reaped,
+            # or a previous run's teardown). One retry after a short settle turns
+            # that from an outage into a slower deploy.
             echo '==> Building and restarting containers...'
-            docker compose -f docker-compose.prod.yml up --build -d --remove-orphans
+            if ! docker compose -f docker-compose.prod.yml up --build -d --remove-orphans; then
+              echo '==> First attempt failed — settling for 20s and retrying once...'
+              sleep 20
+              docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_framecast-app-' | xargs -r docker rm -f || true
+              sleep 5
+              docker compose -f docker-compose.prod.yml up --build -d --remove-orphans
+            fi
+
+            # Never exit leaving the site down. If anything above still left a
+            # service created-but-not-running, start it before we go on.
+            echo '==> Verifying every service is actually running...'
+            NOT_RUNNING=$(docker compose -f docker-compose.prod.yml ps --status created --status exited --status paused -q | wc -l)
+            if [ "$NOT_RUNNING" != "0" ]; then
+              echo "    $NOT_RUNNING service(s) not running — starting them"
+              docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            fi
 
             # marketing + docs use a stock nginx image with bind-mounted config,
             # so `up` never recreates them and config/content changes (e.g. the
@@ -89,5 +121,23 @@ jobs:
             # Seeders are idempotent (updateOrCreate) but intentionally NOT run
             # on every deploy. Run them by hand when seed data actually changes:
             #   docker compose -f docker-compose.prod.yml exec api php artisan db:seed --class=NicheSeeder --force
+
+            # A deploy that reports success while the site is down is worse than
+            # one that fails: nobody looks. Check the origin directly (not
+            # through Cloudflare, which caches and would mask it).
+            echo '==> Health check...'
+            OK=0
+            for i in $(seq 1 30); do
+              API=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: app.wyvstudio.com' http://127.0.0.1/api/v1/health || echo 000)
+              WWW=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: wyvstudio.com' http://127.0.0.1/ || echo 000)
+              echo "    attempt $i: api=$API marketing=$WWW"
+              if [ "$API" = "200" ] && [ "$WWW" = "200" ]; then OK=1; break; fi
+              sleep 5
+            done
+            if [ "$OK" != "1" ]; then
+              echo '!!! Site is not serving after deploy. Container state:'
+              docker compose -f docker-compose.prod.yml ps
+              exit 1
+            fi
 
             echo "==> Done. Deployed at $(date)"
