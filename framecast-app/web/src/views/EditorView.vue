@@ -14,6 +14,7 @@ import EditorTimeline from "../components/EditorTimeline.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
 import ExportUpdateModal from "../components/ExportUpdateModal.vue";
 import { useExportActionGuard } from "../composables/useExportActionGuard";
+import { exportToolbarState } from "../composables/exportToolbarState";
 import SchedulePostModal from "../components/SchedulePostModal.vue";
 import UiSelect from "../components/UiSelect.vue";
 import VoiceCloneModal from "../components/VoiceCloneModal.vue";
@@ -2713,6 +2714,40 @@ async function performExportAction(action, job) {
   link.click();
   link.remove();
 }
+
+// Whether the exported video still matches the project. The guard below
+// already asks this before delivering, but only reactively — the toolbar
+// showed "Export ready" and "Update video" side by side with no way to tell
+// which applied, so pressing Update was the natural move even when nothing
+// had changed. That is how one project got rendered twice a second apart.
+const exportStaleOnServer = ref(false);
+
+async function refreshExportFreshness() {
+  const job = latestExportJob.value;
+  if (!job || job.status !== 'completed') { exportStaleOnServer.value = false; return; }
+  try {
+    const { data } = await api.get(`/projects/${projectId.value}/exports/${job.id}/freshness`);
+    exportStaleOnServer.value = !!data?.data?.is_stale;
+  } catch {
+    // Unknown is not stale — never nag on a failed check.
+    exportStaleOnServer.value = false;
+  }
+}
+
+// Unsaved edits count too, so the toolbar reacts as they type rather than
+// waiting for a save to land.
+const exportToolbar = computed(() => exportToolbarState(latestExportJob.value, exportOutOfDate.value));
+
+const exportOutOfDate = computed(() =>
+  !!latestExportJob.value
+  && latestExportJob.value.status === 'completed'
+  && (exportStaleOnServer.value || hasPendingExportChanges())
+);
+
+watch(() => latestExportJob.value?.id, () => { refreshExportFreshness() }, { immediate: true });
+watch(() => hasPendingExportChanges(), (pending, was) => {
+  if (was && !pending) refreshExportFreshness();
+});
 
 const { warning: exportWarning, checking: exportActionChecking, request: requestExportAction,
   cancel: cancelExportAction, continuePrevious: continueExportAction, updateFirst: updateExportAction } = useExportActionGuard({
@@ -7410,9 +7445,9 @@ onBeforeUnmount(() => {
           <div class="topbar-right">
             <div
               v-if="latestExportJob"
-              :class="['export-pill', `export-pill-${latestExportJob.status}`]"
+              :class="['export-pill', `export-pill-${latestExportJob.status}`, exportToolbar.stale ? 'export-pill-stale' : '']"
             >
-              {{ exportStatusCopy(latestExportJob) }}
+              {{ exportToolbar.status }}
               <span
                 v-if="latestExportJob.status === 'failed' && latestExportJob.failure_reason"
                 class="export-fail-info"
@@ -7455,12 +7490,13 @@ onBeforeUnmount(() => {
 
             <div class="export-btn-wrap" style="position:relative">
               <button
-                class="btn btn-primary"
+                :class="['btn', exportToolbar.primary ? 'btn-primary' : 'btn-ghost']"
                 type="button"
                 :disabled="exportInProgress || !!exportBlockerMessage"
+                :title="exportToolbar.hint"
                 @click="openExportMenu"
               >
-                {{ exportInProgress ? "Finishing…" : latestExportJob ? "Update video" : "Finish video" }}
+                {{ exportInProgress ? "Finishing…" : exportToolbar.action }}
               </button>
               <div v-if="exportMenuOpen" class="export-format-menu" style="position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:264px;background:var(--surface,#15151b);border:1px solid var(--border,#2a2a33);border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.55);padding:14px;text-align:left">
                 <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim,#9a9aa5);margin-bottom:10px">Export formats</div>
@@ -10870,6 +10906,13 @@ button {
   gap: 10px;
 }
 
+/* A finished export that no longer matches the project. Reads as something
+   to act on rather than the green "done" the completed pill otherwise gets. */
+.export-pill-stale {
+  border-color: rgba(255, 107, 53, 0.45);
+  background: rgba(255, 107, 53, 0.10);
+  color: var(--accent, #ff6b35);
+}
 .export-pill {
   display: inline-flex;
   align-items: center;
