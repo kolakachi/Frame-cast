@@ -122,7 +122,7 @@ class ApiKeyController extends Controller
      */
     private function denyUnlessAdmin(User $user): ?JsonResponse
     {
-        if (in_array($user->role, ['owner', 'admin'], true)) {
+        if (in_array($user->role, ['owner', 'admin'], true) || \App\Services\WorkspaceUsageService::isAdmin($user)) {
             return null;
         }
 

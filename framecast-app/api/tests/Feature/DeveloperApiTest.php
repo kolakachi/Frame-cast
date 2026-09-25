@@ -215,6 +215,11 @@ class DeveloperApiTest extends TestCase
 
         $asOwner = fn () => $this->withToken($this->sessionToken($owner, $ws));
         $asOwner()->getJson('/api/v1/api-keys')->assertOk();
+
+        // A platform admin manages the keys of the workspace they are in.
+        $owner->forceFill(['role' => 'super_admin'])->save();
+        $asOwner()->getJson('/api/v1/api-keys')->assertOk();
+        $owner->forceFill(['role' => 'owner'])->save();
         $created = $asOwner()->postJson('/api/v1/api-keys', ['name' => 'CI'])->assertStatus(201);
         $this->assertStringStartsWith('wyv_live_', $created->json('data.key'));
         $asOwner()->deleteJson('/api/v1/api-keys/'.$created->json('data.id'))->assertOk();

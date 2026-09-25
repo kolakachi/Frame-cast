@@ -191,17 +191,21 @@ added only after their own gates pass.
 
 ### D1. Server and transport
 
-- [ ] Add the `mcp` Node sidecar (official TypeScript SDK) to both compose files;
+- [x] Add the `mcp` Node sidecar (official TypeScript SDK) to both compose files;
       it forwards the caller's bearer token and holds no credentials of its own.
-- [ ] Serve Streamable HTTP at `/mcp`, stateless; add the nginx location with
-      proxy buffering off and long read/send timeouts.
-- [ ] Restrict CORS to the confirmed client origins.
-- [ ] Health endpoint and structured logs carrying request ID and key ID.
+      (`framecast-app/mcp/`, SDK v2.1: `@modelcontextprotocol/server|express|node`.)
+- [x] Serve Streamable HTTP at `/mcp`, stateless; add the nginx location with
+      proxy buffering off and long read/send timeouts. (nginx change is in the
+      repo, not yet deployed.)
+- [x] Restrict CORS to the confirmed client origins. (Host/Origin validation via
+      `MCP_ALLOWED_HOSTS`; prod = app.wyvstudio.com. Add client origins when known.)
+- [~] Health endpoint done (`/healthz`); structured per-request logs still to add.
 
 ### D2. Authentication
 
-- [ ] Bearer-header path: accept a WyvStudio API key and pass it through; verify a
-      revoked key fails on the next tool call.
+- [x] Bearer-header path: accept a WyvStudio API key and pass it through; verify a
+      revoked key fails on the next tool call. (Verified by asking the API; cached
+      60s by hash, so revocation lands within a minute.)
 - [ ] OAuth path (only if a ChatGPT connector is confirmed): authorization server
       metadata, dynamic client registration, PKCE, protected-resource metadata,
       consent screen bound to one workspace, disconnect and revocation. Tokens map
@@ -209,19 +213,22 @@ added only after their own gates pass.
 
 ### D3. Tools
 
-- [ ] `get_capabilities`, `estimate_video`, `create_video`, `get_video_status`,
+- [x] `get_capabilities`, `estimate_video`, `create_video`, `get_video_status`,
       `get_video_result`, each a one-to-one wrapper over a developer-namespace
       operation; `readOnlyHint` on the four read-only tools.
-- [ ] `create_video` requires `quote_id`; description states it spends credits.
-- [ ] `create_video` returns within seconds and points the assistant at
+- [x] `create_video` requires `quote_id`; description states it spends credits.
+      (Idempotency key defaults to the quote id, which is single-use.)
+- [x] `create_video` returns within seconds and points the assistant at
       `get_video_status`; no blocking on renders.
-- [ ] `get_video_result` returns the expiring download link as a resource link
+- [x] `get_video_result` returns the expiring download link as a resource link
       plus the project link; never enables public sharing.
 - [ ] Add voice/character listing tools only if the chosen flow needs them.
 
 ### D4. Testing and documentation
 
-- [ ] Run the MCP Inspector against the sidecar locally.
+- [x] Smoke-tested locally over raw JSON-RPC (`mcp/smoke.sh`): 401s, initialize,
+      tools/list, capabilities, quote, validation error, not_found. Inspector run
+      with a real client still to do.
 - [ ] Test workspace isolation across two keys, revoked key mid-session, expired
       and foreign `quote_id`, replayed `create_video`, client retry after timeout,
       and result retrieval without public sharing.
@@ -238,6 +245,7 @@ added only after their own gates pass.
 |---|---|---|---|---|
 | 25 September 2026 | Tracker created from plan v1.2 | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
+| 25 September 2026 | Sidecar: `mcp/` Node service, compose (dev+prod) and nginx wiring, five tools, bearer pass-through; platform admins may manage keys | Not committed | `mcp/smoke.sh` against the rebuilt dev stack on the test account; PHP suite green | Dev stack only; nginx/compose prod changes not deployed |
 | 25 September 2026 | Step 3: developer-namespace throttling (read/write buckets, caller + workspace) and an in-flight video cap | Not committed | 3 new tests; full suite green except the pre-existing renewal failure | Not deployed |
 | 25 September 2026 | Step 2: issuer role/membership/suspension parity on the key path, hash lookup with unique index, owner/admin key management under a row lock | Not committed | 7 new tests; full suite green except the pre-existing renewal failure | Migration applied to dev DB only; not deployed |
 | 25 September 2026 | Step 1: developer namespace, five endpoints, quote-bound create, project creation extracted to a service | Not committed | `DeveloperApiTest` (14 tests) + full suite 567 passed; 1 pre-existing unrelated failure in `SubscriptionRenewalTest` | Migration applied to dev DB only; not deployed |

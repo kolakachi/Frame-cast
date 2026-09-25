@@ -1,0 +1,19 @@
+{
+  "name": "wyvstudio-mcp",
+  "private": true,
+  "version": "1.0.0",
+  "description": "WyvStudio MCP server: an AI assistant's way to quote, create, watch and fetch videos. A thin, credential-free wrapper over /api/developer/v1.",
+  "type": "module",
+  "main": "server.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/express": "^2.0.1",
+    "@modelcontextprotocol/node": "^2.1.0",
+    "@modelcontextprotocol/server": "^2.1.0",
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
+  }
+}

@@ -151,6 +151,21 @@ services:
   # NO PUBLIC PORT — it fetches arbitrary user-supplied URLs, so exposing it
   # would hand the internet a request forwarder into this network. Reachable
   # from api/workers as http://extract:8000.
+  # MCP server — how an AI assistant (Claude, Cursor, a custom GPT via MCP)
+  # makes videos. Wraps /api/developer/v1 and forwards the caller's API key;
+  # holds no credentials. Port 3001 is for the MCP Inspector locally.
+  mcp:
+    build:
+      context: ./mcp
+    restart: unless-stopped
+    environment:
+      WYV_API_BASE_URL: http://api:8000
+      MCP_ALLOWED_HOSTS: localhost,127.0.0.1,mcp
+    ports:
+      - "3001:3000"
+    depends_on:
+      - api
+
   extract:
     init: true  # see note at top of file
     build:

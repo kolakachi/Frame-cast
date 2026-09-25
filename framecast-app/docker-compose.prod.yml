@@ -225,6 +225,19 @@ services:
   # NO PUBLIC PORT — it fetches arbitrary user-supplied URLs, so exposing it
   # would hand the internet a request forwarder into this network. Reachable
   # from api/workers as http://extract:8000.
+  # MCP server — see docker-compose.yml. Reached only through nginx at
+  # https://app.wyvstudio.com/mcp; calls the API back through nginx too.
+  mcp:
+    build:
+      context: ./mcp
+    restart: unless-stopped
+    environment:
+      WYV_API_BASE_URL: http://nginx
+      WYV_API_HOST_HEADER: app.wyvstudio.com
+      MCP_ALLOWED_HOSTS: app.wyvstudio.com
+    depends_on:
+      - nginx
+
   extract:
     init: true  # see note at top of file
     build:
