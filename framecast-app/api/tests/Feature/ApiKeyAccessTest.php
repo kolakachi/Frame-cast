@@ -28,7 +28,9 @@ class ApiKeyAccessTest extends TestCase
         Schema::create('api_keys', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('workspace_id'); $t->unsignedBigInteger('created_by_user_id')->nullable();
             $t->string('name'); $t->string('prefix'); $t->string('token_hash');
-            $t->timestamp('last_used_at')->nullable(); $t->timestamp('revoked_at')->nullable(); $t->timestamps();
+            $t->timestamp('last_used_at')->nullable(); $t->timestamp('revoked_at')->nullable();
+            $t->timestamp('expires_at')->nullable(); $t->unsignedInteger('spend_cap_credits')->nullable(); $t->unsignedBigInteger('rotated_from_id')->nullable();
+            $t->timestamps();
         });
     }
 

@@ -67,7 +67,9 @@ class DeveloperApiTest extends TestCase
         Schema::create('api_keys', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('workspace_id'); $t->unsignedBigInteger('created_by_user_id')->nullable();
             $t->string('name'); $t->string('prefix'); $t->string('token_hash');
-            $t->timestamp('last_used_at')->nullable(); $t->timestamp('revoked_at')->nullable(); $t->timestamps();
+            $t->timestamp('last_used_at')->nullable(); $t->timestamp('revoked_at')->nullable();
+            $t->timestamp('expires_at')->nullable(); $t->unsignedInteger('spend_cap_credits')->nullable(); $t->unsignedBigInteger('rotated_from_id')->nullable();
+            $t->timestamps();
         });
         Schema::create('api_quotes', function (Blueprint $t) {
             $t->string('id', 32)->primary();
@@ -286,6 +288,58 @@ class DeveloperApiTest extends TestCase
 
         Project::withoutEvents(fn () => Project::query()->whereKey($first)->update(['status' => 'ready_for_review']));
         $this->create($key, $quoteId, 'c')->assertStatus(202);
+    }
+
+    public function test_an_expired_key_is_refused_with_its_own_code(): void
+    {
+        [$ws, $owner] = $this->tenant();
+        [$key, $plain] = ApiKey::issue((int) $ws->getKey(), (int) $owner->getKey(), 'Pilot', now()->addDay());
+        $this->withToken($plain)->getJson('/api/developer/v1/capabilities')->assertOk()
+            ->assertJsonPath('data.key.name', 'Pilot');
+        $key->forceFill(['expires_at' => now()->subMinute()])->save();
+        $this->withToken($plain)->getJson('/api/developer/v1/capabilities')->assertStatus(401)->assertJsonPath('error.code', 'api_key_expired');
+    }
+
+    public function test_rotation_replaces_the_secret_and_keeps_the_limits(): void
+    {
+        [$ws, $owner] = $this->tenant();
+        $asOwner = fn () => $this->withToken($this->sessionToken($owner, $ws));
+        $created = $asOwner()->postJson('/api/v1/api-keys', ['name' => 'CI', 'expires_in_days' => 30, 'spend_cap_credits' => 200])->assertStatus(201);
+        $oldPlain = $created->json('data.key');
+        $this->withToken($oldPlain)->getJson('/api/developer/v1/capabilities')->assertOk()->assertJsonPath('data.key.spend_cap_credits', 200);
+
+        $rotated = $asOwner()->postJson('/api/v1/api-keys/'.$created->json('data.id').'/rotate')->assertStatus(201);
+        $this->assertNotSame($oldPlain, $rotated->json('data.key'));
+        $this->assertSame($created->json('data.id'), $rotated->json('data.rotated_from_id'));
+        $this->assertSame(200, $rotated->json('data.spend_cap_credits'));
+        $this->assertNotNull($rotated->json('data.expires_at'));
+
+        $this->withToken($oldPlain)->getJson('/api/developer/v1/capabilities')->assertStatus(401);
+        $this->withToken($rotated->json('data.key'))->getJson('/api/developer/v1/capabilities')->assertOk()->assertJsonPath('data.key.name', 'CI');
+        $this->assertSame(2, ApiKey::query()->where('workspace_id', $ws->id)->whereNull('revoked_at')->count(), 'the tenant key plus the rotated one');
+        $asOwner()->postJson('/api/v1/api-keys/'.$created->json('data.id').'/rotate')->assertStatus(404);
+    }
+
+    public function test_a_keys_monthly_spend_cap_blocks_a_create_that_would_exceed_it(): void
+    {
+        [$ws, $owner] = $this->tenant();
+        [, $plain] = ApiKey::issue((int) $ws->getKey(), (int) $owner->getKey(), 'Capped', null, 60);
+
+        $first = $this->create($plain, $this->quote($plain)->json('data.quote_id'), 'a')->assertStatus(202)->json('data.video.id');
+        DB::table('credit_ledger')->insert(['workspace_id' => $ws->id, 'project_id' => $first, 'operation' => 'tts', 'credits' => 45, 'created_at' => now(), 'updated_at' => now()]);
+        $this->withToken($plain)->getJson('/api/developer/v1/capabilities')->assertOk()->assertJsonPath('data.key.spent_this_month', 45);
+
+        $quote = $this->quote($plain);
+        $this->assertGreaterThan(15, (int) $quote->json('data.credits.max'), 'a quote that fits under the cap alone but not after 45 spent');
+        $this->assertLessThanOrEqual(60, (int) $quote->json('data.credits.max'));
+        $this->create($plain, $quote->json('data.quote_id'), 'b')->assertStatus(402)
+            ->assertJsonPath('error.code', 'key_spend_cap_reached')
+            ->assertJsonPath('error.context.spent_this_month', 45);
+        $this->assertNull(ApiQuote::query()->findOrFail($quote->json('data.quote_id'))->consumed_at);
+
+        // Last month's spend does not count.
+        DB::table('credit_ledger')->where('project_id', $first)->update(['created_at' => now()->subMonth()->startOfMonth()]);
+        $this->create($plain, $quote->json('data.quote_id'), 'b')->assertStatus(202);
     }
 
     public function test_a_key_reaches_the_developer_namespace_and_nothing_else(): void

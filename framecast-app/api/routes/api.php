@@ -348,6 +348,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/api-keys', [\App\Http\Controllers\Api\V1\Developer\ApiKeyController::class, 'index']);
         Route::post('/api-keys', [\App\Http\Controllers\Api\V1\Developer\ApiKeyController::class, 'store']);
         Route::delete('/api-keys/{keyId}', [\App\Http\Controllers\Api\V1\Developer\ApiKeyController::class, 'destroy'])->whereNumber('keyId');
+        Route::post('/api-keys/{keyId}/rotate', [\App\Http\Controllers\Api\V1\Developer\ApiKeyController::class, 'rotate'])->whereNumber('keyId');
 
         Route::prefix('/admin')->middleware(['admin', 'admin.ip'])->group(function (): void {
             Route::get('/affiliates', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'index']);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Developer\V1;
 
 use App\Events\GenerationProgressed;
+use App\Models\ApiKey;
 use App\Models\ApiQuote;
 use App\Models\Asset;
 use App\Models\CreditLedgerEntry;
@@ -52,7 +53,8 @@ class VideoController extends DeveloperController
         // Claim the quote first, in its own transaction, so a concurrent
         // retry sees it consumed. Creation happens after commit because it
         // dispatches a job that must find the committed project.
-        $claim = DB::transaction(function () use ($input, $workspaceId, $idempotencyKey): array|JsonResponse {
+        $apiKeyId = $request->attributes->get('api_key_id');
+        $claim = DB::transaction(function () use ($input, $workspaceId, $idempotencyKey, $apiKeyId): array|JsonResponse {
             // The workspace row lock serialises claims, so the in-flight
             // count below cannot be raced past by two simultaneous creates.
             \App\Models\Workspace::query()->whereKey($workspaceId)->lockForUpdate()->first();
@@ -87,6 +89,17 @@ class VideoController extends DeveloperController
                 return $this->fail('too_many_active_videos',
                     "{$active} API-created videos are already generating in this workspace (limit {$maxActive}). Wait for one to finish.",
                     429, ['active' => $active, 'limit' => $maxActive, 'retry_after_seconds' => 30]);
+            }
+
+            // A key's own monthly ceiling, below the workspace balance. The
+            // quote's maximum is what is authorized, so that is what counts.
+            $apiKey = $apiKeyId ? ApiKey::query()->find($apiKeyId) : null;
+            if ($apiKey && $apiKey->wouldExceedCap($quote->credits_max)) {
+                $spent = $apiKey->spentThisMonth();
+
+                return $this->fail('key_spend_cap_reached',
+                    "This key may spend {$apiKey->spend_cap_credits} credits a month; {$spent} are spent and this video is authorized for up to {$quote->credits_max}.",
+                    402, ['spend_cap_credits' => $apiKey->spend_cap_credits, 'spent_this_month' => $spent, 'authorized_max' => $quote->credits_max]);
             }
 
             $balance = $this->credits->balance($workspaceId);

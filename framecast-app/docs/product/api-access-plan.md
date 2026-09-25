@@ -142,8 +142,9 @@ API after authorization and other release blockers are fixed.
    only. A forced-collision test covers it.
 6. **Operational controls are missing.** Partly resolved in step 3: the
    developer namespace has per-caller and per-workspace read/write limits and
-   a cap on API-created videos in flight. The rest of the API still has no
-   throttling. A credit-spending ceiling per key is not implemented (A2).
+   a cap on API-created videos in flight, and each key can carry a monthly
+   credit ceiling checked at create. The rest of the API still has no
+   throttling, and the mid-pipeline reservation remains open (A2).
    Duplicate-request protection for supported operations must also be verified
    and supplied before release.
 7. **Tests do not prove route enforcement.** Inspecting a constant is not a

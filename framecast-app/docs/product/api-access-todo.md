@@ -59,7 +59,9 @@ not a claim that every underlying service is missing.
 - [x] Replace first-match prefix resolution with collision-safe lookup and a
       suitable database constraint; preserve existing valid keys if any exist.
       (Step 2: lookup by hash, unique index; existing rows unaffected.)
-- [ ] Add finite pilot expiry, immediate revocation and rotation behavior.
+- [x] Add finite pilot expiry, immediate revocation and rotation behavior.
+      (`expires_in_days` on create, `api_key_expired` 401, `POST /api-keys/{id}/rotate`
+      revokes the old key at once and carries name/expiry/cap over.)
 - [ ] Verify plaintext secrets appear only once and are redacted from logs,
       errors and analytics; document treatment of already accepted jobs on revocation.
 
@@ -71,15 +73,21 @@ not a claim that every underlying service is missing.
       per workspace; defaults in `config/developer.php`, env-tunable.)
 - [x] Limit concurrent generation jobs across all keys in a workspace.
       (Step 3: `max_active_videos`, default 3, counted under the workspace row lock.)
-- [ ] Enforce per-key spend ceilings and maximum approved operation cost using
+- [~] Enforce per-key spend ceilings and maximum approved operation cost using
       atomic reservations, including downstream stages and retries.
+      (Per-key monthly `spend_cap_credits` enforced at create against the quoted
+      maximum, summed from the ledger via `projects.api_key_id`. The atomic
+      mid-pipeline reservation remains open; per-stage deduction is unchanged.)
 - [ ] Add idempotency to costly create/generate/export operations: same request
       returns the same operation, conflicting payload fails without extra spend.
 - [ ] Settle/release reservations on completion, failure and cancellation using
       the existing ledger; prevent duplicate charges and refunds.
-- [ ] Add request/key/workspace/job attribution to operational logs and usage.
-- [ ] Tag PostHog events on the key path with `source` and key ID; exclude them
-      from activation and usage funnels.
+- [x] Add request/key/workspace/job attribution to operational logs and usage.
+      (Log context: api_key_id, workspace_id, user_id on every key request.)
+- [x] Tag PostHog events on the key path with `source` and key ID; exclude them
+      from activation and usage funnels. (`via: api|app` on project_created,
+      project_ready, generation_failed and credit_blocked. Funnel filters in
+      PostHog still need updating by hand.)
 - [ ] Define retryable errors, paused states and safe recovery instructions.
 
 ## A3. Minimal external contract and documentation
@@ -111,7 +119,6 @@ All A1–A3 items applicable to the chosen contract must be complete before rele
 - [ ] HTTP tests prove allowed operations work and forbidden operations fail.
 - [x] Test cross-workspace access, membership removal, role/plan downgrade,
       inactive users, suspended workspace/parent and revoked/expired keys.
-      (Step 2; "expired" key waits on the expiry item in A1.)
 - [x] Test concurrent key issuance and deterministic prefix-collision cases.
       (Prefix collision tested; issuance limit tested; the lock itself is not
       exercised concurrently in sqlite.)
@@ -245,6 +252,7 @@ added only after their own gates pass.
 |---|---|---|---|---|
 | 25 September 2026 | Tracker created from plan v1.2 | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
+| 25 September 2026 | Key expiry + rotation, per-key monthly spend cap, log context, analytics `via` tag; narration now quoted on the routed engine (Gemini 3cr) instead of a flat 1cr | Not committed | 3 new tests; suite 579 passed, pre-existing renewal failure only | Migration on dev DB; not deployed |
 | 25 September 2026 | Sidecar: `mcp/` Node service, compose (dev+prod) and nginx wiring, five tools, bearer pass-through; platform admins may manage keys | Not committed | `mcp/smoke.sh` against the rebuilt dev stack on the test account; PHP suite green | Dev stack only; nginx/compose prod changes not deployed |
 | 25 September 2026 | Step 3: developer-namespace throttling (read/write buckets, caller + workspace) and an in-flight video cap | Not committed | 3 new tests; full suite green except the pre-existing renewal failure | Not deployed |
 | 25 September 2026 | Step 2: issuer role/membership/suspension parity on the key path, hash lookup with unique index, owner/admin key management under a row lock | Not committed | 7 new tests; full suite green except the pre-existing renewal failure | Migration applied to dev DB only; not deployed |

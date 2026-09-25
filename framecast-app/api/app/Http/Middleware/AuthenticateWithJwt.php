@@ -229,6 +229,13 @@ class AuthenticateWithJwt
             return $this->unauthorized('Invalid or revoked API key.');
         }
 
+        if ($key->isExpired()) {
+            return response()->json(['error' => [
+                'code'    => 'api_key_expired',
+                'message' => 'This API key expired on '.$key->expires_at->toDateString().'. Rotate it or create a new one in the dashboard.',
+            ]], 401);
+        }
+
         if (! $request->is(self::API_KEY_NAMESPACE)) {
             return response()->json(['error' => [
                 'code'    => 'api_key_forbidden_path',
@@ -284,6 +291,14 @@ class AuthenticateWithJwt
 
         $request->setUserResolver(fn () => $user);
         $request->attributes->set('api_key_id', $key->getKey());
+
+        // Every log line for this request carries who and which key, so a
+        // support question ("what did key X do at 14:02?") is one grep.
+        \Illuminate\Support\Facades\Log::withContext([
+            'api_key_id'   => $key->getKey(),
+            'workspace_id' => (int) $workspace->getKey(),
+            'user_id'      => (int) $user->getKey(),
+        ]);
 
         // Touch at most once a minute — this is for "is it still in use?",
         // not an audit log, and a write on every call would be wasteful.

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CreditLedgerEntry;
+use App\Models\Project;
 use App\Models\Workspace;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -833,6 +834,7 @@ class CreditService
                     'operation' => $operation,
                     'required'  => $amount,
                     'balance'   => $this->balance($workspaceId),
+                    'via'       => isset($context['project_id']) && Project::query()->whereKey($context['project_id'])->whereNotNull('api_key_id')->exists() ? 'api' : 'app',
                 ],
                 $workspaceId,
             );
@@ -949,8 +951,18 @@ class CreditService
         ?string $animateTier = null,
         ?string $animateQuality = null,
         ?string $animationPacing = null,
+        ?string $voiceId = null,
     ): array {
         [$scenesMin, $scenesMax] = $this->estimateSceneCount($sourceType, $sourceContent);
+
+        // Narration is priced on the engine the voice routes to, the same
+        // way GenerateTTSJob bills it. Gemini is the default (3cr), so a
+        // flat self::TTS (1cr) under-quoted every narrated video by two
+        // credits a scene — and the API's quote-bound create authorizes
+        // the quoted maximum, so the quote must not sit below the charge.
+        $ttsPerScene = self::ttsCostForEngine(
+            \App\Services\Generation\TTS\RoutingTTSAdapter::engineFor((string) $voiceId, []),
+        );
 
         // Use the same animated pacing as generation so shorter shots are
         // reflected in the estimate shown before the user creates the project.
@@ -979,8 +991,8 @@ class CreditService
 
         $fixed = self::SCRIPT + self::BREAKDOWN + self::EXPORT;
 
-        $min = $fixed + $scenesMin * ($visualPerScene + self::TTS);
-        $max = $fixed + $scenesMax * ($visualPerScene + self::TTS);
+        $min = $fixed + $scenesMin * ($visualPerScene + $ttsPerScene);
+        $max = $fixed + $scenesMax * ($visualPerScene + $ttsPerScene);
         $mid = (int) round(($min + $max) / 2);
 
         return [
@@ -993,7 +1005,7 @@ class CreditService
             'breakdown' => [
                 'script_and_breakdown' => self::SCRIPT + self::BREAKDOWN,
                 'visual_per_scene'     => $visualPerScene,
-                'voice_per_scene'      => self::TTS,
+                'voice_per_scene'      => $ttsPerScene,
                 'export'               => self::EXPORT,
             ],
         ];

@@ -37,6 +37,9 @@ class Project extends Model
                     'visual_mode'  => $project->visual_generation_mode,
                     'duration'     => $project->duration_target_seconds,
                     'project_id'   => $project->getKey(),
+                    // Funnels filter on this: API-made projects are not
+                    // dashboard activation.
+                    'via'          => $project->api_key_id ? 'api' : 'app',
                 ],
                 $project->workspace_id,
             );
@@ -62,6 +65,7 @@ class Project extends Model
                         'source_type' => $project->source_type,
                         'visual_mode' => $project->visual_generation_mode,
                         'project_id'  => $project->getKey(),
+                        'via'         => $project->api_key_id ? 'api' : 'app',
                     ],
                     $project->workspace_id,
                 );

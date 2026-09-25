@@ -36,11 +36,14 @@ class ApiKeyController extends Controller
             ->orderByDesc('id')
             ->get()
             ->map(fn (ApiKey $k) => [
-                'id'           => $k->getKey(),
-                'name'         => $k->name,
-                'key'          => $k->maskedKey(),
-                'last_used_at' => $k->last_used_at,
-                'created_at'   => $k->created_at,
+                'id'                => $k->getKey(),
+                'name'              => $k->name,
+                'key'               => $k->maskedKey(),
+                'last_used_at'      => $k->last_used_at,
+                'expires_at'        => $k->expires_at,
+                'spend_cap_credits' => $k->spend_cap_credits,
+                'spent_this_month'  => $k->spentThisMonth(),
+                'created_at'        => $k->created_at,
             ]);
 
         return response()->json([
@@ -63,18 +66,23 @@ class ApiKeyController extends Controller
             return $denied;
         }
 
-        $validated = $request->validate(['name' => ['required', 'string', 'min:2', 'max:80']]);
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'min:2', 'max:80'],
+            'expires_in_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'spend_cap_credits' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+        ]);
+        $expiresAt = isset($validated['expires_in_days']) ? now()->addDays((int) $validated['expires_in_days']) : null;
 
         // Count and insert under the workspace row lock, so two requests
         // racing at four active keys end with five, not six.
-        $issued = DB::transaction(function () use ($user, $validated): ?array {
+        $issued = DB::transaction(function () use ($user, $validated, $expiresAt): ?array {
             Workspace::query()->whereKey($user->workspace_id)->lockForUpdate()->first();
             $active = ApiKey::query()->where('workspace_id', $user->workspace_id)->whereNull('revoked_at')->count();
             if ($active >= self::MAX_ACTIVE) {
                 return null;
             }
 
-            return ApiKey::issue((int) $user->workspace_id, (int) $user->getKey(), $validated['name']);
+            return ApiKey::issue((int) $user->workspace_id, (int) $user->getKey(), $validated['name'], $expiresAt, $validated['spend_cap_credits'] ?? null);
         });
         if ($issued === null) {
             return $this->error('too_many_keys',
@@ -82,12 +90,52 @@ class ApiKeyController extends Controller
         }
         [$key, $plain] = $issued;
 
-        // The only time the secret is ever returned. It is not recoverable.
+        return $this->issued($key, $plain);
+    }
+
+    /**
+     * Replace a key with a new secret. The old key stops working at once —
+     * rotation exists for "this may have leaked", where a grace period is
+     * the leak. Name, expiry and spend cap carry over; the count does not
+     * change, so rotation always succeeds at the five-key limit.
+     */
+    public function rotate(Request $request, int $keyId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        if ($denied = $this->denyUnlessAdmin($user)) {
+            return $denied;
+        }
+
+        $result = DB::transaction(function () use ($user, $keyId): ?array {
+            $old = ApiKey::query()->whereKey($keyId)->where('workspace_id', $user->workspace_id)->whereNull('revoked_at')->lockForUpdate()->first();
+            if (! $old) {
+                return null;
+            }
+            $old->forceFill(['revoked_at' => now()])->save();
+
+            return ApiKey::issue((int) $user->workspace_id, (int) $user->getKey(), $old->name, $old->expires_at, $old->spend_cap_credits, (int) $old->getKey());
+        });
+        if ($result === null) {
+            return $this->error('not_found', 'API key not found.', 404);
+        }
+        [$key, $plain] = $result;
+
+        return $this->issued($key, $plain);
+    }
+
+    /** The only time the secret is ever returned. It is not recoverable. */
+    private function issued(ApiKey $key, string $plain): JsonResponse
+    {
         return response()->json(['data' => [
-            'id'   => $key->getKey(),
-            'name' => $key->name,
-            'key'  => $plain,
-            'note' => 'Copy this now — it will not be shown again.',
+            'id'                => $key->getKey(),
+            'name'              => $key->name,
+            'key'               => $plain,
+            'expires_at'        => $key->expires_at,
+            'spend_cap_credits' => $key->spend_cap_credits,
+            'rotated_from_id'   => $key->rotated_from_id,
+            'note'              => 'Copy this now — it will not be shown again.',
         ], 'meta' => []], 201);
     }
 

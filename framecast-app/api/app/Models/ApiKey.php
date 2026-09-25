@@ -13,15 +13,21 @@ use Illuminate\Support\Str;
  */
 class ApiKey extends Model
 {
-    protected $fillable = ['workspace_id', 'created_by_user_id', 'name', 'prefix', 'token_hash'];
+    protected $fillable = ['workspace_id', 'created_by_user_id', 'name', 'prefix', 'token_hash', 'expires_at', 'spend_cap_credits', 'rotated_from_id'];
 
     protected function casts(): array
     {
-        return ['last_used_at' => 'datetime', 'revoked_at' => 'datetime'];
+        return ['last_used_at' => 'datetime', 'revoked_at' => 'datetime', 'expires_at' => 'datetime', 'spend_cap_credits' => 'integer'];
     }
 
-    /** wyv_live_<40 hex>. The prefix is the first 16 chars, enough to look up and to recognise. */
-    public static function issue(int $workspaceId, int $userId, string $name): array
+    /**
+     * wyv_live_<40 hex>. The prefix is the first 16 chars, enough to recognise
+     * a key in a list. Expiry and spend cap are optional and carried over on
+     * rotation.
+     *
+     * @return array{0: self, 1: string}
+     */
+    public static function issue(int $workspaceId, int $userId, string $name, ?\DateTimeInterface $expiresAt = null, ?int $spendCapCredits = null, ?int $rotatedFromId = null): array
     {
         $plain = 'wyv_live_'.bin2hex(random_bytes(20));
 
@@ -31,9 +37,30 @@ class ApiKey extends Model
             'name'               => Str::limit(trim($name), 80, ''),
             'prefix'             => substr($plain, 0, 16),
             'token_hash'         => hash('sha256', $plain),
+            'expires_at'         => $expiresAt,
+            'spend_cap_credits'  => $spendCapCredits,
+            'rotated_from_id'    => $rotatedFromId,
         ]);
 
         return [$key, $plain];
+    }
+
+    public function isExpired(): bool
+    {
+        return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    /**
+     * Net credits spent this calendar month by videos this key created.
+     * Debits are positive and refunds negative in the ledger, so a sum is
+     * the net figure. Attribution rides projects.api_key_id.
+     */
+    public function spentThisMonth(): int
+    {
+        return (int) CreditLedgerEntry::query()
+            ->whereIn('project_id', Project::query()->where('api_key_id', $this->getKey())->select('id'))
+            ->where('created_at', '>=', now()->startOfMonth())
+            ->sum('credits');
     }
 
     /**
@@ -54,6 +81,12 @@ class ApiKey extends Model
             ->where('token_hash', hash('sha256', $plain))
             ->whereNull('revoked_at')
             ->first();
+    }
+
+    /** Whether a create for up to $credits would exceed the monthly cap. */
+    public function wouldExceedCap(int $credits): bool
+    {
+        return $this->spend_cap_credits !== null && $this->spentThisMonth() + $credits > $this->spend_cap_credits;
     }
 
     public function maskedKey(): string

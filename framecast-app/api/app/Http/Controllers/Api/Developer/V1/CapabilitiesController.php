@@ -48,6 +48,8 @@ class CapabilitiesController extends DeveloperController
             );
         }
 
+        $key = ($id = $request->attributes->get('api_key_id')) ? \App\Models\ApiKey::query()->find($id) : null;
+
         return response()->json(['data' => [
             'plan' => $this->credits->planTier($workspaceId),
             'credits' => ['balance' => $this->credits->balance($workspaceId)],
@@ -55,7 +57,16 @@ class CapabilitiesController extends DeveloperController
                 'max_duration_seconds' => $this->credits->maxDurationSeconds($workspaceId),
                 'exports_remaining_this_month' => $this->usage->exportsRemaining($user),
                 'quote_ttl_minutes' => \App\Models\ApiQuote::TTL_MINUTES,
+                'max_active_videos' => (int) config('developer.limits.max_active_videos'),
+                'requests_per_minute' => ['reads' => (int) config('developer.limits.reads_per_minute'), 'writes' => (int) config('developer.limits.writes_per_minute')],
             ],
+            // Only when called with a key: its own lifetime and ceiling.
+            'key' => $key ? [
+                'name' => $key->name,
+                'expires_at' => $key->expires_at?->toIso8601String(),
+                'spend_cap_credits' => $key->spend_cap_credits,
+                'spent_this_month' => $key->spentThisMonth(),
+            ] : null,
             'video' => [
                 'source_types' => self::SOURCE_TYPES,
                 'visual_modes' => self::VISUAL_MODES,
@@ -68,7 +79,7 @@ class CapabilitiesController extends DeveloperController
             'costs' => [
                 'unit' => 'credits',
                 'script_and_breakdown' => CreditService::SCRIPT + CreditService::BREAKDOWN,
-                'voice_per_scene' => CreditService::TTS,
+                'voice_per_scene' => CreditService::ttsCostForEngine(\App\Services\Generation\TTS\RoutingTTSAdapter::engineFor('', [])),
                 'export' => CreditService::EXPORT,
                 'visual_per_scene' => [
                     'stock' => CreditService::STOCK,

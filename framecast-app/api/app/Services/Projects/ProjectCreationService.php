@@ -97,6 +97,7 @@ class ProjectCreationService
             animateTier:   $validated['animate_tier'] ?? null,
             animateQuality: $validated['animate_quality'] ?? null,
             animationPacing: $validated['animation_pacing'] ?? null,
+            voiceId: $validated['voice_settings_json']['voice_id'] ?? $validated['voice_settings']['voice_id'] ?? null,
         );
         $balance = $this->credits->balance((int) $user->workspace_id);
         if ($balance < $estimate['credits_min']) {
