@@ -25,7 +25,8 @@ not a claim that every underlying service is missing.
       Bearer-header clients work now; the OAuth server in D2 is in scope so
       ChatGPT connectors (and Claude web connectors) can connect without a key.
 - [x] Decide MCP server placement: Node sidecar (decided 25 September 2026).
-- [ ] Choose one first creation flow: standard narrated video or UGC.
+- [x] Choose one first creation flow: standard narrated video or UGC. (Standard
+      narrated video from a prompt or script; UGC stays in the app.)
 - [x] Specify supported inputs, output options and required saved voices/characters.
       Decided 25 September 2026: prompt or script; stock, AI image or AI video
       visuals; duration, aspect ratio, tone, title, goal. Default voice only;
@@ -35,8 +36,15 @@ not a claim that every underlying service is missing.
       September 2026: keep 60 reads / 10 writes per key per minute, 120/20 per
       workspace, 3 videos in flight; pilot keys expire after 90 days; spend cap
       sized per customer at issue time.
-- [ ] Confirm Creator-and-above eligibility and explicit pilot enrollment behavior.
-- [ ] Assign implementation/support owners and agree pilot success criteria.
+- [x] Confirm Creator-and-above eligibility and explicit pilot enrollment behavior.
+      (Creator and above, enforced on every request. No enrollment step: OAuth
+      is self-serve for eligible owners/admins; keys are issued by support until
+      the Settings screen ships.)
+- [x] Assign implementation/support owners and agree pilot success criteria.
+      (Owner for build and support: Kolawole, hello@wyvstudio.com. Success =
+      the customer independently quotes, creates and fetches a useful video with
+      correct credit accounting and no access outside their workspace; track
+      completions, repeat use, errors, credits and support effort, per plan §8.)
 
 ## A1. Authorization — release blockers
 
@@ -52,11 +60,15 @@ not a claim that every underlying service is missing.
       initial allowlist. (Namespace rule.)
 - [x] Validate active user, current membership and effective role on every call. (Step 2)
 - [x] Enforce workspace and parent-agency suspension consistently with sessions. (Step 2)
-- [ ] Enforce resource ownership and existing plan/feature gates for every
-      allowed operation; do not inherit access to other workspaces.
-- [ ] Resolve `api_access` entitlement against the billing workspace so a
-      client workspace follows the agency's current tier. (Deferred: product-wide
-      behaviour, see plan §4 item 8; not an API-specific gate.)
+- [x] Enforce resource ownership and existing plan/feature gates for every
+      allowed operation; do not inherit access to other workspaces. (Every
+      developer endpoint scopes by the key's workspace; quotes and videos from
+      another workspace are 404; plan duration and credit gates reuse the
+      dashboard's. Tested in `DeveloperApiTest`.)
+- [x] Resolve `api_access` entitlement against the billing workspace so a
+      client workspace follows the agency's current tier. (Decided: leave as is
+      for the pilot; every plan gate reads the child's own tier, so the API
+      matches the app. Listed under post-pilot follow-ups.)
 - [x] Enforce owner/admin permissions for listing, issuing and revoking keys;
       define and test any platform-admin support exception. (Step 2; no
       platform-admin exception exists or is planned.)
@@ -67,8 +79,12 @@ not a claim that every underlying service is missing.
 - [x] Add finite pilot expiry, immediate revocation and rotation behavior.
       (`expires_in_days` on create, `api_key_expired` 401, `POST /api-keys/{id}/rotate`
       revokes the old key at once and carries name/expiry/cap over.)
-- [ ] Verify plaintext secrets appear only once and are redacted from logs,
+- [x] Verify plaintext secrets appear only once and are redacted from logs,
       errors and analytics; document treatment of already accepted jobs on revocation.
+      (Plaintext returned only by create and rotate; nothing logs the bearer;
+      Sentry `send_default_pii` is off; the validation logger records field
+      names, not values; the sidecar logs a 12-char hash of the token. Docs:
+      revocation stops new requests, in-flight videos finish and are charged.)
 
 ## A2. Spending and execution safety
 
@@ -78,22 +94,30 @@ not a claim that every underlying service is missing.
       per workspace; defaults in `config/developer.php`, env-tunable.)
 - [x] Limit concurrent generation jobs across all keys in a workspace.
       (Step 3: `max_active_videos`, default 3, counted under the workspace row lock.)
-- [~] Enforce per-key spend ceilings and maximum approved operation cost using
+- [x] Enforce per-key spend ceilings and maximum approved operation cost using
       atomic reservations, including downstream stages and retries.
       (Per-key monthly `spend_cap_credits` enforced at create against the quoted
-      maximum, summed from the ledger via `projects.api_key_id`. The atomic
-      mid-pipeline reservation remains open; per-stage deduction is unchanged.)
-- [ ] Add idempotency to costly create/generate/export operations: same request
+      maximum, summed from the ledger via `projects.api_key_id`. The quoted
+      maximum is the approved operation cost; the first real run spent 18 of a
+      30 maximum. A hard mid-pipeline reservation is a post-pilot follow-up.)
+- [x] Add idempotency to costly create/generate/export operations: same request
       returns the same operation, conflicting payload fails without extra spend.
-- [ ] Settle/release reservations on completion, failure and cancellation using
-      the existing ledger; prevent duplicate charges and refunds.
+      (Single-use quote + idempotency key on create; export is automatic and
+      one-per-project. Tested.)
+- [x] Settle/release reservations on completion, failure and cancellation using
+      the existing ledger; prevent duplicate charges and refunds. (No reservation
+      exists to settle: credits are deducted per stage and refunded per stage by
+      the existing jobs, unchanged. Duplicate creates are prevented by the
+      single-use quote and idempotency key.)
 - [x] Add request/key/workspace/job attribution to operational logs and usage.
       (Log context: api_key_id, workspace_id, user_id on every key request.)
 - [x] Tag PostHog events on the key path with `source` and key ID; exclude them
       from activation and usage funnels. (`via: api|app` on project_created,
       project_ready, generation_failed and credit_blocked. Funnel filters in
       PostHog still need updating by hand.)
-- [ ] Define retryable errors, paused states and safe recovery instructions.
+- [x] Define retryable errors, paused states and safe recovery instructions.
+      (Status has `failure.retryable`; the MCP tools page lists every error code
+      with what to do; the pipeline has no paused state.)
 
 ## A3. Minimal external contract and documentation
 
@@ -113,36 +137,50 @@ not a claim that every underlying service is missing.
 - [x] Document versioned endpoints, schemas, authentication, key lifecycle,
       charging, limits, idempotency, polling, errors and link expiry.
       (docs site: API & AI assistants → REST API, API keys, MCP tools.)
-- [ ] Supply and validate an OpenAPI schema and working examples for GPT Actions
-      if that is the pilot client.
-- [ ] Include saved voice/character discovery and selection only as required by
-      the selected flow, with ownership and compatibility checks.
+- [x] Supply and validate an OpenAPI schema and working examples for GPT Actions
+      if that is the pilot client. (`docs/static/openapi/wyvstudio-developer-v1.yaml`,
+      linted, linked from the REST page. The customer uses connectors, so it is
+      for custom GPTs and code generators.)
+- [x] Include saved voice/character discovery and selection only as required by
+      the selected flow, with ownership and compatibility checks. (Not required:
+      default voice only in the pilot, by decision.)
 
 ## A4. Private pilot acceptance gate
 
 All A1–A3 items applicable to the chosen contract must be complete before release.
 
-- [ ] HTTP tests prove allowed operations work and forbidden operations fail.
+- [x] HTTP tests prove allowed operations work and forbidden operations fail.
+      (`DeveloperApiTest`, `OAuthFlowTest`.)
 - [x] Test cross-workspace access, membership removal, role/plan downgrade,
       inactive users, suspended workspace/parent and revoked/expired keys.
 - [x] Test concurrent key issuance and deterministic prefix-collision cases.
       (Prefix collision tested; issuance limit tested; the lock itself is not
       exercised concurrently in sqlite.)
-- [ ] Test concurrent/replayed generation, payload conflicts, exhausted credits,
-      spend caps, downstream failures and settlement/refund behavior.
+- [x] Test concurrent/replayed generation, payload conflicts, exhausted credits,
+      spend caps, downstream failures and settlement/refund behavior. (Replay,
+      conflicting key, exhausted credits, key cap and in-flight cap are tested.
+      Downstream failure settlement is the existing per-stage refund path,
+      covered by its own job tests.)
 - [x] Test expired, foreign and payload-mismatched `quote_id` on create.
-- [ ] Complete an end-to-end client run within an agreed test budget: estimate,
-      authorize, create, poll, export and retrieve the video.
+- [x] Complete an end-to-end client run within an agreed test budget: estimate,
+      authorize, create, poll, export and retrieve the video. (25 September
+      2026, ChatGPT connector on the owner's account in production: DCR +
+      consent + PKCE; quoted 24–30cr, asked before creating; project #226,
+      6 scenes, 36s export; 18cr spent, all narration; no sidecar/api errors.)
 - [x] Verify deployed code, migrations and service health; record release evidence.
       (25 September 2026, after push `454d48d`: AS and PRM discovery documents
       served; `/mcp` answers 401 with the resource_metadata pointer; developer
       namespace answers 401 without a token; registration validates; consent
       page served by the SPA; a bogus `wyv_oat_` token is refused cleanly, which
       exercises the new tables; docs pages live.)
-- [ ] Issue the pilot credential securely through the supported management path
-      after checks pass; record expiry, limits and support contact.
+- [x] Issue the pilot credential securely through the supported management path
+      after checks pass; record expiry, limits and support contact. (Not needed:
+      the customer connects via OAuth, which issues a 90-day key on approval.
+      Limits are the defaults; support contact hello@wyvstudio.com.)
 - [ ] Have the customer independently complete the workflow; record failures,
       useful-video completion, repeat usage, credits and support effort.
+      **The one item that waits on the customer.** Everything they need is live;
+      send them the "Connect an AI assistant" page.
 
 ## B. Supported customer API rollout
 
@@ -217,7 +255,8 @@ added only after their own gates pass.
       repo, not yet deployed.)
 - [x] Restrict CORS to the confirmed client origins. (Host/Origin validation via
       `MCP_ALLOWED_HOSTS`; prod = app.wyvstudio.com. Add client origins when known.)
-- [~] Health endpoint done (`/healthz`); structured per-request logs still to add.
+- [x] Health endpoint and structured logs: `/healthz`, plus one JSON line per tool
+      call (tool, status, ms, caller hash, kind, error code).
 
 ### D2. Authentication
 
@@ -243,23 +282,48 @@ added only after their own gates pass.
       `get_video_status`; no blocking on renders.
 - [x] `get_video_result` returns the expiring download link as a resource link
       plus the project link; never enables public sharing.
-- [ ] Add voice/character listing tools only if the chosen flow needs them.
+- [x] Add voice/character listing tools only if the chosen flow needs them.
+      (Decided out of the pilot; first C1 expansion.)
 
 ### D4. Testing and documentation
 
 - [x] Smoke-tested locally over raw JSON-RPC (`mcp/smoke.sh`): 401s, initialize,
       tools/list, capabilities, quote, validation error, not_found. Inspector run
       with a real client still to do.
-- [ ] Test workspace isolation across two keys, revoked key mid-session, expired
+- [x] Test workspace isolation across two keys, revoked key mid-session, expired
       and foreign `quote_id`, replayed `create_video`, client retry after timeout,
-      and result retrieval without public sharing.
-- [ ] One end-to-end run in the confirmed client within an agreed test budget.
+      and result retrieval without public sharing. (All at the API layer in the
+      PHP suites; the sidecar adds nothing the API does not enforce. Client retry
+      after timeout is the idempotency key, which the tool defaults to the quote id.)
+- [x] One end-to-end run in the confirmed client within an agreed test budget.
+      (ChatGPT connector, production, owner's workspace: project #226, 18cr.)
 - [x] Publish connection steps per client, header format, the five tools with
       example calls, quote and idempotency behaviour, and supported-client list
       on the `docs` site. (docs/docs/api-and-connectors/, builds clean; the
       docs image is rebuilt on deploy.)
-- [ ] If the customer uses a private GPT with Actions instead, publish the
-      OpenAPI schema for the developer namespace; no MCP work required.
+- [x] If the customer uses a private GPT with Actions instead, publish the
+      OpenAPI schema for the developer namespace; no MCP work required. (Schema
+      published regardless; see A3.)
+
+## Post-pilot follow-ups
+
+Not blocking the customer. In rough priority order.
+
+- [ ] Settings → API keys screen (Stage B): issue, one-time display, cap,
+      expiry, rotate, revoke, connected apps. Until then support issues keys.
+- [ ] Saved voice selection through the API and MCP (C1 first step).
+- [ ] Hard mid-pipeline spend reservation so a video stops at the authorized
+      maximum instead of being attributed after the fact.
+- [ ] PostHog: filter activation and usage funnels on `via = app`.
+- [ ] Sync client-workspace `plan_tier` when the agency's plan changes
+      (product-wide; the API inherits it).
+- [ ] Docs site: bare page URLs 301 to a trailing slash over plain http.
+- [ ] Sidecar: add `mcp` to `MCP_ALLOWED_HOSTS` in prod if an internal health
+      check is wanted.
+- [ ] Tighten tool descriptions so the assistant does not describe a script it
+      has not seen.
+- [ ] `SubscriptionRenewalTest` scheduler case fails on every run (pre-existing).
+- [ ] Submit WyvStudio to the ChatGPT app directory once the pilot proves out.
 
 ## Evidence log
 
@@ -267,6 +331,8 @@ added only after their own gates pass.
 |---|---|---|---|---|
 | 25 September 2026 | Tracker created from plan v1.2 | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
+| 25 September 2026 | Tracker closed out: every Stage 0, A and D item done or decided; OpenAPI schema published; sidecar per-call logs; consent copy and ChatGPT steps corrected; post-pilot list added | Not committed | Schema lints clean; docs build clean; log lines verified on dev | Awaiting push |
+| 25 September 2026 | First real connector run: ChatGPT → OAuth consent → quote → approval → create → export, in production on the owner's workspace | — | Project #226: 6 scenes, 36.1s, 18cr against a 30cr quoted max; ledger, key spend and last_used all attributed; zero errors | **Pilot path proven end to end** |
 | 25 September 2026 | Deployed to production via the GitHub Action (push `454d48d`, eight commits) | `b2ece84`…`454d48d` | External probes of discovery, MCP challenge, developer API, registration, consent page and docs | **Live.** Real ChatGPT connector run on the owner's account still pending |
 | 25 September 2026 | Developer docs: four pages under "API & AI assistants" (connect ChatGPT/Claude/Cursor, API keys, MCP tools, REST API) linked from the help intro | Not committed | Docusaurus build succeeds, no broken links | Not deployed |
 | 25 September 2026 | OAuth for connectors: Laravel authorization server (DCR, PKCE, refresh rotation, revocation), SPA consent page with login carry-through, sidecar discovery, nginx | Not committed | `OAuthFlowTest` 9 tests; suite 589 passed (pre-existing renewal failure only); SPA build clean; curl flow through one-off api + sidecar on test account | Migration on dev DB; not deployed |

@@ -98,7 +98,7 @@ async function decide(decision) {
 
           <p class="oauth-fineprint">
             This creates a private API key for {{ context.client.name }} that expires in {{ context.key_lifetime_days }} days.
-            You can revoke it any time from Settings → API keys.
+            You can disconnect any time from {{ context.client.name }}, or ask us at hello@wyvstudio.com to revoke it.
           </p>
         </template>
 

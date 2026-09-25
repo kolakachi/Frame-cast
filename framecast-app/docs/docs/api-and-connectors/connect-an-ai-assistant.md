@@ -12,13 +12,13 @@ WyvStudio has an MCP server. Once an assistant is connected it can price a video
 
 ## ChatGPT
 
-ChatGPT connectors use a sign-in flow, so you never handle a key.
+ChatGPT uses a sign-in flow, so you never handle a key. Until WyvStudio is listed in ChatGPT's app directory, you add it yourself once:
 
-1. In ChatGPT go to **Settings → Connectors → Create** (or **Add custom connector**).
-2. Enter the MCP server URL: `https://app.wyvstudio.com/mcp`.
-3. Leave authentication as **OAuth**. ChatGPT registers itself with WyvStudio automatically.
-4. Click **Connect**. You'll land on WyvStudio, sign in if you need to, pick a workspace, and click **Allow**.
-5. Back in ChatGPT, enable the connector in a chat and ask for a video.
+1. In ChatGPT open **Settings → Security and login** and turn on **Developer mode**. Custom MCP servers only appear once it's on.
+2. Go to **Settings → Plugins** and click **Create**.
+3. Name it **WyvStudio**, leave **Server URL** selected and enter `https://app.wyvstudio.com/mcp`. Leave authentication as **OAuth** with no client ID or secret — ChatGPT registers itself with WyvStudio.
+4. Tick the trust box and click **Create**, then **Sign in with WyvStudio**. You'll land on WyvStudio, sign in if you need to, pick a workspace, and click **Allow**.
+5. Back in ChatGPT, enable WyvStudio from the tools menu in a chat and ask for a video.
 
 Approving creates a private connection key in your workspace that expires after **90 days**. You'll see it under your API keys as the connector's name, and you can revoke it there any time. Reconnecting after that makes a fresh one.
 

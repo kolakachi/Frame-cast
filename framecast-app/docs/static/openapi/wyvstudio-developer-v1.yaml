@@ -1,0 +1,297 @@
+openapi: 3.1.0
+info:
+  title: WyvStudio Developer API
+  version: "1.0"
+  description: |
+    Quote, create, watch and fetch short videos. Spending is quote-bound:
+    POST /quotes returns a quote_id (valid 10 minutes); POST /videos requires it.
+    Auth: `Authorization: Bearer wyv_live_…` (API key) or an OAuth access token.
+  contact:
+    email: hello@wyvstudio.com
+  license:
+    name: Proprietary
+    url: https://wyvstudio.com/terms
+servers:
+  - url: https://app.wyvstudio.com/api/developer/v1
+security:
+  - bearer: []
+tags:
+  - name: videos
+    description: Quote, create, watch and fetch videos.
+paths:
+  /capabilities:
+    get:
+      operationId: getCapabilities
+      summary: Plan, balance, limits, supported inputs and prices
+      tags: [videos]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CapabilitiesResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /quotes:
+    post:
+      operationId: createQuote
+      summary: Price a video (free) and get a quote_id
+      tags: [videos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuoteRequest" }
+      responses:
+        "201":
+          description: Quote created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuoteResponse" }
+        "422": { $ref: "#/components/responses/Invalid" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /videos:
+    post:
+      operationId: createVideo
+      summary: Start the video a quote described (spends credits, up to the quote's max)
+      tags: [videos]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema: { type: string, maxLength: 128 }
+          description: "Alternative to the idempotency_key body field."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quote_id]
+              properties:
+                quote_id: { type: string, example: q_01m3c2zmwvz55c7r9bbb4zk3m4 }
+                idempotency_key: { type: string, maxLength: 128, description: "A retry with the same key returns the same video." }
+      responses:
+        "202":
+          description: Video started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VideoCreatedResponse" }
+        "200":
+          description: Replay of an earlier create with the same idempotency key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VideoCreatedResponse" }
+        "402":
+          description: insufficient_credits or key_spend_cap_reached
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "404":
+          description: quote_not_found
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "409":
+          description: quote_consumed or idempotency_key_reused
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "410":
+          description: quote_expired
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429":
+          description: too_many_active_videos or rate_limited
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /videos/{videoId}:
+    get:
+      operationId: getVideoStatus
+      summary: Progress of a video
+      tags: [videos]
+      parameters:
+        - { in: path, name: videoId, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VideoStatusResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /videos/{videoId}/result:
+    get:
+      operationId: getVideoResult
+      summary: The finished MP4 as a private, expiring link
+      tags: [videos]
+      parameters:
+        - { in: path, name: videoId, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VideoResultResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: not_ready — poll status until completed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  responses:
+    Unauthorized:
+      description: Missing, invalid, expired or revoked credential
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: api_access_not_on_plan, workspace_suspended, api_key_forbidden_path
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: Not in this workspace
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Invalid:
+      description: validation_failed, invalid_source_content or plan_duration_exceeded
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    RateLimited:
+      description: rate_limited; see Retry-After
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            context: { type: object, additionalProperties: true }
+    QuoteRequest:
+      type: object
+      required: [source_type, content, visual_mode]
+      properties:
+        source_type: { type: string, enum: [prompt, script] }
+        content: { type: string, minLength: 10, maxLength: 10000 }
+        visual_mode: { type: string, enum: [stock, ai_images, ai_video] }
+        duration_seconds: { type: integer, minimum: 5, maximum: 600, default: 60 }
+        animate_tier: { type: string, enum: [quick, balanced, premium, seedance_lite, seedance_pro, veo_fast, seedance_25], description: "Required for ai_video, forbidden otherwise." }
+        animation_pacing: { type: string, enum: [short, long] }
+        aspect_ratio: { type: string, enum: ["9:16", "1:1", "16:9"], default: "9:16" }
+        tone: { type: string, maxLength: 64 }
+        title: { type: string, maxLength: 255 }
+        content_goal: { type: string, maxLength: 255 }
+    Credits:
+      type: object
+      properties:
+        min: { type: integer }
+        max: { type: integer }
+        mid: { type: integer }
+        breakdown:
+          type: object
+          properties:
+            script_and_breakdown: { type: integer }
+            visual_per_scene: { type: integer }
+            voice_per_scene: { type: integer }
+            export: { type: integer }
+    QuoteResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            quote_id: { type: string }
+            credits: { $ref: "#/components/schemas/Credits" }
+            scenes: { type: object, properties: { min: { type: integer }, max: { type: integer } } }
+            balance: { type: integer }
+            can_afford: { type: boolean, description: "Balance covers credits.max" }
+            shortage: { type: integer }
+            expires_at: { type: string, format: date-time }
+            request: { $ref: "#/components/schemas/QuoteRequest" }
+    VideoCreatedResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            video:
+              type: object
+              properties:
+                id: { type: integer }
+                status: { type: string, enum: [generating, exporting, completed, failed] }
+                quote_id: { type: string }
+                credits: { type: object, properties: { authorized_max: { type: integer } } }
+                project_url: { type: string, format: uri }
+    VideoStatusResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            video:
+              type: object
+              properties:
+                id: { type: integer }
+                status: { type: string, enum: [generating, exporting, completed, failed] }
+                title: { type: [string, "null"] }
+                stage:
+                  type: object
+                  properties:
+                    current: { type: [string, "null"] }
+                    message: { type: [string, "null"] }
+                    stages: { type: object, additionalProperties: { type: string } }
+                failure:
+                  type: [object, "null"]
+                  properties:
+                    message: { type: string }
+                    stage: { type: [string, "null"] }
+                    retryable: { type: boolean }
+                credits: { type: object, properties: { authorized_max: { type: [integer, "null"] }, spent: { type: integer } } }
+                retry_after_seconds: { type: [integer, "null"] }
+                project_url: { type: string, format: uri }
+    VideoResultResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            video:
+              type: object
+              properties:
+                id: { type: integer }
+                status: { type: string, const: completed }
+                title: { type: [string, "null"] }
+                download_url: { type: string, format: uri, description: "Private, signed, expires" }
+                download_expires_at: { type: string, format: date-time }
+                file_name: { type: string }
+                aspect_ratio: { type: string }
+                duration_seconds: { type: [number, "null"] }
+                credits: { type: object, properties: { spent: { type: integer } } }
+                project_url: { type: string, format: uri }
+    CapabilitiesResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            plan: { type: string }
+            credits: { type: object, properties: { balance: { type: integer } } }
+            limits:
+              type: object
+              properties:
+                max_duration_seconds: { type: [integer, "null"] }
+                exports_remaining_this_month: { type: [integer, "null"] }
+                quote_ttl_minutes: { type: integer }
+                max_active_videos: { type: integer }
+                requests_per_minute: { type: object, properties: { reads: { type: integer }, writes: { type: integer } } }
+            key:
+              type: [object, "null"]
+              properties:
+                name: { type: string }
+                expires_at: { type: [string, "null"], format: date-time }
+                spend_cap_credits: { type: [integer, "null"] }
+                spent_this_month: { type: integer }
+            video:
+              type: object
+              properties:
+                source_types: { type: array, items: { type: string } }
+                visual_modes: { type: array, items: { type: string } }
+                animate_tiers: { type: array, items: { type: string } }
+                animation_pacing: { type: array, items: { type: string } }
+                aspect_ratios: { type: array, items: { type: string } }
+                duration_seconds: { type: object, properties: { min: { type: integer }, max: { type: integer }, default: { type: integer } } }
+                language_default: { type: string }
+            costs: { type: object, additionalProperties: true }

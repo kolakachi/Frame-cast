@@ -119,8 +119,20 @@ function fail(status, json) {
   return { isError: true, content: [{ type: 'text', text: lines.join('\n') }], structuredContent: { error, status } }
 }
 
-async function call(token, method, path, body) {
+// One JSON line per tool call: what was asked, how the API answered, how
+// long it took. The caller is identified by a hash prefix of its token,
+// never the token, so a support question ("what did this connection do at
+// 14:02?") can be answered from the log without the log being a secret.
+function logCall(token, tool, status, ms, errorCode) {
+  const caller = createHash('sha256').update(token).digest('hex').slice(0, 12)
+  const kind = token.startsWith('wyv_oat_') ? 'oauth' : 'key'
+  console.log(JSON.stringify({ ts: new Date().toISOString(), tool, status, ms, caller, kind, ...(errorCode ? { error: errorCode } : {}) }))
+}
+
+async function call(token, method, path, body, tool = path) {
+  const started = Date.now()
   const { status, json } = await api(token, method, path, body)
+  logCall(token, tool, status, Date.now() - started, status >= 300 ? json?.error?.code : undefined)
   return status >= 200 && status < 300 ? ok(json.data) : fail(status, json)
 }
 
@@ -141,7 +153,7 @@ function buildServer(token) {
       description: 'What this workspace can make and what it costs: plan, credit balance, limits, supported inputs, visual modes and per-scene prices. Call this first, and again if a create is refused for credits or limits.',
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
-    async () => call(token, 'GET', '/capabilities'),
+    async () => call(token, 'GET', '/capabilities', undefined, 'get_capabilities'),
   )
 
   server.registerTool(
@@ -163,7 +175,7 @@ function buildServer(token) {
       }),
       annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
     },
-    async (args) => call(token, 'POST', '/quotes', args),
+    async (args) => call(token, 'POST', '/quotes', args, 'estimate_video'),
   )
 
   server.registerTool(
@@ -177,7 +189,7 @@ function buildServer(token) {
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    async ({ quote_id, idempotency_key }) => call(token, 'POST', '/videos', { quote_id, idempotency_key: idempotency_key || quote_id }),
+    async ({ quote_id, idempotency_key }) => call(token, 'POST', '/videos', { quote_id, idempotency_key: idempotency_key || quote_id }, 'create_video'),
   )
 
   server.registerTool(
@@ -188,7 +200,7 @@ function buildServer(token) {
       inputSchema: z.object({ video_id: z.number().int().describe('From create_video.') }),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
-    async ({ video_id }) => call(token, 'GET', `/videos/${video_id}`),
+    async ({ video_id }) => call(token, 'GET', `/videos/${video_id}`, undefined, 'get_video_status'),
   )
 
   server.registerTool(
@@ -200,7 +212,9 @@ function buildServer(token) {
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ video_id }) => {
+      const started = Date.now()
       const { status, json } = await api(token, 'GET', `/videos/${video_id}/result`)
+      logCall(token, 'get_video_result', status, Date.now() - started, status >= 300 ? json?.error?.code : undefined)
       if (status !== 200) return fail(status, json)
       const v = json.data.video
       return ok(json.data, [{

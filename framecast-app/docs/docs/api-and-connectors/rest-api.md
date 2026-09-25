@@ -11,6 +11,8 @@ Auth: `Authorization: Bearer wyv_live_…` ([API keys](./api-keys)). JSON in, JS
 
 The MCP tools are thin wrappers over these five endpoints, so everything on the [MCP tools](./mcp-tools) page — quotes, spending rules, limits, error codes — applies here too.
 
+OpenAPI 3.1 schema: [wyvstudio-developer-v1.yaml](/openapi/wyvstudio-developer-v1.yaml). Import it into a custom GPT (Actions, API key auth), Postman, or a code generator.
+
 ## Responses
 
 Success: `{ "data": { … }, "meta": {} }`. Failure: `{ "error": { "code", "message", "context"? } }`. Validation failures are `422` with `error.code = validation_failed` and the field errors under `error.context.errors`.
