@@ -332,6 +332,12 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/footage/{id}/produce', [\App\Http\Controllers\Api\V1\Ugc\FootageController::class, 'produce'])->whereNumber('id');
         });
 
+        // Key management is session-only: a key must not be able to mint more
+        // of itself (enforced in AuthenticateWithJwt::FORBIDDEN).
+        Route::get('/api-keys', [\App\Http\Controllers\Api\V1\Developer\ApiKeyController::class, 'index']);
+        Route::post('/api-keys', [\App\Http\Controllers\Api\V1\Developer\ApiKeyController::class, 'store']);
+        Route::delete('/api-keys/{keyId}', [\App\Http\Controllers\Api\V1\Developer\ApiKeyController::class, 'destroy'])->whereNumber('keyId');
+
         Route::prefix('/admin')->middleware(['admin', 'admin.ip'])->group(function (): void {
             Route::get('/affiliates', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'index']);
             Route::post('/affiliates', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'store']);

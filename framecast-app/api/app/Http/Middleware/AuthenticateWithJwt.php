@@ -27,6 +27,12 @@ class AuthenticateWithJwt
             return $this->unauthorized('Missing bearer token.');
         }
 
+        // An API key authenticates the same routes as a browser session, minus
+        // the ones that could change what the account is or what it costs.
+        if (str_starts_with($bearerToken, 'wyv_live_')) {
+            return $this->handleApiKey($request, $next, $bearerToken);
+        }
+
         try {
             $claims = $this->jwtService->parse($bearerToken);
         } catch (\Throwable) {
@@ -206,6 +212,70 @@ class AuthenticateWithJwt
             ->whereKey($workspaceId)
             ->where('parent_workspace_id', $user->workspace_id)
             ->exists();
+    }
+
+    /**
+     * Paths an API key may never touch, whatever the plan.
+     *
+     * A key is a long-lived credential that often ends up pasted into a
+     * third-party tool, so it must not be able to change the billing plan,
+     * mint more credentials, act as an admin, or move the account's identity.
+     * Everything else — projects, scenes, generation, exports, assets — is
+     * exactly what the key exists for.
+     */
+    private const FORBIDDEN = ['api/v1/billing', 'api/v1/admin', 'api/v1/auth', 'api/v1/api-keys', 'api/v1/workspaces'];
+
+    private function handleApiKey(Request $request, Closure $next, string $token): Response
+    {
+        $key = \App\Models\ApiKey::resolve($token);
+
+        if (! $key) {
+            return $this->unauthorized('Invalid or revoked API key.');
+        }
+
+        foreach (self::FORBIDDEN as $prefix) {
+            if ($request->is($prefix, $prefix.'/*')) {
+                return response()->json(['error' => [
+                    'code'    => 'api_key_forbidden_path',
+                    'message' => 'API keys cannot access billing, admin, auth or key management. Use the dashboard.',
+                ]], 403);
+            }
+        }
+
+        $workspace = Workspace::find($key->workspace_id);
+        if (! $workspace || $workspace->status !== 'active') {
+            return $this->unauthorized('This workspace is not active.');
+        }
+
+        // The plan can change after a key is issued; check on every request
+        // rather than trusting what was true at creation.
+        if (! app(\App\Services\CreditService::class)->limitFor((int) $workspace->getKey(), 'api_access')) {
+            return response()->json(['error' => [
+                'code'    => 'api_access_not_on_plan',
+                'message' => 'API access is available on Creator and Agency plans.',
+            ]], 403);
+        }
+
+        $user = User::query()->with('workspace')->whereKey($key->created_by_user_id)->first();
+        if (! $user) {
+            return $this->unauthorized('The user this key belongs to no longer exists.');
+        }
+
+        $user->setRawAttributes(array_merge($user->getAttributes(), [
+            'workspace_id' => $workspace->getKey(),
+        ]), true);
+        $user->setRelation('workspace', $workspace);
+
+        $request->setUserResolver(fn () => $user);
+        $request->attributes->set('api_key_id', $key->getKey());
+
+        // Touch at most once a minute — this is for "is it still in use?",
+        // not an audit log, and a write on every call would be wasteful.
+        if (! $key->last_used_at || $key->last_used_at->diffInSeconds(now()) > 60) {
+            $key->forceFill(['last_used_at' => now()])->saveQuietly();
+        }
+
+        return $next($request);
     }
 
     private function unauthorized(string $message): JsonResponse
