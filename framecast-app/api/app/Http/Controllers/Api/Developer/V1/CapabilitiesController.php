@@ -75,6 +75,8 @@ class CapabilitiesController extends DeveloperController
                 'aspect_ratios' => self::ASPECT_RATIOS,
                 'duration_seconds' => ['min' => 5, 'max' => 600, 'default' => 60],
                 'language_default' => 'en',
+                'voice_default_id' => \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE,
+                'voices' => 'GET /voices',
             ],
             'costs' => [
                 'unit' => 'credits',

@@ -32,6 +32,18 @@ paths:
               schema: { $ref: "#/components/schemas/CapabilitiesResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /voices:
+    get:
+      operationId: listVoices
+      summary: Narration voices this workspace may use, with cost per scene
+      tags: [videos]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VoicesResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /quotes:
     post:
       operationId: createQuote
@@ -174,6 +186,27 @@ components:
         tone: { type: string, maxLength: 64 }
         title: { type: string, maxLength: 255 }
         content_goal: { type: string, maxLength: 255 }
+        voice_id: { type: string, maxLength: 255, description: "A voice id from GET /voices; omit for the default voice." }
+    Voice:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        language: { type: [string, "null"] }
+        accent: { type: [string, "null"] }
+        gender: { type: [string, "null"] }
+        is_cloned: { type: boolean }
+        is_workspace_voice: { type: boolean }
+        engine: { type: string }
+        cost_per_scene: { type: integer }
+    VoicesResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            default_voice_id: { type: string }
+            voices: { type: array, items: { $ref: "#/components/schemas/Voice" } }
     Credits:
       type: object
       properties:
@@ -200,6 +233,7 @@ components:
             can_afford: { type: boolean, description: "Balance covers credits.max" }
             shortage: { type: integer }
             expires_at: { type: string, format: date-time }
+            voice: { oneOf: [{ $ref: "#/components/schemas/Voice" }, { type: "null" }] }
             request: { $ref: "#/components/schemas/QuoteRequest" }
     VideoCreatedResponse:
       type: object

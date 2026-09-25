@@ -157,6 +157,16 @@ function buildServer(token) {
   )
 
   server.registerTool(
+    'list_voices',
+    {
+      title: 'List narration voices',
+      description: 'The voices a video can be narrated in: WyvStudio\'s catalogue plus this workspace\'s own voices and clones, each with language, gender and credits per scene. Pass a voice id to estimate_video as voice_id. Omit it for the default voice.',
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async () => call(token, 'GET', '/voices', undefined, 'list_voices'),
+  )
+
+  server.registerTool(
     'estimate_video',
     {
       title: 'Estimate a video (free)',
@@ -172,6 +182,7 @@ function buildServer(token) {
         tone: z.string().max(64).optional().describe('Narration tone, e.g. "friendly", "authoritative".'),
         title: z.string().max(255).optional().describe('A working title for the project in the dashboard.'),
         content_goal: z.string().max(255).optional().describe('What the video is for, e.g. "drive sign-ups for the free trial".'),
+        voice_id: z.string().max(255).optional().describe('A voice id from list_voices. Omit for the default voice.'),
       }),
       annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
     },

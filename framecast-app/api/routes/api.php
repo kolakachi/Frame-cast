@@ -49,6 +49,7 @@ Route::prefix('v1/oauth')->group(function (): void {
 // same services the dashboard uses; sessions may call it too.
 Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->group(function (): void {
     Route::get('/capabilities', [\App\Http\Controllers\Api\Developer\V1\CapabilitiesController::class, 'show']);
+    Route::get('/voices', [\App\Http\Controllers\Api\Developer\V1\VoiceController::class, 'index']);
     Route::post('/quotes', [\App\Http\Controllers\Api\Developer\V1\QuoteController::class, 'store']);
     Route::post('/videos', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'store']);
     Route::get('/videos/{videoId}', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'show'])->whereNumber('videoId');

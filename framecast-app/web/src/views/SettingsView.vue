@@ -483,6 +483,99 @@ async function executeDisconnect() {
   }
 }
 
+// ── API keys & connected apps ─────────────────────────────────────────────
+// Keys act as the workspace from scripts and MCP clients; a connected app
+// (ChatGPT, Claude) is a key the user never saw, created on consent. Both
+// live in one list because revoking is the same action for both.
+const canUseApi = computed(() => workspaceStore.capabilities?.api_access === true)
+const apiKeys = ref([])
+const apiKeysLoaded = ref(false)
+const apiKeysLoading = ref(false)
+const apiKeyForm = ref({ name: '', expires_in_days: '90', spend_cap_credits: '' })
+const apiKeyCreating = ref(false)
+const apiKeyError = ref('')
+const newSecret = ref(null)      // { key, name, note } shown once
+const secretCopied = ref(false)
+const revokeTarget = ref(null)
+const revoking = ref(null)
+const rotating = ref(null)
+
+async function loadApiKeys() {
+  if (!canUseApi.value) return
+  apiKeysLoading.value = true
+  try {
+    const { data } = await api.get('/api-keys')
+    apiKeys.value = data.data?.api_keys ?? []
+    apiKeysLoaded.value = true
+  } catch { /* the section shows an empty state */ } finally {
+    apiKeysLoading.value = false
+  }
+}
+
+async function createApiKey() {
+  const name = apiKeyForm.value.name.trim()
+  if (name.length < 2) { apiKeyError.value = 'Give the key a name (at least 2 characters).'; return }
+  apiKeyCreating.value = true
+  apiKeyError.value = ''
+  try {
+    const body = { name }
+    if (apiKeyForm.value.expires_in_days !== 'never') body.expires_in_days = Number(apiKeyForm.value.expires_in_days)
+    if (apiKeyForm.value.spend_cap_credits !== '') body.spend_cap_credits = Number(apiKeyForm.value.spend_cap_credits)
+    const { data } = await api.post('/api-keys', body)
+    newSecret.value = data.data
+    apiKeyForm.value = { name: '', expires_in_days: '90', spend_cap_credits: '' }
+    await loadApiKeys()
+  } catch (err) {
+    apiKeyError.value = err.response?.data?.error?.message ?? 'Could not create the key.'
+  } finally {
+    apiKeyCreating.value = false
+  }
+}
+
+async function copySecret() {
+  if (!newSecret.value?.key) return
+  try {
+    await navigator.clipboard.writeText(newSecret.value.key)
+    secretCopied.value = true
+    setTimeout(() => { secretCopied.value = false }, 2000)
+  } catch { /* user can select it */ }
+}
+
+async function rotateApiKey(key) {
+  rotating.value = key.id
+  apiKeyError.value = ''
+  try {
+    const { data } = await api.post(`/api-keys/${key.id}/rotate`)
+    newSecret.value = data.data
+    await loadApiKeys()
+  } catch (err) {
+    apiKeyError.value = err.response?.data?.error?.message ?? 'Could not rotate the key.'
+  } finally {
+    rotating.value = null
+  }
+}
+
+async function executeRevoke() {
+  const key = revokeTarget.value
+  revokeTarget.value = null
+  if (!key) return
+  revoking.value = key.id
+  try {
+    await api.delete(`/api-keys/${key.id}`)
+    apiKeys.value = apiKeys.value.filter(k => k.id !== key.id)
+  } catch (err) {
+    apiKeyError.value = err.response?.data?.error?.message ?? 'Could not revoke the key.'
+  } finally {
+    revoking.value = null
+  }
+}
+
+function keyDate(value) {
+  if (!value) return null
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 function hydrateBrandKitForm(brandKit) {
   brandKitForm.value = {
     id: brandKit?.id || null,
@@ -661,6 +754,7 @@ onMounted(() => {
   if (route.query.section) {
     activeSection.value = route.query.section
     if (activeSection.value === 'usage') loadCreditHistory()
+    if (activeSection.value === 'api') loadApiKeys()
   }
   loadSettings()
   loadBillingStatus()
@@ -686,6 +780,7 @@ onMounted(() => {
             <div :class="['settings-tab', activeSection === 'brand'    ? 'active' : '']" @click="activeSection = 'brand'">Brand Kits</div>
             <div :class="['settings-tab', activeSection === 'account'  ? 'active' : '']" @click="activeSection = 'account'">Account</div>
             <div :class="['settings-tab', activeSection === 'accounts' ? 'active' : '']" @click="activeSection = 'accounts'">Connected Accounts</div>
+            <div :class="['settings-tab', activeSection === 'api' ? 'active' : '']" @click="activeSection = 'api'; loadApiKeys()">API &amp; Apps</div>
             <div :class="['settings-tab', activeSection === 'usage'    ? 'active' : '']" @click="activeSection = 'usage'; loadCreditHistory()">Usage and Billing</div>
           </div>
         </div>
@@ -987,6 +1082,87 @@ onMounted(() => {
             </template>
           </div>
 
+          <!-- API keys & connected apps -->
+          <div v-else-if="activeSection === 'api'">
+            <div class="section-title">API &amp; Apps</div>
+            <div class="settings-section-desc">Make videos from ChatGPT, Claude, Cursor or your own code. Keys and connected apps act as this workspace and spend its credits. <a href="https://docs.wyvstudio.com/api-and-connectors/connect-an-ai-assistant" target="_blank" rel="noopener">How to connect →</a></div>
+
+            <div v-if="!canUseApi" class="lock-wall">
+              <h2>API access is on Creator and above</h2>
+              <p>Connect ChatGPT or Claude, or drive WyvStudio from your own code. Upgrade to Creator, Pro or Agency to turn it on.</p>
+              <button class="settings-btn settings-btn-sm settings-btn-primary" type="button" @click="router.push({ name: 'plans' })">See plans →</button>
+            </div>
+
+            <template v-else>
+              <!-- A freshly issued secret, shown exactly once. -->
+              <div v-if="newSecret" class="api-secret">
+                <div class="api-secret-title">{{ newSecret.rotated_from_id ? 'New secret for' : 'Your new key' }} <strong>{{ newSecret.name }}</strong></div>
+                <div class="api-secret-row">
+                  <code class="api-secret-code">{{ newSecret.key }}</code>
+                  <button class="settings-btn settings-btn-sm settings-btn-primary" type="button" @click="copySecret">{{ secretCopied ? 'Copied' : 'Copy' }}</button>
+                </div>
+                <div class="api-secret-note">Copy it now — it will not be shown again. {{ newSecret.rotated_from_id ? 'The old secret stopped working the moment this one was made.' : '' }}</div>
+                <button class="settings-btn settings-btn-sm" type="button" @click="newSecret = null">Done, I've saved it</button>
+              </div>
+
+              <div v-if="apiKeyError" class="auth-error" style="margin-bottom:12px">{{ apiKeyError }}</div>
+
+              <div v-if="apiKeysLoading && !apiKeysLoaded" class="settings-hint">Loading…</div>
+              <div v-else-if="apiKeys.length === 0" class="settings-hint" style="margin-bottom:16px">No keys or connected apps yet. Connect ChatGPT or Claude from their settings, or create a key below for Cursor, Claude Code or your own code.</div>
+              <div v-else class="api-key-list">
+                <div v-for="k in apiKeys" :key="k.id" class="connect-card connected">
+                  <div class="connect-card-info">
+                    <div class="connect-card-name">
+                      {{ k.name }}
+                      <span v-if="k.connected_app" class="plan-status-badge api-badge">Connected app</span>
+                      <span v-else class="plan-status-badge api-badge">API key</span>
+                    </div>
+                    <div class="connect-card-detail">
+                      <code>{{ k.key }}</code>
+                      <span v-if="k.expires_at"> · expires {{ keyDate(k.expires_at) }}</span>
+                      <span v-else> · no expiry</span>
+                      <span v-if="k.spend_cap_credits"> · {{ k.spent_this_month }} / {{ k.spend_cap_credits }} credits this month</span>
+                      <span v-else> · {{ k.spent_this_month }} credits this month</span>
+                      <span v-if="k.last_used_at"> · last used {{ keyDate(k.last_used_at) }}</span>
+                      <span v-else> · never used</span>
+                    </div>
+                  </div>
+                  <div class="connect-card-actions">
+                    <button v-if="!k.connected_app" class="settings-btn settings-btn-sm" type="button" :disabled="rotating === k.id" @click="rotateApiKey(k)">{{ rotating === k.id ? 'Rotating…' : 'Rotate' }}</button>
+                    <button class="settings-btn settings-btn-sm settings-btn-danger" type="button" :disabled="revoking === k.id" @click="revokeTarget = k">{{ k.connected_app ? 'Disconnect' : 'Revoke' }}</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="api-create">
+                <div class="api-create-title">Create a key</div>
+                <div class="api-create-row">
+                  <label class="api-field">
+                    <span>Name</span>
+                    <input v-model="apiKeyForm.name" class="settings-input" type="text" maxlength="80" placeholder="Cursor on my laptop">
+                  </label>
+                  <label class="api-field api-field-narrow">
+                    <span>Expires</span>
+                    <select v-model="apiKeyForm.expires_in_days" class="settings-input">
+                      <option value="30">30 days</option>
+                      <option value="90">90 days</option>
+                      <option value="365">1 year</option>
+                      <option value="never">Never</option>
+                    </select>
+                  </label>
+                  <label class="api-field api-field-narrow">
+                    <span>Monthly cap (credits)</span>
+                    <input v-model="apiKeyForm.spend_cap_credits" class="settings-input" type="number" min="1" placeholder="none">
+                  </label>
+                  <button class="settings-btn settings-btn-primary api-create-btn" type="button" :disabled="apiKeyCreating || apiKeys.length >= 5" @click="createApiKey">{{ apiKeyCreating ? 'Creating…' : 'Create key' }}</button>
+                </div>
+                <div class="settings-hint" style="margin-top:10px">
+                  Up to 5 active keys. A key can quote, make and fetch videos and read your plan and balance — nothing else. Revoking stops new requests at once; videos already rendering finish and are charged as normal.
+                </div>
+              </div>
+            </template>
+          </div>
+
           <!-- Usage & Billing -->
           <div v-else>
             <div class="section-title">Usage and Billing</div>
@@ -1220,6 +1396,16 @@ onMounted(() => {
       destructive
       @close="disconnectTarget = null"
       @confirm="executeDisconnect"
+    />
+    <ConfirmDialog
+      :open="Boolean(revokeTarget)"
+      :title="revokeTarget?.connected_app ? 'Disconnect this app?' : 'Revoke this key?'"
+      :message="revokeTarget?.connected_app ? `${revokeTarget.connected_app} will lose access to this workspace immediately. You can reconnect it later from the app.` : `Anything using \u201c${revokeTarget?.name}\u201d will stop working immediately. This cannot be undone.`"
+      :confirm-label="revokeTarget?.connected_app ? 'Disconnect' : 'Revoke'"
+      :pending="Boolean(revoking)"
+      destructive
+      @close="revokeTarget = null"
+      @confirm="executeRevoke"
     />
 
     <LimitModal
@@ -1849,4 +2035,20 @@ onMounted(() => {
 }
 .upgrade-note b { color: var(--color-text-primary); }
 .upgrade-note button { margin-left: auto; white-space: nowrap; }
+
+/* API keys & connected apps */
+.api-key-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.api-badge { font-size: 10px; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); }
+.connect-card-detail code { font-size: 12px; }
+.api-secret { border: 1px solid #34d399; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; background: rgba(52, 211, 153, .06); }
+.api-secret-title { font-size: 14px; margin-bottom: 8px; }
+.api-secret-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.api-secret-code { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); user-select: all; word-break: break-all; }
+.api-secret-note { font-size: 12px; color: var(--color-text-secondary); margin: 10px 0; }
+.api-create { border-top: 1px solid var(--color-border); padding-top: 16px; }
+.api-create-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+.api-create-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.api-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; font-size: 12px; color: var(--color-text-secondary); }
+.api-field-narrow { flex: 0 1 160px; }
+.api-create-btn { align-self: flex-end; }
 </style>

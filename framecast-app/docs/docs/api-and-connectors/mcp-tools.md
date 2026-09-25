@@ -11,6 +11,7 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | Tool | Spends credits? | Does |
 |---|---|---|
 | `get_capabilities` | No | Plan, balance, limits, supported inputs and per-scene prices. The key's own expiry and cap when called with a key. |
+| `list_voices` | No | Narration voices: the catalogue plus your workspace's own and clones, with credits per scene. |
 | `estimate_video` | No | Prices a video and returns a `quote_id` valid for 10 minutes. |
 | `create_video` | **Yes**, up to the quote's max | Starts the video the quote described. Returns a video id at once. |
 | `get_video_status` | No | `generating` → `exporting` → `completed`, or `failed` with a reason. Credits spent so far. |
@@ -34,8 +35,9 @@ Assistants are told to show you the quote first. Even if one doesn't, it can't s
 | `animation_pacing` | `short` or `long` clips per scene (`ai_video` only) |
 | `aspect_ratio` | `9:16` (default), `1:1`, `16:9` |
 | `tone`, `title`, `content_goal` | Optional text |
+| `voice_id` | A voice id from `list_voices`. Omit for the default voice. |
 
-The default voice is used. Saved voices and characters aren't selectable through the API yet.
+Narration is priced per scene by the voice's engine: catalogue Gemini voices 3 credits, OpenAI voices 1, your clones 2. Characters aren't selectable through the API yet.
 
 ## Waiting for a render
 

@@ -42,7 +42,16 @@ class QuoteController extends DeveloperController
             'tone' => ['nullable', 'string', 'max:64'],
             'title' => ['nullable', 'string', 'max:255'],
             'content_goal' => ['nullable', 'string', 'max:255'],
+            'voice_id' => ['nullable', 'string', 'max:255'],
         ]);
+
+        $voice = null;
+        if (! empty($input['voice_id'])) {
+            $voice = VoiceController::resolve($workspaceId, (string) $input['voice_id']);
+            if (! $voice) {
+                return $this->fail('invalid_voice', 'No such voice in this workspace. List voices with GET /voices.', 422, ['voice_id' => $input['voice_id']]);
+            }
+        }
 
         if ($error = $this->creation->validateSourceContent($input['source_type'], $input['content'])) {
             return $this->fail('invalid_source_content', $error, 422);
@@ -72,6 +81,7 @@ class QuoteController extends DeveloperController
             'tone' => $input['tone'] ?? null,
             'title' => $input['title'] ?? null,
             'content_goal' => $input['content_goal'] ?? null,
+            'voice_settings_json' => $voice ? ['voice_id' => $voice->provider_voice_key] : null,
         ], static fn (mixed $v): bool => $v !== null);
 
         $estimate = $this->credits->estimateProject(
@@ -81,6 +91,7 @@ class QuoteController extends DeveloperController
             durationSeconds: $duration,
             animateTier: $payload['animate_tier'] ?? null,
             animationPacing: $payload['animation_pacing'] ?? null,
+            voiceId: $voice?->provider_voice_key,
         );
 
         $quote = ApiQuote::query()->create([
@@ -111,6 +122,7 @@ class QuoteController extends DeveloperController
             'can_afford' => $balance >= $estimate['credits_max'],
             'shortage' => max(0, $estimate['credits_max'] - $balance),
             'expires_at' => $quote->expires_at->toIso8601String(),
+            'voice' => $voice ? VoiceController::serialize($voice) : null,
             'request' => $input,
         ], 'meta' => []], 201);
     }

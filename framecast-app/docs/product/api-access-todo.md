@@ -186,11 +186,19 @@ All A1–A3 items applicable to the chosen contract must be complete before rele
 
 Depends on a successful Stage A pilot.
 
-- [ ] Add dashboard issuance, one-time display, revocation, expiry and rotation.
-- [ ] Show per-key usage and spending limits without exposing secrets.
-- [ ] Publish tested documentation and state versioning/support expectations.
-- [ ] Align pricing/settings copy with actual entitlements and released operations.
-- [ ] Review pilot evidence and explicitly enable broader availability.
+- [x] Add dashboard issuance, one-time display, revocation, expiry and rotation.
+      (Settings → API & Apps: list with connected-app badges, create with expiry
+      and cap, secret shown once with copy, rotate, revoke/disconnect with confirm.)
+- [x] Show per-key usage and spending limits without exposing secrets. (Masked
+      prefix, expiry, credits this month against cap, last used.)
+- [x] Publish tested documentation and state versioning/support expectations.
+      (Docs section live; REST page states the v1 promise.)
+- [x] Align pricing/settings copy with actual entitlements and released operations.
+      (Plans page lists "API & ChatGPT/Claude access" on Creator and Pro; Settings
+      lock wall names the plans.)
+- [ ] Review pilot evidence and explicitly enable broader availability. **Waits on
+      the owner's test of the Settings screen and voice selection; then open to
+      all eligible workspaces (nothing to flip: eligibility is the plan gate).**
 
 ## C1. Reusable media expansion
 
@@ -311,7 +319,8 @@ Not blocking the customer. In rough priority order.
 
 - [ ] Settings → API keys screen (Stage B): issue, one-time display, cap,
       expiry, rotate, revoke, connected apps. Until then support issues keys.
-- [ ] Saved voice selection through the API and MCP (C1 first step).
+- [x] Saved voice selection through the API and MCP (C1 first step). (`GET /voices`,
+      `voice_id` on quotes priced by the voice's engine, `list_voices` tool.)
 - [ ] Hard mid-pipeline spend reservation so a video stops at the authorized
       maximum instead of being attributed after the fact.
 - [ ] PostHog: filter activation and usage funnels on `via = app`.
@@ -331,6 +340,7 @@ Not blocking the customer. In rough priority order.
 |---|---|---|---|---|
 | 25 September 2026 | Tracker created from plan v1.2 | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
+| 25 September 2026 | Stage B + first C1 item: Settings → API & Apps screen, plans copy, voice catalogue endpoint and `voice_id` on quotes, `list_voices` tool, docs + schema updated | Not committed | 590 PHP tests (1 pre-existing failure); SPA, docs and schema build clean; sidecar smoke on dev | Awaiting push and the owner's test |
 | 25 September 2026 | Tracker closed out: every Stage 0, A and D item done or decided; OpenAPI schema published; sidecar per-call logs; consent copy and ChatGPT steps corrected; post-pilot list added | Not committed | Schema lints clean; docs build clean; log lines verified on dev | Awaiting push |
 | 25 September 2026 | First real connector run: ChatGPT → OAuth consent → quote → approval → create → export, in production on the owner's workspace | — | Project #226: 6 scenes, 36.1s, 18cr against a 30cr quoted max; ledger, key spend and last_used all attributed; zero errors | **Pilot path proven end to end** |
 | 25 September 2026 | Deployed to production via the GitHub Action (push `454d48d`, eight commits) | `b2ece84`…`454d48d` | External probes of discovery, MCP challenge, developer API, registration, consent page and docs | **Live.** Real ChatGPT connector run on the owner's account still pending |

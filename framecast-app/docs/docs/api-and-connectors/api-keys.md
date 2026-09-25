@@ -10,9 +10,7 @@ A key lets a script or an MCP client act as your workspace. It starts with `wyv_
 
 **Who:** workspace owners and admins, on the Creator plan or above. Up to **five** active keys per workspace.
 
-:::note
-The API keys screen in **Settings** is on its way. Until it lands, [contact support](mailto:hello@wyvstudio.com) to have a key issued, rotated or revoked, and tell us the name, expiry and spend cap you want. ChatGPT and Claude connectors don't need a key at all — see [Connect an AI assistant](./connect-an-ai-assistant).
-:::
+Create and manage keys in **Settings → API & Apps**. ChatGPT and Claude connectors don't need a key at all — see [Connect an AI assistant](./connect-an-ai-assistant); they appear in the same list as connected apps.
 
 ## What a key can do
 
@@ -40,7 +38,7 @@ Revoking stops new requests at once. Videos already generating finish and are ch
 
 ## Connected apps
 
-A ChatGPT or Claude connection shows in the same list, named after the app. Revoking it disconnects the app; reconnecting creates a new key.
+A ChatGPT or Claude connection shows in the same list, named after the app, with a "Connected app" badge. **Disconnect** ends its access immediately; reconnecting from the app creates a new key. Connected apps can't be rotated — reconnect instead.
 
 ## Rate limits
 

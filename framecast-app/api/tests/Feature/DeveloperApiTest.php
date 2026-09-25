@@ -277,6 +277,40 @@ class DeveloperApiTest extends TestCase
         $this->create($plain, $quote->json('data.quote_id'), 'b')->assertStatus(202);
     }
 
+    public function test_voices_are_the_catalogue_plus_the_workspaces_own(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$other] = $this->tenant();
+        DB::table('voice_profiles')->insert([
+            ['workspace_id' => null, 'provider' => 'google', 'name' => 'Kore', 'language' => 'en', 'gender_label' => 'female', 'provider_voice_key' => 'Kore', 'status' => 'active', 'is_cloned' => false, 'created_at' => now(), 'updated_at' => now()],
+            ['workspace_id' => null, 'provider' => 'openai', 'name' => 'Alloy', 'language' => 'en', 'gender_label' => 'neutral', 'provider_voice_key' => 'alloy', 'status' => 'active', 'is_cloned' => false, 'created_at' => now(), 'updated_at' => now()],
+            ['workspace_id' => $ws->id, 'provider' => 'chatterbox', 'name' => 'My clone', 'language' => 'en', 'gender_label' => 'male', 'provider_voice_key' => 'clone-abc', 'status' => 'active', 'is_cloned' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['workspace_id' => $ws->id, 'provider' => 'chatterbox', 'name' => 'Old clone', 'language' => 'en', 'gender_label' => 'male', 'provider_voice_key' => 'clone-old', 'status' => 'deleted', 'is_cloned' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['workspace_id' => $other->id, 'provider' => 'chatterbox', 'name' => 'Their clone', 'language' => 'en', 'gender_label' => 'male', 'provider_voice_key' => 'clone-theirs', 'status' => 'active', 'is_cloned' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $list = $this->withToken($key)->getJson('/api/developer/v1/voices')->assertOk()->assertJsonPath('data.default_voice_id', 'Kore');
+        $ids = array_column($list->json('data.voices'), 'id');
+        $this->assertSame(['alloy', 'Kore', 'clone-abc'], $ids, 'catalogue (by name) first, then own voices; no deleted, no foreign');
+        $byId = collect($list->json('data.voices'))->keyBy('id');
+        $this->assertSame(3, $byId['Kore']['cost_per_scene']);
+        $this->assertSame(1, $byId['alloy']['cost_per_scene']);
+        $this->assertSame(2, $byId['clone-abc']['cost_per_scene']);
+        $this->assertTrue($byId['clone-abc']['is_workspace_voice']);
+
+        // A quote with the clone prices narration at the clone's rate and freezes it.
+        $gemini = (int) $this->quote($key)->json('data.credits.max');
+        $clone = $this->quote($key, ['voice_id' => 'clone-abc'])->assertStatus(201)->assertJsonPath('data.voice.name', 'My clone');
+        $this->assertLessThan($gemini, (int) $clone->json('data.credits.max'));
+        $this->assertSame(2, $clone->json('data.credits.breakdown.voice_per_scene'));
+        $id = $this->create($key, $clone->json('data.quote_id'), 'v1')->assertStatus(202)->json('data.video.id');
+        $this->assertSame(['voice_id' => 'clone-abc'], Project::query()->findOrFail($id)->default_voice_settings_json);
+
+        $this->quote($key, ['voice_id' => 'clone-theirs'])->assertStatus(422)->assertJsonPath('error.code', 'invalid_voice');
+        $this->quote($key, ['voice_id' => 'clone-old'])->assertStatus(422);
+        $this->quote($key, ['voice_id' => 'nope'])->assertStatus(422);
+    }
+
     public function test_a_key_reaches_the_developer_namespace_and_nothing_else(): void
     {
         [, , $key] = $this->tenant();

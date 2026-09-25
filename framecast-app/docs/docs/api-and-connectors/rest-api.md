@@ -26,6 +26,10 @@ curl https://app.wyvstudio.com/api/developer/v1/capabilities \
   -H "Authorization: Bearer $WYV_KEY"
 ```
 
+## GET /voices
+
+The voices a quote may name: WyvStudio's catalogue plus this workspace's own, each with `id`, `name`, `language`, `gender`, `is_cloned`, `engine` and `cost_per_scene`. `default_voice_id` is what you get when you don't choose.
+
 ## POST /quotes
 
 Free. Prices a video and freezes the request.
@@ -53,7 +57,7 @@ curl -X POST https://app.wyvstudio.com/api/developer/v1/quotes \
 }}
 ```
 
-Fields are the same as the `estimate_video` tool. `can_afford` compares the balance to `credits.max`.
+Fields are the same as the `estimate_video` tool, including an optional `voice_id` from `GET /voices` (an unknown or foreign voice is `422 invalid_voice`). `can_afford` compares the balance to `credits.max`.
 
 ## POST /videos
 

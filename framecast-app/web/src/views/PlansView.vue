@@ -25,14 +25,14 @@ async function logout() { await authStore.logout(); router.push({ name: "login" 
 // ── Catalogue ─────────────────────────────────────────────
 const ONE_TIME = [
   { key: "lifetime_starter", rank: 1, name: "Starter", price: "$89",  credits: 4000, blurb: "Enough to find your footing.", feats: ["1 channel", "2 characters", "All visual modes", "No watermark"] },
-  { key: "lifetime_creator", rank: 2, name: "Creator", price: "$199", credits: 12000, blurb: "The one most people need.", feats: ["3 channels", "5 characters", "Series mode", "Social publishing"], popular: true },
+  { key: "lifetime_creator", rank: 2, name: "Creator", price: "$199", credits: 12000, blurb: "The one most people need.", feats: ["3 channels", "5 characters", "Series mode", "Social publishing", "API & ChatGPT/Claude access"], popular: true },
   { key: "lifetime_agency",  rank: 3, name: "Agency",  price: "$399", credits: 20000, blurb: "For running several brands.", feats: ["Unlimited channels", "Up to 50 active client workspaces", "10 characters", "Priority export", "Everything included"] },
 ];
 
 const MONTHLY = [
   { key: "starter", name: "Starter", price: "$29",  credits: 2000,  feats: ["1 channel", "Stock presenters"] },
-  { key: "creator", name: "Creator", price: "$59",  credits: 4000,  feats: ["3 channels", "Upload your own face"], popular: true },
-  { key: "pro",     name: "Pro",     price: "$99",  credits: 6500,  feats: ["10 channels", "50 characters"] },
+  { key: "creator", name: "Creator", price: "$59",  credits: 4000,  feats: ["3 channels", "Upload your own face", "API & ChatGPT/Claude access"], popular: true },
+  { key: "pro",     name: "Pro",     price: "$99",  credits: 6500,  feats: ["10 channels", "50 characters", "API & ChatGPT/Claude access"] },
   { key: "agency",  name: "Agency",  price: "$199", credits: 13500, feats: ["Unlimited channels", "Up to 50 active client workspaces", "Credit rollover"] },
 ];
 

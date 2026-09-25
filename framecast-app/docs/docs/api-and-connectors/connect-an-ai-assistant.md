@@ -20,7 +20,7 @@ ChatGPT uses a sign-in flow, so you never handle a key. Until WyvStudio is liste
 4. Tick the trust box and click **Create**, then **Sign in with WyvStudio**. You'll land on WyvStudio, sign in if you need to, pick a workspace, and click **Allow**.
 5. Back in ChatGPT, enable WyvStudio from the tools menu in a chat and ask for a video.
 
-Approving creates a private connection key in your workspace that expires after **90 days**. You'll see it under your API keys as the connector's name, and you can revoke it there any time. Reconnecting after that makes a fresh one.
+Approving creates a private connection key in your workspace that expires after **90 days**. You'll see it in **Settings → API & Apps** as the connector's name, and you can disconnect it there any time. Reconnecting after that makes a fresh one.
 
 ## Claude
 
@@ -68,13 +68,14 @@ The assistant always quotes before it spends. WyvStudio enforces that on the ser
 
 | Can | Can't (yet) |
 |---|---|
-| Quote and make a video from a prompt or a script | Use your saved voices or characters |
+| Quote and make a video from a prompt or a script | Use your saved characters |
 | Choose stock footage, AI images or AI video | Upload footage or images |
-| Set length, aspect ratio, tone | Edit scenes, publish, share or delete |
-| Check progress and fetch the finished MP4 | Touch billing, members or settings |
+| Narrate in any catalogue voice or one of your clones | Edit scenes, publish, share or delete |
+| Set length, aspect ratio, tone | Touch billing, members or settings |
+| Check progress and fetch the finished MP4 | |
 
 Everything in the right column stays in the WyvStudio app. See [MCP tools](./mcp-tools) for exactly what each tool does.
 
 ## Disconnect
 
-Revoke the connection under your API keys in WyvStudio, or remove the connector in ChatGPT or Claude. Either one ends access immediately; a removed member or a suspended workspace ends it too.
+Disconnect under **Settings → API & Apps** in WyvStudio, or remove the connector in ChatGPT or Claude. Either one ends access immediately; a removed member or a suspended workspace ends it too.
