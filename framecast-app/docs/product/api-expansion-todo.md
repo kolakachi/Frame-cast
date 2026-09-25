@@ -11,7 +11,7 @@ one-glance status.
 | 3. UGC | [api-phase3-ugc.md](api-phase3-ugc.md) | **Built** (25 Sep): delegates to the app's UGC controller | ~4 days |
 | 2. Characters | [api-phase2-characters.md](api-phase2-characters.md) | **Built** (25 Sep): delegates to the app's character controller | ~2 days |
 | 4. Editor operations | [api-phase4-editor-operations.md](api-phase4-editor-operations.md) | **Built** (25 Sep): read, schema, proposals with revision precondition, 15 operations, export, retry — all delegated to the editor's controllers | 2–3 weeks |
-| Outreach | send the customer "Connect an AI assistant" | Blocked on 1–4 | — |
+| Outreach | send the customer "Connect an AI assistant" | **Ready once the owner has tested the full surface in production** | — |
 
 ## Decisions needed
 
@@ -30,7 +30,7 @@ one-glance status.
 - [x] Sources: url, product_description, images
 - [x] Resolved choices echoed by name in the quote (`chosen`)
 - [x] MCP tools + widened `estimate_video`; docs; OpenAPI; tests
-- [ ] Deployed and smoke-tested on the owner's account
+- [x] Deployed and smoke-tested on the owner's account (25 Sep, prod: 29 tools, options, allowance)
 
 ### Phase 3 — UGC
 - [x] `plan_ugc`, `estimate_ugc`, `create_ugc`, `get_ugc_allowance`; library video type
@@ -38,13 +38,13 @@ one-glance status.
       (via the dashboard's own generate/generateOneShot; one-shot pricing mirrored in `UgcOneShotPricing`)
 - [x] Composed and one-shot paths
 - [x] MCP; docs; OpenAPI; tests
-- [ ] Deployed and smoke-tested
+- [x] Deployed and smoke-tested (25 Sep, prod `782d840`: 29 tools listed, get_capabilities, get_options, get_ugc_allowance answer on the owner's workspace)
 
 ### Phase 2 — characters
 - [x] `create_character` with limits and consent; `update_character`
 - [x] Image quote → create → poll; set as reference
 - [x] MCP; docs; OpenAPI; tests
-- [ ] Deployed and smoke-tested
+- [x] Deployed and smoke-tested (25 Sep, prod `782d840`: 29 tools listed, get_capabilities, get_options, get_ugc_allowance answer on the owner's workspace)
 
 ### Phase 4 — editor operations
 - [x] 4a read: `get_project`, `get_project_schema`
@@ -53,7 +53,7 @@ one-glance status.
       (captions, motion and timing ride `update_scene`; scene deletion excluded)
 - [~] 4d parity: every operation executes the editor's own controller method, so state and accounting are the editor's by construction; the API test covers update, reorder, music, project settings, stale revision, whole-video refusal, replay and export. Per-family parity tests against dashboard fixtures remain a follow-up.
 - [x] MCP; docs; OpenAPI
-- [ ] Deployed and smoke-tested
+- [x] Deployed and smoke-tested (25 Sep, prod `782d840`: 29 tools listed, get_capabilities, get_options, get_ugc_allowance answer on the owner's workspace)
 
 ### Then
 - [ ] Owner test of the full surface on production
