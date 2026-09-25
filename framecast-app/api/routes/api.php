@@ -61,6 +61,11 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->g
     Route::post('/ugc/quotes', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'quotes']);
     Route::post('/ugc/videos', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'videos']);
     Route::get('/ugc/allowance', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'allowance']);
+    Route::post('/characters', [\App\Http\Controllers\Api\Developer\V1\CharacterController::class, 'store']);
+    Route::patch('/characters/{characterId}', [\App\Http\Controllers\Api\Developer\V1\CharacterController::class, 'update'])->whereNumber('characterId');
+    Route::post('/characters/{characterId}/images/quotes', [\App\Http\Controllers\Api\Developer\V1\CharacterController::class, 'imageQuote'])->whereNumber('characterId');
+    Route::post('/characters/{characterId}/images', [\App\Http\Controllers\Api\Developer\V1\CharacterController::class, 'imageCreate'])->whereNumber('characterId');
+    Route::get('/characters/{characterId}/images/{generationId}', [\App\Http\Controllers\Api\Developer\V1\CharacterController::class, 'imageStatus'])->whereNumber('characterId')->whereNumber('generationId');
     Route::post('/quotes', [\App\Http\Controllers\Api\Developer\V1\QuoteController::class, 'store']);
     Route::post('/videos', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'store']);
     Route::get('/videos/{videoId}', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'show'])->whereNumber('videoId');

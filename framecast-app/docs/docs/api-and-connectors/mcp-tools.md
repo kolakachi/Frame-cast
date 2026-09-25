@@ -17,6 +17,8 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | `list_voices` | No | Narration voices: the catalogue plus your workspace's own and clones, with credits per scene. |
 | `estimate_video` | No | Prices a video and returns a `quote_id` valid for 10 minutes. |
 | `create_video` | **Yes**, up to the quote's max | Starts the video the quote described. Returns a video id at once. |
+| `create_character`, `update_character` | No | Make or change a reusable AI character, from a description and/or your library photos (consent required for a real person). |
+| `estimate_character_image` → `create_character_image` → `get_character_image` | Create spends the quote | A new image of a character, optionally as its new reference photo. |
 | `plan_ugc` | No | Turn a script or brief into a UGC shot plan (format, shots, narration, visual direction). |
 | `estimate_ugc` | No | Price a UGC plan, composed or one-take, with takes against your monthly allowance; needs your consent for any real person's likeness or voice. |
 | `create_ugc` | **Yes**, up to the quote | Start the quoted takes, one video per take. |

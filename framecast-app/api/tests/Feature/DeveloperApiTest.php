@@ -458,6 +458,49 @@ class DeveloperApiTest extends TestCase
         $this->assertSame('one_shot', data_get($p->visual_brief, 'ugc_format'));
     }
 
+    public function test_characters_are_created_updated_and_imaged_through_the_dashboard_path(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$other] = $this->tenant();
+        $ref = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'image', 'title' => 'Ref', 'storage_url' => 'https://b2/r.png', 'mime_type' => 'image/png', 'created_at' => now(), 'updated_at' => now()]);
+        $theirs = DB::table('assets')->insertGetId(['workspace_id' => $other->id, 'asset_type' => 'image', 'title' => 'Theirs', 'created_at' => now(), 'updated_at' => now()]);
+
+        // A reference needs consent; a foreign reference is refused; plain creation works.
+        $this->withToken($key)->postJson('/api/developer/v1/characters', ['name' => 'Maya', 'reference_asset_ids' => [$ref]])->assertStatus(422)->assertJsonPath('error.code', 'consent_required');
+        $this->withToken($key)->postJson('/api/developer/v1/characters', ['name' => 'Maya', 'reference_asset_ids' => [$theirs], 'consent' => true])->assertStatus(422)->assertJsonPath('error.code', 'invalid_asset');
+        $maya = $this->withToken($key)->postJson('/api/developer/v1/characters', ['name' => 'Maya', 'description' => 'Warm, thirties, home office', 'reference_asset_ids' => [$ref], 'consent' => true])
+            ->assertStatus(201)->assertJsonPath('data.character.name', 'Maya')->json('data.character.id');
+        $this->assertSame($ref, (int) \App\Models\Character::query()->findOrFail($maya)->reference_asset_id);
+        $this->withToken($key)->patchJson('/api/developer/v1/characters/'.$maya, ['description' => 'Warm, forties'])->assertOk()->assertJsonPath('data.character.description', 'Warm, forties');
+        $this->assertContains('Maya', array_column($this->withToken($key)->getJson('/api/developer/v1/characters')->json('data.characters'), 'name'));
+
+        // Plan limit: creator allows 10; fill it and the next is refused with the app's own code.
+        for ($i = 0; $i < 9; $i++) {
+            \App\Models\Character::query()->create(['workspace_id' => $ws->id, 'name' => "C$i", 'status' => 'active']);
+        }
+        $this->withToken($key)->postJson('/api/developer/v1/characters', ['name' => 'One too many'])->assertStatus(422)->assertJsonPath('error.code', 'plan_resource_cap');
+
+        // Image: quote at the reference rate, create, poll.
+        $quote = $this->withToken($key)->postJson("/api/developer/v1/characters/{$maya}/images/quotes", ['prompt' => 'Maya smiling at a standing desk', 'style' => 'photorealistic', 'aspect_ratio' => '9:16', 'set_as_reference' => true])
+            ->assertStatus(201)->assertJsonPath('data.credits.with_reference', true);
+        $this->assertSame(app(\App\Services\Generation\Image\ImageAdapterFactory::class)->referenceGenerationCost(null), $quote->json('data.credits.max'));
+        $this->withToken($key)->postJson('/api/developer/v1/videos', ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'z'])->assertStatus(409)->assertJsonPath('error.code', 'quote_kind_mismatch');
+
+        $created = $this->withToken($key)->postJson("/api/developer/v1/characters/{$maya}/images", ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'img-1'])->assertStatus(202)
+            ->assertJsonPath('data.generation.status', 'generating')->assertJsonPath('data.generation.set_as_reference', true);
+        Bus::assertDispatched(\App\Jobs\GenerateCharacterImageJob::class);
+        $gid = $created->json('data.generation.id');
+        $this->withToken($key)->postJson("/api/developer/v1/characters/{$maya}/images", ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'img-1'])->assertOk()->assertJsonPath('data.generation.id', $gid);
+        $this->assertSame(1, \App\Models\CharacterImageGeneration::query()->count());
+
+        \App\Models\CharacterImageGeneration::query()->whereKey($gid)->update(['status' => 'succeeded', 'result_asset_id' => $ref]);
+        $this->withToken($key)->getJson("/api/developer/v1/characters/{$maya}/images/{$gid}")->assertOk()
+            ->assertJsonPath('data.generation.status', 'completed')->assertJsonPath('data.generation.image.asset_id', $ref)->assertJsonPath('data.generation.retry_after_seconds', null);
+        // Not yours: not found.
+        [, , $keyB] = $this->tenant();
+        $this->withToken($keyB)->postJson("/api/developer/v1/characters/{$maya}/images/quotes", ['prompt' => 'x'])->assertStatus(404);
+    }
+
     public function test_a_key_reaches_the_developer_namespace_and_nothing_else(): void
     {
         [, , $key] = $this->tenant();

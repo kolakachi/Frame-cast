@@ -243,6 +243,80 @@ function buildServer(token) {
     async ({ quote_id, idempotency_key }) => call(token, 'POST', '/videos', { quote_id, idempotency_key: idempotency_key || quote_id }, 'create_video'),
   )
 
+  // ── Characters: create, update, quote-bound images. Listing is list_characters.
+  server.registerTool(
+    'create_character',
+    {
+      title: 'Create a character',
+      description: "Create a reusable AI character for videos and UGC ads, from a description and/or 1–8 library reference images (list_library type image). Free. CONSENT: if reference images show a real person, ask the user to confirm they have that person's consent and pass consent: true. Plan limits on the number of characters apply.",
+      inputSchema: z.object({
+        name: z.string().max(120),
+        description: z.string().max(2000).optional().describe('Appearance, age, vibe, setting.'),
+        reference_asset_ids: z.array(z.number().int()).max(8).optional(),
+        consistency_method: z.enum(['quick', 'lora']).optional(),
+        identity_strength: z.enum(['subtle', 'balanced', 'strong', 'locked']).optional(),
+        consent: z.boolean().optional().describe('Required with reference images.'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async (args) => call(token, 'POST', '/characters', args, 'create_character'),
+  )
+  server.registerTool(
+    'update_character',
+    {
+      title: 'Update a character',
+      description: 'Change a character\'s name, description, references, consistency method or identity strength. Free.',
+      inputSchema: z.object({
+        character_id: z.number().int(),
+        name: z.string().max(120).optional(),
+        description: z.string().max(2000).optional(),
+        reference_asset_ids: z.array(z.number().int()).max(8).optional(),
+        consistency_method: z.enum(['quick', 'lora']).optional(),
+        identity_strength: z.enum(['subtle', 'balanced', 'strong', 'locked']).optional(),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ character_id, ...rest }) => call(token, 'PATCH', `/characters/${character_id}`, rest, 'update_character'),
+  )
+  server.registerTool(
+    'estimate_character_image',
+    {
+      title: 'Estimate a character image (free)',
+      description: 'Price one generated image of a character (a new look, or a new reference photo). Returns a quote_id (10 minutes). Cheaper without a reference photo; with one, the image is generated to match it.',
+      inputSchema: z.object({
+        character_id: z.number().int(),
+        prompt: z.string().max(2000).describe('What the image should show.'),
+        style: z.string().max(64).optional().describe('A style key from get_options; default photorealistic.'),
+        model_key: z.enum(['nano-banana-pro', 'nano-banana', 'gpt-image-2', 'gpt-image-1']).optional(),
+        aspect_ratio: z.enum(['9:16', '1:1', '16:9']).optional(),
+        quality: z.enum(['low', 'medium', 'high']).optional(),
+        set_as_reference: z.boolean().optional().describe('Make the result the character\'s reference photo.'),
+      }),
+      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ character_id, ...rest }) => call(token, 'POST', `/characters/${character_id}/images/quotes`, rest, 'estimate_character_image'),
+  )
+  server.registerTool(
+    'create_character_image',
+    {
+      title: 'Generate the quoted character image',
+      description: 'SPENDS CREDITS (the quote\'s amount). Only after the user agreed. Returns a generation id; poll get_character_image every 10 seconds.',
+      inputSchema: z.object({ character_id: z.number().int(), quote_id: z.string(), idempotency_key: z.string().max(128).optional() }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ character_id, quote_id, idempotency_key }) => call(token, 'POST', `/characters/${character_id}/images`, { quote_id, idempotency_key: idempotency_key || quote_id }, 'create_character_image'),
+  )
+  server.registerTool(
+    'get_character_image',
+    {
+      title: 'Check a character image',
+      description: 'Status of a character image generation: generating, completed (with the image asset) or failed.',
+      inputSchema: z.object({ character_id: z.number().int(), generation_id: z.number().int() }),
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ character_id, generation_id }) => call(token, 'GET', `/characters/${character_id}/images/${generation_id}`, undefined, 'get_character_image'),
+  )
+
   // ── UGC ads: plan → estimate → create, priced and gated exactly like the app.
   const segment = z.object({
     kind: z.enum(['on_camera', 'b_roll', 'reaction']),
