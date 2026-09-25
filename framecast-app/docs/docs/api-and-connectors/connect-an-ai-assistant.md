@@ -68,10 +68,10 @@ The assistant always quotes before it spends. WyvStudio enforces that on the ser
 
 | Can | Can't (yet) |
 |---|---|
-| Quote and make a video from a prompt or a script | Use your saved characters |
-| Choose stock footage, AI images or AI video | Upload footage or images |
-| Narrate in any catalogue voice or one of your clones | Edit scenes, publish, share or delete |
-| Set length, aspect ratio, tone | Touch billing, members or settings |
+| Quote and make a video from a prompt, script, URL, product description or your library images | Upload new footage or images |
+| Choose stock, AI images, AI video or an audiogram, with a visual style | Create characters (coming) |
+| Use your brand kits, channels, niches, characters, music and voices | Edit scenes, publish, share or delete (coming) |
+| Set length, aspect ratio, tone, languages, platform | Touch billing, members or settings |
 | Check progress and fetch the finished MP4 | |
 
 Everything in the right column stays in the WyvStudio app. See [MCP tools](./mcp-tools) for exactly what each tool does.

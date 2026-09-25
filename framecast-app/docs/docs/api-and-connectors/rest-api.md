@@ -30,6 +30,10 @@ curl https://app.wyvstudio.com/api/developer/v1/capabilities \
 
 The voices a quote may name: WyvStudio's catalogue plus this workspace's own, each with `id`, `name`, `language`, `gender`, `is_cloned`, `engine` and `cost_per_scene`. `default_voice_id` is what you get when you don't choose.
 
+## Lookups
+
+`GET /options`, `GET /brand-kits`, `GET /channels`, `GET /niches`, `GET /caption-presets`, `GET /characters`, `GET /library?type=image|music|video&page=&q=`. All workspace-scoped and read-only; the ids they return are what the quote fields below accept.
+
 ## POST /quotes
 
 Free. Prices a video and freezes the request.
@@ -57,7 +61,7 @@ curl -X POST https://app.wyvstudio.com/api/developer/v1/quotes \
 }}
 ```
 
-Fields are the same as the `estimate_video` tool, including an optional `voice_id` from `GET /voices` (an unknown or foreign voice is `422 invalid_voice`). `can_afford` compares the balance to `credits.max`.
+Fields are the same as the `estimate_video` tool: every New Video setting, with ids from the lookups. Anything not yours answers `422` with `invalid_brand_kit`, `invalid_channel`, `invalid_niche`, `invalid_character`, `invalid_music`, `invalid_images` or `invalid_voice`; a field used outside its mode is `validation_failed`. `chosen` names what the quote resolved to. `can_afford` compares the balance to `credits.max`.
 
 ## POST /videos
 

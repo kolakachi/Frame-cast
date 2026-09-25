@@ -44,6 +44,28 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/VoicesResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /options:
+    get: { operationId: getOptions, summary: Option keys for quotes, tags: [videos], responses: { "200": { description: OK } } }
+  /brand-kits:
+    get: { operationId: listBrandKits, summary: The workspace's brand kits, tags: [videos], responses: { "200": { description: OK } } }
+  /channels:
+    get: { operationId: listChannels, summary: The workspace's channels, tags: [videos], responses: { "200": { description: OK } } }
+  /niches:
+    get: { operationId: listNiches, summary: Content niches with defaults, tags: [videos], responses: { "200": { description: OK } } }
+  /caption-presets:
+    get: { operationId: listCaptionPresets, summary: The workspace's caption presets, tags: [videos], responses: { "200": { description: OK } } }
+  /characters:
+    get: { operationId: listCharacters, summary: The workspace's active characters, tags: [videos], responses: { "200": { description: OK } } }
+  /library:
+    get:
+      operationId: listLibrary
+      summary: Library assets by type
+      tags: [videos]
+      parameters:
+        - { in: query, name: type, required: true, schema: { type: string, enum: [image, music, video] } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: q, schema: { type: string, maxLength: 120 } }
+      responses: { "200": { description: OK } }
   /quotes:
     post:
       operationId: createQuote
@@ -176,9 +198,21 @@ components:
       type: object
       required: [source_type, content, visual_mode]
       properties:
-        source_type: { type: string, enum: [prompt, script] }
+        source_type: { type: string, enum: [prompt, script, url, product_description, images] }
+        image_asset_ids: { type: array, items: { type: integer }, minItems: 1, maxItems: 15, description: "images source only" }
+        visual_style: { type: string, description: "AI modes only; a key from GET /options" }
+        custom_visual_style: { type: string, maxLength: 500 }
+        audiogram: { type: object, properties: { style: { type: string }, color: { type: string }, bg: { type: string } } }
+        brand_kit_id: { type: integer }
+        channel_id: { type: integer }
+        niche_id: { type: integer }
+        character_id: { type: integer }
+        music_asset_id: { type: integer }
+        languages: { type: array, items: { type: string }, minItems: 1, maxItems: 5 }
+        platform_target: { type: string }
+        allow_script_edit: { type: boolean }
         content: { type: string, minLength: 10, maxLength: 10000 }
-        visual_mode: { type: string, enum: [stock, ai_images, ai_video] }
+        visual_mode: { type: string, enum: [stock, ai_images, ai_video, waveform] }
         duration_seconds: { type: integer, minimum: 5, maximum: 600, default: 60 }
         animate_tier: { type: string, enum: [quick, balanced, premium, seedance_lite, seedance_pro, veo_fast, seedance_25], description: "Required for ai_video, forbidden otherwise." }
         animation_pacing: { type: string, enum: [short, long] }
@@ -234,6 +268,7 @@ components:
             shortage: { type: integer }
             expires_at: { type: string, format: date-time }
             voice: { oneOf: [{ $ref: "#/components/schemas/Voice" }, { type: "null" }] }
+            chosen: { type: [object, "null"], additionalProperties: true, description: "Resolved brand kit, channel, niche, character, music and image count, by name" }
             request: { $ref: "#/components/schemas/QuoteRequest" }
     VideoCreatedResponse:
       type: object

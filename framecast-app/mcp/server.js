@@ -138,8 +138,8 @@ async function call(token, method, path, body, tool = path) {
 
 // ── Server per request ─────────────────────────────────────────────────────
 
-const SOURCE_TYPES = ['prompt', 'script']
-const VISUAL_MODES = ['stock', 'ai_images', 'ai_video']
+const SOURCE_TYPES = ['prompt', 'script', 'url', 'product_description', 'images']
+const VISUAL_MODES = ['stock', 'ai_images', 'ai_video', 'waveform']
 const ANIMATE_TIERS = ['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro', 'veo_fast', 'seedance_25']
 const ASPECT_RATIOS = ['9:16', '1:1', '16:9']
 
@@ -156,6 +156,34 @@ function buildServer(token) {
     async () => call(token, 'GET', '/capabilities', undefined, 'get_capabilities'),
   )
 
+  // Lookups: what a quote may point at. All read-only and workspace-scoped.
+  const lookups = [
+    ['get_options', 'Option keys for estimate_video: visual styles with labels, animate tiers, pacing, aspect ratios, platform targets, languages, tone examples, audiogram settings. Read once per conversation.', '/options'],
+    ['list_brand_kits', "The workspace's brand kits (colours, fonts, default caption style and voice). Pass an id as brand_kit_id.", '/brand-kits'],
+    ['list_channels', "The workspace's channels (defaults for language, platforms, voice, captions, brand kit). Pass an id as channel_id; its defaults apply.", '/channels'],
+    ['list_niches', 'Content niches with default style, tone and music mood. Pass an id as niche_id; its defaults fill anything you leave out.', '/niches'],
+    ['list_caption_presets', "The workspace's saved caption presets (font, colours, position, animation). Informational until caption editing ships.", '/caption-presets'],
+    ['list_characters', "The workspace's reusable AI characters. Pass an id as character_id to feature one in the video.", '/characters'],
+  ]
+  for (const [name, description, path] of lookups) {
+    server.registerTool(name, { title: name.replace(/_/g, ' '), description, annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false } }, async () => call(token, 'GET', path, undefined, name))
+  }
+
+  server.registerTool(
+    'list_library',
+    {
+      title: 'List library assets',
+      description: "The workspace's uploaded assets by type: images (for source_type images or as references), music tracks (for music_asset_id), videos (footage and demo clips). 50 per page; use q to search titles.",
+      inputSchema: z.object({
+        type: z.enum(['image', 'music', 'video']),
+        page: z.number().int().min(1).optional(),
+        q: z.string().max(120).optional().describe('Title search.'),
+      }),
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ type, page, q }) => call(token, 'GET', `/library?${new URLSearchParams({ type, ...(page ? { page: String(page) } : {}), ...(q ? { q } : {}) })}`, undefined, 'list_library'),
+  )
+
   server.registerTool(
     'list_voices',
     {
@@ -170,11 +198,15 @@ function buildServer(token) {
     'estimate_video',
     {
       title: 'Estimate a video (free)',
-      description: 'Price a short video before making it. Free. Returns a quote_id with the credit range (min/max), scene count, current balance and whether the workspace can afford it. Show the quote to the user; create_video needs the quote_id and the quote expires in 10 minutes. Nothing is built or charged by estimating.',
+      description: 'Price a short video before making it. Free. Returns a quote_id with the credit range (min/max), scene count, balance, whether the workspace can afford it, and "chosen": the brand kit, channel, niche, character, music and voice it resolved to, by name. Show the quote and the choices to the user; create_video needs the quote_id and the quote expires in 10 minutes. You may pick styles, kits, channels, niches and voices yourself from the list_* tools when the user has not named one. Nothing is built or charged by estimating.',
       inputSchema: z.object({
-        source_type: z.enum(SOURCE_TYPES).describe('"prompt": a brief that WyvStudio writes a script from. "script": narration text to use as-is.'),
-        content: z.string().min(10).max(10000).describe('The prompt or the script text.'),
-        visual_mode: z.enum(VISUAL_MODES).describe('"stock": licensed stock footage (cheapest). "ai_images": AI stills per scene. "ai_video": AI stills animated into motion clips (most expensive; needs animate_tier).'),
+        source_type: z.enum(SOURCE_TYPES).describe('"prompt": a brief WyvStudio writes a script from. "script": narration used as-is. "url": a web page or article text. "product_description": copy to sell a product. "images": 1–15 library images become the scenes (needs image_asset_ids and a prompt in content).'),
+        content: z.string().min(10).max(10000).describe('The prompt, script, URL/article text, or product description.'),
+        image_asset_ids: z.array(z.number().int()).min(1).max(15).optional().describe('source_type images only: ids from list_library type image.'),
+        visual_mode: z.enum(VISUAL_MODES).describe('"stock": licensed footage (cheapest). "ai_images": AI stills per scene. "ai_video": AI stills animated (most expensive; needs animate_tier). "waveform": audiogram over a background.'),
+        visual_style: z.string().max(64).optional().describe('AI modes only: a style key from get_options (e.g. cinematic, watercolor, anime).'),
+        custom_visual_style: z.string().max(500).optional().describe('AI modes only: free-text art direction.'),
+        audiogram: z.object({ style: z.string().max(64).optional(), color: z.string().max(16).optional(), bg: z.string().max(32).optional() }).optional().describe('waveform only.'),
         duration_seconds: z.number().int().min(5).max(600).optional().describe('Target length. Default 60. Capped by the plan (see get_capabilities).'),
         animate_tier: z.enum(ANIMATE_TIERS).optional().describe('ai_video only: the animation model tier. Prices in get_capabilities.'),
         animation_pacing: z.enum(['short', 'long']).optional().describe('ai_video only: shorter or longer motion clips per scene.'),
@@ -183,6 +215,14 @@ function buildServer(token) {
         title: z.string().max(255).optional().describe('A working title for the project in the dashboard.'),
         content_goal: z.string().max(255).optional().describe('What the video is for, e.g. "drive sign-ups for the free trial".'),
         voice_id: z.string().max(255).optional().describe('A voice id from list_voices. Omit for the default voice.'),
+        brand_kit_id: z.number().int().optional().describe('From list_brand_kits.'),
+        channel_id: z.number().int().optional().describe('From list_channels; its defaults apply.'),
+        niche_id: z.number().int().optional().describe('From list_niches; fills tone, style and music you leave out.'),
+        character_id: z.number().int().optional().describe('From list_characters.'),
+        music_asset_id: z.number().int().optional().describe('From list_library type music.'),
+        languages: z.array(z.string()).min(1).max(5).optional().describe('Language codes from get_options; first is the narration language. Default en.'),
+        platform_target: z.string().optional().describe('From get_options, e.g. youtube_shorts, tiktok, instagram_reels.'),
+        allow_script_edit: z.boolean().optional().describe('Let WyvStudio lightly edit a provided script for pacing.'),
       }),
       annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
     },

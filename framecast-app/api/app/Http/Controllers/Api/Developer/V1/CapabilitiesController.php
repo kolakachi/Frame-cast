@@ -68,8 +68,9 @@ class CapabilitiesController extends DeveloperController
                 'spent_this_month' => $key->spentThisMonth(),
             ] : null,
             'video' => [
-                'source_types' => self::SOURCE_TYPES,
-                'visual_modes' => self::VISUAL_MODES,
+                'source_types' => LookupController::SOURCE_TYPES,
+                'visual_modes' => LookupController::VISUAL_MODES,
+                'options' => 'GET /options for styles, platforms, languages and every other key; GET /brand-kits, /channels, /niches, /characters, /library?type=image|music|video',
                 'animate_tiers' => self::ANIMATE_TIERS,
                 'animation_pacing' => ['short', 'long'],
                 'aspect_ratios' => self::ASPECT_RATIOS,

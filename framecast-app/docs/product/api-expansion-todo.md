@@ -7,7 +7,7 @@ one-glance status.
 
 | Phase | Scope | Status | Effort |
 |---|---|---|---|
-| 1. Creation settings | [api-phase1-creation-settings.md](api-phase1-creation-settings.md) | Scoped, awaiting two decisions | ~3 days |
+| 1. Creation settings | [api-phase1-creation-settings.md](api-phase1-creation-settings.md) | **Built** (25 Sep); caption preset moved to phase 4 | ~3 days |
 | 3. UGC | [api-phase3-ugc.md](api-phase3-ugc.md) | Scoped | ~4 days |
 | 2. Characters | [api-phase2-characters.md](api-phase2-characters.md) | Scoped | ~2 days |
 | 4. Editor operations | [api-phase4-editor-operations.md](api-phase4-editor-operations.md) | Scoped | 2–3 weeks |
@@ -15,23 +15,21 @@ one-glance status.
 
 ## Decisions needed
 
-- [ ] Phase 1: store `caption_preset_id` at creation as the project's default
-      caption settings (new behaviour), or leave captions to phase 4?
-- [ ] Phase 1: character reference cost is charged by the job but absent from
-      the estimate (dashboard too). Carry as a known under-quote until the
-      mid-pipeline reservation, or fix the estimate first?
-- [ ] Phase 3: footage restyle stays deferred past phase 4 — agree?
-- [ ] Phase 4: is a small disclosed cost for model-planned proposals
-      acceptable, or must proposals always be free?
+- [x] Phase 1: caption preset stays with captions in phase 4. (Decided 25 Sep.)
+- [x] Phase 1: character reference cost carried as a known under-quote, stated
+      in the docs, until the mid-pipeline reservation. (Decided 25 Sep.)
+- [x] Phase 3: footage restyle deferred past phase 4. (Decided 25 Sep.)
+- [x] Phase 4: proposals are always free; they are structured, not
+      model-planned. (Decided 25 Sep.)
 
 ## Phase checklists
 
 ### Phase 1 — creation settings
-- [ ] Lookups: options, brand kits, channels, niches, caption presets, characters, library (image, music)
-- [ ] Quote widened to every New Video setting with ownership and mode validation
-- [ ] Sources: url, product_description, images
-- [ ] Resolved choices echoed by name in the quote
-- [ ] MCP tools + widened `estimate_video`; docs; OpenAPI; tests
+- [x] Lookups: options, brand kits, channels, niches, caption presets, characters, library (image, music, video)
+- [x] Quote widened to every New Video setting with ownership and mode validation
+- [x] Sources: url, product_description, images
+- [x] Resolved choices echoed by name in the quote (`chosen`)
+- [x] MCP tools + widened `estimate_video`; docs; OpenAPI; tests
 - [ ] Deployed and smoke-tested on the owner's account
 
 ### Phase 3 — UGC

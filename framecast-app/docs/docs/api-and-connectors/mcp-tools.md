@@ -11,6 +11,9 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | Tool | Spends credits? | Does |
 |---|---|---|
 | `get_capabilities` | No | Plan, balance, limits, supported inputs and per-scene prices. The key's own expiry and cap when called with a key. |
+| `get_options` | No | Every option key: visual styles, tiers, pacing, aspect ratios, platforms, languages, audiogram settings. |
+| `list_brand_kits`, `list_channels`, `list_niches`, `list_caption_presets`, `list_characters` | No | Your workspace's brand kits, channels, content niches, caption presets and AI characters, by id and name. |
+| `list_library` | No | Your uploaded images, music and videos, 50 a page, searchable by title. |
 | `list_voices` | No | Narration voices: the catalogue plus your workspace's own and clones, with credits per scene. |
 | `estimate_video` | No | Prices a video and returns a `quote_id` valid for 10 minutes. |
 | `create_video` | **Yes**, up to the quote's max | Starts the video the quote described. Returns a video id at once. |
@@ -36,8 +39,15 @@ Assistants are told to show you the quote first. Even if one doesn't, it can't s
 | `aspect_ratio` | `9:16` (default), `1:1`, `16:9` |
 | `tone`, `title`, `content_goal` | Optional text |
 | `voice_id` | A voice id from `list_voices`. Omit for the default voice. |
+| `visual_style`, `custom_visual_style` | AI modes: a style key from `get_options`, and free-text art direction |
+| `image_asset_ids` | `images` source: 1–15 library image ids |
+| `audiogram` | `waveform` mode: style, color, bg |
+| `brand_kit_id`, `channel_id`, `niche_id`, `character_id`, `music_asset_id` | Ids from the list tools. A channel or niche fills in defaults you leave out. |
+| `languages`, `platform_target`, `allow_script_edit` | Language codes (first narrates), a platform key, and whether a provided script may be lightly edited |
 
-Narration is priced per scene by the voice's engine: catalogue Gemini voices 3 credits, OpenAI voices 1, your clones 2. Characters aren't selectable through the API yet.
+Source types now also include `url` (a page or article), `product_description` and `images`. The quote's `chosen` block names what was resolved — kit, channel, niche, character, music, voice — so an assistant can show you before it creates. The assistant is allowed to pick these itself when you haven't.
+
+Narration is priced per scene by the voice's engine: catalogue Gemini voices 3 credits, OpenAI voices 1, your clones 2. Featuring a character can add per-scene reference cost that the estimate does not yet include; the dashboard's estimate has the same gap.
 
 ## Waiting for a render
 

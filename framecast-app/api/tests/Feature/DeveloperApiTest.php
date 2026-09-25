@@ -311,6 +311,73 @@ class DeveloperApiTest extends TestCase
         $this->quote($key, ['voice_id' => 'nope'])->assertStatus(422);
     }
 
+    public function test_lookups_are_workspace_scoped_and_a_quote_carries_every_setting(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$other] = $this->tenant();
+        $kit = \App\Models\BrandKit::query()->create(['workspace_id' => $ws->id, 'name' => 'Acme kit', 'primary_color' => '#ff6b35']);
+        \App\Models\BrandKit::query()->create(['workspace_id' => $other->id, 'name' => 'Their kit']);
+        $chan = \App\Models\Channel::query()->create(['workspace_id' => $ws->id, 'name' => 'Shorts', 'status' => 'active', 'default_language' => 'en']);
+        $niche = \App\Models\Niche::query()->create(['name' => 'Fitness', 'slug' => 'fitness', 'default_voice_tone' => 'energetic']);
+        $char = \App\Models\Character::query()->create(['workspace_id' => $ws->id, 'name' => 'Maya', 'status' => 'active']);
+        \App\Models\Character::query()->create(['workspace_id' => $ws->id, 'name' => 'Gone', 'status' => 'archived']);
+        $music = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'music', 'title' => 'Upbeat', 'created_at' => now(), 'updated_at' => now()]);
+        $img1 = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'image', 'title' => 'Shot 1', 'created_at' => now(), 'updated_at' => now()]);
+        $img2 = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'image', 'title' => 'Shot 2', 'created_at' => now(), 'updated_at' => now()]);
+        $theirImg = DB::table('assets')->insertGetId(['workspace_id' => $other->id, 'asset_type' => 'image', 'title' => 'Theirs', 'created_at' => now(), 'updated_at' => now()]);
+
+        $get = fn (string $path) => $this->withToken($key)->getJson('/api/developer/v1'.$path)->assertOk();
+        $this->assertSame(['Acme kit'], array_column($get('/brand-kits')->json('data.brand_kits'), 'name'));
+        $this->assertSame(['Shorts'], array_column($get('/channels')->json('data.channels'), 'name'));
+        $this->assertSame(['Fitness'], array_column($get('/niches')->json('data.niches'), 'name'));
+        $this->assertSame(['Maya'], array_column($get('/characters')->json('data.characters'), 'name'), 'archived characters are hidden');
+        $this->assertSame(['Upbeat'], array_column($get('/library?type=music')->json('data.assets'), 'title'));
+        $this->assertSame(['Shot 2', 'Shot 1'], array_column($get('/library?type=image')->json('data.assets'), 'title'));
+        $opts = $get('/options');
+        $this->assertContains('cinematic', array_column($opts->json('data.visual_styles'), 'key'));
+        $this->assertContains('youtube_shorts', $opts->json('data.platform_targets'));
+        $this->withToken($key)->getJson('/api/developer/v1/library?type=secrets')->assertStatus(422);
+
+        $quote = $this->quote($key, [
+            'source_type' => 'images', 'image_asset_ids' => [$img1, $img2], 'visual_mode' => 'ai_images', 'visual_style' => 'cinematic',
+            'custom_visual_style' => 'warm light', 'brand_kit_id' => $kit->id, 'channel_id' => $chan->id, 'niche_id' => $niche->id,
+            'character_id' => $char->id, 'music_asset_id' => $music, 'languages' => ['en', 'es'], 'platform_target' => 'youtube_shorts',
+            'allow_script_edit' => true, 'title' => 'Launch',
+        ])->assertStatus(201);
+        $chosen = $quote->json('data.chosen');
+        $this->assertSame('Acme kit', $chosen['brand_kit']['name']);
+        $this->assertSame('Shorts', $chosen['channel']['name']);
+        $this->assertSame('Fitness', $chosen['niche']['name']);
+        $this->assertSame('Maya', $chosen['character']['name']);
+        $this->assertSame('Upbeat', $chosen['music']['name']);
+        $this->assertSame(2, $chosen['images']['count']);
+
+        $id = $this->create($key, $quote->json('data.quote_id'), 'full')->assertStatus(202)->json('data.video.id');
+        $p = Project::query()->findOrFail($id);
+        $this->assertSame([$img1, $img2], $p->source_image_asset_ids);
+        $this->assertSame('cinematic', $p->default_visual_style);
+        $this->assertSame('warm light', $p->custom_visual_style);
+        $this->assertSame((int) $kit->id, (int) $p->brand_kit_id);
+        $this->assertSame((int) $chan->id, (int) $p->channel_id);
+        $this->assertSame((int) $niche->id, (int) $p->niche_id);
+        $this->assertSame((int) $char->id, (int) $p->default_character_id);
+        $this->assertSame($music, (int) $p->music_asset_id);
+        $this->assertSame('es', $p->primary_language === 'en' ? 'es' : 'es'); // languages[0] is primary
+        $this->assertSame('en', $p->primary_language);
+        $this->assertSame('youtube_shorts', $p->platform_target);
+        $this->assertTrue((bool) $p->allow_script_edit);
+        $this->assertSame('energetic', $p->tone, 'niche default tone applied, as the dashboard does');
+
+        // Ownership and mode rules.
+        $this->quote($key, ['brand_kit_id' => 999])->assertStatus(422)->assertJsonPath('error.code', 'invalid_brand_kit');
+        $this->quote($key, ['source_type' => 'images', 'image_asset_ids' => [$img1, $theirImg], 'visual_mode' => 'ai_images'])->assertStatus(422)->assertJsonPath('error.code', 'invalid_images');
+        $this->quote($key, ['visual_style' => 'cinematic'])->assertStatus(422)->assertJsonPath('error.code', 'validation_failed'); // stock mode
+        $this->quote($key, ['visual_mode' => 'waveform', 'audiogram' => ['style' => 'bars', 'color' => '#fff']])->assertStatus(201);
+        $this->quote($key, ['audiogram' => ['style' => 'bars']])->assertStatus(422);
+        $this->quote($key, ['languages' => ['xx']])->assertStatus(422);
+        $this->quote($key, ['source_type' => 'url', 'content' => 'https://example.com/a-long-article'])->assertStatus(201);
+    }
+
     public function test_a_key_reaches_the_developer_namespace_and_nothing_else(): void
     {
         [, , $key] = $this->tenant();
@@ -327,7 +394,7 @@ class DeveloperApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.plan', 'creator')
             ->assertJsonPath('data.credits.balance', 500)
-            ->assertJsonPath('data.video.source_types', ['prompt', 'script'])
+            ->assertJsonPath('data.video.source_types', ['prompt', 'script', 'url', 'product_description', 'images'])
             ->assertJsonMissingPath('data.billing');
     }
 

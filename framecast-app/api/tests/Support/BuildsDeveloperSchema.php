@@ -72,9 +72,19 @@ trait BuildsDeveloperSchema
         });
         Schema::create('assets', function (Blueprint $t) {
             $t->id();
-            foreach (['workspace_id', 'asset_type', 'storage_url', 'duration_seconds', 'mime_type', 'file_name'] as $c) $t->text($c)->nullable();
+            foreach (['workspace_id', 'asset_type', 'storage_url', 'duration_seconds', 'mime_type', 'file_name', 'title'] as $c) $t->text($c)->nullable();
             $t->timestamps();
         });
+        foreach ([\App\Models\BrandKit::class, \App\Models\Channel::class, \App\Models\Niche::class, \App\Models\CaptionPreset::class, \App\Models\Character::class] as $model) {
+            $m = new $model;
+            Schema::create($m->getTable(), function (Blueprint $t) use ($m) {
+                $t->id();
+                foreach ($m->getFillable() as $c) $t->text($c)->nullable();
+                if (! in_array('status', $m->getFillable(), true)) $t->text('status')->nullable();
+                if (! in_array('workspace_id', $m->getFillable(), true)) $t->unsignedBigInteger('workspace_id')->nullable();
+                $t->timestamps();
+            });
+        }
         Schema::create('voice_profiles', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('workspace_id')->nullable();

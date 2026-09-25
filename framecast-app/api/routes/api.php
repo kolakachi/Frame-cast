@@ -50,6 +50,13 @@ Route::prefix('v1/oauth')->group(function (): void {
 Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->group(function (): void {
     Route::get('/capabilities', [\App\Http\Controllers\Api\Developer\V1\CapabilitiesController::class, 'show']);
     Route::get('/voices', [\App\Http\Controllers\Api\Developer\V1\VoiceController::class, 'index']);
+    Route::get('/options', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'options']);
+    Route::get('/brand-kits', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'brandKits']);
+    Route::get('/channels', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'channels']);
+    Route::get('/niches', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'niches']);
+    Route::get('/caption-presets', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'captionPresets']);
+    Route::get('/characters', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'characters']);
+    Route::get('/library', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'library']);
     Route::post('/quotes', [\App\Http\Controllers\Api\Developer\V1\QuoteController::class, 'store']);
     Route::post('/videos', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'store']);
     Route::get('/videos/{videoId}', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'show'])->whereNumber('videoId');

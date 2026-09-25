@@ -123,8 +123,15 @@ class VideoController extends DeveloperController
             return $claim['replay'] ? $this->created($claim['replay'], $quote, 200) : $this->fail('not_found', 'Video not found.', 404);
         }
 
+        $payload = $quote->payload_json;
+        $musicAssetId = $payload['music_asset_id'] ?? null;
+        unset($payload['music_asset_id']);
         try {
-            ['project' => $project] = $this->creation->create($user, $quote->payload_json, $request->attributes->get('api_key_id'));
+            ['project' => $project] = $this->creation->create($user, $payload, $request->attributes->get('api_key_id'));
+            if ($musicAssetId) {
+                // Same shape the editor writes when a track is picked.
+                $project->forceFill(['music_asset_id' => (int) $musicAssetId, 'music_settings_json' => ['volume' => 30, 'duck_volume' => 8, 'fade_in_ms' => 500, 'loop' => true, 'duck_during_voice' => true]])->save();
+            }
         } catch (ProjectCreationException $e) {
             // Give the quote back: nothing was built, nothing was spent.
             $quote->forceFill(['consumed_at' => null, 'idempotency_key' => null])->save();
