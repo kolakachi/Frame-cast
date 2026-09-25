@@ -204,6 +204,8 @@ Depends on a successful Stage A pilot.
 
 ## Expansion before outreach (decided 25 September 2026)
 
+One-glance status and open decisions: [api-expansion-todo.md](api-expansion-todo.md).
+
 Order: Phase 1 → Phase 3 → Phase 2 → Phase 4. The assistant may choose
 styles, brand kits, channels, templates and voices itself from the lookups,
 as long as the quote shows what it chose. Each phase gets its own scope doc,
@@ -224,7 +226,7 @@ per-operation allowlisting, quote-bound spending, and request-level tests.
       the option keys.
 - [ ] Docs, schema and tests updated.
 
-### Phase 3 — UGC (scope to follow)
+### Phase 3 — UGC (scope: [api-phase3-ugc.md](api-phase3-ugc.md))
 
 - [ ] Second quote-and-create pair over the UGC planner: plan, suggest, quote,
       reference, variants, generate, generate-one-shot; footage restyle.
@@ -232,7 +234,7 @@ per-operation allowlisting, quote-bound spending, and request-level tests.
       honoured (see project memory on the UGC pass).
 - [ ] MCP tools, docs, schema, tests.
 
-### Phase 2 — characters (scope to follow)
+### Phase 2 — characters (scope: [api-phase2-characters.md](api-phase2-characters.md))
 
 - [ ] Create a character from a description or a library reference image;
       generate images and poll them; enforce plan character limits.
@@ -240,7 +242,7 @@ per-operation allowlisting, quote-bound spending, and request-level tests.
       fail clearly.
 - [ ] MCP tools, docs, schema, tests.
 
-### Phase 4 — editor operations (scope to follow; required before outreach)
+### Phase 4 — editor operations (scope: [api-phase4-editor-operations.md](api-phase4-editor-operations.md); required before outreach)
 
 - [ ] Read: project revision, ordered scenes with every setting, readiness,
       export freshness; project-specific operation and setting schemas.
