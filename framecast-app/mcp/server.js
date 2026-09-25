@@ -23,7 +23,9 @@ const PORT = Number(process.env.PORT || 3000)
 const API_BASE_URL = (process.env.WYV_API_BASE_URL || 'http://api:8000').replace(/\/$/, '')
 const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
-const VERSION = process.env.MCP_VERSION || '1.0.0'
+// Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
+// reported version and only re-reads them for a new one.
+const VERSION = process.env.MCP_VERSION || '1.1.0'
 // OAuth discovery. The issuer is the WyvStudio app origin (Laravel serves the
 // authorization-server document there); this process serves the
 // protected-resource document for the MCP URL. Both unset → bearer keys only.
