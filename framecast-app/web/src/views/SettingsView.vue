@@ -487,7 +487,11 @@ async function executeDisconnect() {
 // Keys act as the workspace from scripts and MCP clients; a connected app
 // (ChatGPT, Claude) is a key the user never saw, created on consent. Both
 // live in one list because revoking is the same action for both.
-const canUseApi = computed(() => workspaceStore.capabilities?.api_access === true)
+// Gated on what the key endpoint reports, not the workspace store's cached
+// plan: the store is not loaded on every route, and "unknown" must not read
+// as "locked". null = not asked yet, false = plan below Creator.
+const apiAvailable = ref(null)
+const canUseApi = computed(() => apiAvailable.value !== false)
 const apiKeys = ref([])
 const apiKeysLoaded = ref(false)
 const apiKeysLoading = ref(false)
@@ -501,11 +505,11 @@ const revoking = ref(null)
 const rotating = ref(null)
 
 async function loadApiKeys() {
-  if (!canUseApi.value) return
   apiKeysLoading.value = true
   try {
     const { data } = await api.get('/api-keys')
     apiKeys.value = data.data?.api_keys ?? []
+    apiAvailable.value = data.data?.available !== false
     apiKeysLoaded.value = true
   } catch { /* the section shows an empty state */ } finally {
     apiKeysLoading.value = false
