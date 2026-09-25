@@ -86,6 +86,10 @@ curl -X POST https://app.wyvstudio.com/api/developer/v1/videos \
 
 Refusals: `404 quote_not_found`, `410 quote_expired`, `409 quote_consumed`, `409 idempotency_key_reused`, `402 insufficient_credits`, `402 key_spend_cap_reached`, `429 too_many_active_videos`. A refused create never charges and hands the quote back (except `quote_consumed`).
 
+## Editing: GET /videos/\{id\}/project, GET …/project/schema, POST …/proposals, POST …/proposals/\{proposalId\}/apply, POST …/exports, GET …/exports, POST …/retry
+
+Read the project and its `revision`; propose `{ revision, changes: [{ op, ... }] }` and get a `proposal_id` with per-change and total credits; apply with the proposal id (and an optional idempotency key). Apply answers `409 revision_conflict` if the project changed, and returns each change's result. Operations and their inputs are listed by the schema endpoint.
+
 ## GET /videos/\{id\}
 
 ```json

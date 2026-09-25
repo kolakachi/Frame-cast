@@ -85,7 +85,7 @@ trait BuildsDeveloperSchema
                 $t->timestamps();
             });
         }
-        foreach ([\App\Models\Scene::class, \App\Models\CharacterImageGeneration::class] as $model) {
+        foreach ([\App\Models\Scene::class, \App\Models\CharacterImageGeneration::class, \App\Models\ProjectHookOption::class] as $model) {
             $m = new $model;
             Schema::create($m->getTable(), function (Blueprint $t) use ($m) {
                 $t->id();

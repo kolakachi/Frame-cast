@@ -404,6 +404,82 @@ function buildServer(token) {
     async () => call(token, 'GET', '/ugc/allowance', undefined, 'get_ugc_allowance'),
   )
 
+  // ── Editing: read → propose → apply, with a revision precondition.
+  server.registerTool(
+    'get_project',
+    {
+      title: 'Read a video project',
+      description: 'The full editable state of a video: revision, project settings, ordered scenes with every setting and a readiness block (script, visual, voice, animation, in-progress, errors, locked fields), hook options, and the latest export with its freshness. Read this before proposing edits; the revision must match when you apply.',
+      inputSchema: z.object({ video_id: z.number().int() }),
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ video_id }) => call(token, 'GET', `/videos/${video_id}/project`, undefined, 'get_project'),
+  )
+  server.registerTool(
+    'get_project_schema',
+    {
+      title: 'What can be edited',
+      description: 'The operations available on this video (and why any is not), the scene settings that update_scene accepts, enums for styles, tiers, rewrite modes and caption/motion settings, and the plan\'s limits.',
+      inputSchema: z.object({ video_id: z.number().int() }),
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ video_id }) => call(token, 'GET', `/videos/${video_id}/project/schema`, undefined, 'get_project_schema'),
+  )
+  server.registerTool(
+    'propose_edits',
+    {
+      title: 'Propose edits (free)',
+      description: 'Validate a list of changes against the project\'s current revision and price the ones that spend credits (regenerate_voice, generate_image, edit_image, animate, regenerate_music). Returns a proposal_id (10 minutes), each change with its max credits, and the total. Nothing is applied. Show the user the changes and the total; apply_edits needs the proposal_id. Ops: update_scene {scene_id, settings}, reorder_scenes {scene_ids}, add_scene {...}, duplicate_scene, rewrite_scene {scene_id, mode}, regenerate_voice, swap_visual {scene_id, visual_asset_id|query}, generate_image {scene_id, model_key?}, edit_image {scene_id, instruction}, animate {scene_id, tier, ...}, cancel_animation, revert_animation, regenerate_music {scene_id, mood}, update_project {...}, generate_hooks.',
+      inputSchema: z.object({
+        video_id: z.number().int(),
+        revision: z.string().describe('From get_project.'),
+        changes: z.array(z.object({ op: z.string() }).passthrough()).min(1).max(30),
+      }),
+      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ video_id, ...rest }) => call(token, 'POST', `/videos/${video_id}/proposals`, rest, 'propose_edits'),
+  )
+  server.registerTool(
+    'apply_edits',
+    {
+      title: 'Apply a proposal',
+      description: 'Apply the changes in a proposal, in order, through the editor. SPENDS CREDITS up to the proposal\'s total. Refuses with revision_conflict if the project changed since the proposal. Returns each change\'s result (partial failures included) and the new revision. Only after the user agreed.',
+      inputSchema: z.object({ video_id: z.number().int(), proposal_id: z.string(), idempotency_key: z.string().max(128).optional() }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ video_id, proposal_id, idempotency_key }) => call(token, 'POST', `/videos/${video_id}/proposals/${proposal_id}/apply`, { idempotency_key: idempotency_key || proposal_id }, 'apply_edits'),
+  )
+  server.registerTool(
+    'export_video',
+    {
+      title: 'Export a video',
+      description: 'Render a new export of the current state, in one or more aspect ratios. Uses the plan\'s export allowance, not credits. Poll get_video_status; get_video_result returns the newest completed export.',
+      inputSchema: z.object({ video_id: z.number().int(), aspect_ratios: z.array(z.enum(['9:16', '1:1', '4:5', '16:9'])).max(4).optional(), language: z.string().optional(), watermark_enabled: z.boolean().optional() }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ video_id, ...rest }) => call(token, 'POST', `/videos/${video_id}/exports`, rest, 'export_video'),
+  )
+  server.registerTool(
+    'list_exports',
+    {
+      title: 'List exports',
+      description: 'Every export of a video, newest first, with status and download links for completed ones. Older exports do not contain newer edits.',
+      inputSchema: z.object({ video_id: z.number().int() }),
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ video_id }) => call(token, 'GET', `/videos/${video_id}/exports`, undefined, 'list_exports'),
+  )
+  server.registerTool(
+    'retry_video',
+    {
+      title: 'Retry a failed video',
+      description: 'Retry generation of a failed video, or resume the failed parts of one. Only useful when get_video_status says failed and retryable.',
+      inputSchema: z.object({ video_id: z.number().int() }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ video_id }) => call(token, 'POST', `/videos/${video_id}/retry`, {}, 'retry_video'),
+  )
+
   server.registerTool(
     'get_video_status',
     {

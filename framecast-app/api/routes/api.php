@@ -70,6 +70,13 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->g
     Route::post('/videos', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'store']);
     Route::get('/videos/{videoId}', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'show'])->whereNumber('videoId');
     Route::get('/videos/{videoId}/result', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'result'])->whereNumber('videoId');
+    Route::get('/videos/{videoId}/project', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'project'])->whereNumber('videoId');
+    Route::get('/videos/{videoId}/project/schema', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'schema'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/proposals', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'propose'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/proposals/{proposalId}/apply', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'apply'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/exports', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'export'])->whereNumber('videoId');
+    Route::get('/videos/{videoId}/exports', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'exports'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/retry', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'retry'])->whereNumber('videoId');
 });
 
 Route::prefix('v1')->group(function (): void {

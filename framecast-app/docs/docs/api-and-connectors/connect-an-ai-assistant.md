@@ -70,7 +70,7 @@ The assistant always quotes before it spends. WyvStudio enforces that on the ser
 |---|---|
 | Quote and make a video from a prompt, script, URL, product description or your library images | Upload new footage or images |
 | Choose stock, AI images, AI video or an audiogram, with a visual style | Delete anything |
-| Use your brand kits, channels, niches, characters, music and voices | Edit scenes, publish, share or delete (coming) |
+| Use your brand kits, channels, niches, characters, music and voices | Publish, share or delete |
 | Set length, aspect ratio, tone, languages, platform | Touch billing, members or settings |
 | Check progress and fetch the finished MP4 | |
 

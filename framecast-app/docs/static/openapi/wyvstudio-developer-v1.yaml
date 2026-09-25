@@ -145,6 +145,19 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/VideoStatusResponse" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /videos/{videoId}/project:
+    get: { operationId: getProject, summary: Editable state of a video with its revision, tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }], responses: { "200": { description: OK } } }
+  /videos/{videoId}/project/schema:
+    get: { operationId: getProjectSchema, summary: Operations and settings available on this video, tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }], responses: { "200": { description: OK } } }
+  /videos/{videoId}/proposals:
+    post: { operationId: proposeEdits, summary: Validate and price a list of changes (free), tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }], responses: { "201": { description: Proposal created }, "409": { description: revision_conflict } } }
+  /videos/{videoId}/proposals/{proposalId}/apply:
+    post: { operationId: applyEdits, summary: Apply a proposal (spends up to its total), tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }, { in: path, name: proposalId, required: true, schema: { type: string } }], responses: { "200": { description: Applied with per-change results }, "409": { description: revision_conflict or quote_consumed } } }
+  /videos/{videoId}/exports:
+    get: { operationId: listExports, summary: Exports of a video, tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }], responses: { "200": { description: OK } } }
+    post: { operationId: exportVideo, summary: Render a new export, tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }], responses: { "202": { description: Started } } }
+  /videos/{videoId}/retry:
+    post: { operationId: retryVideo, summary: Retry or resume a failed video, tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }], responses: { "202": { description: Retried } } }
   /videos/{videoId}/result:
     get:
       operationId: getVideoResult

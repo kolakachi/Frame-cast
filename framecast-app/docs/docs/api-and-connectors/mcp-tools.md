@@ -23,6 +23,9 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | `estimate_ugc` | No | Price a UGC plan, composed or one-take, with takes against your monthly allowance; needs your consent for any real person's likeness or voice. |
 | `create_ugc` | **Yes**, up to the quote | Start the quoted takes, one video per take. |
 | `get_ugc_allowance` | No | Whether UGC is on your plan, takes used and remaining this month. |
+| `get_project`, `get_project_schema` | No | Everything editable about a video, its revision, and which operations are available. |
+| `propose_edits` → `apply_edits` | Apply spends the proposal's total | Validate and price a list of changes, then apply them in order with a revision check. |
+| `export_video`, `list_exports`, `retry_video` | No credits | Render a new export, list exports with freshness, retry a failed video. |
 | `get_video_status` | No | `generating` → `exporting` → `completed`, or `failed` with a reason. Credits spent so far. |
 | `get_video_result` | No | The MP4 as a private link that expires, plus duration and the project link. |
 
@@ -58,6 +61,12 @@ Narration is priced per scene by the voice's engine: catalogue Gemini voices 3 c
 ## UGC ads
 
 UGC ads go through the same planner, take rules and credit checks as the UGC Ads flow in the app. The assistant plans, quotes, asks you to confirm you have the rights to any real likeness or voice, then creates. Composed ads use your characters shot by shot; one-take ads are a single continuous AI presenter, from a description or a character, optionally with a demo clip embedded. Test Pass rules (15-second takes, two takes) apply through the API exactly as in the app. Footage restyle is not available through the API yet.
+
+## Editing a video
+
+Editing is read, propose, apply. The assistant reads the project (every scene setting plus a readiness block and the current `revision`), proposes a list of changes, and shows you what will change and what it costs. Proposals are free and expire in ten minutes. Applying runs the changes through the editor one by one and reports each result. If the project changed in between, in the app or by another assistant, apply refuses with `revision_conflict` and the assistant reads again.
+
+Operations: update any scene setting, reorder, add, duplicate, rewrite a script, regenerate narration, swap or search a visual, generate or edit an image, animate, cancel or revert an animation, regenerate music, change project settings, generate hooks. Deleting scenes is not available. Whole-video takes (one-take UGC, restyles) cannot have their scenes edited. Exports are separate and use your export allowance; older exports never contain newer edits.
 
 ## Waiting for a render
 

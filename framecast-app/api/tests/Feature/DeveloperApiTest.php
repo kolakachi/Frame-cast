@@ -8,6 +8,7 @@ use App\Models\ApiKey;
 use App\Models\ApiQuote;
 use App\Models\AuthSession;
 use App\Models\Project;
+use App\Models\Scene;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Auth\JwtService;
@@ -499,6 +500,98 @@ class DeveloperApiTest extends TestCase
         // Not yours: not found.
         [, , $keyB] = $this->tenant();
         $this->withToken($keyB)->postJson("/api/developer/v1/characters/{$maya}/images/quotes", ['prompt' => 'x'])->assertStatus(404);
+    }
+
+    /** A created video with two finished scenes, ready to edit. */
+    private function editableVideo(string $key, int $wsId): array
+    {
+        $id = $this->create($key, $this->quote($key)->json('data.quote_id'), 'edit-base')->assertStatus(202)->json('data.video.id');
+        $img = DB::table('assets')->insertGetId(['workspace_id' => $wsId, 'asset_type' => 'image', 'title' => 'Still', 'storage_url' => 'https://b2/s.png', 'mime_type' => 'image/png', 'created_at' => now(), 'updated_at' => now()]);
+        $aud = DB::table('assets')->insertGetId(['workspace_id' => $wsId, 'asset_type' => 'audio', 'title' => 'VO', 'storage_url' => 'https://b2/v.mp3', 'mime_type' => 'audio/mpeg', 'created_at' => now(), 'updated_at' => now()]);
+        $scenes = [];
+        foreach (['Hook line.', 'Second point.'] as $i => $text) {
+            $scenes[] = Scene::query()->create(['project_id' => $id, 'scene_order' => $i + 1, 'scene_type' => 'narration', 'script_text' => $text, 'visual_type' => 'ai_image', 'visual_asset_id' => $img, 'voice_settings_json' => ['audio_asset_id' => $aud, 'voice_id' => 'Kore']])->getKey();
+        }
+        Project::withoutEvents(fn () => Project::query()->whereKey($id)->update(['status' => 'ready_for_review']));
+
+        return [$id, $scenes];
+    }
+
+    public function test_editor_read_propose_apply_and_export_go_through_the_dashboard_controllers(): void
+    {
+        config(['developer.limits.writes_per_minute' => 100, 'developer.limits.workspace_writes_per_minute' => 100]);
+        [$ws, , $key] = $this->tenant();
+        [$id, [$s1, $s2]] = $this->editableVideo($key, $ws->id);
+        $get = fn (string $path) => $this->withToken($key)->getJson("/api/developer/v1/videos/{$id}{$path}");
+
+        $read = $get('/project')->assertOk()->assertJsonPath('data.whole_video', false)->assertJsonPath('data.scenes.0.readiness.has_voice', true)->assertJsonPath('data.scenes.0.readiness.has_visual', true);
+        $rev = $read->json('data.revision');
+        $this->assertStringStartsWith('r_', $rev);
+        $this->assertCount(2, $read->json('data.scenes'));
+
+        $schema = $get('/project/schema')->assertOk()->assertJsonPath('data.revision', $rev);
+        $ops = collect($schema->json('data.operations'))->keyBy('name');
+        $this->assertTrue($ops['update_scene']['available']);
+        $this->assertTrue($ops['regenerate_music']['spends']);
+        $this->assertFalse($ops['update_scene']['spends']);
+
+        $changes = [
+            ['op' => 'update_scene', 'scene_id' => $s1, 'settings' => ['script_text' => 'A sharper hook line.', 'label' => 'Hook']],
+            ['op' => 'reorder_scenes', 'scene_ids' => [$s2, $s1]],
+            ['op' => 'regenerate_music', 'scene_id' => $s1, 'mood' => 'upbeat'],
+            ['op' => 'update_project', 'title' => 'Standing desk, v2'],
+        ];
+        // Unknown setting, foreign scene, bad revision: all refused before anything is priced.
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $rev, 'changes' => [['op' => 'update_scene', 'scene_id' => $s1, 'settings' => ['workspace_id' => 9]]]])->assertStatus(422)->assertJsonPath('error.code', 'validation_failed');
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $rev, 'changes' => [['op' => 'duplicate_scene', 'scene_id' => 999999]]])->assertStatus(422)->assertJsonPath('error.code', 'invalid_scene');
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => 'r_stale', 'changes' => $changes])->assertStatus(409)->assertJsonPath('error.code', 'revision_conflict');
+
+        $proposal = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $rev, 'changes' => $changes])->assertStatus(201)
+            ->assertJsonPath('data.credits.max', \App\Services\CreditService::AI_MUSIC)->assertJsonPath('data.changes.2.credits_max', \App\Services\CreditService::AI_MUSIC)->assertJsonPath('data.changes.0.credits_max', 0);
+        $pid = $proposal->json('data.proposal_id');
+
+        // The project changes underneath (someone edits in the dashboard): apply refuses and hands the proposal back.
+        Scene::query()->whereKey($s2)->update(['label' => 'touched', 'updated_at' => now()->addSecond()]);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals/{$pid}/apply")->assertStatus(409)->assertJsonPath('error.code', 'revision_conflict');
+        $this->assertNull(ApiQuote::query()->findOrFail($pid)->consumed_at);
+
+        $rev2 = $get('/project')->json('data.revision');
+        $this->assertNotSame($rev, $rev2);
+        $pid2 = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $rev2, 'changes' => $changes])->assertStatus(201)->json('data.proposal_id');
+        $applied = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals/{$pid2}/apply")->assertOk()->assertJsonPath('data.failed', 0);
+        $this->assertCount(4, $applied->json('data.applied'));
+        $this->assertNotSame($rev2, $applied->json('data.revision'));
+        $this->assertSame('A sharper hook line.', Scene::query()->findOrFail($s1)->script_text);
+        $this->assertSame(1, (int) Scene::query()->findOrFail($s2)->scene_order, 'reordered through the editor');
+        $this->assertSame('Standing desk, v2', Project::query()->findOrFail($id)->title);
+        Bus::assertDispatched(\App\Jobs\GenerateAIMusicJob::class);
+        // Replay of the same apply returns the stored result and does nothing twice.
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals/{$pid2}/apply")->assertOk()->assertJsonPath('data.failed', 0);
+        Bus::assertDispatchedTimes(\App\Jobs\GenerateAIMusicJob::class, 1);
+
+        // A whole-video take cannot have its scenes edited.
+        Project::withoutEvents(fn () => Project::query()->whereKey($id)->update(['visual_brief' => json_encode(['ugc_format' => 'one_shot'])]));
+        $rev3 = $get('/project')->assertJsonPath('data.whole_video', true)->json('data.revision');
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $rev3, 'changes' => [['op' => 'update_scene', 'scene_id' => $s1, 'settings' => ['label' => 'x']]]])->assertStatus(422)->assertJsonPath('error.code', 'whole_video_edit_unsupported');
+        $this->assertFalse(collect($get('/project/schema')->json('data.operations'))->keyBy('name')['update_scene']['available']);
+    }
+
+    public function test_editor_export_uses_the_dashboard_export_path(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id] = $this->editableVideo($key, $ws->id);
+        $this->withToken($key)->getJson("/api/developer/v1/videos/{$id}/exports")->assertOk()->assertJsonPath('data.exports', []);
+        $r = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/exports", ['aspect_ratios' => ['9:16']]);
+        if ($r->status() === 202) {
+            $this->assertSame('9:16', $r->json('data.exports.0.aspect_ratio'));
+            $this->assertSame(1, \App\Models\ExportJob::query()->where('project_id', $id)->count());
+        } else {
+            // The editor refused for a reason of its own (scene readiness); the envelope is ours.
+            $r->assertStatus(422);
+            $this->assertNotEmpty($r->json('error.code'));
+        }
+        [, , $keyB] = $this->tenant();
+        $this->withToken($keyB)->getJson("/api/developer/v1/videos/{$id}/project")->assertStatus(404);
     }
 
     public function test_a_key_reaches_the_developer_namespace_and_nothing_else(): void

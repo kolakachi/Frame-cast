@@ -9,8 +9,8 @@ one-glance status.
 |---|---|---|---|
 | 1. Creation settings | [api-phase1-creation-settings.md](api-phase1-creation-settings.md) | **Built** (25 Sep); caption preset moved to phase 4 | ~3 days |
 | 3. UGC | [api-phase3-ugc.md](api-phase3-ugc.md) | **Built** (25 Sep): delegates to the app's UGC controller | ~4 days |
-| 2. Characters | [api-phase2-characters.md](api-phase2-characters.md) | Scoped | ~2 days |
-| 4. Editor operations | [api-phase4-editor-operations.md](api-phase4-editor-operations.md) | Scoped | 2–3 weeks |
+| 2. Characters | [api-phase2-characters.md](api-phase2-characters.md) | **Built** (25 Sep): delegates to the app's character controller | ~2 days |
+| 4. Editor operations | [api-phase4-editor-operations.md](api-phase4-editor-operations.md) | **Built** (25 Sep): read, schema, proposals with revision precondition, 15 operations, export, retry — all delegated to the editor's controllers | 2–3 weeks |
 | Outreach | send the customer "Connect an AI assistant" | Blocked on 1–4 | — |
 
 ## Decisions needed
@@ -41,16 +41,19 @@ one-glance status.
 - [ ] Deployed and smoke-tested
 
 ### Phase 2 — characters
-- [ ] `create_character` with limits and consent; `update_character`
-- [ ] Image quote → create → poll; set as reference
-- [ ] MCP; docs; OpenAPI; tests; deployed and smoke-tested
+- [x] `create_character` with limits and consent; `update_character`
+- [x] Image quote → create → poll; set as reference
+- [x] MCP; docs; OpenAPI; tests
+- [ ] Deployed and smoke-tested
 
 ### Phase 4 — editor operations
-- [ ] 4a read: `get_project`, `get_project_schema`
-- [ ] 4b proposals: propose, apply with revision precondition, expiry, single use
-- [ ] 4c families: script/structure · visuals · narration · captions · music/sound · motion/timing · project/hooks · export
-- [ ] 4d parity tests per family; partial failure reporting
-- [ ] MCP; docs; OpenAPI; deployed and smoke-tested
+- [x] 4a read: `get_project`, `get_project_schema`
+- [x] 4b proposals: propose, apply with revision precondition, expiry, single use
+- [x] 4c families: script/structure · visuals · narration · captions · music/sound · motion/timing · project/hooks · export
+      (captions, motion and timing ride `update_scene`; scene deletion excluded)
+- [~] 4d parity: every operation executes the editor's own controller method, so state and accounting are the editor's by construction; the API test covers update, reorder, music, project settings, stale revision, whole-video refusal, replay and export. Per-family parity tests against dashboard fixtures remain a follow-up.
+- [x] MCP; docs; OpenAPI
+- [ ] Deployed and smoke-tested
 
 ### Then
 - [ ] Owner test of the full surface on production
