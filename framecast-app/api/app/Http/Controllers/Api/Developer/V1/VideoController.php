@@ -53,6 +53,10 @@ class VideoController extends DeveloperController
         // retry sees it consumed. Creation happens after commit because it
         // dispatches a job that must find the committed project.
         $claim = DB::transaction(function () use ($input, $workspaceId, $idempotencyKey): array|JsonResponse {
+            // The workspace row lock serialises claims, so the in-flight
+            // count below cannot be raced past by two simultaneous creates.
+            \App\Models\Workspace::query()->whereKey($workspaceId)->lockForUpdate()->first();
+
             $quote = ApiQuote::query()->whereKey($input['quote_id'])->where('workspace_id', $workspaceId)->lockForUpdate()->first();
             if (! $quote) {
                 return $this->fail('quote_not_found', 'No such quote in this workspace. Request a new one.', 404);
@@ -73,6 +77,16 @@ class VideoController extends DeveloperController
             $reused = ApiQuote::query()->where('workspace_id', $workspaceId)->where('idempotency_key', $idempotencyKey)->exists();
             if ($reused) {
                 return $this->fail('idempotency_key_reused', 'This idempotency key was already used for a different quote.', 409);
+            }
+
+            // Rate limits bound requests; this bounds what is in flight,
+            // which is what bounds how fast credits can go.
+            $maxActive = (int) config('developer.limits.max_active_videos');
+            $active = Project::query()->where('workspace_id', $workspaceId)->whereNotNull('api_key_id')->where('status', 'generating')->count();
+            if ($maxActive > 0 && $active >= $maxActive) {
+                return $this->fail('too_many_active_videos',
+                    "{$active} API-created videos are already generating in this workspace (limit {$maxActive}). Wait for one to finish.",
+                    429, ['active' => $active, 'limit' => $maxActive, 'retry_after_seconds' => 30]);
             }
 
             $balance = $this->credits->balance($workspaceId);

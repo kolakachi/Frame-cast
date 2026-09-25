@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'auth.jwt' => \App\Http\Middleware\AuthenticateWithJwt::class,
+            'throttle.developer' => \App\Http\Middleware\ThrottleDeveloperApi::class,
             'admin' => \App\Http\Middleware\RequireAdmin::class,
             'admin.ip' => \App\Http\Middleware\AdminIpAllowlist::class,
             'internal' => \App\Http\Middleware\RequireInternal::class,

@@ -140,10 +140,10 @@ API after authorization and other release blockers are fixed.
 5. ~~**Short-prefix collisions are not handled.**~~ Resolved in step 2:
    resolution is by the full hash with a unique index; the prefix is display
    only. A forced-collision test covers it.
-6. **Operational controls are missing.** No rate limiting exists anywhere on
-   the API today, for sessions or keys; there is no throttle middleware in
-   the kernel, providers or routes. No concurrency cap or credit-spending
-   ceiling is implemented by this feature either.
+6. **Operational controls are missing.** Partly resolved in step 3: the
+   developer namespace has per-caller and per-workspace read/write limits and
+   a cap on API-created videos in flight. The rest of the API still has no
+   throttling. A credit-spending ceiling per key is not implemented (A2).
    Duplicate-request protection for supported operations must also be verified
    and supplied before release.
 7. **Tests do not prove route enforcement.** Inspecting a constant is not a

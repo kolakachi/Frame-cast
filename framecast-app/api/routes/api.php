@@ -34,7 +34,7 @@ use Illuminate\Support\Facades\Route;
 // Developer API: the only surface an API key can reach (see
 // AuthenticateWithJwt::API_KEY_NAMESPACE). Thin, versioned wrappers over the
 // same services the dashboard uses; sessions may call it too.
-Route::prefix('developer/v1')->middleware('auth.jwt')->group(function (): void {
+Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->group(function (): void {
     Route::get('/capabilities', [\App\Http\Controllers\Api\Developer\V1\CapabilitiesController::class, 'show']);
     Route::post('/quotes', [\App\Http\Controllers\Api\Developer\V1\QuoteController::class, 'store']);
     Route::post('/videos', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'store']);

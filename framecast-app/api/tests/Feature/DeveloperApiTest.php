@@ -233,6 +233,56 @@ class DeveloperApiTest extends TestCase
         $asOwner()->postJson('/api/v1/api-keys', ['name' => 'Sixth'])->assertStatus(201);
     }
 
+    public function test_reads_and_writes_are_limited_separately_per_key(): void
+    {
+        config(['developer.limits.reads_per_minute' => 3, 'developer.limits.writes_per_minute' => 2]);
+        [, , $key] = $this->tenant();
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertOk()
+                ->assertHeader('X-RateLimit-Limit', '3')->assertHeader('X-RateLimit-Remaining', (string) (2 - $i));
+        }
+        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertStatus(429)
+            ->assertJsonPath('error.code', 'rate_limited')->assertJsonPath('error.context.bucket', 'reads')
+            ->assertHeader('Retry-After');
+
+        // A polling limit never blocks a write, and vice versa.
+        $this->quote($key)->assertStatus(201);
+        $this->quote($key)->assertStatus(201);
+        $this->quote($key)->assertStatus(429)->assertJsonPath('error.context.bucket', 'writes');
+    }
+
+    public function test_the_workspace_limit_is_shared_across_keys(): void
+    {
+        config(['developer.limits.reads_per_minute' => 10, 'developer.limits.workspace_reads_per_minute' => 3]);
+        [$ws, $owner, $keyA] = $this->tenant();
+        [, $keyB] = ApiKey::issue((int) $ws->getKey(), (int) $owner->getKey(), 'Second');
+
+        $this->withToken($keyA)->getJson('/api/developer/v1/capabilities')->assertOk();
+        $this->withToken($keyA)->getJson('/api/developer/v1/capabilities')->assertOk();
+        $this->withToken($keyB)->getJson('/api/developer/v1/capabilities')->assertOk();
+        $this->withToken($keyB)->getJson('/api/developer/v1/capabilities')->assertStatus(429);
+
+        // Another workspace is unaffected.
+        [, , $other] = $this->tenant();
+        $this->withToken($other)->getJson('/api/developer/v1/capabilities')->assertOk();
+    }
+
+    public function test_in_flight_videos_are_capped_per_workspace(): void
+    {
+        config(['developer.limits.max_active_videos' => 2]);
+        [, , $key] = $this->tenant();
+
+        $first = $this->create($key, $this->quote($key)->json('data.quote_id'), 'a')->assertStatus(202)->json('data.video.id');
+        $this->create($key, $this->quote($key)->json('data.quote_id'), 'b')->assertStatus(202);
+        $quoteId = $this->quote($key)->json('data.quote_id');
+        $this->create($key, $quoteId, 'c')->assertStatus(429)->assertJsonPath('error.code', 'too_many_active_videos');
+        $this->assertNull(ApiQuote::query()->findOrFail($quoteId)->consumed_at, 'a refused create gives the quote back');
+
+        Project::withoutEvents(fn () => Project::query()->whereKey($first)->update(['status' => 'ready_for_review']));
+        $this->create($key, $quoteId, 'c')->assertStatus(202);
+    }
+
     public function test_a_key_reaches_the_developer_namespace_and_nothing_else(): void
     {
         [, , $key] = $this->tenant();

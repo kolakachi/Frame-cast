@@ -27,7 +27,9 @@ not a claim that every underlying service is missing.
 - [ ] Choose one first creation flow: standard narrated video or UGC.
 - [ ] Specify supported inputs, output options and required saved voices/characters.
 - [ ] Set numeric per-key/workspace request, concurrency and credit limits, plus
-      maximum spend per operation and pilot credential expiry.
+      maximum spend per operation and pilot credential expiry. (Defaults now
+      exist: 60 reads and 10 writes per key per minute, 120/20 per workspace,
+      3 videos in flight. Confirm or change for the pilot.)
 - [ ] Confirm Creator-and-above eligibility and explicit pilot enrollment behavior.
 - [ ] Assign implementation/support owners and agree pilot success criteria.
 
@@ -63,10 +65,12 @@ not a claim that every underlying service is missing.
 
 ## A2. Spending and execution safety
 
-- [ ] Add per-key and aggregate workspace throttling with `429`/retry guidance;
+- [x] Add per-key and aggregate workspace throttling with `429`/retry guidance;
       allow sensible progress polling separately from generation requests.
-      (No throttle middleware exists on the API today; this is a new middleware.)
-- [ ] Limit concurrent generation jobs across all keys in a workspace.
+      (Step 3: `ThrottleDeveloperApi`, read and write buckets, per caller and
+      per workspace; defaults in `config/developer.php`, env-tunable.)
+- [x] Limit concurrent generation jobs across all keys in a workspace.
+      (Step 3: `max_active_videos`, default 3, counted under the workspace row lock.)
 - [ ] Enforce per-key spend ceilings and maximum approved operation cost using
       atomic reservations, including downstream stages and retries.
 - [ ] Add idempotency to costly create/generate/export operations: same request
@@ -234,5 +238,6 @@ added only after their own gates pass.
 |---|---|---|---|---|
 | 25 September 2026 | Tracker created from plan v1.2 | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
+| 25 September 2026 | Step 3: developer-namespace throttling (read/write buckets, caller + workspace) and an in-flight video cap | Not committed | 3 new tests; full suite green except the pre-existing renewal failure | Not deployed |
 | 25 September 2026 | Step 2: issuer role/membership/suspension parity on the key path, hash lookup with unique index, owner/admin key management under a row lock | Not committed | 7 new tests; full suite green except the pre-existing renewal failure | Migration applied to dev DB only; not deployed |
 | 25 September 2026 | Step 1: developer namespace, five endpoints, quote-bound create, project creation extracted to a service | Not committed | `DeveloperApiTest` (14 tests) + full suite 567 passed; 1 pre-existing unrelated failure in `SubscriptionRenewalTest` | Migration applied to dev DB only; not deployed |
