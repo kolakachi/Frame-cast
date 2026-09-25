@@ -1,7 +1,23 @@
+# Secrets never enter the image; the container gets its env from compose.
 .env
 .env.*
 !.env.example
+
+# Rebuilt inside the image from the lockfiles, so shipping the host copies
+# only makes the context 140MB heavier and the COPY layer slower.
+vendor
+node_modules
+
+# Runtime state, never source.
 storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+
+# Not needed at runtime.
+tests
+.phpunit.result.cache
+.git
+.gitattributes
+.editorconfig
+README.md

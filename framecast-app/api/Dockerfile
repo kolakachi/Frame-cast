@@ -62,6 +62,9 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 RUN groupadd -g ${WWWGROUP} framecast \
     && useradd -u ${WWWUSER} -g framecast -ms /bin/bash framecast
 
+# ── Dependency layers, each keyed on its lockfile ────────────────────────────
+# Everything above the final COPY is cached until the relevant lockfile or
+# font file changes, so a code-only rebuild redoes only the last few steps.
 COPY composer.json composer.lock ./
 
 RUN composer install \
@@ -69,22 +72,28 @@ RUN composer install \
     --prefer-dist \
     --no-interaction \
     --optimize-autoloader \
-    --no-scripts
+    --no-scripts \
+    && chown -R framecast:framecast vendor
 
-COPY . .
-
+# Only puppeteer-core is needed at runtime (it drives the distro chromium);
+# dev tooling is left out.
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+COPY package.json package-lock.json ./
+RUN npm install --omit=dev --no-audit --no-fund \
+    && chown -R framecast:framecast node_modules
 
-RUN npm install --omit=dev --no-audit --no-fund
+# Bundled fonts into the system font dir; cached until a font changes.
+COPY resources/fonts/ /usr/local/share/fonts/framecast/
+RUN fc-cache -f
 
-RUN if [ -d /var/www/html/resources/fonts ]; then \
-        cp -R /var/www/html/resources/fonts/. /usr/local/share/fonts/framecast/; \
-    fi \
-    && fc-cache -f -v
+# ── Application code, last ────────────────────────────────────────────────────
+# Owned by the runtime user at copy time: a recursive chown of the whole tree
+# afterwards was the slowest step of every build.
+COPY --chown=framecast:framecast . .
 
 RUN composer dump-autoload --optimize \
     && php artisan package:discover --ansi \
-    && chown -R framecast:framecast /var/www/html
+    && chown -R framecast:framecast bootstrap/cache storage vendor/composer
 
 USER framecast
 
