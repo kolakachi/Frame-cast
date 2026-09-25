@@ -74,7 +74,8 @@ class ExportFreshnessTest extends TestCase
         [$project, $scene, $export] = $this->baseline();
         $controller = new \App\Http\Controllers\Api\V1\Project\ProjectController(
             $this->createMock(\App\Services\WorkspaceUsageService::class),
-            $this->createMock(\App\Services\CreditService::class));
+            $this->createMock(\App\Services\CreditService::class),
+            $this->createMock(\App\Services\Projects\ProjectCreationService::class));
         $request = \Illuminate\Http\Request::create('/freshness');
         $request->setUserResolver(fn () => (new \App\Models\User)->forceFill(['workspace_id' => 1]));
         $this->assertSame(200, $controller->exportFreshness($request, $project->id, $export->id)->getStatusCode());

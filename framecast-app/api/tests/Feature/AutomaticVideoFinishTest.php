@@ -211,7 +211,8 @@ class AutomaticVideoFinishTest extends TestCase
     {
         $project = $this->project([], ['ugc_format' => 'demo', 'product' => 'Keep this']);
         $controller = new \App\Http\Controllers\Api\V1\Project\ProjectController(
-            $this->createMock(WorkspaceUsageService::class), $this->createMock(\App\Services\CreditService::class));
+            $this->createMock(WorkspaceUsageService::class), $this->createMock(\App\Services\CreditService::class),
+            $this->createMock(\App\Services\Projects\ProjectCreationService::class));
         $request = \Illuminate\Http\Request::create('/projects/'.$project->id.'/editor-opened', 'POST');
         $request->setUserResolver(fn () => (new \App\Models\User)->forceFill(['workspace_id' => 1]));
         $this->assertSame(200, $controller->editorOpened($request, $project->id)->getStatusCode());

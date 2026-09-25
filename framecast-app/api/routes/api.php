@@ -31,6 +31,17 @@ use App\Http\Controllers\Api\V1\Publishing\ScheduledPostController;
 use Illuminate\Broadcasting\BroadcastController;
 use Illuminate\Support\Facades\Route;
 
+// Developer API: the only surface an API key can reach (see
+// AuthenticateWithJwt::API_KEY_NAMESPACE). Thin, versioned wrappers over the
+// same services the dashboard uses; sessions may call it too.
+Route::prefix('developer/v1')->middleware('auth.jwt')->group(function (): void {
+    Route::get('/capabilities', [\App\Http\Controllers\Api\Developer\V1\CapabilitiesController::class, 'show']);
+    Route::post('/quotes', [\App\Http\Controllers\Api\Developer\V1\QuoteController::class, 'store']);
+    Route::post('/videos', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'store']);
+    Route::get('/videos/{videoId}', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'show'])->whereNumber('videoId');
+    Route::get('/videos/{videoId}/result', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'result'])->whereNumber('videoId');
+});
+
 Route::prefix('v1')->group(function (): void {
     require __DIR__.'/agency.php';
     Route::get('/health', HealthCheckController::class);

@@ -106,6 +106,7 @@ class Project extends Model
         'current_revision_id',
         'family_id',
         'created_by_user_id',
+        'api_key_id',
         'music_asset_id',
         'music_settings_json',
         'series_id',

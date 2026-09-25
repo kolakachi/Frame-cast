@@ -86,14 +86,19 @@ class ApiKeyAccessTest extends TestCase
         }
     }
 
-    public function test_the_paths_a_key_may_never_reach(): void
+    public function test_a_key_is_confined_to_the_developer_namespace(): void
     {
-        $forbidden = (new \ReflectionClass(\App\Http\Middleware\AuthenticateWithJwt::class))
-            ->getConstant('FORBIDDEN');
+        // Allowlist, not denylist: the paths a key must never reach are
+        // simply not under the one prefix it may. DeveloperApiTest proves
+        // the same over HTTP.
+        $namespace = \App\Http\Middleware\AuthenticateWithJwt::API_KEY_NAMESPACE;
 
-        foreach (['api/v1/billing', 'api/v1/admin', 'api/v1/auth', 'api/v1/api-keys'] as $path) {
-            $this->assertContains($path, $forbidden,
+        foreach (['api/v1/billing/status', 'api/v1/admin/users', 'api/v1/auth/refresh', 'api/v1/api-keys',
+            'api/v1/me', 'api/v1/workspaces/switch/2', 'api/v1/workspace-access/switch/2', 'api/v1/cruise/apply',
+            'api/v1/projects/1/share', 'api/v1/social/accounts'] as $path) {
+            $this->assertFalse(\Illuminate\Http\Request::create('/'.$path)->is($namespace),
                 "$path must stay out of reach of a long-lived credential");
         }
+        $this->assertTrue(\Illuminate\Http\Request::create('/api/developer/v1/videos')->is($namespace));
     }
 }

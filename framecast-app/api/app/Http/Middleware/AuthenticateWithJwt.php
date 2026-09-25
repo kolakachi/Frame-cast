@@ -27,8 +27,8 @@ class AuthenticateWithJwt
             return $this->unauthorized('Missing bearer token.');
         }
 
-        // An API key authenticates the same routes as a browser session, minus
-        // the ones that could change what the account is or what it costs.
+        // An API key authenticates only the developer namespace; a browser
+        // session reaches everything.
         if (str_starts_with($bearerToken, 'wyv_live_')) {
             return $this->handleApiKey($request, $next, $bearerToken);
         }
@@ -215,15 +215,16 @@ class AuthenticateWithJwt
     }
 
     /**
-     * Paths an API key may never touch, whatever the plan.
+     * The one prefix an API key may reach.
      *
      * A key is a long-lived credential that often ends up pasted into a
-     * third-party tool, so it must not be able to change the billing plan,
-     * mint more credentials, act as an admin, or move the account's identity.
-     * Everything else — projects, scenes, generation, exports, assets — is
-     * exactly what the key exists for.
+     * third-party tool. Rather than list what it must not touch — billing,
+     * admin, key management, account deletion, the in-app assistant, and
+     * whatever gets added next month — it is confined to the developer
+     * namespace, which exposes only operations written for it. A new
+     * internal route is never API-reachable by omission.
      */
-    private const FORBIDDEN = ['api/v1/billing', 'api/v1/admin', 'api/v1/auth', 'api/v1/api-keys', 'api/v1/workspaces'];
+    public const API_KEY_NAMESPACE = 'api/developer/*';
 
     private function handleApiKey(Request $request, Closure $next, string $token): Response
     {
@@ -233,13 +234,11 @@ class AuthenticateWithJwt
             return $this->unauthorized('Invalid or revoked API key.');
         }
 
-        foreach (self::FORBIDDEN as $prefix) {
-            if ($request->is($prefix, $prefix.'/*')) {
-                return response()->json(['error' => [
-                    'code'    => 'api_key_forbidden_path',
-                    'message' => 'API keys cannot access billing, admin, auth or key management. Use the dashboard.',
-                ]], 403);
-            }
+        if (! $request->is(self::API_KEY_NAMESPACE)) {
+            return response()->json(['error' => [
+                'code'    => 'api_key_forbidden_path',
+                'message' => 'API keys can only call /api/developer/v1. Use the dashboard for everything else.',
+            ]], 403);
         }
 
         $workspace = Workspace::find($key->workspace_id);

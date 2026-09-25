@@ -12,7 +12,7 @@ use Illuminate\Http\Request;
 /**
  * Issuing and revoking API keys.
  *
- * Deliberately unreachable with an API key (see AuthenticateWithJwt::FORBIDDEN)
+ * Deliberately unreachable with an API key (see AuthenticateWithJwt::API_KEY_NAMESPACE)
  * — a credential must not be able to mint more of itself.
  */
 class ApiKeyController extends Controller
@@ -99,10 +99,5 @@ class ApiKeyController extends Controller
     private function available(User $user): bool
     {
         return (bool) app(CreditService::class)->limitFor((int) $user->workspace_id, 'api_access');
-    }
-
-    private function error(string $code, string $message, int $status): JsonResponse
-    {
-        return response()->json(['error' => ['code' => $code, 'message' => $message]], $status);
     }
 }
