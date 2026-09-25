@@ -22,6 +22,19 @@ one-glance status.
 - [x] Phase 4: proposals are always free; they are structured, not
       model-planned. (Decided 25 Sep.)
 
+## Follow-ups from the build (not blocking outreach)
+
+- [ ] Per-family parity tests for editor operations against dashboard fixtures
+      (today: delegation to the editor's controllers, plus one API test per family).
+- [ ] Bump `MCP_VERSION` whenever the tool set changes; ChatGPT snapshots tools
+      per install and shows its own "1.0.0" regardless of what the server reports.
+- [ ] `UgcOneShotPricing` mirrors `UgcController::generateOneShot`; a pricing
+      change must land in both (the controller cross-check fails closed).
+- [ ] Character reference cost is absent from every estimate (dashboard too).
+- [ ] Hard mid-pipeline spend reservation.
+- [ ] Sidecar `list_library` uses `ilike`; fine on Postgres, case-sensitive on
+      sqlite (tests only).
+
 ## Phase checklists
 
 ### Phase 1 — creation settings
@@ -56,6 +69,6 @@ one-glance status.
 - [x] Deployed and smoke-tested (25 Sep, prod `782d840`: 29 tools listed, get_capabilities, get_options, get_ugc_allowance answer on the owner's workspace)
 
 ### Then
-- [x] Owner test of the full surface on production (25 Sep: via ChatGPT — lookups by name, UGC plan from the real planner, consent gate, character #116 created; via the live API on project #226 — read, schema, a two-change proposal at 0cr, apply, export #166 queued, exports listed)
+- [x] Owner test of the full surface on production (25 Sep: via ChatGPT — lookups by name, UGC plan from the real planner, consent gate, character #116 created; via the live API on project #226 — read, schema, a two-change proposal at 0cr, apply, export #166 rendered to a new file, exports listed)
 - [ ] Contact the customer; record their first run (closes A4). **Ready: send the "Connect an AI assistant" page.**
 - [ ] Submit to the ChatGPT app directory
