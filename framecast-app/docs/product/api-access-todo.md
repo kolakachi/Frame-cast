@@ -43,17 +43,20 @@ not a claim that every underlying service is missing.
       administration and all workspace-switch paths to API keys. (Namespace rule.)
 - [x] Keep publishing, public sharing and destructive operations outside the
       initial allowlist. (Namespace rule.)
-- [ ] Validate active user, current membership and effective role on every call.
-- [ ] Enforce workspace and parent-agency suspension consistently with sessions.
+- [x] Validate active user, current membership and effective role on every call. (Step 2)
+- [x] Enforce workspace and parent-agency suspension consistently with sessions. (Step 2)
 - [ ] Enforce resource ownership and existing plan/feature gates for every
       allowed operation; do not inherit access to other workspaces.
 - [ ] Resolve `api_access` entitlement against the billing workspace so a
-      client workspace follows the agency's current tier.
-- [ ] Enforce owner/admin permissions for listing, issuing and revoking keys;
-      define and test any platform-admin support exception.
-- [ ] Enforce the five-active-key limit transactionally under concurrent issuance.
-- [ ] Replace first-match prefix resolution with collision-safe lookup and a
+      client workspace follows the agency's current tier. (Deferred: product-wide
+      behaviour, see plan §4 item 8; not an API-specific gate.)
+- [x] Enforce owner/admin permissions for listing, issuing and revoking keys;
+      define and test any platform-admin support exception. (Step 2; no
+      platform-admin exception exists or is planned.)
+- [x] Enforce the five-active-key limit transactionally under concurrent issuance. (Step 2, workspace row lock)
+- [x] Replace first-match prefix resolution with collision-safe lookup and a
       suitable database constraint; preserve existing valid keys if any exist.
+      (Step 2: lookup by hash, unique index; existing rows unaffected.)
 - [ ] Add finite pilot expiry, immediate revocation and rotation behavior.
 - [ ] Verify plaintext secrets appear only once and are redacted from logs,
       errors and analytics; document treatment of already accepted jobs on revocation.
@@ -102,9 +105,12 @@ not a claim that every underlying service is missing.
 All A1–A3 items applicable to the chosen contract must be complete before release.
 
 - [ ] HTTP tests prove allowed operations work and forbidden operations fail.
-- [ ] Test cross-workspace access, membership removal, role/plan downgrade,
+- [x] Test cross-workspace access, membership removal, role/plan downgrade,
       inactive users, suspended workspace/parent and revoked/expired keys.
-- [ ] Test concurrent key issuance and deterministic prefix-collision cases.
+      (Step 2; "expired" key waits on the expiry item in A1.)
+- [x] Test concurrent key issuance and deterministic prefix-collision cases.
+      (Prefix collision tested; issuance limit tested; the lock itself is not
+      exercised concurrently in sqlite.)
 - [ ] Test concurrent/replayed generation, payload conflicts, exhausted credits,
       spend caps, downstream failures and settlement/refund behavior.
 - [x] Test expired, foreign and payload-mismatched `quote_id` on create.
@@ -228,4 +234,5 @@ added only after their own gates pass.
 |---|---|---|---|---|
 | 25 September 2026 | Tracker created from plan v1.2 | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
+| 25 September 2026 | Step 2: issuer role/membership/suspension parity on the key path, hash lookup with unique index, owner/admin key management under a row lock | Not committed | 7 new tests; full suite green except the pre-existing renewal failure | Migration applied to dev DB only; not deployed |
 | 25 September 2026 | Step 1: developer namespace, five endpoints, quote-bound create, project creation extracted to a service | Not committed | `DeveloperApiTest` (14 tests) + full suite 567 passed; 1 pre-existing unrelated failure in `SubscriptionRenewalTest` | Migration applied to dev DB only; not deployed |

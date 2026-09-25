@@ -73,6 +73,17 @@ class ApiKeyAccessTest extends TestCase
         }
     }
 
+    public function test_two_keys_sharing_a_prefix_both_resolve(): void
+    {
+        // 28 bits of prefix entropy: collisions are rare, not impossible.
+        [$a, $plainA] = ApiKey::issue(1, 1, 'first');
+        [$b, $plainB] = ApiKey::issue(1, 1, 'second');
+        DB::table('api_keys')->where('id', $b->getKey())->update(['prefix' => $a->prefix]);
+
+        $this->assertSame($a->getKey(), ApiKey::resolve($plainA)?->getKey());
+        $this->assertSame($b->getKey(), ApiKey::resolve($plainB)?->getKey());
+    }
+
     public function test_only_creator_and_above_carry_api_access(): void
     {
         $limits = \App\Services\CreditService::PLAN_LIMITS;

@@ -74,14 +74,9 @@ class AuthenticateWithJwt
             // Write-only, rate-limited, creates nothing but a report.
             && ! ($request->is('api/v1/feedback') && $request->isMethod('POST'))
             && $user->workspace
-            && ($user->workspace->status !== 'active' || ($user->workspace->parent_workspace_id && $user->workspace->parent?->status !== 'active'))
+            && $this->suspended($user->workspace)
         ) {
-            return response()->json([
-                'error' => [
-                    'code' => 'workspace_suspended',
-                    'message' => 'This workspace has been suspended. Please contact support.',
-                ],
-            ], 403);
+            return $this->suspendedResponse();
         }
 
         if ($user->isClientSeat() && ($deny = $this->denyClientSeat($request, $user, $active))) {
@@ -242,8 +237,14 @@ class AuthenticateWithJwt
         }
 
         $workspace = Workspace::find($key->workspace_id);
-        if (! $workspace || $workspace->status !== 'active') {
-            return $this->unauthorized('This workspace is not active.');
+        if (! $workspace) {
+            return $this->unauthorized('This workspace no longer exists.');
+        }
+
+        // Same gate as a session: the workspace and, for a client workspace,
+        // the agency above it. A key is not a way around a suspension.
+        if ($this->suspended($workspace)) {
+            return $this->suspendedResponse();
         }
 
         // The plan can change after a key is issued; check on every request
@@ -260,10 +261,26 @@ class AuthenticateWithJwt
             return $this->unauthorized('The user this key belongs to no longer exists.');
         }
 
+        // The key carries its issuer's CURRENT authority, resolved the same
+        // way a session's is: an inactive user, a revoked membership or a
+        // downgraded role takes effect on the next request. A key must never
+        // outlive the access of the person who made it.
+        $role = app(\App\Services\Agency\WorkspaceAccess::class)->role($user, $workspace);
+        if (! $role) {
+            return $this->unauthorized('The user this key belongs to no longer has access to this workspace.');
+        }
+
         $user->setRawAttributes(array_merge($user->getAttributes(), [
             'workspace_id' => $workspace->getKey(),
+            'role' => $role,
         ]), true);
         $user->setRelation('workspace', $workspace);
+
+        // A client seat keeps its seat's limits through a key: a viewer may
+        // read, an editor may make videos, neither reaches agency surfaces.
+        if ($user->isClientSeat() && ($deny = $this->denyClientSeat($request, $user, (int) $workspace->getKey()))) {
+            return $deny;
+        }
 
         $request->setUserResolver(fn () => $user);
         $request->attributes->set('api_key_id', $key->getKey());
@@ -275,6 +292,23 @@ class AuthenticateWithJwt
         }
 
         return $next($request);
+    }
+
+    /** Suspended itself, or a client of a suspended agency. */
+    private function suspended(Workspace $workspace): bool
+    {
+        return $workspace->status !== 'active'
+            || ($workspace->parent_workspace_id && $workspace->parent?->status !== 'active');
+    }
+
+    private function suspendedResponse(): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'workspace_suspended',
+                'message' => 'This workspace has been suspended. Please contact support.',
+            ],
+        ], 403);
     }
 
     private function unauthorized(string $message): JsonResponse

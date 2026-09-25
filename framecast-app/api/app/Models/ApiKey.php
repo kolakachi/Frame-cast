@@ -36,23 +36,24 @@ class ApiKey extends Model
         return [$key, $plain];
     }
 
-    /** Resolve a presented token, or null. Constant-time compare, no timing oracle. */
+    /**
+     * Resolve a presented token, or null.
+     *
+     * Looked up by the full hash, which is unique, rather than by the
+     * 16-character prefix: two keys can share a prefix (28 bits of entropy),
+     * and a prefix lookup that took the first row would lock the second key
+     * out. The prefix is for recognising a key in a list, nothing more.
+     */
     public static function resolve(string $plain): ?self
     {
         if (! str_starts_with($plain, 'wyv_live_')) {
             return null;
         }
 
-        $candidate = static::query()
-            ->where('prefix', substr($plain, 0, 16))
+        return static::query()
+            ->where('token_hash', hash('sha256', $plain))
             ->whereNull('revoked_at')
             ->first();
-
-        if (! $candidate || ! hash_equals($candidate->token_hash, hash('sha256', $plain))) {
-            return null;
-        }
-
-        return $candidate;
     }
 
     public function maskedKey(): string

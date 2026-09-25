@@ -121,12 +121,14 @@ API after authorization and other release blockers are fixed.
    `DELETE /api/v1/me`, which can delete the issuing account and, in some cases,
    its workspace. Other `/me` operations also remain reachable. Retyping an
    email is not a separate authorization check; the credential can read it.
-2. **Membership and suspension parity is missing.** The key path checks user
-   existence but does not repeat the session path's current membership,
-   effective-role, active-user and parent-workspace checks.
-3. **Key administration is incomplete.** Creation checks owner/admin roles;
-   listing and revocation lack equivalent controller checks. The maximum-key
-   check is an unlocked count followed by an insertion.
+2. ~~**Membership and suspension parity is missing.**~~ Resolved in step 2:
+   the key path resolves the issuer's current role through `WorkspaceAccess`
+   (inactive user, revoked membership, downgraded role all end the key),
+   applies the session path's workspace and parent-agency suspension rule,
+   and keeps client-seat limits. Tested in `DeveloperApiTest`.
+3. ~~**Key administration is incomplete.**~~ Resolved in step 2: listing,
+   creation and revocation are owner/admin only; the five-key count and
+   insert run under the workspace row lock.
 4. **Default access is too broad.** Routes such as `/workspace-access` are not
    covered by the `/workspaces` exclusion. Cruise Control (the in-app
    assistant), social publishing, scheduled posts, public share toggling,
@@ -135,10 +137,9 @@ API after authorization and other release blockers are fixed.
    §3 closes all of these at once. The switch handler currently needs
    a session ID, so this review does not claim successful token minting; the
    route should nonetheless be explicitly inaccessible to API keys.
-5. **Short-prefix collisions are not handled.** Resolution fetches the first
-   row for the prefix, then compares its hash. A different valid key sharing
-   that prefix can fail authentication. The existing random-token test does
-   not cover this case.
+5. ~~**Short-prefix collisions are not handled.**~~ Resolved in step 2:
+   resolution is by the full hash with a unique index; the prefix is display
+   only. A forced-collision test covers it.
 6. **Operational controls are missing.** No rate limiting exists anywhere on
    the API today, for sessions or keys; there is no throttle middleware in
    the kernel, providers or routes. No concurrency cap or credit-spending
@@ -149,9 +150,10 @@ API after authorization and other release blockers are fixed.
    substitute for authenticated HTTP requests to forbidden and allowed routes.
 8. **Client-workspace entitlement lags the agency.** A client workspace copies
    the agency's plan tier at creation only, and `limitFor` reads the child's
-   own tier. A key on a client workspace fails the entitlement check if the
-   agency upgraded after the client was created. Resolve entitlement against
-   the billing workspace.
+   own tier; nothing syncs children when the agency's plan changes. This is
+   product-wide (every plan gate behaves this way), not specific to API keys,
+   so the key path deliberately matches the rest of the app. Fixing it means
+   syncing child tiers on plan change, tracked outside this plan.
 
 The static review did not rerun PHP tests because PHP was unavailable in the
 review shell. Earlier claims about mutation-test results are not treated as

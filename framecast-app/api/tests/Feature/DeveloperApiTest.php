@@ -147,6 +147,92 @@ class DeveloperApiTest extends TestCase
         return $this->withToken($key)->postJson('/api/developer/v1/videos', ['quote_id' => $quoteId, 'idempotency_key' => $idem]);
     }
 
+    /** A user whose home is elsewhere, holding a membership on $ws. Returns the user and a key they issued for $ws. */
+    private function member(Workspace $ws, string $role): array
+    {
+        $home = Workspace::query()->create(['name' => 'Home', 'plan_tier' => 'free', 'status' => 'active']);
+        $u = User::query()->create(['email' => uniqid().'@member.test', 'name' => 'Member', 'role' => 'owner', 'status' => 'active']);
+        $u->forceFill(['workspace_id' => $home->getKey()])->save();
+        DB::table('workspace_memberships')->insert(['workspace_id' => $ws->id, 'user_id' => $u->id, 'role' => $role, 'created_at' => now(), 'updated_at' => now()]);
+        [, $plain] = ApiKey::issue((int) $ws->getKey(), (int) $u->getKey(), 'Member key');
+
+        return [$u->fresh(), $plain];
+    }
+
+    public function test_a_revoked_membership_ends_the_key(): void
+    {
+        [$ws] = $this->tenant();
+        [$u, $key] = $this->member($ws, 'admin');
+        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertOk()->assertJsonPath('data.plan', 'creator');
+
+        DB::table('workspace_memberships')->where('user_id', $u->id)->update(['revoked_at' => now()]);
+        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertStatus(401);
+    }
+
+    public function test_an_inactive_issuer_ends_the_key(): void
+    {
+        [, $u, $key] = $this->tenant();
+        $u->forceFill(['status' => 'suspended'])->save();
+        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertStatus(401);
+    }
+
+    public function test_a_suspended_workspace_or_agency_blocks_the_key(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $ws->forceFill(['status' => 'suspended'])->save();
+        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertStatus(403)->assertJsonPath('error.code', 'workspace_suspended');
+
+        // A client workspace of a suspended agency is suspended with it.
+        [$agency, $owner] = $this->tenant('agency');
+        $client = Workspace::query()->create(['name' => 'Client', 'plan_tier' => 'agency', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
+        $client->forceFill(['parent_workspace_id' => $agency->getKey()])->save();
+        [, $clientKey] = ApiKey::issue((int) $client->getKey(), (int) $owner->getKey(), 'Client key');
+        $this->withToken($clientKey)->getJson('/api/developer/v1/capabilities')->assertOk();
+        $agency->forceFill(['status' => 'suspended'])->save();
+        $this->withToken($clientKey)->getJson('/api/developer/v1/capabilities')->assertStatus(403)->assertJsonPath('error.code', 'workspace_suspended');
+    }
+
+    public function test_a_client_viewer_seat_can_read_but_not_spend(): void
+    {
+        [$ws] = $this->tenant();
+        [, $key] = $this->member($ws, User::ROLE_CLIENT_VIEWER);
+        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertOk();
+        $this->quote($key)->assertStatus(403)->assertJsonPath('error.code', 'client_seat_read_only');
+        $this->assertSame(0, ApiQuote::query()->count());
+    }
+
+    public function test_key_management_is_owner_or_admin_only(): void
+    {
+        [$ws, $owner] = $this->tenant();
+        [$editor] = $this->member($ws, 'editor');
+
+        $asEditor = fn () => $this->withToken($this->sessionToken($editor, $ws));
+        $asEditor()->getJson('/api/v1/api-keys')->assertStatus(403)->assertJsonPath('error.code', 'forbidden');
+        $asEditor()->postJson('/api/v1/api-keys', ['name' => 'Sneaky'])->assertStatus(403);
+        $existing = ApiKey::query()->where('workspace_id', $ws->id)->value('id');
+        $asEditor()->deleteJson('/api/v1/api-keys/'.$existing)->assertStatus(403);
+        $this->assertNull(ApiKey::query()->find($existing)->revoked_at);
+
+        $asOwner = fn () => $this->withToken($this->sessionToken($owner, $ws));
+        $asOwner()->getJson('/api/v1/api-keys')->assertOk();
+        $created = $asOwner()->postJson('/api/v1/api-keys', ['name' => 'CI'])->assertStatus(201);
+        $this->assertStringStartsWith('wyv_live_', $created->json('data.key'));
+        $asOwner()->deleteJson('/api/v1/api-keys/'.$created->json('data.id'))->assertOk();
+    }
+
+    public function test_five_active_keys_is_the_limit(): void
+    {
+        [$ws, $owner] = $this->tenant(); // one key already issued
+        $asOwner = fn () => $this->withToken($this->sessionToken($owner, $ws));
+        $ids = [];
+        for ($i = 0; $i < 4; $i++) {
+            $ids[] = $asOwner()->postJson('/api/v1/api-keys', ['name' => "Key $i"])->assertStatus(201)->json('data.id');
+        }
+        $asOwner()->postJson('/api/v1/api-keys', ['name' => 'Sixth'])->assertStatus(422)->assertJsonPath('error.code', 'too_many_keys');
+        $asOwner()->deleteJson('/api/v1/api-keys/'.$ids[0])->assertOk();
+        $asOwner()->postJson('/api/v1/api-keys', ['name' => 'Sixth'])->assertStatus(201);
+    }
+
     public function test_a_key_reaches_the_developer_namespace_and_nothing_else(): void
     {
         [, , $key] = $this->tenant();
