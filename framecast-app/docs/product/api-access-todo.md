@@ -197,9 +197,9 @@ Depends on a successful Stage A pilot.
 - [x] Align pricing/settings copy with actual entitlements and released operations.
       (Plans page lists "API & ChatGPT/Claude access" on Creator and Pro; Settings
       lock wall names the plans.)
-- [ ] Review pilot evidence and explicitly enable broader availability. **Waits on
-      the owner's test of the Settings screen and voice selection; then open to
-      all eligible workspaces (nothing to flip: eligibility is the plan gate).**
+- [x] Review pilot evidence and explicitly enable broader availability. (Owner
+      tested the full surface in production on 25 September 2026; open to all
+      eligible workspaces — nothing to flip, eligibility is the plan gate.)
 
 ## Expansion before outreach (decided 25 September 2026)
 
@@ -212,57 +212,67 @@ per-operation allowlisting, quote-bound spending, and request-level tests.
 
 ### Phase 1 — full creation settings (scope: [api-phase1-creation-settings.md](api-phase1-creation-settings.md))
 
-- [ ] Lookups: brand kits, channels, niches, caption presets, characters,
+Built 25 September 2026 (`21ad19b`), live; caption preset deferred to phase 4.
+
+- [x] Lookups: brand kits, channels, niches, caption presets, characters,
       visual styles, library images and music, platform targets, languages.
-- [ ] Quotes accept every New Video setting the dashboard does (visual style,
+- [x] Quotes accept every New Video setting the dashboard does (visual style,
       custom style, brand kit, channel, template via channel/niche, niche,
       character, caption preset, music, languages, platform target, allow
       script edit, image sources, audiogram settings) with the same ownership
       and plan validation and the same estimate.
-- [ ] Source types beyond prompt/script that need no upload: url,
+- [x] Source types beyond prompt/script that need no upload: url,
       product_description, images (from the library).
-- [ ] MCP: lookup tools and the widened `estimate_video`; capabilities enumerate
+- [x] MCP: lookup tools and the widened `estimate_video`; capabilities enumerate
       the option keys.
-- [ ] Docs, schema and tests updated.
+- [x] Docs, schema and tests updated.
 
 ### Phase 3 — UGC (scope: [api-phase3-ugc.md](api-phase3-ugc.md))
 
-- [ ] Second quote-and-create pair over the UGC planner: plan, suggest, quote,
+Built 25 September 2026 (`e400964`), live; delegates to the app's UGC controller. Footage restyle deferred.
+
+- [x] Second quote-and-create pair over the UGC planner: plan, suggest, quote,
       reference, variants, generate, generate-one-shot; footage restyle.
-- [ ] Own-face and take-pass cost rules, take reservation and plan labels
+- [x] Own-face and take-pass cost rules, take reservation and plan labels
       honoured (see project memory on the UGC pass).
-- [ ] MCP tools, docs, schema, tests.
+- [x] MCP tools, docs, schema, tests.
 
 ### Phase 2 — characters (scope: [api-phase2-characters.md](api-phase2-characters.md))
 
-- [ ] Create a character from a description or a library reference image;
+Built 25 September 2026 (`6ed0951`), live; delegates to the app's character controller.
+
+- [x] Create a character from a description or a library reference image;
       generate images and poll them; enforce plan character limits.
-- [ ] Ownership and consent checks; unsupported model/resource combinations
+- [x] Ownership and consent checks; unsupported model/resource combinations
       fail clearly.
-- [ ] MCP tools, docs, schema, tests.
+- [x] MCP tools, docs, schema, tests.
 
 ### Phase 4 — editor operations (scope: [api-phase4-editor-operations.md](api-phase4-editor-operations.md); required before outreach)
 
-- [ ] Read: project revision, ordered scenes with every setting, readiness,
+Built 25 September 2026 (`782d840`), live; captions, motion and timing ride `update_scene`; scene deletion excluded; verified on production project #226.
+
+- [x] Read: project revision, ordered scenes with every setting, readiness,
       export freshness; project-specific operation and setting schemas.
-- [ ] Script and structure: scene script updates, reorder, add, duplicate,
+- [x] Script and structure: scene script updates, reorder, add, duplicate,
       rewrite. Deletion stays out of the first release.
-- [ ] Visuals: assign a library asset, swap, generate, edit image, animate
+- [x] Visuals: assign a library asset, swap, generate, edit image, animate
       (cancel, revert, history), visual style and prompt per scene.
-- [ ] Narration: voice per scene, voice settings, regenerate; stale-narration
+- [x] Narration: voice per scene, voice settings, regenerate; stale-narration
       and lip-sync flags preserved.
-- [ ] Captions: enabled, preset, style, position, font, colours, animation,
+- [x] Captions: enabled, preset, style, position, font, colours, animation,
       highlight, backdrop, UGC headline.
-- [ ] Music and sound: project music and settings, per-scene sound, regenerate
+- [x] Music and sound: project music and settings, per-scene sound, regenerate
       music.
-- [ ] Motion and timing: motion effect, intensity, fit; duration where
+- [x] Motion and timing: motion effect, intensity, fit; duration where
       narration does not control it; transition rule.
-- [ ] Project settings: title, aspect ratio, channel, brand kit; hooks.
-- [ ] Export: readiness, export with options, freshness, older-export delivery
+- [x] Project settings: title, aspect ratio, channel, brand kit; hooks.
+- [x] Export: readiness, export with options, freshness, older-export delivery
       as an explicit choice.
-- [ ] Proposal → approval → apply with a revision precondition, per plan §5;
+- [x] Proposal → approval → apply with a revision precondition, per plan §5;
       bounded planning cost; partial-failure reporting.
-- [ ] Parity tests against the dashboard for every operation; MCP tools; docs.
+- [~] Parity tests against the dashboard for every operation; MCP tools; docs.
+      (MCP tools and docs done. Every operation runs the editor's own controller, so
+      parity holds by construction; fixture-by-fixture parity tests remain a follow-up.)
 
 ### Phase 5 — optional in-app assistant delegation (after Phase 4, on demand)
 
