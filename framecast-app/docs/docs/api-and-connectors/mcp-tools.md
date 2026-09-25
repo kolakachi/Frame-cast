@@ -17,6 +17,10 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | `list_voices` | No | Narration voices: the catalogue plus your workspace's own and clones, with credits per scene. |
 | `estimate_video` | No | Prices a video and returns a `quote_id` valid for 10 minutes. |
 | `create_video` | **Yes**, up to the quote's max | Starts the video the quote described. Returns a video id at once. |
+| `plan_ugc` | No | Turn a script or brief into a UGC shot plan (format, shots, narration, visual direction). |
+| `estimate_ugc` | No | Price a UGC plan, composed or one-take, with takes against your monthly allowance; needs your consent for any real person's likeness or voice. |
+| `create_ugc` | **Yes**, up to the quote | Start the quoted takes, one video per take. |
+| `get_ugc_allowance` | No | Whether UGC is on your plan, takes used and remaining this month. |
 | `get_video_status` | No | `generating` → `exporting` → `completed`, or `failed` with a reason. Credits spent so far. |
 | `get_video_result` | No | The MP4 as a private link that expires, plus duration and the project link. |
 
@@ -48,6 +52,10 @@ Assistants are told to show you the quote first. Even if one doesn't, it can't s
 Source types now also include `url` (a page or article), `product_description` and `images`. The quote's `chosen` block names what was resolved — kit, channel, niche, character, music, voice — so an assistant can show you before it creates. The assistant is allowed to pick these itself when you haven't.
 
 Narration is priced per scene by the voice's engine: catalogue Gemini voices 3 credits, OpenAI voices 1, your clones 2. Featuring a character can add per-scene reference cost that the estimate does not yet include; the dashboard's estimate has the same gap.
+
+## UGC ads
+
+UGC ads go through the same planner, take rules and credit checks as the UGC Ads flow in the app. The assistant plans, quotes, asks you to confirm you have the rights to any real likeness or voice, then creates. Composed ads use your characters shot by shot; one-take ads are a single continuous AI presenter, from a description or a character, optionally with a demo clip embedded. Test Pass rules (15-second takes, two takes) apply through the API exactly as in the app. Footage restyle is not available through the API yet.
 
 ## Waiting for a render
 

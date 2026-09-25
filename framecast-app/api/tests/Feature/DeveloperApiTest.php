@@ -378,6 +378,86 @@ class DeveloperApiTest extends TestCase
         $this->quote($key, ['source_type' => 'url', 'content' => 'https://example.com/a-long-article'])->assertStatus(201);
     }
 
+    /** @return list<array<string, mixed>> a two-beat plan the way the planner returns it */
+    private function ugcSegments(): array
+    {
+        // Direct-to-camera is one continuous talking take.
+        return [
+            ['kind' => 'on_camera', 'script_text' => 'This desk changed how I work. Three reasons it pays for itself within a month.', 'seconds' => 10, 'visual_brief' => 'Presenter at a standing desk, bright kitchen', 'source' => 'generate'],
+        ];
+    }
+
+    public function test_ugc_plan_quote_and_create_go_through_the_dashboard_path(): void
+    {
+        [$ws, $owner, $key] = $this->tenant();
+        $ref = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'image', 'title' => 'Maya ref', 'storage_url' => 'https://b2/maya.png', 'mime_type' => 'image/png', 'created_at' => now(), 'updated_at' => now()]);
+        $maya = \App\Models\Character::query()->create(['workspace_id' => $ws->id, 'name' => 'Maya', 'status' => 'active', 'reference_asset_id' => $ref, 'is_stock' => false, 'is_auto' => false]);
+
+        $planner = $this->createMock(\App\Services\Ugc\UgcShotPlanner::class);
+        $planner->method('plan')->willReturn(['format' => 'direct_camera', 'segments' => $this->ugcSegments(), 'product' => 'Standing desk']);
+        $this->instance(\App\Services\Ugc\UgcShotPlanner::class, $planner);
+
+        $plan = $this->withToken($key)->postJson('/api/developer/v1/ugc/plans', ['script' => 'This desk changed how I work. Three reasons it pays for itself.', 'format' => 'auto', 'duration_seconds' => 10])
+            ->assertOk()->json('data.plan');
+        $this->assertCount(1, $plan['segments']);
+
+        $this->withToken($key)->getJson('/api/developer/v1/ugc/allowance')->assertOk()->assertJsonPath('data.used', 0)->assertJsonPath('data.cap', 60);
+
+        // No consent, no quote.
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', ['mode' => 'composed', 'format' => 'direct_camera', 'segments' => $plan['segments'], 'character_ids' => [$maya->id], 'consent' => false])
+            ->assertStatus(422)->assertJsonPath('error.code', 'consent_required');
+
+        $quote = $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', ['mode' => 'composed', 'format' => 'direct_camera', 'segments' => $plan['segments'], 'character_ids' => [$maya->id], 'consent' => true, 'aspect_ratio' => '9:16', 'title' => 'Desk ad'])
+            ->assertStatus(201)->assertJsonPath('data.takes', 1)->assertJsonPath('data.can_afford', true);
+        $expected = \App\Services\Ugc\UgcPlan::quote(\App\Services\Ugc\UgcPlan::normalise($plan['segments'], 'direct_camera'));
+        $this->assertSame($expected, $quote->json('data.credits.max'));
+        $this->assertSame($expected, $quote->json('data.credits.credits_per_character'));
+
+        // A UGC quote cannot be spent on the standard create, nor the reverse.
+        $this->withToken($key)->postJson('/api/developer/v1/videos', ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'x'])->assertStatus(409)->assertJsonPath('error.code', 'quote_kind_mismatch');
+        $std = $this->quote($key)->json('data.quote_id');
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', ['quote_id' => $std, 'idempotency_key' => 'y'])->assertStatus(409)->assertJsonPath('error.code', 'quote_kind_mismatch');
+
+        $created = $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'ugc-1'])->assertStatus(202);
+        $videos = $created->json('data.videos');
+        $this->assertCount(1, $videos);
+        $this->assertNotNull($created->json('data.run_id'));
+        $p = Project::query()->findOrFail($videos[0]['id']);
+        $this->assertNotNull($p->api_key_id, 'UGC takes are attributed to the key');
+        $this->assertSame('direct_camera', data_get($p->visual_brief, 'ugc_format'));
+        $this->assertSame(1, DB::table('ugc_run_requests')->count(), 'the dashboard\'s own idempotency receipt was written');
+        $this->assertSame(1, \App\Models\Scene::query()->where('project_id', $p->id)->count());
+
+        // Replay returns the same videos; a second key on the used quote is refused.
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'ugc-1'])->assertOk()->assertJsonPath('data.videos.0.id', $videos[0]['id']);
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'ugc-2'])->assertStatus(409);
+        $this->withToken($key)->getJson('/api/developer/v1/ugc/allowance')->assertOk()->assertJsonPath('data.used', 1);
+        $this->withToken($key)->getJson('/api/developer/v1/videos/'.$videos[0]['id'])->assertOk()->assertJsonPath('data.video.status', 'generating');
+    }
+
+    public function test_ugc_one_shot_is_priced_like_the_dashboard_and_creates_one_take(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $segments = $this->ugcSegments();
+        $quote = $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', ['mode' => 'one_shot', 'format' => 'direct_camera', 'segments' => $segments, 'presenter_description' => 'A cheerful thirty-something in a home office', 'consent' => true, 'quality' => 'full'])
+            ->assertStatus(201)->assertJsonPath('data.takes', 1);
+        $engine = $quote->json('data.credits.engine');
+        $seconds = $quote->json('data.credits.plan_seconds');
+        $this->assertSame(10, $seconds);
+        $this->assertSame($seconds * \App\Services\CreditService::VIDEO_ONESHOT_PER_SECOND[$engine], $quote->json('data.credits.max'));
+
+        $draft = $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', ['mode' => 'one_shot', 'format' => 'direct_camera', 'segments' => $segments, 'consent' => true, 'quality' => 'draft'])->assertStatus(201);
+        if ($draft->json('data.credits.engine') === 'seedance25') {
+            $this->assertSame(10 * \App\Services\CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT, $draft->json('data.credits.max'));
+        }
+
+        $created = $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'os-1'])->assertStatus(202);
+        Bus::assertDispatched(\App\Jobs\GenerateOneShotUgcJob::class);
+        $p = Project::query()->findOrFail($created->json('data.videos.0.id'));
+        $this->assertNotNull($p->api_key_id);
+        $this->assertSame('one_shot', data_get($p->visual_brief, 'ugc_format'));
+    }
+
     public function test_a_key_reaches_the_developer_namespace_and_nothing_else(): void
     {
         [, , $key] = $this->tenant();

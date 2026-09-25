@@ -85,6 +85,15 @@ trait BuildsDeveloperSchema
                 $t->timestamps();
             });
         }
+        foreach ([\App\Models\Scene::class] as $model) {
+            $m = new $model;
+            Schema::create($m->getTable(), function (Blueprint $t) use ($m) {
+                $t->id();
+                foreach ($m->getFillable() as $c) $t->text($c)->nullable();
+                $t->timestamps();
+            });
+        }
+        (require database_path('migrations/2026_09_18_120000_create_ugc_run_requests.php'))->up();
         Schema::create('voice_profiles', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('workspace_id')->nullable();

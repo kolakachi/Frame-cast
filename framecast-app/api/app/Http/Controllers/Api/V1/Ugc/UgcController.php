@@ -1036,6 +1036,9 @@ class UgcController extends Controller
             }
         }
 
+        // Pricing below is mirrored in App\Services\Ugc\UgcOneShotPricing for the
+        // developer API's quotes; change both, or the API's quote will not match
+        // the credits check further down and every create will be refused.
         $engine = in_array($request->input('engine'), ['seedance25', 'veo'], true) ? $request->input('engine') : 'seedance25';
 
         // The $9 Test Pass buys a look at the product, not the whole catalogue:

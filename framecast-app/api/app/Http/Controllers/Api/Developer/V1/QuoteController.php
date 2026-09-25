@@ -171,7 +171,7 @@ class QuoteController extends DeveloperController
             'workspace_id' => $workspaceId,
             'api_key_id' => $request->attributes->get('api_key_id'),
             'created_by_user_id' => $user->getKey(),
-            'payload_json' => $payload,
+            'payload_json' => $payload + ['__kind' => 'video'],
             'credits_min' => $estimate['credits_min'],
             'credits_max' => $estimate['credits_max'],
             'expires_at' => now()->addMinutes(ApiQuote::TTL_MINUTES),

@@ -27,6 +27,8 @@ use Illuminate\Support\Facades\URL;
  */
 class VideoController extends DeveloperController
 {
+    use ClaimsQuotes;
+
     public function __construct(
         private readonly CreditService $credits,
         private readonly ProjectCreationService $creation,
@@ -43,76 +45,14 @@ class VideoController extends DeveloperController
             'quote_id' => ['required', 'string', 'max:32'],
             'idempotency_key' => ['nullable', 'string', 'max:128'],
         ]);
-        $idempotencyKey = $input['idempotency_key'] ?? $request->header('Idempotency-Key');
-        if (! is_string($idempotencyKey) || trim($idempotencyKey) === '') {
+        $idempotencyKey = $this->idempotencyKeyFrom($request, $input);
+        if ($idempotencyKey === null) {
             return $this->fail('idempotency_key_required',
                 'Send an idempotency_key (or Idempotency-Key header) so a retried request cannot create a second video.', 422);
         }
-        $idempotencyKey = mb_substr(trim($idempotencyKey), 0, 128);
 
-        // Claim the quote first, in its own transaction, so a concurrent
-        // retry sees it consumed. Creation happens after commit because it
-        // dispatches a job that must find the committed project.
         $apiKeyId = $request->attributes->get('api_key_id');
-        $claim = DB::transaction(function () use ($input, $workspaceId, $idempotencyKey, $apiKeyId): array|JsonResponse {
-            // The workspace row lock serialises claims, so the in-flight
-            // count below cannot be raced past by two simultaneous creates.
-            \App\Models\Workspace::query()->whereKey($workspaceId)->lockForUpdate()->first();
-
-            $quote = ApiQuote::query()->whereKey($input['quote_id'])->where('workspace_id', $workspaceId)->lockForUpdate()->first();
-            if (! $quote) {
-                return $this->fail('quote_not_found', 'No such quote in this workspace. Request a new one.', 404);
-            }
-
-            if ($quote->consumed_at) {
-                if ($quote->idempotency_key === $idempotencyKey && $quote->project_id) {
-                    return ['replay' => Project::query()->whereKey($quote->project_id)->where('workspace_id', $workspaceId)->first(), 'quote' => $quote];
-                }
-
-                return $this->fail('quote_consumed', 'This quote has already been used. Request a new one.', 409);
-            }
-
-            if ($quote->isExpired()) {
-                return $this->fail('quote_expired', 'This quote has expired. Request a new one and create within '.ApiQuote::TTL_MINUTES.' minutes.', 410);
-            }
-
-            $reused = ApiQuote::query()->where('workspace_id', $workspaceId)->where('idempotency_key', $idempotencyKey)->exists();
-            if ($reused) {
-                return $this->fail('idempotency_key_reused', 'This idempotency key was already used for a different quote.', 409);
-            }
-
-            // Rate limits bound requests; this bounds what is in flight,
-            // which is what bounds how fast credits can go.
-            $maxActive = (int) config('developer.limits.max_active_videos');
-            $active = Project::query()->where('workspace_id', $workspaceId)->whereNotNull('api_key_id')->where('status', 'generating')->count();
-            if ($maxActive > 0 && $active >= $maxActive) {
-                return $this->fail('too_many_active_videos',
-                    "{$active} API-created videos are already generating in this workspace (limit {$maxActive}). Wait for one to finish.",
-                    429, ['active' => $active, 'limit' => $maxActive, 'retry_after_seconds' => 30]);
-            }
-
-            // A key's own monthly ceiling, below the workspace balance. The
-            // quote's maximum is what is authorized, so that is what counts.
-            $apiKey = $apiKeyId ? ApiKey::query()->find($apiKeyId) : null;
-            if ($apiKey && $apiKey->wouldExceedCap($quote->credits_max)) {
-                $spent = $apiKey->spentThisMonth();
-
-                return $this->fail('key_spend_cap_reached',
-                    "This key may spend {$apiKey->spend_cap_credits} credits a month; {$spent} are spent and this video is authorized for up to {$quote->credits_max}.",
-                    402, ['spend_cap_credits' => $apiKey->spend_cap_credits, 'spent_this_month' => $spent, 'authorized_max' => $quote->credits_max]);
-            }
-
-            $balance = $this->credits->balance($workspaceId);
-            if ($balance < $quote->credits_max) {
-                return $this->fail('insufficient_credits',
-                    "This video may cost up to {$quote->credits_max} credits; the balance is {$balance}.",
-                    402, ['balance' => $balance, 'authorized_max' => $quote->credits_max, 'shortage' => $quote->credits_max - $balance]);
-            }
-
-            $quote->forceFill(['consumed_at' => now(), 'idempotency_key' => $idempotencyKey])->save();
-
-            return ['quote' => $quote];
-        });
+        $claim = $this->claimQuote((string) $input['quote_id'], $workspaceId, $idempotencyKey, $apiKeyId, 'video', $this->credits);
 
         if ($claim instanceof JsonResponse) {
             return $claim;
@@ -125,7 +65,7 @@ class VideoController extends DeveloperController
 
         $payload = $quote->payload_json;
         $musicAssetId = $payload['music_asset_id'] ?? null;
-        unset($payload['music_asset_id']);
+        unset($payload['music_asset_id'], $payload['__kind']);
         try {
             ['project' => $project] = $this->creation->create($user, $payload, $request->attributes->get('api_key_id'));
             if ($musicAssetId) {
@@ -134,7 +74,7 @@ class VideoController extends DeveloperController
             }
         } catch (ProjectCreationException $e) {
             // Give the quote back: nothing was built, nothing was spent.
-            $quote->forceFill(['consumed_at' => null, 'idempotency_key' => null])->save();
+            $this->releaseQuote($quote);
 
             return $this->creationFailed($e);
         }

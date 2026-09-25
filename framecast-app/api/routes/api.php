@@ -57,6 +57,10 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->g
     Route::get('/caption-presets', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'captionPresets']);
     Route::get('/characters', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'characters']);
     Route::get('/library', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'library']);
+    Route::post('/ugc/plans', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'plans']);
+    Route::post('/ugc/quotes', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'quotes']);
+    Route::post('/ugc/videos', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'videos']);
+    Route::get('/ugc/allowance', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'allowance']);
     Route::post('/quotes', [\App\Http\Controllers\Api\Developer\V1\QuoteController::class, 'store']);
     Route::post('/videos', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'store']);
     Route::get('/videos/{videoId}', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'show'])->whereNumber('videoId');

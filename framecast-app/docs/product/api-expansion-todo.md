@@ -8,7 +8,7 @@ one-glance status.
 | Phase | Scope | Status | Effort |
 |---|---|---|---|
 | 1. Creation settings | [api-phase1-creation-settings.md](api-phase1-creation-settings.md) | **Built** (25 Sep); caption preset moved to phase 4 | ~3 days |
-| 3. UGC | [api-phase3-ugc.md](api-phase3-ugc.md) | Scoped | ~4 days |
+| 3. UGC | [api-phase3-ugc.md](api-phase3-ugc.md) | **Built** (25 Sep): delegates to the app's UGC controller | ~4 days |
 | 2. Characters | [api-phase2-characters.md](api-phase2-characters.md) | Scoped | ~2 days |
 | 4. Editor operations | [api-phase4-editor-operations.md](api-phase4-editor-operations.md) | Scoped | 2–3 weeks |
 | Outreach | send the customer "Connect an AI assistant" | Blocked on 1–4 | — |
@@ -33,10 +33,12 @@ one-glance status.
 - [ ] Deployed and smoke-tested on the owner's account
 
 ### Phase 3 — UGC
-- [ ] `plan_ugc`, `estimate_ugc`, `create_ugc`, `get_ugc_allowance`; library video type
-- [ ] Take reservation by request id; own-face and cast-style pricing; consent required
-- [ ] Composed and one-shot paths
-- [ ] MCP; docs; OpenAPI; tests; deployed and smoke-tested
+- [x] `plan_ugc`, `estimate_ugc`, `create_ugc`, `get_ugc_allowance`; library video type
+- [x] Take reservation by request id; own-face and cast-style pricing; consent required
+      (via the dashboard's own generate/generateOneShot; one-shot pricing mirrored in `UgcOneShotPricing`)
+- [x] Composed and one-shot paths
+- [x] MCP; docs; OpenAPI; tests
+- [ ] Deployed and smoke-tested
 
 ### Phase 2 — characters
 - [ ] `create_character` with limits and consent; `update_character`

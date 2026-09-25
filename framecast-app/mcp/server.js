@@ -243,6 +243,93 @@ function buildServer(token) {
     async ({ quote_id, idempotency_key }) => call(token, 'POST', '/videos', { quote_id, idempotency_key: idempotency_key || quote_id }, 'create_video'),
   )
 
+  // ── UGC ads: plan → estimate → create, priced and gated exactly like the app.
+  const segment = z.object({
+    kind: z.enum(['on_camera', 'b_roll', 'reaction']),
+    script_text: z.string().max(1500).nullable().optional(),
+    seconds: z.number().min(1).max(60),
+    visual_brief: z.string().max(1000),
+    voice_direction: z.string().max(500).nullable().optional(),
+    motion_prompt: z.string().max(1000).nullable().optional(),
+    headline: z.string().max(180).nullable().optional(),
+    source: z.enum(['upload', 'stock', 'generate']).nullable().optional(),
+    asset_id: z.number().int().nullable().optional(),
+  }).passthrough()
+
+  server.registerTool(
+    'plan_ugc',
+    {
+      title: 'Plan a UGC ad (free)',
+      description: 'Turn a script or a brief into a shot plan for a UGC-style ad: shots with kind (on_camera, b_roll, reaction), narration, seconds and visual direction, plus the format it chose. Free. Pass the returned format and segments to estimate_ugc unchanged. Formats: direct_camera (one continuous talking take), demo, story, reaction, text_led; "auto" lets the planner pick. Optionally ask for alternate openings with variants_count.',
+      inputSchema: z.object({
+        script: z.string().max(1500).optional().describe('The narration, if the user has one.'),
+        context: z.string().max(1500).optional().describe('Or a brief: product, audience, angle.'),
+        product: z.string().max(200).optional(),
+        format: z.enum(['auto', 'direct_camera', 'demo', 'story', 'reaction', 'text_led']).default('auto'),
+        duration_seconds: z.number().int().min(5).max(180),
+        language: z.string().optional(),
+        footage_asset_ids: z.array(z.number().int()).max(40).optional().describe('Library images/videos the plan may cut to (list_library).'),
+        variants_count: z.number().int().min(2).max(6).optional(),
+      }),
+      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async (args) => call(token, 'POST', '/ugc/plans', args, 'plan_ugc'),
+  )
+
+  server.registerTool(
+    'estimate_ugc',
+    {
+      title: 'Estimate a UGC ad (free)',
+      description: 'Price a plan from plan_ugc and get a quote_id (10 minutes). mode "composed": each shot generated and cut together, with one or more characters from list_characters (needs character_ids unless every shot is b_roll). mode "one_shot": a single continuous AI presenter take from a description or a character. CONSENT: before calling, ask the user to confirm they have the right to use any real person\'s likeness or voice in the ad, and pass consent: true only if they say so. Returns credits, takes used against the monthly allowance, and can_afford.',
+      inputSchema: z.object({
+        mode: z.enum(['composed', 'one_shot']),
+        format: z.enum(['direct_camera', 'demo', 'story', 'reaction', 'text_led']),
+        segments: z.array(segment).min(1).max(12).describe('From plan_ugc, unchanged.'),
+        variants: z.array(z.object({ label: z.string().max(40).optional(), segments: z.array(segment).min(1).max(12) })).max(5).optional(),
+        character_ids: z.array(z.number().int()).max(5).optional().describe('composed: presenters, from list_characters.'),
+        character_id: z.number().int().optional().describe('one_shot: the presenter, from list_characters.'),
+        cast_style: z.enum(['exact', 'variant']).optional(),
+        quality: z.enum(['draft', 'full']).optional().describe('one_shot: draft is 480p and cheaper.'),
+        presenter_description: z.string().max(400).optional().describe('one_shot without a character: who presents.'),
+        product_asset_id: z.number().int().optional().describe('A library image of the product.'),
+        demo_asset_id: z.number().int().optional().describe('one_shot: a ≤30s library video to embed as the demo.'),
+        setting: z.string().max(300).optional(),
+        product: z.string().max(200).optional(),
+        tone: z.string().max(200).optional(),
+        aspect_ratio: z.enum(['9:16', '1:1', '16:9']).optional(),
+        language: z.string().optional(),
+        title: z.string().max(120).optional(),
+        consent: z.boolean().describe('True only after the user confirmed likeness/voice rights.'),
+      }),
+      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async (args) => call(token, 'POST', '/ugc/quotes', args, 'estimate_ugc'),
+  )
+
+  server.registerTool(
+    'create_ugc',
+    {
+      title: 'Create the quoted UGC ad',
+      description: 'Starts the takes an estimate_ugc quote described. SPENDS CREDITS and uses monthly takes. Only after the user has seen the quote and agreed. Returns one video id per take; poll each with get_video_status and fetch with get_video_result.',
+      inputSchema: z.object({
+        quote_id: z.string(),
+        idempotency_key: z.string().max(128).optional().describe('Defaults to the quote_id.'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ quote_id, idempotency_key }) => call(token, 'POST', '/ugc/videos', { quote_id, idempotency_key: idempotency_key || quote_id }, 'create_ugc'),
+  )
+
+  server.registerTool(
+    'get_ugc_allowance',
+    {
+      title: 'UGC takes allowance',
+      description: 'Whether UGC ads are enabled on this plan, takes used and remaining this month, and the per-run and per-take limits.',
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async () => call(token, 'GET', '/ugc/allowance', undefined, 'get_ugc_allowance'),
+  )
+
   server.registerTool(
     'get_video_status',
     {
