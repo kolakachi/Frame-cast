@@ -110,8 +110,9 @@ not a claim that every underlying service is missing.
       (`GET /videos/{id}`; "paused" is not a state the pipeline has today.)
 - [x] Expose export readiness and authorized expiring download/project links;
       never implicitly enable public sharing. (`GET /videos/{id}/result`)
-- [ ] Document versioned endpoints, schemas, authentication, key lifecycle,
+- [x] Document versioned endpoints, schemas, authentication, key lifecycle,
       charging, limits, idempotency, polling, errors and link expiry.
+      (docs site: API & AI assistants → REST API, API keys, MCP tools.)
 - [ ] Supply and validate an OpenAPI schema and working examples for GPT Actions
       if that is the pilot client.
 - [ ] Include saved voice/character discovery and selection only as required by
@@ -248,9 +249,10 @@ added only after their own gates pass.
       and foreign `quote_id`, replayed `create_video`, client retry after timeout,
       and result retrieval without public sharing.
 - [ ] One end-to-end run in the confirmed client within an agreed test budget.
-- [ ] Publish connection steps per client, header format, the five tools with
+- [x] Publish connection steps per client, header format, the five tools with
       example calls, quote and idempotency behaviour, and supported-client list
-      on the `docs` site.
+      on the `docs` site. (docs/docs/api-and-connectors/, builds clean; the
+      docs image is rebuilt on deploy.)
 - [ ] If the customer uses a private GPT with Actions instead, publish the
       OpenAPI schema for the developer namespace; no MCP work required.
 
@@ -260,6 +262,7 @@ added only after their own gates pass.
 |---|---|---|---|---|
 | 25 September 2026 | Tracker created from plan v1.2 | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
+| 25 September 2026 | Developer docs: four pages under "API & AI assistants" (connect ChatGPT/Claude/Cursor, API keys, MCP tools, REST API) linked from the help intro | Not committed | Docusaurus build succeeds, no broken links | Not deployed |
 | 25 September 2026 | OAuth for connectors: Laravel authorization server (DCR, PKCE, refresh rotation, revocation), SPA consent page with login carry-through, sidecar discovery, nginx | Not committed | `OAuthFlowTest` 9 tests; suite 589 passed (pre-existing renewal failure only); SPA build clean; curl flow through one-off api + sidecar on test account | Migration on dev DB; not deployed |
 | 25 September 2026 | Key expiry + rotation, per-key monthly spend cap, log context, analytics `via` tag; narration now quoted on the routed engine (Gemini 3cr) instead of a flat 1cr | Not committed | 3 new tests; suite 579 passed, pre-existing renewal failure only | Migration on dev DB; not deployed |
 | 25 September 2026 | Sidecar: `mcp/` Node service, compose (dev+prod) and nginx wiring, five tools, bearer pass-through; platform admins may manage keys | Not committed | `mcp/smoke.sh` against the rebuilt dev stack on the test account; PHP suite green | Dev stack only; nginx/compose prod changes not deployed |

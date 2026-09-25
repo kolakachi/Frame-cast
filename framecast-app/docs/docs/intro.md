@@ -28,6 +28,7 @@ Branded short-form video without a shoot. These guides walk you through making, 
 | [Calendar](/calendar/how-the-calendar-works) | Schedule and track everything you publish |
 | [Workspaces](/workspaces/manage-your-workspace) | Your plan, credits, and connected accounts |
 | [Variants & hooks](/variants-and-hooks/generate-hook-variants) | Ranked hook options and alternate ad cuts |
+| [API & AI assistants](/api-and-connectors/connect-an-ai-assistant) | Make videos from ChatGPT, Claude, Cursor or your own code |
 | [Export & publish](/export-and-publish/export-every-aspect-ratio) | Export every aspect ratio at once, then publish |
 
 :::tip Credits, explained
