@@ -563,7 +563,18 @@ const auth = requireBearerAuth({
 })
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, api: API_BASE_URL }))
-app.all('/mcp', auth, (req, res) => void node(req, res, req.body))
+app.all('/mcp', auth, (req, res) => {
+  // The handshake and listing are not tool calls, so logCall never sees
+  // them; one line here shows what a client did on connect (initialize,
+  // tools/list) and which caller it was.
+  const method = req.body?.method
+  if (method && !String(method).startsWith('notifications/') && method !== 'tools/call') {
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || ''
+    const caller = token ? createHash('sha256').update(token).digest('hex').slice(0, 12) : 'anon'
+    console.log(JSON.stringify({ ts: new Date().toISOString(), rpc: method, caller, kind: token.startsWith('wyv_oat_') ? 'oauth' : 'key' }))
+  }
+  void node(req, res, req.body)
+})
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`wyvstudio mcp ${VERSION} listening on :${PORT}, api ${API_BASE_URL}, hosts ${ALLOWED_HOSTS.join(',')}, oauth ${oauth ? OAUTH_ISSUER : 'off'}`)
