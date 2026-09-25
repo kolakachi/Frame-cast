@@ -47,13 +47,21 @@ class UgcController extends DeveloperController
             'language' => ['nullable', Rule::in(LookupController::LANGUAGES)],
             'footage_asset_ids' => ['nullable', 'array', 'max:40'],
             'footage_asset_ids.*' => ['integer'],
+            'reference' => ['nullable', 'array'],
+            'reference.shape' => ['nullable', 'string', 'max:300'],
+            'reference.beats' => ['nullable', 'array', 'max:8'],
+            'reference.beats.*.role' => ['required', 'string', 'max:24'],
+            'reference.beats.*.does' => ['nullable', 'string', 'max:300'],
+            'reference.beats.*.on_screen' => ['nullable', 'string', 'max:300'],
+            'reference.beats.*.start' => ['numeric'],
+            'reference.beats.*.end' => ['numeric'],
             'variants_count' => ['nullable', 'integer', 'min:2', 'max:6'],
         ]);
 
         $payload = array_filter([
             'script' => $input['script'] ?? null, 'context' => $input['context'] ?? null, 'product' => $input['product'] ?? null,
             'format' => $input['format'], 'duration_seconds' => $input['duration_seconds'], 'language' => $input['language'] ?? null,
-            'footage_asset_ids' => $input['footage_asset_ids'] ?? null,
+            'footage_asset_ids' => $input['footage_asset_ids'] ?? null, 'reference' => $input['reference'] ?? null,
         ], fn ($v) => $v !== null);
 
         $plan = $this->delegate($request, fn (AppUgcController $c, Request $r) => $c->plan($r, app(UgcShotPlanner::class)), $payload);
@@ -74,6 +82,75 @@ class UgcController extends DeveloperController
         }
 
         return response()->json(['data' => $out, 'meta' => []]);
+    }
+
+    public function reference(Request $request): JsonResponse
+    {
+        $input = $this->validated($request, ['asset_id' => ['required', 'integer', 'min:1']]);
+        $result = $this->delegate($request, fn (AppUgcController $c, Request $r) => $c->reference($r, app(\App\Services\Ugc\UgcReference::class)), $input);
+        return $result instanceof JsonResponse ? $result : response()->json(['data' => $result, 'meta' => ['scope' => 'UGC planning inspiration; not My Footage recreation']]);
+    }
+
+    public function previewQuote(Request $request, int $characterId): JsonResponse
+    {
+        $input = $this->validated($request, ['consent' => ['required', 'boolean', 'accepted']]);
+        $character = $this->previewCharacter($request, $characterId);
+        if (! $character) return $this->fail('not_found', 'Character not found.', 404);
+        if (! $this->credits->limitFor((int) $request->user()->workspace_id, 'ugc_ads')) return $this->fail('upgrade_required', 'UGC requires a paid plan.', 402);
+        $cost = app(\App\Services\Generation\Image\ImageAdapterFactory::class)->generationCost('gpt-image-2');
+        $quote = ApiQuote::query()->create([
+            'id' => ApiQuote::newId(), 'workspace_id' => $request->user()->workspace_id,
+            'api_key_id' => $request->attributes->get('api_key_id'), 'created_by_user_id' => $request->user()->id,
+            'payload_json' => ['__kind' => 'ugc_preview', 'character_id' => $characterId, 'consent' => true, 'character_revision' => $this->previewRevision($character)],
+            'credits_min' => $cost, 'credits_max' => $cost, 'expires_at' => now()->addMinutes(ApiQuote::TTL_MINUTES),
+        ]);
+        return response()->json(['data' => ['quote_id' => $quote->id, 'character_id' => $characterId,
+            'credits' => ['min' => $cost, 'max' => $cost], 'expires_at' => $quote->expires_at->toIso8601String(),
+            'disclosure' => 'A generated presenter inspired by the character description. This is not a final video frame or guaranteed identity match.'], 'meta' => []], 201);
+    }
+
+    public function previewCreate(Request $request, int $characterId): JsonResponse
+    {
+        $input = $this->validated($request, ['quote_id' => ['required', 'string', 'max:32'], 'idempotency_key' => ['nullable', 'string', 'max:128']]);
+        $key = $this->idempotencyKeyFrom($request, $input);
+        if (! $key) return $this->fail('idempotency_key_required', 'Send an idempotency key.', 422);
+        $claim = $this->claimQuote($input['quote_id'], (int) $request->user()->workspace_id, $key,
+            $request->attributes->get('api_key_id'), 'ugc_preview', $this->credits, ['character_id' => $characterId]);
+        if ($claim instanceof JsonResponse) return $claim;
+        $quote = $claim['quote'];
+        if (array_key_exists('replay', $claim)) return $this->previewResult($request, $quote);
+        $character = $this->previewCharacter($request, $characterId);
+        if (! $character || $this->previewRevision($character) !== $quote->payload_json['character_revision']) {
+            $this->releaseQuote($quote);
+            return $this->fail('character_changed', 'Character changed after approval. Request a new preview quote.', 409);
+        }
+        if (! $this->credits->limitFor((int) $request->user()->workspace_id, 'ugc_ads')) {
+            $this->releaseQuote($quote);
+            return $this->fail('upgrade_required', 'UGC requires a paid plan.', 402);
+        }
+        $result = $this->delegate($request, fn (AppUgcController $c, Request $r) => $c->variantPreview($r, $characterId), []);
+        if ($result instanceof JsonResponse) { $this->releaseQuote($quote); return $result; }
+        $quote->forceFill(['project_id' => $result['asset_id'], 'payload_json' => $quote->payload_json + ['result' => $result]])->save();
+        return $this->previewResult($request, $quote);
+    }
+
+    private function previewResult(Request $request, ApiQuote $quote): JsonResponse
+    {
+        $result = $quote->payload_json['result'];
+        $asset = Asset::query()->whereKey($result['asset_id'])->where('workspace_id', $request->user()->workspace_id)->first();
+        if (! $asset) return $this->fail('preview_unavailable', 'The preview asset is no longer available; it will not be regenerated automatically.', 410);
+        $result['preview_url'] = \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content', now()->addMinutes(60), ['assetId' => $asset->id]);
+        return response()->json(['data' => $result + ['identity_match_guaranteed' => false, 'quote_id' => $quote->id], 'meta' => []]);
+    }
+
+    private function previewCharacter(Request $request, int $id): ?Character
+    {
+        return Character::query()->whereKey($id)->where('status', 'active')->where(fn ($q) => $q->where('workspace_id', $request->user()->workspace_id)->orWhere(fn ($s) => $s->whereNull('workspace_id')->where('is_stock', true)))->first();
+    }
+
+    private function previewRevision(Character $character): string
+    {
+        return hash('sha256', json_encode([$character->name, $character->description, $character->reference_asset_id, $character->reference_asset_ids, $character->appearance_json]));
     }
 
     /** Free: price a plan (composed takes or a one-take ad) and freeze it into a quote. */
@@ -111,6 +188,19 @@ class UgcController extends DeveloperController
             'consent' => ['required', 'boolean'],
         ]);
 
+        $unsupported = $input['mode'] === 'composed'
+            ? ['character_id', 'cast_style', 'fidelity', 'quality', 'presenter_description', 'product_asset_ids', 'demo_asset_id', 'setting', 'product', 'tone']
+            : ['character_ids', 'variants', 'voice_key'];
+        foreach ($unsupported as $field) {
+            if (isset($input[$field]) && $input[$field] !== []) return $this->fail('unsupported_mode_setting', "{$field} is not used by {$input['mode']} UGC. Remove it.", 422);
+        }
+        if (isset($input['fidelity'])) return $this->fail('unsupported_mode_setting', 'Fidelity selection is not implemented by the current one-shot renderer. The quote reports its resolved engine.', 422);
+        if ($input['mode'] === 'one_shot' && isset($input['aspect_ratio']) && $input['aspect_ratio'] !== '9:16') return $this->fail('unsupported_mode_setting', 'One-shot UGC currently renders 9:16 only.', 422);
+        if (isset($input['voice_key']) && ! array_key_exists($input['voice_key'], \App\Services\Generation\TTS\GeminiVoices::VOICES)) return $this->fail('unsupported_voice', 'Composed UGC supports Gemini catalogue voices only; cloned voices are not supported in this workflow.', 422);
+        foreach ($input['product_asset_ids'] ?? [] as $aid) {
+            if (! Asset::query()->whereKey($aid)->where('workspace_id', $workspaceId)->where('asset_type', 'image')->exists()) return $this->fail('invalid_asset', 'Product references must be workspace images.', 422);
+        }
+
         if ($input['consent'] !== true) {
             return $this->fail('consent_required',
                 'The user must confirm they have the right to use any real person\'s likeness or voice in this ad. Ask them, then quote again with consent: true.', 422);
@@ -137,8 +227,10 @@ class UgcController extends DeveloperController
             }
         }
 
-        $chosen = [];
+        $chosen = ['mode' => $input['mode'], 'aspect_ratio' => $input['aspect_ratio'] ?? '9:16', 'language' => $input['language'] ?? 'en', 'product_asset_ids' => array_values(array_unique(array_filter(array_merge($input['product_asset_ids'] ?? [], [$input['product_asset_id'] ?? null]))))];
         if ($input['mode'] === 'composed') {
+            $chosen['voices_by_character'] = Character::query()->whereIn('id', $input['character_ids'] ?? [])->get()->map(fn (Character $c) => ['character_id' => $c->id, 'voice_key' => $input['voice_key'] ?? \App\Services\Generation\TTS\GeminiVoices::defaultForGender($c->gender)])->all();
+            $chosen['voice'] = ['type' => 'gemini_tts', 'key' => $input['voice_key'] ?? null, 'default' => 'Per-character gender default when no key is supplied', 'clone_supported' => false];
             $plans = [$segments];
             foreach ($input['variants'] ?? [] as $variant) {
                 $plans[] = UgcPlan::normalise($variant['segments'], $input['format']);
@@ -157,19 +249,26 @@ class UgcController extends DeveloperController
             } catch (ValidationException $e) {
                 return $this->fail('invalid_plan', collect($e->errors())->flatten()->first() ?? 'Invalid plan.', 422, ['errors' => $e->errors()]);
             }
+            if (($input['quality'] ?? 'full') === 'draft' && ! $one['draft']) return $this->fail('unsupported_mode_setting', 'Draft quality is unavailable for the resolved engine or demo-embed route.', 422);
+            $chosen['voice'] = ['type' => 'native_speech', 'clone_supported' => false];
+            $chosen['engine'] = $one['engine'];
+            $chosen['quality'] = $one['draft'] ? 'draft' : 'full';
+            $chosen['presenter_reference_used'] = $one['presenter_attached'];
             $total = $one['quote'];
             $takes = 1;
             $pricing = ['engine' => $one['engine'], 'plan_seconds' => $one['plan_seconds'], 'draft' => $one['draft'], 'takes' => 1, 'presenter_reference_used' => $one['presenter_attached']];
         }
 
         $allowance = $this->allowanceFor($workspaceId);
+        if (! $allowance['ugc_enabled']) return $this->fail('upgrade_required', 'UGC requires a paid plan.', 402);
+        if ($takes > $allowance['max_per_run']) return $this->fail('too_many_takes', 'A run supports at most ten takes. Reduce cast or variants.', 422);
         if ($allowance['remaining'] !== null && $takes > $allowance['remaining']) {
             return $this->fail('takes_exhausted',
                 "This run needs {$takes} take(s) and {$allowance['remaining']} remain this month on the {$allowance['plan']} plan.",
                 402, $allowance + ['takes_needed' => $takes]);
         }
 
-        $frozen = $input + ['__kind' => 'ugc', 'segments_normalised' => $segments, 'request_id' => (string) Str::uuid(), 'pricing' => $pricing];
+        $frozen = $input + ['__kind' => 'ugc', 'segments_normalised' => $segments, 'request_id' => (string) Str::uuid(), 'pricing' => $pricing, 'chosen' => $chosen];
         $quote = ApiQuote::query()->create([
             'id' => ApiQuote::newId(), 'workspace_id' => $workspaceId, 'api_key_id' => $request->attributes->get('api_key_id'),
             'created_by_user_id' => $user->getKey(), 'payload_json' => $frozen,
@@ -180,7 +279,7 @@ class UgcController extends DeveloperController
         return response()->json(['data' => [
             'quote_id' => $quote->getKey(), 'mode' => $input['mode'], 'format' => $input['format'],
             'credits' => ['min' => $total, 'max' => $total] + $pricing,
-            'script' => UgcPlan::script($segments), 'takes' => $takes, 'allowance' => $allowance,
+            'chosen' => $chosen, 'script' => UgcPlan::script($segments), 'takes' => $takes, 'allowance' => $allowance,
             'balance' => $balance, 'can_afford' => $balance >= $total, 'shortage' => max(0, $total - $balance),
             'expires_at' => $quote->expires_at->toIso8601String(),
         ], 'meta' => []], 201);
@@ -205,7 +304,7 @@ class UgcController extends DeveloperController
         /** @var ApiQuote $quote */
         $quote = $claim['quote'];
         if (array_key_exists('replay', $claim)) {
-            return $this->takesResponse($quote, 200);
+            return $this->takesResponse($request, $quote, 200);
         }
 
         $f = $quote->payload_json;
@@ -248,7 +347,7 @@ class UgcController extends DeveloperController
         }
         $quote->forceFill(['payload_json' => $f + ['project_ids' => $ids, 'run_id' => $result['run_id'] ?? null]])->save();
 
-        return $this->takesResponse($quote->fresh(), 202);
+        return $this->takesResponse($request, $quote->fresh(), 202);
     }
 
     /** Takes used and remaining this month, and Test Pass reservations. */
@@ -276,14 +375,12 @@ class UgcController extends DeveloperController
             'remaining' => $cap === null ? null : max(0, $cap - $used), 'max_per_run' => 10, 'max_seconds_per_take' => $tier === 'ugc_pass' ? 15 : 180];
     }
 
-    private function takesResponse(ApiQuote $quote, int $status): JsonResponse
+    private function takesResponse(Request $request, ApiQuote $quote, int $status): JsonResponse
     {
         $f = $quote->payload_json;
         $ids = $f['project_ids'] ?? ($quote->project_id ? [(int) $quote->project_id] : []);
-        $videos = Project::query()->whereIn('id', $ids)->orderBy('id')->get()->map(fn (Project $p) => [
-            'id' => $p->getKey(), 'status' => $p->status === 'failed' ? 'failed' : ($p->status === 'ready_for_review' ? 'exporting' : 'generating'),
-            'title' => $p->title, 'project_url' => $this->projectUrl($p),
-        ])->values();
+        $videos = Project::query()->where('workspace_id', $quote->workspace_id)->whereIn('id', $ids)->orderBy('id')->get()
+            ->map(fn (Project $p) => app(VideoController::class)->show($request, (int) $p->id)->getData(true)['data']['video'])->values();
 
         return response()->json(['data' => [
             'quote_id' => $quote->getKey(), 'run_id' => $f['run_id'] ?? null, 'videos' => $videos,

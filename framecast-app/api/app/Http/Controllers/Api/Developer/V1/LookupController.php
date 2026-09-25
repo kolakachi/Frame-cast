@@ -25,7 +25,7 @@ class LookupController extends DeveloperController
     public const LANGUAGES = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ar', 'hi', 'ja', 'zh'];
     public const SOURCE_TYPES = ['prompt', 'script', 'url', 'product_description', 'images'];
     public const VISUAL_MODES = ['stock', 'ai_images', 'ai_video', 'waveform'];
-    public const LIBRARY_TYPES = ['image', 'music', 'video'];
+    public const LIBRARY_TYPES = ['image', 'music', 'video', 'audio', 'sound'];
 
     /** @return list<string> */
     public static function visualStyles(): array
@@ -131,12 +131,12 @@ class LookupController extends DeveloperController
             'q' => ['nullable', 'string', 'max:120'],
         ]);
         $page = Asset::query()->where('workspace_id', $this->ws($request))->where('asset_type', $input['type'])
-            ->when(! empty($input['q']), fn ($q) => $q->where('title', 'ilike', '%'.$input['q'].'%'))
+            ->when(! empty($input['q']), fn ($q) => $q->whereLike('title', '%'.$input['q'].'%'))
             ->orderByDesc('id')->paginate(50, ['*'], 'page', (int) ($input['page'] ?? 1));
         $rows = collect($page->items())->map(fn (Asset $a) => [
             'id' => $a->getKey(), 'title' => $a->title, 'type' => $a->asset_type,
             'duration_seconds' => $a->duration_seconds !== null ? round((float) $a->duration_seconds, 1) : null,
-            'mime_type' => $a->mime_type, 'created_at' => $a->created_at?->toIso8601String(),
+            'transcription_status' => $a->transcription_status, 'mime_type' => $a->mime_type, 'created_at' => $a->created_at?->toIso8601String(),
         ])->values();
 
         return response()->json(['data' => ['assets' => $rows], 'meta' => ['page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total()]]);

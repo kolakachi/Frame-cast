@@ -142,7 +142,7 @@ class CharacterController extends Controller
         )));
         if (! empty($allIds)) {
             $ownedCount = Asset::query()->whereIn('id', $allIds)
-                ->where('workspace_id', $user->workspace_id)->count();
+                ->where('workspace_id', $user->workspace_id)->where('asset_type', 'image')->count();
             if ($ownedCount !== count($allIds)) {
                 return $this->error('invalid_asset', 'One or more reference images do not belong to this workspace.', 422);
             }
@@ -242,6 +242,7 @@ class CharacterController extends Controller
         }
 
         $validated = $request->validate([
+            'consent' => ['sometimes', 'boolean'],
             'name'                  => ['sometimes', 'string', 'max:120'],
             'description'           => ['sometimes', 'nullable', 'string', 'max:2000'],
             'reference_asset_id'    => ['sometimes', 'nullable', 'integer'],
@@ -258,7 +259,7 @@ class CharacterController extends Controller
         )));
         if (! empty($allIds)) {
             $ownedCount = Asset::query()->whereIn('id', $allIds)
-                ->where('workspace_id', $user->workspace_id)->count();
+                ->where('workspace_id', $user->workspace_id)->where('asset_type', 'image')->count();
             if ($ownedCount !== count($allIds)) {
                 return $this->error('invalid_asset', 'One or more reference images do not belong to this workspace.', 422);
             }
@@ -266,9 +267,8 @@ class CharacterController extends Controller
         // If only ids array changed, keep primary as the first one when not explicitly set.
         if (array_key_exists('reference_asset_ids', $validated)
             && ! array_key_exists('reference_asset_id', $validated)
-            && ! empty($validated['reference_asset_ids'])
         ) {
-            $validated['reference_asset_id'] = (int) $validated['reference_asset_ids'][0];
+            $validated['reference_asset_id'] = isset($validated['reference_asset_ids'][0]) ? (int) $validated['reference_asset_ids'][0] : null;
         }
 
         if (array_key_exists('reference_asset_id', $validated) && $validated['reference_asset_id'] !== null) {
@@ -282,11 +282,18 @@ class CharacterController extends Controller
             }
         }
 
+        $consent = ! empty($validated['consent']);
+        unset($validated['consent']);
         $character->fill($validated);
+        if ($character->isDirty(['reference_asset_id', 'reference_asset_ids']) && ($character->reference_asset_id || $character->reference_asset_ids)) {
+            if (! $consent) return $this->error('consent_required', 'Confirm rights and consent for the updated reference images.', 422);
+            $character->consent_acknowledged_at = now();
+        }
+
         // The cached casting sheet was read off the old face/description —
         // stale after either changes, and "adjust and preview again" must
         // actually re-read.
-        if ($character->isDirty(['reference_asset_id', 'description'])) {
+        if ($character->isDirty(['reference_asset_id', 'reference_asset_ids', 'description'])) {
             $character->appearance_json = null;
         }
         $character->save();

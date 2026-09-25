@@ -116,6 +116,10 @@ class VideoController extends DeveloperController
             'id' => $project->getKey(),
             'status' => $status,
             'title' => $project->title,
+            'export_id' => $latest?->id,
+            'export_status' => $latest?->status,
+            'source_fingerprint' => $latest?->source_fingerprint,
+            'freshness' => $latest ? app(\App\Services\Export\ExportFreshnessService::class)->check($project, $latest) : null,
             'stage' => [
                 'current' => $status === 'exporting' ? 'export' : ($progress['current_stage'] ?? null),
                 'message' => $status === 'exporting' ? 'Rendering the final video.' : ($progress['last_message'] ?? null),
@@ -123,7 +127,7 @@ class VideoController extends DeveloperController
             ],
             'failure' => $failure,
             'credits' => ['authorized_max' => $this->authorizedMax($project), 'spent' => $this->spent($project)],
-            'retry_after_seconds' => in_array($status, ['completed', 'failed'], true) ? null : 15,
+            'retry_after_seconds' => in_array($status, ['completed', 'failed', 'needs_export'], true) ? null : 15,
             'project_url' => $this->projectUrl($project),
         ]], 'meta' => []]);
     }
@@ -137,7 +141,20 @@ class VideoController extends DeveloperController
             return $this->fail('not_found', 'Video not found.', 404);
         }
 
-        $export = ExportJob::query()->where('project_id', $project->getKey())->where('status', 'completed')->latest('id')->first();
+        $input = $this->validated($request, ['export_id' => ['nullable', 'integer', 'min:1'], 'allow_stale' => ['nullable', 'boolean']]);
+        $latest = $this->latestExport($project);
+        $export = isset($input['export_id'])
+            ? ExportJob::query()->where('project_id', $project->getKey())->find($input['export_id']) : $latest;
+        if ($export && $export->status !== 'completed') {
+            return $this->fail('not_ready', 'The selected export is not completed. Poll this export rather than an older file.', 409,
+                ['export_id' => $export->id, 'status' => $export->status]);
+        }
+        $freshness = $export ? app(\App\Services\Export\ExportFreshnessService::class)->check($project, $export) : null;
+        $older = $export && $latest && $export->id !== $latest->id;
+        if ($export && ($freshness['is_stale'] || $older) && !(isset($input['export_id']) && ($input['allow_stale'] ?? false))) {
+            return $this->fail('stale_export', 'This is an older export. Create a new export, or explicitly select its export_id and allow_stale after the user agrees.', 409,
+                ['export_id' => $export->id, 'latest_export_id' => $latest?->id, 'freshness' => $freshness]);
+        }
         $asset = $export?->output_asset_id ? Asset::query()->whereKey($export->output_asset_id)->where('workspace_id', $project->workspace_id)->first() : null;
         if (! $export || ! $asset) {
             $status = $this->status($project, $this->latestExport($project));
@@ -156,6 +173,9 @@ class VideoController extends DeveloperController
             // Nothing is made public to hand it over.
             'download_url' => URL::temporarySignedRoute('media.assets.content', $expires, ['assetId' => $asset->getKey(), 'download' => 1]),
             'download_expires_at' => $expires->toIso8601String(),
+            'export_id' => $export->id,
+            'source_fingerprint' => $export->source_fingerprint,
+            'freshness' => $freshness,
             'file_name' => $export->file_name,
             'aspect_ratio' => $export->aspect_ratio,
             'duration_seconds' => $asset->duration_seconds !== null ? round((float) $asset->duration_seconds, 1) : null,
@@ -193,7 +213,7 @@ class VideoController extends DeveloperController
     private function status(Project $project, ?ExportJob $latest): string
     {
         if ($latest?->status === 'completed') {
-            return 'completed';
+            return app(\App\Services\Export\ExportFreshnessService::class)->check($project, $latest)['is_stale'] ? 'needs_export' : 'completed';
         }
         if ($project->status === 'failed' || $latest?->status === 'failed') {
             return 'failed';

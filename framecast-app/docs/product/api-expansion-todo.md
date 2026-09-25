@@ -1,5 +1,13 @@
 # API/MCP expansion — phase tracker
 
+> **25 September Phase A correction:** the historical completion notes below do
+> not establish current release readiness. Spending reservations, attribution,
+> revision fences, stale-export guards and recovery are implemented and tested
+> locally in [the A1–A8 backlog](api-mcp-gap-backlog.md), behind a disabled
+> accounting flag. See [verification and rollout](api-phase-a-verification.md).
+> Production migration/enablement and connector verification remain required.
+
+
 Created 25 September 2026. The customer is contacted only when every phase
 below is shipped. Order: 1 → 3 → 2 → 4. Detailed items live in each scope
 doc and in [api-access-todo.md](api-access-todo.md); this page is the
@@ -12,7 +20,7 @@ one-glance status.
 | 2. Characters | [api-phase2-characters.md](api-phase2-characters.md) | **Built** (25 Sep): delegates to the app's character controller | ~2 days |
 | 4. Editor operations | [api-phase4-editor-operations.md](api-phase4-editor-operations.md) | **Built** (25 Sep): read, schema, proposals with revision precondition, 15 operations, export, retry — all delegated to the editor's controllers | 2–3 weeks |
 | 5. Assistant delegation | Cruise Control as a bounded planner | **Built and live** (25 Sep, `9b26301`): `ask_wyvstudio_assistant` → `apply_assistant_plan`; prod serves 31 tools, Cruise registry lists 19 | — |
-| Outreach | send the customer "Connect an AI assistant" | **Ready** | — |
+| Outreach | send the customer "Connect an AI assistant" | **Gated on rollout and connector verification** | — |
 
 ## Decisions needed
 
@@ -23,7 +31,7 @@ one-glance status.
 - [x] Phase 4: proposals are always free; they are structured, not
       model-planned. (Decided 25 Sep.)
 
-## Follow-ups from the build (not blocking outreach)
+## Follow-ups from the build (release implications tracked in A1–A8/F)
 
 - [ ] Per-family parity tests for editor operations against dashboard fixtures
       (today: delegation to the editor's controllers, plus one API test per family).
@@ -73,3 +81,36 @@ one-glance status.
 - [x] Owner test of the full surface on production (25 Sep: via ChatGPT — lookups by name, UGC plan from the real planner, consent gate, character #116 created; via the live API on project #226 — read, schema, a two-change proposal at 0cr, apply, export #166 rendered to a new file, exports listed)
 - [ ] Contact the customer; record their first run (closes A4). **Ready: send the "Connect an AI assistant" page.**
 - [ ] Submit to the ChatGPT app directory
+
+### Phase C — local completion (25 September 2026)
+
+- [x] Sample uploads and status; audio/SFX discovery.
+- [x] Consent-bound zero-shot clone registration, preview and reusable profiles.
+- [x] Approved audio-only or audio-and-script narration attachment.
+- [x] Consent on character reference changes; native checkbox reset for new files.
+- [x] MCP 1.5.0, OpenAPI entries, regression/transport coverage.
+- [ ] Deploy voice-consent migration and API/MCP, then run authenticated media smoke checks.
+
+See [Phase C workflow and limits](api-media-voice-guide.md). This local completion
+does not change the historical production entries above.
+
+### Phase D — local completion (25 September 2026)
+
+- [x] Mode-aware UGC inputs and resolved quote choices; unsupported fidelity/clone claims removed.
+- [x] Reference analysis and planning context via API/MCP.
+- [x] Quoted, consent-bound presenter previews with durable replay.
+- [x] UGC lifecycle fixtures and narration readiness/rerender checks.
+- [x] MCP 1.6.0, contract tests and workflow documentation.
+- [ ] Deploy and run separately authorized provider smoke checks.
+
+See [Phase D guide](api-ugc-mcp-guide.md) for tested boundaries.
+
+## Phase E — current delivery scope (local, not deployed)
+
+Delivery is an explicit authenticated app handoff, not programmatic publishing.
+The delivery preflight validates revision and export freshness; the user confirms
+recipient/destination and rechecks the version in the app. Assistant scheduler
+navigation is preserved and never reported as a completed post. Destructive
+actions, preset authoring and assistant UI preferences remain app-only.
+See [the Phase E contract](api-delivery-mcp-guide.md) for the current scope; this
+supersedes any earlier wording implying full delivery or deletion API parity.

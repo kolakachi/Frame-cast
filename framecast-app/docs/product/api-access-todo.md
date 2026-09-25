@@ -1,5 +1,13 @@
 # API and MCP implementation TODO
 
+> **25 September Phase A correction:** the historical completion notes below do
+> not establish current release readiness. Spending reservations, attribution,
+> revision fences, stale-export guards and recovery are implemented and tested
+> locally in [the A1–A8 backlog](api-mcp-gap-backlog.md), behind a disabled
+> accounting flag. See [verification and rollout](api-phase-a-verification.md).
+> Production migration/enablement and connector verification remain required.
+
+
 Created 25 September 2026. Tracks [API access plan v1.3](api-access-plan.md).
 
 The plan defines behavior; this checklist tracks delivery. No implementation or

@@ -72,7 +72,7 @@ trait BuildsDeveloperSchema
         });
         Schema::create('assets', function (Blueprint $t) {
             $t->id();
-            foreach (['workspace_id', 'asset_type', 'storage_url', 'duration_seconds', 'mime_type', 'file_name', 'title'] as $c) $t->text($c)->nullable();
+            foreach (array_unique(array_merge((new \App\Models\Asset)->getFillable(), ['file_name'])) as $c) $t->text($c)->nullable();
             $t->timestamps();
         });
         foreach ([\App\Models\BrandKit::class, \App\Models\Channel::class, \App\Models\Niche::class, \App\Models\CaptionPreset::class, \App\Models\Character::class] as $model) {
@@ -101,9 +101,12 @@ trait BuildsDeveloperSchema
             $t->id();
             $t->unsignedBigInteger('workspace_id')->nullable();
             foreach (['provider', 'name', 'language', 'accent', 'gender_label', 'voice_type', 'provider_voice_key', 'status'] as $c) $t->string($c)->nullable();
+            $t->unsignedBigInteger('source_asset_id')->nullable();
+            $t->text('preview_url')->nullable();
             $t->boolean('is_cloned')->default(false);
             $t->timestamps();
         });
+        (require database_path('migrations/2026_09_25_220000_add_voice_consent.php'))->up();
         Schema::create('credit_ledger', function (Blueprint $t) {
             $t->id();
             foreach (['workspace_id', 'spent_by_workspace_id', 'user_id', 'project_id', 'scene_id'] as $c) $t->unsignedBigInteger($c)->nullable();

@@ -1,6 +1,9 @@
 <?php
 
 return [
+    // Enable only after migration and queue lifecycle verification.
+    'recovery_attention_minutes' => (int) env('DEVELOPER_RECOVERY_ATTENTION_MINUTES', 30),
+    'operation_accounting' => (bool) env('DEVELOPER_OPERATION_ACCOUNTING', false),
     /*
     |--------------------------------------------------------------------------
     | Developer API limits

@@ -52,6 +52,7 @@ class CharacterController extends DeveloperController
     public function update(Request $request, int $characterId): JsonResponse
     {
         $input = $this->validated($request, [
+            'consent' => ['nullable', 'boolean'],
             'name' => ['nullable', 'string', 'max:120'],
             'description' => ['nullable', 'string', 'max:2000'],
             'reference_asset_ids' => ['nullable', 'array', 'max:8'],
@@ -113,18 +114,13 @@ class CharacterController extends DeveloperController
         if ($idempotencyKey === null) {
             return $this->fail('idempotency_key_required', 'Send an idempotency_key (or Idempotency-Key header).', 422);
         }
-        $claim = $this->claimQuote((string) $input['quote_id'], $workspaceId, $idempotencyKey, $request->attributes->get('api_key_id'), 'character_image', $this->credits);
+        $claim = $this->claimQuote((string) $input['quote_id'], $workspaceId, $idempotencyKey, $request->attributes->get('api_key_id'), 'character_image', $this->credits, ['character_id' => $characterId]);
         if ($claim instanceof JsonResponse) {
             return $claim;
         }
         /** @var ApiQuote $quote */
         $quote = $claim['quote'];
         $f = $quote->payload_json;
-        if ((int) $f['character_id'] !== $characterId) {
-            $this->releaseQuote($quote);
-
-            return $this->fail('quote_kind_mismatch', 'This quote is for a different character.', 409);
-        }
         if (array_key_exists('replay', $claim)) {
             return $this->generationResponse($request, (int) ($f['generation_id'] ?? 0), 200);
         }

@@ -450,3 +450,13 @@ Confirm before implementation of the pilot contract:
 Keep current plan gating and credit rates unless product decisions change them.
 Do not announce API/MCP availability, promise activation benefits or issue a
 customer key merely because the base authentication code has been committed.
+
+## Phase E — current delivery scope (local, not deployed)
+
+Delivery is an explicit authenticated app handoff, not programmatic publishing.
+The delivery preflight validates revision and export freshness; the user confirms
+recipient/destination and rechecks the version in the app. Assistant scheduler
+navigation is preserved and never reported as a completed post. Destructive
+actions, preset authoring and assistant UI preferences remain app-only.
+See [the Phase E contract](api-delivery-mcp-guide.md) for the current scope; this
+supersedes any earlier wording implying full delivery or deletion API parity.

@@ -138,6 +138,14 @@ class VoiceProfileController extends Controller
      */
     public function clone(Request $request): JsonResponse
     {
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($request) {
+            \App\Models\Workspace::query()->whereKey($request->user()->workspace_id)->lockForUpdate()->firstOrFail();
+            return $this->registerClone($request);
+        });
+    }
+
+    private function registerClone(Request $request): JsonResponse
+    {
         /** @var User $user */
         $user = $request->user();
 

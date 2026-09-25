@@ -19,6 +19,101 @@ tags:
   - name: videos
     description: Quote, create, watch and fetch videos.
 paths:
+  /videos/{videoId}/delivery/handoff:
+    post:
+      operationId: prepareDelivery
+      summary: Validate an export and hand off delivery confirmation to the app
+      description: Does not publish, send email, create a share link or schedule a post. The app does not automatically select or pin the reviewed export; verify it again before confirming delivery.
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, revision, export_id]
+              properties:
+                action: { type: string, enum: [public_share, approval_request, schedule] }
+                revision: { type: string }
+                export_id: { type: integer, minimum: 1 }
+                allow_stale: { type: boolean, default: false, description: Explicit acknowledgement of an older or stale export. }
+      responses:
+        '200':
+          description: Handoff required. external_action_completed is false; app_url and confirmation_required_in_app describe the next step.
+        '402':
+          description: Scheduling unavailable on this plan.
+        '403':
+          description: Caller cannot perform this workspace action.
+        '404':
+          description: Project not found in the caller workspace.
+        '409':
+          description: Revision conflict, invalid export, output not ready or stale export without acknowledgement.
+        '422':
+          description: Invalid input.
+  /ugc/reference:
+    post:
+      operationId: analyzeUgcReference
+      summary: Read owned video or audio into UGC planning shape and beats
+      tags: [videos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asset_id]
+              properties:
+                asset_id: { type: integer, minimum: 1 }
+      responses:
+        "200": { description: Reference shape and beats for the planner; not a restyle contract }
+        "422": { description: Unusable or inaccessible reference }
+  /ugc/characters/{characterId}/preview/quotes:
+    parameters:
+      - { in: path, name: characterId, required: true, schema: { type: integer } }
+    post:
+      operationId: quotePresenterPreview
+      summary: Quote an illustrative presenter portrait with likeness consent
+      tags: [videos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [consent]
+              properties:
+                consent: { type: boolean, const: true }
+      responses:
+        "201": { description: Quote and price; no guarantee of final video identity }
+        "422": { description: Consent required }
+        "404": { description: Character inaccessible }
+  /ugc/characters/{characterId}/preview:
+    parameters:
+      - { in: path, name: characterId, required: true, schema: { type: integer } }
+    post:
+      operationId: createPresenterPreview
+      summary: Generate or replay the approved presenter portrait
+      tags: [videos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quote_id, idempotency_key]
+              properties:
+                quote_id: { type: string, maxLength: 32 }
+                idempotency_key: { type: string, maxLength: 128 }
+      responses:
+        "200": { description: Preview asset and fresh signed URL }
+        "202": { description: Original request still unresolved; do not replace it }
+        "402": { description: Insufficient balance or spending allowance }
+        "409": { description: Character or quote changed }
+        "410": { description: Quote expired or prior preview deleted }
   /capabilities:
     get:
       operationId: getCapabilities
@@ -44,6 +139,99 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/VoicesResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: saveVoice
+      summary: Save or reuse an accessible workspace voice profile
+      tags: [videos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, voice_id]
+              properties:
+                name: { type: string, maxLength: 80 }
+                voice_id: { type: string, maxLength: 150 }
+      responses:
+        "200": { description: Saved or reused voice; string id and numeric voice_profile_id }
+        "404": { description: Voice not accessible }
+  /voices/clone:
+    post:
+      operationId: cloneVoice
+      summary: Register a zero-shot voice sample with consent and plan allowance
+      tags: [videos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, source_asset_id, consent]
+              properties:
+                name: { type: string, maxLength: 80 }
+                source_asset_id: { type: integer }
+                consent: { type: boolean, const: true }
+      responses:
+        "201": { description: Active voice registered synchronously; no training job }
+        "200": { description: Existing clone reused for the original source asset }
+        "402": { description: Plan clone allowance reached }
+        "422": { description: Invalid sample, missing consent or sample conversion failed }
+  /voices/preview:
+    post:
+      operationId: previewVoice
+      summary: Fixed cached preview; cloned voices play the original source sample
+      tags: [videos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [voice_id]
+              properties:
+                voice_id: { type: string, maxLength: 150 }
+      responses:
+        "200": { description: preview_url and preview_kind (source_sample or synthetic_sample); no customer credit debit }
+        "404": { description: Voice not accessible }
+        "422": { description: Preview failed }
+  /assets:
+    post:
+      operationId: uploadAsset
+      summary: Upload workspace media; MIME checked from bytes; no remote URL imports
+      tags: [videos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, asset_type, content_base64]
+              properties:
+                title: { type: string, maxLength: 255 }
+                asset_type: { type: string, enum: [image, audio, music, sound, video] }
+                content_base64: { type: string, maxLength: 11184812, description: At most 8 MiB decoded }
+          multipart/form-data:
+            schema:
+              type: object
+              required: [title, asset_type, asset_file]
+              properties:
+                title: { type: string, maxLength: 255 }
+                asset_type: { type: string, enum: [image, audio, music, sound, video] }
+                asset_file: { type: string, format: binary, description: At most 100 MiB; proxy/PHP limits also apply }
+      responses:
+        "201": { description: "Asset created; poll GET /assets/{id} for transcription status" }
+        "422": { description: Invalid type, size or bytes }
+  /assets/{assetId}:
+    get:
+      operationId: getAsset
+      summary: Read an owned asset and transcription status
+      tags: [videos]
+      parameters:
+        - { in: path, name: assetId, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Asset with URL, transcript and audio attachment readiness }
+        "404": { description: Asset not in this workspace }
   /options:
     get: { operationId: getOptions, summary: Option keys for quotes, tags: [videos], responses: { "200": { description: OK } } }
   /brand-kits:
@@ -62,7 +250,7 @@ paths:
       summary: Library assets by type
       tags: [videos]
       parameters:
-        - { in: query, name: type, required: true, schema: { type: string, enum: [image, music, video] } }
+        - { in: query, name: type, required: true, schema: { type: string, enum: [image, music, video, audio, sound] } }
         - { in: query, name: page, schema: { type: integer, minimum: 1 } }
         - { in: query, name: q, schema: { type: string, maxLength: 120 } }
       responses: { "200": { description: OK } }

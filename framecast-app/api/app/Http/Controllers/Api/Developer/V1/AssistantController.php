@@ -30,6 +30,12 @@ class AssistantController extends DeveloperController
 {
     use ClaimsQuotes;
 
+    // Explicit public boundary: new dashboard tools are not automatically API tools.
+    private const API_TOOLS = ['regenerate_image', 'animate_scene', 'make_spokesperson', 'add_scene', 'lock_subject',
+        'change_music', 'update_scene_script', 'reorder_scene', 'rerecord_voice', 'set_audiogram_visual',
+        'update_captions', 'apply_brand_kit', 'find_stock_video', 'find_stock_image', 'pick_library_music',
+        'swap_visual_from_library', 'add_sound_effect', 'export_video', 'schedule_post'];
+
     public function __construct(private readonly CreditService $credits, private readonly CruiseToolRegistry $registry)
     {
     }
@@ -39,7 +45,8 @@ class AssistantController extends DeveloperController
     {
         $tools = [];
         foreach ($this->registry->all() as $tool) {
-            $tools[] = ['name' => $tool->name(), 'description' => $tool->description(), 'section' => $tool->affectedSection(), 'confirmation' => $tool->confirmationClass()];
+            if (! in_array($tool->name(), self::API_TOOLS, true)) continue;
+            $tools[] = ['name' => $tool->name(), 'description' => $tool->description(), 'section' => $tool->affectedSection(), 'confirmation' => $tool->confirmationClass(), 'execution' => $tool->name() === 'schedule_post' ? 'app_handoff' : 'api_action'];
         }
 
         return response()->json(['data' => ['tools' => $tools], 'meta' => ['count' => count($tools)]]);
@@ -73,10 +80,15 @@ class AssistantController extends DeveloperController
         $actions = [];
         $total = 0;
         foreach ((array) ($out['actions'] ?? []) as $i => $a) {
+            if (! in_array($a['tool'], self::API_TOOLS, true)) return $this->fail('app_only_action', 'This assistant action is available only in the app.', 422);
             $cost = (int) ($a['estimated_cost'] ?? 0);
+            if ($cost > 0 && $actions !== []) {
+                return $this->fail('dependent_changes_require_staging', 'Apply one assistant action at a time when later actions spend credits. Replan against the completed result.', 422);
+            }
             $total += $cost;
-            $actions[] = ['index' => $i, 'tool' => $a['tool'], 'params' => $a['params'] ?? [], 'what_changes' => $a['diff_lines'] ?? [],
-                'section' => $a['affected_section'] ?? null, 'credits_max' => $cost];
+            $actions[] = ['index' => $i, 'tool' => $a['tool'], 'params' => $a['params'] ?? [], 'what_changes' => $a['tool'] === 'schedule_post' ? ['Open the app scheduler; confirm export, account and time there. No post is scheduled by this action.'] : ($a['diff_lines'] ?? []),
+                'section' => $a['affected_section'] ?? null, 'credits_max' => $cost,
+                'execution' => $a['tool'] === 'schedule_post' ? 'app_handoff' : 'api_action'];
         }
 
         if ($actions === []) {
@@ -93,7 +105,7 @@ class AssistantController extends DeveloperController
         $balance = $this->credits->balance((int) $user->workspace_id);
 
         return response()->json(['data' => [
-            'plan_id' => $quote->getKey(), 'revision' => $revision, 'reply' => $out['reply_to_user'] ?? '', 'actions' => $actions,
+            'plan_id' => $quote->getKey(), 'revision' => $revision, 'reply' => in_array('schedule_post', array_column($actions, 'tool'), true) ? 'This plan includes a scheduling handoff. Nothing has been scheduled; choose the destination and confirm in the app.' : ($out['reply_to_user'] ?? ''), 'actions' => $actions,
             'credits' => ['max' => $total], 'balance' => $balance, 'can_afford' => $balance >= $total,
             'expires_at' => $quote->expires_at->toIso8601String(),
         ], 'meta' => []], 201);
@@ -112,18 +124,16 @@ class AssistantController extends DeveloperController
         $input = $this->validated($request, ['idempotency_key' => ['nullable', 'string', 'max:128'], 'only' => ['nullable', 'array'], 'only.*' => ['integer', 'min:0']]);
         $idempotencyKey = $this->idempotencyKeyFrom($request, $input) ?? $planId;
 
-        $claim = $this->claimQuote($planId, $workspaceId, $idempotencyKey, $request->attributes->get('api_key_id'), 'assistant_plan', $this->credits);
+        $plan = ApiQuote::query()->whereKey($planId)->where('workspace_id', $workspaceId)->first();
+        $selection = isset($input['only']) ? $input['only'] : array_column($plan?->payload_json['actions'] ?? [], 'index');
+
+        $claim = $this->claimQuote($planId, $workspaceId, $idempotencyKey, $request->attributes->get('api_key_id'), 'assistant_plan', $this->credits, ['project_id' => $videoId], $selection);
         if ($claim instanceof JsonResponse) {
             return $claim;
         }
         /** @var ApiQuote $quote */
         $quote = $claim['quote'];
         $f = $quote->payload_json;
-        if ((int) $f['project_id'] !== $videoId) {
-            $this->releaseQuote($quote);
-
-            return $this->fail('quote_kind_mismatch', 'This plan is for a different video.', 409);
-        }
         if (array_key_exists('replay', $claim)) {
             return response()->json(['data' => $f['result'] ?? ['applied' => []], 'meta' => []], 200);
         }
@@ -140,6 +150,15 @@ class AssistantController extends DeveloperController
                 $results[] = ['index' => $a['index'], 'tool' => $a['tool'], 'ok' => null, 'skipped' => true];
                 continue;
             }
+            if (! in_array($a['tool'], self::API_TOOLS, true)) {
+                $results[] = ['index' => $a['index'], 'tool' => $a['tool'], 'ok' => false, 'error' => ['code' => 'app_only_action', 'message' => 'Use the app for this action.']];
+                continue;
+            }
+            if ($a['tool'] === 'schedule_post' && ! $this->credits->limitFor($workspaceId, 'social_publishing')) {
+                $results[] = ['index' => $a['index'], 'tool' => $a['tool'], 'ok' => false, 'error' => ['code' => 'upgrade_required', 'message' => 'Social publishing is not available on this plan.']];
+                continue;
+            }
+            $this->checkpoint($quote, $results, (int) $a['index']);
             $out = EditOperations::run(fn () => app(CruiseControlController::class)->apply(EditOperations::inner($request, [
                 'project_id' => $project->getKey(), 'tool' => $a['tool'], 'params' => $a['params'], 'expected_credits' => (int) $a['credits_max'],
                 'message_id' => $f['message_id'] ?? null, 'action_index' => (int) $a['index'],
@@ -148,13 +167,25 @@ class AssistantController extends DeveloperController
                 $err = $out->getData(true)['error'] ?? [];
                 $results[] = ['index' => $a['index'], 'tool' => $a['tool'], 'ok' => false, 'status' => $out->getStatusCode(), 'error' => ['code' => $err['code'] ?? 'refused', 'message' => $err['message'] ?? '']];
             } else {
-                $results[] = ['index' => $a['index'], 'tool' => $a['tool'], 'ok' => true, 'summary' => $out['summary'] ?? null, 'credits_spent' => $out['credits_spent'] ?? 0, 'affected_scene_id' => $out['affected_scene_id'] ?? null];
+                if (($out['navigate']['type'] ?? null) === 'schedule' || $a['tool'] === 'schedule_post') {
+                    $handoff = DeliveryController::describe($project, 'schedule') + ['version_checked' => false];
+                    $results[] = ['index' => $a['index'], 'tool' => $a['tool'], 'ok' => true,
+                        'outcome' => 'handoff_required', 'external_action_completed' => false,
+                        'summary' => 'Open the app to select a destination and confirm scheduling. Nothing was scheduled.',
+                        'credits_spent' => 0, 'navigate' => $out['navigate'] ?? ['type' => 'schedule'], 'handoff' => $handoff];
+                } else {
+                    $results[] = ['index' => $a['index'], 'tool' => $a['tool'], 'ok' => true,
+                        'summary' => $out['summary'] ?? null, 'credits_spent' => $out['credits_spent'] ?? 0, 'affected_scene_id' => $out['affected_scene_id'] ?? null];
+                }
             }
+            $this->checkpoint($quote, $results, null);
         }
+        $this->checkpoint($quote, $results, null);
         $project = $project->fresh();
         $result = ['plan_id' => $quote->getKey(), 'revision' => EditorController::revision($project), 'applied' => $results,
+            'handoffs_required' => count(array_filter($results, fn ($r) => ($r['outcome'] ?? null) === 'handoff_required')),
             'failed' => count(array_filter($results, fn ($r) => $r['ok'] === false)), 'credits_spent' => array_sum(array_map(fn ($r) => (int) ($r['credits_spent'] ?? 0), $results))];
-        $quote->forceFill(['project_id' => $project->getKey(), 'payload_json' => $f + ['result' => $result]])->save();
+        $quote->forceFill(['project_id' => $project->getKey(), 'payload_json' => $quote->payload_json + ['result' => $result]])->save();
 
         return response()->json(['data' => $result, 'meta' => []]);
     }

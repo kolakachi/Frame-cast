@@ -122,7 +122,7 @@ class BulkAnimateController extends Controller
             }
 
             $cost = $isSpokesperson
-                ? CreditService::spokespersonCost($this->voiceoverSeconds($scene))
+                ? CreditService::spokespersonCost($this->voiceoverSeconds($scene), data_get($scene->image_generation_settings_json, 'lipsync_engine'))
                 : CreditService::animationCost($validated['tier'], $quality, $durationSeconds);
 
             // Animatable but not picked. Reported separately from "can't" so
@@ -143,6 +143,7 @@ class BulkAnimateController extends Controller
                 'order'           => (int) $scene->scene_order,
                 'cost'            => $cost,
                 'source_still_id' => (int) $sceneSource->getKey(),
+                'lipsync_engine' => $isSpokesperson ? (data_get($scene->image_generation_settings_json, 'lipsync_engine') ?: config('services.lipsync.default')) : null,
                 // This scene had its own image and is losing it to the batch.
                 'replaces_own'      => $appliedStill !== null
                     && $ownStill !== null
@@ -356,6 +357,7 @@ class BulkAnimateController extends Controller
             return 'No image anywhere to animate from';
         }
 
+        if ($isSpokesperson && (data_get($scene->voice_settings_json, 'is_outdated') || data_get($scene->voice_settings_json, 'regenerating'))) return 'Narration is outdated or still generating';
         if ($isSpokesperson && $this->voiceoverSeconds($scene) <= 0.0) {
             return 'No voiceover — the spokesperson lip-syncs to the audio';
         }

@@ -3,7 +3,7 @@
 // POST /mcp   Streamable HTTP, stateless: a fresh McpServer per request.
 // GET  /healthz
 //
-// Five tools, each a one-to-one wrapper over /api/developer/v1. This process
+// Tools, each a bounded wrapper over /api/developer/v1. This process
 // holds no credentials of its own. The client's bearer token (a WyvStudio API
 // key, wyv_live_…) is verified by asking the API and then forwarded on every
 // call, so authorization, entitlement, quotas and spend limits all live in
@@ -25,7 +25,7 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.2.0'
+const VERSION = process.env.MCP_VERSION || '1.7.0'
 // OAuth discovery. The issuer is the WyvStudio app origin (Laravel serves the
 // authorization-server document there); this process serves the
 // protected-resource document for the MCP URL. Both unset → bearer keys only.
@@ -49,7 +49,7 @@ async function api(token, method, path, body) {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    signal: AbortSignal.timeout(path === '/ugc/reference' || /\/preview$/.test(path) ? 180_000 : API_TIMEOUT_MS),
   })
   let json = null
   try { json = await res.json() } catch { json = null }
@@ -116,7 +116,8 @@ function fail(status, json) {
   const lines = [`${error.code}: ${error.message}`]
   if (error.context) lines.push(JSON.stringify(error.context))
   if (status === 429) lines.push('Wait, then retry. Do not retry in a tight loop.')
-  if (error.code === 'quote_expired' || error.code === 'quote_consumed') lines.push('Call estimate_video again for a fresh quote and show it to the user before creating.')
+  if (error.code === 'quote_expired') lines.push('Call estimate_video again for a fresh quote and show it to the user before creating.')
+  if (error.code === 'quote_consumed') lines.push('Call get_operation with the original quote or plan id. Do not create replacement paid work.')
   if (error.code === 'insufficient_credits') lines.push('The user needs to add credits in the WyvStudio dashboard before this video can be made.')
   return { isError: true, content: [{ type: 'text', text: lines.join('\n') }], structuredContent: { error, status } }
 }
@@ -133,7 +134,14 @@ function logCall(token, tool, status, ms, errorCode) {
 
 async function call(token, method, path, body, tool = path) {
   const started = Date.now()
-  const { status, json } = await api(token, method, path, body)
+  let response
+  try {
+    response = await api(token, method, path, body)
+  } catch {
+    logCall(token, tool, 0, Date.now() - started, 'transport_uncertain')
+    return fail(503, { error: { code: 'transport_uncertain', message: 'The connection ended without a confirmed result. The server may still be working. For a paid action, call get_operation with the original quote/plan id or retry the identical request with the same idempotency key. Never obtain a replacement quote just because this call timed out.' } })
+  }
+  const { status, json } = response
   logCall(token, tool, status, Date.now() - started, status >= 300 ? json?.error?.code : undefined)
   return status >= 200 && status < 300 ? ok(json.data) : fail(status, json)
 }
@@ -164,7 +172,7 @@ function buildServer(token) {
     ['list_brand_kits', "The workspace's brand kits (colours, fonts, default caption style and voice). Pass an id as brand_kit_id.", '/brand-kits'],
     ['list_channels', "The workspace's channels (defaults for language, platforms, voice, captions, brand kit). Pass an id as channel_id; its defaults apply.", '/channels'],
     ['list_niches', 'Content niches with default style, tone and music mood. Pass an id as niche_id; its defaults fill anything you leave out.', '/niches'],
-    ['list_caption_presets', "The workspace's saved caption presets (font, colours, position, animation). Informational until caption editing ships.", '/caption-presets'],
+    ['list_caption_presets', "The workspace's saved caption presets (font, colours, position, animation). Use with the editor caption settings.", '/caption-presets'],
     ['list_characters', "The workspace's reusable AI characters. Pass an id as character_id to feature one in the video.", '/characters'],
   ]
   for (const [name, description, path] of lookups) {
@@ -175,9 +183,9 @@ function buildServer(token) {
     'list_library',
     {
       title: 'List library assets',
-      description: "The workspace's uploaded assets by type: images (for source_type images or as references), music tracks (for music_asset_id), videos (footage and demo clips). 50 per page; use q to search titles.",
+      description: "The workspace's uploaded assets by type: images (for source_type images or as references), music tracks (for music_asset_id), videos (footage and demo clips), audio (narration/samples), sound (SFX). 50 per page; use q to search titles.",
       inputSchema: z.object({
-        type: z.enum(['image', 'music', 'video']),
+        type: z.enum(['image', 'music', 'video', 'audio', 'sound']),
         page: z.number().int().min(1).optional(),
         q: z.string().max(120).optional().describe('Title search.'),
       }),
@@ -245,6 +253,37 @@ function buildServer(token) {
     async ({ quote_id, idempotency_key }) => call(token, 'POST', '/videos', { quote_id, idempotency_key: idempotency_key || quote_id }, 'create_video'),
   )
 
+  server.registerTool('upload_asset', {
+    title: 'Upload media to the workspace',
+    description: 'Upload actual file bytes as base64, at most 8 MiB decoded. Supports JPEG/PNG/WebP, MP3/WAV/M4A/OGG/FLAC, MP4/MOV/WebM. Never invent bytes or pass a URL. For larger files, use authenticated multipart POST /api/developer/v1/assets (100 MiB limit). Returns asset id; poll get_asset for transcription. Upload is free; video generation is separately quoted. Client must have access to the file bytes.',
+    inputSchema: z.object({ title: z.string().max(255), asset_type: z.enum(['image', 'audio', 'music', 'sound', 'video']), content_base64: z.string().min(1).max(11184812) }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async args => call(token, 'POST', '/assets', args, 'upload_asset'))
+  server.registerTool('get_asset', {
+    title: 'Read media and transcription status',
+    description: 'Read an owned asset and its transcription status. To attach narration, propose_edits with op use_narration, scene_id, asset_id and mode audio_only (keep script) or audio_and_script (replace script with completed transcript). Show the proposal before applying it.',
+    inputSchema: z.object({ asset_id: z.number().int() }),
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+  }, async ({ asset_id }) => call(token, 'GET', `/assets/${asset_id}`, undefined, 'get_asset'))
+  server.registerTool('clone_voice', {
+    title: 'Create a reusable cloned voice',
+    description: 'Register an uploaded audio sample as a new zero-shot voice. Ask the user to confirm permission to clone and use the speaker’s voice; only then pass consent true. Synchronous: returned active voice is ready, with no training job. Plan clone allowance applies. Repeating the same source asset reuses the clone. Registration is free; narration generation requires a separate approved quote. Select an existing clone via list_voices instead of creating it again.',
+    inputSchema: z.object({ name: z.string().max(80), source_asset_id: z.number().int(), consent: z.literal(true) }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async args => call(token, 'POST', '/voices/clone', args, 'clone_voice'))
+  server.registerTool('preview_voice', {
+    title: 'Preview a voice',
+    description: 'Free fixed preview. For cloned voices this plays the original SOURCE SAMPLE, not newly synthesized clone audio. To hear generated narration, quote regenerate_voice on a scene. voice_id is the string id from list_voices.',
+    inputSchema: z.object({ voice_id: z.string().max(150) }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async args => call(token, 'POST', '/voices/preview', args, 'preview_voice'))
+  server.registerTool('save_voice', {
+    title: 'Save a reusable voice profile',
+    description: 'Save an accessible catalogue voice in this workspace, or return its existing profile. Free. Does not clone a speaker or accept arbitrary provider ids. The returned voice_profile_id is the numeric editor profile id; id is the string narration voice id.',
+    inputSchema: z.object({ name: z.string().max(80), voice_id: z.string().max(150) }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async args => call(token, 'POST', '/voices', args, 'save_voice'))
+
   // ── Characters: create, update, quote-bound images. Listing is list_characters.
   server.registerTool(
     'create_character',
@@ -269,6 +308,7 @@ function buildServer(token) {
       title: 'Update a character',
       description: 'Change a character\'s name, description, references, consistency method or identity strength. Free.',
       inputSchema: z.object({
+        consent: z.boolean().optional().describe('Required true when adding or replacing reference photos. Ask the user for rights and likeness consent first.'),
         character_id: z.number().int(),
         name: z.string().max(120).optional(),
         description: z.string().max(2000).optional(),
@@ -332,6 +372,22 @@ function buildServer(token) {
     asset_id: z.number().int().nullable().optional(),
   }).passthrough()
 
+  server.registerTool('analyze_ugc_reference', {
+    title: 'Analyze a UGC reference', description: 'Read an uploaded workspace video/audio into shape and beats for plan_ugc.reference. Planning inspiration, not My Footage recreation. No customer credits. May take time; do not start paid generation before the analysis is returned.',
+    inputSchema: z.object({ asset_id: z.number().int().positive() }),
+    annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+  }, async args => call(token, 'POST', '/ugc/reference', args, 'analyze_ugc_reference'))
+  server.registerTool('estimate_presenter_preview', {
+    title: 'Quote a presenter preview', description: 'Quote a generated portrait inspired by a character. Ask for likeness rights/consent first. Not the final video identity or a guaranteed match.',
+    inputSchema: z.object({ character_id: z.number().int(), consent: z.literal(true) }),
+    annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+  }, async ({ character_id, ...args }) => call(token, 'POST', `/ugc/characters/${character_id}/preview/quotes`, args, 'estimate_presenter_preview'))
+  server.registerTool('create_presenter_preview', {
+    title: 'Generate the approved presenter preview', description: 'Spends the quoted credits. Only after approval. Reuse the same quote/idempotency key after a timeout; a pending response means wait, not start a replacement.',
+    inputSchema: z.object({ character_id: z.number().int(), quote_id: z.string(), idempotency_key: z.string().max(128).optional() }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async ({ character_id, quote_id, idempotency_key }) => call(token, 'POST', `/ugc/characters/${character_id}/preview`, { quote_id, idempotency_key: idempotency_key || quote_id }, 'create_presenter_preview'))
+
   server.registerTool(
     'plan_ugc',
     {
@@ -345,6 +401,7 @@ function buildServer(token) {
         duration_seconds: z.number().int().min(5).max(180),
         language: z.string().optional(),
         footage_asset_ids: z.array(z.number().int()).max(40).optional().describe('Library images/videos the plan may cut to (list_library).'),
+        reference: z.object({ shape: z.string().max(300).optional(), beats: z.array(z.object({ role: z.string().max(24), does: z.string().max(300).optional(), on_screen: z.string().max(300).optional(), start: z.number().optional(), end: z.number().optional() })).max(8).optional() }).optional().describe('Shape and beats from analyze_ugc_reference.'),
         variants_count: z.number().int().min(2).max(6).optional(),
       }),
       annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
@@ -365,9 +422,11 @@ function buildServer(token) {
         character_ids: z.array(z.number().int()).max(5).optional().describe('composed: presenters, from list_characters.'),
         character_id: z.number().int().optional().describe('one_shot: the presenter, from list_characters.'),
         cast_style: z.enum(['exact', 'variant']).optional(),
+        voice_key: z.string().max(64).optional().describe('Composed only: Gemini catalogue key such as Kore. Cloned voices unsupported. One-shot always uses native speech.'),
         quality: z.enum(['draft', 'full']).optional().describe('one_shot: draft is 480p and cheaper.'),
         presenter_description: z.string().max(400).optional().describe('one_shot without a character: who presents.'),
         product_asset_id: z.number().int().optional().describe('A library image of the product.'),
+        product_asset_ids: z.array(z.number().int()).max(5).optional().describe('one_shot: multiple product reference images already in the library.'),
         demo_asset_id: z.number().int().optional().describe('one_shot: a ≤30s library video to embed as the demo.'),
         setting: z.string().max(300).optional(),
         product: z.string().max(200).optional(),
@@ -421,7 +480,7 @@ function buildServer(token) {
     'get_project_schema',
     {
       title: 'What can be edited',
-      description: 'The operations available on this video (and why any is not), the scene settings that update_scene accepts, enums for styles, tiers, rewrite modes and caption/motion settings, and the plan\'s limits.',
+      description: 'The operations available on this video (and why any is not), the scene settings that update_scene accepts, enums for styles, tiers, rewrite modes and caption/motion settings, and the plan\'s limits. settings_schema describes typed fields, ranges, defaults, null and merge behavior, provider limitations, locks, stale state and animation quality/engines.',
       inputSchema: z.object({ video_id: z.number().int() }),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
@@ -431,7 +490,7 @@ function buildServer(token) {
     'propose_edits',
     {
       title: 'Propose edits (free)',
-      description: 'Validate a list of changes against the project\'s current revision and price the ones that spend credits (regenerate_voice, generate_image, edit_image, animate, regenerate_music). Returns a proposal_id (10 minutes), each change with its max credits, and the total. Nothing is applied. Show the user the changes and the total; apply_edits needs the proposal_id. Ops: update_scene {scene_id, settings}, reorder_scenes {scene_ids}, add_scene {...}, duplicate_scene, rewrite_scene {scene_id, mode}, regenerate_voice, swap_visual {scene_id, visual_asset_id|query}, generate_image {scene_id, model_key?}, edit_image {scene_id, instruction}, animate {scene_id, tier, ...}, cancel_animation, revert_animation, regenerate_music {scene_id, mood}, update_project {...}, generate_hooks.',
+      description: 'Validate a list of changes against the project\'s current revision and price the ones that spend credits (regenerate_voice, generate_image, edit_image, animate, regenerate_music). Returns a proposal_id (10 minutes), each change with its max credits, and the total. Nothing is applied. Show the user the changes and the total; apply_edits needs the proposal_id. Ops: update_scene {scene_id, settings}, reorder_scenes {scene_ids}, add_scene {...}, duplicate_scene, rewrite_scene {scene_id, mode}, regenerate_voice, swap_visual {scene_id, visual_asset_id|query}, generate_image {scene_id, model_key?, style?, prompt_override?}, edit_image {scene_id, instruction}, animate {scene_id, tier, ...}, cancel_animation, revert_animation, regenerate_music {scene_id, mood}, update_project {...}, generate_hooks, use_animation_history {scene_id, asset_id}, rerecord_all {scene_ids?}, restyle_all {style, scene_ids?, model_key?, custom_visual_style?}, animate_all {tier, scene_ids?, source_asset_id?, quality?, duration_seconds?, motion_prompt?, consent?}. Bulk actions must be proposed alone; preview includes eligibility, skips, per-scene costs and sharing. rewrite_scene is DIRECT APPLY after approval, not a preview. For reviewed text use update_scene.script_text. Image overrides configure a render that saves its prompt/style/model on success. Consult get_project_schema before configuring settings.',
       inputSchema: z.object({
         video_id: z.number().int(),
         revision: z.string().describe('From get_project.'),
@@ -471,15 +530,27 @@ function buildServer(token) {
     },
     async ({ video_id }) => call(token, 'GET', `/videos/${video_id}/exports`, undefined, 'list_exports'),
   )
+  server.registerTool('estimate_retry', {
+    title: 'Quote retrying a failed video',
+    description: 'Get a new authorized ceiling for retrying failed composable generation. Resolve any prior uncertain operation first. Show this quote to the user before retry_video.',
+    inputSchema: z.object({ video_id: z.number().int() }),
+    annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+  }, async ({ video_id }) => call(token, 'POST', `/videos/${video_id}/retry-quotes`, {}, 'estimate_retry'))
+  server.registerTool('cancel_operation', {
+    title: 'Cancel remaining operation work',
+    description: 'Only after the user agrees: fence out remaining work and release its unused reservation. Completed charges remain. Refuses while a worker/request is active; inspect get_operation first.',
+    inputSchema: z.object({ quote_id: z.string().max(32), confirm: z.literal(true) }),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  }, async ({ quote_id, confirm }) => call(token, 'POST', `/operations/${encodeURIComponent(quote_id)}/cancel`, { confirm }, 'cancel_operation'))
   server.registerTool(
     'retry_video',
     {
       title: 'Retry a failed video',
-      description: 'Retry generation of a failed video, or resume the failed parts of one. Only useful when get_video_status says failed and retryable.',
-      inputSchema: z.object({ video_id: z.number().int() }),
+      description: 'Retry generation of a failed video, or resume the failed parts of one. Requires an estimate_retry quote and user approval. Uses the original idempotency key on transport retries.',
+      inputSchema: z.object({ video_id: z.number().int(), quote_id: z.string(), idempotency_key: z.string().optional() }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    async ({ video_id }) => call(token, 'POST', `/videos/${video_id}/retry`, {}, 'retry_video'),
+    async ({ video_id, quote_id, idempotency_key }) => call(token, 'POST', `/videos/${video_id}/retry`, { quote_id, idempotency_key: idempotency_key || quote_id }, 'retry_video'),
   )
 
   // ── WyvStudio's own in-app assistant as a bounded planner.
@@ -497,11 +568,18 @@ function buildServer(token) {
     },
     async ({ video_id, ...rest }) => call(token, 'POST', `/videos/${video_id}/assistant/plans`, rest, 'ask_wyvstudio_assistant'),
   )
+  server.registerTool('prepare_delivery', {
+    title: 'Check a video before app delivery',
+    description: 'Preflight public sharing, an approval request or scheduling. Requires the current project revision and explicit completed export id. Returns an authenticated editor link and confirmation checklist only. DOES NOT publish, send mail, create a public link or schedule a post. The user must review the export and confirm recipient/destination in the app. The app does not automatically select the supplied export. Export/download support is not publishing support.',
+    inputSchema: z.object({ video_id: z.number().int(), action: z.enum(['public_share', 'approval_request', 'schedule']), revision: z.string(), export_id: z.number().int().positive(), allow_stale: z.boolean().optional().describe('True only after the user explicitly agrees to use this older export.') }),
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+  }, async ({ video_id, ...args }) => call(token, 'POST', `/videos/${video_id}/delivery/handoff`, args, 'prepare_delivery'))
+
   server.registerTool(
     'apply_assistant_plan',
     {
       title: 'Apply an assistant plan',
-      description: 'Run the actions in a plan from ask_wyvstudio_assistant, in order, through WyvStudio\'s assistant. SPENDS CREDITS up to the plan\'s total. Refuses with revision_conflict if the project changed. Use "only" to apply a subset by index. Only after the user agreed.',
+      description: 'If the result has outcome handoff_required or navigate, show its app link and say confirmation is still required; never report it as scheduled, shared or sent. Run the actions in a plan from ask_wyvstudio_assistant, in order, through WyvStudio\'s assistant. SPENDS CREDITS up to the plan\'s total. Refuses with revision_conflict if the project changed. Use "only" to apply a subset by index. Only after the user agreed.',
       inputSchema: z.object({ video_id: z.number().int(), plan_id: z.string(), only: z.array(z.number().int()).optional(), idempotency_key: z.string().max(128).optional() }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -509,10 +587,21 @@ function buildServer(token) {
   )
 
   server.registerTool(
+    'get_operation',
+    {
+      title: 'Check an API operation after a timeout',
+      description: 'Read execution progress, known results and accounting state by the original quote or plan id. Safe after a timeout. This does not restart work or release credits. needs_attention means investigate; do not create replacement paid work. Media readiness is checked separately with video/generation status.',
+      inputSchema: z.object({ quote_id: z.string().max(32).describe('Original quote_id, proposal_id or plan_id.') }),
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ quote_id }) => call(token, 'GET', `/operations/${encodeURIComponent(quote_id)}`, undefined, 'get_operation'),
+  )
+
+  server.registerTool(
     'get_video_status',
     {
       title: 'Check a video',
-      description: 'Progress of a video: status is generating, exporting, completed or failed, with the current stage, credits spent so far and a project_url the user can open in WyvStudio. When completed, call get_video_result for the file. When failed, read failure.message; retryable means the user can retry from the dashboard.',
+      description: 'Progress of a video: status is generating, exporting, completed, needs_export or failed, with the current stage, credits spent so far and a project_url the user can open in WyvStudio. When completed, call get_video_result for the file. When failed, read failure.message; retryable means the user can retry from the dashboard.',
       inputSchema: z.object({ video_id: z.number().int().describe('From create_video.') }),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
@@ -523,13 +612,16 @@ function buildServer(token) {
     'get_video_result',
     {
       title: 'Get the finished video',
-      description: 'The finished MP4 as a private, time-limited download link (download_expires_at), plus duration, aspect ratio, credits spent and the project_url. Returns not_ready until get_video_status says completed. The link is for the workspace only; nothing is made public.',
-      inputSchema: z.object({ video_id: z.number().int().describe('From create_video.') }),
+      description: 'The selected completed MP4 as a private, time-limited download link (download_expires_at), plus duration, aspect ratio, credits spent and the project_url. The default selects the newest export, even while pending/failed. Stale or superseded exports need explicit export_id and allow_stale=true after user approval. The link is for the workspace only; nothing is made public.',
+      inputSchema: z.object({ video_id: z.number().int(), export_id: z.number().int().optional(), allow_stale: z.boolean().optional().describe('Only true after user agrees to this specific older export.') }),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
-    async ({ video_id }) => {
+    async ({ video_id, export_id, allow_stale }) => {
       const started = Date.now()
-      const { status, json } = await api(token, 'GET', `/videos/${video_id}/result`)
+      const query = new URLSearchParams()
+      if (export_id !== undefined) query.set('export_id', String(export_id))
+      if (allow_stale !== undefined) query.set('allow_stale', allow_stale ? '1' : '0')
+      const { status, json } = await api(token, 'GET', `/videos/${video_id}/result${query.size ? `?${query}` : ''}`)
       logCall(token, 'get_video_result', status, Date.now() - started, status >= 300 ? json?.error?.code : undefined)
       if (status !== 200) return fail(status, json)
       const v = json.data.video
@@ -555,7 +647,7 @@ const handler = createMcpHandler((ctx) => {
 // ── HTTP ───────────────────────────────────────────────────────────────────
 
 // createMcpExpressApp already parses JSON bodies and validates Host/Origin.
-const app = createMcpExpressApp({ host: '0.0.0.0', allowedHosts: ALLOWED_HOSTS })
+const app = createMcpExpressApp({ host: '0.0.0.0', allowedHosts: ALLOWED_HOSTS, jsonLimit: '12mb' })
 const node = toNodeHandler(handler)
 
 const oauth = Boolean(OAUTH_ISSUER && MCP_PUBLIC_URL)

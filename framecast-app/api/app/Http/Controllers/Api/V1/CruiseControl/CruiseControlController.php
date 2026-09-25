@@ -167,7 +167,7 @@ class CruiseControlController extends Controller
             'project_id'   => ['required', 'integer'],
             'tool'         => ['required', 'string'],
             'expected_credits' => ['sometimes', 'integer', 'min:0'],
-            'params'       => ['required', 'array'],
+            'params'       => ['present', 'array'],
             'message_id'   => ['nullable', 'string', 'max:64'],
             // Index into the assistant message's actions[] array. When the
             // message has multiple proposed actions, this tells us which one

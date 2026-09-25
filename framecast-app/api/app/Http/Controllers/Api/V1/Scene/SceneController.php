@@ -203,7 +203,14 @@ class SceneController extends Controller
             'transition_rule' => ['sometimes', 'nullable', 'string', 'max:64'],
             'voice_profile_id' => ['sometimes', 'nullable', 'integer'],
             'voice_settings_json' => ['sometimes', 'nullable', 'array'],
+            'voice_settings_json.custom_audio' => ['sometimes', 'boolean'],
             'voice_settings_json.audio_asset_id' => ['sometimes', 'nullable', 'integer'],
+            'voice_settings_json.voice_id' => ['sometimes', 'string', 'max:150'],
+            'voice_settings_json.provider' => ['sometimes', 'string', 'max:64'],
+            'voice_settings_json.speed' => ['sometimes', 'numeric', 'min:0.25', 'max:4'],
+            'voice_settings_json.stability' => ['sometimes', 'string', 'in:low,medium,high'],
+            'voice_settings_json.voice_prompt' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'voice_settings_json.language' => ['sometimes', 'string', 'max:16'],
             'voice_settings_json.volume' => ['sometimes', 'numeric', 'min:0', 'max:200'],
             'caption_settings_json' => ['sometimes', 'nullable', 'array'],
             'caption_settings_json.enabled' => ['sometimes', 'boolean'],
@@ -282,10 +289,16 @@ class SceneController extends Controller
             $newAudio = $audioId && $audioId != ($old['audio_asset_id'] ?? null);
             $next['is_outdated'] = ! $newAudio && ($changed || ! empty($old['is_outdated']));
             $validated['voice_settings_json'] = $next;
+            if ($newAudio && data_get($scene->image_generation_settings_json, 'animation_video_asset_id') && data_get($scene->image_generation_settings_json, 'spokesperson_consent')) {
+                $image = $scene->image_generation_settings_json ?? [];
+                $image['animation_outdated'] = true;
+                $scene->image_generation_settings_json = $image;
+            }
+
         }
         if (array_key_exists('script_text', $validated) && $validated['script_text'] !== $scene->script_text) {
             $voice = $validated['voice_settings_json'] ?? $scene->voice_settings_json ?? [];
-            $voice['is_outdated'] = empty($newAudio);
+            $voice['is_outdated'] = empty($newAudio) && (empty($audioId) || empty($voice['custom_audio']));
             $validated['voice_settings_json'] = $voice;
             $image = $scene->image_generation_settings_json ?? [];
             if (! empty($image['animation_video_asset_id']) && ! empty($image['spokesperson_consent'])) {
@@ -1149,6 +1162,7 @@ class SceneController extends Controller
         // Spokesperson lip-syncs to the scene's voiceover — require it.
         $voiceoverSeconds = 0.0;
         if ($isSpokesperson) {
+            if (data_get($scene->voice_settings_json, 'is_outdated') || data_get($scene->voice_settings_json, 'regenerating')) return $this->error('narration_not_ready', 'Wait for current narration to finish before lip-syncing.', 409);
             $audioId = (int) data_get($scene->voice_settings_json, 'audio_asset_id', 0);
             if (! $audioId) {
                 return $this->error('no_voice', 'Generate the voiceover first — the talking spokesperson lip-syncs to the audio.', 422);
@@ -1184,7 +1198,7 @@ class SceneController extends Controller
         $quality = null;
         if ($isSpokesperson) {
             // Length-based: Fabric bills per second of voiceover.
-            $cost = CreditService::spokespersonCost($voiceoverSeconds);
+            $cost = CreditService::spokespersonCost($voiceoverSeconds, $validated['lipsync_engine'] ?? data_get($scene->image_generation_settings_json, 'lipsync_engine'));
         } else {
             // Tier × chosen quality (resolution/mode) × duration (10s = 2×).
             $quality = CreditService::videoQuality($validated['tier'], $validated['quality'] ?? null);
@@ -1368,6 +1382,10 @@ class SceneController extends Controller
         $scene = $this->resolveScene($sceneId, $user);
         if (! $scene) {
             return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        if (data_get($scene->image_generation_settings_json, 'animation_in_progress') || data_get($scene->image_generation_settings_json, 'in_progress')) {
+            return $this->error('generation_in_progress', 'Wait for or cancel the current generation before restoring a clip.', 409);
         }
 
         $validated = $request->validate([

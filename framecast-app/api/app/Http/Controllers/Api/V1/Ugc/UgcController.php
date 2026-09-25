@@ -905,9 +905,12 @@ class UgcController extends Controller
             'status' => 'active',
             'created_by_user_id' => $user->getKey(),
         ]);
-        $creditService->deduct((int) $user->workspace_id, $credits, 'ugc_variant_preview', [
+        if (! $creditService->deduct((int) $user->workspace_id, $credits, 'ugc_variant_preview', [
             'character_id' => $character->getKey(), 'asset_id' => $asset->getKey(),
-        ]);
+        ])) {
+            $asset->delete();
+            return $this->error('insufficient_credits', 'The balance changed before the preview could be charged.', 402);
+        }
 
         return response()->json(['data' => [
             'asset_id' => $asset->getKey(),

@@ -775,6 +775,14 @@ class CreditService
                 return false;
             }
 
+            $attribution = [];
+            if (\App\Services\Developer\OperationAccounting::enabled()) {
+                $attribution = \App\Services\Developer\OperationAccounting::debit($spentBy, $workspaceId, $amount);
+                if ($attribution === false) {
+                    return false;
+                }
+            }
+
             $remaining   = $amount;
             $fromMonthly = min($remaining, $workspace->spendableMonthlyCredits());
             $remaining  -= $fromMonthly;
@@ -787,7 +795,7 @@ class CreditService
                 $workspace->decrement('credits_topup', $fromTopup);
             }
 
-            CreditLedgerEntry::query()->create([
+            CreditLedgerEntry::query()->create($attribution + [
                 'workspace_id' => $workspaceId,
                 // Indexed, unlike the metadata copy below, because a per-client
                 // ceiling has to be summed before every charge.
@@ -811,6 +819,12 @@ class CreditService
 
             return true;
         });
+
+        if (! $charged && \App\Services\Developer\OperationAccounting::current()) {
+            // Some older handlers ignore deduct()'s false return. An accounted
+            // action must never continue/report success after a refused charge.
+            throw new \App\Services\Developer\OperationBudgetExceeded;
+        }
 
         if ($capped) {
             Log::info('CreditService: refused by the client spend cap', [
@@ -885,6 +899,25 @@ class CreditService
     public function refund(int $workspaceId, int $amount, string $operation = ''): void
     {
         if ($amount <= 0) {
+            return;
+        }
+
+        if (\App\Services\Developer\OperationAccounting::enabled()) {
+            $spentBy = $workspaceId;
+            $poolId = $this->poolId($workspaceId);
+            DB::transaction(function () use ($spentBy, $poolId, $amount, $operation) {
+                Workspace::whereIn('id', array_unique([$spentBy, $poolId]))->orderBy('id')->lockForUpdate()->get();
+                $attribution = \App\Services\Developer\OperationAccounting::refund($spentBy, $amount);
+                Workspace::whereKey($poolId)->increment('credits_topup', $amount);
+                CreditLedgerEntry::query()->create($attribution + [
+                    'workspace_id' => $poolId,
+                    'spent_by_workspace_id' => $spentBy !== $poolId ? $spentBy : null,
+                    'operation' => mb_substr('refund:'.($operation ?: 'unspecified'), 0, 64),
+                    'credits' => -$amount, 'balance_after' => $this->balance($poolId),
+                    'metadata' => ['refund_of' => $operation],
+                ]);
+            });
+
             return;
         }
 

@@ -10,6 +10,8 @@ class CreditLedgerEntry extends Model
     protected $table = 'credit_ledger';
 
     protected $fillable = [
+        'api_operation_id',
+        'api_key_id',
         'workspace_id',
         'spent_by_workspace_id',
         'user_id',

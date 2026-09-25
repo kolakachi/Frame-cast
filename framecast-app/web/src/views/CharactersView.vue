@@ -386,6 +386,7 @@ function pickMoreFiles(event) {
   for (const f of files) {
     if (!f.type.startsWith("image/")) continue;
     if (f.size > 10 * 1024 * 1024) continue;
+    consentChecked.value = false;
     createNewFiles.value.push(f);
     createNewFilePreviews.value.push(URL.createObjectURL(f));
   }
@@ -431,6 +432,7 @@ function pickFile(event) {
     return;
   }
   createError.value = "";
+  consentChecked.value = false;
   createFile.value = file;
   if (createPreviewUrl.value) URL.revokeObjectURL(createPreviewUrl.value);
   createPreviewUrl.value = URL.createObjectURL(file);

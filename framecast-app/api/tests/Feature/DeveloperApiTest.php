@@ -44,6 +44,7 @@ class DeveloperApiTest extends TestCase
         Redis::shouldReceive('get')->andReturn(null);
 
         $this->buildDeveloperSchema();
+        if (getenv('PHASE_A_ACCOUNTING_TESTS') === '1') $this->enableOperationAccounting();
 
         $usage = $this->createMock(WorkspaceUsageService::class);
         $usage->method('hasExceededApiBudget')->willReturn(false);
@@ -262,7 +263,7 @@ class DeveloperApiTest extends TestCase
         [, $plain] = ApiKey::issue((int) $ws->getKey(), (int) $owner->getKey(), 'Capped', null, 60);
 
         $first = $this->create($plain, $this->quote($plain)->json('data.quote_id'), 'a')->assertStatus(202)->json('data.video.id');
-        DB::table('credit_ledger')->insert(['workspace_id' => $ws->id, 'project_id' => $first, 'operation' => 'tts', 'credits' => 45, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('credit_ledger')->insert((\App\Services\Developer\OperationAccounting::enabled() ? ['api_key_id' => ApiKey::resolve($plain)->id] : []) + ['workspace_id' => $ws->id, 'project_id' => $first, 'operation' => 'tts', 'credits' => 45, 'created_at' => now(), 'updated_at' => now()]);
         $this->withToken($plain)->getJson('/api/developer/v1/capabilities')->assertOk()->assertJsonPath('data.key.spent_this_month', 45);
 
         $quote = $this->quote($plain);
@@ -628,6 +629,11 @@ class DeveloperApiTest extends TestCase
         $this->assertSame(1, DB::table('cruise_audit_logs')->where('phase', 'apply')->count(), 'Cruise audited the apply as it does in the editor');
         // Replay is idempotent.
         $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/assistant/plans/{$pid2}/apply")->assertOk()->assertJsonPath('data.failed', 0);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/assistant/plans/{$pid2}/apply", ['only' => []])
+            ->assertStatus(409)->assertJsonPath('error.code', 'idempotency_payload_mismatch');
+        $this->withToken($key)->getJson("/api/developer/v1/operations/{$pid2}")->assertOk()
+            ->assertJsonPath('data.operation.progress.in_progress_index', null)
+            ->assertJsonPath('data.operation.result_recorded', true);
         $this->assertSame(1, DB::table('cruise_audit_logs')->where('phase', 'apply')->count());
 
         // Nothing resolvable: no plan, nothing to spend.
@@ -713,7 +719,7 @@ class DeveloperApiTest extends TestCase
             ['workspace_id' => $ws->id, 'project_id' => $id, 'operation' => 'refund:tts', 'credits' => -3, 'created_at' => now(), 'updated_at' => now()],
         ]);
         $assetId = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://b2/x.mp4', 'duration_seconds' => 29.6, 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('export_jobs')->insert(['workspace_id' => $ws->id, 'project_id' => $id, 'aspect_ratio' => '9:16', 'file_name' => 'video.mp4', 'status' => 'completed', 'output_asset_id' => $assetId, 'completed_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('export_jobs')->insert(['workspace_id' => $ws->id, 'project_id' => $id, 'aspect_ratio' => '9:16', 'file_name' => 'video.mp4', 'queued_at' => now(), 'status' => 'completed', 'output_asset_id' => $assetId, 'completed_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
 
         $this->withToken($key)->getJson("/api/developer/v1/videos/{$id}")->assertOk()
             ->assertJsonPath('data.video.status', 'completed')
@@ -829,5 +835,794 @@ class DeveloperApiTest extends TestCase
         $stock = (int) $this->quote($key)->json('data.credits.max');
         $ai = (int) $this->quote($key, ['visual_mode' => 'ai_video', 'animate_tier' => 'quick'])->assertStatus(201)->json('data.credits.max');
         $this->assertGreaterThan($stock, $ai);
+    }
+    public function test_wrong_targets_never_claim_or_reopen_quotes(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $target = Project::query()->create(['workspace_id' => $ws->id, 'title' => 'Other target', 'status' => 'draft']);
+        foreach (['edit', 'assistant_plan', 'character_image'] as $kind) {
+            foreach ([false, true] as $consumed) {
+                $id = ApiQuote::newId();
+                $quote = ApiQuote::query()->create([
+                    'id' => $id, 'workspace_id' => $ws->id,
+                    'payload_json' => ['__kind' => $kind, $kind === 'character_image' ? 'character_id' : 'project_id' => 999999],
+                    'credits_min' => 0, 'credits_max' => 0, 'expires_at' => now()->addMinutes(10),
+                    'consumed_at' => $consumed ? now() : null,
+                    'idempotency_key' => $consumed ? $id : null,
+                    'project_id' => $consumed ? $target->id : null,
+                ]);
+                $before = $quote->fresh()->getAttributes();
+                $path = match ($kind) {
+                    'edit' => "/api/developer/v1/videos/{$target->id}/proposals/{$id}/apply",
+                    'assistant_plan' => "/api/developer/v1/videos/{$target->id}/assistant/plans/{$id}/apply",
+                    default => "/api/developer/v1/characters/{$target->id}/images",
+                };
+                $this->withToken($key)->postJson($path, ['quote_id' => $id, 'idempotency_key' => $id])
+                    ->assertStatus(409)->assertJsonPath('error.code', 'quote_kind_mismatch');
+                $this->assertSame($before, $quote->fresh()->getAttributes());
+            }
+        }
+    }
+
+    public function test_spokesperson_quote_uses_audio_length_not_animation_bucket(): void
+    {
+        $audio = \App\Models\Asset::query()->create(['duration_seconds' => 30, 'asset_type' => 'audio']);
+        $scene = new Scene(['duration_seconds' => 12, 'voice_settings_json' => ['audio_asset_id' => $audio->id]]);
+        foreach ([[], ['duration_seconds' => 5], ['duration_seconds' => 10]] as $input) {
+            $this->assertSame((int) \App\Services\CreditService::spokespersonCost(30),
+                \App\Services\Developer\EditOperations::price('animate', new Project, $scene, ['tier' => 'spokesperson'] + $input));
+        }
+        $scene->voice_settings_json = [];
+        $this->assertSame((int) \App\Services\CreditService::spokespersonCost(12),
+            \App\Services\Developer\EditOperations::price('animate', new Project, $scene, ['tier' => 'spokesperson']));
+    }
+
+    public function test_editor_dispatch_preserves_clears_and_image_overrides(): void
+    {
+        $controller = \Mockery::mock(\App\Http\Controllers\Api\V1\Project\ProjectController::class);
+        $controller->shouldReceive('update')->once()->withArgs(function ($request, $id) {
+            return $id === 123 && $request->all() === ['music_asset_id' => null, 'brand_kit_id' => null, 'channel_id' => null];
+        })->andReturn(response()->json(['data' => []]));
+        $this->instance(\App\Http\Controllers\Api\V1\Project\ProjectController::class, $controller);
+        $sceneController = \Mockery::mock(\App\Http\Controllers\Api\V1\Scene\SceneController::class);
+        $sceneController->shouldReceive('generateImage')->once()->withArgs(function ($request, $id) {
+            return $id === 456 && $request->all() === ['model_key' => 'gpt-image-2', 'style' => 'cinematic', 'prompt_override' => 'A red bicycle'];
+        })->andReturn(response()->json(['data' => []]));
+        $this->instance(\App\Http\Controllers\Api\V1\Scene\SceneController::class, $sceneController);
+        $project = new Project;
+        $project->id = 123;
+        $request = \Illuminate\Http\Request::create('/test');
+        \App\Services\Developer\EditOperations::execute('update_project', $request, $project,
+            ['music_asset_id' => null, 'brand_kit_id' => null, 'channel_id' => null]);
+        \App\Services\Developer\EditOperations::execute('generate_image', $request, $project,
+            ['scene_id' => 456, 'model_key' => 'gpt-image-2', 'style' => 'cinematic', 'prompt_override' => 'A red bicycle']);
+    }
+    public function test_content_revisions_detect_same_second_scene_and_project_changes(): void
+    {
+        $this->freezeTime();
+        [$ws] = $this->tenant();
+        $project = Project::create(['workspace_id' => $ws->id, 'title' => 'Before']);
+        $scene = Scene::create(['project_id' => $project->id, 'scene_order' => 1, 'script_text' => 'Before']);
+        $revision = \App\Http\Controllers\Api\Developer\V1\EditorController::revision($project);
+        $project->update(['title' => 'After']);
+        $next = \App\Http\Controllers\Api\Developer\V1\EditorController::revision($project);
+        $this->assertNotSame($revision, $next);
+        $scene->update(['script_text' => 'After']);
+        $this->assertNotSame($next, \App\Http\Controllers\Api\Developer\V1\EditorController::revision($project));
+    }
+
+    public function test_stale_and_superseded_exports_require_explicit_selection(): void
+    {
+        Schema::table('export_jobs', fn (Blueprint $t) => $t->string('source_fingerprint')->nullable());
+        [$ws, , $key] = $this->tenant();
+        $project = Project::create(['workspace_id' => $ws->id, 'title' => 'Video', 'status' => 'ready_for_review']);
+        $asset = \App\Models\Asset::create(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://example.test/video.mp4', 'duration_seconds' => 10]);
+        $export = \App\Models\ExportJob::create(['workspace_id' => $ws->id, 'project_id' => $project->id, 'status' => 'completed', 'output_asset_id' => $asset->id, 'queued_at' => now()]);
+        $project->update(['music_settings_json' => ['volume' => 10]]);
+        $base = "/api/developer/v1/videos/{$project->id}";
+        $this->withToken($key)->getJson($base)->assertOk()->assertJsonPath('data.video.status', 'needs_export');
+        $this->withToken($key)->getJson($base.'/result')->assertStatus(409)->assertJsonPath('error.code', 'stale_export');
+        $this->withToken($key)->getJson($base.'/result?allow_stale=1')->assertStatus(409);
+        $this->withToken($key)->getJson($base.'/result?export_id='.$export->id.'&allow_stale=1')->assertOk()->assertJsonPath('data.video.export_id', $export->id);
+        \App\Models\ExportJob::create(['workspace_id' => $ws->id, 'project_id' => $project->id, 'status' => 'queued', 'queued_at' => now()]);
+        $this->withToken($key)->getJson($base.'/result')->assertStatus(409)->assertJsonPath('error.code', 'not_ready');
+    }
+
+    public function test_paid_dependent_edits_require_a_new_quote_after_prior_changes(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $project = Project::create(['workspace_id' => $ws->id, 'title' => 'Video']);
+        $scene = Scene::create(['project_id' => $project->id, 'scene_order' => 1, 'script_text' => 'Before']);
+        $revision = \App\Http\Controllers\Api\Developer\V1\EditorController::revision($project);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$project->id}/proposals", [
+            'revision' => $revision, 'changes' => [
+                ['op' => 'update_scene', 'scene_id' => $scene->id, 'settings' => ['script_text' => 'New narration']],
+                ['op' => 'regenerate_voice', 'scene_id' => $scene->id],
+            ],
+        ])->assertStatus(422)->assertJsonPath('error.code', 'dependent_changes_require_staging');
+        $this->assertSame('Before', $scene->fresh()->script_text);
+    }
+
+    public function test_agency_shared_pool_charges_and_refunds_keep_the_client_and_key(): void
+    {
+        $this->enableOperationAccounting();
+        [$agency, $user] = $this->tenant('agency', 100);
+        $client = Workspace::create(['name' => 'Client', 'plan_tier' => 'creator', 'status' => 'active', 'parent_workspace_id' => $agency->id, 'funding_mode' => 'shared']);
+        $client->forceFill(['parent_workspace_id' => $agency->id])->save();
+        [$key] = ApiKey::issue($client->id, $user->id, 'Client key', null, 100);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($client, 60), $key->id));
+        $credits = app(\App\Services\CreditService::class);
+        $this->assertTrue($credits->deduct($client->id, 20, 'test'));
+        $credits->refund($client->id, 5, 'test');
+        $this->assertSame(85, $credits->balance($agency->id));
+        $this->assertSame(15, $key->spentThisMonth());
+        $this->assertSame(2, DB::table('credit_ledger')->where('workspace_id', $agency->id)->where('spent_by_workspace_id', $client->id)->where('api_key_id', $key->id)->count());
+        \App\Services\Developer\OperationAccounting::close($id);
+    }
+
+    public function test_retry_requires_a_quote_and_replays_the_authorized_dispatch(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $project = Project::create(['workspace_id' => $ws->id, 'source_type' => 'prompt', 'source_content_raw' => 'A desk that helps you stand', 'status' => 'failed', 'visual_generation_mode' => 'stock', 'duration_target_seconds' => 30]);
+        $path = "/api/developer/v1/videos/{$project->id}";
+        $this->withToken($key)->postJson($path.'/retry')->assertStatus(422);
+        $quote = $this->withToken($key)->postJson($path.'/retry-quotes')->assertStatus(201)->json('data.quote_id');
+        $controller = \Mockery::mock(\App\Http\Controllers\Api\V1\Project\ProjectController::class);
+        $controller->shouldReceive('retryGeneration')->once()->andReturn(response()->json(['data' => []], 202));
+        $this->instance(\App\Http\Controllers\Api\V1\Project\ProjectController::class, $controller);
+        $this->withToken($key)->postJson($path.'/retry', ['quote_id' => $quote])->assertStatus(202)->assertJsonPath('data.retried', true);
+        $this->withToken($key)->postJson($path.'/retry', ['quote_id' => $quote])->assertOk()->assertJsonPath('data.retried', true);
+    }
+
+    public function test_release_only_reopens_this_executions_unused_claim(): void
+    {
+        [$ws] = $this->tenant();
+        $quote = $this->operationQuote($ws, 10);
+        $quote->forceFill(['consumed_at' => now(), 'idempotency_key' => 'one',
+            'payload_json' => ['__claim_token' => 'owned']])->save();
+        $releaser = new class { use \App\Http\Controllers\Api\Developer\V1\ClaimsQuotes;
+            public function release(ApiQuote $q): void { $this->releaseQuote($q); }
+        };
+        $stale = clone $quote;
+        $stale->payload_json = ['__claim_token' => 'other'];
+        $releaser->release($stale);
+        $this->assertNotNull($quote->fresh()->consumed_at);
+        $releaser->release($quote);
+        $this->assertNull($quote->fresh()->consumed_at);
+        $quote->refresh()->forceFill(['consumed_at' => now(), 'payload_json' => ['__claim_token' => 'owned', 'result' => ['done' => true]]])->save();
+        $releaser->release($quote);
+        $this->assertNotNull($quote->fresh()->consumed_at);
+    }
+
+    private function applyEditorChanges(string $token, int $id, array $changes): TestResponse
+    {
+        $revision = \App\Http\Controllers\Api\Developer\V1\EditorController::revision(Project::findOrFail($id));
+        $quote = $this->withToken($token)->postJson("/api/developer/v1/videos/{$id}/proposals", compact('revision', 'changes'))->assertStatus(201);
+        return $this->withToken($token)->postJson("/api/developer/v1/videos/{$id}/proposals/{$quote->json('data.proposal_id')}/apply");
+    }
+
+    public function test_editor_settings_discovery_and_invalid_nested_fields(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id, [$scene]] = $this->editableVideo($key, $ws->id);
+        $schema = $this->withToken($key)->getJson("/api/developer/v1/videos/{$id}/project/schema")->assertOk();
+        $schema->assertJsonPath('data.settings_schema.groups.voice_settings_json.fields.speed.default', 1)
+            ->assertJsonPath('data.settings_schema.animation.quick.default_quality', '480p');
+        $revision = $schema->json('data.revision');
+        foreach ([['voice_settings_json' => ['speed' => 9]], ['motion_settings_json' => ['fit' => 'invented']], ['voice_settings_json' => ['made_up' => 1]], ['image_generation_settings_json' => ['in_progress' => false]]] as $settings) {
+            $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $revision, 'changes' => [['op' => 'update_scene', 'scene_id' => $scene, 'settings' => $settings]]])->assertStatus(422);
+        }
+        $this->applyEditorChanges($key, $id, [['op' => 'update_scene', 'scene_id' => $scene, 'settings' => ['voice_settings_json' => ['speed' => 1.25, 'volume' => 50], 'motion_settings_json' => ['fit' => 'fit']]]])->assertOk()->assertJsonPath('data.failed', 0);
+        $saved = Scene::findOrFail($scene);
+        $this->assertSame(1.25, $saved->voice_settings_json['speed']);
+        $this->assertArrayHasKey('audio_asset_id', $saved->voice_settings_json);
+        $this->assertTrue($saved->voice_settings_json['is_outdated']);
+        $this->assertSame(['fit' => 'fit'], $saved->motion_settings_json);
+    }
+
+    public function test_animation_history_restore_is_owned_scene_bound_and_free(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id, [$scene]] = $this->editableVideo($key, $ws->id);
+        $asset = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://b2/old.mp4', 'mime_type' => 'video/mp4']);
+        Scene::findOrFail($scene)->update(['image_generation_settings_json' => ['animation_history' => [['asset_id' => $asset]]]]);
+        $balance = $ws->fresh()->creditsBalance();
+        $this->withToken($key)->getJson("/api/developer/v1/videos/{$id}/project")->assertOk()->assertJsonPath('data.scenes.0.animation_history.0.asset_id', $asset);
+        $this->applyEditorChanges($key, $id, [['op' => 'use_animation_history', 'scene_id' => $scene, 'asset_id' => $asset]])->assertOk()->assertJsonPath('data.failed', 0);
+        $this->assertEquals($asset, Scene::findOrFail($scene)->visual_asset_id);
+        $this->assertSame($balance, $ws->fresh()->creditsBalance());
+        $this->applyEditorChanges($key, $id, [['op' => 'use_animation_history', 'scene_id' => $scene, 'asset_id' => 999999]])->assertOk()->assertJsonPath('data.applied.0.error.code', 'not_in_history');
+        DB::table('assets')->where('id', $asset)->update(['workspace_id' => $ws->id + 99]);
+        $this->applyEditorChanges($key, $id, [['op' => 'use_animation_history', 'scene_id' => $scene, 'asset_id' => $asset]])->assertOk()->assertJsonPath('data.applied.0.error.code', 'asset_missing');
+    }
+
+    public function test_rewrite_is_direct_apply_and_replay_does_not_generate_again(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id, [$scene]] = $this->editableVideo($key, $ws->id);
+        $ai = \Mockery::mock(\App\Services\Generation\AI\AIGenerationAdapter::class);
+        $ai->shouldReceive('generate')->once()->andReturn(['content' => 'The exact new line.', 'provider_key' => 'fake', 'model' => 'test', 'tokens_used' => 10]);
+        $this->instance(\App\Services\Generation\AI\AIGenerationAdapter::class, $ai);
+        $result = $this->applyEditorChanges($key, $id, [['op' => 'rewrite_scene', 'scene_id' => $scene, 'mode' => 'more_documentary']])->assertOk()->assertJsonPath('data.failed', 0);
+        $this->assertSame('The exact new line.', Scene::findOrFail($scene)->script_text);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals/{$result->json('data.proposal_id')}/apply")->assertOk();
+    }
+
+    public function test_bulk_voice_preserves_skips_locks_and_replay(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id, [$s1, $s2]] = $this->editableVideo($key, $ws->id);
+        Scene::findOrFail($s2)->update(['locked_fields_json' => ['voice_settings_json']]);
+        $result = $this->applyEditorChanges($key, $id, [['op' => 'rerecord_all']])->assertOk()->assertJsonPath('data.failed', 0)->assertJsonPath('data.applied.0.result.started_count', 1);
+        Bus::assertDispatched(\App\Jobs\GenerateTTSJob::class, fn ($job) => $job->sceneIds === [$s1]);
+        $this->assertNotEmpty(Scene::findOrFail($s1)->voice_settings_json['is_outdated']);
+        $this->assertEmpty(Scene::findOrFail($s2)->voice_settings_json['is_outdated'] ?? false);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals/{$result->json('data.proposal_id')}/apply")->assertOk();
+        Bus::assertDispatchedTimes(\App\Jobs\GenerateTTSJob::class, 1);
+    }
+
+    public function test_bulk_animation_preserves_shared_render_savings(): void
+    {
+        [$ws, , $key] = $this->tenant('creator', 2000);
+        [$id, [$s1, $s2]] = $this->editableVideo($key, $ws->id);
+        $revision = \App\Http\Controllers\Api\Developer\V1\EditorController::revision(Project::findOrFail($id));
+        $proposal = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $revision, 'changes' => [['op' => 'animate_all', 'tier' => 'quick']]])->assertStatus(201)->assertJsonPath('data.changes.0.preview.render_count', 1)->assertJsonPath('data.credits.max', 50);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals/{$proposal->json('data.proposal_id')}/apply")->assertOk()->assertJsonPath('data.failed', 0)->assertJsonPath('data.applied.0.result.started_count', 2);
+        Bus::assertDispatchedTimes(\App\Jobs\AnimateSceneJob::class, 1);
+    }
+
+    public function test_bulk_restyle_keeps_per_scene_prompts_and_returns_skips(): void
+    {
+        [$ws, , $key] = $this->tenant('creator', 2000);
+        [$id, [$s1, $s2]] = $this->editableVideo($key, $ws->id);
+        Scene::findOrFail($s2)->update(['image_generation_settings_json' => ['in_progress' => true, 'generation_started_at' => now()->toIso8601String()]]);
+        $result = $this->applyEditorChanges($key, $id, [['op' => 'restyle_all', 'style' => 'anime', 'model_key' => 'gpt-image-2']])->assertOk()->assertJsonPath('data.failed', 0)->assertJsonPath('data.applied.0.result.started_count', 1);
+        $this->assertCount(1, $result->json('data.applied.0.result.skipped'));
+        Bus::assertDispatched(\App\Jobs\GenerateAIImageJob::class, fn ($j) => $j->sceneId === $s1 && $j->style === 'anime' && $j->promptOverride === null);
+        Bus::assertDispatchedTimes(\App\Jobs\GenerateAIImageJob::class, 1);
+    }
+
+    public function test_recorded_mcp_payloads_reach_project_storage_and_image_job(): void
+    {
+        $file = getenv('MCP_EDITOR_PAYLOADS');
+        if (! $file) $this->markTestSkipped('Run mcp/tests/editor-contract.mjs and set MCP_EDITOR_PAYLOADS for the transport-to-storage check.');
+        $records = json_decode(file_get_contents($file), true, flags: JSON_THROW_ON_ERROR);
+        [$ws, , $key] = $this->tenant('creator', 2000);
+        [$id, [$scene]] = $this->editableVideo($key, $ws->id);
+        Project::findOrFail($id)->update(['music_asset_id' => 999, 'channel_id' => 888, 'brand_kit_id' => 777]);
+        $this->applyEditorChanges($key, $id, $records[0]['body']['changes'])->assertOk()->assertJsonPath('data.failed', 0);
+        $project = Project::findOrFail($id);
+        foreach (['music_asset_id', 'channel_id', 'brand_kit_id'] as $field) $this->assertNull($project->$field);
+        $moderation = \Mockery::mock(\App\Services\Moderation\ContentSafetyService::class);
+        $moderation->shouldReceive('screenText')->andReturn(null);
+        $this->instance(\App\Services\Moderation\ContentSafetyService::class, $moderation);
+        $changes = $records[1]['body']['changes']; $changes[0]['scene_id'] = $scene;
+        $this->applyEditorChanges($key, $id, $changes)->assertOk()->assertJsonPath('data.failed', 0);
+        Bus::assertDispatched(\App\Jobs\GenerateAIImageJob::class, fn ($j) => $j->sceneId === $scene && $j->style === $changes[0]['style'] && $j->modelKey === $changes[0]['model_key'] && $j->promptOverride === $changes[0]['prompt_override']);
+    }
+
+    public function test_scene_dispatch_resolves_all_required_controller_dependencies(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id, [$scene]] = $this->editableVideo($key, $ws->id);
+        $image = Scene::findOrFail($scene)->visual_asset_id;
+        $this->applyEditorChanges($key, $id, [['op' => 'swap_visual', 'scene_id' => $scene, 'visual_asset_id' => $image]])->assertOk()->assertJsonPath('data.failed', 0);
+        Scene::findOrFail($scene)->update(['script_text' => '']);
+        // The real method must reach its own validation (and not crash on a missing DI argument).
+        $this->applyEditorChanges($key, $id, [['op' => 'regenerate_voice', 'scene_id' => $scene]])->assertOk()->assertJsonPath('data.applied.0.error.code', 'invalid_scene_state');
+    }
+
+    public function test_bulk_retry_selection_never_requeues_the_completed_scene(): void
+    {
+        [$ws, , $key] = $this->tenant('creator', 2000);
+        [$id, [$s1, $s2]] = $this->editableVideo($key, $ws->id);
+        Scene::findOrFail($s1)->update(['image_generation_settings_json' => ['in_progress' => false, 'last_error' => null]]);
+        Scene::findOrFail($s2)->update(['image_generation_settings_json' => ['in_progress' => false, 'last_error' => 'provider unavailable']]);
+        $this->applyEditorChanges($key, $id, [['op' => 'restyle_all', 'style' => 'anime', 'scene_ids' => [$s2]]])->assertOk()->assertJsonPath('data.failed', 0)->assertJsonPath('data.applied.0.result.scenes.0.scene_id', $s2);
+        Bus::assertDispatched(\App\Jobs\GenerateAIImageJob::class, fn ($job) => $job->sceneId === $s2);
+        Bus::assertNotDispatched(\App\Jobs\GenerateAIImageJob::class, fn ($job) => $job->sceneId === $s1);
+    }
+
+    public function test_bulk_scope_and_stale_proposals_are_refused_before_dispatch(): void
+    {
+        [$ws, , $key] = $this->tenant('creator', 2000);
+        [$id, [$s1]] = $this->editableVideo($key, $ws->id);
+        $revision = \App\Http\Controllers\Api\Developer\V1\EditorController::revision(Project::findOrFail($id));
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $revision, 'changes' => [['op' => 'rerecord_all', 'scene_ids' => [999999]]]])->assertStatus(422)->assertJsonPath('error.code', 'invalid_scene');
+        $proposal = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $revision, 'changes' => [['op' => 'rerecord_all']]])->assertStatus(201);
+        Scene::findOrFail($s1)->update(['script_text' => 'Changed after quote.']);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals/{$proposal->json('data.proposal_id')}/apply")->assertStatus(409);
+        Bus::assertNotDispatched(\App\Jobs\GenerateTTSJob::class);
+        Project::findOrFail($id)->update(['visual_brief' => ['ugc_format' => 'one_shot']]);
+        $revision = \App\Http\Controllers\Api\Developer\V1\EditorController::revision(Project::findOrFail($id));
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $revision, 'changes' => [['op' => 'rerecord_all']]])->assertStatus(422)->assertJsonPath('error.code', 'whole_video_edit_unsupported');
+    }
+
+    public function test_bulk_spokesperson_quote_uses_each_saved_engine(): void
+    {
+        [$ws, , $key] = $this->tenant('creator', 5000);
+        [$id, [$s1, $s2]] = $this->editableVideo($key, $ws->id);
+        foreach ([$s1 => 'fabric', $s2 => 'omni_human'] as $sid => $engine) {
+            Scene::findOrFail($sid)->update(['duration_seconds' => 12, 'image_generation_settings_json' => ['lipsync_engine' => $engine]]);
+        }
+        $revision = \App\Http\Controllers\Api\Developer\V1\EditorController::revision(Project::findOrFail($id));
+        $expected = \App\Services\CreditService::spokespersonCost(12, 'fabric') + \App\Services\CreditService::spokespersonCost(12, 'omni_human');
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $revision, 'changes' => [['op' => 'animate_all', 'tier' => 'spokesperson']]])->assertStatus(201)->assertJsonPath('data.credits.max', $expected)->assertJsonPath('data.changes.0.preview.scenes.0.lipsync_engine', 'fabric');
+    }
+
+    private function enableOperationAccounting(): void
+    {
+        if (! Schema::hasTable('api_operations')) (require database_path('migrations/2026_09_25_200000_create_api_operations.php'))->up();
+        config(['developer.operation_accounting' => true]);
+        \Illuminate\Support\Facades\Context::forgetHidden(\App\Services\Developer\OperationAccounting::CONTEXT);
+    }
+
+    private function operationQuote(Workspace $ws, int $maximum): ApiQuote
+    {
+        return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $ws->id,
+            'payload_json' => [], 'credits_min' => $maximum, 'credits_max' => $maximum,
+            'expires_at' => now()->addMinutes(10)]);
+    }
+
+    public function test_operation_reserves_key_cap_before_jobs_have_charged(): void
+    {
+        $this->enableOperationAccounting();
+        [$ws, , $token] = $this->tenant('creator', 500);
+        $key = ApiKey::resolve($token);
+        $key->update(['spend_cap_credits' => 100]);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 100), $key->id));
+        $this->assertTrue($key->wouldExceedCap(1));
+        $this->assertSame(100, \App\Services\Developer\OperationAccounting::reserved($ws->id));
+        try {
+            DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 1), $key->id));
+            $this->fail('A pending reservation must consume the key cap.');
+        } catch (\DomainException $e) {
+            $this->assertSame('key_spend_cap_reached', $e->getMessage());
+        }
+        \App\Services\Developer\OperationAccounting::close($id);
+        $this->assertFalse($key->wouldExceedCap(100));
+    }
+
+    public function test_operation_debits_and_refunds_are_attributed_and_bounded(): void
+    {
+        $this->enableOperationAccounting();
+        [$ws, , $token] = $this->tenant('creator', 500);
+        $key = ApiKey::resolve($token);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 100), $key->id));
+        $credits = app(\App\Services\CreditService::class);
+        $this->assertTrue($credits->deduct($ws->id, 70, 'test', []));
+        try { $credits->deduct($ws->id, 31, 'test', []); $this->fail('An accounted budget refusal must stop execution.'); }
+        catch (\App\Services\Developer\OperationBudgetExceeded $e) { $this->assertSame(402, $e->getStatusCode()); }
+        $this->assertSame(70, $key->spentThisMonth());
+        $this->assertSame(30, \App\Services\Developer\OperationAccounting::reserved($ws->id));
+        $credits->refund($ws->id, 20, 'test');
+        $this->assertSame(50, $key->spentThisMonth());
+        $this->assertSame(450, $credits->balance($ws->id));
+        $this->assertSame(2, DB::table('credit_ledger')->where('api_operation_id', $id)->where('api_key_id', $key->id)->count());
+        \App\Services\Developer\OperationAccounting::queued($id, 'parent-job');
+        \App\Services\Developer\OperationAccounting::queued($id, 'child-job');
+        \App\Services\Developer\OperationAccounting::close($id);
+        \App\Services\Developer\OperationAccounting::close($id, 'parent-job');
+        $this->assertSame(50, \App\Services\Developer\OperationAccounting::reserved($ws->id));
+        \App\Services\Developer\OperationAccounting::close($id, 'child-job', true);
+        $this->assertSame(0, \App\Services\Developer\OperationAccounting::reserved($ws->id));
+        $this->assertSame('failed', DB::table('api_operations')->where('id', $id)->value('status'));
+        try { $credits->deduct($ws->id, 1, 'late-job'); $this->fail('A settled operation must not charge.'); }
+        catch (\App\Services\Developer\OperationBudgetExceeded $e) { $this->assertSame(402, $e->getStatusCode()); }
+        \Illuminate\Support\Facades\Context::forgetHidden(\App\Services\Developer\OperationAccounting::CONTEXT);
+        $this->assertTrue($credits->deduct($ws->id, 1, 'dashboard'));
+        $this->assertSame(50, $key->spentThisMonth());
+    }
+
+    public function test_dashboard_cannot_spend_reserved_credits_and_rotation_keeps_holds(): void
+    {
+        $this->enableOperationAccounting();
+        [$ws, $user, $token] = $this->tenant('creator', 100);
+        $key = ApiKey::resolve($token);
+        $key->update(['spend_cap_credits' => 100]);
+        DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 100), $key->id));
+        \Illuminate\Support\Facades\Context::forgetHidden(\App\Services\Developer\OperationAccounting::CONTEXT);
+        $this->assertFalse(app(\App\Services\CreditService::class)->deduct($ws->id, 1, 'dashboard'));
+        [$newKey] = ApiKey::issue($ws->id, $user->id, 'Rotated', null, 100, $key->id);
+        $this->assertTrue($newKey->wouldExceedCap(1));
+    }
+    public function test_pending_quote_replay_returns_status_without_reexecution(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $quote = $this->operationQuote($ws, 10);
+        $quote->forceFill(['consumed_at' => now(), 'idempotency_key' => 'original'])->save();
+        $this->create($key, $quote->id, 'original')->assertStatus(202)
+            ->assertJsonPath('data.operation.state', 'running')
+            ->assertJsonPath('data.operation.quote_id', $quote->id);
+        $this->assertSame(0, Project::count());
+        $this->create($key, $quote->id, 'replacement')->assertStatus(409)->assertJsonPath('error.code', 'quote_consumed');
+        $this->withToken($key)->getJson('/api/developer/v1/operations/'.$quote->id)
+            ->assertOk()->assertJsonPath('data.operation.result_recorded', false);
+        [, , $otherKey] = $this->tenant();
+        $this->withToken($otherKey)->getJson('/api/developer/v1/operations/'.$quote->id)->assertStatus(404);
+    }
+
+    public function test_stalled_operation_is_reported_without_releasing_its_hold(): void
+    {
+        $this->enableOperationAccounting();
+        [$ws, , $token] = $this->tenant();
+        $quote = $this->operationQuote($ws, 100);
+        $quote->forceFill(['consumed_at' => now(), 'idempotency_key' => 'original'])->save();
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($quote, ApiKey::resolve($token)->id));
+        // Simulate a killed request, not an exception that executes finally.
+        \Illuminate\Support\Facades\Context::forgetHidden(\App\Services\Developer\OperationAccounting::CONTEXT);
+        DB::table('api_quotes')->where('id', $quote->id)->update(['updated_at' => now()->subHours(2)]);
+        DB::table('api_operations')->where('id', $id)->update(['updated_at' => now()->subHours(2)]);
+        $this->withToken($token)->getJson('/api/developer/v1/operations/'.$quote->id)
+            ->assertOk()->assertJsonPath('data.operation.state', 'needs_attention')
+            ->assertJsonPath('data.operation.credits.reserved', 100);
+        $this->assertSame(100, \App\Services\Developer\OperationAccounting::reserved($ws->id));
+        $this->assertFalse((bool) DB::table('api_operations')->where('id', $id)->value('producer_closed'));
+    }
+
+    public function test_operation_context_follows_real_sync_queue_and_child_jobs(): void
+    {
+        $this->enableOperationAccounting();
+        Bus::swap(new \Illuminate\Bus\Dispatcher(app()));
+        Bus::pipeThrough([\App\Services\Developer\AccountedJob::class]);
+        [$ws, , $token] = $this->tenant('creator', 100);
+        $key = ApiKey::resolve($token);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 40), $key->id));
+        \Illuminate\Support\Facades\Queue::connection('sync')->push(new OperationAccountingProbeJob($ws->id, true));
+        $this->assertSame(20, $key->spentThisMonth());
+        $this->assertSame(2, DB::table('api_operation_jobs')->where('operation_id', $id)->where('status', 'completed')->count());
+        \App\Services\Developer\OperationAccounting::close($id);
+        $this->assertSame(0, \App\Services\Developer\OperationAccounting::reserved($ws->id));
+    }
+    public function test_media_upload_validates_bytes_and_is_workspace_scoped(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [, , $foreign] = $this->tenant();
+        $storage = $this->createMock(\App\Services\Media\StorageService::class);
+        $storage->method('put')->willReturn('https://assets.test/sample.png');
+        $storage->method('url')->willReturn('https://assets.test/sample.png');
+        $this->instance(\App\Services\Media\StorageService::class, $storage);
+        $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6zd8AAAAASUVORK5CYII=';
+        $body = ['title' => 'Reference', 'asset_type' => 'image', 'content_base64' => $png];
+        $created = $this->withToken($key)->postJson('/api/developer/v1/assets', $body)->assertCreated();
+        $id = $created->json('data.asset.id');
+        $this->assertSame((string) $ws->id, (string) \App\Models\Asset::find($id)->workspace_id);
+        $this->withToken($key)->getJson("/api/developer/v1/assets/{$id}")->assertOk()->assertJsonPath('data.asset.transcription_status', 'not_requested');
+        $this->withToken($foreign)->getJson("/api/developer/v1/assets/{$id}")->assertNotFound();
+        $this->withToken($key)->postJson('/api/developer/v1/assets', array_replace($body, ['asset_type' => 'video']))->assertStatus(422)->assertJsonPath('error.code', 'invalid_media_type');
+        $this->withToken($key)->postJson('/api/developer/v1/assets', array_replace($body, ['content_base64' => base64_encode('<svg/>')]))->assertStatus(422);
+        $this->withToken($key)->postJson('/api/developer/v1/assets', array_replace($body, ['content_base64' => 'not base64!']))->assertStatus(422);
+        $this->withToken($key)->getJson('/api/developer/v1/library?type=image&q=Reference')->assertOk()->assertJsonPath('meta.total', 1);
+        $this->withToken($foreign)->getJson('/api/developer/v1/library?type=image')->assertOk()->assertJsonPath('meta.total', 0);
+    }
+
+    public function test_audio_upload_queues_transcription_and_rejects_oversized_multipart(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $storage = $this->createMock(\App\Services\Media\StorageService::class);
+        $storage->method('put')->willReturn('https://assets.test/sample.wav');
+        $this->instance(\App\Services\Media\StorageService::class, $storage);
+        $wav = 'RIFF'.pack('V', 36 + 480).'WAVEfmt '.pack('VvvVVvv', 16, 1, 1, 24000, 48000, 2, 16).'data'.pack('V', 480).str_repeat("\0", 480);
+        $upload = $this->withToken($key)->postJson('/api/developer/v1/assets', ['title' => 'Narration', 'asset_type' => 'audio', 'content_base64' => base64_encode($wav)])->assertCreated();
+        $upload->assertJsonPath('data.asset.transcription_status', 'queued');
+        Bus::assertDispatched(\App\Jobs\TranscribeAssetJob::class);
+        $id = $upload->json('data.asset.id');
+        $this->withToken($key)->getJson("/api/developer/v1/assets/{$id}")->assertOk()->assertJsonPath('data.asset.ready_for_audio_only', true)->assertJsonPath('data.asset.ready_for_audio_and_script', false);
+        $this->withToken($key)->getJson('/api/developer/v1/library?type=audio')->assertOk()->assertJsonPath('meta.total', 1);
+        $this->withToken($key)->getJson('/api/developer/v1/library?type=sound')->assertOk();
+        $file = \Illuminate\Http\UploadedFile::fake()->create('large.mp4', 102401, 'video/mp4');
+        $this->withToken($key)->post('/api/developer/v1/assets', ['title' => 'Oversized', 'asset_type' => 'video', 'asset_file' => $file], ['Accept' => 'application/json'])->assertStatus(422);
+        $this->assertSame(1, \App\Models\Asset::count());
+    }
+
+    public function test_clone_requires_consent_reuses_sample_and_preserves_quota_and_scope(): void
+    {
+        [$ws, $user, $key] = $this->tenant();
+        [, , $foreign] = $this->tenant();
+        $usage = $this->createMock(WorkspaceUsageService::class);
+        $usage->method('summaryForWorkspace')->willReturn(['voice_cloning_used' => 0, 'voice_cloning_limit' => 1]);
+        $this->instance(WorkspaceUsageService::class, $usage);
+        $sample = \App\Models\Asset::create(['workspace_id' => $ws->id, 'asset_type' => 'audio', 'mime_type' => 'audio/wav', 'storage_url' => 'https://assets.test/voice.wav']);
+        $body = ['name' => 'My voice', 'source_asset_id' => $sample->id];
+        $this->withToken($key)->postJson('/api/developer/v1/voices/clone', $body)->assertStatus(422);
+        $body['consent'] = true;
+        $clone = $this->withToken($key)->postJson('/api/developer/v1/voices/clone', $body)->assertCreated()->assertJsonPath('data.voice.status', 'active');
+        $id = $clone->json('data.voice.id');
+        $profile = \App\Models\VoiceProfile::find($clone->json('data.voice.voice_profile_id'));
+        $this->assertNotNull($profile->consent_acknowledged_at);
+        $this->assertEquals($user->id, $profile->consent_user_id);
+        $this->withToken($key)->postJson('/api/developer/v1/voices/clone', $body)->assertOk()->assertJsonPath('data.voice.id', $id)->assertJsonPath('meta.reused_existing', true);
+        $this->assertSame(1, \App\Models\VoiceProfile::count());
+        $this->withToken($foreign)->postJson('/api/developer/v1/voices/clone', $body)->assertStatus(422);
+        $this->withToken($foreign)->postJson('/api/developer/v1/voices/preview', ['voice_id' => $id])->assertNotFound();
+        $this->withToken($foreign)->postJson('/api/developer/v1/voices', ['voice_id' => $id, 'name' => 'Stolen'])->assertNotFound();
+        $this->withToken($key)->postJson('/api/developer/v1/voices/preview', ['voice_id' => $id])->assertOk()->assertJsonPath('data.preview_kind', 'source_sample')->assertJsonPath('data.is_generated_clone_preview', false);
+        $usage = $this->createMock(WorkspaceUsageService::class);
+        $usage->method('summaryForWorkspace')->willReturn(['voice_cloning_used' => 1, 'voice_cloning_limit' => 1]);
+        $this->instance(WorkspaceUsageService::class, $usage);
+        $other = $sample->replicate(); $other->save();
+        $this->withToken($key)->postJson('/api/developer/v1/voices/clone', array_replace($body, ['source_asset_id' => $other->id]))->assertStatus(402)->assertJsonPath('error.code', 'voice_cloning_limit');
+        $this->assertSame(1, \App\Models\VoiceProfile::count());
+    }
+
+    public function test_save_voice_uses_catalogue_provider_and_reuses_existing_profile(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        \App\Models\VoiceProfile::create(['name' => 'Kore', 'provider' => 'google', 'provider_voice_key' => 'Kore', 'status' => 'active']);
+        $body = ['name' => 'Brand narrator', 'voice_id' => 'Kore'];
+        $saved = $this->withToken($key)->postJson('/api/developer/v1/voices', $body)->assertOk();
+        $profile = \App\Models\VoiceProfile::find($saved->json('data.voice.voice_profile_id'));
+        $this->assertSame('google', $profile->provider);
+        $this->assertEquals($ws->id, $profile->workspace_id);
+        $this->withToken($key)->postJson('/api/developer/v1/voices', $body)->assertOk()->assertJsonPath('data.voice.voice_profile_id', $profile->id);
+        $this->assertSame(2, \App\Models\VoiceProfile::count());
+    }
+
+    public function test_narration_choices_freeze_transcript_and_invalidate_lipsync(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id, [$sid]] = $this->editableVideo($key, $ws->id);
+        $audio = \App\Models\Asset::create(['workspace_id' => $ws->id, 'asset_type' => 'audio', 'transcription_status' => 'queued', 'storage_url' => 'https://assets.test/s.wav']);
+        Scene::find($sid)->update(['image_generation_settings_json' => ['animation_video_asset_id' => 123, 'spokesperson_consent' => true]]);
+        $this->applyEditorChanges($key, $id, [['op' => 'use_narration', 'scene_id' => $sid, 'asset_id' => $audio->id, 'mode' => 'audio_only']])->assertOk()->assertJsonPath('data.failed', 0);
+        $this->assertSame('Hook line.', Scene::find($sid)->script_text);
+        $this->assertTrue(Scene::find($sid)->image_generation_settings_json['animation_outdated']);
+        $this->assertTrue(Scene::find($sid)->voice_settings_json['custom_audio']);
+        $revision = \App\Http\Controllers\Api\Developer\V1\EditorController::revision(Project::find($id));
+        $changes = [['op' => 'use_narration', 'scene_id' => $sid, 'asset_id' => $audio->id, 'mode' => 'audio_and_script']];
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", compact('revision', 'changes'))->assertStatus(422)->assertJsonPath('error.code', 'transcription_not_ready');
+        $audio->update(['transcription_status' => 'completed', 'transcript_text' => 'Approved transcript.']);
+        $quote = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", compact('revision', 'changes'))->assertCreated();
+        $audio->update(['transcript_text' => 'Later transcription replacement.']);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals/{$quote->json('data.proposal_id')}/apply")->assertOk()->assertJsonPath('data.failed', 0);
+        $this->assertSame('Approved transcript.', Scene::find($sid)->script_text);
+        $this->assertFalse(Scene::find($sid)->voice_settings_json['is_outdated']);
+    }
+
+    public function test_character_update_requires_new_reference_consent_but_allows_removal(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $character = $this->withToken($key)->postJson('/api/developer/v1/characters', ['name' => 'Presenter'])->assertCreated()->json('data.character.id');
+        $image = \App\Models\Asset::create(['workspace_id' => $ws->id, 'asset_type' => 'image']);
+        $this->withToken($key)->patchJson("/api/developer/v1/characters/{$character}", ['reference_asset_ids' => [$image->id]])->assertStatus(422)->assertJsonPath('error.code', 'consent_required');
+        $this->withToken($key)->patchJson("/api/developer/v1/characters/{$character}", ['reference_asset_ids' => [$image->id], 'consent' => true])->assertOk();
+        $this->assertNotNull(\App\Models\Character::find($character)->consent_acknowledged_at);
+        $this->withToken($key)->patchJson("/api/developer/v1/characters/{$character}", ['name' => 'Renamed'])->assertOk();
+        $this->withToken($key)->patchJson("/api/developer/v1/characters/{$character}", ['reference_asset_ids' => []])->assertOk();
+        $this->assertNull(\App\Models\Character::find($character)->reference_asset_id);
+    }
+    public function test_ugc_insufficient_credit_and_ambiguous_request_do_not_dispatch(): void
+    {
+        foreach (['composed', 'one_shot'] as $mode) {
+            [$ws, , $key] = $this->tenant('creator', 0);
+            $quote = $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', ['mode' => $mode, 'format' => 'direct_camera', 'segments' => $this->ugcSegments(), 'consent' => true])->assertCreated();
+            $body = ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'interrupted'];
+            $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', $body)->assertStatus(402)->assertJsonPath('error.code', 'insufficient_credits');
+            $this->assertSame(0, Project::count());
+            ApiQuote::find($body['quote_id'])->update(['consumed_at' => now(), 'idempotency_key' => 'interrupted']);
+            $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', $body)->assertStatus(202);
+            $this->assertSame(0, Project::count());
+        }
+        Bus::assertNothingDispatched();
+    }
+
+    public function test_ugc_mode_choices_reject_ignored_inputs_and_foreign_products(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $base = ['mode' => 'one_shot', 'format' => 'direct_camera', 'segments' => $this->ugcSegments(), 'consent' => true];
+        foreach ([['voice_key' => 'Kore'], ['aspect_ratio' => '16:9'], ['fidelity' => 'high'], ['variants' => [['segments' => $this->ugcSegments()]]]] as $bad) {
+            $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', $base + $bad)->assertStatus(422)->assertJsonPath('error.code', 'unsupported_mode_setting');
+        }
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', $base + ['product_asset_ids' => [99999]])->assertStatus(422)->assertJsonPath('error.code', 'invalid_asset');
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', $base)->assertCreated()->assertJsonPath('data.chosen.voice.type', 'native_speech')->assertJsonPath('data.chosen.aspect_ratio', '9:16');
+        $base['mode'] = 'composed';
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', $base + ['voice_key' => 'clone-1'])->assertStatus(422)->assertJsonPath('error.code', 'unsupported_voice');
+    }
+
+    public function test_ugc_reference_is_scoped_and_forwarded_to_planning(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [, , $foreign] = $this->tenant();
+        $asset = \App\Models\Asset::create(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://example.test/ref.mp4']);
+        $reference = ['shape' => 'Hook then demonstration', 'beats' => [['role' => 'hook', 'does' => 'Ask a question', 'start' => 0, 'end' => 3]]];
+        $reader = $this->createMock(\App\Services\Ugc\UgcReference::class);
+        $reader->expects($this->once())->method('read')->willReturn($reference);
+        $this->instance(\App\Services\Ugc\UgcReference::class, $reader);
+        $this->withToken($foreign)->postJson('/api/developer/v1/ugc/reference', ['asset_id' => $asset->id])->assertStatus(422);
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/reference', ['asset_id' => $asset->id])->assertOk()->assertJsonPath('data.reference.shape', $reference['shape']);
+        $planner = $this->createMock(\App\Services\Ugc\UgcShotPlanner::class);
+        $planner->expects($this->once())->method('plan')->willReturnCallback(function (...$args) use ($reference) {
+            $this->assertContains($reference, $args);
+            return ['format' => 'direct_camera', 'segments' => $this->ugcSegments()];
+        });
+        $this->instance(\App\Services\Ugc\UgcShotPlanner::class, $planner);
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/plans', ['script' => 'A standing desk demo', 'format' => 'auto', 'duration_seconds' => 10, 'reference' => $reference])->assertOk();
+    }
+
+    public function test_presenter_preview_is_quoted_charged_once_and_replayed(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $char = \App\Models\Character::create(['workspace_id' => $ws->id, 'name' => 'Presenter', 'description' => 'A warm presenter', 'status' => 'active']);
+        $sheet = $this->createMock(\App\Services\Ugc\CharacterAppearanceService::class);
+        $sheet->method('text')->willReturn('A warm presenter');
+        $this->instance(\App\Services\Ugc\CharacterAppearanceService::class, $sheet);
+        $adapter = $this->createMock(\App\Services\Generation\Image\ImageGenerationAdapter::class);
+        $adapter->expects($this->once())->method('generate')->willReturn(['image_b64' => base64_encode('image fixture')]);
+        $factory = $this->createMock(\App\Services\Generation\Image\ImageAdapterFactory::class);
+        $factory->method('generationCost')->willReturn(43);
+        $factory->method('resolve')->willReturn($adapter);
+        $this->instance(\App\Services\Generation\Image\ImageAdapterFactory::class, $factory);
+        $storage = $this->createMock(\App\Services\Media\StorageService::class);
+        $storage->method('put')->willReturn('https://example.test/preview.png');
+        $this->instance(\App\Services\Media\StorageService::class, $storage);
+        $root = "/api/developer/v1/ugc/characters/{$char->id}/preview";
+        $this->withToken($key)->postJson($root.'/quotes', ['consent' => false])->assertStatus(422);
+        $quote = $this->withToken($key)->postJson($root.'/quotes', ['consent' => true])->assertCreated()->json('data.quote_id');
+        $body = ['quote_id' => $quote, 'idempotency_key' => 'preview-1'];
+        $result = $this->withToken($key)->postJson($root, $body)->assertOk()->assertJsonPath('data.credits_charged', 43)->assertJsonPath('data.identity_match_guaranteed', false);
+        $this->withToken($key)->postJson($root, $body)->assertOk()->assertJsonPath('data.asset_id', $result->json('data.asset_id'));
+        $this->assertEquals(457, app(\App\Services\CreditService::class)->balance($ws->id));
+        $this->assertSame(1, DB::table('credit_ledger')->where('operation', 'ugc_variant_preview')->count());
+    }
+
+    public function test_spokesperson_waits_for_current_narration(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id, [$sid]] = $this->editableVideo($key, $ws->id);
+        $scene = Scene::find($sid);
+        $scene->update(['voice_settings_json' => $scene->voice_settings_json + ['is_outdated' => true]]);
+        $this->applyEditorChanges($key, $id, [['op' => 'animate', 'scene_id' => $sid, 'tier' => 'spokesperson', 'consent' => true]])->assertOk()->assertJsonPath('data.applied.0.error.code', 'narration_not_ready');
+        $this->assertSame(0, DB::table('credit_ledger')->count());
+    }
+    public function test_ugc_both_modes_return_completed_export_on_replay(): void
+    {
+        foreach (['composed', 'one_shot'] as $mode) {
+            [$ws, , $key] = $this->tenant('creator', 10000);
+            $ref = \App\Models\Asset::create(['workspace_id' => $ws->id, 'asset_type' => 'image', 'storage_url' => 'https://example.test/ref.png', 'mime_type' => 'image/png']);
+            $character = \App\Models\Character::create(['workspace_id' => $ws->id, 'name' => 'Presenter', 'status' => 'active', 'reference_asset_id' => $ref->id]);
+            $payload = ['mode' => $mode, 'format' => 'direct_camera', 'segments' => $this->ugcSegments(), 'consent' => true];
+            if ($mode === 'composed') $payload += ['character_ids' => [$character->id], 'voice_key' => 'Kore', 'variants' => [['label' => 'Second', 'segments' => $this->ugcSegments()]]];
+            $quote = $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', $payload)->assertCreated();
+            $body = ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => $mode.'-life'];
+            $created = $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', $body)->assertStatus(202);
+            $this->assertCount($mode === 'composed' ? 2 : 1, $created->json('data.videos'));
+            foreach ($created->json('data.videos') as $video) {
+                $id = $video['id'];
+                $this->withToken($key)->getJson("/api/developer/v1/videos/{$id}/result")->assertStatus(409);
+                $project = Project::find($id);
+                Project::withoutEvents(fn () => $project->update(['status' => 'ready_for_review']));
+                $asset = \App\Models\Asset::create(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://example.test/output.mp4']);
+                DB::table('export_jobs')->insert(['workspace_id' => $ws->id, 'project_id' => $id, 'status' => 'completed', 'output_asset_id' => $asset->id, 'queued_at' => now(), 'completed_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+                $this->withToken($key)->getJson("/api/developer/v1/videos/{$id}/result")->assertOk()->assertJsonPath('data.video.status', 'completed');
+            }
+            $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', $body)->assertOk()->assertJsonPath('data.videos.0.status', 'completed');
+        }
+    }
+
+    public function test_spokesperson_job_does_not_charge_when_narration_became_stale_after_queueing(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id, [$sid]] = $this->editableVideo($key, $ws->id);
+        $scene = Scene::find($sid);
+        $scene->update(['voice_settings_json' => $scene->voice_settings_json + ['is_outdated' => true], 'image_generation_settings_json' => ['generation_token' => 'queued-1', 'planned_spokesperson' => true]]);
+        \Illuminate\Support\Facades\Event::fake();
+        \App\Jobs\GenerateTalkingVideoJob::maybeDispatchForScene($scene);
+        Bus::assertNotDispatched(\App\Jobs\GenerateTalkingVideoJob::class);
+        $adapter = $this->createMock(\App\Services\Generation\Video\ReplicateFabricAdapter::class);
+        $adapter->expects($this->never())->method('start');
+        (new \App\Jobs\GenerateTalkingVideoJob($sid, $id, 'queued-1'))->handle($adapter);
+        $this->assertSame(0, DB::table('credit_ledger')->count());
+        $this->assertFalse(Scene::find($sid)->image_generation_settings_json['animation_in_progress']);
+    }
+    public function test_spokesperson_finishing_after_audio_change_is_stale_until_rerender(): void
+    {
+        [$ws, , $key] = $this->tenant('creator', 10000);
+        [$id, [$sid]] = $this->editableVideo($key, $ws->id);
+        $scene = Scene::find($sid);
+        $originalAudio = $scene->voice_settings_json['audio_asset_id'];
+        $replacement = \App\Models\Asset::create(['workspace_id' => $ws->id, 'asset_type' => 'audio', 'storage_url' => 'https://example.test/new.wav', 'duration_seconds' => 5]);
+        $scene->update(['image_generation_settings_json' => ['generation_token' => 'render-1'], 'duration_seconds' => 5]);
+        \Illuminate\Support\Facades\Event::fake();
+        Http::fake(['https://example.test/result.mp4' => Http::response('video fixture')]);
+        $storage = $this->createMock(\App\Services\Media\StorageService::class);
+        $storage->method('put')->willReturn('https://example.test/stored.mp4');
+        $this->instance(\App\Services\Media\StorageService::class, $storage);
+        $adapter = $this->createMock(\App\Services\Generation\Video\ReplicateFabricAdapter::class);
+        $adapter->method('start')->willReturn('prediction-1');
+        $adapter->method('providerKey')->willReturn('mock');
+        $adapter->method('pollUntilDone')->willReturnCallback(function () use ($sid, $replacement) {
+            $current = Scene::find($sid);
+            $current->update(['voice_settings_json' => array_replace($current->voice_settings_json, ['audio_asset_id' => $replacement->id, 'is_outdated' => false])]);
+            return 'https://example.test/result.mp4';
+        });
+        (new \App\Jobs\GenerateTalkingVideoJob($sid, $id, 'render-1'))->handle($adapter);
+        $scene->refresh();
+        $this->assertSame($originalAudio, $scene->image_generation_settings_json['animation_source_audio_asset_id']);
+        $this->assertTrue($scene->image_generation_settings_json['animation_outdated']);
+        $scene->update(['image_generation_settings_json' => array_replace($scene->image_generation_settings_json, ['generation_token' => 'render-2'])]);
+        (new \App\Jobs\GenerateTalkingVideoJob($sid, $id, 'render-2'))->handle($adapter);
+        $scene->refresh();
+        $this->assertEquals($replacement->id, $scene->image_generation_settings_json['animation_source_audio_asset_id']);
+        $this->assertFalse($scene->image_generation_settings_json['animation_outdated']);
+        $this->assertFalse($scene->image_generation_settings_json['animation_in_progress']);
+    }
+    public function test_delivery_handoffs_validate_version_without_sending_or_sharing(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [, , $foreign] = $this->tenant();
+        [$id] = $this->editableVideo($key, $ws->id);
+        $project = Project::find($id);
+        $asset = \App\Models\Asset::create(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://example.test/out.mp4']);
+        $export = \App\Models\ExportJob::create(['workspace_id' => $ws->id, 'project_id' => $id, 'status' => 'completed', 'output_asset_id' => $asset->id, 'queued_at' => now()]);
+        $revision = \App\Http\Controllers\Api\Developer\V1\EditorController::revision($project);
+        \Illuminate\Support\Facades\Mail::fake();
+        foreach (['public_share', 'approval_request', 'schedule'] as $action) {
+            $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/delivery/handoff", ['action' => $action, 'revision' => $revision, 'export_id' => $export->id])
+                ->assertOk()->assertJsonPath('data.outcome', 'handoff_required')->assertJsonPath('data.external_action_completed', false)->assertJsonPath('data.reviewed_export_id', $export->id);
+        }
+        $this->assertNull($project->fresh()->share_token);
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
+        $body = ['action' => 'schedule', 'revision' => $revision, 'export_id' => $export->id];
+        $this->withToken($foreign)->postJson("/api/developer/v1/videos/{$id}/delivery/handoff", $body)->assertNotFound();
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/delivery/handoff", array_replace($body, ['revision' => 'stale']))->assertStatus(409)->assertJsonPath('error.code', 'revision_conflict');
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/delivery/handoff", array_replace($body, ['export_id' => 999999]))->assertStatus(409);
+        $export->update(['status' => 'processing']);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/delivery/handoff", $body)->assertStatus(409)->assertJsonPath('error.code', 'not_ready');
+    }
+
+    public function test_delivery_preflight_requires_explicit_older_export_acknowledgement_and_role(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id] = $this->editableVideo($key, $ws->id);
+        $asset = \App\Models\Asset::create(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://example.test/out.mp4']);
+        $export = \App\Models\ExportJob::create(['workspace_id' => $ws->id, 'project_id' => $id, 'status' => 'completed', 'output_asset_id' => $asset->id, 'queued_at' => now()]);
+        $new = $export->replicate(); $new->save();
+        $body = ['action' => 'approval_request', 'revision' => \App\Http\Controllers\Api\Developer\V1\EditorController::revision(Project::find($id)), 'export_id' => $export->id];
+        $route = "/api/developer/v1/videos/{$id}/delivery/handoff";
+        $this->withToken($key)->postJson($route, $body)->assertStatus(409)->assertJsonPath('error.code', 'stale_export');
+        $this->withToken($key)->postJson($route, $body + ['allow_stale' => true])->assertOk()->assertJsonPath('data.allow_stale', true);
+        [, $viewer] = $this->member($ws, User::ROLE_CLIENT_VIEWER);
+        $this->withToken($viewer)->postJson($route, $body + ['allow_stale' => true])->assertStatus(403);
+    }
+
+    public function test_assistant_scheduler_returns_durable_handoff_not_scheduling_success(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        [$id] = $this->editableVideo($key, $ws->id);
+        $cruise = $this->createMock(\App\Services\CruiseControl\CruiseControlService::class);
+        $cruise->method('resolve')->willReturn(['reply_to_user' => 'Scheduled!', 'actions' => [['tool' => 'schedule_post', 'params' => [], 'diff_lines' => ['Open scheduler'], 'estimated_cost' => 0, 'confirmation_class' => 'always_prompt', 'affected_section' => 'project']]]);
+        $this->instance(\App\Services\CruiseControl\CruiseControlService::class, $cruise);
+        $plan = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/assistant/plans", ['request' => 'Schedule this tomorrow'])->assertCreated()->assertJsonPath('data.actions.0.execution', 'app_handoff');
+        $this->assertStringContainsString('Nothing has been scheduled', $plan->json('data.reply'));
+        $url = "/api/developer/v1/videos/{$id}/assistant/plans/{$plan->json('data.plan_id')}/apply";
+        $first = $this->withToken($key)->postJson($url)->assertOk()->assertJsonPath('data.applied.0.outcome', 'handoff_required')->assertJsonPath('data.applied.0.navigate.type', 'schedule')->assertJsonPath('data.applied.0.external_action_completed', false);
+        $this->withToken($key)->postJson($url)->assertOk()->assertJsonPath('data.applied.0.handoff', $first->json('data.applied.0.handoff'));
+        $this->assertSame(0, DB::table('credit_ledger')->count());
+    }
+
+    public function test_public_scope_excludes_destructive_and_personal_assistant_settings(): void
+    {
+        [, , $key] = $this->tenant();
+        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertOk()->assertJsonPath('data.delivery.external_delivery_via_api', false)->assertJsonPath('data.app_only.0', 'scene_deletion');
+        $tools = $this->withToken($key)->getJson('/api/developer/v1/assistant/tools')->assertOk()->json('data.tools');
+        $this->assertNotContains('delete_scene', array_column($tools, 'name'));
+        $schedule = collect($tools)->firstWhere('name', 'schedule_post');
+        $this->assertSame('app_handoff', $schedule['execution']);
+    }
+}
+
+
+class OperationAccountingProbeJob implements \Illuminate\Contracts\Queue\ShouldQueue
+{
+    public function __construct(public int $workspaceId, public bool $child) {}
+
+    public function handle(): void
+    {
+        if (! app(\App\Services\CreditService::class)->deduct($this->workspaceId, 10, 'queue-probe')) {
+            throw new \RuntimeException('Expected a reserved debit.');
+        }
+        if ($this->child) {
+            \Illuminate\Support\Facades\Queue::connection('sync')->push(new self($this->workspaceId, false));
+        }
     }
 }

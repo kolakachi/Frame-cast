@@ -47,8 +47,15 @@ Route::prefix('v1/oauth')->group(function (): void {
 // Developer API: the only surface an API key can reach (see
 // AuthenticateWithJwt::API_KEY_NAMESPACE). Thin, versioned wrappers over the
 // same services the dashboard uses; sessions may call it too.
-Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->group(function (): void {
+Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer', \App\Http\Middleware\TrackApiOperation::class])->group(function (): void {
     Route::get('/capabilities', [\App\Http\Controllers\Api\Developer\V1\CapabilitiesController::class, 'show']);
+    Route::post('/operations/{quoteId}/cancel', [\App\Http\Controllers\Api\Developer\V1\OperationController::class, 'cancel']);
+    Route::get('/operations/{quoteId}', [\App\Http\Controllers\Api\Developer\V1\OperationController::class, 'show']);
+    Route::post('/voices/clone', [\App\Http\Controllers\Api\Developer\V1\VoiceController::class, 'cloneVoice']);
+    Route::post('/voices/preview', [\App\Http\Controllers\Api\Developer\V1\VoiceController::class, 'preview']);
+    Route::post('/voices', [\App\Http\Controllers\Api\Developer\V1\VoiceController::class, 'save']);
+    Route::post('/assets', [\App\Http\Controllers\Api\Developer\V1\MediaController::class, 'store']);
+    Route::get('/assets/{assetId}', [\App\Http\Controllers\Api\Developer\V1\MediaController::class, 'show'])->whereNumber('assetId');
     Route::get('/voices', [\App\Http\Controllers\Api\Developer\V1\VoiceController::class, 'index']);
     Route::get('/options', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'options']);
     Route::get('/brand-kits', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'brandKits']);
@@ -57,6 +64,9 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->g
     Route::get('/caption-presets', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'captionPresets']);
     Route::get('/characters', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'characters']);
     Route::get('/library', [\App\Http\Controllers\Api\Developer\V1\LookupController::class, 'library']);
+    Route::post('/ugc/characters/{characterId}/preview/quotes', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'previewQuote'])->whereNumber('characterId');
+    Route::post('/ugc/characters/{characterId}/preview', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'previewCreate'])->whereNumber('characterId');
+    Route::post('/ugc/reference', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'reference']);
     Route::post('/ugc/plans', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'plans']);
     Route::post('/ugc/quotes', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'quotes']);
     Route::post('/ugc/videos', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'videos']);
@@ -69,6 +79,7 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->g
     Route::post('/quotes', [\App\Http\Controllers\Api\Developer\V1\QuoteController::class, 'store']);
     Route::post('/videos', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'store']);
     Route::get('/videos/{videoId}', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'show'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/delivery/handoff', [\App\Http\Controllers\Api\Developer\V1\DeliveryController::class, 'handoff'])->whereNumber('videoId');
     Route::get('/videos/{videoId}/result', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'result'])->whereNumber('videoId');
     Route::get('/videos/{videoId}/project', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'project'])->whereNumber('videoId');
     Route::get('/videos/{videoId}/project/schema', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'schema'])->whereNumber('videoId');
@@ -76,6 +87,7 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->g
     Route::post('/videos/{videoId}/proposals/{proposalId}/apply', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'apply'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/exports', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'export'])->whereNumber('videoId');
     Route::get('/videos/{videoId}/exports', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'exports'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/retry-quotes', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'retryQuote'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/retry', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'retry'])->whereNumber('videoId');
     Route::get('/assistant/tools', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'tools']);
     Route::post('/videos/{videoId}/assistant/plans', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'plan'])->whereNumber('videoId');

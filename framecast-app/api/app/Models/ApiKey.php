@@ -57,6 +57,11 @@ class ApiKey extends Model
      */
     public function spentThisMonth(): int
     {
+        if (\App\Services\Developer\OperationAccounting::enabled()) {
+            return (int) CreditLedgerEntry::query()->whereIn('api_key_id', $this->accountingKeyIds())
+                ->where('created_at', '>=', now()->startOfMonth())->sum('credits');
+        }
+
         return (int) CreditLedgerEntry::query()
             ->whereIn('project_id', Project::query()->where('api_key_id', $this->getKey())->select('id'))
             ->where('created_at', '>=', now()->startOfMonth())
@@ -83,10 +88,29 @@ class ApiKey extends Model
             ->first();
     }
 
+    /** Include predecessors so rotating a credential cannot reset its allowance. */
+    public function accountingKeyIds(): array
+    {
+        $ids = [(int) $this->getKey()];
+        $key = $this;
+        while ($key->rotated_from_id && ! in_array((int) $key->rotated_from_id, $ids, true)) {
+            $key = self::query()->where('workspace_id', $this->workspace_id)->find($key->rotated_from_id);
+            if (! $key) {
+                break;
+            }
+            $ids[] = (int) $key->getKey();
+        }
+
+        return $ids;
+    }
+
     /** Whether a create for up to $credits would exceed the monthly cap. */
     public function wouldExceedCap(int $credits): bool
     {
-        return $this->spend_cap_credits !== null && $this->spentThisMonth() + $credits > $this->spend_cap_credits;
+        $reserved = \App\Services\Developer\OperationAccounting::enabled()
+            ? (int) \Illuminate\Support\Facades\DB::table('api_operations')->whereIn('api_key_id', $this->accountingKeyIds())->sum('reserved_credits') : 0;
+
+        return $this->spend_cap_credits !== null && $this->spentThisMonth() + $reserved + $credits > $this->spend_cap_credits;
     }
 
     public function maskedKey(): string

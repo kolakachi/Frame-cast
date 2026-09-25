@@ -69,5 +69,43 @@ class AppServiceProvider extends ServiceProvider
         // rather than to each call site, so a mailable added later is covered
         // without anyone remembering to cover it.
         Event::listen(MessageSent::class, RecordSentMail::class);
+        \Illuminate\Support\Facades\Bus::pipeThrough([\App\Services\Developer\AccountedJob::class]);
+        Event::listen(\Illuminate\Queue\Events\JobProcessing::class, function ($event) {
+            \App\Services\Developer\AccountedJob::before($event->job);
+            \Illuminate\Support\Facades\Context::forgetHidden('wyv_api_job');
+            if ($id = ($event->job->payload()['wyv_api_operation'] ?? null)) {
+                \Illuminate\Support\Facades\Context::addHidden('wyv_api_job', $event->job->uuid());
+            }
+        });
+
+
+        // Context is restored by Laravel for workers; the explicit payload ID also
+        // lets terminal queue events settle the hold after all descendants finish.
+        \Illuminate\Queue\Queue::createPayloadUsing(function ($connection, $queue, $payload) {
+            $id = \App\Services\Developer\OperationAccounting::current();
+            if (! $id) {
+                return [];
+            }
+            \App\Services\Developer\OperationAccounting::queued($id, $payload['uuid']);
+
+            return ['wyv_api_operation' => $id];
+        });
+        Event::listen(\Illuminate\Queue\Events\JobProcessed::class, function ($event) {
+            if (\App\Services\Developer\AccountedJob::discarded($event->job)) return;
+            $id = $event->job->payload()['wyv_api_operation'] ?? null;
+            if ($id && \App\Services\Developer\OperationAccounting::enabled() && $event->job->isReleased()) {
+                \Illuminate\Support\Facades\DB::table('api_operation_jobs')->where('id', $event->job->uuid())->where('status', 'running')
+                    ->update(['status' => 'released', 'updated_at' => now()]);
+            }
+            if ($id && \App\Services\Developer\OperationAccounting::enabled() && ! $event->job->isReleased()) {
+                \App\Services\Developer\OperationAccounting::close($id, $event->job->uuid());
+            }
+        });
+        Event::listen(\Illuminate\Queue\Events\JobFailed::class, function ($event) {
+            $id = $event->job->payload()['wyv_api_operation'] ?? null;
+            if ($id && \App\Services\Developer\OperationAccounting::enabled()) {
+                \App\Services\Developer\OperationAccounting::close($id, $event->job->uuid(), true);
+            }
+        });
     }
 }

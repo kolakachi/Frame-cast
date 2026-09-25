@@ -67,7 +67,7 @@ class GenerateTalkingVideoJob implements ShouldQueue
         if (! $s->visual_asset_id) {
             return; // image not ready yet
         }
-        if (! data_get($s->voice_settings_json, 'audio_asset_id')) {
+        if (data_get($s->voice_settings_json, 'is_outdated') || ! data_get($s->voice_settings_json, 'audio_asset_id')) {
             return; // voice not ready yet
         }
         // Atomic one-time guard — only the first caller (image OR voice) wins.
@@ -94,6 +94,12 @@ class GenerateTalkingVideoJob implements ShouldQueue
     {
         $scene = Scene::query()->with(['project'])->find($this->sceneId);
         if (! $scene) {
+            return;
+        }
+
+        if (data_get($scene->image_generation_settings_json, 'generation_token') !== $this->generationToken) return;
+        if (data_get($scene->voice_settings_json, 'is_outdated')) {
+            $this->fail($scene, 'Narration changed or is still generating. Finish narration before lip-syncing.');
             return;
         }
 
@@ -213,6 +219,9 @@ class GenerateTalkingVideoJob implements ShouldQueue
 
             // Preserve the first original still for revert; swap the scene's
             // visual to the talking video (same slot as i2v animation).
+            $attached = \Illuminate\Support\Facades\DB::transaction(function () use ($scene, $asset, $imageAsset, $audioAssetId) {
+            $scene = Scene::query()->whereKey($this->sceneId)->lockForUpdate()->firstOrFail();
+            if (data_get($scene->image_generation_settings_json, 'generation_token') !== $this->generationToken) return false;
             $existingOriginal = data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id');
             $scene->forceFill(['visual_asset_id' => $asset->getKey()])->save();
             $this->stamp($scene->fresh(), [
@@ -226,8 +235,11 @@ class GenerateTalkingVideoJob implements ShouldQueue
                 // voice later changes (new TTS), the lips no longer match —
                 // flagged via animation_outdated (see GenerateTTSJob).
                 'animation_source_audio_asset_id'   => $audioAssetId,
-                'animation_outdated'                => false,
+                'animation_outdated'                => (bool) data_get($scene->voice_settings_json, 'is_outdated') || (int) data_get($scene->voice_settings_json, 'audio_asset_id') !== $audioAssetId,
             ]);
+                return true;
+            });
+            if (! $attached) return;
 
             // NON-FATAL from here on — the clip is stored, assigned and
             // stamped successful. A broadcast failure below must not reach the

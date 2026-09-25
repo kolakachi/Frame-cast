@@ -51,6 +51,8 @@ class CapabilitiesController extends DeveloperController
         $key = ($id = $request->attributes->get('api_key_id')) ? \App\Models\ApiKey::query()->find($id) : null;
 
         return response()->json(['data' => [
+            'delivery' => ['execution' => 'app_handoff', 'actions' => DeliveryController::ACTIONS, 'external_delivery_via_api' => false, 'preflight' => 'POST /videos/{id}/delivery/handoff', 'requires_in_app_confirmation' => true],
+            'app_only' => ['scene_deletion', 'character_deletion', 'voice_profile_deletion', 'preset_creation_and_deletion', 'assistant_undo', 'assistant_conversation_reset', 'assistant_brief_editing', 'assistant_auto_apply_preferences'],
             'plan' => $this->credits->planTier($workspaceId),
             'credits' => ['balance' => $this->credits->balance($workspaceId)],
             'limits' => [
