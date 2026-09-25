@@ -11,7 +11,7 @@ one-glance status.
 | 3. UGC | [api-phase3-ugc.md](api-phase3-ugc.md) | **Built** (25 Sep): delegates to the app's UGC controller | ~4 days |
 | 2. Characters | [api-phase2-characters.md](api-phase2-characters.md) | **Built** (25 Sep): delegates to the app's character controller | ~2 days |
 | 4. Editor operations | [api-phase4-editor-operations.md](api-phase4-editor-operations.md) | **Built** (25 Sep): read, schema, proposals with revision precondition, 15 operations, export, retry — all delegated to the editor's controllers | 2–3 weeks |
-| 5. Assistant delegation | Cruise Control as a bounded planner | **Built** (25 Sep): `ask_wyvstudio_assistant` → `apply_assistant_plan` | — |
+| 5. Assistant delegation | Cruise Control as a bounded planner | **Built and live** (25 Sep, `9b26301`): `ask_wyvstudio_assistant` → `apply_assistant_plan`; prod serves 31 tools, Cruise registry lists 19 | — |
 | Outreach | send the customer "Connect an AI assistant" | **Ready** | — |
 
 ## Decisions needed
