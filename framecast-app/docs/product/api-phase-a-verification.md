@@ -1,3 +1,5 @@
+> **Review note, 26 September 2026:** the `serialize_project_mutations` trigger migration was removed before push. The session fence applies to developer-API routes only. Any step below that verifies trigger rejections (SQLSTATE 55P03) no longer applies.
+
 # Phase A verification and rollout
 
 25 September 2026. Local working-tree implementation; not committed or deployed.

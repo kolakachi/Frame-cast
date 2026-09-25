@@ -47,7 +47,7 @@ Route::prefix('v1/oauth')->group(function (): void {
 // Developer API: the only surface an API key can reach (see
 // AuthenticateWithJwt::API_KEY_NAMESPACE). Thin, versioned wrappers over the
 // same services the dashboard uses; sessions may call it too.
-Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer', \App\Http\Middleware\TrackApiOperation::class])->group(function (): void {
+Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer', \App\Http\Middleware\TrackApiOperation::class, \App\Http\Middleware\SerializeProjectMutation::class])->group(function (): void {
     Route::get('/capabilities', [\App\Http\Controllers\Api\Developer\V1\CapabilitiesController::class, 'show']);
     Route::post('/operations/{quoteId}/cancel', [\App\Http\Controllers\Api\Developer\V1\OperationController::class, 'cancel']);
     Route::get('/operations/{quoteId}', [\App\Http\Controllers\Api\Developer\V1\OperationController::class, 'show']);

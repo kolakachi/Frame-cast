@@ -81,7 +81,8 @@ DB::table('projects')->insert(['id'=>99,'api_key_id'=>7,'title'=>'historical']);
 DB::table('credit_ledger')->insert(['project_id'=>99,'operation'=>'historical','credits'=>1,'balance_after'=>0]);
 $migration=require __DIR__.'/../../database/migrations/2026_09_25_200000_create_api_operations.php';$migration->up();
 check((int) DB::table('credit_ledger')->where('project_id',99)->value('api_key_id')===7, 'migration preserves historical best-effort key attribution');
-$locks=require __DIR__.'/../../database/migrations/2026_09_25_210000_serialize_project_mutations.php';$locks->up();
+// The project write-trigger migration was removed at review (26 Sep 2026); the
+// session fence is API-only, so the competing-write rejection probe no longer applies.
 DB::table('workspaces')->insert(['id'=>1,'plan_tier'=>'creator','status'=>'active','credits_monthly'=>100]);
 DB::table('api_keys')->insert(['id'=>1,'workspace_id'=>1,'spend_cap_credits'=>40]);
 DB::table('projects')->insert(['id'=>1,'title'=>'original']);

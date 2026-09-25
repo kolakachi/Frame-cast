@@ -176,7 +176,7 @@ paths:
         "201": { description: Active voice registered synchronously; no training job }
         "200": { description: Existing clone reused for the original source asset }
         "402": { description: Plan clone allowance reached }
-        "422": { description: Invalid sample, missing consent or sample conversion failed }
+        "422": { description: "Invalid sample, missing consent or sample conversion failed" }
   /voices/preview:
     post:
       operationId: previewVoice

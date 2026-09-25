@@ -87,11 +87,9 @@ flag remains disabled. Production validation and broader parity work remain open
   best effort; missing historical initiating keys cannot be reconstructed.
 - Replay targets/selections are immutable; only the current unused claim token
   can reopen a quote. Canonical content revisions detect same-second edits.
-- PostgreSQL session fences span editor revision checks and mutation/dispatch.
-  Project/scene write triggers reject competing writes with SQLSTATE 55P03;
-  they deliberately do not wait with a tuple lock and risk a deadlock. Conflicting
-  HTTP mutations return 409; a conflicting background action may pause/fail and
-  require inspection. No competing write silently applies to the old revision.
+- PostgreSQL session fences span editor revision checks and mutation/dispatch
+  for developer-API requests. (The project/scene write triggers described in
+  the original batch were removed at review before push; see A4.)
 - Results identify exports and fingerprints, select the latest export even while
   pending/failed, and require explicit export ID plus acceptance for stale files.
   Export lists expose metadata; download goes through the guarded result endpoint.
@@ -271,8 +269,15 @@ consumed; replay returns the original result without executing again.
 ### A4 — Make revisions reliable and application concurrency-safe [bug, P1]
 - [x] Replace second-resolution timestamp-based revisions with a reliable version
   or canonical content fingerprint.
-- [x] Atomically claim the revision for application; coordinate with dashboard
-  edits and other proposals.
+- [~] Atomically claim the revision for application; coordinate with dashboard
+  edits and other proposals. **Review decision, 26 September 2026:** the
+  session fence now applies to developer-API mutations only. The database
+  write triggers were removed before push: they rejected every concurrent
+  writer of a project's rows (three queue workers and editor autosaves
+  included) with an immediate error, which would have surfaced as random
+  generation failures for all users. Dashboard and worker writes are detected
+  by the fingerprint at apply time; the window between check and apply is not
+  closed for them.
 
 Acceptance: same-second changes invalidate old proposals; simultaneous edits
 cannot both apply against the same expected state unnoticed.

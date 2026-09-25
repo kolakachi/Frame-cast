@@ -15,7 +15,6 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->trustProxies(at: '*');
-        $middleware->api(append: [\App\Http\Middleware\SerializeProjectMutation::class]);
 
         $middleware->alias([
             'auth.jwt' => \App\Http\Middleware\AuthenticateWithJwt::class,

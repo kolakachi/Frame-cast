@@ -7,9 +7,19 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
-/** PostgreSQL session lock covers revision check through mutation/dispatch.
- * Database triggers use the same key for writes from workers and other routes.
- * A dead process releases the session lock; no TTL may expire during a render.
+/**
+ * Serialises developer-API mutations of one project: a PostgreSQL session
+ * advisory lock is held from the revision check through mutation and
+ * dispatch, so two API requests cannot apply against the same state.
+ *
+ * Deliberately API-only. An earlier version paired this with database
+ * triggers that rejected any other writer of the project's rows — dashboard
+ * autosaves and queue workers included — with an immediate error. Three
+ * workers and an editor write the same project concurrently as a matter of
+ * course, so that would have surfaced as random generation failures. Those
+ * writers are not fenced; the content-fingerprint revision detects them at
+ * apply time, and the remaining window between check and apply is narrow
+ * and recorded in the backlog (A4).
  */
 class SerializeProjectMutation
 {
