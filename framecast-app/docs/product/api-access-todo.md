@@ -276,11 +276,18 @@ Built 25 September 2026 (`782d840`), live; captions, motion and timing ride `upd
 
 ### Phase 5 — optional in-app assistant delegation (after Phase 4, on demand)
 
-- [ ] Audit the assistant's existing tools and execution behavior before reuse.
-- [ ] Expose bounded proposal generation with proposal/run IDs and structured results.
-- [ ] Route execution through the same revision, permission, approval and spend checks.
-- [ ] Prevent recursive delegation, implicit execution and broader tool access.
-- [ ] Test expired/modified proposals, unauthorized actions and partial recovery.
+Built 25 September 2026: Cruise Control exposed as a bounded planner (`AssistantController`), two MCP tools.
+
+- [x] Audit the assistant's existing tools and execution behavior before reuse.
+      (20 registry tools, each with paramsSchema, diffLines, estimateCost, confirmationClass, execute; apply cross-checks the estimate, checks balance, snapshots a revert and audits. Listed live at `GET /assistant/tools`.)
+- [x] Expose bounded proposal generation with proposal/run IDs and structured results.
+      (`POST /videos/{id}/assistant/plans` → plan_id, reply, actions with diff and credits.)
+- [x] Route execution through the same revision, permission, approval and spend checks.
+      (Apply claims the plan like any quote, requires the revision, runs Cruise's own apply per action.)
+- [x] Prevent recursive delegation, implicit execution and broader tool access.
+      (Only Cruise-named actions can run, frozen in the plan; the client never names a tool; planning applies nothing; Cruise has no outbound MCP.)
+- [x] Test expired/modified proposals, unauthorized actions and partial recovery.
+      (Revision conflict, wrong-endpoint use, replay, audit log, and the unresolvable case are tested; per-action failures are reported and continue.)
 
 ## D. MCP server
 

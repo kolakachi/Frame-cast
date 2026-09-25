@@ -25,7 +25,7 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.1.0'
+const VERSION = process.env.MCP_VERSION || '1.2.0'
 // OAuth discovery. The issuer is the WyvStudio app origin (Laravel serves the
 // authorization-server document there); this process serves the
 // protected-resource document for the MCP URL. Both unset → bearer keys only.
@@ -480,6 +480,32 @@ function buildServer(token) {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ video_id }) => call(token, 'POST', `/videos/${video_id}/retry`, {}, 'retry_video'),
+  )
+
+  // ── WyvStudio's own in-app assistant as a bounded planner.
+  server.registerTool(
+    'ask_wyvstudio_assistant',
+    {
+      title: 'Ask WyvStudio\'s assistant to plan an edit (free)',
+      description: 'For broad or vague edit requests ("make this more energetic", "tighten the middle", "give it a warmer voice"), hand the request to WyvStudio\'s in-app assistant. It knows the editor\'s tools and returns a plan: concrete actions with what each changes and its credits, plus a plan_id (10 minutes). Nothing is applied. Show the user the actions and total, then apply_assistant_plan if they agree. For precise, known changes prefer propose_edits.',
+      inputSchema: z.object({
+        video_id: z.number().int(),
+        request: z.string().min(2).max(1000).describe('The user\'s request, in their words.'),
+        scene_id: z.number().int().optional().describe('Limit the plan to one scene.'),
+      }),
+      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ video_id, ...rest }) => call(token, 'POST', `/videos/${video_id}/assistant/plans`, rest, 'ask_wyvstudio_assistant'),
+  )
+  server.registerTool(
+    'apply_assistant_plan',
+    {
+      title: 'Apply an assistant plan',
+      description: 'Run the actions in a plan from ask_wyvstudio_assistant, in order, through WyvStudio\'s assistant. SPENDS CREDITS up to the plan\'s total. Refuses with revision_conflict if the project changed. Use "only" to apply a subset by index. Only after the user agreed.',
+      inputSchema: z.object({ video_id: z.number().int(), plan_id: z.string(), only: z.array(z.number().int()).optional(), idempotency_key: z.string().max(128).optional() }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ video_id, plan_id, only, idempotency_key }) => call(token, 'POST', `/videos/${video_id}/assistant/plans/${plan_id}/apply`, { ...(only ? { only } : {}), idempotency_key: idempotency_key || plan_id }, 'apply_assistant_plan'),
   )
 
   server.registerTool(

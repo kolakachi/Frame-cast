@@ -158,6 +158,12 @@ paths:
     post: { operationId: exportVideo, summary: Render a new export, tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }], responses: { "202": { description: Started } } }
   /videos/{videoId}/retry:
     post: { operationId: retryVideo, summary: Retry or resume a failed video, tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }], responses: { "202": { description: Retried } } }
+  /assistant/tools:
+    get: { operationId: listAssistantTools, summary: What the in-app assistant can do, tags: [videos], responses: { "200": { description: OK } } }
+  /videos/{videoId}/assistant/plans:
+    post: { operationId: planWithAssistant, summary: Ask the in-app assistant to plan an edit (free), tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }], responses: { "201": { description: Plan created }, "200": { description: Nothing resolvable } } }
+  /videos/{videoId}/assistant/plans/{planId}/apply:
+    post: { operationId: applyAssistantPlan, summary: Apply an assistant plan (spends up to its total), tags: [videos], parameters: [{ in: path, name: videoId, required: true, schema: { type: integer } }, { in: path, name: planId, required: true, schema: { type: string } }], responses: { "200": { description: Applied with per-action results }, "409": { description: revision_conflict or quote_consumed } } }
   /videos/{videoId}/result:
     get:
       operationId: getVideoResult

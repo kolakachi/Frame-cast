@@ -79,6 +79,7 @@ The assistant always quotes before it spends. WyvStudio enforces that on the ser
 - **A UGC ad.** "Plan a 15-second UGC ad for a standing desk", "Estimate it as a one-take with Maya presenting", "Make two variants." It will ask you to confirm you have the rights to any real person's likeness or voice before it quotes.
 - **A character.** "Create a character called Maya, warm, thirties, home office", "Generate a reference photo of her at a desk."
 - **An edit.** "Show me video 226 and what I can change", "Rewrite scene 2 to be more educational", "Swap scene 3's visual for the desk photo", "Regenerate the music, upbeat", "Move the last scene to the front", "Export it in 1:1 as well."
+- **A vague edit.** "Make video 226 more energetic", "Tighten the middle", "Give it a warmer feel." The assistant hands these to WyvStudio's own in-app assistant, which comes back with concrete actions and a total for you to approve.
 - **Status.** "Is my video done?", "How many credits did that cost?", "How many UGC takes do I have left this month?"
 
 ## What it can and can't do

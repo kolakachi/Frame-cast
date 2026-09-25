@@ -94,6 +94,9 @@ trait BuildsDeveloperSchema
             });
         }
         (require database_path('migrations/2026_09_18_120000_create_ugc_run_requests.php'))->up();
+        foreach (['2026_06_06_000003_create_cruise_audit_logs_table', '2026_06_06_000004_create_cruise_conversations_table', '2026_06_06_000005_add_cruise_auto_apply_to_workspaces', '2026_06_06_000006_add_cruise_prefs_to_workspaces', '2026_06_07_000001_create_cruise_action_runs_table', '2026_06_07_000003_add_revert_to_cruise_action_runs'] as $m) {
+            (require database_path("migrations/{$m}.php"))->up();
+        }
         Schema::create('voice_profiles', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('workspace_id')->nullable();

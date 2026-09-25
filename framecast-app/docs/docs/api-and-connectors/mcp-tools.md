@@ -26,6 +26,7 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | `get_project`, `get_project_schema` | No | Everything editable about a video, its revision, and which operations are available. |
 | `propose_edits` → `apply_edits` | Apply spends the proposal's total | Validate and price a list of changes, then apply them in order with a revision check. |
 | `export_video`, `list_exports`, `retry_video` | No credits | Render a new export, list exports with freshness, retry a failed video. |
+| `ask_wyvstudio_assistant` → `apply_assistant_plan` | Apply spends the plan's total | Hand a broad request ("make it more energetic") to WyvStudio's own assistant; it returns concrete priced actions, and only the actions it named can be applied. |
 | `get_video_status` | No | `generating` → `exporting` → `completed`, or `failed` with a reason. Credits spent so far. |
 | `get_video_result` | No | The MP4 as a private link that expires, plus duration and the project link. |
 
@@ -67,6 +68,8 @@ UGC ads go through the same planner, take rules and credit checks as the UGC Ads
 Editing is read, propose, apply. The assistant reads the project (every scene setting plus a readiness block and the current `revision`), proposes a list of changes, and shows you what will change and what it costs. Proposals are free and expire in ten minutes. Applying runs the changes through the editor one by one and reports each result. If the project changed in between, in the app or by another assistant, apply refuses with `revision_conflict` and the assistant reads again.
 
 Operations: update any scene setting, reorder, add, duplicate, rewrite a script, regenerate narration, swap or search a visual, generate or edit an image, animate, cancel or revert an animation, regenerate music, change project settings, generate hooks. Deleting scenes is not available. Whole-video takes (one-take UGC, restyles) cannot have their scenes edited. Exports are separate and use your export allowance; older exports never contain newer edits.
+
+For vague requests, the external assistant can defer to WyvStudio's own in-app assistant, Cruise Control. Cruise turns "make this more energetic" into concrete actions from the editor's tools, each with what it changes and its credits, and returns them as a plan. Nothing runs until you agree; applying runs only the actions Cruise named, through Cruise's own checks and audit log. The external assistant cannot ask Cruise for anything Cruise would not do in the editor, and Cruise never calls back out.
 
 ## Waiting for a render
 

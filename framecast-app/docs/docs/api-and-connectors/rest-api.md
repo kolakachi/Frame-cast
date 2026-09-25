@@ -90,6 +90,10 @@ Refusals: `404 quote_not_found`, `410 quote_expired`, `409 quote_consumed`, `409
 
 Read the project and its `revision`; propose `{ revision, changes: [{ op, ... }] }` and get a `proposal_id` with per-change and total credits; apply with the proposal id (and an optional idempotency key). Apply answers `409 revision_conflict` if the project changed, and returns each change's result. Operations and their inputs are listed by the schema endpoint.
 
+## Assistant: GET /assistant/tools, POST /videos/\{id\}/assistant/plans, POST …/assistant/plans/\{planId\}/apply
+
+Send `{ request, scene_id?, history? }` to get a plan from WyvStudio's in-app assistant: a `plan_id`, its reply, and the actions it chose with what each changes and its credits. Apply with the plan id (optionally `only: [indexes]`); revision and quote rules are the same as proposals.
+
 ## GET /videos/\{id\}
 
 ```json

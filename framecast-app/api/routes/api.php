@@ -77,6 +77,9 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer'])->g
     Route::post('/videos/{videoId}/exports', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'export'])->whereNumber('videoId');
     Route::get('/videos/{videoId}/exports', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'exports'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/retry', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'retry'])->whereNumber('videoId');
+    Route::get('/assistant/tools', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'tools']);
+    Route::post('/videos/{videoId}/assistant/plans', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'plan'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/assistant/plans/{planId}/apply', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'apply'])->whereNumber('videoId');
 });
 
 Route::prefix('v1')->group(function (): void {

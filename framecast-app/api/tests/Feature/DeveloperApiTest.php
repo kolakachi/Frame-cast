@@ -594,6 +594,49 @@ class DeveloperApiTest extends TestCase
         $this->withToken($keyB)->getJson("/api/developer/v1/videos/{$id}/project")->assertStatus(404);
     }
 
+    public function test_the_in_app_assistant_plans_but_never_applies_on_its_own(): void
+    {
+        config(['developer.limits.writes_per_minute' => 100, 'developer.limits.workspace_writes_per_minute' => 100]);
+        [$ws, , $key] = $this->tenant();
+        [$id, [$s1]] = $this->editableVideo($key, $ws->id);
+
+        $this->withToken($key)->getJson('/api/developer/v1/assistant/tools')->assertOk()->assertJsonPath('data.tools.0.name', fn ($n) => is_string($n));
+
+        // Cruise resolves the request into one concrete, priced action.
+        $cruise = $this->createMock(\App\Services\CruiseControl\CruiseControlService::class);
+        $cruise->method('resolve')->willReturn([
+            'reply_to_user' => 'I can make the hook punchier.', 'action' => null,
+            'actions' => [['tool' => 'update_scene_script', 'params' => ['scene_id' => $s1, 'new_text' => 'Still sitting all day? Here is why a standing desk pays for itself.'],
+                'diff_lines' => ['Scene 1 script → "Still sitting all day?…"'], 'estimated_cost' => \App\Services\CreditService::TTS, 'confirmation_class' => 'always_prompt', 'affected_section' => 'scene']],
+        ]);
+        $this->instance(\App\Services\CruiseControl\CruiseControlService::class, $cruise);
+
+        $plan = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/assistant/plans", ['request' => 'Make the hook punchier'])->assertStatus(201)
+            ->assertJsonPath('data.credits.max', \App\Services\CreditService::TTS)->assertJsonPath('data.actions.0.tool', 'update_scene_script')->assertJsonPath('data.reply', 'I can make the hook punchier.');
+        $this->assertSame('Hook line.', Scene::query()->findOrFail($s1)->script_text, 'planning changes nothing');
+        $pid = $plan->json('data.plan_id');
+
+        // The plan cannot be spent on the wrong endpoint, and a changed project refuses it.
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals/{$pid}/apply")->assertStatus(409)->assertJsonPath('error.code', 'quote_kind_mismatch');
+        Scene::query()->whereKey($s1)->update(['label' => 'touched', 'updated_at' => now()->addSecond()]);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/assistant/plans/{$pid}/apply")->assertStatus(409)->assertJsonPath('error.code', 'revision_conflict');
+
+        $pid2 = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/assistant/plans", ['request' => 'Make the hook punchier'])->assertStatus(201)->json('data.plan_id');
+        $applied = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/assistant/plans/{$pid2}/apply")->assertOk()->assertJsonPath('data.failed', 0);
+        $this->assertTrue($applied->json('data.applied.0.ok'));
+        $this->assertStringStartsWith('Still sitting all day?', Scene::query()->findOrFail($s1)->script_text, 'applied through Cruise\'s own tool');
+        $this->assertSame(1, DB::table('cruise_audit_logs')->where('phase', 'apply')->count(), 'Cruise audited the apply as it does in the editor');
+        // Replay is idempotent.
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/assistant/plans/{$pid2}/apply")->assertOk()->assertJsonPath('data.failed', 0);
+        $this->assertSame(1, DB::table('cruise_audit_logs')->where('phase', 'apply')->count());
+
+        // Nothing resolvable: no plan, nothing to spend.
+        $cruise2 = $this->createMock(\App\Services\CruiseControl\CruiseControlService::class);
+        $cruise2->method('resolve')->willReturn(['reply_to_user' => "I can't do that yet.", 'action' => null, 'actions' => []]);
+        $this->instance(\App\Services\CruiseControl\CruiseControlService::class, $cruise2);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/assistant/plans", ['request' => 'Add a dragon'])->assertOk()->assertJsonPath('data.plan_id', null);
+    }
+
     public function test_a_key_reaches_the_developer_namespace_and_nothing_else(): void
     {
         [, , $key] = $this->tenant();
