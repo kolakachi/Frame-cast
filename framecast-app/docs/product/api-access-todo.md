@@ -133,7 +133,12 @@ All A1–A3 items applicable to the chosen contract must be complete before rele
 - [x] Test expired, foreign and payload-mismatched `quote_id` on create.
 - [ ] Complete an end-to-end client run within an agreed test budget: estimate,
       authorize, create, poll, export and retrieve the video.
-- [ ] Verify deployed code, migrations and service health; record release evidence.
+- [x] Verify deployed code, migrations and service health; record release evidence.
+      (25 September 2026, after push `454d48d`: AS and PRM discovery documents
+      served; `/mcp` answers 401 with the resource_metadata pointer; developer
+      namespace answers 401 without a token; registration validates; consent
+      page served by the SPA; a bogus `wyv_oat_` token is refused cleanly, which
+      exercises the new tables; docs pages live.)
 - [ ] Issue the pilot credential securely through the supported management path
       after checks pass; record expiry, limits and support contact.
 - [ ] Have the customer independently complete the workflow; record failures,
@@ -262,6 +267,7 @@ added only after their own gates pass.
 |---|---|---|---|---|
 | 25 September 2026 | Tracker created from plan v1.2 | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
+| 25 September 2026 | Deployed to production via the GitHub Action (push `454d48d`, eight commits) | `b2ece84`…`454d48d` | External probes of discovery, MCP challenge, developer API, registration, consent page and docs | **Live.** Real ChatGPT connector run on the owner's account still pending |
 | 25 September 2026 | Developer docs: four pages under "API & AI assistants" (connect ChatGPT/Claude/Cursor, API keys, MCP tools, REST API) linked from the help intro | Not committed | Docusaurus build succeeds, no broken links | Not deployed |
 | 25 September 2026 | OAuth for connectors: Laravel authorization server (DCR, PKCE, refresh rotation, revocation), SPA consent page with login carry-through, sidecar discovery, nginx | Not committed | `OAuthFlowTest` 9 tests; suite 589 passed (pre-existing renewal failure only); SPA build clean; curl flow through one-off api + sidecar on test account | Migration on dev DB; not deployed |
 | 25 September 2026 | Key expiry + rotation, per-key monthly spend cap, log context, analytics `via` tag; narration now quoted on the routed engine (Gemini 3cr) instead of a flat 1cr | Not committed | 3 new tests; suite 579 passed, pre-existing renewal failure only | Migration on dev DB; not deployed |
