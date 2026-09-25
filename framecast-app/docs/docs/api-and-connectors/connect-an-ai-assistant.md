@@ -6,7 +6,7 @@ description: Make WyvStudio videos from ChatGPT, Claude, Cursor or any MCP clien
 
 # Connect an AI assistant
 
-WyvStudio has an MCP server. Once an assistant is connected it can price a video, make it, watch it render and hand you the file — all from a chat. It uses your workspace's plan, credits and limits, and nothing it makes is public.
+WyvStudio has an MCP server. Once an assistant is connected it can do most of what you do in the app, from a chat: make videos from a prompt, script, article or your own images; plan and make UGC ads with your characters; create characters; edit any scene of a video and export it; and hand you the file. It uses your workspace's plan, credits and limits, quotes before it spends, and nothing it makes is public.
 
 **Who can connect:** workspace owners and admins on the **Creator** plan or above. Free, Starter and UGC-pass workspaces can't use the API.
 
@@ -56,25 +56,42 @@ claude mcp add --transport http wyvstudio https://app.wyvstudio.com/mcp \
 
 > **You:** Make a 30-second vertical video: three reasons a standing desk pays for itself. Stock footage is fine.
 >
-> **Assistant:** That'll be 18–24 credits (6–8 scenes). You have 2,053. Go ahead?
+> **Assistant:** That'll be 18–24 credits (6–8 scenes), narrated by Kore. You have 2,053. Go ahead?
 >
 > **You:** Yes.
 >
-> **Assistant:** Started — video #4821. I'll check on it… Done. Here's the download link (valid 12 hours) and the project in WyvStudio if you want to edit it.
+> **Assistant:** Started — video #226. I'll check on it… Done. Here's the download link (valid 12 hours) and the project in WyvStudio.
+>
+> **You:** Make the first scene punchier and re-export it.
+>
+> **Assistant:** I'll rewrite scene 1 ("stronger hook") and re-record its narration — 3 credits. Apply?
+>
+> **You:** Yes.
+>
+> **Assistant:** Applied. New export is rendering; here's the link.
 
-The assistant always quotes before it spends. WyvStudio enforces that on the server: a video can only be created against a quote you were shown, within ten minutes of it.
+The assistant always quotes before it spends. WyvStudio enforces that on the server: anything that costs credits can only run against a quote or proposal you were shown, within ten minutes of it, and never for more than it said.
+
+## Things you can ask for
+
+- **A video.** "Make a 45-second video from this article: https://…", "Turn this script into a 9:16 video with AI images in a watercolor style", "Use my Summer brand kit and the Alloy voice."
+- **Your stuff.** "What brand kits, channels and voices do I have?", "Show me my characters", "Find the product photos in my library."
+- **A UGC ad.** "Plan a 15-second UGC ad for a standing desk", "Estimate it as a one-take with Maya presenting", "Make two variants." It will ask you to confirm you have the rights to any real person's likeness or voice before it quotes.
+- **A character.** "Create a character called Maya, warm, thirties, home office", "Generate a reference photo of her at a desk."
+- **An edit.** "Show me video 226 and what I can change", "Rewrite scene 2 to be more educational", "Swap scene 3's visual for the desk photo", "Regenerate the music, upbeat", "Move the last scene to the front", "Export it in 1:1 as well."
+- **Status.** "Is my video done?", "How many credits did that cost?", "How many UGC takes do I have left this month?"
 
 ## What it can and can't do
 
-| Can | Can't (yet) |
+| Can | Can't |
 |---|---|
-| Quote and make a video from a prompt, script, URL, product description or your library images | Upload new footage or images |
-| Choose stock, AI images, AI video or an audiogram, with a visual style | Delete anything |
-| Use your brand kits, channels, niches, characters, music and voices | Publish, share or delete |
-| Set length, aspect ratio, tone, languages, platform | Touch billing, members or settings |
-| Check progress and fetch the finished MP4 | |
+| Make a video from a prompt, script, URL, product description or your library images, in any visual mode and style, with your brand kits, channels, niches, characters, music and voices | Upload new footage or images (use the app's library) |
+| Plan, quote and make UGC ads, composed or one-take, with your characters; check your takes allowance | Restyle your own footage |
+| Create and update characters and generate their images | Delete scenes, videos or characters |
+| Read a video, propose and apply any scene or project change, re-voice, swap or generate visuals, animate, regenerate music, export in any ratio | Publish or share |
+| Check progress, list exports, fetch the finished MP4 | Touch billing, members or settings |
 
-Everything in the right column stays in the WyvStudio app. See [MCP tools](./mcp-tools) for exactly what each tool does.
+Everything in the right column stays in the WyvStudio app. See [MCP tools](./mcp-tools) for exactly what each tool does and what it costs.
 
 ## Disconnect
 

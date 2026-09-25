@@ -1,7 +1,7 @@
 ---
 sidebar_position: 3
 title: MCP tools
-description: The five tools an assistant gets, what each costs, and how spending is approved.
+description: Every tool an assistant gets, what each costs, and how spending is approved.
 ---
 
 # MCP tools
@@ -31,9 +31,9 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 
 ## How spending is approved
 
-`create_video` only accepts a `quote_id` from `estimate_video`. The quote fixes exactly what will be made and the most it can cost, and it expires after ten minutes. A quote from another workspace, an expired one, or one already used is refused. The balance must cover the quote's **maximum**, not its minimum — an assistant can't top up mid-render.
+Every tool that spends credits — `create_video`, `create_ugc`, `create_character_image`, `apply_edits` — only accepts a quote or proposal id from its matching estimate. The quote fixes exactly what will be made and the most it can cost, and it expires after ten minutes. A quote from another workspace, an expired one, one already used, or one of the wrong kind is refused. The balance must cover the quote's **maximum**, not its minimum — an assistant can't top up mid-render.
 
-Assistants are told to show you the quote first. Even if one doesn't, it can't spend more than a quote you could have seen, and each quote makes at most one video.
+Assistants are told to show you the quote first. Even if one doesn't, it can't spend more than a quote you could have seen, and each quote runs at most once.
 
 ## Inputs for `estimate_video`
 
