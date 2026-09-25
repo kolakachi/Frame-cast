@@ -1103,7 +1103,7 @@ onMounted(() => {
                 <div class="api-secret-title">{{ newSecret.rotated_from_id ? 'New secret for' : 'Your new key' }} <strong>{{ newSecret.name }}</strong></div>
                 <div class="api-secret-row">
                   <code class="api-secret-code">{{ newSecret.key }}</code>
-                  <button class="settings-btn settings-btn-sm settings-btn-primary" type="button" @click="copySecret">{{ secretCopied ? 'Copied' : 'Copy' }}</button>
+                  <button class="btn btn-primary" type="button" @click="copySecret">{{ secretCopied ? 'Copied' : 'Copy' }}</button>
                 </div>
                 <div class="api-secret-note">Copy it now — it will not be shown again. {{ newSecret.rotated_from_id ? 'The old secret stopped working the moment this one was made.' : '' }}</div>
                 <button class="settings-btn settings-btn-sm" type="button" @click="newSecret = null">Done, I've saved it</button>
@@ -1147,7 +1147,7 @@ onMounted(() => {
                   </label>
                   <label class="api-field api-field-narrow">
                     <span>Expires</span>
-                    <select v-model="apiKeyForm.expires_in_days" class="settings-input">
+                    <select v-model="apiKeyForm.expires_in_days" class="settings-select">
                       <option value="30">30 days</option>
                       <option value="90">90 days</option>
                       <option value="365">1 year</option>
@@ -1158,7 +1158,7 @@ onMounted(() => {
                     <span>Monthly cap (credits)</span>
                     <input v-model="apiKeyForm.spend_cap_credits" class="settings-input" type="number" min="1" placeholder="none">
                   </label>
-                  <button class="settings-btn settings-btn-primary api-create-btn" type="button" :disabled="apiKeyCreating || apiKeys.length >= 5" @click="createApiKey">{{ apiKeyCreating ? 'Creating…' : 'Create key' }}</button>
+                  <button class="btn btn-primary api-create-btn" type="button" :disabled="apiKeyCreating || apiKeys.length >= 5" @click="createApiKey">{{ apiKeyCreating ? 'Creating…' : 'Create key' }}</button>
                 </div>
                 <div class="settings-hint" style="margin-top:10px">
                   Up to 5 active keys. A key can quote, make and fetch videos and read your plan and balance — nothing else. Revoking stops new requests at once; videos already rendering finish and are charged as normal.
@@ -2054,5 +2054,6 @@ onMounted(() => {
 .api-create-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 .api-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; font-size: 12px; color: var(--color-text-secondary); }
 .api-field-narrow { flex: 0 1 160px; }
-.api-create-btn { align-self: flex-end; }
+.api-create-btn { align-self: flex-end; white-space: nowrap; }
+.api-field .settings-select { width: 100%; }
 </style>
