@@ -54,6 +54,10 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // Where the SPA lives. Read all over the app for links in emails and
+    // API payloads; in production it is the same host as the API.
+    'frontend_url' => env('FRONTEND_URL', 'https://app.wyvstudio.com'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

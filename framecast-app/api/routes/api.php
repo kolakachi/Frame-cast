@@ -31,6 +31,19 @@ use App\Http\Controllers\Api\V1\Publishing\ScheduledPostController;
 use Illuminate\Broadcasting\BroadcastController;
 use Illuminate\Support\Facades\Route;
 
+// OAuth for MCP connectors (ChatGPT, Claude web). Public clients, PKCE,
+// dynamic registration. The consent page is the SPA route /oauth/authorize;
+// it calls context/decide with the user's session.
+Route::prefix('v1/oauth')->group(function (): void {
+    Route::post('/register', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'register'])->middleware('throttle:10,1');
+    Route::post('/token', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'token'])->middleware('throttle:60,1');
+    Route::post('/revoke', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'revoke'])->middleware('throttle:60,1');
+    Route::middleware('auth.jwt')->group(function (): void {
+        Route::post('/authorize/context', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'context']);
+        Route::post('/authorize/decide', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'decide']);
+    });
+});
+
 // Developer API: the only surface an API key can reach (see
 // AuthenticateWithJwt::API_KEY_NAMESPACE). Thin, versioned wrappers over the
 // same services the dashboard uses; sessions may call it too.

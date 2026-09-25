@@ -235,6 +235,8 @@ services:
       WYV_API_BASE_URL: http://nginx
       WYV_API_HOST_HEADER: app.wyvstudio.com
       MCP_ALLOWED_HOSTS: app.wyvstudio.com
+      OAUTH_ISSUER: https://app.wyvstudio.com
+      MCP_PUBLIC_URL: https://app.wyvstudio.com/mcp
     depends_on:
       - nginx
 

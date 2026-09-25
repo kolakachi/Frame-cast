@@ -161,6 +161,10 @@ services:
     environment:
       WYV_API_BASE_URL: http://api:8000
       MCP_ALLOWED_HOSTS: localhost,127.0.0.1,mcp
+      # Dev: the SPA is on :5173 and the API on :8000, so discovery points at
+      # the API host; connectors cannot reach localhost anyway.
+      OAUTH_ISSUER: http://localhost:8000
+      MCP_PUBLIC_URL: http://localhost:3001/mcp
     ports:
       - "3001:3000"
     depends_on:

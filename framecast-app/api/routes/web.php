@@ -9,6 +9,10 @@ use Illuminate\Support\Facades\Route;
 // here instead of the SPA.
 Route::get('/sample/{token}', [\App\Http\Controllers\Web\SharePageController::class, 'show']);
 
+// OAuth discovery for MCP connectors (RFC 8414). Served here rather than
+// under /api so it sits at the issuer's root, where clients look for it.
+Route::get('/.well-known/oauth-authorization-server', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'metadata']);
+
 Route::get('/', function () {
     return response()->json([
         'data' => [

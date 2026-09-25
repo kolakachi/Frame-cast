@@ -38,6 +38,9 @@ const routes = [
   { path: '/', redirect: '/dashboard' },
   { path: '/onboarding', name: 'onboarding', component: OnboardingView, meta: { requiresAuth: true, skipOnboardingGuard: true } },
   { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
+  // OAuth consent for MCP connectors. carryRedirect: a signed-out user is
+  // sent to login and then back here with the connector's query intact.
+  { path: '/oauth/authorize', name: 'oauth-authorize', component: () => import('../views/OAuthAuthorizeView.vue'), meta: { requiresAuth: true, skipOnboardingGuard: true, carryRedirect: true } },
   { path: '/register', name: 'register', component: RegisterView, meta: { guestOnly: true } },
   { path: '/auth/magic', name: 'magic-link', component: MagicLinkView, meta: { public: true } },
   // AppSumo LTD activation — public (buyer may be logged out or in); not
@@ -104,15 +107,22 @@ const router = createRouter({
   routes,
 })
 
+// Only a same-origin path may be a post-login destination; anything with a
+// scheme or a protocol-relative prefix is an open redirect.
+export function isSafeRedirect(value) {
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
+}
+
 router.beforeEach(async function (to) {
   const authStore = useAuthStore()
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    return { name: 'login' }
+    return to.meta.carryRedirect ? { name: 'login', query: { redirect: to.fullPath } } : { name: 'login' }
   }
 
   if (to.meta.guestOnly && authStore.isAuthenticated) {
     if (to.query.pass || to.query.plan) return { name: 'continue-checkout', query: to.query }
+    if (isSafeRedirect(to.query.redirect)) return to.query.redirect
     return { name: 'dashboard' }
   }
 

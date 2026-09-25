@@ -30,12 +30,19 @@ class ApiKeyController extends Controller
             return $denied;
         }
 
+        // A connected app (OAuth grant) is a key the user never saw; the
+        // list says which app it is so revoking it makes sense.
+        $apps = \App\Models\OAuth\OAuthGrant::query()->whereNull('revoked_at')
+            ->whereIn('api_key_id', ApiKey::query()->where('workspace_id', $user->workspace_id)->select('id'))
+            ->with('client')->get()->keyBy('api_key_id');
+
         $keys = ApiKey::query()
             ->where('workspace_id', $user->workspace_id)
             ->whereNull('revoked_at')
             ->orderByDesc('id')
             ->get()
             ->map(fn (ApiKey $k) => [
+                'connected_app'     => $apps->get($k->getKey())?->client?->name,
                 'id'                => $k->getKey(),
                 'name'              => $k->name,
                 'key'               => $k->maskedKey(),
@@ -159,6 +166,8 @@ class ApiKeyController extends Controller
         }
 
         $key->forceFill(['revoked_at' => now()])->save();
+        // A connected app's grant dies with its key.
+        \App\Models\OAuth\OAuthGrant::query()->where('api_key_id', $key->getKey())->whereNull('revoked_at')->update(['revoked_at' => now()]);
 
         return response()->json(['data' => ['revoked' => true], 'meta' => []]);
     }

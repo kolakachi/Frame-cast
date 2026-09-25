@@ -1,4 +1,5 @@
 <script setup>
+import { isSafeRedirect } from '../router';
 import { ref, reactive } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
@@ -47,6 +48,11 @@ async function submitPassword() {
     // Started a checkout and never finished it — back to Kelviq rather than a
     // dashboard they have no credits to use.
     if (await resumePendingCheckout()) return;
+    // Sent here mid-flow (an app asking to connect): go back to it.
+    if (isSafeRedirect(route.query.redirect)) {
+      router.push(route.query.redirect);
+      return;
+    }
     router.push({ name: "dashboard" });
   } catch (err) {
     state.value = "error";

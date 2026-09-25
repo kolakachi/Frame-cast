@@ -21,15 +21,20 @@ not a claim that every underlying service is missing.
 
 ## 0. Confirm pilot scope
 
-- [ ] Confirm the customer's MCP client. Bearer-header client (Claude, Claude
-      Code, Cursor) needs no OAuth; ChatGPT connector needs the OAuth server in D2.
+- [x] Confirm the customer's MCP client. Decided 25 September 2026: support both.
+      Bearer-header clients work now; the OAuth server in D2 is in scope so
+      ChatGPT connectors (and Claude web connectors) can connect without a key.
 - [x] Decide MCP server placement: Node sidecar (decided 25 September 2026).
 - [ ] Choose one first creation flow: standard narrated video or UGC.
-- [ ] Specify supported inputs, output options and required saved voices/characters.
-- [ ] Set numeric per-key/workspace request, concurrency and credit limits, plus
-      maximum spend per operation and pilot credential expiry. (Defaults now
-      exist: 60 reads and 10 writes per key per minute, 120/20 per workspace,
-      3 videos in flight. Confirm or change for the pilot.)
+- [x] Specify supported inputs, output options and required saved voices/characters.
+      Decided 25 September 2026: prompt or script; stock, AI image or AI video
+      visuals; duration, aspect ratio, tone, title, goal. Default voice only;
+      saved voices and characters are the first post-pilot expansion (C1).
+- [x] Set numeric per-key/workspace request, concurrency and credit limits, plus
+      maximum spend per operation and pilot credential expiry. Decided 25
+      September 2026: keep 60 reads / 10 writes per key per minute, 120/20 per
+      workspace, 3 videos in flight; pilot keys expire after 90 days; spend cap
+      sized per customer at issue time.
 - [ ] Confirm Creator-and-above eligibility and explicit pilot enrollment behavior.
 - [ ] Assign implementation/support owners and agree pilot success criteria.
 
@@ -213,10 +218,13 @@ added only after their own gates pass.
 - [x] Bearer-header path: accept a WyvStudio API key and pass it through; verify a
       revoked key fails on the next tool call. (Verified by asking the API; cached
       60s by hash, so revocation lands within a minute.)
-- [ ] OAuth path (only if a ChatGPT connector is confirmed): authorization server
-      metadata, dynamic client registration, PKCE, protected-resource metadata,
-      consent screen bound to one workspace, disconnect and revocation. Tokens map
-      to the same key model and allowlist.
+- [x] OAuth path: authorization server metadata, dynamic client registration,
+      PKCE, protected-resource metadata, consent screen bound to one workspace,
+      disconnect and revocation. Tokens map to the same key model and allowlist.
+      (Scope: [api-oauth-scope.md](api-oauth-scope.md). Laravel server +
+      `/oauth/authorize` SPA consent page + sidecar discovery + nginx. Verified
+      end to end on the dev stack with the test account; `OAuthFlowTest` (9 tests).
+      A real ChatGPT connector run against the deployed build is still to do.)
 
 ### D3. Tools
 
@@ -252,6 +260,7 @@ added only after their own gates pass.
 |---|---|---|---|---|
 | 25 September 2026 | Tracker created from plan v1.2 | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
+| 25 September 2026 | OAuth for connectors: Laravel authorization server (DCR, PKCE, refresh rotation, revocation), SPA consent page with login carry-through, sidecar discovery, nginx | Not committed | `OAuthFlowTest` 9 tests; suite 589 passed (pre-existing renewal failure only); SPA build clean; curl flow through one-off api + sidecar on test account | Migration on dev DB; not deployed |
 | 25 September 2026 | Key expiry + rotation, per-key monthly spend cap, log context, analytics `via` tag; narration now quoted on the routed engine (Gemini 3cr) instead of a flat 1cr | Not committed | 3 new tests; suite 579 passed, pre-existing renewal failure only | Migration on dev DB; not deployed |
 | 25 September 2026 | Sidecar: `mcp/` Node service, compose (dev+prod) and nginx wiring, five tools, bearer pass-through; platform admins may manage keys | Not committed | `mcp/smoke.sh` against the rebuilt dev stack on the test account; PHP suite green | Dev stack only; nginx/compose prod changes not deployed |
 | 25 September 2026 | Step 3: developer-namespace throttling (read/write buckets, caller + workspace) and an in-flight video cap | Not committed | 3 new tests; full suite green except the pre-existing renewal failure | Not deployed |

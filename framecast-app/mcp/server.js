@@ -14,9 +14,9 @@
 // of what the assistant claims the user approved.
 
 import { createHash } from 'node:crypto'
-import { createMcpExpressApp, requireBearerAuth } from '@modelcontextprotocol/express'
+import { createMcpExpressApp, mcpAuthMetadataRouter, requireBearerAuth } from '@modelcontextprotocol/express'
 import { toNodeHandler } from '@modelcontextprotocol/node'
-import { createMcpHandler, McpServer, OAuthError, OAuthErrorCode } from '@modelcontextprotocol/server'
+import { createMcpHandler, getOAuthProtectedResourceMetadataUrl, McpServer, OAuthError, OAuthErrorCode } from '@modelcontextprotocol/server'
 import * as z from 'zod/v4'
 
 const PORT = Number(process.env.PORT || 3000)
@@ -24,6 +24,11 @@ const API_BASE_URL = (process.env.WYV_API_BASE_URL || 'http://api:8000').replace
 const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 const VERSION = process.env.MCP_VERSION || '1.0.0'
+// OAuth discovery. The issuer is the WyvStudio app origin (Laravel serves the
+// authorization-server document there); this process serves the
+// protected-resource document for the MCP URL. Both unset → bearer keys only.
+const OAUTH_ISSUER = (process.env.OAUTH_ISSUER || '').replace(/\/$/, '')
+const MCP_PUBLIC_URL = process.env.MCP_PUBLIC_URL || ''
 const TOKEN_CACHE_SECONDS = 60
 const API_TIMEOUT_MS = 30_000
 
@@ -59,8 +64,9 @@ const verified = new Map() // sha256(token) -> { plan, until }
 
 const verifier = {
   async verifyAccessToken(token) {
-    if (typeof token !== 'string' || !token.startsWith('wyv_live_')) {
-      throw new OAuthError(OAuthErrorCode.InvalidToken, 'Expected a WyvStudio API key (wyv_live_…).')
+    // A WyvStudio API key, or an OAuth access token issued by the app.
+    if (typeof token !== 'string' || !(token.startsWith('wyv_live_') || token.startsWith('wyv_oat_'))) {
+      throw new OAuthError(OAuthErrorCode.InvalidToken, 'Expected a WyvStudio API key (wyv_live_…) or OAuth access token.')
     }
     const key = createHash('sha256').update(token).digest('hex')
     const cached = verified.get(key)
@@ -87,7 +93,7 @@ function authInfo(token, plan) {
   // so this is the verification's lifetime: after it the API is asked again.
   return {
     token,
-    clientId: 'wyvstudio-api-key',
+    clientId: token.startsWith('wyv_oat_') ? 'wyvstudio-oauth' : 'wyvstudio-api-key',
     scopes: ['videos'],
     expiresAt: Math.floor(Date.now() / 1000) + TOKEN_CACHE_SECONDS,
     extra: { plan },
@@ -221,11 +227,40 @@ const handler = createMcpHandler((ctx) => {
 // createMcpExpressApp already parses JSON bodies and validates Host/Origin.
 const app = createMcpExpressApp({ host: '0.0.0.0', allowedHosts: ALLOWED_HOSTS })
 const node = toNodeHandler(handler)
-const auth = requireBearerAuth({ verifier })
+
+const oauth = Boolean(OAUTH_ISSUER && MCP_PUBLIC_URL)
+if (oauth) {
+  // Mirrors Laravel's /.well-known/oauth-authorization-server so a connector
+  // that lands here first still finds the same endpoints.
+  const oauthMetadata = {
+    issuer: OAUTH_ISSUER,
+    authorization_endpoint: `${OAUTH_ISSUER}/oauth/authorize`,
+    token_endpoint: `${OAUTH_ISSUER}/api/v1/oauth/token`,
+    registration_endpoint: `${OAUTH_ISSUER}/api/v1/oauth/register`,
+    revocation_endpoint: `${OAUTH_ISSUER}/api/v1/oauth/revoke`,
+    response_types_supported: ['code'],
+    response_modes_supported: ['query'],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
+    code_challenge_methods_supported: ['S256'],
+    token_endpoint_auth_methods_supported: ['none'],
+    scopes_supported: ['videos'],
+  }
+  app.use(mcpAuthMetadataRouter({
+    oauthMetadata,
+    resourceServerUrl: new URL(MCP_PUBLIC_URL),
+    scopesSupported: ['videos'],
+    resourceName: 'WyvStudio',
+    dangerouslyAllowInsecureIssuerUrl: OAUTH_ISSUER.startsWith('http://'),
+  }))
+}
+const auth = requireBearerAuth({
+  verifier,
+  ...(oauth ? { resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(new URL(MCP_PUBLIC_URL)) } : {}),
+})
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, api: API_BASE_URL }))
 app.all('/mcp', auth, (req, res) => void node(req, res, req.body))
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`wyvstudio mcp ${VERSION} listening on :${PORT}, api ${API_BASE_URL}, hosts ${ALLOWED_HOSTS.join(',')}`)
+  console.log(`wyvstudio mcp ${VERSION} listening on :${PORT}, api ${API_BASE_URL}, hosts ${ALLOWED_HOSTS.join(',')}, oauth ${oauth ? OAUTH_ISSUER : 'off'}`)
 })

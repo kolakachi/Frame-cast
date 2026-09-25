@@ -33,6 +33,20 @@ class AuthenticateWithJwt
             return $this->handleApiKey($request, $next, $bearerToken);
         }
 
+        // An OAuth access token (a connected app) is a short-lived handle
+        // onto a hidden API key; from here on it is that key.
+        if (str_starts_with($bearerToken, 'wyv_oat_')) {
+            $key = app(\App\Services\OAuth\AuthorizationServer::class)->resolveAccessToken($bearerToken);
+            if (! $key) {
+                return response()->json(['error' => [
+                    'code'    => 'invalid_token',
+                    'message' => 'The access token is invalid, expired or revoked. Refresh it or reconnect the app.',
+                ]], 401)->header('WWW-Authenticate', 'Bearer error="invalid_token"');
+            }
+
+            return $this->authenticateWithKey($request, $next, $key);
+        }
+
         try {
             $claims = $this->jwtService->parse($bearerToken);
         } catch (\Throwable) {
@@ -229,6 +243,12 @@ class AuthenticateWithJwt
             return $this->unauthorized('Invalid or revoked API key.');
         }
 
+        return $this->authenticateWithKey($request, $next, $key);
+    }
+
+    /** The key path proper: shared by wyv_live_ keys and OAuth access tokens. */
+    private function authenticateWithKey(Request $request, Closure $next, \App\Models\ApiKey $key): Response
+    {
         if ($key->isExpired()) {
             return response()->json(['error' => [
                 'code'    => 'api_key_expired',
