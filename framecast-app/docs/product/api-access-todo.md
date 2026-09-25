@@ -180,9 +180,8 @@ All A1–A3 items applicable to the chosen contract must be complete before rele
       Limits are the defaults; support contact hello@wyvstudio.com.)
 - [ ] Have the customer independently complete the workflow; record failures,
       useful-video completion, repeat usage, credits and support effort.
-      **Gated on the expansion below (decided 25 September 2026): outreach only
-      after creation settings, UGC, characters and editor operations are all
-      exposed.** The pilot path itself is live and proven on the owner's account.
+      **All four expansion phases are live and tested on the owner's account
+      (25 September 2026). Outreach is unblocked.**
 
 ## B. Supported customer API rollout
 

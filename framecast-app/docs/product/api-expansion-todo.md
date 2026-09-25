@@ -11,7 +11,7 @@ one-glance status.
 | 3. UGC | [api-phase3-ugc.md](api-phase3-ugc.md) | **Built** (25 Sep): delegates to the app's UGC controller | ~4 days |
 | 2. Characters | [api-phase2-characters.md](api-phase2-characters.md) | **Built** (25 Sep): delegates to the app's character controller | ~2 days |
 | 4. Editor operations | [api-phase4-editor-operations.md](api-phase4-editor-operations.md) | **Built** (25 Sep): read, schema, proposals with revision precondition, 15 operations, export, retry — all delegated to the editor's controllers | 2–3 weeks |
-| Outreach | send the customer "Connect an AI assistant" | **Ready once the owner has tested the full surface in production** | — |
+| Outreach | send the customer "Connect an AI assistant" | **Ready** | — |
 
 ## Decisions needed
 
@@ -56,6 +56,6 @@ one-glance status.
 - [x] Deployed and smoke-tested (25 Sep, prod `782d840`: 29 tools listed, get_capabilities, get_options, get_ugc_allowance answer on the owner's workspace)
 
 ### Then
-- [ ] Owner test of the full surface on production
-- [ ] Contact the customer; record their first run (closes A4)
+- [x] Owner test of the full surface on production (25 Sep: via ChatGPT — lookups by name, UGC plan from the real planner, consent gate, character #116 created; via the live API on project #226 — read, schema, a two-change proposal at 0cr, apply, export #166 queued, exports listed)
+- [ ] Contact the customer; record their first run (closes A4). **Ready: send the "Connect an AI assistant" page.**
 - [ ] Submit to the ChatGPT app directory
