@@ -10,7 +10,8 @@ not a claim that every underlying service is missing.
 ## How to use
 
 - Work in dependency order. Stage D (MCP) is delivered with Stage A; it is the
-  pilot's client surface, not a follow-on. Stage C never blocks it.
+  pilot's client surface. The expansion phases (1 → 3 → 2 → 4) gate customer
+  outreach; each ships behind its own scope doc.
 - For each completed item, record the commit/PR and test or verification evidence.
   Keep local implementation, deployment and customer availability distinct.
 - Add an owner and target date when scheduling work. Do not mark a release gate
@@ -179,8 +180,9 @@ All A1–A3 items applicable to the chosen contract must be complete before rele
       Limits are the defaults; support contact hello@wyvstudio.com.)
 - [ ] Have the customer independently complete the workflow; record failures,
       useful-video completion, repeat usage, credits and support effort.
-      **The one item that waits on the customer.** Everything they need is live;
-      send them the "Connect an AI assistant" page.
+      **Gated on the expansion below (decided 25 September 2026): outreach only
+      after creation settings, UGC, characters and editor operations are all
+      exposed.** The pilot path itself is live and proven on the owner's account.
 
 ## B. Supported customer API rollout
 
@@ -200,47 +202,68 @@ Depends on a successful Stage A pilot.
       the owner's test of the Settings screen and voice selection; then open to
       all eligible workspaces (nothing to flip: eligibility is the plan gate).**
 
-## C1. Reusable media expansion
+## Expansion before outreach (decided 25 September 2026)
 
-Depends on Stage A controls; release each operation independently.
+Order: Phase 1 → Phase 3 → Phase 2 → Phase 4. The assistant may choose
+styles, brand kits, channels, templates and voices itself from the lookups,
+as long as the quote shows what it chose. Each phase gets its own scope doc,
+per-operation allowlisting, quote-bound spending, and request-level tests.
 
-- [ ] Add bounded image/audio uploads with actual type, size, duration and
-      ownership validation; protect remote imports if supported.
-- [ ] Add voice cloning with required consent, plan allowances, estimates,
-      idempotency, asynchronous status and saved voice IDs.
-- [ ] Add authorized voice previews with disclosed costs where applicable.
-- [ ] Add character creation using supported descriptions/reference assets and
-      enforce character limits.
-- [ ] Add character-image generation, cost estimates, progress and saved results.
-- [ ] Publish model/resource compatibility and fail clearly on unsupported inputs.
-- [ ] Test consent, foreign assets, plan limits, duplicate jobs and settlement;
-      document each operation before exposing it through API or MCP.
+### Phase 1 — full creation settings (scope: [api-phase1-creation-settings.md](api-phase1-creation-settings.md))
 
-## C2. Direct editor operations
+- [ ] Lookups: brand kits, channels, niches, caption presets, characters,
+      visual styles, library images and music, platform targets, languages.
+- [ ] Quotes accept every New Video setting the dashboard does (visual style,
+      custom style, brand kit, channel, template via channel/niche, niche,
+      character, caption preset, music, languages, platform target, allow
+      script edit, image sources, audiogram settings) with the same ownership
+      and plan validation and the same estimate.
+- [ ] Source types beyond prompt/script that need no upload: url,
+      product_description, images (from the library).
+- [ ] MCP: lookup tools and the widened `estimate_video`; capabilities enumerate
+      the option keys.
+- [ ] Docs, schema and tests updated.
 
-Depends on Stage A; reuse editor services and state transitions.
+### Phase 3 — UGC (scope to follow)
 
-- [ ] Return project revision, ordered scenes, readiness and export freshness.
-- [ ] Return project-specific operation/settings schemas, ranges and restriction reasons.
-- [ ] Add script updates and scene reordering; separately specify supported
-      addition/duplication operations. Keep scene deletion outside the first release.
-- [ ] Add owned visual assignment and supported image/animation operations.
-- [ ] Add voice selection/settings and affected-narration regeneration.
-- [ ] Add supported caption styles/placement and music/sound selection/settings.
-- [ ] Add supported output options and regeneration/export operations.
-- [ ] Preserve narration-controlled timing and whole-video editing restrictions.
-- [ ] Make proposed changes structured and separate from execution; disclose and
-      bound any charge for planning itself.
-- [ ] Bind approval to exact changes, workspace, project revision and maximum
-      spend; expire approval and reject stale/conflicting revisions.
-- [ ] Preserve stale narration/lip-sync/export indicators; regenerate only affected
-      content and make older-export delivery an explicit choice.
-- [ ] Test API/dashboard behavior parity, partial failures, concurrent edits,
-      approval changes and spending limits; document recovery.
+- [ ] Second quote-and-create pair over the UGC planner: plan, suggest, quote,
+      reference, variants, generate, generate-one-shot; footage restyle.
+- [ ] Own-face and take-pass cost rules, take reservation and plan labels
+      honoured (see project memory on the UGC pass).
+- [ ] MCP tools, docs, schema, tests.
 
-## C3. Optional in-app assistant delegation
+### Phase 2 — characters (scope to follow)
 
-Depends on working direct editor tools; pursue only with a concrete need.
+- [ ] Create a character from a description or a library reference image;
+      generate images and poll them; enforce plan character limits.
+- [ ] Ownership and consent checks; unsupported model/resource combinations
+      fail clearly.
+- [ ] MCP tools, docs, schema, tests.
+
+### Phase 4 — editor operations (scope to follow; required before outreach)
+
+- [ ] Read: project revision, ordered scenes with every setting, readiness,
+      export freshness; project-specific operation and setting schemas.
+- [ ] Script and structure: scene script updates, reorder, add, duplicate,
+      rewrite. Deletion stays out of the first release.
+- [ ] Visuals: assign a library asset, swap, generate, edit image, animate
+      (cancel, revert, history), visual style and prompt per scene.
+- [ ] Narration: voice per scene, voice settings, regenerate; stale-narration
+      and lip-sync flags preserved.
+- [ ] Captions: enabled, preset, style, position, font, colours, animation,
+      highlight, backdrop, UGC headline.
+- [ ] Music and sound: project music and settings, per-scene sound, regenerate
+      music.
+- [ ] Motion and timing: motion effect, intensity, fit; duration where
+      narration does not control it; transition rule.
+- [ ] Project settings: title, aspect ratio, channel, brand kit; hooks.
+- [ ] Export: readiness, export with options, freshness, older-export delivery
+      as an explicit choice.
+- [ ] Proposal → approval → apply with a revision precondition, per plan §5;
+      bounded planning cost; partial-failure reporting.
+- [ ] Parity tests against the dashboard for every operation; MCP tools; docs.
+
+### Phase 5 — optional in-app assistant delegation (after Phase 4, on demand)
 
 - [ ] Audit the assistant's existing tools and execution behavior before reuse.
 - [ ] Expose bounded proposal generation with proposal/run IDs and structured results.
@@ -319,8 +342,6 @@ Not blocking the customer. In rough priority order.
 
 - [ ] Settings → API keys screen (Stage B): issue, one-time display, cap,
       expiry, rotate, revoke, connected apps. Until then support issues keys.
-- [x] Saved voice selection through the API and MCP (C1 first step). (`GET /voices`,
-      `voice_id` on quotes priced by the voice's engine, `list_voices` tool.)
 - [ ] Hard mid-pipeline spend reservation so a video stops at the authorized
       maximum instead of being attributed after the fact.
 - [ ] PostHog: filter activation and usage funnels on `via = app`.
@@ -340,6 +361,7 @@ Not blocking the customer. In rough priority order.
 |---|---|---|---|---|
 | 25 September 2026 | Tracker created from plan v1.2 | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
+| 25 September 2026 | Tracker restructured: outreach gated on four expansion phases (creation settings → UGC → characters → editor ops); assistant may choose options itself | Not committed | Decisions recorded | — |
 | 25 September 2026 | Stage B + first C1 item: Settings → API & Apps screen, plans copy, voice catalogue endpoint and `voice_id` on quotes, `list_voices` tool, docs + schema updated | Not committed | 590 PHP tests (1 pre-existing failure); SPA, docs and schema build clean; sidecar smoke on dev | Awaiting push and the owner's test |
 | 25 September 2026 | Tracker closed out: every Stage 0, A and D item done or decided; OpenAPI schema published; sidecar per-call logs; consent copy and ChatGPT steps corrected; post-pilot list added | Not committed | Schema lints clean; docs build clean; log lines verified on dev | Awaiting push |
 | 25 September 2026 | First real connector run: ChatGPT → OAuth consent → quote → approval → create → export, in production on the owner's workspace | — | Project #226: 6 scenes, 36.1s, 18cr against a 30cr quoted max; ledger, key spend and last_used all attributed; zero errors | **Pilot path proven end to end** |
