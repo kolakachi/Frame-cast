@@ -221,7 +221,7 @@ paths:
                 asset_file: { type: string, format: binary, description: At most 100 MiB; proxy/PHP limits also apply }
       responses:
         "201": { description: "Asset created; poll GET /assets/{id} for transcription status" }
-        "422": { description: Invalid type, size or bytes }
+        "422": { description: "Invalid type, size or bytes" }
   /assets/{assetId}:
     get:
       operationId: getAsset
@@ -230,7 +230,7 @@ paths:
       parameters:
         - { in: path, name: assetId, required: true, schema: { type: integer } }
       responses:
-        "200": { description: Asset with URL, transcript and audio attachment readiness }
+        "200": { description: "Asset with URL, transcript and audio attachment readiness" }
         "404": { description: Asset not in this workspace }
   /options:
     get: { operationId: getOptions, summary: Option keys for quotes, tags: [videos], responses: { "200": { description: OK } } }

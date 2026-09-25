@@ -68,7 +68,7 @@ fake debit is confined to its own schema; no real customer is charged.
 - [ ] Review and commit only task-owned changes; preserve concurrent work.
 - [ ] Deploy serially. Apply both new migrations with accounting still disabled:
   `2026_09_25_200000_create_api_operations` and
-  `2026_09_25_210000_serialize_project_mutations`.
+  `2026_09_25_210000_serialize_project_mutations` — **removed at review, 26 September 2026; not part of the deploy.**
 - [ ] Verify migration completion and restart workers onto the same code version.
   PostgreSQL session advisory locks require session affinity: do not put these
   requests/workers behind transaction-pooling connections.
