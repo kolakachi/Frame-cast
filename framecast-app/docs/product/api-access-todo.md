@@ -351,8 +351,9 @@ added only after their own gates pass.
 
 Not blocking the customer. In rough priority order.
 
-- [ ] Settings → API keys screen (Stage B): issue, one-time display, cap,
-      expiry, rotate, revoke, connected apps. Until then support issues keys.
+- [x] Settings → API keys screen (Stage B): issue, one-time display, cap,
+      expiry, rotate, revoke, connected apps. (Shipped 25 September 2026 as
+      Settings → API & Apps.)
 - [ ] Hard mid-pipeline spend reservation so a video stops at the authorized
       maximum instead of being attributed after the fact.
 - [ ] PostHog: filter activation and usage funnels on `via = app`.
