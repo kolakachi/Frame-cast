@@ -24,6 +24,7 @@ class CreditEstimateController extends Controller
             'animate_quality'      => 'nullable|string|max:16',
             'animation_pacing' => 'nullable|string|in:short,long',
             'voice_id'             => 'nullable|string|max:255',
+            'character_id'         => 'nullable|integer',
         ]);
 
         /** @var User $user */
@@ -39,6 +40,7 @@ class CreditEstimateController extends Controller
             animateQuality: $request->input('animate_quality'),
             animationPacing: $request->input('animation_pacing'),
             voiceId:       $request->input('voice_id'),
+            usesCharacter: $request->filled('character_id'),
         );
 
         $balance    = $this->credits->balance((int) $user->workspace_id);

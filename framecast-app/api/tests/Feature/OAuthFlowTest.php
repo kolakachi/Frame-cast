@@ -135,7 +135,7 @@ class OAuthFlowTest extends TestCase
 
         $ctx = $this->withToken($this->sessionToken($u, $ws))->postJson('/api/v1/oauth/authorize/context', $this->authParams($clientId, $this->pkce()['challenge']))->assertOk();
         $this->assertSame('ChatGPT', $ctx->json('data.client.name'));
-        $this->assertSame([$ws->id], array_column($ctx->json('data.workspaces'), 'id'), 'the free workspace has no API access');
+        $this->assertSame([$ws->id, $free->id], array_column($ctx->json('data.workspaces'), 'id'), 'every plan has API access; both admin-or-owner workspaces are offered');
 
         $this->withToken($this->sessionToken($u, $ws))->postJson('/api/v1/oauth/authorize/context', $this->authParams('wyvc_nope', $this->pkce()['challenge']))->assertStatus(422)->assertJsonPath('error.code', 'invalid_client');
         $this->withToken($this->sessionToken($u, $ws))->postJson('/api/v1/oauth/authorize/context', ['redirect_uri' => 'https://other.example/cb'] + $this->authParams($clientId, $this->pkce()['challenge']))->assertStatus(422)->assertJsonPath('error.code', 'invalid_request');

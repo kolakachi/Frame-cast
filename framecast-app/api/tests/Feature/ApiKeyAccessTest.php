@@ -86,16 +86,12 @@ class ApiKeyAccessTest extends TestCase
         $this->assertSame($b->getKey(), ApiKey::resolve($plainB)?->getKey());
     }
 
-    public function test_only_creator_and_above_carry_api_access(): void
+    public function test_every_plan_carries_api_access(): void
     {
-        $limits = \App\Services\CreditService::PLAN_LIMITS;
-
-        foreach (['free', 'ugc_pass', 'starter', 'appsumo_starter', 'lifetime_starter'] as $tier) {
-            $this->assertFalse($limits[$tier]['api_access'] ?? false, "$tier must not have API access");
-        }
-        foreach (['creator', 'agency', 'pro', 'appsumo_creator', 'appsumo_agency',
-                  'lifetime_creator', 'lifetime_agency'] as $tier) {
-            $this->assertTrue($limits[$tier]['api_access'] ?? false, "$tier should have API access");
+        // Opened to every tier on 26 September 2026: the API grants nothing the
+        // plan does not already allow in the app, so the gate was only friction.
+        foreach (\App\Services\CreditService::PLAN_LIMITS as $tier => $limits) {
+            $this->assertTrue($limits['api_access'] ?? false, "$tier should have API access");
         }
     }
 

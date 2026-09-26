@@ -266,8 +266,18 @@ class EditorController extends DeveloperController
         }
 
         $results = [];
+        // The fingerprint is re-checked before every change, not only once
+        // up front: a dashboard or worker write that lands between two of our
+        // changes stops the rest (A4). Our own change moves the fingerprint,
+        // so the expectation is refreshed after each one.
+        $expected = self::revision($project);
         foreach ($f['changes'] as $i => $change) {
             $op = $change['op'];
+            if (self::revision($project) !== $expected) {
+                $results[] = ['index' => $i, 'op' => $op, 'ok' => false, 'status' => 409, 'error' => ['code' => 'revision_conflict', 'message' => 'The project changed while this proposal was being applied. Read it again and propose the remaining changes.']];
+                $this->checkpoint($quote, $results, null);
+                break;
+            }
             $scene = isset($change['scene_id']) ? Scene::query()->find($change['scene_id']) : null;
             if (EditOperations::price($op, $project->fresh(), $scene, $change) > (int) ($change['credits_max'] ?? 0)) {
                 $results[] = ['index' => $i, 'op' => $op, 'ok' => false, 'status' => 409, 'error' => ['code' => 'price_changed', 'message' => 'Read the current project and request a new quote before spending.']];
@@ -282,6 +292,7 @@ class EditorController extends DeveloperController
             } else {
                 $results[] = ['index' => $i, 'op' => $op, 'ok' => true, 'result' => self::trim($out)];
             }
+            $expected = self::revision($project);
             $this->checkpoint($quote, $results, null);
         }
         $this->checkpoint($quote, $results, null);

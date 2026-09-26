@@ -435,12 +435,12 @@ class CreditService
     // included, so without a cap that path is a finished video for free with
     // nothing bounding the volume. Null = no cap.
     public const PLAN_LIMITS = [
-        'free'       => ['max_duration_seconds' => 60,  'max_characters' => 0,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => true, 'pdf_page_limit' => 5, 'ugc_takes_month' => 3, 'custom_characters' => false, 'ugc_ads' => false, 'api_access' => false],
+        'free'       => ['max_duration_seconds' => 60,  'max_characters' => 0,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => true, 'pdf_page_limit' => 5, 'ugc_takes_month' => 3, 'custom_characters' => false, 'ugc_ads' => false, 'api_access' => true],
         // UGC Test Pass — $9 once. Buys the UGC gate and nothing else: every
         // other allowance stays at Free. Seedance only and 15s a take are
         // enforced in UgcController, since neither is a plan-limit shape.
-        'ugc_pass'   => ['max_duration_seconds' => 60,  'max_characters' => 1,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => false, 'pdf_page_limit' => 5, 'ugc_takes_month' => 2, 'custom_characters' => true,  'ugc_ads' => true, 'api_access' => false],
-        'starter'    => ['max_duration_seconds' => 180, 'max_characters' => 3,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => true, 'pdf_page_limit' => 20, 'ugc_takes_month' => 30, 'custom_characters' => true , 'ugc_ads' => true, 'api_access' => false],
+        'ugc_pass'   => ['max_duration_seconds' => 60,  'max_characters' => 1,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => false, 'pdf_page_limit' => 5, 'ugc_takes_month' => 2, 'custom_characters' => true,  'ugc_ads' => true, 'api_access' => true],
+        'starter'    => ['max_duration_seconds' => 180, 'max_characters' => 3,  'max_brand_kits' => 1,  'max_channels' => 1, 'social_publishing' => true, 'pdf_page_limit' => 20, 'ugc_takes_month' => 30, 'custom_characters' => true , 'ugc_ads' => true, 'api_access' => true],
         'creator'    => ['max_duration_seconds' => 300, 'max_characters' => 10, 'max_brand_kits' => 3,  'max_channels' => 3, 'social_publishing' => true, 'pdf_page_limit' => 50, 'ugc_takes_month' => 60, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
         'pro'        => ['max_duration_seconds' => 600, 'max_characters' => 50, 'max_brand_kits' => 10, 'max_channels' => 10,'social_publishing' => true, 'pdf_page_limit' => 150, 'ugc_takes_month' => 150, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
         'agency'     => ['max_duration_seconds' => 600, 'max_characters' => null,'max_brand_kits' => null,'max_channels' => null,'social_publishing' => true, 'pdf_page_limit' => null, 'ugc_takes_month' => null, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
@@ -449,13 +449,13 @@ class CreditService
         'scale'      => ['max_duration_seconds' => 600, 'max_characters' => 50, 'max_brand_kits' => 10, 'max_channels' => 10,'social_publishing' => true, 'pdf_page_limit' => 150, 'ugc_takes_month' => 150, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
         // AppSumo LTD tiers — own limits (they differ from the subscription
         // tiers of the same name), one-time credit bucket, never renews.
-        'appsumo_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'ugc_takes_month' => 30, 'custom_characters' => true , 'ugc_ads' => true, 'api_access' => false],
+        'appsumo_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'ugc_takes_month' => 30, 'custom_characters' => true , 'ugc_ads' => true, 'api_access' => true],
         'appsumo_creator' => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'ugc_takes_month' => 60, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
         'appsumo_agency'  => ['max_duration_seconds' => 600, 'max_characters' => 10, 'max_brand_kits' => null, 'max_channels' => null, 'social_publishing' => true, 'pdf_page_limit' => null, 'ugc_takes_month' => 150, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
         // Direct lifetime tiers ($89/$199/$399). Same product as the AppSumo
         // LTDs, sold from our own checkout — identical limits, separate keys so
         // reporting can tell the two cohorts apart.
-        'lifetime_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'ugc_takes_month' => 30, 'custom_characters' => true , 'ugc_ads' => true, 'api_access' => false],
+        'lifetime_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'ugc_takes_month' => 30, 'custom_characters' => true , 'ugc_ads' => true, 'api_access' => true],
         'lifetime_creator' => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'ugc_takes_month' => 60, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
         'lifetime_agency'  => ['max_duration_seconds' => 600, 'max_characters' => 10, 'max_brand_kits' => null, 'max_channels' => null, 'social_publishing' => true, 'pdf_page_limit' => null, 'ugc_takes_month' => 150, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
     ];
@@ -985,6 +985,7 @@ class CreditService
         ?string $animateQuality = null,
         ?string $animationPacing = null,
         ?string $voiceId = null,
+        bool $usesCharacter = false,
     ): array {
         [$scenesMin, $scenesMax] = $this->estimateSceneCount($sourceType, $sourceContent);
 
@@ -1009,7 +1010,12 @@ class CreditService
         // quote from the factory so the estimate a user is shown before
         // creating a project equals what the job actually deducts — a stale
         // AI_MEDIUM here would quote 16cr/scene and then charge 43cr.
-        $aiPerScene = app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor(null);
+        // A featured character makes every AI still a reference generation,
+        // which GenerateAIImageJob charges at the reference rate. Quote it the
+        // same way, or a character video is under-quoted by the difference on
+        // every scene — and an accounted operation would refuse the charge.
+        $images = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+        $aiPerScene = $usesCharacter ? $images->referenceGenerationCost(null) : $images->costFor(null);
 
         $visualPerScene = match ($visualMode) {
             'ai_images', 'ai_broll' => $aiPerScene,
@@ -1038,6 +1044,7 @@ class CreditService
             'breakdown' => [
                 'script_and_breakdown' => self::SCRIPT + self::BREAKDOWN,
                 'visual_per_scene'     => $visualPerScene,
+                'character_reference'  => $usesCharacter,
                 'voice_per_scene'      => $ttsPerScene,
                 'export'               => self::EXPORT,
             ],

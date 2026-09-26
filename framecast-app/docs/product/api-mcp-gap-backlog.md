@@ -269,8 +269,13 @@ consumed; replay returns the original result without executing again.
 ### A4 — Make revisions reliable and application concurrency-safe [bug, P1]
 - [x] Replace second-resolution timestamp-based revisions with a reliable version
   or canonical content fingerprint.
-- [~] Atomically claim the revision for application; coordinate with dashboard
-  edits and other proposals. **Review decision, 26 September 2026:** the
+- [x] Atomically claim the revision for application; coordinate with dashboard
+  edits and other proposals. **Closed 26 September 2026:** the fingerprint is
+  re-checked before every change of an apply (editor and assistant), so a
+  dashboard or worker write between two changes stops the rest with
+  `revision_conflict`; within a single change the semantics are the editor's
+  own (last write wins inside that controller call), which is accepted.
+  Earlier review decision, for the record: the
   session fence now applies to developer-API mutations only. The database
   write triggers were removed before push: they rejected every concurrent
   writer of a project's rows (three queue workers and editor autosaves

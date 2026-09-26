@@ -669,10 +669,21 @@ class DeveloperApiTest extends TestCase
         $this->withToken($this->sessionToken($u, $ws))->getJson('/api/developer/v1/capabilities')->assertOk();
     }
 
-    public function test_a_plan_without_api_access_is_refused_at_the_door(): void
+    public function test_every_plan_reaches_the_api_with_its_own_limits(): void
     {
         [, , $key] = $this->tenant('free');
-        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertStatus(403)->assertJsonPath('error.code', 'api_access_not_on_plan');
+        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertOk()->assertJsonPath('data.plan', 'free')->assertJsonPath('data.limits.max_duration_seconds', 60);
+    }
+
+    public function test_a_character_video_is_quoted_at_the_reference_rate(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $char = \App\Models\Character::query()->create(['workspace_id' => $ws->id, 'name' => 'Maya', 'status' => 'active']);
+        $plain = $this->quote($key, ['visual_mode' => 'ai_images'])->assertStatus(201);
+        $withChar = $this->quote($key, ['visual_mode' => 'ai_images', 'character_id' => $char->id])->assertStatus(201)->assertJsonPath('data.credits.breakdown.character_reference', true);
+        $factory = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+        $this->assertSame($factory->costFor(null), $plain->json('data.credits.breakdown.visual_per_scene'));
+        $this->assertSame($factory->referenceGenerationCost(null), $withChar->json('data.credits.breakdown.visual_per_scene'));
     }
 
     public function test_quote_create_poll_and_fetch(): void

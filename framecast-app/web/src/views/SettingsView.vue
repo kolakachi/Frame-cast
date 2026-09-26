@@ -1092,8 +1092,8 @@ onMounted(() => {
             <div class="settings-section-desc">Make videos from ChatGPT, Claude, Cursor or your own code. Keys and connected apps act as this workspace and spend its credits. <a href="https://docs.wyvstudio.com/api-and-connectors/connect-an-ai-assistant" target="_blank" rel="noopener">How to connect →</a></div>
 
             <div v-if="!canUseApi" class="lock-wall">
-              <h2>API access is on Creator and above</h2>
-              <p>Connect ChatGPT or Claude, or drive WyvStudio from your own code. Upgrade to Creator, Pro or Agency to turn it on.</p>
+              <h2>API access is not on this plan</h2>
+              <p>Connect ChatGPT or Claude, or drive WyvStudio from your own code. See plans to turn it on.</p>
               <button class="settings-btn settings-btn-sm settings-btn-primary" type="button" @click="router.push({ name: 'plans' })">See plans →</button>
             </div>
 

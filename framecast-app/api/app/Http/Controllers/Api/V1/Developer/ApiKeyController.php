@@ -66,7 +66,7 @@ class ApiKeyController extends Controller
 
         if (! $this->available($user)) {
             return $this->error('api_access_not_on_plan',
-                'API access is available on Creator and Agency plans.', 403);
+                'API access is not available on this workspace\'s plan.', 403);
         }
 
         if ($denied = $this->denyUnlessAdmin($user)) {

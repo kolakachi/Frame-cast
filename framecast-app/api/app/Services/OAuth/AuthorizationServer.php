@@ -147,7 +147,7 @@ class AuthorizationServer
             throw new OAuthException('access_denied', 'Only a workspace owner or admin can connect an app.', 403);
         }
         if (! $this->credits->limitFor((int) $workspace->getKey(), 'api_access')) {
-            throw new OAuthException('access_denied', 'API access is available on Creator and Agency plans.', 403);
+            throw new OAuthException('access_denied', 'API access is not available on this workspace\'s plan.', 403);
         }
 
         $grant = DB::transaction(function () use ($user, $client, $workspace): OAuthGrant {

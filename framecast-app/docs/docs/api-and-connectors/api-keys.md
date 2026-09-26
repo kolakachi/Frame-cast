@@ -8,7 +8,7 @@ description: Create, limit, rotate and revoke keys for the API and MCP clients.
 
 A key lets a script or an MCP client act as your workspace. It starts with `wyv_live_`, is shown **once** when created, and can be revoked at any time.
 
-**Who:** workspace owners and admins, on the Creator plan or above. Up to **five** active keys per workspace.
+**Who:** workspace owners and admins, on any plan. Up to **five** active keys per workspace.
 
 Create and manage keys in **Settings → API & Apps**. ChatGPT and Claude connectors don't need a key at all — see [Connect an AI assistant](./connect-an-ai-assistant); they appear in the same list as connected apps.
 

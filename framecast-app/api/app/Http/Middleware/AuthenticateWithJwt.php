@@ -279,7 +279,7 @@ class AuthenticateWithJwt
         if (! app(\App\Services\CreditService::class)->limitFor((int) $workspace->getKey(), 'api_access')) {
             return response()->json(['error' => [
                 'code'    => 'api_access_not_on_plan',
-                'message' => 'API access is available on Creator and Agency plans.',
+                'message' => 'API access is not available on this workspace\'s plan.',
             ]], 403);
         }
 

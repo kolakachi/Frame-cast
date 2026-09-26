@@ -8,7 +8,7 @@ description: Make WyvStudio videos from ChatGPT, Claude, Cursor or any MCP clien
 
 WyvStudio has an MCP server. Once an assistant is connected it can do most of what you do in the app, from a chat: make videos from a prompt, script, article or your own images; plan and make UGC ads with your characters; create characters; edit any scene of a video and export it; and hand you the file. It uses your workspace's plan, credits and limits, quotes before it spends, and nothing it makes is public.
 
-**Who can connect:** workspace owners and admins on the **Creator** plan or above. Free, Starter and UGC-pass workspaces can't use the API.
+**Who can connect:** workspace owners and admins, on any plan. What you can make is what your plan allows in the app — the same limits, credits and features apply.
 
 ## ChatGPT
 

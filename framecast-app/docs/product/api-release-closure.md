@@ -50,12 +50,18 @@ and takes at least 30 seconds to exercise the real sidecar timeout.
 
 ## Release gates still open
 
+26 September 2026: character reference cost is now in every estimate
+(`character_reference` in the breakdown), so an accounted character video is
+not under-quoted; API access is open to every plan, with the plan's own limits.
+
 - [x] Commit the Phase F documentation and contract extension. (Reviewed and
   pushed 26 September 2026; the contract test was rerun in a disposable
   container before push and passed, including the 30-second timeout path.)
 - [x] Supplied report records `8502d4b` deployed, operation/voice-consent
   migrations applied and workers restarted. No trigger migration is required.
-- [ ] Close or explicitly accept the remaining A4 check-to-apply race.
+- [x] Close or explicitly accept the remaining A4 check-to-apply race. (Closed
+  between changes by a per-change fingerprint re-check; accepted within a
+  single change as editor semantics. 26 September 2026.)
 - [ ] Commit and release the Phase F changes separately; existing deployment
   evidence does not cover these later changes.
 - [ ] Verify staging provider completion, refusal and retry across exposed families

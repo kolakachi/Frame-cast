@@ -84,7 +84,7 @@ async function decide(decision) {
 
         <template v-if="workspaces.length === 0">
           <div class="auth-error">
-            None of your workspaces can be connected. API access needs the Creator plan or above, and you must be an owner or admin.
+            None of your workspaces can be connected. You must be an owner or admin of a workspace on a plan with API access.
           </div>
         </template>
         <template v-else>

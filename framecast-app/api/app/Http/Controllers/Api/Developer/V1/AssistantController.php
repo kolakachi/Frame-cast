@@ -145,6 +145,7 @@ class AssistantController extends DeveloperController
 
         $only = isset($input['only']) ? array_map('intval', $input['only']) : null;
         $results = [];
+        $expected = EditorController::revision($project);
         foreach ($f['actions'] as $a) {
             if ($only !== null && ! in_array((int) $a['index'], $only, true)) {
                 $results[] = ['index' => $a['index'], 'tool' => $a['tool'], 'ok' => null, 'skipped' => true];
@@ -157,6 +158,11 @@ class AssistantController extends DeveloperController
             if ($a['tool'] === 'schedule_post' && ! $this->credits->limitFor($workspaceId, 'social_publishing')) {
                 $results[] = ['index' => $a['index'], 'tool' => $a['tool'], 'ok' => false, 'error' => ['code' => 'upgrade_required', 'message' => 'Social publishing is not available on this plan.']];
                 continue;
+            }
+            if (EditorController::revision($project) !== $expected) {
+                $results[] = ['index' => $a['index'], 'tool' => $a['tool'], 'ok' => false, 'status' => 409, 'error' => ['code' => 'revision_conflict', 'message' => 'The project changed while this plan was being applied. Plan the remaining actions again.']];
+                $this->checkpoint($quote, $results, null);
+                break;
             }
             $this->checkpoint($quote, $results, (int) $a['index']);
             $out = EditOperations::run(fn () => app(CruiseControlController::class)->apply(EditOperations::inner($request, [
@@ -178,6 +184,7 @@ class AssistantController extends DeveloperController
                         'summary' => $out['summary'] ?? null, 'credits_spent' => $out['credits_spent'] ?? 0, 'affected_scene_id' => $out['affected_scene_id'] ?? null];
                 }
             }
+            $expected = EditorController::revision($project);
             $this->checkpoint($quote, $results, null);
         }
         $this->checkpoint($quote, $results, null);

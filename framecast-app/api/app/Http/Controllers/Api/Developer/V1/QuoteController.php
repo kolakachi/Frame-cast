@@ -164,6 +164,7 @@ class QuoteController extends DeveloperController
             animateTier: $payload['animate_tier'] ?? null,
             animationPacing: $payload['animation_pacing'] ?? null,
             voiceId: $voice?->provider_voice_key,
+            usesCharacter: ! empty($input['character_id']),
         );
 
         $quote = ApiQuote::query()->create([
