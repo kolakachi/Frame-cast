@@ -3262,6 +3262,7 @@
                 <span class="trust-item">No camera or editing experience needed</span>
                 <span class="trust-item">One video, 4 formats — reach more buyers</span>
                 <span class="trust-item">Post where your buyers already scroll</span>
+                <span class="trust-item"><a href="#ai-assistants" style="color:inherit;text-decoration:underline;text-underline-offset:3px">Works in ChatGPT &amp; Claude</a></span>
             </div>
 
             <div class="demo-box" style="margin-top: 60px; position: relative; width: 100%;">
@@ -3971,6 +3972,75 @@
     </section>
 
     <!-- ── SOCIAL PROOF ── -->
+    <!-- ── AI ASSISTANTS (MCP) ── -->
+    <style>
+        .ai-wrap { display:grid; grid-template-columns: 1.05fr 1fr; gap:48px; align-items:center; margin-top:56px; text-align:left }
+        .ai-chat { background: var(--card, #14141c); border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:22px; box-shadow: 0 20px 60px rgba(0,0,0,.35) }
+        .ai-msg { display:flex; gap:12px; margin-bottom:16px; font-size:14px; line-height:1.55 }
+        .ai-msg .who { flex:0 0 auto; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; letter-spacing:.5px }
+        .ai-msg.you .who { background: rgba(255,255,255,.08); color:#fff }
+        .ai-msg.bot .who { background: var(--accent-soft); color: var(--accent) }
+        .ai-msg .bubble { background: rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); border-radius:14px; padding:12px 14px; color:#e9e9f0 }
+        .ai-msg .bubble b { color:#fff }
+        .ai-quote { display:inline-block; margin-top:8px; padding:6px 10px; border-radius:8px; background: var(--accent-soft); color: var(--accent); font-weight:700; font-size:12px; letter-spacing:.3px }
+        .ai-badges { display:flex; flex-wrap:wrap; gap:10px; margin:22px 0 26px }
+        .ai-badge { padding:8px 14px; border-radius:999px; border:1px solid rgba(255,255,255,.12); font-size:13px; font-weight:700; color:#fff; background: rgba(255,255,255,.04) }
+        .ai-badge.soon { color: var(--text-dim); font-weight:600 }
+        .ai-note { font-size:13px; color: var(--text-dim); margin-top:14px }
+        @media (max-width: 900px) { .ai-wrap { grid-template-columns: 1fr; gap:32px } }
+    </style>
+    <section id="ai-assistants" style="padding:100px 24px; scroll-margin-top: 88px">
+        <div class="container">
+            <div class="center" style="text-align:center">
+                <div class="section-label">New &middot; Works with AI assistants</div>
+                <h2 class="section-title">Ask ChatGPT or Claude.<br><em>WyvStudio makes the video.</em></h2>
+                <p class="section-sub" style="margin:18px auto 0">WyvStudio has an MCP server, so the assistant you already use can make, edit, share and publish your videos from a chat. Connect once, then just ask.</p>
+            </div>
+
+            <div class="ai-wrap">
+                <div class="ai-chat" aria-label="Example conversation with an AI assistant">
+                    <div class="ai-msg you">
+                        <div class="who">YOU</div>
+                        <div class="bubble">Make a 30-second vertical video: three reasons a standing desk pays for itself. Stock footage is fine.</div>
+                    </div>
+                    <div class="ai-msg bot">
+                        <div class="who">AI</div>
+                        <div class="bubble">That&rsquo;s <b>18&ndash;24 credits</b> for 6&ndash;8 scenes, narrated by Kore. You have 1,224. Go ahead?<br><span class="ai-quote">QUOTE FIRST &middot; NOTHING SPENT YET</span></div>
+                    </div>
+                    <div class="ai-msg you">
+                        <div class="who">YOU</div>
+                        <div class="bubble">Yes. Then re-record scene 1 and give me a public link.</div>
+                    </div>
+                    <div class="ai-msg bot">
+                        <div class="who">AI</div>
+                        <div class="bubble">Done. 6 scenes, 29 seconds, 18 credits. Scene 1 re-voiced. Anyone with this link can watch: <b>wyvstudio.com/sample/&hellip;</b></div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="check-list">
+                        <div class="check-item"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>Every spend is quoted first and only runs after you say yes</div>
+                        <div class="check-item"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>Reads your video scene by scene: re-voice, swap visuals, animate, captions, music, export in any ratio</div>
+                        <div class="check-item"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>UGC ads, characters, cloned voices and your library, all from the chat</div>
+                        <div class="check-item"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>Share a public watch link, or publish to your connected accounts after you confirm the post</div>
+                    </div>
+                    <div class="ai-badges" aria-label="Compatible assistants">
+                        <span class="ai-badge">ChatGPT</span>
+                        <span class="ai-badge">Claude</span>
+                        <span class="ai-badge">Claude Code</span>
+                        <span class="ai-badge">Cursor</span>
+                        <span class="ai-badge soon">Any MCP client</span>
+                    </div>
+                    <div class="hero-btns" style="justify-content:flex-start">
+                        <a class="btn btn-primary" href="https://docs.wyvstudio.com/api-and-connectors/connect-an-ai-assistant">See how to connect</a>
+                        <a class="btn btn-ghost" href="https://docs.wyvstudio.com/api">Developer API</a>
+                    </div>
+                    <p class="ai-note">Available on every plan. The same credits and limits as the app; nothing is deleted, and billing stays in WyvStudio.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <section id="social-proof" style="padding:100px 24px">
         <div class="container" style="text-align:center">
             <div class="section-label">Social proof</div>
@@ -4768,6 +4838,16 @@
                     <div class="faq-a">None. WyvStudio is built for people who want to get straight to creating videos for their products, services, and offers.
                         If you can type a sentence, you can use WyvStudio. The AI handles everything from script
                         structure to scene timing to caption placement.</div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-q">Can I use WyvStudio from ChatGPT or Claude?
+                        <svg class="faq-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                    </div>
+                    <div class="faq-a">Yes. WyvStudio has an MCP server, so ChatGPT, Claude, Claude Code, Cursor and any other MCP client can make and edit your videos from a chat. Connect once under Settings &rarr; API &amp; Apps; ChatGPT and Claude use a sign-in, other tools use an API key. The assistant quotes the credit cost before anything runs and only starts after you approve. It works on every plan with the same credits and limits as the app.</div>
                 </div>
                 <div class="faq-item">
                     <div class="faq-q">Do I need to already have a product to sell?
