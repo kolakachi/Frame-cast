@@ -19,6 +19,7 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | `create_video` | **Yes**, up to the quote's max | Starts the video the quote described. Returns a video id at once. |
 | `create_character`, `update_character` | No | Make or change a reusable AI character, from a description and/or your library photos (consent required for a real person). |
 | `estimate_character_image` → `create_character_image` → `get_character_image` | Create spends the quote | A new image of a character, optionally as its new reference photo. |
+| `estimate_character_reference_edit` → `create_character_image` → `get_character_image` | Create spends the quote | An AI edit of the character's uploaded reference photo: same person, changed only as instructed (outfit, background, hair, product in hand). Becomes the new reference unless you say otherwise. |
 | `plan_ugc` | No | Turn a script or brief into a UGC shot plan (format, shots, narration, visual direction). |
 | `estimate_ugc` | No | Price a UGC plan, composed or one-take, with takes against your monthly allowance; needs your consent for any real person's likeness or voice. |
 | `create_ugc` | **Yes**, up to the quote | Start the quoted takes, one video per take. |
@@ -29,6 +30,8 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | `ask_wyvstudio_assistant` → `apply_assistant_plan` | Apply spends the plan's total | Hand a broad request ("make it more energetic") to WyvStudio's own assistant; it returns concrete priced actions, and only the actions it named can be applied. |
 | `get_video_status` | No | `generating` → `exporting` → `completed`, or `failed` with a reason. Credits spent so far. |
 | `get_video_result` | No | The MP4 as a private link that expires, plus duration and the project link. |
+| `share_video` | No | Turn a public watch link on or off for the video's latest finished export: anyone with the link can watch, no login. Off again keeps the same link for later. |
+| `list_social_accounts` → `publish_video` → `get_post` | No | Post a finished export to a connected YouTube, TikTok, Instagram or Facebook account, now or at a time. The assistant must show you the account, caption and time and get your explicit yes first; the tool refuses without `confirm`. Returns the post URL once live. |
 
 ## How spending is approved
 

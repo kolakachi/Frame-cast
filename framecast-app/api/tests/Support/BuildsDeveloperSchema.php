@@ -70,6 +70,18 @@ trait BuildsDeveloperSchema
                 'status', 'progress_percent', 'priority', 'failure_reason', 'output_asset_id', 'queued_at', 'started_at', 'completed_at'] as $c) $t->text($c)->nullable();
             $t->timestamps();
         });
+        Schema::create('social_accounts', function (Blueprint $t) {
+            $t->id();
+            foreach (['workspace_id', 'platform', 'platform_user_id', 'platform_username', 'platform_display_name', 'platform_avatar_url',
+                'access_token', 'refresh_token', 'token_expires_at', 'status', 'scopes', 'platform_meta'] as $c) $t->text($c)->nullable();
+            $t->timestamps();
+        });
+        Schema::create('scheduled_posts', function (Blueprint $t) {
+            $t->id();
+            foreach (['workspace_id', 'project_id', 'export_job_id', 'social_account_id', 'platform', 'status', 'scheduled_at', 'published_at',
+                'platform_post_id', 'platform_post_url', 'caption', 'title', 'description', 'category', 'visibility', 'hashtags', 'failure_reason', 'attempt_count'] as $c) $t->text($c)->nullable();
+            $t->timestamps();
+        });
         Schema::create('assets', function (Blueprint $t) {
             $t->id();
             foreach (array_unique(array_merge((new \App\Models\Asset)->getFillable(), ['file_name'])) as $c) $t->text($c)->nullable();

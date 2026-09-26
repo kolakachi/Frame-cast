@@ -339,6 +339,22 @@ function buildServer(token) {
     async ({ character_id, ...rest }) => call(token, 'POST', `/characters/${character_id}/images/quotes`, rest, 'estimate_character_image'),
   )
   server.registerTool(
+    'estimate_character_reference_edit',
+    {
+      title: 'Estimate an edit to a character\'s reference photo (free)',
+      description: 'Price an AI edit of the character\'s uploaded reference photo: same person, pose and framing, changed only as instructed (outfit, background, hair, expression, product in hand). The result becomes the new reference photo unless set_as_reference is false. Returns a quote_id (10 minutes); generate it with create_character_image and poll get_character_image. Refuses with no_reference when the character has no photo yet.',
+      inputSchema: z.object({
+        character_id: z.number().int(),
+        instruction: z.string().max(2000).describe('What to change, e.g. "navy blazer, plain white background".'),
+        model_key: z.enum(['nano-banana', 'nano-banana-pro', 'gpt-image-2']).optional().describe('Default nano-banana, the edit rate.'),
+        aspect_ratio: z.enum(['9:16', '1:1', '16:9']).optional(),
+        set_as_reference: z.boolean().optional().describe('Default true.'),
+      }),
+      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ character_id, instruction, ...rest }) => call(token, 'POST', `/characters/${character_id}/images/quotes`, { ...rest, prompt: instruction, mode: 'edit_reference' }, 'estimate_character_reference_edit'),
+  )
+  server.registerTool(
     'create_character_image',
     {
       title: 'Generate the quoted character image',
@@ -570,10 +586,45 @@ function buildServer(token) {
   )
   server.registerTool('prepare_delivery', {
     title: 'Check a video before app delivery',
-    description: 'Preflight public sharing, an approval request or scheduling. Requires the current project revision and explicit completed export id. Returns an authenticated editor link and confirmation checklist only. DOES NOT publish, send mail, create a public link or schedule a post. The user must review the export and confirm recipient/destination in the app. The app does not automatically select the supplied export. Export/download support is not publishing support.',
+    description: 'Preflight public sharing, an approval request or scheduling in the app (publish_video posts directly; use this for the in-app scheduler or approvals). Requires the current project revision and explicit completed export id. Returns an authenticated editor link and confirmation checklist only. DOES NOT publish, send mail, create a public link or schedule a post. The user must review the export and confirm recipient/destination in the app. The app does not automatically select the supplied export. Export/download support is not publishing support.',
     inputSchema: z.object({ video_id: z.number().int(), action: z.enum(['public_share', 'approval_request', 'schedule']), revision: z.string(), export_id: z.number().int().positive(), allow_stale: z.boolean().optional().describe('True only after the user explicitly agrees to use this older export.') }),
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   }, async ({ video_id, ...args }) => call(token, 'POST', `/videos/${video_id}/delivery/handoff`, args, 'prepare_delivery'))
+
+  server.registerTool('share_video', {
+    title: 'Turn the public watch link on or off',
+    description: 'Gives the user a public link (no login) to watch the video\'s latest completed export, or turns that link off. Reversible; spends no credits. Needs a completed export first. Tell the user anyone with the link can watch.',
+    inputSchema: z.object({ video_id: z.number().int(), enabled: z.boolean().optional().describe('Default true; false turns the link off.') }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  }, async ({ video_id, enabled }) => call(token, 'POST', `/videos/${video_id}/share`, enabled === undefined ? {} : { enabled }, 'share_video'))
+
+  server.registerTool('list_social_accounts', {
+    title: 'List connected social accounts',
+    description: 'The YouTube, TikTok, Instagram and Facebook accounts connected to this workspace, with ids for publish_video, and whether this plan can publish. Accounts are connected in the app.',
+    inputSchema: z.object({}),
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+  }, async () => call(token, 'GET', '/social-accounts', undefined, 'list_social_accounts'))
+
+  server.registerTool('publish_video', {
+    title: 'Publish a finished video to a social account',
+    description: 'POSTS TO AN EXTERNAL ACCOUNT and cannot be undone. Posts a completed export now, or schedules it for scheduled_at. Before calling: read the project for its current revision, pick the export id from get_video_result, pick the account from list_social_accounts, and show the user the account, caption, title, visibility and time. Set confirm=true only after the user explicitly approved that exact post. Returns a post id; poll get_post until published (post_url) or failed. Spends no credits.',
+    inputSchema: z.object({
+      video_id: z.number().int(), revision: z.string(), export_id: z.number().int().positive(), social_account_id: z.number().int().positive(),
+      caption: z.string().max(5000).optional(), title: z.string().max(512).optional().describe('YouTube title.'), description: z.string().max(5000).optional(),
+      visibility: z.enum(['public', 'unlisted', 'private']).optional(), hashtags: z.array(z.string().max(100)).max(30).optional(),
+      scheduled_at: z.string().optional().describe('ISO 8601 with timezone; omit to post now.'),
+      confirm: z.boolean().describe('true only after the user approved the account, caption and time.'),
+      allow_stale: z.boolean().optional().describe('Post an older export on purpose, after the user agreed.'),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+  }, async ({ video_id, ...args }) => call(token, 'POST', `/videos/${video_id}/posts`, args, 'publish_video'))
+
+  server.registerTool('get_post', {
+    title: 'Check a published or scheduled post',
+    description: 'Status of a post made with publish_video: scheduled, publishing, published (with post_url) or failed. Omit post_id to list the video\'s posts.',
+    inputSchema: z.object({ video_id: z.number().int(), post_id: z.number().int().optional() }),
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+  }, async ({ video_id, post_id }) => call(token, 'GET', post_id ? `/videos/${video_id}/posts/${post_id}` : `/videos/${video_id}/posts`, undefined, 'get_post'))
 
   server.registerTool(
     'apply_assistant_plan',

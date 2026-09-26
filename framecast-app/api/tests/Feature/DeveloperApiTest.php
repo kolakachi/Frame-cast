@@ -8,6 +8,7 @@ use App\Models\ApiKey;
 use App\Models\ApiQuote;
 use App\Models\AuthSession;
 use App\Models\Project;
+use App\Models\ScheduledPost;
 use App\Models\Scene;
 use App\Models\User;
 use App\Models\Workspace;
@@ -501,6 +502,91 @@ class DeveloperApiTest extends TestCase
         // Not yours: not found.
         [, , $keyB] = $this->tenant();
         $this->withToken($keyB)->postJson("/api/developer/v1/characters/{$maya}/images/quotes", ['prompt' => 'x'])->assertStatus(404);
+    }
+
+    public function test_a_character_reference_edit_is_quoted_at_the_edit_rate_and_needs_a_photo(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $bare = $this->withToken($key)->postJson('/api/developer/v1/characters', ['name' => 'Sketch'])->assertStatus(201)->json('data.character.id');
+        $this->withToken($key)->postJson("/api/developer/v1/characters/{$bare}/images/quotes", ['prompt' => 'navy blazer', 'mode' => 'edit_reference'])
+            ->assertStatus(422)->assertJsonPath('error.code', 'no_reference');
+
+        $ref = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'image', 'title' => 'Ref', 'storage_url' => 'https://b2/r.png', 'mime_type' => 'image/png', 'created_at' => now(), 'updated_at' => now()]);
+        $maya = $this->withToken($key)->postJson('/api/developer/v1/characters', ['name' => 'Maya', 'reference_asset_ids' => [$ref], 'consent' => true])->assertStatus(201)->json('data.character.id');
+        $quote = $this->withToken($key)->postJson("/api/developer/v1/characters/{$maya}/images/quotes", ['prompt' => 'navy blazer, plain white background', 'mode' => 'edit_reference'])
+            ->assertStatus(201)->assertJsonPath('data.mode', 'edit_reference')->assertJsonPath('data.request.set_as_reference', true)->assertJsonPath('data.request.model_key', 'nano-banana');
+        $this->assertSame(app(\App\Services\Generation\Image\ImageAdapterFactory::class)->referenceGenerationCost('nano-banana'), $quote->json('data.credits.max'));
+        $this->assertStringStartsWith('Edit this reference photo.', $quote->json('data.request.prompt'));
+        $this->assertSame('navy blazer, plain white background', $quote->json('data.request.instruction'));
+
+        $this->withToken($key)->postJson("/api/developer/v1/characters/{$maya}/images", ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'edit-1'])
+            ->assertStatus(202)->assertJsonPath('data.generation.set_as_reference', true);
+        $this->assertSame('nano-banana', \App\Models\CharacterImageGeneration::query()->firstOrFail()->model_key);
+    }
+
+    public function test_publishing_requires_confirmation_and_posts_through_the_app_scheduler(): void
+    {
+        [$ws, , $key] = $this->tenant('creator');
+        $id = $this->create($key, $this->quote($key)->json('data.quote_id'), 'pub-base')->assertStatus(202)->json('data.video.id');
+        Project::withoutEvents(fn () => Project::query()->whereKey($id)->update(['status' => 'ready_for_review']));
+        $asset = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://b2/x.mp4', 'duration_seconds' => 20, 'created_at' => now(), 'updated_at' => now()]);
+        $export = DB::table('export_jobs')->insertGetId(['workspace_id' => $ws->id, 'project_id' => $id, 'aspect_ratio' => '9:16', 'file_name' => 'video.mp4', 'queued_at' => now(), 'status' => 'completed', 'output_asset_id' => $asset, 'completed_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $account = DB::table('social_accounts')->insertGetId(['workspace_id' => $ws->id, 'platform' => 'tiktok', 'platform_username' => 'wyv', 'platform_display_name' => 'Wyv', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $dead = DB::table('social_accounts')->insertGetId(['workspace_id' => $ws->id, 'platform' => 'youtube', 'status' => 'expired', 'created_at' => now(), 'updated_at' => now()]);
+        $revision = \App\Http\Controllers\Api\Developer\V1\EditorController::revision(Project::findOrFail($id));
+
+        $this->withToken($key)->getJson('/api/developer/v1/social-accounts')->assertOk()->assertJsonPath('meta.count', 2)
+            ->assertJsonPath('data.accounts.0.can_post', true)->assertJsonPath('data.publishing_available', true);
+
+        $body = ['revision' => $revision, 'export_id' => $export, 'social_account_id' => $account, 'caption' => 'Three reasons', 'confirm' => true];
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/posts", ['confirm' => false] + $body)->assertStatus(422)->assertJsonPath('error.code', 'confirmation_required');
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/posts", ['revision' => 'r_stale'] + $body)->assertStatus(409)->assertJsonPath('error.code', 'revision_conflict');
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/posts", ['social_account_id' => $dead] + $body)->assertStatus(409)->assertJsonPath('error.code', 'account_disconnected');
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/posts", ['export_id' => 999] + $body)->assertStatus(409)->assertJsonPath('error.code', 'not_ready');
+
+        $post = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/posts", $body)->assertStatus(201)
+            ->assertJsonPath('data.post.status', 'publishing')->assertJsonPath('data.post.platform', 'tiktok')->assertJsonPath('data.post.account.username', 'wyv');
+        Bus::assertDispatched(\App\Jobs\PublishVideoJob::class);
+        $postId = $post->json('data.post.id');
+        // The same export to the same account again, minutes later, is the same post.
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/posts", $body)->assertOk()->assertJsonPath('data.post.id', $postId)->assertJsonPath('data.replayed', true);
+        $this->assertSame(1, ScheduledPost::query()->count());
+
+        ScheduledPost::query()->whereKey($postId)->update(['status' => 'published', 'published_at' => now(), 'platform_post_url' => 'https://www.tiktok.com/@wyv/video/1']);
+        $this->withToken($key)->getJson("/api/developer/v1/videos/{$id}/posts/{$postId}")->assertOk()
+            ->assertJsonPath('data.post.status', 'published')->assertJsonPath('data.post.post_url', 'https://www.tiktok.com/@wyv/video/1');
+        $this->withToken($key)->getJson("/api/developer/v1/videos/{$id}/posts")->assertOk()->assertJsonPath('meta.count', 1);
+
+        // Scheduling for later is a scheduled post, not a live one.
+        $later = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/posts", ['scheduled_at' => now()->addDay()->toIso8601String()] + $body)->assertStatus(201);
+        $this->assertSame('scheduled', $later->json('data.post.status'));
+
+        // Not yours: not found. Plan without publishing: refused.
+        [, , $foreign] = $this->tenant();
+        $this->withToken($foreign)->getJson("/api/developer/v1/videos/{$id}/posts")->assertNotFound();
+        [$pass, , $passKey] = $this->tenant('ugc_pass');
+        $pid = $this->create($passKey, $this->quote($passKey)->json('data.quote_id'), 'pub-pass')->assertStatus(202)->json('data.video.id');
+        $this->withToken($passKey)->getJson('/api/developer/v1/social-accounts')->assertOk()->assertJsonPath('data.publishing_available', false);
+        $this->withToken($passKey)->postJson("/api/developer/v1/videos/{$pid}/posts", ['revision' => \App\Http\Controllers\Api\Developer\V1\EditorController::revision(Project::findOrFail($pid)), 'export_id' => 1, 'social_account_id' => 1, 'confirm' => true])
+            ->assertStatus(402)->assertJsonPath('error.code', 'upgrade_required');
+    }
+
+    public function test_sharing_needs_a_completed_export_and_is_reversible(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $id = $this->create($key, $this->quote($key)->json('data.quote_id'), 'share-base')->assertStatus(202)->json('data.video.id');
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/share")->assertStatus(409)->assertJsonPath('error.code', 'not_ready');
+
+        $asset = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://b2/x.mp4', 'created_at' => now(), 'updated_at' => now()]);
+        $export = DB::table('export_jobs')->insertGetId(['workspace_id' => $ws->id, 'project_id' => $id, 'aspect_ratio' => '9:16', 'status' => 'completed', 'output_asset_id' => $asset, 'queued_at' => now(), 'completed_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $on = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/share")->assertStatus(201)->assertJsonPath('data.shared', true)->assertJsonPath('data.shows.export_id', $export);
+        $url = $on->json('data.share_url');
+        $this->assertStringContainsString('/sample/', $url);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/share", ['enabled' => true])->assertStatus(201)->assertJsonPath('data.share_url', $url);
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/share", ['enabled' => false])->assertOk()->assertJsonPath('data.shared', false)->assertJsonPath('data.share_url', null);
+        $this->assertFalse((bool) Project::findOrFail($id)->is_shared);
+        [, , $foreign] = $this->tenant();
+        $this->withToken($foreign)->postJson("/api/developer/v1/videos/{$id}/share")->assertNotFound();
     }
 
     /** A created video with two finished scenes, ready to edit. */

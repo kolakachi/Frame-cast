@@ -82,22 +82,39 @@ class CharacterController extends DeveloperController
             'aspect_ratio' => ['nullable', Rule::in(['9:16', '1:1', '16:9'])],
             'quality' => ['nullable', Rule::in(['low', 'medium', 'high'])],
             'set_as_reference' => ['nullable', 'boolean'],
+            'mode' => ['nullable', Rule::in(['new_image', 'edit_reference'])],
         ]);
-        // Same arithmetic as CharacterController::generateImage.
         $hasReference = (bool) $character->reference_asset_id;
+        $mode = $input['mode'] ?? 'new_image';
+        if ($mode === 'edit_reference') {
+            // An edit keeps the person and changes what the instruction names.
+            // It rides the same reference-guided generation the app uses, on
+            // the edit model at the edit rate, and becomes the reference
+            // unless the caller says otherwise.
+            if (! $hasReference) {
+                return $this->fail('no_reference', 'This character has no reference photo to edit. Upload one with upload_asset and set it with update_character, or generate a new image instead.', 422);
+            }
+            $input['model_key'] = $input['model_key'] ?? \App\Jobs\EditSceneImageJob::EDIT_MODEL;
+            $input['set_as_reference'] = $input['set_as_reference'] ?? true;
+            $input['quality'] = $input['quality'] ?? 'high';
+            $input['style'] = $input['style'] ?? ($character->style ?: 'photorealistic');
+            $input['instruction'] = $input['prompt'];
+            $input['prompt'] = 'Edit this reference photo. Keep the same person, pose, framing and lighting; change only the following: '.trim($input['prompt']);
+        }
+        // Same arithmetic as CharacterController::generateImage.
         $cost = $hasReference ? app(ImageAdapterFactory::class)->referenceGenerationCost($input['model_key'] ?? null) : CreditService::AI_MEDIUM;
 
         $quote = ApiQuote::query()->create([
             'id' => ApiQuote::newId(), 'workspace_id' => $workspaceId, 'api_key_id' => $request->attributes->get('api_key_id'),
             'created_by_user_id' => $user->getKey(),
-            'payload_json' => array_filter($input, fn ($v) => $v !== null) + ['__kind' => 'character_image', 'character_id' => $character->getKey()],
+            'payload_json' => array_filter($input, fn ($v) => $v !== null) + ['__kind' => 'character_image', 'character_id' => $character->getKey(), 'mode' => $mode],
             'credits_min' => $cost, 'credits_max' => $cost, 'expires_at' => now()->addMinutes(ApiQuote::TTL_MINUTES),
         ]);
         $balance = $this->credits->balance($workspaceId);
 
         return response()->json(['data' => [
             'quote_id' => $quote->getKey(), 'character' => ['id' => $character->getKey(), 'name' => $character->name],
-            'credits' => ['min' => $cost, 'max' => $cost, 'with_reference' => $hasReference],
+            'mode' => $mode, 'credits' => ['min' => $cost, 'max' => $cost, 'with_reference' => $hasReference],
             'balance' => $balance, 'can_afford' => $balance >= $cost, 'shortage' => max(0, $cost - $balance),
             'expires_at' => $quote->expires_at->toIso8601String(), 'request' => $input,
         ], 'meta' => []], 201);
