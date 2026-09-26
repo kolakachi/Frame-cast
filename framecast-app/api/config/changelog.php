@@ -30,6 +30,21 @@ return [
     'entries' => [
 
         [
+            'slug'  => '2026-09-26-ai-assistants',
+            'date'  => '2026-09-26',
+            'tag'   => 'new',
+            'title' => 'Make videos from ChatGPT, Claude and other AI assistants',
+            'body'  => 'WyvStudio now connects to AI assistants. Connect once under Settings → '
+                .'API & Apps and ask your assistant for a video: it plans it, tells you the '
+                .'credit cost, and only starts after you approve. It can read a video scene by '
+                .'scene and change any part of it, re-voice, swap visuals, animate, export in '
+                .'any ratio, share a public watch link, and publish to your connected social '
+                .'accounts after you confirm the post. Works with ChatGPT and Claude through '
+                .'sign-in, and with Claude Code, Cursor and any other MCP client through an API '
+                .'key. Available on every plan; the same credits and limits apply.',
+        ],
+
+        [
             'slug'  => '2026-09-20-ugc-ads',
             'date'  => '2026-09-20',
             'tag'   => 'new',

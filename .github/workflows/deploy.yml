@@ -41,9 +41,61 @@ jobs:
             # Untracked files are left alone, which is what keeps the .env
             # files on the box safe.
             git fetch origin master
+
+            # Decide how much of the stack this push touches BEFORE moving the
+            # checkout, by diffing what the box runs against what it is about
+            # to run. A push that only changes the docs site, the marketing
+            # site or files nothing serves (product notes, mockups, this
+            # workflow) must not rebuild and recreate api, nginx and the
+            # workers: that recreation takes the whole product down for tens
+            # of seconds and has interrupted customers' generations mid-poll.
+            # Anything else, or a re-run of the same commit, takes the full path.
+            CHANGED=$(git diff --name-only HEAD origin/master || true)
+            MODE=full
+            if [ -n "$CHANGED" ]; then
+              MODE=light
+              while IFS= read -r f; do
+                case "$f" in
+                  framecast-app/docs/product/*) ;;                       # internal notes, nothing serves them
+                  framecast-app/docs/*) NEED_DOCS=1 ;;                   # Docusaurus site container
+                  framecast-app/marketing/*) NEED_MARKETING=1 ;;         # bind-mounted static site
+                  framecast-app/*) MODE=full ;;                          # app, api, mcp, nginx, compose
+                  *) ;;                                                  # repo root: notes, mockups, .github
+                esac
+              done <<< "$CHANGED"
+            fi
+            echo "==> Deploy mode: $MODE"
+            echo "$CHANGED" | sed 's/^/    /'
+
             git reset --hard origin/master
 
             cd /opt/framecast/app/framecast-app
+
+            if [ "$MODE" = "light" ]; then
+              if [ "${NEED_DOCS:-0}" = "1" ]; then
+                echo '==> Rebuilding the docs site only...'
+                docker compose -f docker-compose.prod.yml up -d --build --no-deps docs
+              fi
+              if [ "${NEED_MARKETING:-0}" = "1" ]; then
+                echo '==> Reloading the marketing site only...'
+                docker compose -f docker-compose.prod.yml restart marketing
+              fi
+              echo '==> Health check (light)...'
+              for i in $(seq 1 12); do
+                API=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: app.wyvstudio.com' http://127.0.0.1/api/v1/health || echo 000)
+                WWW=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: wyvstudio.com' http://127.0.0.1/ || echo 000)
+                DOCS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: docs.wyvstudio.com' http://127.0.0.1/ || echo 000)
+                echo "    attempt $i: api=$API marketing=$WWW docs=$DOCS"
+                if [ "$API" = "200" ] && [ "$WWW" = "200" ] && { [ "$DOCS" = "200" ] || [ "$DOCS" = "301" ]; }; then
+                  echo "==> Done (light). Deployed at $(date)"
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo '!!! Light deploy: a site is not serving. Container state:'
+              docker compose -f docker-compose.prod.yml ps
+              exit 1
+            fi
 
             # Self-heal before deploying. When Docker recreates a container it
             # first renames the old one to `<short-id>_<name>`, then creates the
