@@ -524,7 +524,7 @@ class CreditService
      * has spent anything, and counting either as spend told an agency that a
      * client it had just topped up had already burned the money.
      */
-    public const NON_SPEND_PREFIXES = ['grant:', 'transfer:'];
+    public const NON_SPEND_PREFIXES = ['grant:', 'transfer:', 'forfeit:'];
 
     /**
      * Move credits between an agency and one of its clients.
@@ -986,6 +986,53 @@ class CreditService
      * were missed the anchor is walked forward to the next future date, so one
      * run always grants exactly one allocation.
      */
+    /**
+     * Record the end of a paid period that was not renewed. The model already
+     * treats such a workspace as free and its monthly bucket as unspendable;
+     * this writes that fact down (a `forfeit:` row, positive because the
+     * credits left) and empties the bucket, so the ledger's last row agrees
+     * with the balance and a later renewal on a rollover tier cannot carry
+     * expired credits forward.
+     *
+     * A cancelled subscription forfeits as soon as its period ends. An active
+     * one whose renewal simply has not been seen yet gets a grace window, so
+     * a late webhook or a recovered payment is reconciled before anything is
+     * written off. Returns the credits forfeited (0 when nothing applied).
+     */
+    public function forfeitExpiredMonthly(Workspace $workspace, int $graceDays = 3): int
+    {
+        return (int) DB::transaction(function () use ($workspace, $graceDays): int {
+            $ws = Workspace::query()->whereKey($workspace->getKey())->lockForUpdate()->firstOrFail();
+            $monthly = (int) $ws->credits_monthly;
+            if ($monthly <= 0 || $ws->parent_workspace_id || ! $ws->hasExpiredSubscription()) {
+                return 0;
+            }
+            $ended = $ws->subscription_ends_at ?? $ws->billing_renews_at;
+            $cancelled = in_array(strtolower((string) $ws->plan_status), ['cancelled', 'canceled'], true);
+            $graceOver = $ended && $ended->lte(now()->subDays($graceDays));
+            if (! $cancelled && ! $graceOver) {
+                return 0;
+            }
+            $ws->forceFill(['credits_monthly' => 0])->save();
+            CreditLedgerEntry::query()->create([
+                'workspace_id' => $ws->getKey(),
+                'operation' => 'forfeit:monthly',
+                'credits' => $monthly,
+                'balance_after' => $ws->fresh()->creditsBalance(),
+                'metadata' => [
+                    'reason' => $cancelled ? 'subscription_cancelled' : 'period_ended_unrenewed',
+                    'plan_tier' => (string) $ws->getRawOriginal('plan_tier'),
+                    'plan_status' => $ws->plan_status,
+                    'subscription_id' => $ws->kelviq_subscription_id,
+                    'period_end' => $ended?->toIso8601String(),
+                    'monthly_before' => $monthly,
+                ],
+            ]);
+
+            return $monthly;
+        });
+    }
+
     public function resetMonthly(Workspace $workspace): void
     {
         DB::transaction(function () use ($workspace) {

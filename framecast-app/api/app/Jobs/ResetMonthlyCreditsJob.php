@@ -42,5 +42,25 @@ class ResetMonthlyCreditsJob implements ShouldQueue
                     $credits->resetMonthly($workspace);
                 }
             });
+
+        // Paid periods that ended without a renewal: write the forfeiture down
+        // and empty the bucket. The query is a coarse pre-filter; the service
+        // re-checks expiry, cancellation and the grace window under a lock.
+        Workspace::query()->whereNotNull('kelviq_subscription_id')->whereNull('parent_workspace_id')
+            ->where('credits_monthly', '>', 0)
+            ->where(fn ($q) => $q->whereIn('plan_status', ['cancelled', 'canceled'])
+                ->orWhere('billing_renews_at', '<=', now())
+                ->orWhere('subscription_ends_at', '<=', now())
+                ->orWhereNotIn('plan_status', ['active', 'past_due']))
+            ->chunkById(100, function ($workspaces) use ($credits) {
+                foreach ($workspaces as $workspace) {
+                    try {
+                        $credits->forfeitExpiredMonthly($workspace);
+                    } catch (\Throwable $error) {
+                        report($error);
+                        Log::warning('Monthly credit forfeiture failed', ['workspace_id' => $workspace->id]);
+                    }
+                }
+            });
     }
 }

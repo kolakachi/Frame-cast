@@ -46,6 +46,7 @@ class RenewalAuditTest extends TestCase
             $t->string('kelviq_account_id')->nullable(); $t->string('kelviq_subscription_id')->nullable();
             $t->timestamp('billing_renews_at')->nullable(); $t->timestamp('welcome_email_sent_at')->nullable();
             $t->timestamp('subscription_ends_at')->nullable(); $t->timestamp('billing_state_version')->nullable();
+            $t->unsignedBigInteger('parent_workspace_id')->nullable(); $t->string('funding_mode')->nullable();
             $t->timestamps();
         });
         Schema::create('appsumo_licenses', function (Blueprint $t) {
@@ -260,5 +261,43 @@ class RenewalAuditTest extends TestCase
         $this->assertSame('active', $ws->fresh()->plan_status,
             'an event about the subscription they replaced must not close the one they pay for');
         $this->assertSame('sub-current', $ws->fresh()->kelviq_subscription_id);
+    }
+
+    public function test_an_unrenewed_period_is_written_off_once_and_only_after_cancellation_or_grace(): void
+    {
+        Queue::fake();
+        $make = fn (array $attrs) => Workspace::query()->create(array_merge([
+            'name' => 'W', 'plan_tier' => 'creator', 'plan_source' => 'kelviq', 'status' => 'active',
+            'kelviq_subscription_id' => 'sub-'.uniqid(), 'credits_monthly' => 2809, 'credits_topup' => 13,
+        ], $attrs));
+        $cancelled = $make(['plan_status' => 'canceled', 'billing_renews_at' => now()->subDays(2), 'subscription_ends_at' => now()->subDays(2)]);
+        $lateWebhook = $make(['plan_status' => 'active', 'billing_renews_at' => now()->subHours(6)]);
+        $longGone = $make(['plan_status' => 'active', 'billing_renews_at' => now()->subDays(5)]);
+        $current = $make(['plan_status' => 'active', 'billing_renews_at' => now()->addDays(20)]);
+
+        $this->assertSame('free', $cancelled->fresh()->plan_tier);
+        $this->assertSame(13, $cancelled->fresh()->creditsBalance());
+
+        $this->assertSame(2809, app(CreditService::class)->forfeitExpiredMonthly($cancelled->fresh()));
+        (new \App\Jobs\ResetMonthlyCreditsJob)->handle(app(CreditService::class));
+
+        $row = DB::table('credit_ledger')->where('workspace_id', $cancelled->id)->first();
+        $this->assertSame(0, (int) $cancelled->fresh()->credits_monthly);
+        $this->assertSame('forfeit:monthly', $row->operation);
+        $this->assertSame(2809, (int) $row->credits);
+        $this->assertSame(13, (int) $row->balance_after);
+        $this->assertSame('subscription_cancelled', json_decode($row->metadata, true)['reason']);
+
+        $this->assertSame(2809, (int) $lateWebhook->fresh()->credits_monthly, 'an active subscription inside the grace window is left for reconciliation');
+        $this->assertSame(0, (int) $longGone->fresh()->credits_monthly, 'five days past renewal with no payment seen is written off');
+        $this->assertSame('period_ended_unrenewed', json_decode(DB::table('credit_ledger')->where('workspace_id', $longGone->id)->value('metadata'), true)['reason']);
+        $this->assertSame(2809, (int) $current->fresh()->credits_monthly);
+
+        (new \App\Jobs\ResetMonthlyCreditsJob)->handle(app(CreditService::class));
+        $this->assertSame(1, DB::table('credit_ledger')->where('workspace_id', $cancelled->id)->count(), 'a second pass writes nothing');
+
+        // A renewal after the write-off starts from an empty bucket, so the
+        // grant row's arithmetic is the plain allocation, not stale credits.
+        $this->assertSame(CreditService::PLAN_CREDITS['creator'], CreditService::refilledMonthlyCredits('creator', (int) $cancelled->fresh()->credits_monthly));
     }
 }
