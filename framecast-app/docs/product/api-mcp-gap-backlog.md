@@ -297,6 +297,23 @@ Acceptance: edits followed by result retrieval cannot silently deliver outdated
 content; explicit old-version selection remains possible.
 
 ### A6 — Persist execution progress and recover after timeout [bug, P1]
+
+> **Reopened 26 September 2026 (production).** First paid operation under
+> `DEVELOPER_OPERATION_ACCOUNTING=true`: video #227 (quote
+> `q_01m3e7p18kmvp7etsh1qtz6c4n`, op `op_01m3e7p2744…`, authorized 368).
+> `GenerateScriptJob` failed in 30 ms with `RuntimeException: Operation cannot
+> safely repeat this job` (`AccountedJob.php:52`) on its **first** attempt; the
+> queue retry was then discarded by `AccountedJob::before` and the operation
+> went to `needs_attention` with zero scenes and zero spend. Three
+> `api_operation_jobs` rows existed for the operation (two `running`, one
+> `pending`); `SendAnalyticsEventJob`, dispatched inside the same request
+> context, is one of them. Flag disabled again at 06:5x UTC; the video was
+> restarted through the app path. Hypothesis to verify locally with a real
+> Redis worker (not the sync driver): the job-record lookup by
+> `$job->uuid()` does not match the id written by `createPayloadUsing`, or a
+> second accounted job in the same request flips the operation state before
+> the first runs. Do not re-enable until a real-queue test reproduces and
+> fixes this; the `tries=2` retry path must also be covered.
 - [x] Persist accounting operation state and registered queue-job terminal states.
 - [x] Persist editor/assistant checkpoints before each action and after its result.
 - [x] Implement fenced reconciliation for an action interrupted between its side

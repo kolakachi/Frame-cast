@@ -88,7 +88,10 @@ not under-quoted; API access is open to every plan, with the plan's own limits.
   api, three workers and scheduler recreated and each confirmed `true`.)
 - [ ] Verify current MCP discovery and quote → approval → apply → operation →
   export through the real connector, plus app handoff confirmation.
-- [~] Record production accounting/ledger and recovery observations before outreach.
+- [ ] Record production accounting/ledger and recovery observations before outreach.
+  **Accounting re-disabled 26 September 2026:** the first paid operation stalled
+  in the accounted-job wrapper (see backlog A6, reopened). Zero-credit
+  operations settled correctly; the queued-job lifecycle did not.
   (First accounted operation on production, project #226, a zero-credit
   `update_project` proposal: operation `op_01m3e6mjr8dn9ptg7wwmey6sp9` opened,
   applied, `producer_closed`, status `completed`, `GET /operations/{quote}` reports
