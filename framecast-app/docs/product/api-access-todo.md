@@ -1,9 +1,10 @@
 # API and MCP implementation TODO
 
-> **Current release status — 26 September 2026:** implementation A–E is committed
-> in `ad4c498`, reviewed in `5f507be`/`8502d4b`. The supplied deployment report
-> records `8502d4b` live with accounting disabled; no fresh production check was
-> performed here. A4 remains partial. Phase F closure is local. Historical evidence
+> **Current release status — 26 September 2026 (evening):** A–E (`ad4c498`) and the
+> worker-path accounting fix (`91387e9`) are deployed; operation accounting is
+> enabled on production and a paid smoke settled with attributed charges. A4 is
+> closed between changes (a race inside one change is an accepted limitation).
+> MCP 1.8.x added character reference edits, sharing, publishing and previews. Historical evidence
 > below applies only to its stated build. The current source of
 > truth is [release closure](api-release-closure.md); outreach is gated on its
 > unchecked release steps.
@@ -335,8 +336,8 @@ added only after their own gates pass.
       it forwards the caller's bearer token and holds no credentials of its own.
       (`framecast-app/mcp/`, SDK v2.1: `@modelcontextprotocol/server|express|node`.)
 - [x] Serve Streamable HTTP at `/mcp`, stateless; add the nginx location with
-      proxy buffering off and long read/send timeouts. (nginx change is in the
-      repo, not yet deployed.)
+      proxy buffering off and long read/send timeouts. (Deployed; upstreams are
+      resolved per request since 26 September.)
 - [x] Restrict CORS to the confirmed client origins. (Host/Origin validation via
       `MCP_ALLOWED_HOSTS`; prod = app.wyvstudio.com. Add client origins when known.)
 - [x] Health endpoint and structured logs: `/healthz`, plus one JSON line per tool

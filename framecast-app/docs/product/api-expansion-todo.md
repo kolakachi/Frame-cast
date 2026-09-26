@@ -1,9 +1,10 @@
 # API/MCP expansion — phase tracker
 
-> **Current release status — 26 September 2026:** implementation A–E is committed
-> in `ad4c498`, reviewed in `5f507be`/`8502d4b`. The supplied deployment report
-> records `8502d4b` live with accounting disabled; no fresh production check was
-> performed here. A4 remains partial. Phase F closure is local. Historical evidence
+> **Current release status — 26 September 2026 (evening):** A–E (`ad4c498`) and the
+> worker-path accounting fix (`91387e9`) are deployed; operation accounting is
+> enabled on production and a paid smoke settled with attributed charges. A4 is
+> closed between changes (a race inside one change is an accepted limitation).
+> MCP 1.8.x added character reference edits, sharing, publishing and previews. Historical evidence
 > below applies only to its stated build. The current source of
 > truth is [release closure](api-release-closure.md); outreach is gated on its
 > unchecked release steps.

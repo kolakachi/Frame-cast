@@ -41,6 +41,10 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | `share_video` | No | Turn a public watch link on or off for the video's latest finished export: anyone with the link can watch, no login. Off again keeps the same link for later. |
 | `list_social_accounts` → `publish_video` → `get_post` | No | Post a finished export to a connected YouTube, TikTok, Instagram or Facebook account, now or at a time. The assistant must show you the account, caption and time and get your explicit yes first; the tool refuses without `confirm`. Returns the post URL once live. |
 
+## What the tool annotations mean
+
+Read-only tools (`readOnlyHint`) change nothing you can see in WyvStudio: reads, previews and estimates. An estimate records a quote that expires in ten minutes and spends nothing. Anything that leaves something behind in the app, such as a video, an asset, a character, an assistant conversation or a post, is marked as a write. `destructiveHint` marks the two actions the API cannot undo: cancelling an operation and posting to a social account. `openWorldHint` marks sharing and publishing, whose effect leaves WyvStudio.
+
 ## How spending is approved
 
 Every tool that spends credits — `create_video`, `create_ugc`, `create_character_image`, `apply_edits` — only accepts a quote or proposal id from its matching estimate. The quote fixes exactly what will be made and the most it can cost, and it expires after ten minutes. A quote from another workspace, an expired one, one already used, or one of the wrong kind is refused. The balance must cover the quote's **maximum**, not its minimum — an assistant can't top up mid-render.

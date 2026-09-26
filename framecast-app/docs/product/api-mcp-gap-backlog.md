@@ -2,7 +2,7 @@
 
 Date: 25 September 2026
 Audit baseline: local commit `9b26301`
-Status: implementation `ad4c498`, reviewed in `5f507be`/`8502d4b`; supplied report records `8502d4b` deployed with accounting disabled. A4 remains partial. Phase F documentation/transport checks are local; release gates remain. Existing caption-render parity failures are recorded below.
+Status (26 September 2026, evening): implementation `ad4c498` reviewed in `5f507be`/`8502d4b`; worker-path accounting fixed in `91387e9`; `DEVELOPER_OPERATION_ACCOUNTING=true` on production since 07:33 UTC with a paid smoke settled and attributed (A6, A1/A2 closed; see A6). A4: closed between changes by per-change fingerprint checks; a race inside a single change is an accepted, documented limitation. Surface additions in `f4cac30`/`80a5c28` (MCP 1.8.x). Older passages below describe the state at their own date; the release closure document is current.
 
 Checkbox meaning: `[x]` = the stated local implementation or check is complete;
 `[ ]` = still pending. A checked implementation task does not imply its section
@@ -76,8 +76,9 @@ batch is an uncommitted working-tree patch on `518859b`.
 
 ### Batch 4 — Phase A local closure (not committed or deployed)
 
-Supersedes the outstanding **local** Phase A items in batches 1–3. The accounting
-flag remains disabled. Production validation and broader parity work remain open.
+Supersedes the outstanding **local** Phase A items in batches 1–3. (Written while
+the accounting flag was disabled; it has been enabled on production since
+26 September 07:33 UTC. Broader parity work remains open.)
 
 - Reservations now count UGC takes individually. All quote-backed creation,
   editor, assistant, character-image and retry endpoints share the operation
@@ -232,7 +233,7 @@ acceptance criteria and release verification.
 
 ### A1 — Enforce operation budgets and reserve capacity [bug, P1]
 - [x] Implement pool-locked credit reservations and pending-operation/key-cap checks
-  at quote claim (rollout flag off).
+  at quote claim (rollout flag on in production since 26 September 2026).
 - [x] Enforce operation credit maximums in CreditService and record actual spend;
   release unused holds after the producer and registered jobs finish.
 - [x] Verify concurrent admission and cancellation/async failure paths; reserve

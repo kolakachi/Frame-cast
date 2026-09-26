@@ -1,6 +1,6 @@
 # API/MCP media, narration and voices — Phase C
 
-Implemented locally, not yet deployed. MCP version **1.5.0**. All routes below use
+Deployed (first in MCP **1.5.0**; current server 1.8.x). All routes below use
 `/api/developer/v1`, the existing bearer authentication, workspace membership and
 API rate limits. Never put a bearer token in a public media URL.
 

@@ -25,7 +25,17 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.8.0'
+const VERSION = process.env.MCP_VERSION || '1.8.1'
+
+// Annotation policy. readOnlyHint is true only for tools that leave the
+// workspace as the user sees it unchanged: reads, previews, and estimates.
+// An estimate writes a quote row that expires in ten minutes, spends nothing
+// and shows nowhere in the app; that bookkeeping is not a modification of the
+// user's environment. Anything the user can see afterwards in WyvStudio
+// (a video, an asset, a character, an assistant conversation, a post) is a
+// write. destructiveHint marks what cannot be undone from the API: cancelling
+// an operation and posting to a social account. openWorldHint marks tools
+// whose effect leaves WyvStudio: sharing and publishing.
 // OAuth discovery. The issuer is the WyvStudio app origin (Laravel serves the
 // authorization-server document there); this process serves the
 // protected-resource document for the MCP URL. Both unset → bearer keys only.
@@ -616,7 +626,7 @@ function buildServer(token) {
         request: z.string().min(2).max(1000).describe('The user\'s request, in their words.'),
         scene_id: z.number().int().optional().describe('Limit the plan to one scene.'),
       }),
-      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ video_id, ...rest }) => call(token, 'POST', `/videos/${video_id}/assistant/plans`, rest, 'ask_wyvstudio_assistant'),
   )

@@ -72,6 +72,9 @@ fake debit is confined to its own schema; no real customer is charged.
   `2026_09_25_220000_add_voice_consent` applied, and workers on that version.
   The `210000_serialize_project_mutations` migration was removed, not deployed.
   This is reported evidence, not a fresh production inspection.
+  Superseded 26 September 2026: accounting was enabled on production at 07:33
+  UTC after `91387e9`; the paid smoke and its rows are recorded in the release
+  closure document.
   PostgreSQL session advisory locks require session affinity: do not put these
   requests/workers behind transaction-pooling connections.
 - [ ] In staging, enable accounting and check each exposed operation family with
