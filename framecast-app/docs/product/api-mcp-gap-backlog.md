@@ -314,6 +314,16 @@ content; explicit old-version selection remains possible.
 > second accounted job in the same request flips the operation state before
 > the first runs. Do not re-enable until a real-queue test reproduces and
 > fixes this; the `tries=2` retry path must also be covered.
+>
+> **Second observation, same window.** The edit operation on project #226
+> (`op_01m3e7p5w7v…`, `regenerate_voice` + `animate`) applied: narration was
+> re-recorded (new audio asset 4459 at 06:50:53) but **no ledger entry was
+> written** and the operation shows `spent=0`. With accounting enabled,
+> `CreditService::deduct` returned false from `OperationAccounting::debit` and
+> `GenerateTTSJob` continued anyway — the "throw when a charge is refused"
+> guard only fires when `OperationAccounting::current()` is set, and the queue
+> worker evidently had no operation context. Net effect: an accounted
+> narration was free. Reopens A1/A2 for the queued-job path as well.
 - [x] Persist accounting operation state and registered queue-job terminal states.
 - [x] Persist editor/assistant checkpoints before each action and after its result.
 - [x] Implement fenced reconciliation for an action interrupted between its side
