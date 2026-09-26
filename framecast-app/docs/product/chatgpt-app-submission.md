@@ -276,7 +276,11 @@ hint as a blocker rather than a default, so none is left out.
    result with the MP4 link, the share link playing in a logged-out browser.
 3. The connection listed under Settings → API & Apps, and the revoke button.
 
-## 9. Before filing
+## 9. Status
+
+Submitted to the OpenAI plugin portal by the owner on 26 September 2026; waiting for review. The letter to the first external developer went out the same day.
+
+## 10. Before filing (done)
 
 - [x] Walkthrough run once in ChatGPT on 26 September (owner's workspace).
       Previews are left out of the reviewer script: ChatGPT renders neither MCP
