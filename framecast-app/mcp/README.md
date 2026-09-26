@@ -6,9 +6,9 @@ credentials: the client's WyvStudio API key is forwarded on every call.
 
 Endpoint: `POST /mcp` (Streamable HTTP, stateless). Health: `GET /healthz`.
 
-Tools: `get_capabilities`, `estimate_video`, `create_video`,
-`get_video_status`, `get_video_result`. Spending is quote-bound and enforced
-by the API, not by this process.
+Tools: 46 as of 1.8.1, listed with costs and annotations at
+https://docs.wyvstudio.com/api-and-connectors/mcp-tools. Spending is
+quote-bound and enforced by the API, not by this process.
 
 ## Connect a client
 
@@ -25,7 +25,7 @@ Any MCP client that can send a bearer header:
 }
 ```
 
-Keys are issued from the dashboard (Creator plan and above), or via
+Keys are issued from the dashboard (every plan), or via
 `POST /api/v1/api-keys` with a browser session.
 
 ## Run locally
