@@ -6,7 +6,7 @@ credentials: the client's WyvStudio API key is forwarded on every call.
 
 Endpoint: `POST /mcp` (Streamable HTTP, stateless). Health: `GET /healthz`.
 
-Tools: 46 as of 1.8.1, listed with costs and annotations at
+Tools: 51 as of 1.8.1, listed with costs and annotations at
 https://docs.wyvstudio.com/api-and-connectors/mcp-tools. Spending is
 quote-bound and enforced by the API, not by this process.
 
