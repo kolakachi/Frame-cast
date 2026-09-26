@@ -3,8 +3,38 @@
 Drafted 26 September 2026 against MCP 1.8.1 on production. Everything here is
 taken from the live server, the deployed docs or the marketing site; items
 marked **[owner]** need a decision or an asset only the owner can supply.
-Field names follow OpenAI's developer submission form in spirit; map them to
-the form's exact labels when filing.
+Section 0 gives the portal steps; sections 1–7 hold the values for each
+portal tab.
+
+## 0. How to submit (OpenAI's plugin submission portal)
+
+Source: developers.openai.com/plugins/deploy/submission and the app
+submission guidelines (developers.openai.com/apps-sdk/app-submission-guidelines).
+
+1. **Verify the publisher identity** at platform.openai.com → organization
+   settings: business verification for the company name, or individual
+   verification to publish under a personal name. The submitter's Platform
+   role needs "Apps Management: Write" (owners have it).
+2. Open **platform.openai.com/plugins** → **Create plugin** → **With MCP**.
+3. **Info tab:** plugin name, short and long descriptions, Developer Identity,
+   logo and category, website / support / privacy / terms URLs (§1).
+4. **MCP tab:** URL type **Universal**, MCP Server URL
+   `https://app.wyvstudio.com/mcp`; authentication OAuth (the server
+   publishes its metadata, §2); demo credentials = the reviewer account (§3);
+   no UI domains (no widget), so the content security policy stays empty.
+   If the portal challenges the domain, serve the token it gives at
+   `https://app.wyvstudio.com/.well-known/openai-apps-challenge` (a static
+   file in the app's nginx; ask and it is a five-minute change). Then
+   **Scan Tools**; every tool already carries readOnlyHint, openWorldHint and
+   destructiveHint (§5).
+5. **Starter prompts** (§4.1). **Test cases** (§4.2): the portal wants at
+   least five positive and three negative.
+6. **Global availability:** pick countries **[owner]**.
+7. **Release notes** (§4.3), confirm the policy attestations, **Submit for
+   Review**. Timelines vary; community reports range from days to weeks.
+8. After approval, **publish from the portal** when ready. Later, tool
+   additions and edits reach users after an automated re-scan; changes to the
+   listing, credentials or test cases need a new version and review.
 
 ## 1. Listing
 
@@ -92,25 +122,67 @@ Each step names the tool ChatGPT will call and what the reviewer should see.
    (script → scenes → visuals → narration → export; about two minutes) and
    `get_video_result` with a private MP4 link. Charged: 12 credits (four
    narrations), visible in the app's credit history.
-5. **"Show me the first scene."** → `get_scene_preview` returns the picture
-   in the chat, or as `preview_url` when the client shows images by link.
-   No spend. **[owner: note in the submission whether ChatGPT rendered it
-   inline or as a link]**
-6. **"Re-record the narration of scene 1."** → `propose_edits` (3 credits
+5. **"Re-record the narration of scene 1."** → `propose_edits` (3 credits
    shown) → approval → `apply_edits`. Charged: 3.
-7. **"Give me a public link to watch it."** → `share_video` returns a
+6. **"Give me a public link to watch it."** → `share_video` returns a
    `/sample/…` link that plays without login; **"turn the link off"** makes
    the same URL return 404.
-8. **"Post it to TikTok."** → `list_social_accounts` reports no connected
+7. **"Post it to TikTok."** → `list_social_accounts` reports no connected
    account and points to the app; any attempt to publish without an explicit
    confirmation is refused with `confirmation_required`. Nothing leaves the
    workspace.
-9. **"Plan a 10-second UGC ad for a standing desk with an AI presenter and
+8. **"Plan a 10-second UGC ad for a standing desk with an AI presenter and
    tell me what it costs."** → `plan_ugc` then `estimate_ugc` (about 210
    credits for one draft take). The reviewer may stop here; approving spends
    the quote and produces a one-take video.
-10. **Disconnect.** Remove the app in ChatGPT or revoke it under Settings →
+9. **Disconnect.** Remove the app in ChatGPT or revoke it under Settings →
     API & Apps; the next call fails with `api_key_revoked`.
+
+### 4.1 Starter prompts
+
+- "Make a 30-second vertical video: three reasons a standing desk pays for itself. Stock footage is fine."
+- "Turn this product description into a 20-second ad with an AI presenter: …"
+- "Read my latest WyvStudio video and make the narration more energetic."
+- "Re-record scene 2 with the Kore voice and export in 1:1 for Instagram."
+- "Give me a public link to watch my latest video."
+- "Estimate a 10-second UGC ad for a standing desk with a described presenter, no character."
+
+### 4.2 Test cases (portal format)
+
+All cases use the reviewer account (§3). "Result shape" is what the tool
+returns; the assistant paraphrases it.
+
+**Positive**
+
+| # | User prompt | Expected behaviour | Result shape |
+|---|---|---|---|
+| P1 | "What can you do with my WyvStudio account?" | Calls `get_capabilities`; reports plan Creator, balance, limits, prices. No spend. | `data.capabilities` with `plan`, `balance`, `limits`, `prices` |
+| P2 | "Make a 20-second vertical video from this script: A standing desk pays for itself. You sit less, you focus more, and your back stops complaining. Stock footage is fine." | Calls `estimate_video`, shows 24–30 credits and the balance, asks for approval, does not create. | `data.quote_id`, `credits.min/max`, `balance`, `can_afford` |
+| P3 | "Yes, go ahead." (after P2) | Calls `create_video` with the quote id, then polls `get_video_status` until `completed`, then `get_video_result` with a private MP4 link. About two minutes; 12 credits. | `data.video.id`, `status`, `credits.spent`; result `download_url` |
+| P4 | "Re-record the narration of scene 1." | Reads the project, calls `propose_edits` (3 credits), asks, then `apply_edits` on approval. | proposal `credits.max: 3`; apply `applied[0].ok: true` |
+| P5 | "Give me a public link to watch it, then turn it off." | `share_video` returns a `/sample/…` URL that plays logged out; `share_video` with `enabled: false` disables it. | `shared: true, share_url`; then `shared: false, share_url: null` |
+| P6 | "Plan a 10-second UGC ad for a standing desk with a described presenter and tell me the cost." | `plan_ugc` then `estimate_ugc`; reports about 210 credits and asks. Nothing generated. | `data.quote_id`, `credits`, `pricing.takes: 1` |
+
+**Negative**
+
+| # | Scenario | Expected refusal / fallback | Why |
+|---|---|---|---|
+| N1 | "Make the video" without a quote, or with a quote older than ten minutes | `create_video` is refused (`quote_expired` / no quote); the assistant re-estimates and asks again. | Spending is bound to an approved, current quote. |
+| N2 | "Post it to TikTok now." with no connected account | `list_social_accounts` reports none; `publish_video` is refused `confirmation_required` without `confirm: true`, and cannot proceed without an active account. Nothing is posted. | Publishing is external and irreversible; needs an account and explicit confirmation. |
+| N3 | "Make a UGC ad using this photo of my colleague" without stating consent | `create_character` / `estimate_ugc` refuse `consent_required`. | Real-person likeness needs the user's stated consent. |
+| N4 | "Delete my last video." | The assistant says deletion is not available through the connector and points to the app. | No delete tool exists. |
+| N5 | A revoked or expired connection (revoke under Settings → API & Apps, then ask anything) | Every call fails `api_key_revoked` / `api_key_expired`; the assistant asks the user to reconnect. | Access ends immediately on revocation. |
+
+### 4.3 Release notes (initial submission)
+
+WyvStudio lets ChatGPT make, edit, share and publish short vertical videos
+and UGC ads in the user's WyvStudio workspace. Initial submission, MCP
+server 1.8.x at https://app.wyvstudio.com/mcp, OAuth 2.1 with PKCE and
+dynamic registration. Every credit spend is estimated and approved first;
+publishing requires explicit confirmation. Demo credentials: the reviewer
+account in the credentials field (Creator plan, 500 credits, no MFA, no
+social account connected, so publishing tests end at the refusal). Full
+tool reference: https://docs.wyvstudio.com/api-and-connectors/mcp-tools.
 
 ## 5. Tools and annotations
 
@@ -119,7 +191,7 @@ https://docs.wyvstudio.com/api-and-connectors/mcp-tools. Summary for the review:
 
 | Class | Tools | Annotation |
 |---|---|---|
-| Read | capabilities, options, lists, project read/schema, status, result, exports, previews, operation status, posts, social accounts | `readOnlyHint: true` |
+| Read | capabilities, options, lists, project read/schema, status, result, exports, previews (image plus a signed link; shown inline by clients that render MCP image content), operation status, posts, social accounts | `readOnlyHint: true` |
 | Estimate (writes a 10-minute quote row, spends nothing, invisible in the app) | `estimate_video`, `estimate_ugc`, `estimate_character_image`, `estimate_character_reference_edit`, `estimate_presenter_preview`, `estimate_retry`, `propose_edits`, `plan_ugc`, `analyze_ugc_reference` | `readOnlyHint: true`, `idempotentHint: false` |
 | Spend / create (only with a quote id the user approved) | `create_video`, `create_ugc`, `create_character_image`, `create_presenter_preview`, `apply_edits`, `apply_assistant_plan`, `retry_video`, `preview_voice`, `clone_voice`, `export_video` | `readOnlyHint: false`, `destructiveHint: false` |
 | Other writes | `upload_asset`, `create_character`, `update_character`, `save_voice`, `ask_wyvstudio_assistant` (persists an assistant conversation) | `readOnlyHint: false`, `destructiveHint: false` |
@@ -180,15 +252,16 @@ No tool deletes anything. Billing, members and settings are not reachable.
 
 ## 8. Demo material to record **[owner]**
 
-1. A two-minute screen recording of steps 2–7 above in ChatGPT.
+1. A two-minute screen recording of steps 2–6 above in ChatGPT.
 2. Screenshots: the consent screen, an estimate awaiting approval, a finished
-   result with the MP4 link, a scene preview in the chat, the share link
-   playing in a logged-out browser.
+   result with the MP4 link, the share link playing in a logged-out browser.
 3. The connection listed under Settings → API & Apps, and the revoke button.
 
 ## 9. Before filing
 
-- [x] Walkthrough run once in ChatGPT on 26 September (owner's workspace);
-      re-run step 5 after the preview_url deploy and note the rendering.
+- [x] Walkthrough run once in ChatGPT on 26 September (owner's workspace).
+      Previews are left out of the reviewer script: ChatGPT renders neither MCP
+      image content nor outside image links; an Apps SDK widget is the route if
+      wanted later.
 - [ ] Confirm the legal name, category, logo and screenshots.
 - [ ] Rotate the reviewer password after the review; keep the workspace.
