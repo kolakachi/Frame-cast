@@ -3,7 +3,7 @@
 26 September 2026. Implementation: `ad4c498`; safety review: `5f507be` and
 `8502d4b`, present in local Git. The user-supplied deployment report records
 `8502d4b` live, both remaining migrations applied, workers restarted, no project
-or scene triggers, accounting disabled, and MCP 1.7.0 exposing 43 tools.
+or scene triggers, accounting enabled since 26 September, and MCP 1.8.0 (eight tools added that day: character reference edits, share, publish, previews).
 This report was not independently rechecked against production in this closure.
 Phase F documentation and contract extension remain local.
 
@@ -139,6 +139,17 @@ not under-quoted; API access is open to every plan, with the plan's own limits.
   pending, then settled. A `regenerate_voice` edit on the result: operation
   `op_01m3ea8r00…` `completed`, `spent=3`, attributed. Worker logs clean. The
   flag stays on.
+  **Surface additions, same day (f4cac30, 1.8.0 deploy):** character
+  reference edits (`edit_reference` mode), `share_video`, `publish_video` +
+  `list_social_accounts` + `get_post`, and JPEG previews for scenes,
+  characters and assets returned as MCP image content. Live on production
+  with a one-hour key against project #229: scene preview 512×910 JPEG (a
+  frame of the Pexels clip), character preview 512×766, `no_visual` for a
+  scene without animation, share on → public page 200, off → 404, three
+  connected accounts listed, publish refused `confirmation_required`. Key
+  revoked, share left off. ChatGPT must reinstall the connector to see the
+  1.8.0 tool list; whether ChatGPT renders MCP image content inline is still
+  to be observed there (Claude does).
 
 Do not mark these complete using historical production project #226 or local
 mock tests. The earlier deployment evidence belongs to earlier commits.
