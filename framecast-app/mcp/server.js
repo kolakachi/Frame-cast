@@ -25,7 +25,7 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.8.1'
+const VERSION = process.env.MCP_VERSION || '1.8.2'
 
 // Annotation policy. readOnlyHint is true only for tools that leave the
 // workspace as the user sees it unchanged: reads, previews, and estimates.
@@ -36,6 +36,9 @@ const VERSION = process.env.MCP_VERSION || '1.8.1'
 // write. destructiveHint marks what cannot be undone from the API: cancelling
 // an operation and posting to a social account. openWorldHint marks tools
 // whose effect leaves WyvStudio: sharing and publishing.
+// All three of readOnlyHint, destructiveHint and openWorldHint are stated on
+// every tool, including the reads where destructiveHint is trivially false:
+// the app directory refuses a tool that leaves any of the three unsaid.
 // OAuth discovery. The issuer is the WyvStudio app origin (Laravel serves the
 // authorization-server document there); this process serves the
 // protected-resource document for the MCP URL. Both unset → bearer keys only.
@@ -210,7 +213,7 @@ function buildServer(token) {
     {
       title: 'WyvStudio capabilities',
       description: 'What this workspace can make and what it costs: plan, credit balance, limits, supported inputs, visual modes and per-scene prices. Call this first, and again if a create is refused for credits or limits.',
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async () => call(token, 'GET', '/capabilities', undefined, 'get_capabilities'),
   )
@@ -225,7 +228,7 @@ function buildServer(token) {
     ['list_characters', "The workspace's reusable AI characters. Pass an id as character_id to feature one in the video.", '/characters'],
   ]
   for (const [name, description, path] of lookups) {
-    server.registerTool(name, { title: name.replace(/_/g, ' '), description, annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false } }, async () => call(token, 'GET', path, undefined, name))
+    server.registerTool(name, { title: name.replace(/_/g, ' '), description, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async () => call(token, 'GET', path, undefined, name))
   }
 
   server.registerTool(
@@ -238,7 +241,7 @@ function buildServer(token) {
         page: z.number().int().min(1).optional(),
         q: z.string().max(120).optional().describe('Title search.'),
       }),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ type, page, q }) => call(token, 'GET', `/library?${new URLSearchParams({ type, ...(page ? { page: String(page) } : {}), ...(q ? { q } : {}) })}`, undefined, 'list_library'),
   )
@@ -248,7 +251,7 @@ function buildServer(token) {
     {
       title: 'List narration voices',
       description: 'The voices a video can be narrated in: WyvStudio\'s catalogue plus this workspace\'s own voices and clones, each with language, gender and credits per scene. Pass a voice id to estimate_video as voice_id. Omit it for the default voice.',
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async () => call(token, 'GET', '/voices', undefined, 'list_voices'),
   )
@@ -283,7 +286,7 @@ function buildServer(token) {
         platform_target: z.string().optional().describe('From get_options, e.g. youtube_shorts, tiktok, instagram_reels.'),
         allow_script_edit: z.boolean().optional().describe('Let WyvStudio lightly edit a provided script for pacing.'),
       }),
-      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async (args) => call(token, 'POST', '/quotes', args, 'estimate_video'),
   )
@@ -312,7 +315,7 @@ function buildServer(token) {
     title: 'Read media and transcription status',
     description: 'Read an owned asset and its transcription status. To attach narration, propose_edits with op use_narration, scene_id, asset_id and mode audio_only (keep script) or audio_and_script (replace script with completed transcript). Show the proposal before applying it.',
     inputSchema: z.object({ asset_id: z.number().int() }),
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ asset_id }) => call(token, 'GET', `/assets/${asset_id}`, undefined, 'get_asset'))
   server.registerTool('clone_voice', {
     title: 'Create a reusable cloned voice',
@@ -383,7 +386,7 @@ function buildServer(token) {
         quality: z.enum(['low', 'medium', 'high']).optional(),
         set_as_reference: z.boolean().optional().describe('Make the result the character\'s reference photo.'),
       }),
-      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ character_id, ...rest }) => call(token, 'POST', `/characters/${character_id}/images/quotes`, rest, 'estimate_character_image'),
   )
@@ -399,7 +402,7 @@ function buildServer(token) {
         aspect_ratio: z.enum(['9:16', '1:1', '16:9']).optional(),
         set_as_reference: z.boolean().optional().describe('Default true.'),
       }),
-      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ character_id, instruction, ...rest }) => call(token, 'POST', `/characters/${character_id}/images/quotes`, { ...rest, prompt: instruction, mode: 'edit_reference' }, 'estimate_character_reference_edit'),
   )
@@ -419,7 +422,7 @@ function buildServer(token) {
       title: 'Check a character image',
       description: 'Status of a character image generation: generating, completed (with the image asset) or failed.',
       inputSchema: z.object({ character_id: z.number().int(), generation_id: z.number().int() }),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ character_id, generation_id }) => call(token, 'GET', `/characters/${character_id}/images/${generation_id}`, undefined, 'get_character_image'),
   )
@@ -440,12 +443,12 @@ function buildServer(token) {
   server.registerTool('analyze_ugc_reference', {
     title: 'Analyze a UGC reference', description: 'Read an uploaded workspace video/audio into shape and beats for plan_ugc.reference. Planning inspiration, not My Footage recreation. No customer credits. May take time; do not start paid generation before the analysis is returned.',
     inputSchema: z.object({ asset_id: z.number().int().positive() }),
-    annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async args => call(token, 'POST', '/ugc/reference', args, 'analyze_ugc_reference'))
   server.registerTool('estimate_presenter_preview', {
     title: 'Quote a presenter preview', description: 'Quote a generated portrait inspired by a character. Ask for likeness rights/consent first. Not the final video identity or a guaranteed match.',
     inputSchema: z.object({ character_id: z.number().int(), consent: z.literal(true) }),
-    annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ character_id, ...args }) => call(token, 'POST', `/ugc/characters/${character_id}/preview/quotes`, args, 'estimate_presenter_preview'))
   server.registerTool('create_presenter_preview', {
     title: 'Generate the approved presenter preview', description: 'Spends the quoted credits. Only after approval. Reuse the same quote/idempotency key after a timeout; a pending response means wait, not start a replacement.',
@@ -469,7 +472,7 @@ function buildServer(token) {
         reference: z.object({ shape: z.string().max(300).optional(), beats: z.array(z.object({ role: z.string().max(24), does: z.string().max(300).optional(), on_screen: z.string().max(300).optional(), start: z.number().optional(), end: z.number().optional() })).max(8).optional() }).optional().describe('Shape and beats from analyze_ugc_reference.'),
         variants_count: z.number().int().min(2).max(6).optional(),
       }),
-      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async (args) => call(token, 'POST', '/ugc/plans', args, 'plan_ugc'),
   )
@@ -501,7 +504,7 @@ function buildServer(token) {
         title: z.string().max(120).optional(),
         consent: z.boolean().describe('True only after the user confirmed likeness/voice rights.'),
       }),
-      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async (args) => call(token, 'POST', '/ugc/quotes', args, 'estimate_ugc'),
   )
@@ -525,7 +528,7 @@ function buildServer(token) {
     {
       title: 'UGC takes allowance',
       description: 'Whether UGC ads are enabled on this plan, takes used and remaining this month, and the per-run and per-take limits.',
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async () => call(token, 'GET', '/ugc/allowance', undefined, 'get_ugc_allowance'),
   )
@@ -537,7 +540,7 @@ function buildServer(token) {
       title: 'Read a video project',
       description: 'The full editable state of a video: revision, project settings, ordered scenes with every setting and a readiness block (script, visual, voice, animation, in-progress, errors, locked fields), hook options, and the latest export with its freshness. Read this before proposing edits; the revision must match when you apply.',
       inputSchema: z.object({ video_id: z.number().int() }),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ video_id }) => call(token, 'GET', `/videos/${video_id}/project`, undefined, 'get_project'),
   )
@@ -547,7 +550,7 @@ function buildServer(token) {
       title: 'What can be edited',
       description: 'The operations available on this video (and why any is not), the scene settings that update_scene accepts, enums for styles, tiers, rewrite modes and caption/motion settings, and the plan\'s limits. settings_schema describes typed fields, ranges, defaults, null and merge behavior, provider limitations, locks, stale state and animation quality/engines.',
       inputSchema: z.object({ video_id: z.number().int() }),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ video_id }) => call(token, 'GET', `/videos/${video_id}/project/schema`, undefined, 'get_project_schema'),
   )
@@ -561,7 +564,7 @@ function buildServer(token) {
         revision: z.string().describe('From get_project.'),
         changes: z.array(z.object({ op: z.string() }).passthrough()).min(1).max(30),
       }),
-      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ video_id, ...rest }) => call(token, 'POST', `/videos/${video_id}/proposals`, rest, 'propose_edits'),
   )
@@ -591,7 +594,7 @@ function buildServer(token) {
       title: 'List exports',
       description: 'Every export of a video, newest first, with status and download links for completed ones. Older exports do not contain newer edits.',
       inputSchema: z.object({ video_id: z.number().int() }),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ video_id }) => call(token, 'GET', `/videos/${video_id}/exports`, undefined, 'list_exports'),
   )
@@ -599,7 +602,7 @@ function buildServer(token) {
     title: 'Quote retrying a failed video',
     description: 'Get a new authorized ceiling for retrying failed composable generation. Resolve any prior uncertain operation first. Show this quote to the user before retry_video.',
     inputSchema: z.object({ video_id: z.number().int() }),
-    annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ video_id }) => call(token, 'POST', `/videos/${video_id}/retry-quotes`, {}, 'estimate_retry'))
   server.registerTool('cancel_operation', {
     title: 'Cancel remaining operation work',
@@ -637,28 +640,28 @@ function buildServer(token) {
     title: 'Check a video before app delivery',
     description: 'Preflight public sharing, an approval request or scheduling in the app (publish_video posts directly; use this for the in-app scheduler or approvals). Requires the current project revision and explicit completed export id. Returns an authenticated editor link and confirmation checklist only. DOES NOT publish, send mail, create a public link or schedule a post. The user must review the export and confirm recipient/destination in the app. The app does not automatically select the supplied export. Export/download support is not publishing support.',
     inputSchema: z.object({ video_id: z.number().int(), action: z.enum(['public_share', 'approval_request', 'schedule']), revision: z.string(), export_id: z.number().int().positive(), allow_stale: z.boolean().optional().describe('True only after the user explicitly agrees to use this older export.') }),
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ video_id, ...args }) => call(token, 'POST', `/videos/${video_id}/delivery/handoff`, args, 'prepare_delivery'))
 
   server.registerTool('get_scene_preview', {
     title: 'Show a scene\'s visual or animation',
     description: 'A JPEG preview of one scene: its still or stock visual, or a frame of its animation (default: the animation when one exists). Show it to the user inline so they can judge the scene without opening the app. Spends nothing. The result carries the image and a preview_url (a JPEG link valid for 12 hours) for clients that show pictures by URL.',
     inputSchema: z.object({ video_id: z.number().int(), scene_id: z.number().int(), kind: z.enum(['visual', 'animation']).optional() }),
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ video_id, scene_id, kind }) => preview(token, `/videos/${video_id}/scenes/${scene_id}/preview${kind ? `?kind=${kind}` : ''}`, 'get_scene_preview', 'Preview of the scene as it is now; the rendered video may differ in framing and captions.'))
 
   server.registerTool('get_character_preview', {
     title: 'Show a character',
     description: 'A JPEG preview of a character: its reference photo, or its latest generated image when it has no photo. Show it inline. Spends nothing. The result carries the image and a preview_url (a JPEG link valid for 12 hours) for clients that show pictures by URL.',
     inputSchema: z.object({ character_id: z.number().int() }),
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ character_id }) => preview(token, `/characters/${character_id}/preview`, 'get_character_preview', 'The character as WyvStudio will match it.'))
 
   server.registerTool('get_asset_preview', {
     title: 'Show a library image or video',
     description: 'A JPEG preview of any image or video asset in the library or on a generation result (a frame, for video). Show it inline. Spends nothing. The result carries the image and a preview_url (a JPEG link valid for 12 hours) for clients that show pictures by URL.',
     inputSchema: z.object({ asset_id: z.number().int() }),
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ asset_id }) => preview(token, `/assets/${asset_id}/preview`, 'get_asset_preview', 'Downsized preview; the original is the asset itself.'))
 
   server.registerTool('share_video', {
@@ -672,7 +675,7 @@ function buildServer(token) {
     title: 'List connected social accounts',
     description: 'The YouTube, TikTok, Instagram and Facebook accounts connected to this workspace, with ids for publish_video, and whether this plan can publish. Accounts are connected in the app.',
     inputSchema: z.object({}),
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async () => call(token, 'GET', '/social-accounts', undefined, 'list_social_accounts'))
 
   server.registerTool('publish_video', {
@@ -693,7 +696,7 @@ function buildServer(token) {
     title: 'Check a published or scheduled post',
     description: 'Status of a post made with publish_video: scheduled, publishing, published (with post_url) or failed. Omit post_id to list the video\'s posts.',
     inputSchema: z.object({ video_id: z.number().int(), post_id: z.number().int().optional() }),
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ video_id, post_id }) => call(token, 'GET', post_id ? `/videos/${video_id}/posts/${post_id}` : `/videos/${video_id}/posts`, undefined, 'get_post'))
 
   server.registerTool(
@@ -713,7 +716,7 @@ function buildServer(token) {
       title: 'Check an API operation after a timeout',
       description: 'Read execution progress, known results and accounting state by the original quote or plan id. Safe after a timeout. This does not restart work or release credits. needs_attention means investigate; do not create replacement paid work. Media readiness is checked separately with video/generation status.',
       inputSchema: z.object({ quote_id: z.string().max(32).describe('Original quote_id, proposal_id or plan_id.') }),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ quote_id }) => call(token, 'GET', `/operations/${encodeURIComponent(quote_id)}`, undefined, 'get_operation'),
   )
@@ -724,7 +727,7 @@ function buildServer(token) {
       title: 'Check a video',
       description: 'Progress of a video: status is generating, exporting, completed, needs_export or failed, with the current stage, credits spent so far and a project_url the user can open in WyvStudio. When completed, call get_video_result for the file. When failed, read failure.message; retryable means the user can retry from the dashboard.',
       inputSchema: z.object({ video_id: z.number().int().describe('From create_video.') }),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ video_id }) => call(token, 'GET', `/videos/${video_id}`, undefined, 'get_video_status'),
   )
@@ -735,7 +738,7 @@ function buildServer(token) {
       title: 'Get the finished video',
       description: 'The selected completed MP4 as a private, time-limited download link (download_expires_at), plus duration, aspect ratio, credits spent and the project_url. The default selects the newest export, even while pending/failed. Stale or superseded exports need explicit export_id and allow_stale=true after user approval. The link is for the workspace only; nothing is made public.',
       inputSchema: z.object({ video_id: z.number().int(), export_id: z.number().int().optional(), allow_stale: z.boolean().optional().describe('Only true after user agrees to this specific older export.') }),
-      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ video_id, export_id, allow_stale }) => {
       const started = Date.now()

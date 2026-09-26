@@ -22,13 +22,22 @@ submission guidelines (developers.openai.com/apps-sdk/app-submission-guidelines)
    `https://app.wyvstudio.com/mcp`; authentication OAuth (the server
    publishes its metadata, §2); demo credentials = the reviewer account (§3);
    no UI domains (no widget), so the content security policy stays empty.
-   If the portal challenges the domain, serve the token it gives at
-   `https://app.wyvstudio.com/.well-known/openai-apps-challenge` (a static
-   file in the app's nginx; ask and it is a five-minute change). Then
-   **Scan Tools**; every tool already carries readOnlyHint, openWorldHint and
-   destructiveHint (§5).
+   Domain verification is required, not optional: nginx serves the portal's
+   token at `https://app.wyvstudio.com/.well-known/openai-apps-challenge`
+   (`nginx/default.conf`; listed by name because `.well-known` has no
+   catch-all here). Then **Scan Tools**. Every tool states all three of
+   readOnlyHint, openWorldHint and destructiveHint (§5) — the portal refuses
+   a tool that leaves any of the three unsaid, and the reads carried no
+   destructiveHint until 26 September.
 5. **Starter prompts** (§4.1). **Test cases** (§4.2): the portal wants at
    least five positive and three negative.
+
+   Rather than typing the 153 tool justifications into the form by hand,
+   upload `chatgpt-app-submission.json` (beside this file) on the MCP tab.
+   It fills App Info, the per-tool justifications and Testing in one go, and
+   validates clean against OpenAI's published schema. Regenerate it whenever
+   the tool set changes — its annotations must match what Scan Tools reads
+   back, or the review sees two different stories.
 6. **Global availability:** pick countries **[owner]**.
 7. **Release notes** (§4.3), confirm the policy attestations, **Submit for
    Review**. Timelines vary; community reports range from days to weeks.
@@ -44,7 +53,7 @@ submission guidelines (developers.openai.com/apps-sdk/app-submission-guidelines)
 | Tagline (≤ 80 chars) | Branded short-form video without a shoot, from a chat. |
 | Short description | Make, edit, preview and publish short vertical videos and UGC ads from ChatGPT. Every credit spend is quoted first and only runs after you say yes. |
 | Long description | See §1.1 |
-| Category | Productivity / Marketing **[owner: pick from the directory's list]** |
+| Category | PRODUCTIVITY (OpenAI's enum offers no Marketing option) |
 | Developer | Kollignton Kay Technologies Limited (per wyvstudio.com/terms) **[owner: confirm the legal name as it should appear]** |
 | Website | https://wyvstudio.com |
 | Documentation | https://docs.wyvstudio.com/api |
@@ -186,7 +195,7 @@ tool reference: https://docs.wyvstudio.com/api-and-connectors/mcp-tools.
 
 ## 5. Tools and annotations
 
-46 tools; the full table with costs is at
+51 tools; the full table with costs is at
 https://docs.wyvstudio.com/api-and-connectors/mcp-tools. Summary for the review:
 
 | Class | Tools | Annotation |
@@ -200,6 +209,10 @@ https://docs.wyvstudio.com/api-and-connectors/mcp-tools. Summary for the review:
 | Irreversible inside WyvStudio | `cancel_operation` | `destructiveHint: true` |
 
 No tool deletes anything. Billing, members and settings are not reachable.
+
+All 51 tools state readOnlyHint, destructiveHint and openWorldHint explicitly.
+On a read destructiveHint is trivially false, but the portal treats an unstated
+hint as a blocker rather than a default, so none is left out.
 
 ## 6. Data handling answers
 
@@ -263,5 +276,8 @@ No tool deletes anything. Billing, members and settings are not reachable.
       Previews are left out of the reviewer script: ChatGPT renders neither MCP
       image content nor outside image links; an Apps SDK widget is the route if
       wanted later.
-- [ ] Confirm the legal name, category, logo and screenshots.
+- [ ] Confirm the legal name, logo and screenshots. Category is PRODUCTIVITY.
+- [ ] Deploy before scanning: the `nginx` and `mcp` images both need a rebuild
+      (`nginx/default.conf` and `mcp/server.js` are baked in, not mounted).
+      Then **Verify Domain**, then **Scan Tools** — in that order.
 - [ ] Rotate the reviewer password after the review; keep the workspace.
