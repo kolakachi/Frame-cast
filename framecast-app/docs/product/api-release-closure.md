@@ -50,6 +50,13 @@ and takes at least 30 seconds to exercise the real sidecar timeout.
 
 ## Release gates still open
 
+> **Incident, 26 September 2026 06:31 UTC, about 4 minutes.** Recreating the
+> api container by hand to load the flag gave it a new address; nginx resolves
+> `fastcgi_pass api:9000` at start and kept the old one, so every API request
+> answered 502 until nginx was restarted. The GitHub deploy never hits this
+> because it recreates nginx too. Manual recreates must restart nginx in the
+> same step; recorded in the deploy notes.
+
 26 September 2026: character reference cost is now in every estimate
 (`character_reference` in the breakdown), so an accounted character video is
 not under-quoted; API access is open to every plan, with the plan's own limits.
@@ -66,11 +73,19 @@ not under-quoted; API access is open to every plan, with the plan's own limits.
   evidence does not cover these later changes.
 - [ ] Verify staging provider completion, refusal and retry across exposed families
   within an explicitly agreed spend budget.
-- [ ] Check old in-flight jobs and database session affinity before enabling
-  operation accounting; follow the Phase A rollout procedure.
+- [x] Check old in-flight jobs and database session affinity before enabling
+  operation accounting; follow the Phase A rollout procedure. (26 September
+  2026, 06:2x UTC: zero generating projects, exports or queued jobs and zero
+  operation rows; `DEVELOPER_OPERATION_ACCOUNTING=true` set in the server env;
+  api, three workers and scheduler recreated and each confirmed `true`.)
 - [ ] Verify current MCP discovery and quote → approval → apply → operation →
   export through the real connector, plus app handoff confirmation.
-- [ ] Record production accounting/ledger and recovery observations before outreach.
+- [~] Record production accounting/ledger and recovery observations before outreach.
+  (First accounted operation on production, project #226, a zero-credit
+  `update_project` proposal: operation `op_01m3e6mjr8dn9ptg7wwmey6sp9` opened,
+  applied, `producer_closed`, status `completed`, `GET /operations/{quote}` reports
+  `settled` with the recorded result. Paid-operation observations still pending
+  the smoke budget.)
 
 Do not mark these complete using historical production project #226 or local
 mock tests. The earlier deployment evidence belongs to earlier commits.
