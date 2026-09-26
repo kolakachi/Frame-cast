@@ -324,6 +324,51 @@ content; explicit old-version selection remains possible.
 > guard only fires when `OperationAccounting::current()` is set, and the queue
 > worker evidently had no operation context. Net effect: an accounted
 > narration was free. Reopens A1/A2 for the queued-job path as well.
+>
+> **Root causes found and fixed locally, 26 September 2026** (reproduced with
+> `queue:work redis` on the dev stack, not the sync driver; the earlier
+> hypotheses above were wrong).
+> 1. *The stall.* `Bus::pipeThrough([AccountedJob])` runs for every
+>    `dispatchNow` in the worker process, including synchronous work a job
+>    triggers itself. `GenerateScriptJob`'s first `GenerationProgressed` event
+>    (`ShouldBroadcastNow` → `dispatchNow(BroadcastEvent)`) re-entered
+>    `AccountedJob::handle` under the same job uuid, found the record already
+>    `running`, flipped the operation to `needs_attention` and threw — 35 ms
+>    after the job started. Fix: the pipe accounts only the outermost dispatch
+>    of the queued job (`AccountedJob::$active`); nested dispatches pass
+>    through. The `JobProcessing` listener now forgets the job uuid before
+>    `before()` runs, because a child payload carries its parent's uuid in
+>    hidden context. The three production job rows were the script job plus
+>    `SendAnalyticsEventJob`/`FinishGeneratedVideoJob`, all registered by
+>    `createPayloadUsing` in the request; they were victims, not causes.
+> 2. *Silent stranding.* Any exception in an accounted job fenced the operation
+>    and the redelivery was deleted before Laravel could run `failed()`, so the
+>    video stayed at "generating" with no signal. Now an attempt that threw
+>    before any charge marks its record `released` and retries normally
+>    (exhausted tries settle the operation `failed` through `close`); an
+>    attempt that threw after a charge marks the record `failed`, fences the
+>    operation, and the redelivery is failed through `$job->fail()` so the
+>    job's own `failed()` marks the video failed. `close()` settles the job
+>    record even when the operation is already fenced.
+> 3. *The free narration (A1/A2).* Not a lost operation context. The
+>    dashboard's `SceneController::regenerateVoice` synthesises narration in
+>    the request and never called `deduct` — a pre-existing dashboard gap, so
+>    the scene menu's own re-voice was free as well. It now checks the balance
+>    before synthesis and charges through `CreditService::ttsBillingFor` once
+>    the asset exists; under accounting the entry carries the operation and
+>    key (`tts:gemini 3 op=op_01m3e9rh… key=9`, operation `spent=3`).
+> 4. *Swallowed refusals.* Seven jobs wrapped `deduct()` in `rescue()`, which
+>    would also swallow `OperationBudgetExceeded`; they use `deductQuietly()`
+>    now, which reports unexpected errors but rethrows a refused accounted
+>    charge.
+>
+> Coverage: `DeveloperApiTest` gained nested-dispatch passthrough,
+> failure-before-charge and failure-after-charge cases (real `sync` queue
+> events, the Bus pipe installed). Developer, OAuth and key suites: 97 passed.
+> A verbatim-script creation was then run end to end through a Redis worker
+> with the flag on (see the closure document for the result). Production keeps
+> `DEVELOPER_OPERATION_ACCOUNTING=false` until this ships and the paid smoke is
+> repeated with the flag on.
 - [x] Persist accounting operation state and registered queue-job terminal states.
 - [x] Persist editor/assistant checkpoints before each action and after its result.
 - [x] Implement fenced reconciliation for an action interrupted between its side

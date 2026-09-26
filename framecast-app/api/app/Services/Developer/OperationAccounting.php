@@ -145,12 +145,20 @@ class OperationAccounting
     {
         DB::transaction(function () use ($id, $jobId, $failed) {
             $op = DB::table('api_operations')->where('id', $id)->lockForUpdate()->first();
-            if (! $op || $op->status !== 'running') {
+            if (! $op) {
                 return;
             }
             if ($jobId) {
+                // The job's own record settles even when the operation is
+                // already fenced, so a review sees which jobs finished.
                 DB::table('api_operation_jobs')->where('id', $jobId)->where('operation_id', $id)
                     ->whereIn('status', ['pending', 'running', 'released'])->update(['status' => $failed ? 'failed' : 'completed', 'updated_at' => now()]);
+            }
+            if ($op->status !== 'running') {
+                return;
+            }
+            if ($jobId) {
+                // settled above
             } else {
                 DB::table('api_operations')->where('id', $id)->update(['producer_closed' => true]);
                 $op->producer_closed = true;

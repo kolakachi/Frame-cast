@@ -217,7 +217,7 @@ class GenerateTTSJob implements ShouldQueue
             // if the image is also ready (idempotent guard inside).
             rescue(fn () => \App\Jobs\GenerateTalkingVideoJob::maybeDispatchForScene($scene));
 
-            rescue(fn () => app(CreditService::class)->deduct(
+            app(CreditService::class)->deductQuietly(
                 (int) $project->workspace_id,
                 $ttsCost,
                 $ttsOp,
@@ -228,7 +228,7 @@ class GenerateTTSJob implements ShouldQueue
                     'upstream_cost_usd' => $ttsCogs,
                     'metadata'   => ['voice_id' => $voiceId, 'language' => $language, 'engine' => $ttsEngine],
                 ],
-            ));
+            );
             $done++;
             GenerationProgressed::dispatch($this->projectId, 'tts', 'processing', null, [
                 ...$this->progressMeta((int) $scene->getKey()),
@@ -403,14 +403,7 @@ class GenerateTTSJob implements ShouldQueue
      */
     private function ttsBilling(string $providerKey): array
     {
-        if (str_contains($providerKey, 'chatterbox')) {
-            return [CreditService::TTS_CLONE, 'tts:clone', CreditService::cogsUsd('tts:chatterbox')];
-        }
-        if (str_contains($providerKey, 'gemini')) {
-            return [CreditService::TTS_GEMINI, 'tts:gemini', CreditService::cogsUsd('tts:gemini')];
-        }
-
-        return [CreditService::TTS, 'tts', CreditService::cogsUsd('tts')];
+        return CreditService::ttsBillingFor($providerKey);
     }
 
     /**

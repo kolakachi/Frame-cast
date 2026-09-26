@@ -348,7 +348,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             ? CreditService::AI_CHARACTER
             : $imageFactory->costFor(null);
 
-        rescue(fn () => app(CreditService::class)->deduct(
+        app(CreditService::class)->deductQuietly(
             (int) $project->workspace_id,
             $imageCost,
             $ranCharacterPath ? 'ai_image:character' : 'ai_image:initial',
@@ -362,7 +362,7 @@ class GenerateProjectAIImagesJob implements ShouldQueue
                     'style'        => $style,
                 ],
             ],
-        ));
+        );
     }
 
     /**

@@ -170,7 +170,7 @@ class ConcatenateExportJob implements ShouldQueue
                     'output_asset_id'  => $asset->getKey(),
                 ])->save();
 
-                rescue(fn () => app(CreditService::class)->deduct(
+                app(CreditService::class)->deductQuietly(
                     (int) $exportJob->workspace_id,
                     CreditService::EXPORT,
                     'export',
@@ -179,7 +179,7 @@ class ConcatenateExportJob implements ShouldQueue
                         'user_id'    => $exportJob->created_by_user_id,
                         'metadata'   => ['export_job_id' => $exportJob->getKey()],
                     ],
-                ));
+                );
                 $this->purgePreviousExports($exportJob, $asset->getKey());
                 $assetCreated = true;
             });

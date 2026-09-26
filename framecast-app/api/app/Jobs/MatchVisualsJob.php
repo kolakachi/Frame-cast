@@ -99,7 +99,7 @@ class MatchVisualsJob implements ShouldQueue
                 ])->save();
             });
 
-            rescue(fn () => app(CreditService::class)->deduct(
+            app(CreditService::class)->deductQuietly(
                 (int) $project->workspace_id,
                 CreditService::STOCK,
                 'stock_visual',
@@ -109,7 +109,7 @@ class MatchVisualsJob implements ShouldQueue
                     'user_id'    => $project->created_by_user_id,
                     'metadata'   => ['visual_type' => $matchType],
                 ],
-            ));
+            );
             $done++;
             GenerationProgressed::dispatch($this->projectId, 'visual_match', 'processing', null, [
                 'done' => $done, 'total' => $total,

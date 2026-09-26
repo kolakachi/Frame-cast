@@ -644,9 +644,19 @@ class SceneController extends Controller
             return $this->error('invalid_scene_state', 'Scene script is required before regenerating voice.', 422);
         }
 
-        $asset = null;
+        // Priced like the queued narration job. Checked before the provider is
+        // paid, charged after the audio exists; the API's regenerate_voice
+        // quote and this charge come from the same table.
+        $estimate = CreditService::ttsCostForEngine(\App\Services\Generation\TTS\RoutingTTSAdapter::engineFor($voiceId, is_array($scene->voice_settings_json) ? $scene->voice_settings_json : []));
+        $balance = $this->credits->balance((int) $project->workspace_id);
+        if ($balance < $estimate) {
+            return $this->error('insufficient_credits', "Re-recording this narration costs {$estimate} credits; the balance is {$balance}.", 402);
+        }
 
-        DB::transaction(function () use ($scene, $project, $user, $tts, $voiceId, $speed, $language, $provider, $voicePrompt, $cloneUrl, $sceneText, &$asset): void {
+        $asset = null;
+        $audio = null;
+
+        DB::transaction(function () use ($scene, $project, $user, $tts, $voiceId, $speed, $language, $provider, $voicePrompt, $cloneUrl, $sceneText, &$asset, &$audio): void {
             $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
                 'provider'        => $provider,
                 'voice_prompt'    => $voicePrompt,
@@ -712,6 +722,15 @@ class SceneController extends Controller
         });
 
         if ($asset) {
+            [$ttsCost, $ttsOp, $ttsCogs] = CreditService::ttsBillingFor((string) ($audio['provider_key'] ?? ''));
+            $this->credits->deductQuietly((int) $project->workspace_id, $ttsCost, $ttsOp, [
+                'project_id' => $project->getKey(),
+                'scene_id' => $scene->getKey(),
+                'user_id' => $user->getKey(),
+                'upstream_cost_usd' => $ttsCogs,
+                'metadata' => ['voice_id' => $voiceId, 'language' => $language, 'engine' => $ttsOp, 'manual_voice_regeneration' => true],
+            ]);
+
             // Same rule as generation: the script we sent to the voice model
             // decides the caption text, not what the recogniser heard back.
             $this->attachCaptionTiming($asset, $transcription, (string) $scene->script_text);

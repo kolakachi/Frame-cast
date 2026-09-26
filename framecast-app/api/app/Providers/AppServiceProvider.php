@@ -70,10 +70,14 @@ class AppServiceProvider extends ServiceProvider
         // without anyone remembering to cover it.
         Event::listen(MessageSent::class, RecordSentMail::class);
         \Illuminate\Support\Facades\Bus::pipeThrough([\App\Services\Developer\AccountedJob::class]);
+        // Runs after the framework has hydrated Context from the payload. The
+        // job uuid is forgotten first: a child job's payload carries its
+        // parent's uuid in hidden context, and before() may run failed()
+        // handlers that dispatch synchronous events.
         Event::listen(\Illuminate\Queue\Events\JobProcessing::class, function ($event) {
-            \App\Services\Developer\AccountedJob::before($event->job);
             \Illuminate\Support\Facades\Context::forgetHidden('wyv_api_job');
-            if ($id = ($event->job->payload()['wyv_api_operation'] ?? null)) {
+            \App\Services\Developer\AccountedJob::before($event->job);
+            if (! $event->job->isDeleted() && ($id = ($event->job->payload()['wyv_api_operation'] ?? null))) {
                 \Illuminate\Support\Facades\Context::addHidden('wyv_api_job', $event->job->uuid());
             }
         });

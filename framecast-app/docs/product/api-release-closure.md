@@ -88,6 +88,17 @@ not under-quoted; API access is open to every plan, with the plan's own limits.
   api, three workers and scheduler recreated and each confirmed `true`.)
 - [ ] Verify current MCP discovery and quote → approval → apply → operation →
   export through the real connector, plus app handoff confirmation.
+  **Owner's ChatGPT smoke, 26 September 2026 (accounting off, MCP 1.7.0, 43
+  tools, OAuth grant #3):** discovery, `estimate_video` → approval →
+  `create_video` → `get_video_status` → `get_video_result` for project #228
+  (30 s stock, 9:16; 6 scenes; export 168 completed; 18 credits charged
+  against an 18–24 quote), plus `estimate_ugc` (10 s one-take draft, described
+  presenter, 210 credits; the script ran 13.5 s so the quote priced 14 s) and
+  a character image (asset 4460, 16 credits). The UGC draft was estimated but
+  never submitted: the quote expired unconsumed, so generation through the
+  connector is still unverified. Apply/edit, replay and refusals were driven
+  from the API side (below), not from ChatGPT. App handoff confirmation still
+  open.
 - [ ] Record production accounting/ledger and recovery observations before outreach.
   **Accounting re-disabled 26 September 2026:** the first paid operation stalled
   in the accounted-job wrapper (see backlog A6, reopened). Zero-credit
@@ -97,6 +108,23 @@ not under-quoted; API access is open to every plan, with the plan's own limits.
   applied, `producer_closed`, status `completed`, `GET /operations/{quote}` reports
   `settled` with the recorded result. Paid-operation observations still pending
   the smoke budget.)
+  **API-side smoke, same morning, accounting off:** project #227 (AI stills,
+  15 s brief; 3 scenes; export 167, 22.8 s; 138 credits against a 276–368
+  quote, the estimator assuming 6–8 scenes); edit on #226 applied
+  `regenerate_voice` and refused `animate` with `no_source_image`; same-key
+  replay returned the recorded result; a 20-credit capped key was refused
+  `key_spend_cap_reached`; an expired quote was refused `quote_expired`.
+  **Accounting root causes fixed locally** (backlog A6, 26 September): nested
+  synchronous dispatches re-entered the job wrapper, exceptions stranded
+  videos silently, the dashboard's in-request re-voice never charged, and
+  `rescue()` swallowed budget refusals. Verified on the dev stack with
+  `queue:work redis` and the flag on: a verbatim-script stock video (project
+  97) ran script → breakdown → brief → hooks → visuals → narration to
+  `ready_for_review`; 15 registered jobs all `completed`; operation
+  `completed`, `spent=9` (three `tts:gemini` entries carrying the operation
+  and key), reservation released; an accounted `regenerate_voice` edit charged
+  3 attributed credits. Not yet deployed; the production flag stays off until
+  the fix ships and the paid smoke is repeated with it on.
 
 Do not mark these complete using historical production project #226 or local
 mock tests. The earlier deployment evidence belongs to earlier commits.

@@ -92,6 +92,25 @@ class CreditService
      * adapter actually returned — this is the pre-flight side of the same
      * pricing, used to quote a bulk re-record before anything runs.
      */
+    /**
+     * Credits, ledger operation and upstream cost for a narration, from the
+     * provider key the TTS adapter reports. One table for every path that
+     * records a narration (queued job, in-request regeneration).
+     *
+     * @return array{0:int,1:string,2:?float}
+     */
+    public static function ttsBillingFor(string $providerKey): array
+    {
+        if (str_contains($providerKey, 'chatterbox')) {
+            return [self::TTS_CLONE, 'tts:clone', self::cogsUsd('tts:chatterbox')];
+        }
+        if (str_contains($providerKey, 'gemini')) {
+            return [self::TTS_GEMINI, 'tts:gemini', self::cogsUsd('tts:gemini')];
+        }
+
+        return [self::TTS, 'tts', self::cogsUsd('tts')];
+    }
+
     public static function ttsCostForEngine(string $engine): int
     {
         return match ($engine) {
@@ -732,6 +751,25 @@ class CreditService
      *                                          - user_id (int)
      *                                          - metadata (array) — model, tier, quality, etc.
      */
+    /**
+     * deduct() for handlers that must not fail because the ledger did: an
+     * unexpected error is reported and swallowed, as rescue() did. A refused
+     * charge under API operation accounting is not swallowed; an accounted
+     * action must never carry on after its budget said no.
+     */
+    public function deductQuietly(int $workspaceId, int $amount, string $operation = '', array $context = []): bool
+    {
+        try {
+            return $this->deduct($workspaceId, $amount, $operation, $context);
+        } catch (\App\Services\Developer\OperationBudgetExceeded $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return false;
+        }
+    }
+
     public function deduct(int $workspaceId, int $amount, string $operation = '', array $context = []): bool
     {
         if ($amount <= 0) {

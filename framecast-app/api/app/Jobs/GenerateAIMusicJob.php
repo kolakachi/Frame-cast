@@ -116,7 +116,7 @@ class GenerateAIMusicJob implements ShouldQueue
                 ),
             ])->save();
 
-            rescue(fn () => app(CreditService::class)->deduct(
+            app(CreditService::class)->deductQuietly(
                 (int) $scene->project->workspace_id,
                 CreditService::AI_MUSIC,
                 'ai_music',
@@ -127,7 +127,7 @@ class GenerateAIMusicJob implements ShouldQueue
                     'upstream_cost_usd' => CreditService::cogsUsd('music'),
                     'metadata'   => ['provider_key' => $result['provider_key'], 'genre' => $this->genre],
                 ],
-            ));
+            );
 
             GenerationProgressed::dispatch($this->projectId, 'ai_music', 'completed', null, [
                 'scene_id' => $this->sceneId,

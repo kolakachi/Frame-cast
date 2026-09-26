@@ -1285,6 +1285,70 @@ class DeveloperApiTest extends TestCase
         \App\Services\Developer\OperationAccounting::close($id);
         $this->assertSame(0, \App\Services\Developer\OperationAccounting::reserved($ws->id));
     }
+    public function test_accounted_job_passes_through_the_synchronous_dispatches_it_triggers(): void
+    {
+        // ShouldBroadcastNow events and dispatchSync inside a job run through
+        // the same Bus pipes; they must not count as a second attempt (the
+        // production stall: GenerationProgressed fenced its own operation).
+        $this->enableOperationAccounting();
+        Bus::swap(new \Illuminate\Bus\Dispatcher(app()));
+        Bus::pipeThrough([\App\Services\Developer\AccountedJob::class]);
+        [$ws, , $token] = $this->tenant('creator', 100);
+        $key = ApiKey::resolve($token);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 40), $key->id));
+        \Illuminate\Support\Facades\Queue::connection('sync')->push(new OperationAccountingScenarioJob($ws->id, 'nested'));
+        $this->assertSame(10, $key->spentThisMonth());
+        $this->assertSame('running', DB::table('api_operations')->where('id', $id)->value('status'));
+        $this->assertSame(['completed'], DB::table('api_operation_jobs')->where('operation_id', $id)->pluck('status')->all());
+        \App\Services\Developer\OperationAccounting::close($id);
+        $this->assertSame('completed', DB::table('api_operations')->where('id', $id)->value('status'));
+    }
+
+    public function test_accounted_job_failing_before_any_charge_settles_like_an_ordinary_failure(): void
+    {
+        $this->enableOperationAccounting();
+        Bus::swap(new \Illuminate\Bus\Dispatcher(app()));
+        Bus::pipeThrough([\App\Services\Developer\AccountedJob::class]);
+        [$ws, , $token] = $this->tenant('creator', 100);
+        $key = ApiKey::resolve($token);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 40), $key->id));
+        try {
+            \Illuminate\Support\Facades\Queue::connection('sync')->push(new OperationAccountingScenarioJob($ws->id, 'throw_before'));
+            $this->fail('expected the job exception to surface');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('probe: before charge', $e->getMessage());
+        }
+        $this->assertSame(0, $key->spentThisMonth());
+        $this->assertSame('running', DB::table('api_operations')->where('id', $id)->value('status')); // the request is still the producer
+        \App\Services\Developer\OperationAccounting::close($id); // producer done; the failed job settles it
+        $op = DB::table('api_operations')->where('id', $id)->first();
+        $this->assertSame('failed', $op->status);
+        $this->assertSame(0, (int) $op->reserved_credits);
+        $this->assertSame(['failed'], DB::table('api_operation_jobs')->where('operation_id', $id)->pluck('status')->all());
+    }
+
+    public function test_accounted_job_failing_after_a_charge_fences_the_operation(): void
+    {
+        $this->enableOperationAccounting();
+        Bus::swap(new \Illuminate\Bus\Dispatcher(app()));
+        Bus::pipeThrough([\App\Services\Developer\AccountedJob::class]);
+        [$ws, , $token] = $this->tenant('creator', 100);
+        $key = ApiKey::resolve($token);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 40), $key->id));
+        try {
+            \Illuminate\Support\Facades\Queue::connection('sync')->push(new OperationAccountingScenarioJob($ws->id, 'throw_after'));
+            $this->fail('expected the job exception to surface');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('probe: after charge', $e->getMessage());
+        }
+        $this->assertSame(10, $key->spentThisMonth());
+        $op = DB::table('api_operations')->where('id', $id)->first();
+        $this->assertSame('needs_attention', $op->status);
+        $this->assertSame(10, (int) $op->spent_credits);
+        $this->assertSame(30, (int) $op->reserved_credits);
+        $this->assertSame(['failed'], DB::table('api_operation_jobs')->where('operation_id', $id)->pluck('status')->all());
+    }
+
     public function test_media_upload_validates_bytes_and_is_workspace_scoped(): void
     {
         [$ws, , $key] = $this->tenant();
@@ -1636,4 +1700,30 @@ class OperationAccountingProbeJob implements \Illuminate\Contracts\Queue\ShouldQ
             \Illuminate\Support\Facades\Queue::connection('sync')->push(new self($this->workspaceId, false));
         }
     }
+}
+
+class OperationAccountingScenarioJob implements \Illuminate\Contracts\Queue\ShouldQueue
+{
+    public function __construct(public int $workspaceId, public string $mode) {}
+
+    public function handle(): void
+    {
+        if ($this->mode === 'throw_before') {
+            throw new \RuntimeException('probe: before charge');
+        }
+        if ($this->mode === 'nested') {
+            Bus::dispatchNow(new OperationAccountingNestedCommand);
+        }
+        if (! app(\App\Services\CreditService::class)->deduct($this->workspaceId, 10, 'queue-probe')) {
+            throw new \RuntimeException('Expected a reserved debit.');
+        }
+        if ($this->mode === 'throw_after') {
+            throw new \RuntimeException('probe: after charge');
+        }
+    }
+}
+
+class OperationAccountingNestedCommand
+{
+    public function handle(): void {}
 }
