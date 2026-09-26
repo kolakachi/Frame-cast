@@ -56,6 +56,14 @@ and takes at least 30 seconds to exercise the real sidecar timeout.
 > answered 502 until nginx was restarted. The GitHub deploy never hits this
 > because it recreates nginx too. Manual recreates must restart nginx in the
 > same step; recorded in the deploy notes.
+>
+> **Second incident, 06:37 UTC, about 6 minutes, wyvstudio.com only.** The fix
+> for the first (per-request upstream resolution in the shared
+> `fastcgi-api.conf`) broke the marketing container, which bind-mounts the same
+> include but whose server block did not define `$api_upstream`; it
+> crash-looped on config load. Hot-patched on the server and committed
+> (`38dfbb3`). The app was unaffected. Lesson recorded: that include is shared
+> by two nginx containers; validate both configs before changing it.
 
 26 September 2026: character reference cost is now in every estimate
 (`character_reference` in the breakdown), so an accounted character video is
