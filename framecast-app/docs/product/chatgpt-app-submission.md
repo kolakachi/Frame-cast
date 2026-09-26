@@ -93,8 +93,9 @@ Each step names the tool ChatGPT will call and what the reviewer should see.
    `get_video_result` with a private MP4 link. Charged: 12 credits (four
    narrations), visible in the app's credit history.
 5. **"Show me the first scene."** → `get_scene_preview` returns the picture
-   in the chat. No spend. **[owner: confirm ChatGPT renders it inline; if
-   it shows only text, say so in the submission notes]**
+   in the chat, or as `preview_url` when the client shows images by link.
+   No spend. **[owner: note in the submission whether ChatGPT rendered it
+   inline or as a link]**
 6. **"Re-record the narration of scene 1."** → `propose_edits` (3 credits
    shown) → approval → `apply_edits`. Charged: 3.
 7. **"Give me a public link to watch it."** → `share_video` returns a
@@ -187,7 +188,7 @@ No tool deletes anything. Billing, members and settings are not reachable.
 
 ## 9. Before filing
 
-- [ ] Reinstall the connector in ChatGPT and run the walkthrough once with
-      the reviewer account; note whether previews render inline.
+- [x] Walkthrough run once in ChatGPT on 26 September (owner's workspace);
+      re-run step 5 after the preview_url deploy and note the rendering.
 - [ ] Confirm the legal name, category, logo and screenshots.
 - [ ] Rotate the reviewer password after the review; keep the workspace.

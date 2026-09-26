@@ -86,8 +86,19 @@ not under-quoted; API access is open to every plan, with the plan's own limits.
   2026, 06:2x UTC: zero generating projects, exports or queued jobs and zero
   operation rows; `DEVELOPER_OPERATION_ACCOUNTING=true` set in the server env;
   api, three workers and scheduler recreated and each confirmed `true`.)
-- [ ] Verify current MCP discovery and quote → approval → apply → operation →
+- [x] Verify current MCP discovery and quote → approval → apply → operation →
   export through the real connector, plus app handoff confirmation.
+  **Closed 26 September 2026, 08:31–08:40 UTC, owner's ChatGPT run on MCP
+  1.8.1 with accounting on:** the full reviewer walkthrough (capabilities,
+  estimate, approval, create, status, result, re-voice proposal and apply,
+  share on/off, social accounts, publish refusal, UGC estimate) worked on
+  project #231 (3 scenes, export 171, operation `op_01m3eddm59…` settled at
+  9 credits). Two findings: (1) a docs push mid-run redeployed api and nginx
+  and produced 502s on three polls; ChatGPT read the operation instead of
+  starting replacement work and resumed, as designed; (2) ChatGPT does not
+  display MCP image content, so `get_scene_preview` showed metadata only.
+  Fixed in `ac8bdfd` by adding a signed 12-hour `preview_url` to every
+  preview result; whether ChatGPT renders that URL inline is to be observed.
   **Owner's ChatGPT smoke, 26 September 2026 (accounting off, MCP 1.7.0, 43
   tools, OAuth grant #3):** discovery, `estimate_video` → approval →
   `create_video` → `get_video_status` → `get_video_result` for project #228
