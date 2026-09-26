@@ -286,4 +286,14 @@ hint as a blocker rather than a default, so none is left out.
 - [ ] Deploy before scanning: the `nginx` and `mcp` images both need a rebuild
       (`nginx/default.conf` and `mcp/server.js` are baked in, not mounted).
       Then **Verify Domain**, then **Scan Tools** — in that order.
-- [ ] Rotate the reviewer password after the review; keep the workspace.
+- [ ] Do NOT rotate the reviewer password after approval. The portal's test
+      credentials section requires credentials, permissions and sample data to
+      stay usable "for later reviewers and ongoing testing" — OpenAI re-tests
+      against this account after the listing goes live, so a rotation reads as
+      a broken app. Rotate only if the credential leaks, and update the
+      listing in the same pass.
+- [ ] Top the reviewer workspace up well beyond 500 credits before filing.
+      The walkthrough alone is ~60, and OpenAI states it may use the account
+      for ongoing safety and quality testing. If the balance reaches zero,
+      every generation fails with insufficient_credits and a re-review sees a
+      broken app rather than an empty wallet.
