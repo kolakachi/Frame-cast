@@ -99,7 +99,9 @@ not under-quoted; API access is open to every plan, with the plan's own limits.
   connector is still unverified. Apply/edit, replay and refusals were driven
   from the API side (below), not from ChatGPT. App handoff confirmation still
   open.
-- [ ] Record production accounting/ledger and recovery observations before outreach.
+- [x] Record production accounting/ledger and recovery observations before outreach.
+  (Closed 26 September 2026 with the paid smoke below; recovery paths are
+  covered by the retry-policy tests and were not exercised on production.)
   **Accounting re-disabled 26 September 2026:** the first paid operation stalled
   in the accounted-job wrapper (see backlog A6, reopened). Zero-credit
   operations settled correctly; the queued-job lifecycle did not.
@@ -123,8 +125,20 @@ not under-quoted; API access is open to every plan, with the plan's own limits.
   `ready_for_review`; 15 registered jobs all `completed`; operation
   `completed`, `spent=9` (three `tts:gemini` entries carrying the operation
   and key), reservation released; an accounted `regenerate_voice` edit charged
-  3 attributed credits. Not yet deployed; the production flag stays off until
-  the fix ships and the paid smoke is repeated with it on.
+  3 attributed credits.
+  **Deployed and re-enabled on production, 26 September 2026, 07:33 UTC**
+  (commit 91387e9; pre-check zero generating/exports/queued/running; flag
+  confirmed `true` in api, three workers and scheduler; no nginx restart
+  needed with per-request upstream resolution). Paid smoke with the flag on,
+  key 15: project #229 (verbatim script, stock, 9:16) quoted 24–30, ran
+  script → breakdown → hooks → visuals → narration → export 169 to
+  `ready_for_review` in about 100 s; operation `op_01m3ea5p6x…` closed
+  `completed`, 27 registered jobs all `completed`, `spent=12` (four
+  `tts:gemini` ledger rows carrying the operation and key), reservation
+  released; `GET /operations/{quote}` reported `running` with the export
+  pending, then settled. A `regenerate_voice` edit on the result: operation
+  `op_01m3ea8r00…` `completed`, `spent=3`, attributed. Worker logs clean. The
+  flag stays on.
 
 Do not mark these complete using historical production project #226 or local
 mock tests. The earlier deployment evidence belongs to earlier commits.

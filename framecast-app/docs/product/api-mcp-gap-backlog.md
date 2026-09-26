@@ -366,9 +366,12 @@ content; explicit old-version selection remains possible.
 > failure-before-charge and failure-after-charge cases (real `sync` queue
 > events, the Bus pipe installed). Developer, OAuth and key suites: 97 passed.
 > A verbatim-script creation was then run end to end through a Redis worker
-> with the flag on (see the closure document for the result). Production keeps
-> `DEVELOPER_OPERATION_ACCOUNTING=false` until this ships and the paid smoke is
-> repeated with the flag on.
+> with the flag on (see the closure document for the result). Shipped as
+> 91387e9 and re-enabled on production at 07:33 UTC the same day; the paid
+> smoke (project #229 plus an accounted re-voice) settled with every job
+> completed and every charge attributed. A6 and the A1/A2 queued-job path are
+> closed on that evidence; production recovery of a fenced operation has not
+> yet been observed live.
 - [x] Persist accounting operation state and registered queue-job terminal states.
 - [x] Persist editor/assistant checkpoints before each action and after its result.
 - [x] Implement fenced reconciliation for an action interrupted between its side
