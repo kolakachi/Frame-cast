@@ -6,7 +6,7 @@ description: Make WyvStudio videos from ChatGPT, Claude, Cursor or any MCP clien
 
 # Connect an AI assistant
 
-WyvStudio has an MCP server. Once an assistant is connected it can do most of what you do in the app, from a chat: make videos from a prompt, script, article or your own images; plan and make UGC ads with your characters; create characters; edit any scene of a video and export it; and hand you the file. It uses your workspace's plan, credits and limits, quotes before it spends, and nothing it makes is public.
+WyvStudio has an MCP server. Once an assistant is connected it can do nearly everything you do in the app, from a chat: make videos from a prompt, script, article or your own images; plan and make UGC ads with your characters; create characters; edit any scene of a video and export it; and hand you the file. It uses your workspace's plan, credits and limits, quotes before it spends, and nothing it makes is public.
 
 **Who can connect:** workspace owners and admins, on any plan. What you can make is what your plan allows in the app — the same limits, credits and features apply.
 
@@ -86,13 +86,17 @@ The assistant always quotes before it spends. WyvStudio enforces that on the ser
 
 | Can | Can't |
 |---|---|
-| Make a video from a prompt, script, URL, product description or your library images, in any visual mode and style, with your brand kits, channels, niches, characters, music and voices | Upload new footage or images (use the app's library) |
-| Plan, quote and make UGC ads, composed or one-take, with your characters; check your takes allowance | Restyle your own footage |
-| Create and update characters and generate their images | Delete scenes, videos or characters |
-| Read a video, propose and apply any scene or project change, re-voice, swap or generate visuals, animate, regenerate music, export in any ratio | Publish or share |
-| Check progress, list exports, fetch the finished MP4 | Touch billing, members or settings |
+| Make a video from a prompt, script, URL, product description or your library images, in any visual mode and style, with your brand kits, channels, niches, characters, music and voices | Restyle your own footage (the My Footage lane) |
+| Upload images, video, music and sound to your library and use them anywhere the app can: as a scene's visual, as music, as a character's photo | Delete scenes, videos, characters or assets |
+| Plan, quote and make UGC ads, composed or one-take, with your characters or a described presenter; analyse a reference ad; check your takes allowance | Touch billing, members or settings |
+| Create and update characters from a description or your photos, generate new images of them, and AI-edit a character's photo (outfit, background, hair, product in hand) | Send approval requests (the in-app scheduler and approvals stay in the app) |
+| Read a video, propose and apply any scene or project change, re-voice, swap or generate visuals, animate, regenerate music, export in any ratio | |
+| Show you what a scene, an animation, a character or a library file looks like, right in the chat | |
+| Clone a voice from a consented sample, preview and save voices | |
+| Check progress, list exports, fetch the finished MP4, recover an interrupted operation | |
+| Turn a public watch link on or off, and publish or schedule a finished video to a connected YouTube, TikTok, Instagram or Facebook account, after you confirm the exact post | |
 
-Everything in the right column stays in the WyvStudio app. See [MCP tools](./mcp-tools) for exactly what each tool does and what it costs.
+Everything in the right column stays in the WyvStudio app. Publishing only happens after the assistant shows you the account, caption and time and you say yes. See [MCP tools](./mcp-tools) for exactly what each tool does and what it costs.
 
 ## Disconnect
 

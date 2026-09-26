@@ -80,6 +80,9 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer', \Ap
     Route::post('/videos', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'store']);
     Route::get('/videos/{videoId}', [\App\Http\Controllers\Api\Developer\V1\VideoController::class, 'show'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/delivery/handoff', [\App\Http\Controllers\Api\Developer\V1\DeliveryController::class, 'handoff'])->whereNumber('videoId');
+    Route::get('/assets/{assetId}/preview', [\App\Http\Controllers\Api\Developer\V1\PreviewController::class, 'asset'])->whereNumber('assetId');
+    Route::get('/videos/{videoId}/scenes/{sceneId}/preview', [\App\Http\Controllers\Api\Developer\V1\PreviewController::class, 'scene'])->whereNumber('videoId')->whereNumber('sceneId');
+    Route::get('/characters/{characterId}/preview', [\App\Http\Controllers\Api\Developer\V1\PreviewController::class, 'character'])->whereNumber('characterId');
     Route::post('/videos/{videoId}/share', [\App\Http\Controllers\Api\Developer\V1\ShareController::class, 'toggle'])->whereNumber('videoId');
     Route::get('/social-accounts', [\App\Http\Controllers\Api\Developer\V1\PublishController::class, 'accounts']);
     Route::post('/videos/{videoId}/posts', [\App\Http\Controllers\Api\Developer\V1\PublishController::class, 'publish'])->whereNumber('videoId');

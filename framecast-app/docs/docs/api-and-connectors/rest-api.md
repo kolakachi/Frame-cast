@@ -126,6 +126,22 @@ Send `{ request, scene_id?, history? }` to get a plan from WyvStudio's in-app as
 
 The link is private to your workspace and expires (12 hours by default). Nothing is published or shared to produce it. Call again for a fresh link.
 
+## Characters: POST /characters, PATCH /characters/\{id\}, POST …/images/quotes, POST …/images, GET …/images/\{generationId\}
+
+Create a character from a description and/or `reference_asset_ids` (library images; `consent: true` for a real person). Image quotes take `prompt`, `style`, `model_key`, `aspect_ratio`, `quality`, `set_as_reference`. Add `mode: "edit_reference"` to AI-edit the character's photo instead: the person, pose and framing are kept and only the instruction changes; it runs on the edit model at the edit rate and becomes the new reference unless `set_as_reference` is false. Without a photo the quote answers `422 no_reference`.
+
+## Previews: GET /assets/\{id\}/preview, GET /videos/\{id\}/scenes/\{sceneId\}/preview, GET /characters/\{id\}/preview
+
+A JPEG (512 px wide by default, `width` 64–1024) of a library image or video (a frame), a scene's visual or animation (`kind=visual|animation`; default the animation when one exists), or a character's photo (or latest generated image). The body is the image; `X-Wyv-Asset-Id`, `X-Wyv-Kind` and `X-Wyv-Source` headers say what it shows. `404 no_visual` when there is nothing to show; `422 preview_unavailable` when the asset cannot be rendered.
+
+## Sharing: POST /videos/\{id\}/share
+
+`{ enabled?: true }` turns on the public watch link for the video's latest completed export and returns `share_url`; anyone with it can watch without logging in. `enabled: false` turns it off; the same link returns when it is turned on again. `409 not_ready` without a completed export.
+
+## Publishing: GET /social-accounts, POST /videos/\{id\}/posts, GET …/posts, GET …/posts/\{postId\}
+
+List the connected accounts (id, platform, username, `can_post`) and whether the plan can publish. Post with `{ revision, export_id, social_account_id, caption?, title?, description?, visibility?, hashtags?, scheduled_at?, confirm: true, allow_stale? }`: the current revision and an explicit completed export are required, the account must be active, and `confirm` must be true (`422 confirmation_required` otherwise). Omit `scheduled_at` to post now. The post goes through the app's own scheduler, so its plan gate and publish job apply; the same export to the same account within ten minutes returns the existing post instead of posting twice. Poll the post until `published` (`post_url`) or `failed`.
+
 ## Limits and errors
 
 Rate limits and the full error-code table are on the [API keys](./api-keys#rate-limits) and [MCP tools](./mcp-tools#errors-an-assistant-will-see) pages. Every `429` carries `Retry-After` and `X-RateLimit-Remaining`.

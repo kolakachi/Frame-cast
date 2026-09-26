@@ -589,6 +589,41 @@ class DeveloperApiTest extends TestCase
         $this->withToken($foreign)->postJson("/api/developer/v1/videos/{$id}/share")->assertNotFound();
     }
 
+    public function test_previews_render_scene_character_and_asset_images_within_the_workspace(): void
+    {
+        $renderer = $this->createMock(\App\Services\Media\PreviewRenderer::class);
+        $renderer->method('jpeg')->willReturnCallback(fn (\App\Models\Asset $a) => $a->asset_type === 'audio' ? null : 'JPEGBYTES-'.$a->id);
+        $this->instance(\App\Services\Media\PreviewRenderer::class, $renderer);
+        [$ws, , $key] = $this->tenant();
+        [$id, $scenes] = $this->editableVideo($key, $ws->id);
+        $scene = Scene::findOrFail($scenes[0]);
+
+        $shot = $this->withToken($key)->get("/api/developer/v1/videos/{$id}/scenes/{$scene->id}/preview")->assertOk();
+        $this->assertSame('image/jpeg', $shot->headers->get('Content-Type'));
+        $this->assertSame('visual', $shot->headers->get('X-Wyv-Kind'));
+        $this->assertSame('JPEGBYTES-'.$scene->visual_asset_id, $shot->getContent());
+        $this->withToken($key)->get("/api/developer/v1/videos/{$id}/scenes/{$scene->id}/preview?kind=animation")->assertStatus(404)->assertJsonPath('error.code', 'no_visual');
+
+        $clip = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://b2/a.mp4', 'created_at' => now(), 'updated_at' => now()]);
+        $scene->forceFill(['image_generation_settings_json' => ['animation_video_asset_id' => $clip]])->save();
+        $anim = $this->withToken($key)->get("/api/developer/v1/videos/{$id}/scenes/{$scene->id}/preview")->assertOk();
+        $this->assertSame('animation', $anim->headers->get('X-Wyv-Kind'));
+        $this->assertSame((string) $clip, $anim->headers->get('X-Wyv-Asset-Id'));
+
+        $ref = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'image', 'storage_url' => 'https://b2/r.png', 'mime_type' => 'image/png', 'created_at' => now(), 'updated_at' => now()]);
+        $maya = $this->withToken($key)->postJson('/api/developer/v1/characters', ['name' => 'Maya', 'reference_asset_ids' => [$ref], 'consent' => true])->assertStatus(201)->json('data.character.id');
+        $this->withToken($key)->get("/api/developer/v1/characters/{$maya}/preview")->assertOk()->assertHeader('X-Wyv-Source', 'reference');
+        $bare = $this->withToken($key)->postJson('/api/developer/v1/characters', ['name' => 'Sketch'])->assertStatus(201)->json('data.character.id');
+        $this->withToken($key)->get("/api/developer/v1/characters/{$bare}/preview")->assertStatus(404)->assertJsonPath('error.code', 'no_visual');
+
+        $this->withToken($key)->get("/api/developer/v1/assets/{$ref}/preview")->assertOk()->assertHeader('X-Wyv-Asset-Type', 'image');
+        $aud = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'audio', 'storage_url' => 'https://b2/v.mp3', 'created_at' => now(), 'updated_at' => now()]);
+        $this->withToken($key)->get("/api/developer/v1/assets/{$aud}/preview")->assertStatus(422)->assertJsonPath('error.code', 'preview_unavailable');
+        [, , $foreign] = $this->tenant();
+        $this->withToken($foreign)->get("/api/developer/v1/assets/{$ref}/preview")->assertNotFound();
+        $this->withToken($foreign)->get("/api/developer/v1/videos/{$id}/scenes/{$scene->id}/preview")->assertNotFound();
+    }
+
     /** A created video with two finished scenes, ready to edit. */
     private function editableVideo(string $key, int $wsId): array
     {

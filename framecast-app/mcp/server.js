@@ -25,7 +25,7 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.7.0'
+const VERSION = process.env.MCP_VERSION || '1.8.0'
 // OAuth discovery. The issuer is the WyvStudio app origin (Laravel serves the
 // authorization-server document there); this process serves the
 // protected-resource document for the MCP URL. Both unset → bearer keys only.
@@ -54,6 +54,42 @@ async function api(token, method, path, body) {
   let json = null
   try { json = await res.json() } catch { json = null }
   return { status: res.status, json }
+}
+
+// Binary results (JPEG previews). Errors still arrive as JSON.
+async function apiBytes(token, path) {
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'image/jpeg, application/json', 'X-Wyv-Client': `mcp/${VERSION}` }
+  if (API_HOST_HEADER) headers.Host = API_HOST_HEADER
+  const res = await fetch(`${API_BASE_URL}/api/developer/v1${path}`, { method: 'GET', headers, signal: AbortSignal.timeout(API_TIMEOUT_MS) })
+  const type = res.headers.get('content-type') || ''
+  if (type.startsWith('image/')) {
+    const buf = Buffer.from(await res.arrayBuffer())
+    const meta = {}
+    for (const [k, v] of res.headers) if (k.startsWith('x-wyv-')) meta[k.slice(6).replace(/-/g, '_')] = /^\d+$/.test(v) ? Number(v) : v
+    return { status: res.status, bytes: buf, mimeType: type.split(';')[0], meta }
+  }
+  let json = null
+  try { json = await res.json() } catch { json = null }
+  return { status: res.status, json }
+}
+
+async function preview(token, path, tool, describe) {
+  const started = Date.now()
+  let r
+  try { r = await apiBytes(token, path) } catch {
+    logCall(token, tool, 0, Date.now() - started, 'transport_uncertain')
+    return fail(503, { error: { code: 'transport_uncertain', message: 'The preview could not be fetched. Try again.' } })
+  }
+  logCall(token, tool, r.status, Date.now() - started, r.status >= 300 ? r.json?.error?.code : undefined)
+  if (r.status < 200 || r.status >= 300 || !r.bytes) return fail(r.status, r.json)
+  const data = { ...r.meta, mime_type: r.mimeType, bytes: r.bytes.length, note: describe }
+  return {
+    content: [
+      { type: 'image', data: r.bytes.toString('base64'), mimeType: r.mimeType },
+      { type: 'text', text: JSON.stringify(data) },
+    ],
+    structuredContent: data,
+  }
 }
 
 // ── Bearer verification ────────────────────────────────────────────────────
@@ -590,6 +626,27 @@ function buildServer(token) {
     inputSchema: z.object({ video_id: z.number().int(), action: z.enum(['public_share', 'approval_request', 'schedule']), revision: z.string(), export_id: z.number().int().positive(), allow_stale: z.boolean().optional().describe('True only after the user explicitly agrees to use this older export.') }),
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   }, async ({ video_id, ...args }) => call(token, 'POST', `/videos/${video_id}/delivery/handoff`, args, 'prepare_delivery'))
+
+  server.registerTool('get_scene_preview', {
+    title: 'Show a scene\'s visual or animation',
+    description: 'A JPEG preview of one scene: its still or stock visual, or a frame of its animation (default: the animation when one exists). Show it to the user inline so they can judge the scene without opening the app. Spends nothing.',
+    inputSchema: z.object({ video_id: z.number().int(), scene_id: z.number().int(), kind: z.enum(['visual', 'animation']).optional() }),
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+  }, async ({ video_id, scene_id, kind }) => preview(token, `/videos/${video_id}/scenes/${scene_id}/preview${kind ? `?kind=${kind}` : ''}`, 'get_scene_preview', 'Preview of the scene as it is now; the rendered video may differ in framing and captions.'))
+
+  server.registerTool('get_character_preview', {
+    title: 'Show a character',
+    description: 'A JPEG preview of a character: its reference photo, or its latest generated image when it has no photo. Show it inline. Spends nothing.',
+    inputSchema: z.object({ character_id: z.number().int() }),
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+  }, async ({ character_id }) => preview(token, `/characters/${character_id}/preview`, 'get_character_preview', 'The character as WyvStudio will match it.'))
+
+  server.registerTool('get_asset_preview', {
+    title: 'Show a library image or video',
+    description: 'A JPEG preview of any image or video asset in the library or on a generation result (a frame, for video). Show it inline. Spends nothing.',
+    inputSchema: z.object({ asset_id: z.number().int() }),
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+  }, async ({ asset_id }) => preview(token, `/assets/${asset_id}/preview`, 'get_asset_preview', 'Downsized preview; the original is the asset itself.'))
 
   server.registerTool('share_video', {
     title: 'Turn the public watch link on or off',

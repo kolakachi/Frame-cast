@@ -15,6 +15,8 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | `list_brand_kits`, `list_channels`, `list_niches`, `list_caption_presets`, `list_characters` | No | Your workspace's brand kits, channels, content niches, caption presets and AI characters, by id and name. |
 | `list_library` | No | Your uploaded images, music and videos, 50 a page, searchable by title. |
 | `list_voices` | No | Narration voices: the catalogue plus your workspace's own and clones, with credits per scene. |
+| `upload_asset`, `get_asset` | No | Put an image, video, music or sound file in your library (up to 100 MB) and read one back with a private link. Audio uploads are transcribed for use as narration. |
+| `clone_voice`, `preview_voice`, `save_voice` | Clone spends the clone price; preview spends a few credits | Clone a voice from a consented sample, hear a voice on your own line, save a catalogue voice with a name. |
 | `estimate_video` | No | Prices a video and returns a `quote_id` valid for 10 minutes. |
 | `create_video` | **Yes**, up to the quote's max | Starts the video the quote described. Returns a video id at once. |
 | `create_character`, `update_character` | No | Make or change a reusable AI character, from a description and/or your library photos (consent required for a real person). |
@@ -24,12 +26,18 @@ Server: `https://app.wyvstudio.com/mcp` (Streamable HTTP). Auth: OAuth for ChatG
 | `estimate_ugc` | No | Price a UGC plan, composed or one-take, with takes against your monthly allowance; needs your consent for any real person's likeness or voice. |
 | `create_ugc` | **Yes**, up to the quote | Start the quoted takes, one video per take. |
 | `get_ugc_allowance` | No | Whether UGC is on your plan, takes used and remaining this month. |
+| `analyze_ugc_reference` | No | Describe a reference ad (a library video) so the plan can follow its structure. |
+| `estimate_presenter_preview` → `create_presenter_preview` | Create spends the quote | One still of a character as the UGC presenter, before spending on takes. |
 | `get_project`, `get_project_schema` | No | Everything editable about a video, its revision, and which operations are available. |
 | `propose_edits` → `apply_edits` | Apply spends the proposal's total | Validate and price a list of changes, then apply them in order with a revision check. |
-| `export_video`, `list_exports`, `retry_video` | No credits | Render a new export, list exports with freshness, retry a failed video. |
+| `export_video`, `list_exports` | No credits | Render a new export, list exports with freshness. |
+| `estimate_retry` → `retry_video` | Retry spends the quote | Price and run a retry of a failed video; a retry after reconciliation needs a fresh estimate. |
+| `get_operation`, `cancel_operation` | No | Where a paid operation stands (running, settled, needs attention) by its quote or plan id, and how to recover; cancel fences remaining work. |
+| `prepare_delivery` | No | Preflight the in-app scheduler or an approval request against a specific export; returns the editor link and checklist. Nothing is sent. |
 | `ask_wyvstudio_assistant` → `apply_assistant_plan` | Apply spends the plan's total | Hand a broad request ("make it more energetic") to WyvStudio's own assistant; it returns concrete priced actions, and only the actions it named can be applied. |
 | `get_video_status` | No | `generating` → `exporting` → `completed`, or `failed` with a reason. Credits spent so far. |
 | `get_video_result` | No | The MP4 as a private link that expires, plus duration and the project link. |
+| `get_scene_preview`, `get_character_preview`, `get_asset_preview` | No | A picture, right in the chat: a scene's still or a frame of its animation, a character's photo, or any library image or video. |
 | `share_video` | No | Turn a public watch link on or off for the video's latest finished export: anyone with the link can watch, no login. Off again keeps the same link for later. |
 | `list_social_accounts` → `publish_video` → `get_post` | No | Post a finished export to a connected YouTube, TikTok, Instagram or Facebook account, now or at a time. The assistant must show you the account, caption and time and get your explicit yes first; the tool refuses without `confirm`. Returns the post URL once live. |
 
@@ -89,4 +97,9 @@ For vague requests, the external assistant can defer to WyvStudio's own in-app a
 | `rate_limited` | Too many calls this minute | Wait `retry_after_seconds` |
 | `plan_duration_exceeded` | Longer than the plan allows | Shorten, or upgrade |
 | `not_ready` | Result requested before completion | Keep polling status |
-| `api_access_not_on_plan` | Plan below Creator | Upgrade |
+| `api_key_expired` | The connection key passed its 90 days | Reconnect the assistant |
+| `revision_conflict` | The video changed since it was read | Read the project again, then propose again |
+| `confirmation_required` | `publish_video` without `confirm` | Show the user the post and ask |
+| `account_disconnected` | The social account needs reconnecting | Reconnect it in the app |
+| `no_visual`, `no_reference` | Nothing to preview or edit yet | Generate or upload it first |
+| `needs_attention` (from `get_operation`) | A paid operation was interrupted | Inspect it; do not start a replacement |
