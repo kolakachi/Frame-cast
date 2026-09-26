@@ -623,16 +623,10 @@
   },
   "test_cases": [
     {
-      "description": "Capability discovery with no spend. The assistant calls get_capabilities and reports the plan, credit balance, limits and per-scene prices. Nothing is created and no credits move.",
-      "user_prompt": "What can you do with my WyvStudio account?",
-      "tools_triggered": "get_capabilities",
-      "expected_output": "Plan Creator, the reviewer account's credit balance, its limits and prices. No spend."
-    },
-    {
-      "description": "Quoting before spending. The assistant calls estimate_video, shows the 24-30 credit range against the balance and asks for approval. No video is created.",
+      "description": "Quoting before spending. The assistant reads the workspace with get_capabilities, then calls estimate_video and shows the 24-30 credit range against the balance and asks for approval. No video is created and no credits move.",
       "user_prompt": "Make a 20-second vertical video from this script: A standing desk pays for itself. You sit less, you focus more, and your back stops complaining. Stock footage is fine.",
-      "tools_triggered": "estimate_video",
-      "expected_output": "A quote_id, credits.min/max of about 24-30, the balance and can_afford. The assistant asks before creating."
+      "tools_triggered": "get_capabilities, estimate_video",
+      "expected_output": "The plan, balance and limits, then a quote_id with credits.min/max of about 24-30 and can_afford. The assistant asks before creating."
     },
     {
       "description": "Approval then creation. Against the quote from the previous turn the assistant calls create_video, polls get_video_status to completed and returns the MP4 from get_video_result. Takes about two minutes and spends about 12 credits.",
@@ -677,18 +671,6 @@
       "user_prompt": "Make a UGC ad using this photo of my colleague.",
       "tools_triggered": "create_character",
       "expected_output": "consent_required. No character and no ad is created."
-    },
-    {
-      "description": "A destructive action the connector deliberately does not offer. There is no delete tool, so the assistant says deletion is not available here and points the user to the WyvStudio app.",
-      "user_prompt": "Delete my last video.",
-      "tools_triggered": null,
-      "expected_output": "A plain statement that deletion is not available through the connector. No tool call attempts it."
-    },
-    {
-      "description": "Access revoked mid-session. After revoking the connection under Settings, API and Apps, every call fails with api_key_revoked or api_key_expired and the assistant asks the user to reconnect.",
-      "user_prompt": "What's the status of my latest video?",
-      "tools_triggered": "get_video_status",
-      "expected_output": "api_key_revoked or api_key_expired, and a prompt to reconnect. No data is returned."
     }
   ]
 }

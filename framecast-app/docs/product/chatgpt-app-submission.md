@@ -29,8 +29,11 @@ submission guidelines (developers.openai.com/apps-sdk/app-submission-guidelines)
    readOnlyHint, openWorldHint and destructiveHint (§5) — the portal refuses
    a tool that leaves any of the three unsaid, and the reads carried no
    destructiveHint until 26 September.
-5. **Starter prompts** (§4.1). **Test cases** (§4.2): the portal wants at
-   least five positive and three negative.
+5. **Starter prompts** (§4.1). **Test cases** (§4.2): the portal wants
+   **exactly** five positive and three negative. Its published schema says
+   `minItems`, but a sixth positive case is rejected outright — confirmed on
+   26 September. §4.2 carries more than that on purpose; the JSON ships the
+   five and three that cover the credit, consent and external-post gates.
 
    Rather than typing the 153 tool justifications into the form by hand,
    upload `chatgpt-app-submission.json` (beside this file) on the MCP tab.
@@ -161,7 +164,9 @@ Each step names the tool ChatGPT will call and what the reviewer should see.
 All cases use the reviewer account (§3). "Result shape" is what the tool
 returns; the assistant paraphrases it.
 
-**Positive**
+**Positive** — P1 is folded into P2's case in the submission JSON (the
+assistant calls `get_capabilities` before quoting anyway), since only five
+fit.
 
 | # | User prompt | Expected behaviour | Result shape |
 |---|---|---|---|
@@ -172,7 +177,8 @@ returns; the assistant paraphrases it.
 | P5 | "Give me a public link to watch it, then turn it off." | `share_video` returns a `/sample/…` URL that plays logged out; `share_video` with `enabled: false` disables it. | `shared: true, share_url`; then `shared: false, share_url: null` |
 | P6 | "Plan a 10-second UGC ad for a standing desk with a described presenter and tell me the cost." | `plan_ugc` then `estimate_ugc`; reports about 210 credits and asks. Nothing generated. | `data.quote_id`, `credits`, `pricing.takes: 1` |
 
-**Negative**
+**Negative** — only N1, N2 and N3 ship in the submission JSON; three is the
+cap. N4 and N5 are still worth running by hand before filing.
 
 | # | Scenario | Expected refusal / fallback | Why |
 |---|---|---|---|
