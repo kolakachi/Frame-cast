@@ -2,7 +2,7 @@
 
 Date: 25 September 2026
 Audit baseline: local commit `9b26301`
-Status: Phases A, B, C, D and E local implementation and acceptance checks complete; production rollout remains gated. Existing caption-render parity failures are recorded below.
+Status: implementation `ad4c498`, reviewed in `5f507be`/`8502d4b`; supplied report records `8502d4b` deployed with accounting disabled. A4 remains partial. Phase F documentation/transport checks are local; release gates remain. Existing caption-render parity failures are recorded below.
 
 Checkbox meaning: `[x]` = the stated local implementation or check is complete;
 `[ ]` = still pending. A checked implementation task does not imply its section
@@ -469,22 +469,28 @@ Local contract and verification: [Phase E guide](api-delivery-mcp-guide.md). Del
 
 ## F. Documentation and verification closure
 
-- [ ] Reopen contradictory completion claims in both existing TODO documents:
+- [x] Reopen contradictory completion claims in both existing TODO documents:
   reservation/settlement, attribution, revision safety, stale exports, recovery
   and animation history. Link them to the corresponding IDs here.
 - [x] Remove the stale MCP caption-presets description that says caption editing
   has not shipped.
-- [ ] Replace unconditional outreach readiness with release gates and one current
+- [x] Replace unconditional outreach readiness with release gates and one current
   tested commit/deployment status; keep historical evidence clearly historical.
 - [x] Add regressions for target immutability, narration-based quotes, null/input
   forwarding, reservations, debit/refund attribution, rotation and sync child jobs.
-- [ ] Complete remaining regression coverage for A1–A8, B1–B2, C3 and E1.
+- [x] Complete targeted local regression coverage for A1–A8, B1–B2, C3 and E1.
+  Evidence by family is recorded in [release closure](api-release-closure.md);
+  exhaustive parity and deployed provider checks are not implied. A4 remains
+  partial; these tests do not close dashboard/worker check-to-apply races.
 - [x] Exercise concurrency using a representative database/queue setup; sequential
   SQLite tests alone do not prove locking guarantees.
-- [ ] Add repeatable MCP client contract checks for tool schemas, error handling,
+- [x] Add repeatable MCP client contract checks for tool schemas, error handling,
   timeout/replay and successful operation polling.
 - [ ] For each completed item record implementation commit, test evidence and
-  deployment verification. Existing passing tests are not proof these gaps are fixed.
+  deployment verification. Implementation/test evidence is mapped in
+  [release closure](api-release-closure.md); deployment at `8502d4b` is reported by the supplied review; accounting
+  enablement and current end-to-end connector verification remain open.
+  Existing passing tests are not proof of production behavior.
 
 ## Suggested delivery order
 

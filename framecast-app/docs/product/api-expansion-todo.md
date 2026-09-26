@@ -1,5 +1,32 @@
 # API/MCP expansion — phase tracker
 
+> **Current release status — 26 September 2026:** implementation A–E is committed
+> in `ad4c498`, reviewed in `5f507be`/`8502d4b`. The supplied deployment report
+> records `8502d4b` live with accounting disabled; no fresh production check was
+> performed here. A4 remains partial. Phase F closure is local. Historical evidence
+> below applies only to its stated build. The current source of
+> truth is [release closure](api-release-closure.md); outreach is gated on its
+> unchecked release steps.
+
+## Reopened release verification
+
+These are release gates; A4 also has an unresolved implementation gap:
+
+- [ ] A1–A3: verify reservations, settlement, initiating-key attribution and key
+  rotation with accounting enabled on the release deployment.
+- [ ] A4: close the dashboard/worker check-to-apply race without restoring
+  broad reject-on-write triggers. A5: verify stale-export selection through
+  the deployed connector.
+- [ ] A6–A8: verify recovery, concurrency, cancellation and async failures with
+  the deployed queue/provider configuration.
+- [ ] B1–B2/C3: verify editor option forwarding, narration and owned animation
+  history through the deployed connector.
+- [ ] E1–E3: verify delivery handoffs and app confirmation; no programmatic
+  publishing or app-only destructive operations are promised.
+
+Local evidence and exact backlog IDs: [A–F backlog](api-mcp-gap-backlog.md).
+
+
 > **25 September Phase A correction:** the historical completion notes below do
 > not establish current release readiness. Spending reservations, attribution,
 > revision fences, stale-export guards and recovery are implemented and tested
@@ -73,7 +100,7 @@ one-glance status.
 - [x] 4b proposals: propose, apply with revision precondition, expiry, single use
 - [x] 4c families: script/structure · visuals · narration · captions · music/sound · motion/timing · project/hooks · export
       (captions, motion and timing ride `update_scene`; scene deletion excluded)
-- [~] 4d parity: every operation executes the editor's own controller method, so state and accounting are the editor's by construction; the API test covers update, reorder, music, project settings, stale revision, whole-video refusal, replay and export. Per-family parity tests against dashboard fixtures remain a follow-up.
+- [~] 4d parity: every operation executes the editor's own controller method, so shared execution still requires input/output and accounting regression coverage; the API test covers update, reorder, music, project settings, stale revision, whole-video refusal, replay and export. Per-family parity tests against dashboard fixtures remain a follow-up.
 - [x] MCP; docs; OpenAPI
 - [x] Deployed and smoke-tested (25 Sep, prod `782d840`: 29 tools listed, get_capabilities, get_options, get_ugc_allowance answer on the owner's workspace)
 

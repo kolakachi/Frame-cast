@@ -10,10 +10,29 @@ if (!dir) throw new Error('Set MCP_TEST_DIRECTORY to a disposable directory cont
 await writeFile(path.join(dir, 'package.json'), '{"type":"module"}')
 await writeFile(path.join(dir, 'server.js'), await readFile(new URL('../server.js', import.meta.url)))
 const captured = []
+let recoveryCalls = 0
 const backend = http.createServer(async (req, res) => {
   let raw = ''; for await (const chunk of req) raw += chunk
   captured.push({ path: req.url, method: req.method, body: raw ? JSON.parse(raw) : null })
   res.setHeader('Content-Type', 'application/json')
+  if (req.url === '/api/developer/v1/videos' && captured.at(-1).body?.quote_id === 'expired') {
+    res.statusCode = 409
+    return res.end(JSON.stringify({ error: { code: 'quote_expired', message: 'Quote expired.' } }))
+  }
+  if (req.url === '/api/developer/v1/videos' && captured.at(-1).body?.quote_id === 'recovery') {
+    recoveryCalls++
+    if (recoveryCalls === 1) {
+      // The backend accepts the operation, but its response misses the real
+      // sidecar timeout. No shortened timeout or server implementation patch.
+      const timer = setTimeout(() => res.end('{}'), 31000)
+      res.on('close', () => clearTimeout(timer))
+      return
+    }
+    return res.end(JSON.stringify({ data: { video_id: 42, replayed: true } }))
+  }
+  if (req.url === '/api/developer/v1/operations/recovery') {
+    return res.end(JSON.stringify({ data: { status: 'settled', result: { video_id: 42 } } }))
+  }
   res.end(JSON.stringify({ data: { plan: 'creator', proposal_id: 'proposal-test', applied: true } }))
 })
 await new Promise(r => backend.listen(0, '127.0.0.1', r))
@@ -28,13 +47,14 @@ try {
     await new Promise(r => setTimeout(r, 50))
   }
   let id = 0
-  async function rpc(method, params) {
+  async function rpc(method, params, expectError = false) {
     const response = await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', headers: { Authorization: 'Bearer wyv_live_disposable_contract', 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-11-25' }, body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }) })
     const raw = await response.text()
     assert.equal(response.status, 200, raw)
     const json = JSON.parse(raw.startsWith('data:') || raw.includes('\ndata:') ? raw.split('\n').find(s => s.startsWith('data:')).slice(5) : raw)
     assert.equal(json.error, undefined, raw)
-    assert.notEqual(json.result?.isError, true, raw)
+    if (expectError) assert.equal(json.result?.isError, true, raw)
+    else assert.notEqual(json.result?.isError, true, raw)
     return json.result
   }
   await rpc('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'phase-b-test', version: '1' } })
@@ -74,11 +94,26 @@ try {
   await rpc('tools/call', { name: 'prepare_delivery', arguments: { video_id: 1, action: 'schedule', revision: 'v1', export_id: 8, allow_stale: true } })
   assert.equal(captured.at(-1).path, '/api/developer/v1/videos/1/delivery/handoff')
   assert.deepEqual(captured.at(-1).body, { action: 'schedule', revision: 'v1', export_id: 8, allow_stale: true })
+  const invalid = await rpc('tools/call', { name: 'prepare_delivery', arguments: { video_id: 1, action: 'send_everywhere' } }, true)
+  assert.equal(invalid.isError, true)
+  const expired = await rpc('tools/call', { name: 'create_video', arguments: { quote_id: 'expired' } }, true)
+  assert.equal(expired.structuredContent.error.code, 'quote_expired')
+  const uncertain = await rpc('tools/call', { name: 'create_video', arguments: { quote_id: 'recovery' } }, true)
+  assert.equal(uncertain.structuredContent.error.code, 'transport_uncertain')
+  assert.match(uncertain.content[0].text, /get_operation/)
+  const operation = await rpc('tools/call', { name: 'get_operation', arguments: { quote_id: 'recovery' } })
+  assert.equal(operation.structuredContent.status, 'settled')
+  const replay = await rpc('tools/call', { name: 'create_video', arguments: { quote_id: 'recovery' } })
+  assert.equal(replay.structuredContent.video_id, 42)
+  const attempts = captured.filter(c => c.body?.quote_id === 'recovery')
+  assert.equal(attempts.length, 2)
+  assert.deepEqual(attempts[0].body, attempts[1].body)
+  assert.equal(attempts[1].body.idempotency_key, 'recovery')
   const records = captured.filter(c => c.path.includes('/proposals'))
   assert.deepEqual(records[0].body.changes, clear.changes)
   assert.deepEqual(records[1].body.changes, image.changes)
   await writeFile(path.join(dir, 'editor-payloads.json'), JSON.stringify(records))
-  console.log('PASS real MCP HTTP discovery, editor/media/voice/consent forwarding and >100KB upload body. Recorded editor-payloads.json for PHP persistence tests.')
+  console.log('PASS real MCP HTTP discovery, editor/media/voice/consent forwarding and >100KB upload body. Schema rejection, API errors, real timeout, operation polling and identical replay passed. Recorded editor-payloads.json for PHP persistence tests.')
 } finally {
   child.kill(); await new Promise(r => child.once('exit', r)); await new Promise(r => backend.close(r))
 }

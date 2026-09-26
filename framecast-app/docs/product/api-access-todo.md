@@ -1,5 +1,32 @@
 # API and MCP implementation TODO
 
+> **Current release status — 26 September 2026:** implementation A–E is committed
+> in `ad4c498`, reviewed in `5f507be`/`8502d4b`. The supplied deployment report
+> records `8502d4b` live with accounting disabled; no fresh production check was
+> performed here. A4 remains partial. Phase F closure is local. Historical evidence
+> below applies only to its stated build. The current source of
+> truth is [release closure](api-release-closure.md); outreach is gated on its
+> unchecked release steps.
+
+## Reopened release verification
+
+These are release gates; A4 also has an unresolved implementation gap:
+
+- [ ] A1–A3: verify reservations, settlement, initiating-key attribution and key
+  rotation with accounting enabled on the release deployment.
+- [ ] A4: close the dashboard/worker check-to-apply race without restoring
+  broad reject-on-write triggers. A5: verify stale-export selection through
+  the deployed connector.
+- [ ] A6–A8: verify recovery, concurrency, cancellation and async failures with
+  the deployed queue/provider configuration.
+- [ ] B1–B2/C3: verify editor option forwarding, narration and owned animation
+  history through the deployed connector.
+- [ ] E1–E3: verify delivery handoffs and app confirmation; no programmatic
+  publishing or app-only destructive operations are promised.
+
+Local evidence and exact backlog IDs: [A–F backlog](api-mcp-gap-backlog.md).
+
+
 > **25 September Phase A correction:** the historical completion notes below do
 > not establish current release readiness. Spending reservations, attribution,
 > revision fences, stale-export guards and recovery are implemented and tested
@@ -280,7 +307,7 @@ Built 25 September 2026 (`782d840`), live; captions, motion and timing ride `upd
       bounded planning cost; partial-failure reporting.
 - [~] Parity tests against the dashboard for every operation; MCP tools; docs.
       (MCP tools and docs done. Every operation runs the editor's own controller, so
-      parity holds by construction; fixture-by-fixture parity tests remain a follow-up.)
+      delegation reduces duplication but does not prove input/output parity; fixture-by-fixture parity tests remain a follow-up.)
 
 ### Phase 5 — optional in-app assistant delegation (after Phase 4, on demand)
 
@@ -390,7 +417,7 @@ Not blocking the customer. In rough priority order.
 | 25 September 2026 | Updated to plan v1.3: MCP as pilot surface, developer namespace, quote-bound create | Not committed | Documentation only | No release performed |
 | 25 September 2026 | Tracker restructured: outreach gated on four expansion phases (creation settings → UGC → characters → editor ops); assistant may choose options itself | Not committed | Decisions recorded | — |
 | 25 September 2026 | Phase 5 deployed (`9b26301`): in-app assistant as a bounded planner; sidecar 1.2.0 with 31 tools | pushed | 597 PHP tests pass (1 pre-existing failure); prod tools/list and `/assistant/tools` on the owner's workspace | **Live** |
-| 25 September 2026 | Full-surface production test: ChatGPT (lookups, UGC planner + consent gate, character #116) and live API on project #226 (read, schema, proposal, apply, export #166 rendered) | — | Sidecar per-call log; server-side checks | **Outreach unblocked** |
+| 25 September 2026 | Full-surface production test: ChatGPT (lookups, UGC planner + consent gate, character #116) and live API on project #226 (read, schema, proposal, apply, export #166 rendered) | — | Sidecar per-call log; server-side checks | Historical outreach result; current release gates reopened |
 | 25 September 2026 | Expansion phases 1–4 built and deployed (`21ad19b`, `e400964`, `6ed0951`, `782d840`): creation settings, UGC, characters, editor operations; 29 MCP tools | pushed | 596 PHP tests pass (1 pre-existing failure); prod smoke on the owner's workspace | **Live.** Owner's full-surface test, then customer outreach |
 | 25 September 2026 | Stage B + first C1 item: Settings → API & Apps screen, plans copy, voice catalogue endpoint and `voice_id` on quotes, `list_voices` tool, docs + schema updated | Not committed | 590 PHP tests (1 pre-existing failure); SPA, docs and schema build clean; sidecar smoke on dev | Awaiting push and the owner's test |
 | 25 September 2026 | Tracker closed out: every Stage 0, A and D item done or decided; OpenAPI schema published; sidecar per-call logs; consent copy and ChatGPT steps corrected; post-pilot list added | Not committed | Schema lints clean; docs build clean; log lines verified on dev | Awaiting push |

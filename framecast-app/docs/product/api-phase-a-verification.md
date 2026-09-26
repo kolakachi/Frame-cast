@@ -2,7 +2,8 @@
 
 # Phase A verification and rollout
 
-25 September 2026. Local working-tree implementation; not committed or deployed.
+25 September 2026. Implementation `ad4c498`, reviewed in `5f507be`/`8502d4b`. The supplied
+deployment report records `8502d4b` live; not independently rechecked here.
 `DEVELOPER_OPERATION_ACCOUNTING` remains false by default. This is the release
 checklist for A1–A8, not permission to enable the flag on production.
 
@@ -16,7 +17,7 @@ PHASE_A_ACCOUNTING_TESTS=1 php framecast-app/api/vendor/bin/phpunit --configurat
 node --check framecast-app/mcp/server.js
 ```
 
-Recorded results: 102 tests / 804 assertions; accounting enabled: 49 tests /
+Historical Phase A results: 102 tests / 804 assertions; accounting enabled: 49 tests /
 499 assertions. These use fake providers; they do not incur generation costs.
 
 ## Isolated concurrency and queue test
@@ -65,11 +66,12 @@ fake debit is confined to its own schema; no real customer is charged.
 
 ## Production release gates
 
-- [ ] Review and commit only task-owned changes; preserve concurrent work.
-- [ ] Deploy serially. Apply both new migrations with accounting still disabled:
-  `2026_09_25_200000_create_api_operations` and
-  `2026_09_25_210000_serialize_project_mutations` — **removed at review, 26 September 2026; not part of the deploy.**
-- [ ] Verify migration completion and restart workers onto the same code version.
+- [x] Review and commit only task-owned changes; preserve concurrent work (`ad4c498`).
+- [x] Deployment report supplied by the user records `8502d4b` deployed with
+  accounting disabled, `2026_09_25_200000_create_api_operations` and
+  `2026_09_25_220000_add_voice_consent` applied, and workers on that version.
+  The `210000_serialize_project_mutations` migration was removed, not deployed.
+  This is reported evidence, not a fresh production inspection.
   PostgreSQL session advisory locks require session affinity: do not put these
   requests/workers behind transaction-pooling connections.
 - [ ] In staging, enable accounting and check each exposed operation family with
@@ -86,3 +88,5 @@ Do not disable accounting while operations are pending: drain or reconcile them
 first. Do not roll back attributed ledger columns on a live populated deployment.
 Historical backfill captures only the previous project-owner key approximation;
 it cannot reconstruct missing historical initiating-key information.
+
+Current combined verification and release status: [release closure](api-release-closure.md).

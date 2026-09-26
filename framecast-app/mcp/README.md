@@ -76,3 +76,9 @@ Assistant `schedule_post` results likewise require app confirmation and retain
 `navigate`; do not report them as scheduled. See the
 [delivery guide](../docs/product/api-delivery-mcp-guide.md) for excluded app-only
 actions and version guarantees.
+
+## Release verification
+
+Current implementation and deployment gates: [release closure](../docs/product/api-release-closure.md).
+The repeatable HTTP contract includes real timeout recovery, operation polling,
+identical-key replay, input schema rejection and API error forwarding.
