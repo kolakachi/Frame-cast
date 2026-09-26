@@ -50,7 +50,7 @@ rules as the app apply.
 | Field | Value |
 |---|---|
 | MCP endpoint | https://app.wyvstudio.com/mcp (Streamable HTTP, stateless) |
-| Health | https://app.wyvstudio.com/mcp/healthz **[owner: confirm this path is exposed through nginx; the container answers GET /healthz]** |
+| Health | https://app.wyvstudio.com/mcp/healthz (answers 200 through nginx, checked 26 September) |
 | Authorization server metadata | https://app.wyvstudio.com/.well-known/oauth-authorization-server |
 | Protected resource metadata | https://app.wyvstudio.com/.well-known/oauth-protected-resource/mcp |
 | Authentication | OAuth 2.1, authorization code with PKCE (S256), dynamic client registration (`/api/v1/oauth/register`), no client secret (`token_endpoint_auth_methods_supported: none`) |
@@ -189,6 +189,5 @@ No tool deletes anything. Billing, members and settings are not reachable.
 
 - [ ] Reinstall the connector in ChatGPT and run the walkthrough once with
       the reviewer account; note whether previews render inline.
-- [ ] Confirm the health path through nginx.
 - [ ] Confirm the legal name, category, logo and screenshots.
 - [ ] Rotate the reviewer password after the review; keep the workspace.
