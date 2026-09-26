@@ -32,6 +32,13 @@ Route::get('/media/assets/{assetId}/thumbnail', [AssetController::class, 'thumbn
     ->middleware('signed')
     ->name('media.assets.thumbnail');
 
+// A downsized JPEG of an image or video asset for assistants that can only
+// show pictures by URL. Signed like the content route; no session needed.
+Route::get('/media/assets/{assetId}/preview', [\App\Http\Controllers\Api\Developer\V1\PreviewController::class, 'signed'])
+    ->whereNumber('assetId')
+    ->middleware('signed')
+    ->name('media.assets.preview');
+
 Route::get('/media/sfx/{soundId}', [SfxController::class, 'stream'])
     ->whereNumber('soundId')
     ->middleware('signed')

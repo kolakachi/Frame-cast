@@ -602,6 +602,13 @@ class DeveloperApiTest extends TestCase
         $this->assertSame('image/jpeg', $shot->headers->get('Content-Type'));
         $this->assertSame('visual', $shot->headers->get('X-Wyv-Kind'));
         $this->assertSame('JPEGBYTES-'.$scene->visual_asset_id, $shot->getContent());
+        $signed = $shot->headers->get('X-Wyv-Preview-Url');
+        $this->assertStringContainsString('/media/assets/'.$scene->visual_asset_id.'/preview', $signed);
+        $this->flushHeaders();
+        $public = $this->get($signed)->assertOk();
+        $this->assertSame('image/jpeg', $public->headers->get('Content-Type'));
+        $this->assertSame('JPEGBYTES-'.$scene->visual_asset_id, $public->getContent());
+        $this->get(preg_replace('/signature=[0-9a-f]+/', 'signature=deadbeef', $signed))->assertStatus(403);
         $this->withToken($key)->get("/api/developer/v1/videos/{$id}/scenes/{$scene->id}/preview?kind=animation")->assertStatus(404)->assertJsonPath('error.code', 'no_visual');
 
         $clip = DB::table('assets')->insertGetId(['workspace_id' => $ws->id, 'asset_type' => 'video', 'storage_url' => 'https://b2/a.mp4', 'created_at' => now(), 'updated_at' => now()]);

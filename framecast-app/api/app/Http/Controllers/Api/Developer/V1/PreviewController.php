@@ -86,6 +86,34 @@ class PreviewController extends DeveloperController
         return $this->render($request, $asset, ['asset_id' => $asset->getKey(), 'character_id' => $character->getKey(), 'source' => $source]);
     }
 
+    /**
+     * The signed, time-limited form of the same picture, for clients that
+     * show images only by URL. The signature is the authorisation: it is
+     * minted by the bearer-authenticated preview endpoints, in the same way
+     * the result endpoint mints its download link, and expires with them.
+     */
+    public function signed(Request $request, int $assetId): BaseResponse
+    {
+        $asset = Asset::query()->whereKey($assetId)->first();
+        if (! $asset) {
+            return $this->fail('not_found', 'Asset not found.', 404);
+        }
+        $width = (int) ($request->query('w') ?: PreviewRenderer::WIDTH);
+        $bytes = $this->previews->jpeg($asset, $width);
+        if ($bytes === null) {
+            return $this->fail('preview_unavailable', 'A preview could not be rendered for this asset.', 422);
+        }
+
+        return new Response($bytes, 200, ['Content-Type' => 'image/jpeg', 'Cache-Control' => 'private, max-age=3600']);
+    }
+
+    public static function signedUrl(Asset $asset, int $width = PreviewRenderer::WIDTH): array
+    {
+        $expires = now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720));
+
+        return [\Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.preview', $expires, ['assetId' => $asset->getKey(), 'w' => $width]), $expires];
+    }
+
     private function render(Request $request, Asset $asset, array $meta): BaseResponse
     {
         $width = (int) ($request->query('width') ?: PreviewRenderer::WIDTH);
@@ -93,7 +121,9 @@ class PreviewController extends DeveloperController
         if ($bytes === null) {
             return $this->fail('preview_unavailable', 'A preview could not be rendered for this asset.', 422, ['asset_type' => $asset->asset_type]);
         }
-        $headers = ['Content-Type' => 'image/jpeg', 'Cache-Control' => 'private, max-age=300', 'X-Wyv-Asset-Type' => $asset->asset_type];
+        [$url, $expires] = self::signedUrl($asset, $width);
+        $headers = ['Content-Type' => 'image/jpeg', 'Cache-Control' => 'private, max-age=300', 'X-Wyv-Asset-Type' => $asset->asset_type,
+            'X-Wyv-Preview-Url' => $url, 'X-Wyv-Preview-Expires-At' => $expires->toIso8601String()];
         foreach ($meta as $k => $v) {
             $headers['X-Wyv-'.str_replace('_', '-', ucwords($k, '_'))] = (string) $v;
         }

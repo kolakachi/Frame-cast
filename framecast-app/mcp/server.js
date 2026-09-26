@@ -93,10 +93,13 @@ async function preview(token, path, tool, describe) {
   logCall(token, tool, r.status, Date.now() - started, r.status >= 300 ? r.json?.error?.code : undefined)
   if (r.status < 200 || r.status >= 300 || !r.bytes) return fail(r.status, r.json)
   const data = { ...r.meta, mime_type: r.mimeType, bytes: r.bytes.length, note: describe }
+  const text = data.preview_url
+    ? `${JSON.stringify(data)}\nShow the user this picture. If you cannot display the image content above, embed preview_url as an image (it is a JPEG link that expires at preview_expires_at).`
+    : JSON.stringify(data)
   return {
     content: [
       { type: 'image', data: r.bytes.toString('base64'), mimeType: r.mimeType },
-      { type: 'text', text: JSON.stringify(data) },
+      { type: 'text', text },
     ],
     structuredContent: data,
   }
@@ -639,21 +642,21 @@ function buildServer(token) {
 
   server.registerTool('get_scene_preview', {
     title: 'Show a scene\'s visual or animation',
-    description: 'A JPEG preview of one scene: its still or stock visual, or a frame of its animation (default: the animation when one exists). Show it to the user inline so they can judge the scene without opening the app. Spends nothing.',
+    description: 'A JPEG preview of one scene: its still or stock visual, or a frame of its animation (default: the animation when one exists). Show it to the user inline so they can judge the scene without opening the app. Spends nothing. The result carries the image and a preview_url (a JPEG link valid for 12 hours) for clients that show pictures by URL.',
     inputSchema: z.object({ video_id: z.number().int(), scene_id: z.number().int(), kind: z.enum(['visual', 'animation']).optional() }),
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   }, async ({ video_id, scene_id, kind }) => preview(token, `/videos/${video_id}/scenes/${scene_id}/preview${kind ? `?kind=${kind}` : ''}`, 'get_scene_preview', 'Preview of the scene as it is now; the rendered video may differ in framing and captions.'))
 
   server.registerTool('get_character_preview', {
     title: 'Show a character',
-    description: 'A JPEG preview of a character: its reference photo, or its latest generated image when it has no photo. Show it inline. Spends nothing.',
+    description: 'A JPEG preview of a character: its reference photo, or its latest generated image when it has no photo. Show it inline. Spends nothing. The result carries the image and a preview_url (a JPEG link valid for 12 hours) for clients that show pictures by URL.',
     inputSchema: z.object({ character_id: z.number().int() }),
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   }, async ({ character_id }) => preview(token, `/characters/${character_id}/preview`, 'get_character_preview', 'The character as WyvStudio will match it.'))
 
   server.registerTool('get_asset_preview', {
     title: 'Show a library image or video',
-    description: 'A JPEG preview of any image or video asset in the library or on a generation result (a frame, for video). Show it inline. Spends nothing.',
+    description: 'A JPEG preview of any image or video asset in the library or on a generation result (a frame, for video). Show it inline. Spends nothing. The result carries the image and a preview_url (a JPEG link valid for 12 hours) for clients that show pictures by URL.',
     inputSchema: z.object({ asset_id: z.number().int() }),
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   }, async ({ asset_id }) => preview(token, `/assets/${asset_id}/preview`, 'get_asset_preview', 'Downsized preview; the original is the asset itself.'))
