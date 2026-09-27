@@ -3,7 +3,7 @@
  * Nothing about the offer is visible unless this file adds `promo-on` to
  * <body>, and it only does that while the window is open. When CAMPAIGN_ENDS
  * passes, the bar, badges, strikethroughs, savings lines and codes all revert
- * to hidden by CSS and the page shows $89 / $199 / $399 again — with no deploy
+ * to hidden by CSS and the page shows $59 / $199 / $399 again — with no deploy
  * and no chance of an expired countdown being left running, which is the
  * clearest fake-urgency signal there is.
  *
@@ -11,7 +11,13 @@
  * it to a past date. That is the whole control surface.
  */
 (function () {
-  var CAMPAIGN_ENDS = new Date('2026-10-06T23:59:59Z');
+  // Ended on the site 27 September. The codes still work — the campaign moved
+  // to outbound only, so the offer is quoted in the email that carries it
+  // rather than advertised to everyone who lands on the page. Setting this to
+  // a future date would light the whole thing up again, but the promo-was /
+  // promo-now / promo-save figures below Starter are stale now that the list
+  // price is $59, so they must be re-derived before any re-enable.
+  var CAMPAIGN_ENDS = new Date('2026-09-27T00:00:00Z');
   var END_LABEL = '6 October';
 
   var left = CAMPAIGN_ENDS - Date.now();

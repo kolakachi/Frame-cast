@@ -100,7 +100,7 @@ return [
             // intended_plan — which is how a $9 pass buyer reached an empty
             // free account instead of Kelviq.
             'ugc_pass'         => 'UGC Test Pass — $9 one-time, 600 credits',
-            'lifetime_starter' => 'Starter — $89 one-time, 4,000 credits',
+            'lifetime_starter' => 'Starter — $59 one-time, 4,000 credits',
             'lifetime_creator' => 'Creator — $199 one-time, 12,000 credits',
             'lifetime_agency'  => 'Agency — $399 one-time, 20,000 credits',
             'starter' => 'Starter — $29/month',
@@ -122,7 +122,7 @@ return [
         ],
 
         'lifetime_packs' => [
-            ['key' => 'lifetime_starter', 'name' => 'Starter',  'credits' => 4000,  'price_usd' => 89],
+            ['key' => 'lifetime_starter', 'name' => 'Starter',  'credits' => 4000,  'price_usd' => 59],
             ['key' => 'lifetime_creator', 'name' => 'Creator',  'credits' => 12000, 'price_usd' => 199],
             ['key' => 'lifetime_agency',  'name' => 'Agency',   'credits' => 20000, 'price_usd' => 399],
         ],
