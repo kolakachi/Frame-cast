@@ -5322,7 +5322,13 @@
             });
         })();
     </script>
-    <script src="/promo.js" defer></script>
+    <!-- Versioned so a change to the campaign switch actually reaches visitors.
+         index.html is served uncached (cf-cache-status: DYNAMIC) but /promo.js
+         is cached at the edge for four hours, so ending the campaign on 27
+         September left the old script running against the new page: the offer
+         kept showing, and the new $59 list price stayed hidden behind it. Bump
+         this whenever promo.js changes. -->
+    <script src="/promo.js?v=2026-09-27" defer></script>
 </body>
 
 </html>
