@@ -2692,12 +2692,28 @@
         }
 
         .plan-price {
-            font-size: 40px;
+            font-size: 52px;
             font-weight: 800;
             color: var(--accent);
             line-height: 1;
             margin: 8px 0;
             letter-spacing: -1px;
+        }
+
+        /* The one-time cards put the price in a <span> so the campaign could
+           swap it. That made it prey to `.plan-price span`, written for the
+           "/month" suffix, which beats `.plan-price` on specificity — so with
+           the campaign off the price rendered at 14px in dim grey. It is the
+           price, not a suffix. */
+        .plan-price .list-price {
+            font-size: inherit;
+            font-weight: inherit;
+            color: inherit;
+            letter-spacing: inherit;
+        }
+
+        @media (max-width: 640px) {
+            .plan-price { font-size: 44px; }
         }
 
         .plan-sub {
