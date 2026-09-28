@@ -5,6 +5,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 ENV HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium HYPERFRAMES_NO_TELEMETRY=1 HOME=/tmp/hyperframes-home
 COPY scripts ./scripts
+COPY agent ./agent
 COPY runtime ./runtime
 RUN node scripts/verify-runtime.mjs
 COPY fixtures ./fixtures

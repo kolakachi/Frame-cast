@@ -1,0 +1,19 @@
+{
+  "sourceCommit": "5969c6894ba42f9cc55941503be51af2e96e2b3a",
+  "source": "https://github.com/heygen-com/hyperframes",
+  "license": "Apache-2.0",
+  "files": {
+    "LICENSE": "4259155fb06f127687ee7b0a8a3682d45132db0f2da26cbc0b7a2d1e796436b8",
+    "hyperframes-core.md": "c232a83c0cae2c7fc789fb25b85c3bf9f59f5be402bca3fd63a1ad18c6ed62c9",
+    "references/composition-patterns.md": "bcdf548ba1fec8decce5ea22c7bed99c73ba268986b1bfefc837f2d7f70f55b0",
+    "references/tracks-and-clips.md": "4e6fdf6b74cc2ad788633dba510e9c8d6d47affd084c30dc156fdc2ce7829cf4",
+    "references/tailwind.md": "bce2e8ae118f91df3a9790e99273f50942f12d1c345a149d6762c9411e3dfd2c",
+    "references/full-screen-motion.md": "4534cc717e94f9b7a83d5b86990d6af16594d18c4b9ddcb97950d919288f3994",
+    "references/creator-editing-recipes.md": "b270100faa6fcb4ab7df87d8cd201cd7af54eb16cd2284d9a5a8d241f637a611",
+    "references/minimal-composition.md": "0884abd9feeeea48d0de3d517c3d074859b9c322318401a928b9d1f9ee2cf851",
+    "references/sub-compositions.md": "7caf63046ea0d1915b51e4eb49897101e36dc716ea1195f9a34cef4ba9c18f64",
+    "references/variables-and-media.md": "dd8404b7cdc251f88cf7221c367e6bb92480e5eca3b8a02f8de7772f5b9dbb50",
+    "references/determinism-rules.md": "ccd07ae7f9ef2d303c86735ca920267ac0882d10828ee5f188c67f1ed2fa0bc1",
+    "references/data-attributes.md": "9467fa4cb0dfb12cb2d052d7584f21b4ad5d32dc80d15188da19e1a1acc0f435"
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "model": "anthropic/claude-opus-4.6",
+  "observedVersion": "5a2f72c8a00f561d217e4b5d1f1f96727d6a86a73b6caf444545d67b26bdca46",
+  "source": "https://api.replicate.com/v1/models/anthropic/claude-opus-4.6",
+  "checkedAt": "2026-09-28",
+  "input": {
+    "type": "object",
+    "title": "Input",
+    "required": [
+      "prompt"
+    ],
+    "properties": {
+      "image": {
+        "type": "string",
+        "title": "Image",
+        "format": "uri",
+        "x-order": 1,
+        "description": "Optional input image. Images are priced as (width px * height px)/750 input tokens"
+      },
+      "prompt": {
+        "type": "string",
+        "title": "Prompt",
+        "x-order": 0,
+        "description": "Input prompt"
+      },
+      "max_tokens": {
+        "type": "integer",
+        "title": "Max Tokens",
+        "default": 8192,
+        "maximum": 128000,
+        "minimum": 1024,
+        "x-order": 3,
+        "description": "Maximum number of output tokens"
+      },
+      "system_prompt": {
+        "type": "string",
+        "title": "System Prompt",
+        "default": "",
+        "x-order": 2,
+        "description": "System prompt"
+      },
+      "max_image_resolution": {
+        "type": "number",
+        "title": "Max Image Resolution",
+        "default": 0.5,
+        "maximum": 2,
+        "minimum": 0.001,
+        "x-order": 4,
+        "description": "Maximum image resolution in megapixels. Scales down image before sending it to Claude, to save time and money."
+      }
+    }
+  },
+  "output": {
+    "type": "array",
+    "items": {
+      "type": "string"
+    },
+    "title": "Output",
+    "x-cog-array-type": "iterator",
+    "x-cog-array-display": "concatenate"
+  },
+  "metrics": {
+    "type": "object",
+    "title": "Metrics"
+  },
+  "previousObservedVersion": "c10ed455a3cb19f99eae25e337bf36290851534532f54af78eaad973f2f5b09f"
+}

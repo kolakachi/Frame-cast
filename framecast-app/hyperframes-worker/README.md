@@ -89,3 +89,27 @@ pruning images. The package list is in `runtime/debian-packages.txt`. Rebuilding
 from the Dockerfile can resolve newer Debian packages; a rebuilt image must be
 reverified and receive a new runtime lock. The pinned image, rather than an
 unverified future rebuild, is the accepted E0 runtime.
+
+## E1 agent loop (in progress)
+
+Run the deterministic tests with Node 22+:
+
+```sh
+node --test agent/tests/agent.test.mjs
+```
+
+Exercise a scripted provider with real offline Hyperframes tools:
+
+```sh
+docker compose -f compose.local.yml build
+docker compose -f compose.local.yml run --rm smoke node agent/fake-smoke.mjs
+```
+
+The E0 pinned-image override intentionally keeps the old E0 image; omit it when
+building/testing the new E1 code. Fake smoke outputs have unique run directories.
+No model keys or network are provided to this container. The future online
+provider coordinator must remain outside it. `ReplicateProvider` is disabled by
+default; importing it never reads credentials or starts a prediction.
+
+See `../docs/product/hyperframes-e1-verification.md` for verified schemas,
+implemented constraints and the outstanding real-model acceptance gates.

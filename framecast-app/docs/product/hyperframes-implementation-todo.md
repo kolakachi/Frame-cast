@@ -1,6 +1,6 @@
 # Create / Hyperframes — implementation TODO
 
-Status: **E0 local renderer proof complete for trusted fixtures; E1–E6 remain pending.**
+Status: **E0 local renderer proof complete for trusted fixtures; E1 in progress; E2–E6 remain pending.**
 Created: 2026-09-28.
 
 Start with E0. Complete and record each gate before moving to the next. Production deployment and public MCP access are separate gates, not consequences of a successful local demo.
@@ -57,11 +57,13 @@ Local checks pass for cooperative cancellation, deadlines, missing assets/font/o
 
 ## E1 — prove the agent locally
 
+Progress: verified public endpoint schema snapshots, strict JSON action loop, scoped source tools, local journal, bounded execution and disabled-by-default Replicate adapter implemented. 21 deterministic tests pass; a scripted provider completed a real offline Hyperframes render. See [E1 verification](hyperframes-e1-verification.md). Real-model creativity, vision and measured costs remain unverified.
+
 ### E1.1 Replicate endpoint contract
 
 - [ ] Inspect actual schemas for shortlisted endpoints: image input, prompt/system context, output limits, structured output/tool support, streaming, cancellation and usage metadata.
-- [ ] Implement a provider adapter against verified capabilities. If native tool calls are unavailable, use a validated action envelope executed by our runner; never execute free-form model output as shell commands.
-- [ ] Use fake provider responses first to prove tool dispatch, malformed-output handling, context carryover and bounded retries.
+- [x] Implement a provider adapter against verified capabilities. If native tool calls are unavailable, use a validated action envelope executed by our runner; never execute free-form model output as shell commands.
+- [x] Use fake provider responses first to prove tool dispatch, malformed-output handling, context carryover and bounded retries.
 - [ ] Configure a separate test credential and explicit total paid-test budget before real provider calls. Record requests, actual provider cost and outcomes without logging secrets.
 
 ### E1.2 Bounded tool loop
@@ -69,7 +71,7 @@ Local checks pass for cooperative cancellation, deadlines, missing assets/font/o
 - [ ] Load pinned router/core/CLI and relevant creative/animation guidance on demand; host authorization and budget rules take precedence.
 - [ ] Implement scoped read/write/patch, asset manifest, timeline, installed primitive lookup, validation, snapshot inspection and media-proposal tools.
 - [ ] Supply the brief, approved facts, brand, transcript, asset manifest and base revision; preserve stable IDs and locked inputs.
-- [ ] Enforce maximum calls, tokens, elapsed time, cost and two repair cycles after the first draft. Pause rather than retry indefinitely.
+- [x] Enforce maximum calls, tokens, elapsed time, cost and two repair cycles after the first draft. Pause rather than retry indefinitely. Local limits verified; cost uses conservative per-call reservations, not assumed billing metrics.
 - [ ] Inspect sampled output frames using a verified image-capable endpoint. Validate audio and timing separately; never claim every frame was checked from a few samples.
 - [ ] Persist progress so restarting a job does not lose the current revision or repeat completed paid steps.
 
@@ -86,6 +88,8 @@ Local checks pass for cooperative cancellation, deadlines, missing assets/font/o
 - [ ] Record the model choice and measured ceilings. Do not assume a cheaper token rate gives a cheaper successful video.
 
 **E1 exit:** a real prompt produces an acceptable local video and a follow-up prompt modifies it without losing source fidelity. Provider compatibility and measured costs are documented.
+
+**Current evidence:** real product teaser and opening edit rendered; 30 deterministic tests pass. User review: “Works, but creative quality needs improvement.” Broad creative/fidelity benchmark remains open. Approved live testing uses the app credential and explicit image-transfer permission within a shared $5 cap; this is an authorized exception to the separate-credential plan.
 
 ## E2 — app domain, execution and accounting
 
@@ -160,4 +164,4 @@ Local checks pass for cooperative cancellation, deadlines, missing assets/font/o
 
 Use stable task references such as E0.2/CTA revision in commits and verification notes. Tick a task only when its implementation and required checks pass. Every completed phase records commit, runtime identity, commands, outputs and limitations. Do not put credentials or private customer media in the evidence document.
 
-Immediate next implementation slice: **E1, provider contract and fake-response tool loop first; real provider calls require a separate test credential and explicit budget.**
+Immediate next implementation slice: **E1 creative quality and source-preservation evaluation. Real Sonnet generation/edit renders exist, but human review says creative quality needs improvement. See hyperframes-e1-verification.md; E1 stays open.**
