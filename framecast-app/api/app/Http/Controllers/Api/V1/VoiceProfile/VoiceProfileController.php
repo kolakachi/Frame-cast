@@ -149,9 +149,16 @@ class VoiceProfileController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        // Consent is required here as it always has been on the developer
+        // API, which routes through this very method and then recorded the
+        // acknowledgement itself. The app asked for none, so the stricter
+        // rule applied to third-party integrators and not to our own UI —
+        // backwards, and worth correcting before Starter widens who can
+        // clone.
         $validated = $request->validate([
             'name'            => ['required', 'string', 'max:80'],
             'source_asset_id' => ['required', 'integer'],
+            'consent'         => ['required', 'boolean', 'accepted'],
         ]);
 
         // Plan gate — the workspace's voice-cloning allowance.
@@ -208,6 +215,13 @@ class VoiceProfileController extends Controller
             'source_asset_id'    => $sampleId,
             'status'             => 'active',
         ]);
+
+        // Who agreed, and when. forceFill because these are deliberately not
+        // fillable — a consent record should never arrive from request input.
+        $profile->forceFill([
+            'consent_acknowledged_at' => now(),
+            'consent_user_id'         => $user->getKey(),
+        ])->save();
 
         return response()->json([
             'data' => ['voice_profile' => $this->serialize($profile)],
