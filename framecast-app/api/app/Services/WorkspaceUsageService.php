@@ -65,7 +65,13 @@ class WorkspaceUsageService
                 'voice_minutes_limit' => 20,
                 'dub_languages_limit' => 1,
                 'channel_limit'       => 1,
-                'voice_cloning_limit' => 0,
+                // One, not none. Cloning costs ~\$0.009 a run, so this was
+                // never a cost gate, and Starter already markets "your own
+                // face" as a character — refusing your own voice next to it
+                // read as a bug. Creator's ladder holds on what actually
+                // separates the tiers: renders, voice minutes, three channels,
+                // high-quality images and double the API budget.
+                'voice_cloning_limit' => 1,
                 'api_budget_usd'      => 25.0,
                 'watermark'           => false,
                 'ai_image_quality'    => ['medium'],

@@ -5,6 +5,9 @@ import api from "../services/api";
 const emit = defineEmits(["close", "created"]);
 
 const name = ref("");
+// Ticked before a clone can be made, and recorded against the profile. The
+// developer API has always required this; the app did not ask at all.
+const consent = ref(false);
 const file = ref(null); // File to upload (from record or upload)
 const fileLabel = ref("");
 const state = ref("idle"); // idle | uploading | creating
@@ -149,6 +152,7 @@ async function submit() {
     const res = await api.post("/voice-profiles/clone", {
       name: name.value.trim(),
       source_asset_id: assetId,
+      consent: true,
     });
     emit("created", res.data?.data?.voice_profile ?? null);
     close();
@@ -218,13 +222,18 @@ onBeforeUnmount(() => { clearTimers(); stopPreview(); releaseStream(); revokeSam
           </div>
 
           <div class="vc-hint">A clean, single-speaker clip of ~10–20s works best — no music or background noise. mp3, wav, m4a or a recording all work.</div>
+
+          <label class="vc-consent">
+            <input v-model="consent" type="checkbox" :disabled="busy" />
+            <span>This is my own voice, or I have the speaker's permission to clone and use it.</span>
+          </label>
         </div>
 
         <div v-if="error" class="banner error" style="margin-top:10px">{{ error }}</div>
 
         <div class="vc-foot">
           <button class="btn btn-ghost btn-sm" type="button" @click="close">Cancel</button>
-          <button class="btn btn-primary btn-sm" type="button" :disabled="busy || !file || phase === 'recording' || phase === 'countdown'" @click="submit">
+          <button class="btn btn-primary btn-sm" type="button" :disabled="busy || !file || !consent || phase === 'recording' || phase === 'countdown'" @click="submit">
             {{ state === 'uploading' ? 'Uploading…' : state === 'creating' ? 'Cloning…' : 'Create voice' }}
           </button>
         </div>
@@ -273,6 +282,17 @@ onBeforeUnmount(() => { clearTimers(); stopPreview(); releaseStream(); revokeSam
 .btn-sm { padding: 6px 12px; font-size: 12.5px; }
 .btn-primary { background: #ff6b35; border-color: #ff6b35; color: #0a0a0f; font-weight: 600; }
 .btn-primary:hover { background: #ff8055; border-color: #ff8055; }
+.vc-consent {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin-top: 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.vc-consent input { margin-top: 2px; flex: none; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-ghost { background: transparent; border-color: transparent; }
 .btn-ghost:hover { background: rgba(255,255,255,0.06); }
