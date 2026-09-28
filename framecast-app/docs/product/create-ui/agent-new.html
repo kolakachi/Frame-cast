@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New video · Create · WyvStudio</title>
+<link rel="stylesheet" href="wyv.css">
+<link rel="stylesheet" href="agent.css">
+</head>
+<body>
+<div class="agent-app">
+<nav class="sidebar" aria-label="Main">
+  <div class="brand"><span class="brand__mark">W</span>WyvStudio</div>
+  <button type="button" class="ws"><span class="avatar">K</span>Kolawole Lawal
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+
+  <div class="nav-section">WORKSPACE</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4a3.5 3.5 0 010 7M21 20c0-2.7-1.8-5-4.3-5.7"/></svg>Clients<span class="count">2</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>Channels</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Series</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>UGC Ads</a><a href="#" data-demo="Existing app navigation: From My Footage">From My Footage</a>
+    <a href="#" aria-current="page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15l3-4 2 2 2-3 3 5"/></svg>Create<span class="pill-new">PILOT</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</a>
+    <a href="all-videos.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg>All Videos</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Jobs</a>
+  </div>
+
+  <div class="nav-section">LIBRARY</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>Characters</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>Voices</a>
+    <a href="assets.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Assets</a>
+  </div>
+
+  <div class="sidebar__user"><span class="avatar avatar--lg">K</span><div><b>Kolawole Lawal</b><small>kolakachi@gmail.com</small></div></div>
+</nav>
+<main class="agent-main">
+  <header class="agent-header">
+    <div><div class="crumb">Create</div><h1>New creation</h1></div>
+    <div class="header-actions"><span class="credits">1,142 cr</span><button type="button" class="quiet" id="recent-button" aria-haspopup="dialog" aria-controls="recent-drawer">Recent conversations</button></div>
+  </header>
+
+  <div class="agent-content">
+    <section class="conversation" aria-label="Conversation">
+      <div class="messages" id="messages">
+        <div class="empty">
+          <h2>What are we making?</h2>
+          <p>A video, an image, a voiceover — describe the result and attach what you have. The assistant picks the tools and shows the cost.</p>
+          <button type="button" class="dropzone" id="attach-button">Drop files here, or click to attach footage, photos or audio</button>
+          <div class="examples">
+            <button type="button" class="example" data-prompt="Turn this take into a launch video. Keep my voice, add three benefit callouts and end on our 20% offer."><b>Package a take I already have</b>Keep the voice, add callouts and an offer. Usually no new footage.</button>
+            <button type="button" class="example" data-prompt="Make a 15-second promo from these three product photos on our brand colours, ending with the price."><b>Promo from product photos</b>Motion, headline and offer over stills. No footage needed.</button>
+            <button type="button" class="example" data-prompt="Explain our three pricing tiers with big kinetic text, no voice, on brand colours."><b>Kinetic-text explainer</b>Script-led, no media required.</button>
+            <button type="button" class="example" data-prompt="Create a clean product image from this photo on a warm studio background."><b>Product image from a photo</b>Cutout and new background. A few credits, runs straight away.</button>
+            <button type="button" class="example" data-prompt="Make three thumbnail options for this video with big text."><b>Thumbnail options</b>Three to pick from, attached to the video.</button>
+            <button type="button" class="example" data-prompt="Animate this image into a 6-second video with slow motion and a headline."><b>Animate an image</b>Motion over the still, or generated video — you choose.</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer-dock">
+        <div class="attached" id="attached"></div>
+        <form id="prompt-form">
+          <label class="sr-only" for="prompt">Describe your video</label>
+          <textarea id="prompt" rows="2" placeholder="Describe what you want to create or change…"></textarea>
+          <div class="composer-bottom">
+            <button type="button" class="quiet" id="attach-button-2">+ Attach</button>
+            <button type="button" class="quiet">Brand kit · none</button>
+            <button class="send" type="submit" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+          </div>
+        </form>
+        <p class="composer-note">Planning is free. Small jobs just run and show their cost; anything over 15 credits is quoted first.</p>
+        <input type="file" id="file-input" accept="image/*,video/*,audio/*" multiple hidden>
+      </div>
+    </section>
+  </div>
+</main>
+</div>
+
+<div class="drawer" id="recent-drawer" role="dialog" aria-modal="true" aria-labelledby="recent-title">
+  <div class="drawer__scrim" data-close-drawer></div>
+  <div class="drawer__panel">
+    <div class="drawer__head"><h2 id="recent-title">Recent conversations</h2><a href="all-videos.html" class="quiet">All Videos</a><button type="button" class="quiet" data-close-drawer aria-label="Close">×</button></div>
+    <label class="drawer__search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" id="recent-search" placeholder="Search by title, prompt or file name"></label>
+    <div class="drawer__filters" role="group" aria-label="Filter"><button type="button" aria-pressed="true" data-filter="all">All</button><button type="button" aria-pressed="false" data-filter="working">In progress</button><button type="button" aria-pressed="false" data-filter="needs">Needs you</button><button type="button" aria-pressed="false" data-filter="done">Finished</button></div>
+    <div class="drawer__list" id="recent-list">
+      <div class="drawer__group">TODAY</div>
+      <a href="agent.html" class="session is-current" data-state="working" data-text="launch offer ugc callouts ugc-take-03 product-hero spin"><span class="session__thumb"></span><div><b>Launch offer · UGC + callouts</b><small>"Can the product spin in?" · ugc-take-03.mp4, product-hero.png</small><span class="status status--info">UPDATING · V3</span></div><time>2:57 AM</time></a>
+      <a href="agent-states.html" class="session" data-state="needs" data-text="desk photos presenter three photos no footage"><span class="session__thumb session__thumb--empty"></span><div><b>Desk in use from photos</b><small>Waiting for you to pick: from photos, generate a take, or attach footage</small><span class="status status--warn">NEEDS YOU</span></div><time>1:12 AM</time></a>
+      <div class="drawer__group">YESTERDAY</div>
+      <a href="#" class="session" data-state="done" data-text="pricing tiers explainer kinetic text"><span class="session__thumb session__thumb--square"></span><div><b>Pricing tiers explainer</b><small>Square · 20s · 2 versions · downloaded</small><span class="status status--ok">FINISHED</span></div><time>Sun</time></a>
+      <a href="#" class="session" data-state="done" data-text="standing desk pays for itself smoke reels resize 4:5"><span class="session__thumb"></span><div><b>Standing Desk Pays for Itself — 4:5 cut</b><small>Resize of a UGC video · 1 version · downloaded, 3 variants</small><span class="status status--ok">FINISHED</span></div><time>Sun</time></a>
+      <div class="drawer__group">LAST WEEK</div>
+      <a href="#" class="session" data-state="done" data-text="three reasons standing desk callouts"><span class="session__thumb"></span><div><b>Three reasons a standing desk</b><small>Portrait · 30s · 4 versions · downloaded</small><span class="status status--ok">FINISHED</span></div><time>Sep 22</time></a>
+      <a href="#" class="session" data-state="done" data-text="ai images 15s smoke test"><span class="session__thumb"></span><div><b>Smoke: AI images 15s</b><small>Preview only · never downloaded</small><span class="status status--neutral">PREVIEW ONLY</span></div><time>Sep 21</time></a>
+    </div>
+  </div>
+</div>
+<div id="agent-toast" role="status" hidden></div>
+<script src="agent.js"></script>
+</body>
+</html>

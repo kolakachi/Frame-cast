@@ -1,0 +1,21 @@
+{
+  "node": "v22.23.3",
+  "hyperframes": "0.8.82",
+  "browser": "Chromium 154.0.8037.57 built on Debian GNU/Linux 12 (bookworm)",
+  "ffmpeg": "ffmpeg version 5.1.9-0+deb12u1 Copyright (c) 2000-2026 the FFmpeg developers",
+  "lock": "f45d84bc5b7a1d1c24da5afe3bd96654d788b9f1f935f083f6495efa836a5d05",
+  "font": "abdc775b21b1bc470d50c97e790d276f2054b7504e56e5bd3e64f48d68582322",
+  "imageId": "sha256:2151b4b6739e9e0336bcd498e36edde1eac98552e815cb3a38745ad7df698a75",
+  "scope": "E0 local trusted-fixture acceptance",
+  "skills": {
+    "source": "npm hyperframes 0.8.82 bundled dist/skills",
+    "files": 223,
+    "manifest": "runtime/skills-manifest.json",
+    "manifestSha256": "9b9deb5a4044288289fdb0fee0e47498d164e30ac44e76570d8e94dbc5f11bea"
+  },
+  "limitations": [
+    "Exact replay requires this local immutable image; rebuilding from Debian mirrors may change system packages",
+    "Not a production hostile-code sandbox certification"
+  ],
+  "debianPackagesSha256": "ecb38c1467498d1b195ed5504ba07e8b74d5da3bde4a088de2ebd7e210e5e9bc"
+}

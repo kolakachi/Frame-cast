@@ -1,5 +1,10 @@
 # Ad Creative Builder — cookbook
 
+> Implementation contract: [Hyperframes integration specification](hyperframes-integration-spec.md).
+> Use that document for architecture, scope, costs and acceptance criteria. This
+> cookbook preserves the original product exploration; its “free composition”,
+> blanket 4:5 gap and platform-limit assumptions are corrected in the spec.
+
 What a WyvStudio lane for performance ad creative has to cover, and what
 already exists to build it from. Written to be picked up cold.
 

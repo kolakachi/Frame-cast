@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>States · Design a video · WyvStudio</title>
+<link rel="stylesheet" href="wyv.css">
+<link rel="stylesheet" href="agent.css">
+</head>
+<body>
+<div class="agent-app">
+<nav class="sidebar" aria-label="Main">
+  <div class="brand"><span class="brand__mark">W</span>WyvStudio</div>
+  <button type="button" class="ws"><span class="avatar">K</span>Kolawole Lawal
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+
+  <div class="nav-section">WORKSPACE</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4a3.5 3.5 0 010 7M21 20c0-2.7-1.8-5-4.3-5.7"/></svg>Clients<span class="count">2</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>Channels</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Series</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>UGC Ads</a><a href="#" data-demo="Existing app navigation: From My Footage">From My Footage</a>
+    <a href="#" aria-current="page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15l3-4 2 2 2-3 3 5"/></svg>Design a video<span class="pill-new">PILOT</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg>All Videos</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Jobs</a>
+  </div>
+
+  <div class="nav-section">LIBRARY</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>Characters</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>Voices</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Assets</a>
+  </div>
+
+  <div class="sidebar__user"><span class="avatar avatar--lg">K</span><div><b>Kolawole Lawal</b><small>kolakachi@gmail.com</small></div></div>
+</nav>
+<main class="agent-main">
+  <header class="agent-header">
+    <div><div class="crumb">Design a video</div><h1>Inline states</h1></div>
+    <div class="header-actions"><a href="agent.html" class="quiet">Back to the thread</a></div>
+  </header>
+
+  <div class="gallery">
+
+    <div>
+      <h2>Needs something from you</h2>
+      <p>The library can't answer the brief. This is the most common first message for a small seller, and the moment the product either offers a way forward or dead-ends.</p>
+      <div class="assistant-message">
+        <span class="speaker">WyvStudio</span>
+        <p>You've attached three product photos and no footage, but the brief asks for someone showing the desk in use. Three ways forward:</p>
+        <div class="icard">
+          <div class="icard__body options">
+            <button type="button" class="option"><div><b>Make it from the photos</b><small>Motion, headline, callouts and offer over your stills. No footage needed.</small></div><span class="tier tier--free">INCLUDED</span></button>
+            <button type="button" class="option"><div><b>Generate a presenter take</b><small>A 15-second take from one of your characters, quoted on its own before anything runs.</small></div><span class="tier tier--media">~870 CREDITS</span></button>
+            <button type="button" class="option"><div><b>Attach footage you have</b><small>A phone clip is fine. I'll build around it.</small></div><span class="tier tier--free">FREE</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Plan, before approval</h2>
+      <p>Same card as the thread, in the state the user sees first. The callouts are editable right here so approving the plan approves the copy.</p>
+      <div class="assistant-message">
+        <span class="speaker">WyvStudio</span>
+        <div class="icard icard--warn">
+          <div class="icard__body">
+            <p class="icard__summary" style="margin:0">I'll keep your footage and voice, add the three callouts below, and finish with your 20% offer. Nothing new is generated.</p>
+            <div class="claims">
+              <label for="c1">CALLOUTS · EDIT BEFORE APPROVING</label>
+              <div class="claim"><span class="claim__n">1</span><input id="c1" class="input" type="text" value="Sit-stand in 8 seconds"></div>
+              <div class="claim"><span class="claim__n">2</span><input id="c2" class="input" type="text" value="Holds two monitors"></div>
+              <div class="claim"><span class="claim__n">3</span><input id="c3" class="input" type="text" placeholder="Add a third, or leave blank for two"></div>
+              <span class="claims__note">Only what you approve here appears in the video.</span>
+            </div>
+          </div>
+          <details class="more"><summary>View details</summary><div class="more__body"><span>Reused: your take (0–4s), product photo, brand kit. Scenes: hook, product, callouts, offer. Output: portrait, 15s, your audio.</span></div></details>
+          <div class="icard__foot">
+            <div class="cost-line"><b>Up to 40 credits</b><span>· reserved when you approve, unused part returned</span></div>
+            <span class="spacer"></span>
+            <button type="button" class="btn btn--ghost btn--sm" data-prompt="Change the plan: ">Change something</button>
+            <button type="button" class="btn btn--primary" data-approve="plan">Approve and build</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Build failed</h2>
+      <p>Failures on our side don't cost a second run. The last good version stays where it was.</p>
+      <div class="assistant-message">
+        <span class="speaker">WyvStudio</span>
+        <div class="icard icard--danger">
+          <div class="icard__body">
+            <div class="icard__title">The build stopped at "checking"<span class="status status--warn">NOT CHARGED</span></div>
+            <p style="margin:0;font-size:13px;color:var(--text-2)">The product photo couldn't be read this time (it opened fine when you attached it). Your 40 reserved credits are returned. Version 2 is unchanged.</p>
+          </div>
+          <div class="icard__foot">
+            <span class="muted" style="font-size:12px">Retrying uses the same plan and files.</span>
+            <span class="spacer"></span>
+            <button type="button" class="btn btn--ghost btn--sm" data-prompt="Use a different product photo: ">Use a different file</button>
+            <button type="button" class="btn btn--primary btn--sm" data-retry-run>Try again <span class="sub">no extra charge</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Not enough credits</h2>
+      <p>The draft and the plan are kept. Nothing is lost by topping up later.</p>
+      <div class="assistant-message">
+        <span class="speaker">WyvStudio</span>
+        <div class="icard icard--warn">
+          <div class="icard__body">
+            <div class="icard__title">This needs up to 40 credits. You have 22.</div>
+            <p style="margin:0;font-size:13px;color:var(--text-2)">The plan is saved with this video. Top up, or trim it: dropping the third callout scene brings it to about 28.</p>
+          </div>
+          <div class="icard__foot">
+            <span class="spacer"></span>
+            <button type="button" class="btn btn--ghost btn--sm" data-prompt="Drop the third callout scene">Trim the plan</button>
+            <button type="button" class="btn btn--primary btn--sm">Top up credits</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Approval expired</h2>
+      <p>Quotes are bound to the exact files and plan; if either changed, the price is re-checked rather than silently re-used.</p>
+      <div class="assistant-message">
+        <span class="speaker">WyvStudio</span>
+        <div class="icard">
+          <div class="icard__body">
+            <div class="icard__title">That approval has expired</div>
+            <p style="margin:0;font-size:13px;color:var(--text-2)">You approved this two days ago and the product photo has since been replaced. Nothing was charged. Re-checking the price takes a few seconds.</p>
+          </div>
+          <div class="icard__foot"><span class="spacer"></span><button type="button" class="btn btn--primary btn--sm">Re-check the price</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Variants, before starting</h2>
+      <p>Variants are one change each on a finished version. You see the list and the total before anything renders; previews arrive as each finishes.</p>
+      <div class="assistant-message">
+        <span class="speaker">WyvStudio</span>
+        <p>Three variants of Version 2, one change each. Same footage and voice throughout.</p>
+        <div class="icard icard--warn">
+          <div class="icard__body">
+            <div class="vlist">
+              <div class="vrow"><span class="vrow__thumb"></span><span><b>A</b> · Headline: "Stand up for your spine."</span><span class="tier tier--quoted">12</span></div>
+              <div class="vrow"><span class="vrow__thumb"></span><span><b>B</b> · Button: "See the desk"</span><span class="tier tier--quoted">12</span></div>
+              <div class="vrow"><span class="vrow__thumb"></span><span><b>C</b> · Light colour scheme</span><span class="tier tier--quoted">12</span></div>
+            </div>
+            <span class="muted" style="font-size:12px">Up to three per batch for now. A different presenter or take isn't a variant — ask for it and it gets its own plan.</span>
+          </div>
+          <div class="icard__foot">
+            <div class="cost-line"><b>36 credits</b><span>· charged per variant as each finishes</span></div>
+            <span class="spacer"></span>
+            <button type="button" class="btn btn--ghost btn--sm" data-prompt="Change variant B to: ">Change one</button>
+            <button type="button" class="btn btn--primary btn--sm" data-approve="variants">Make all three</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Variants, partly done</h2>
+      <p>Each variant has its own status. A failed one is retried alone, without touching the two that worked.</p>
+      <div class="assistant-message">
+        <span class="speaker">WyvStudio</span>
+        <div class="icard">
+          <div class="icard__body">
+            <div class="vlist">
+              <div class="vrow"><span class="vrow__thumb"></span><span><b>A</b> · Headline change</span><span class="status status--ok">READY</span><button type="button" class="btn btn--outline">Download</button></div>
+              <div class="vrow"><span class="vrow__thumb"></span><span><b>B</b> · Button change</span><span class="status status--ok">READY</span><button type="button" class="btn btn--outline">Download</button></div>
+              <div class="vrow"><span class="vrow__thumb"></span><span><b>C</b> · Light colours</span><span class="status status--warn">FAILED · NOT CHARGED</span><button type="button" class="btn btn--primary">Retry C</button></div>
+            </div>
+          </div>
+          <div class="icard__foot"><span class="muted" style="font-size:12px">24 credits charged for A and B. C's 12 were returned.</span><span class="spacer"></span><button type="button" class="btn btn--ghost btn--sm">Download both</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Downloading an older version</h2>
+      <p>Shown when someone downloads or shares a file that's behind the current version. Never a silent swap either way.</p>
+      <div class="assistant-message">
+        <span class="speaker">WyvStudio</span>
+        <div class="icard icard--warn">
+          <div class="icard__body">
+            <div class="icard__title">This file is Version 2. The current version is 3.</div>
+            <p style="margin:0;font-size:13px;color:var(--text-2)">Version 3 added the product spin. Version 2 has no download cost now because it's already rendered; a Version 3 file would be 12 credits.</p>
+          </div>
+          <div class="icard__foot">
+            <span class="spacer"></span>
+            <button type="button" class="btn btn--ghost btn--sm">Download Version 2 anyway</button>
+            <button type="button" class="btn btn--primary btn--sm">Download Version 3 <span class="sub">12 credits</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Attachment feedback</h2>
+      <p>What the composer shows the moment a file is picked: name, thumbnail, progress, whether it's footage to reuse or just for inspiration, and a plain error with retry.</p>
+      <div class="attached">
+        <div class="upload"><span class="upload__thumb"></span><div><b>lifestyle-01.jpg</b><small>uploading · 62%</small><div class="upload__bar"><span style="width:62%"></span></div></div><span class="role-toggle" role="group" aria-label="Use as"><button type="button" aria-pressed="true">REUSE</button><button type="button" aria-pressed="false">REFERENCE</button></span><button type="button" class="upload__x" aria-label="Remove">×</button></div>
+        <div class="upload"><span class="upload__thumb upload__thumb--video"></span><div><b>phone-clip.mp4</b><small>0:22 · ready</small></div><span class="role-toggle" role="group" aria-label="Use as"><button type="button" aria-pressed="false">REUSE</button><button type="button" aria-pressed="true">REFERENCE</button></span><button type="button" class="upload__x" aria-label="Remove">×</button></div>
+        <div class="upload upload--error"><span class="upload__thumb upload__thumb--video"></span><div><b>broll-long.mov</b><small>Too large (1.2 GB). Limit is 500 MB.</small></div><button type="button" class="btn btn--ghost btn--sm" data-retry>Retry</button><button type="button" class="upload__x" aria-label="Remove">×</button></div>
+      </div>
+    </div>
+
+  </div>
+</main>
+</div>
+<div id="agent-toast" role="status" hidden></div>
+<script src="agent.js"></script>
+</body>
+</html>

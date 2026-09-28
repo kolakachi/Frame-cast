@@ -1,0 +1,6 @@
+# Use with compose.local.yml to disable builds and pulls. Requires recorded image in local Docker.
+services:
+  smoke:
+    build: !reset null
+    pull_policy: never
+    image: sha256:2151b4b6739e9e0336bcd498e36edde1eac98552e815cb3a38745ad7df698a75

@@ -1,0 +1,18 @@
+# Standalone local proof only. Never merges into the production stack.
+name: wyv-hyperframes-proof
+services:
+  smoke:
+    build: .
+    init: true
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2
+    mem_limit: 2g
+    pids_limit: 256
+    shm_size: 256m
+    tmpfs:
+      - /tmp:size=4294967296,mode=1777
+    volumes:
+      - ./artifacts:/output

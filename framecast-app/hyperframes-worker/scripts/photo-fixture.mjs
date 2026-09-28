@@ -1,0 +1,11 @@
+import {mkdir,copyFile,readFile,writeFile} from 'node:fs/promises';
+import {renderRun} from './lib/render-run.mjs';
+const root='/tmp/photo-fixture';await mkdir(root,{recursive:true});await mkdir(process.env.HOME,{recursive:true});
+await copyFile('/output/real-inputs/product.png',root+'/product.png');
+await copyFile('/opt/worker/fixtures/logo.svg',root+'/logo.svg');
+await copyFile('/opt/worker/node_modules/gsap/dist/gsap.min.js',root+'/gsap.min.js');
+await copyFile('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',root+'/font.ttf');
+const html=(await readFile('/opt/worker/fixtures/index.html','utf8')).replace('./product.svg','./product.png').replace('width:500px;height:600px','width:500px;height:600px;object-fit:contain').replace('Synthetic product fixture','Supplied product reference').replace('Your product.<br>Your story.','A closer look.').replace('Explore the collection','See the details').replace('<div id="brand">','<img src="./logo.svg" style="position:absolute;top:66px;right:90px;width:64px;height:64px" alt="WyvStudio"><div id="brand">');
+await writeFile(root+'/index.html',html);
+const result=await renderRun({project:root,outputRoot:'/output/photo-proof',expected:{width:1080,height:1920,duration:15}});
+if(result.status!=='ready')throw Error(JSON.stringify(result));console.log(JSON.stringify(result,null,2));

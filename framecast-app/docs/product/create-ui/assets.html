@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assets · WyvStudio</title>
+<link rel="stylesheet" href="wyv.css">
+<link rel="stylesheet" href="agent.css">
+</head>
+<body>
+<div class="agent-app">
+<nav class="sidebar" aria-label="Main">
+  <div class="brand"><span class="brand__mark">W</span>WyvStudio</div>
+  <button type="button" class="ws"><span class="avatar">K</span>Kolawole Lawal
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+
+  <div class="nav-section">WORKSPACE</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4a3.5 3.5 0 010 7M21 20c0-2.7-1.8-5-4.3-5.7"/></svg>Clients<span class="count">2</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>Channels</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Series</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>UGC Ads</a><a href="#" data-demo="Existing app navigation: From My Footage">From My Footage</a>
+    <a href="agent-new.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15l3-4 2 2 2-3 3 5"/></svg>Create<span class="pill-new">PILOT</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</a>
+    <a href="all-videos.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg>All Videos</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Jobs</a>
+  </div>
+
+  <div class="nav-section">LIBRARY</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>Characters</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>Voices</a>
+    <a href="#" aria-current="page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Assets</a>
+  </div>
+
+  <div class="sidebar__user"><span class="avatar avatar--lg">K</span><div><b>Kolawole Lawal</b><small>kolakachi@gmail.com</small></div></div>
+</nav>
+<main class="agent-main">
+  <header class="agent-header">
+    <div><div class="crumb">Library</div><h1>Assets</h1></div>
+    <div class="header-actions"><span class="credits">1,127 cr</span><button type="button" class="quiet">Upload</button><a href="agent-new.html" class="btn btn--primary btn--sm">+ New creation</a></div>
+  </header>
+
+  <div class="scroll library">
+    <div class="library__head">
+      <div class="library__filters" role="group" aria-label="Source">
+        <button type="button" aria-pressed="true" data-src="all">All</button>
+        <button type="button" aria-pressed="false" data-src="upload">Uploaded</button>
+        <button type="button" aria-pressed="false" data-src="generated">Generated</button>
+      </div>
+      <div class="library__filters" role="group" aria-label="Type">
+        <button type="button" aria-pressed="true" data-type="all">Any type</button>
+        <button type="button" aria-pressed="false" data-type="image">Images</button>
+        <button type="button" aria-pressed="false" data-type="video">Video</button>
+        <button type="button" aria-pressed="false" data-type="audio">Audio</button>
+      </div>
+      <label class="library__search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" id="lib-search" placeholder="Search assets"></label>
+    </div>
+    <p class="muted" style="margin:-6px 0 0;font-size:13px">Everything you've uploaded, plus images and audio made in Create. Generated items link back to the conversation that made them.</p>
+
+    <div class="vgrid" id="vgrid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
+
+      <article class="acard" data-src="generated" data-type="image">
+        <div class="acard__thumb acard__thumb--gen"><span class="vcard__source vcard__source--design">GENERATED</span><span class="t" style="color:#fff">Your back<br>will thank you</span></div>
+        <div class="acard__body"><div class="acard__title">thumb-a.png</div><div class="acard__meta">1280×720 · cover of "Launch offer"</div></div>
+        <div class="acard__actions"><button type="button" class="btn btn--outline" data-lib="download">Download</button><button type="button" class="btn btn--ghost" data-lib="edit">Edit</button><button type="button" class="btn btn--ghost" data-lib="animate">Animate</button></div>
+        <div class="acard__from">From a conversation<a href="agent.html">Open →</a></div>
+      </article>
+
+      <article class="acard" data-src="generated" data-type="image">
+        <div class="acard__thumb acard__thumb--gen" style="background:#f2efe8"><span class="vcard__source vcard__source--design">GENERATED</span><span class="t" style="color:#1a1f2b">20% off<br>at launch</span></div>
+        <div class="acard__body"><div class="acard__title">thumb-b.png</div><div class="acard__meta">1280×720</div></div>
+        <div class="acard__actions"><button type="button" class="btn btn--outline" data-lib="download">Download</button><button type="button" class="btn btn--ghost" data-lib="edit">Edit</button><button type="button" class="btn btn--ghost" data-lib="animate">Animate</button></div>
+        <div class="acard__from">From a conversation<a href="agent.html">Open →</a></div>
+      </article>
+
+      <article class="acard" data-src="generated" data-type="image">
+        <div class="acard__thumb acard__thumb--gen" style="background:#e8683d"><span class="vcard__source vcard__source--design">GENERATED</span><span class="t" style="color:#0b0d11">Sit. Stand.<br>Repeat.</span></div>
+        <div class="acard__body"><div class="acard__title">thumb-c.png</div><div class="acard__meta">1280×720</div></div>
+        <div class="acard__actions"><button type="button" class="btn btn--outline" data-lib="download">Download</button><button type="button" class="btn btn--ghost" data-lib="edit">Edit</button><button type="button" class="btn btn--ghost" data-lib="animate">Animate</button></div>
+        <div class="acard__from">From a conversation<a href="agent.html">Open →</a></div>
+      </article>
+
+      <article class="acard" data-src="generated" data-type="audio">
+        <div class="acard__thumb acard__thumb--audio"><span class="vcard__source vcard__source--design">GENERATED</span><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="1.5" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></div>
+        <div class="acard__body"><div class="acard__title">callouts-voiceover.mp3</div><div class="acard__meta">0:09 · your voice</div></div>
+        <div class="acard__actions"><button type="button" class="btn btn--outline" data-lib="download">Download</button><button type="button" class="btn btn--ghost" data-lib="use">Use in a video</button></div>
+        <div class="acard__from">From a conversation<a href="agent.html">Open →</a></div>
+      </article>
+
+      <article class="acard" data-src="upload" data-type="image">
+        <div class="acard__thumb"><span class="vcard__source">UPLOADED</span></div>
+        <div class="acard__body"><div class="acard__title">product-hero.png</div><div class="acard__meta">2048×2048 · used in 2 videos</div></div>
+        <div class="acard__actions"><button type="button" class="btn btn--outline" data-lib="download">Download</button><button type="button" class="btn btn--ghost" data-lib="create">Create with this</button></div>
+      </article>
+
+      <article class="acard" data-src="upload" data-type="video">
+        <div class="acard__thumb acard__thumb--video"><span class="vcard__source">UPLOADED</span><svg width="28" height="28" viewBox="0 0 24 24" fill="#eceef1" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg></div>
+        <div class="acard__body"><div class="acard__title">ugc-take-03.mp4</div><div class="acard__meta">0:15 · 1080×1920 · has audio</div></div>
+        <div class="acard__actions"><button type="button" class="btn btn--outline" data-lib="download">Download</button><button type="button" class="btn btn--ghost" data-lib="create">Create with this</button></div>
+      </article>
+
+      <article class="acard" data-src="upload" data-type="image">
+        <div class="acard__thumb"><span class="vcard__source">UPLOADED</span></div>
+        <div class="acard__body"><div class="acard__title">lifestyle-01.jpg</div><div class="acard__meta">3000×2000 · reference</div></div>
+        <div class="acard__actions"><button type="button" class="btn btn--outline" data-lib="download">Download</button><button type="button" class="btn btn--ghost" data-lib="create">Create with this</button></div>
+      </article>
+
+    </div>
+  </div>
+</main>
+</div>
+<div id="agent-toast" role="status" hidden></div>
+<script src="agent.js"></script>
+<script>
+(() => {
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const toast = (m) => { const t = document.getElementById('agent-toast'); t.textContent = m; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2600); };
+  const apply = () => {
+    const src = document.querySelector('[data-src][aria-pressed="true"]').dataset.src;
+    const type = document.querySelector('[data-type][aria-pressed="true"]').dataset.type;
+    const q = document.getElementById('lib-search').value.trim().toLowerCase();
+    $$('.acard').forEach(c => { c.hidden = !((src === 'all' || c.dataset.src === src) && (type === 'all' || c.dataset.type === type) && (!q || c.textContent.toLowerCase().includes(q))); });
+  };
+  $$('.library__filters button').forEach(b => b.addEventListener('click', () => { $$('button', b.parentElement).forEach(x => x.setAttribute('aria-pressed', String(x === b))); apply(); }));
+  document.getElementById('lib-search').addEventListener('input', apply);
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-lib]'); if (b) toast({download:'Would download this file.', edit:'Would open the conversation with this image ready to edit.', animate:'Would open the conversation and ask: motion over the image, or generate video?', use:'Would start a new creation with this audio attached.', create:'Would start a new creation with this file attached.'}[b.dataset.lib]); });
+})();
+</script>
+</body>
+</html>

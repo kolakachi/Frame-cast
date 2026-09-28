@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>All Videos · WyvStudio</title>
+<link rel="stylesheet" href="wyv.css">
+<link rel="stylesheet" href="agent.css">
+</head>
+<body>
+<div class="agent-app">
+<nav class="sidebar" aria-label="Main">
+  <div class="brand"><span class="brand__mark">W</span>WyvStudio</div>
+  <button type="button" class="ws"><span class="avatar">K</span>Kolawole Lawal
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+
+  <div class="nav-section">WORKSPACE</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4a3.5 3.5 0 010 7M21 20c0-2.7-1.8-5-4.3-5.7"/></svg>Clients<span class="count">2</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>Channels</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Series</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>UGC Ads</a><a href="#" data-demo="Existing app navigation: From My Footage">From My Footage</a>
+    <a href="agent-new.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15l3-4 2 2 2-3 3 5"/></svg>Create<span class="pill-new">PILOT</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</a>
+    <a href="#" aria-current="page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg>All Videos</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Jobs</a>
+  </div>
+
+  <div class="nav-section">LIBRARY</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>Characters</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>Voices</a>
+    <a href="assets.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Assets</a>
+  </div>
+
+  <div class="sidebar__user"><span class="avatar avatar--lg">K</span><div><b>Kolawole Lawal</b><small>kolakachi@gmail.com</small></div></div>
+</nav>
+<main class="agent-main">
+  <header class="agent-header">
+    <div><div class="crumb">My Workspace</div><h1>All Videos</h1></div>
+    <div class="header-actions"><span class="credits">1,142 cr</span><a href="agent-new.html" class="btn btn--primary btn--sm">+ New creation</a></div>
+  </header>
+
+  <div class="scroll library">
+    <div class="library__head">
+      <div class="library__filters" role="group" aria-label="Source">
+        <button type="button" aria-pressed="true" data-src="all">All</button>
+        <button type="button" aria-pressed="false" data-src="ugc">UGC Ads</button>
+        <button type="button" aria-pressed="false" data-src="footage">From My Footage</button>
+        <button type="button" aria-pressed="false" data-src="editor">Editor</button>
+        <button type="button" aria-pressed="false" data-src="design">Create</button>
+      </div>
+      <label class="library__search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" id="lib-search" placeholder="Search videos"></label>
+    </div>
+    <p class="muted" style="margin:-6px 0 0;font-size:13px">Finished videos from every lane. Create shows its latest finished cut here; earlier versions and previews stay inside its conversation. Images made in Create are in <a href="assets.html" style="color:var(--accent)">Assets</a>.</p>
+
+    <div class="vgrid" id="vgrid">
+
+      <!-- Design a video: finished, with explicit variants grouped -->
+      <article class="vcard vcard--group" data-src="design">
+        <div class="vcard__thumb">
+          <span class="vcard__source vcard__source--design">CREATE</span>
+          <div class="mini"><div class="mini__headline">Stand up for your spine.</div><div class="mini__product"></div><div class="mini__cta">Get 20% off</div></div>
+          <span class="vcard__ratio">9:16</span><span class="vcard__dur">0:15</span>
+        </div>
+        <div class="vcard__body">
+          <div class="vcard__title">Standing Desk Pays for Itself — 4:5 cut</div>
+          <div class="vcard__meta"><span class="status status--ok">READY</span><span>Version 2 · Sun</span><span>No channel</span></div>
+        </div>
+        <div class="vcard__actions">
+          <button type="button" class="btn btn--outline" data-lib="download">Download</button>
+          <button type="button" class="btn btn--ghost" data-lib="share">Share</button>
+          <button type="button" class="btn btn--ghost" data-lib="schedule">Schedule</button>
+          <a href="agent.html" class="btn btn--ghost btn--continue">Continue editing →</a>
+        </div>
+        <details class="vcard__variants">
+          <summary>3 variants</summary>
+          <div class="vrows">
+            <div class="vrow"><span class="vrow__thumb"></span><span><b>A</b> · Headline: "Stand up for your spine."</span><span class="status status--ok">READY</span><button type="button" class="btn btn--ghost" data-lib="download">Download</button></div>
+            <div class="vrow"><span class="vrow__thumb"></span><span><b>B</b> · Button: "See the desk"</span><span class="status status--ok">READY</span><button type="button" class="btn btn--ghost" data-lib="download">Download</button></div>
+            <div class="vrow"><span class="vrow__thumb" style="background:#f2efe8"></span><span><b>C</b> · Light colours</span><span class="status status--ok">READY</span><button type="button" class="btn btn--ghost" data-lib="download">Download</button></div>
+          </div>
+        </details>
+      </article>
+
+      <!-- Design a video: finished cut exists, newer version in progress -->
+      <article class="vcard" data-src="design">
+        <div class="vcard__thumb">
+          <span class="vcard__source vcard__source--design">CREATE</span>
+          <div class="mini"><div class="mini__headline">Your back will thank you.</div><div class="mini__product"></div><div class="mini__cta">Get 20% off</div></div>
+          <span class="vcard__ratio">9:16</span><span class="vcard__dur">0:15</span>
+        </div>
+        <div class="vcard__body">
+          <div class="vcard__title">Launch offer · UGC + callouts</div>
+          <div class="vcard__meta"><span class="status status--ok">READY</span><span>Version 2 · today</span><span class="info">Version 3 updating</span></div>
+        </div>
+        <div class="vcard__actions">
+          <button type="button" class="btn btn--outline" data-lib="download">Download</button>
+          <button type="button" class="btn btn--ghost" data-lib="share">Share</button>
+          <button type="button" class="btn btn--ghost" data-lib="schedule">Schedule</button>
+          <a href="agent.html" class="btn btn--ghost btn--continue">Continue editing →</a>
+        </div>
+        <div class="vcard__thumbs" role="group" aria-label="Cover image"><small>COVER</small><button type="button" aria-pressed="true" aria-label="Thumbnail A"></button><button type="button" aria-pressed="false" aria-label="Thumbnail B" style="background:#f2efe8"></button><button type="button" aria-pressed="false" aria-label="Thumbnail C" style="background:#e8683d"></button><a href="agent.html" class="muted" style="margin-left:auto;font-size:11px">3 in Assets →</a></div>
+      </article>
+
+      <!-- Design a video: square explainer -->
+      <article class="vcard" data-src="design">
+        <div class="vcard__thumb">
+          <span class="vcard__source vcard__source--design">CREATE</span>
+          <div class="mini mini--square"><div class="mini__headline">Three tiers. One desk.</div><div class="mini__product" style="height:28px"></div></div>
+          <span class="vcard__ratio">1:1</span><span class="vcard__dur">0:20</span>
+        </div>
+        <div class="vcard__body">
+          <div class="vcard__title">Pricing tiers explainer</div>
+          <div class="vcard__meta"><span class="status status--ok">READY</span><span>Version 2 · Sun</span></div>
+        </div>
+        <div class="vcard__actions">
+          <button type="button" class="btn btn--outline" data-lib="download">Download</button>
+          <button type="button" class="btn btn--ghost" data-lib="share">Share</button>
+          <button type="button" class="btn btn--ghost" data-lib="schedule">Schedule</button>
+          <a href="#" class="btn btn--ghost btn--continue">Continue editing →</a>
+        </div>
+      </article>
+
+      <!-- Design a video: never finished, shown only because the user asked for "all" -->
+      <article class="vcard" data-src="design" data-preview-only>
+        <div class="vcard__thumb" style="opacity:.6">
+          <span class="vcard__source vcard__source--design">CREATE</span>
+          <div class="mini"><div class="mini__headline">Smoke: AI images</div><div class="mini__product"></div></div>
+          <span class="vcard__ratio">9:16</span><span class="vcard__dur">0:15</span>
+        </div>
+        <div class="vcard__body">
+          <div class="vcard__title">Smoke: AI images 15s</div>
+          <div class="vcard__meta"><span class="status status--neutral">NOT DOWNLOADED</span><span>Preview only · Sep 21</span></div>
+        </div>
+        <div class="vcard__actions">
+          <a href="#" class="btn btn--ghost btn--continue" style="margin-left:0">Continue editing →</a>
+        </div>
+      </article>
+
+      <!-- other lanes, for context -->
+      <article class="vcard" data-src="ugc">
+        <div class="vcard__thumb"><span class="vcard__source">UGC ADS</span><div class="mini" style="background:#3a2f4a"><div class="mini__headline" style="color:#d5d9e0">Standing Desk Pays for Its…</div></div><span class="vcard__ratio">9:16</span><span class="vcard__dur">0:20</span></div>
+        <div class="vcard__body"><div class="vcard__title">Standing Desk Pays for Itself</div><div class="vcard__meta"><span class="status status--ok">EXPORTED</span><span>No channel</span></div></div>
+        <div class="vcard__actions"><button type="button" class="btn btn--outline" data-lib="download">Download</button><button type="button" class="btn btn--ghost" data-lib="share">Share</button><button type="button" class="btn btn--ghost" data-lib="schedule">Schedule</button><a href="agent-new.html" class="btn btn--ghost btn--continue">Design with this →</a></div>
+      </article>
+
+      <article class="vcard" data-src="ugc">
+        <div class="vcard__thumb"><span class="vcard__source">UGC ADS</span><div class="mini" style="background:#3a2f4a"><div class="mini__headline" style="color:#d5d9e0">Three Reasons a Standing…</div></div><span class="vcard__ratio">9:16</span><span class="vcard__dur">0:30</span></div>
+        <div class="vcard__body"><div class="vcard__title">Three Reasons a Standing Desk</div><div class="vcard__meta"><span class="status status--ok">EXPORTED</span><span>No channel</span></div></div>
+        <div class="vcard__actions"><button type="button" class="btn btn--outline" data-lib="download">Download</button><button type="button" class="btn btn--ghost" data-lib="share">Share</button><button type="button" class="btn btn--ghost" data-lib="schedule">Schedule</button><a href="agent-new.html" class="btn btn--ghost btn--continue">Design with this →</a></div>
+      </article>
+
+      <article class="vcard" data-src="footage">
+        <div class="vcard__thumb"><span class="vcard__source">MY FOOTAGE</span><div class="mini mini--wide" style="background:#2a3441"><div class="mini__headline" style="color:#d5d9e0">Smoke: accounting on</div></div><span class="vcard__ratio">16:9</span><span class="vcard__dur">0:20</span></div>
+        <div class="vcard__body"><div class="vcard__title">Smoke: accounting on</div><div class="vcard__meta"><span class="status status--ok">EXPORTED</span><span>No channel</span></div></div>
+        <div class="vcard__actions"><button type="button" class="btn btn--outline" data-lib="download">Download</button><button type="button" class="btn btn--ghost" data-lib="share">Share</button><button type="button" class="btn btn--ghost" data-lib="schedule">Schedule</button><a href="agent-new.html" class="btn btn--ghost btn--continue">Design with this →</a></div>
+      </article>
+
+    </div>
+  </div>
+</main>
+</div>
+<div id="agent-toast" role="status" hidden></div>
+<script src="agent.js"></script>
+<script>
+(() => {
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const toast = (m) => { const t = document.getElementById('agent-toast'); t.textContent = m; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2600); };
+  const apply = () => {
+    const src = document.querySelector('.library__filters [aria-pressed="true"]').dataset.src;
+    const q = document.getElementById('lib-search').value.trim().toLowerCase();
+    $$('.vcard').forEach(c => { c.hidden = !((src === 'all' || c.dataset.src === src) && (!q || c.textContent.toLowerCase().includes(q))); });
+  };
+  $$('.library__filters button').forEach(b => b.addEventListener('click', () => { $$('.library__filters button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); apply(); }));
+  document.getElementById('lib-search').addEventListener('input', apply);
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-lib]'); if (b) toast({download:'Would download the latest finished file.', share:'Would create a private share link.', schedule:'Would open scheduling with this file.'}[b.dataset.lib]); });
+})();
+</script>
+</body>
+</html>

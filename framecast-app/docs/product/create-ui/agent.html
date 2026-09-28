@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Launch offer · Create · WyvStudio</title>
+<link rel="stylesheet" href="wyv.css">
+<link rel="stylesheet" href="agent.css">
+</head>
+<body>
+<div class="agent-app">
+<nav class="sidebar" aria-label="Main">
+  <div class="brand"><span class="brand__mark">W</span>WyvStudio</div>
+  <button type="button" class="ws"><span class="avatar">K</span>Kolawole Lawal
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+
+  <div class="nav-section">WORKSPACE</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4a3.5 3.5 0 010 7M21 20c0-2.7-1.8-5-4.3-5.7"/></svg>Clients<span class="count">2</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>Channels</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Series</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>UGC Ads</a><a href="#" data-demo="Existing app navigation: From My Footage">From My Footage</a>
+    <a href="#" aria-current="page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15l3-4 2 2 2-3 3 5"/></svg>Create<span class="pill-new">PILOT</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</a>
+    <a href="all-videos.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg>All Videos</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Jobs</a>
+  </div>
+
+  <div class="nav-section">LIBRARY</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>Characters</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>Voices</a>
+    <a href="assets.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Assets</a>
+  </div>
+
+  <div class="sidebar__user"><span class="avatar avatar--lg">K</span><div><b>Kolawole Lawal</b><small>kolakachi@gmail.com</small></div></div>
+</nav>
+<main class="agent-main">
+  <header class="agent-header">
+    <div><div class="crumb">Create</div><h1>Launch offer · UGC + callouts</h1></div>
+    <span class="status status--info" id="thread-status">UPDATING · VERSION 3</span>
+    <div class="header-actions">
+      <span class="credits">1,127 cr</span>
+      <a href="agent-new.html" class="quiet">+ New creation</a><button type="button" class="quiet" id="recent-button" aria-haspopup="dialog" aria-controls="recent-drawer">Recent conversations</button>
+      <a href="agent-states.html" class="quiet">All states</a>
+      <button type="button" class="quiet" id="toggle-panel" aria-expanded="false" aria-controls="details-panel">Details &amp; versions</button>
+    </div>
+  </header>
+
+  <div class="agent-content">
+    <section class="conversation" aria-label="Conversation">
+      <div class="messages" id="messages">
+
+        <!-- brief -->
+        <div class="user-message">
+          <div class="attachments">
+            <span class="chip"><span class="chip__thumb asset__thumb--video"></span><span><b>ugc-take-03.mp4</b><small>0:15 · has audio</small></span><span class="chip__role">REUSE</span></span>
+            <span class="chip"><span class="chip__thumb asset__thumb--image"></span><span><b>product-hero.png</b><small>2048×2048</small></span><span class="chip__role">REUSE</span></span>
+          </div>
+          <p>Use the product photo and my UGC take. Open on the take for 4 seconds, then three benefit callouts over the product, and end on the 20% launch offer with the logo. Keep the intro energetic.</p>
+        </div>
+
+        <!-- plan: short by default, claims editable, details collapsed -->
+        <div class="assistant-message">
+          <span class="speaker">WyvStudio <time>2:49 AM</time></span>
+          <div class="icard icard--warn" id="plan-card">
+            <div class="icard__body">
+              <p class="icard__summary" style="margin:0">I'll keep your footage and voice, open on the take, add the three callouts below over the product, and finish with your 20% offer and logo. Nothing new is generated.</p>
+              <div class="claims">
+                <label for="claim-1">CALLOUTS · EDIT BEFORE APPROVING</label>
+                <div class="claim"><span class="claim__n">1</span><input id="claim-1" class="input" type="text" value="Sit-stand in 8 seconds"></div>
+                <div class="claim"><span class="claim__n">2</span><input id="claim-2" class="input" type="text" value="Holds two monitors"></div>
+                <div class="claim"><span class="claim__n">3</span><input id="claim-3" class="input" type="text" value="Assembles in 15 minutes"></div>
+                <span class="claims__note">Suggested from your brief and product page. Only what you approve here appears in the video; price and reviews weren't given, so they're left out.</span>
+              </div>
+              <div class="decision">
+                <b>"Energetic intro" — pick one</b>
+                <label class="choice"><input type="radio" name="intro" checked><div><b>Punch-in and fast type-on headline <span class="tag tier tier--free">INCLUDED</span></b><p>Your take and audio stay exactly as they are.</p></div></label>
+                <label class="choice"><input type="radio" name="intro"><div><b>New spoken hook from your character <span class="tag tier tier--media">~348 CREDITS</span></b><p>A new 4-second take, quoted on its own. The plan waits for it.</p></div></label>
+              </div>
+            </div>
+            <details class="more">
+              <summary>View details</summary>
+              <div class="more__body">
+                <div class="plan-cols">
+                  <div class="plan-col"><span class="legend ok">REUSED</span><ul><li>ugc-take-03.mp4 <small>0:00–0:04</small></li><li>product-hero.png</li><li>Standing Desk Co brand kit</li></ul></div>
+                  <div class="plan-col"><span class="legend info">SCENES</span><ul><li>Hook over take <small>0–4s</small></li><li>Product reveal <small>4–6s</small></li><li>Three callouts <small>6–12s</small></li><li>Offer + logo <small>12–15s</small></li></ul></div>
+                  <div class="plan-col"><span class="legend muted">OUTPUT</span><ul><li>Portrait 9:16</li><li>15 seconds</li><li>Your take's audio</li></ul></div>
+                </div>
+                <div class="quote">
+                  <div class="quote__line"><span>Building the preview, including up to two fixes</span><b>up to 40</b></div>
+                  <div class="quote__line"><span>New footage</span><b class="ok">0</b></div>
+                  <div class="quote__line"><span>Preview</span><b class="ok">included</b></div>
+                  <div class="quote__line"><span>Download, when you ask for it</span><b class="muted">about 12</b></div>
+                </div>
+              </div>
+            </details>
+            <div class="icard__foot">
+              <div class="cost-line"><b>Up to 40 credits</b><span>· reserved when you approve, unused part returned</span></div>
+              <span class="spacer"></span>
+              <span class="status status--ok">APPROVED · 40 RESERVED</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- version 1 -->
+        <div class="assistant-message">
+          <span class="speaker">WyvStudio <time>2:52 AM</time></span>
+          <details class="run-card">
+            <summary>Built the preview <span class="mono">2m 41s · 31 credits used · 9 returned</span></summary>
+            <div class="run__stages">
+              <div class="stage">Preparing your files<time>0:12</time></div>
+              <div class="stage">Planning the layout<time>0:31</time></div>
+              <div class="stage">Building<time>1:40</time></div>
+              <div class="stage">Checking&nbsp;<span class="warn">· fixed a headline that ran under the caption area</span><time>2:30</time></div>
+              <div class="stage">Preview ready<time>2:41</time></div>
+            </div>
+          </details>
+          <p>Here's Version 1. Your voice is untouched and every line sits clear of where Reels puts its buttons. Callout 3 is the tightest fit — worth a look.</p>
+
+          <div class="result" data-version="1" id="v1">
+            <div class="result__stage">
+              <div class="frame">
+                <div class="frame__comp">
+                  <div class="eyebrow eyebrow--accent" style="margin-top:72px;font-size:10px">02 · PRODUCT</div>
+                  <div class="frame__headline" style="font-size:28px">Your back<br>will thank you.</div>
+                  <div class="frame__product" style="height:160px">product-hero.png</div>
+                  <div class="callout">Sit-stand in 8 seconds</div>
+                  <div class="frame__logo" style="margin-bottom:150px"><i>S</i>Standing Desk Co</div>
+                </div>
+                <div class="safe safe--top" aria-hidden="true">TOP 14%</div>
+                <div class="safe safe--bottom" aria-hidden="true">BOTTOM 35% · BUTTONS, CAPTIONS</div>
+                <span class="frame__stamp">v1 · 0:05.2</span>
+              </div>
+            </div>
+            <div class="result__bar">
+              <button type="button" class="btn btn--icon" aria-label="Play"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg></button>
+              <span class="mono">0:05.2 / 0:15.0</span>
+              <div class="scrub" role="slider" aria-label="Position" aria-valuemin="0" aria-valuemax="15" aria-valuenow="5.2" tabindex="0"><span class="scrub__track"></span><span class="scrub__fill" style="width:34.6%"></span><span class="scrub__mark" style="left:26.6%"></span><span class="scrub__mark" style="left:40%"></span><span class="scrub__mark" style="left:80%"></span><span class="scrub__head" style="left:34.6%"></span></div>
+              <button type="button" class="btn btn--icon" aria-label="Mute" data-mute><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 010 6"/></svg></button>
+              <button type="button" class="btn btn--icon" aria-label="Fullscreen" data-fullscreen><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+              <button type="button" class="btn btn--ghost btn--safe" aria-pressed="true" data-safe>Show Reels overlay</button>
+            </div>
+            <div class="result__meta"><b>Version 1</b><span class="muted">Preview</span><span class="status status--neutral">NOT DOWNLOADED</span></div>
+            <div class="result__actions">
+              <button type="button" class="btn btn--primary" data-action="render">Download video <span class="sub">12 credits</span></button>
+              <button type="button" class="btn btn--ghost" data-action="levers">Edit text, colours or size <span class="tier tier--free">FREE</span></button>
+              <button type="button" class="btn btn--ghost" data-action="variants">Make variants <span class="tier tier--free">FREE TO PLAN</span></button>
+            </div>
+            <div class="levers">
+              <div class="row3">
+                <div class="field"><label for="l1-headline">HEADLINE</label><input id="l1-headline" class="input" type="text" value="Your back will thank you."></div>
+                <div class="field"><label for="l1-cta">BUTTON TEXT</label><input id="l1-cta" class="input" type="text" value="Shop the launch"></div>
+                <div class="field"><label for="l1-offer">OFFER <span class="ok">· KEPT AS-IS</span></label><input id="l1-offer" class="input" type="text" value="20% launch offer" readonly></div>
+              </div>
+              <div class="levers__foot">
+                <div class="palette" role="group" aria-label="Colours"><button type="button" class="swatch" aria-pressed="true" aria-label="Dark"><span style="background:#1a1f2b"></span><span style="background:#e8683d"></span></button><button type="button" class="swatch" aria-pressed="false" aria-label="Light"><span style="background:#f2efe8"></span><span style="background:#e8683d"></span></button></div>
+                <div class="seg" role="group" aria-label="Size"><button type="button" class="seg__btn" aria-pressed="true">9:16</button><button type="button" class="seg__btn" aria-pressed="false">4:5</button><button type="button" class="seg__btn" aria-pressed="false">1:1</button><button type="button" class="seg__btn" aria-pressed="false">16:9</button></div>
+                <button type="button" class="btn btn--ok" data-action="apply">Apply as a new version <span class="sub">~10s · free</span></button>
+              </div>
+              <span class="levers__note">This is an older version. Applying makes a new version from it; Version 2 stays as it is.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- free text change -->
+        <div class="user-message"><p>Shorter button. "Get 20% off".</p></div>
+
+        <div class="assistant-message">
+          <span class="speaker">WyvStudio <time>2:54 AM</time></span>
+          <p>Text updated. <span class="tier tier--free">FREE · 6s</span></p>
+          <div class="result result--compact" data-version="2" id="v2">
+            <div class="result__stage">
+              <div class="frame">
+                <div class="frame__comp"><div class="frame__headline">Your back will thank you.</div><div class="frame__product">product-hero.png</div><div class="callout">Get 20% off</div></div>
+                <div class="safe safe--top" aria-hidden="true"></div><div class="safe safe--bottom" aria-hidden="true"></div>
+                <span class="frame__stamp">v2</span>
+              </div>
+            </div>
+            <div class="result__meta"><b>Version 2</b><span class="status status--ok">CURRENT</span></div>
+            <div class="result__diff"><span class="diff-pill"><del>Shop the launch</del>Get 20% off</span></div>
+            <div class="result__actions">
+              <button type="button" class="btn btn--primary" data-action="render">Download video <span class="sub">12 credits</span></button>
+              <button type="button" class="btn btn--ghost" data-action="levers">Edit text, colours or size <span class="tier tier--free">FREE</span></button>
+              <button type="button" class="btn btn--ghost" data-action="variants">Make variants</button>
+            </div>
+            <div class="levers">
+              <div class="row3">
+                <div class="field"><label for="l2-headline">HEADLINE</label><input id="l2-headline" class="input" type="text" value="Your back will thank you."></div>
+                <div class="field"><label for="l2-cta">BUTTON TEXT</label><input id="l2-cta" class="input" type="text" value="Get 20% off"></div>
+                <div class="field"><label for="l2-offer">OFFER <span class="ok">· KEPT AS-IS</span></label><input id="l2-offer" class="input" type="text" value="20% launch offer" readonly></div>
+              </div>
+              <div class="levers__foot">
+                <div class="palette" role="group" aria-label="Colours"><button type="button" class="swatch" aria-pressed="true" aria-label="Dark"><span style="background:#1a1f2b"></span><span style="background:#e8683d"></span></button><button type="button" class="swatch" aria-pressed="false" aria-label="Light"><span style="background:#f2efe8"></span><span style="background:#e8683d"></span></button></div>
+                <div class="seg" role="group" aria-label="Size"><button type="button" class="seg__btn" aria-pressed="true">9:16</button><button type="button" class="seg__btn" aria-pressed="false">4:5</button><button type="button" class="seg__btn" aria-pressed="false">1:1</button><button type="button" class="seg__btn" aria-pressed="false">16:9</button></div>
+                <button type="button" class="btn btn--ok" data-action="apply">Apply as Version 3 <span class="sub">~10s · free</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- completed: downloaded version -->
+        <div class="user-message"><p>Download that one.</p></div>
+
+        <div class="assistant-message">
+          <span class="speaker">WyvStudio <time>2:56 AM</time></span>
+          <p>Version 2 is ready. <span class="tier tier--quoted">12 CREDITS · 48s</span></p>
+          <div class="result result--compact result--done" data-version="2" data-export="e1">
+            <div class="result__stage">
+              <div class="frame">
+                <div class="frame__comp"><div class="frame__headline">Your back will thank you.</div><div class="frame__product">product-hero.png</div><div class="callout">Get 20% off</div></div>
+                <span class="frame__stamp">v2 · final</span>
+              </div>
+            </div>
+            <div class="result__meta"><b>Version 2 · video</b><span class="status status--ok">READY</span></div>
+            <div class="result__file"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/></svg><span>launch-offer-v2.mp4</span><span class="mono">1080×1920 · 15s · 8.4 MB</span></div>
+            <div class="result__actions">
+              <button type="button" class="btn btn--primary" data-action="download">Download</button>
+              <button type="button" class="btn btn--outline" data-action="share">Share link</button>
+              <button type="button" class="btn btn--outline" data-action="schedule">Schedule post</button>
+              <button type="button" class="btn btn--ghost" data-action="variants">Make variants <span class="tier tier--free">FREE TO PLAN</span></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- small spend: images, no approval card -->
+        <div class="user-message"><p>Make three thumbnail options for it. Big text.</p></div>
+
+        <div class="assistant-message">
+          <span class="speaker">WyvStudio <time>2:56 AM</time></span>
+          <p>Three thumbnails from your product photo. <span class="spent">MADE 3 IMAGES · <b>12 CREDITS</b></span></p>
+          <div class="igrid">
+            <div class="iresult is-picked" data-image="t1">
+              <div class="iresult__img"><span class="iresult__badge">1280×720</span><span class="iresult__pick">COVER</span><span class="t t--big" style="color:#fff">Your back<br>will thank you</span></div>
+              <div class="iresult__body"><span class="iresult__meta">thumb-a.png · 4 credits</span>
+                <div class="iresult__actions"><button type="button" class="btn btn--outline" data-iaction="download">Download</button><button type="button" class="btn btn--ghost" data-iaction="edit">Edit</button><button type="button" class="btn btn--ghost" data-iaction="variations">Variations</button><button type="button" class="btn btn--ghost" data-iaction="animate">Animate</button></div>
+              </div>
+            </div>
+            <div class="iresult" data-image="t2">
+              <div class="iresult__img" style="background:#f2efe8"><span class="iresult__badge">1280×720</span><span class="iresult__pick">COVER</span><span class="t t--big" style="color:#1a1f2b">20% off<br>at launch</span></div>
+              <div class="iresult__body"><span class="iresult__meta">thumb-b.png · 4 credits</span>
+                <div class="iresult__actions"><button type="button" class="btn btn--outline" data-iaction="download">Download</button><button type="button" class="btn btn--ghost" data-iaction="edit">Edit</button><button type="button" class="btn btn--ghost" data-iaction="variations">Variations</button><button type="button" class="btn btn--ghost" data-iaction="animate">Animate</button></div>
+              </div>
+            </div>
+            <div class="iresult" data-image="t3">
+              <div class="iresult__img" style="background:#e8683d"><span class="iresult__badge">1280×720</span><span class="iresult__pick">COVER</span><span class="t t--big" style="color:#0b0d11">Sit. Stand.<br>Repeat.</span></div>
+              <div class="iresult__body"><span class="iresult__meta">thumb-c.png · 4 credits</span>
+                <div class="iresult__actions"><button type="button" class="btn btn--outline" data-iaction="download">Download</button><button type="button" class="btn btn--ghost" data-iaction="edit">Edit</button><button type="button" class="btn btn--ghost" data-iaction="variations">Variations</button><button type="button" class="btn btn--ghost" data-iaction="animate">Animate</button></div>
+              </div>
+            </div>
+          </div>
+          <p class="muted" style="font-size:13px">The first is set as the cover for this video; click another to swap. All three are saved in Assets.</p>
+
+          <div class="ichoice" id="ichoice-edit">
+            <b>Edit thumbnail — which kind of change?</b>
+            <button type="button" class="option" data-open-presets><div><b>Change the text, crop or size</b><small>Same picture, new layout. Includes the sizes below.</small></div><span class="tier tier--free">FREE</span></button>
+            <button type="button" class="option" data-prompt="Regenerate thumbnail 1 with "><div><b>Regenerate with a change</b><small>Describe what's different: background, product angle, lighting.</small></div><span class="tier tier--quoted">~4 CREDITS EACH</span></button>
+            <div class="presets" id="presets" hidden role="group" aria-label="Size">
+              <button type="button" aria-pressed="true">YouTube thumbnail<small>1280×720</small></button>
+              <button type="button" aria-pressed="false">Square<small>1080×1080</small></button>
+              <button type="button" aria-pressed="false">Feed<small>1080×1350</small></button>
+              <button type="button" aria-pressed="false">Portrait<small>1080×1920</small></button>
+              <button type="button" aria-pressed="false">Landscape<small>1920×1080</small></button>
+            </div>
+          </div>
+
+          <div class="ichoice" id="ichoice-animate">
+            <b>Animate thumbnail — which kind of motion?</b>
+            <button type="button" class="option" data-prompt="Animate thumbnail 1 with a slow zoom and the text sliding in, 6 seconds"><div><b>Motion over the image</b><small>Zoom, pan, text sliding in. The picture itself doesn't change. Quoted as a short video build.</small></div><span class="tier tier--quoted">~12 CREDITS</span></button>
+            <button type="button" class="option" data-prompt="Generate a 6-second video from thumbnail 1 where the desk rises"><div><b>Generate video from it</b><small>The scene moves — the desk rises, light shifts. New footage, quoted on its own.</small></div><span class="tier tier--media">~290 CREDITS</span></button>
+          </div>
+        </div>
+
+        <!-- audio -->
+        <div class="user-message"><p>Read the three callouts in my voice so I can use them elsewhere.</p></div>
+
+        <div class="assistant-message">
+          <span class="speaker">WyvStudio <time>2:57 AM</time></span>
+          <p>Done with your cloned voice from the take. <span class="spent">MADE 1 CLIP · <b>3 CREDITS</b></span></p>
+          <div class="aresult">
+            <button type="button" class="btn btn--icon" aria-label="Play"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg></button>
+            <div class="wave" aria-hidden="true"><span style="height:30%"></span><span style="height:60%"></span><span style="height:90%"></span><span style="height:50%"></span><span style="height:70%"></span><span style="height:40%"></span><span style="height:85%"></span><span style="height:55%"></span><span style="height:35%"></span><span style="height:75%"></span><span style="height:95%"></span><span style="height:45%"></span><span style="height:65%"></span><span style="height:30%"></span><span style="height:80%"></span><span style="height:50%"></span><span style="height:60%"></span><span style="height:40%"></span><span style="height:70%"></span><span style="height:35%"></span><span style="height:85%"></span><span style="height:55%"></span><span style="height:45%"></span><span style="height:90%"></span><span style="height:60%"></span><span style="height:30%"></span><span style="height:75%"></span><span style="height:50%"></span><span style="height:40%"></span><span style="height:65%"></span></div>
+            <div class="aresult__meta"><b>callouts-voiceover.mp3</b><small>0:09 · your voice</small></div>
+            <div class="aresult__actions"><button type="button" class="btn btn--outline" data-iaction="download">Download</button><button type="button" class="btn btn--ghost" data-prompt="Use the voiceover in the video instead of the on-screen callouts">Use in video</button></div>
+          </div>
+        </div>
+
+        <!-- layout change: quoted, approved, in progress -->
+        <div class="user-message"><p>Can the product spin in?</p></div>
+
+        <div class="assistant-message">
+          <span class="speaker">WyvStudio <time>2:58 AM</time></span>
+          <p>Motion changes the layout, so this one is quoted. Same footage, no new media.</p>
+          <div class="icard icard--warn">
+            <div class="icard__body">
+              <div class="approval__row">
+                <div><span class="tier tier--quoted">UPDATE ANIMATION · UP TO 18 CREDITS</span><span class="muted" style="font-size:13px">About 1–2 minutes · makes Version 3 from Version 2</span></div>
+                <span class="status status--ok">APPROVED</span>
+              </div>
+            </div>
+          </div>
+          <div class="icard icard--info" id="working-card">
+            <div class="icard__body working">
+              <div class="working__row"><span class="spinner" aria-hidden="true"></span><div><div class="working__label">Updating the animation</div><div class="working__step">Step 2 of 4 · building</div></div><time>0:48</time></div>
+              <div class="working__bar"><span style="width:45%"></span></div>
+              <span class="working__note">You can leave this page. Version 2 stays downloadable while this runs.</span>
+            </div>
+            <div class="icard__foot"><span class="spacer"></span><button type="button" class="btn btn--ghost btn--sm" data-cancel>Cancel · keeps what's done so far</button></div>
+          </div>
+          <div class="suggestions">
+            <button type="button" data-prompt="Make the captions smaller">Smaller captions<span class="tier tier--free">FREE</span></button>
+            <button type="button" data-prompt="Make a 4:5 version for the Feed">4:5 for Feed<span class="tier tier--free">FREE</span></button>
+            <button type="button" data-prompt="Change the intro to a different take">Different intro take<span class="tier tier--media">NEW FOOTAGE</span></button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="composer-dock">
+        <div class="attached" id="attached">
+          <div class="upload"><span class="upload__thumb"></span><div><b>lifestyle-01.jpg</b><small>uploading · 62%</small><div class="upload__bar"><span style="width:62%"></span></div></div><span class="role-toggle" role="group" aria-label="Use as"><button type="button" aria-pressed="true">REUSE</button><button type="button" aria-pressed="false">REFERENCE</button></span><button type="button" class="upload__x" aria-label="Remove lifestyle-01.jpg">×</button></div>
+          <div class="upload upload--error"><span class="upload__thumb upload__thumb--video"></span><div><b>broll-long.mov</b><small>Too large (1.2 GB). Limit is 500 MB.</small></div><button type="button" class="btn btn--ghost btn--sm" data-retry>Retry</button><button type="button" class="upload__x" aria-label="Remove broll-long.mov">×</button></div>
+        </div>
+        <form id="prompt-form">
+          <label class="sr-only" for="prompt">Describe your video or a change</label>
+          <textarea id="prompt" rows="2" placeholder="Describe what you want to create or change…"></textarea>
+          <div class="composer-bottom">
+            <button type="button" class="quiet" id="attach-button">+ Attach</button>
+            <button type="button" class="quiet">Brand kit · Standing Desk Co</button>
+            <button class="send" type="submit" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+          </div>
+        </form>
+        <p class="composer-note">Text, colour and size changes are free. Small jobs like a few images just run and show their cost. Anything over 15 credits is quoted first.</p>
+        <input type="file" id="file-input" accept="image/*,video/*,audio/*" multiple hidden>
+      </div>
+    </section>
+
+    <aside id="details-panel" hidden aria-label="Video details and versions">
+      <div class="panel-heading"><h2>This video</h2><button type="button" class="quiet" id="close-panel" aria-label="Close">×</button></div>
+      <div class="detail-tabs"><button type="button" aria-pressed="true" data-pane="details">Details</button><button type="button" aria-pressed="false" data-pane="versions">Versions</button></div>
+
+      <div id="details-pane">
+        <section><h3>OUTPUT</h3><p>Portrait 9:16 · 15 seconds · your take's audio</p><p class="muted">To change the size, use "Edit text, colours or size" on a version. That makes a new version.</p></section>
+        <section><h3>KEPT AS-IS</h3>
+          <label><input type="checkbox" checked> ugc-take-03.mp4, first 4 seconds</label>
+          <label><input type="checkbox" checked> Your voice from the take</label>
+          <label><input type="checkbox" checked> "20% launch offer" wording</label>
+          <p class="muted">These survive every edit. Untick one to let the assistant change it.</p>
+        </section>
+        <section><h3>WHERE IT WILL RUN</h3>
+          <div class="optlist" role="group" aria-label="Placement">
+            <button type="button" aria-pressed="true">Instagram Reels / Stories <small>overlay shown</small></button>
+            <button type="button" aria-pressed="false">TikTok, with ad button</button>
+            <button type="button" aria-pressed="false">YouTube Shorts</button>
+            <button type="button" aria-pressed="false">No overlay</button>
+          </div>
+        </section>
+        <section><h3>FILES IN THIS VIDEO</h3>
+          <div class="asset"><span class="asset__thumb asset__thumb--video"></span><span><b>ugc-take-03.mp4</b><small>0:15 · 1080×1920</small></span></div>
+          <div class="asset"><span class="asset__thumb asset__thumb--image"></span><span><b>product-hero.png</b><small>2048×2048</small></span></div>
+          <div class="asset"><span class="asset__thumb" style="background:var(--comp-bg)"></span><span><b>thumb-a/b/c.png</b><small>generated · in Assets</small></span></div>
+          <div class="asset"><span class="asset__thumb" style="background:var(--bg-2)"></span><span><b>callouts-voiceover.mp3</b><small>generated · in Assets</small></span></div>
+          <button type="button" class="quiet" id="panel-add">+ Add from library</button>
+        </section>
+        <section><h3>CREDITS ON THIS VIDEO</h3>
+          <div class="spend"><span>Building the preview</span><b>31</b></div>
+          <div class="spend"><span>Text changes</span><b class="ok">0</b></div>
+          <div class="spend"><span>Downloads</span><b>12</b></div>
+          <div class="spend"><span>Images and audio</span><b>15</b></div>
+          <div class="spend"><span>Reserved for the current update</span><b class="warn">18</b></div>
+        </section>
+      </div>
+
+      <div id="versions-pane" hidden>
+        <section>
+          <p class="muted">Every change is a new version. Restoring an old one makes a new version; nothing is overwritten.</p>
+          <div class="version"><div class="version__row"><span><b>Version 3</b><small>animation update · in progress</small></span><span class="status status--info">BUILDING</span></div></div>
+          <div class="version is-current" data-version="2"><div class="version__row"><span><b>Version 2</b><small>button text · free</small></span><span class="status status--ok">CURRENT</span></div><div class="version__actions"><button type="button" class="btn btn--ghost" data-vaction="open">Open</button><button type="button" class="btn btn--ghost" data-vaction="compare">Compare</button></div></div>
+          <div class="version" data-version="1"><div class="version__row"><span><b>Version 1</b><small>first build · 31 credits</small></span></div><div class="version__actions"><button type="button" class="btn btn--ghost" data-vaction="open">Open</button><button type="button" class="btn btn--ghost" data-vaction="compare">Compare</button><button type="button" class="btn btn--ghost" data-vaction="restore">Restore</button></div></div>
+        </section>
+        <section><h3>DOWNLOADS</h3>
+          <div class="version" data-export="e1"><div class="version__row"><span><b>launch-offer-v2.mp4</b><small>Version 2 · 2:56 AM</small></span><span class="status status--ok">CURRENT</span></div><div class="version__actions"><button type="button" class="btn btn--ghost" data-vaction="download">Download</button><button type="button" class="btn btn--ghost" data-vaction="share">Share</button></div></div>
+          <p class="muted">When Version 3 finishes, this file stays available and is marked as older than the current version.</p>
+        </section>
+      </div>
+    </aside>
+  </div>
+</main>
+</div>
+
+<dialog id="action-dialog"><div class="panel-heading" style="padding:0"><h2 id="dialog-title"></h2><button type="button" class="quiet" id="close-dialog" aria-label="Close">×</button></div><div id="dialog-body"></div></dialog>
+
+<div class="drawer" id="recent-drawer" role="dialog" aria-modal="true" aria-labelledby="recent-title">
+  <div class="drawer__scrim" data-close-drawer></div>
+  <div class="drawer__panel">
+    <div class="drawer__head"><h2 id="recent-title">Recent conversations</h2><a href="all-videos.html" class="quiet">All Videos</a><button type="button" class="quiet" data-close-drawer aria-label="Close">×</button></div>
+    <label class="drawer__search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" id="recent-search" placeholder="Search by title, prompt or file name"></label>
+    <div class="drawer__filters" role="group" aria-label="Filter"><button type="button" aria-pressed="true" data-filter="all">All</button><button type="button" aria-pressed="false" data-filter="working">In progress</button><button type="button" aria-pressed="false" data-filter="needs">Needs you</button><button type="button" aria-pressed="false" data-filter="done">Finished</button></div>
+    <div class="drawer__list" id="recent-list">
+      <div class="drawer__group">TODAY</div>
+      <a href="agent.html" class="session is-current" data-state="working" data-text="launch offer ugc callouts ugc-take-03 product-hero spin"><span class="session__thumb"></span><div><b>Launch offer · UGC + callouts</b><small>"Can the product spin in?" · ugc-take-03.mp4, product-hero.png</small><span class="status status--info">UPDATING · V3</span></div><time>2:57 AM</time></a>
+      <a href="agent-states.html" class="session" data-state="needs" data-text="desk photos presenter three photos no footage"><span class="session__thumb session__thumb--empty"></span><div><b>Desk in use from photos</b><small>Waiting for you to pick: from photos, generate a take, or attach footage</small><span class="status status--warn">NEEDS YOU</span></div><time>1:12 AM</time></a>
+      <div class="drawer__group">YESTERDAY</div>
+      <a href="#" class="session" data-state="done" data-text="pricing tiers explainer kinetic text"><span class="session__thumb session__thumb--square"></span><div><b>Pricing tiers explainer</b><small>Square · 20s · 2 versions · downloaded</small><span class="status status--ok">FINISHED</span></div><time>Sun</time></a>
+      <a href="#" class="session" data-state="done" data-text="standing desk pays for itself smoke reels resize 4:5"><span class="session__thumb"></span><div><b>Standing Desk Pays for Itself — 4:5 cut</b><small>Resize of a UGC video · 1 version · downloaded, 3 variants</small><span class="status status--ok">FINISHED</span></div><time>Sun</time></a>
+      <div class="drawer__group">LAST WEEK</div>
+      <a href="#" class="session" data-state="done" data-text="three reasons standing desk callouts"><span class="session__thumb"></span><div><b>Three reasons a standing desk</b><small>Portrait · 30s · 4 versions · downloaded</small><span class="status status--ok">FINISHED</span></div><time>Sep 22</time></a>
+      <a href="#" class="session" data-state="done" data-text="ai images 15s smoke test"><span class="session__thumb"></span><div><b>Smoke: AI images 15s</b><small>Preview only · never downloaded</small><span class="status status--neutral">PREVIEW ONLY</span></div><time>Sep 21</time></a>
+    </div>
+  </div>
+</div>
+<div id="agent-toast" role="status" hidden></div>
+<script src="agent.js"></script>
+</body>
+</html>
