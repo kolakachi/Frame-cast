@@ -103,7 +103,12 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     // EVERY chunk so identity holds across the chain (the
                     // scene stays creative — no start frame on chunk 0). Other
                     // engines only need refs on chunk 0.
-                    $chunkRefs = ($this->engine === 'veo_hq' || $i === 0) ? $this->referenceImages : [];
+                    // Omni has no seed, so the reference set is all that keeps
+                    // the presenter recognisable from one chunk to the next —
+                    // it rides every chunk, as veo_hq's does.
+                    $chunkRefs = ($this->engine === 'veo_hq' || $this->engine === 'omni' || $i === 0)
+                        ? $this->referenceImages
+                        : [];
                     $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution);
                     $scene->forceFill(['image_generation_settings_json' => array_merge(
                         $scene->image_generation_settings_json ?? [],

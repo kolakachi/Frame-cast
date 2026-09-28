@@ -26,7 +26,12 @@ class UgcOneShotPricing
     public static function price(User $user, array $v, array $segments, CreditService $credits): array
     {
         $workspaceId = (int) $user->workspace_id;
-        $engine = 'seedance25';
+        // Mirror the controller's own first move. This used to hardcode
+        // seedance25, so any caller asking for another engine was quoted at
+        // Seedance's rate and then refused by the credits cross-check.
+        $engine = in_array($v['engine'] ?? null, ['seedance25', 'veo', 'omni'], true)
+            ? (string) $v['engine']
+            : 'seedance25';
         $isTestPass = $credits->planTier($workspaceId) === 'ugc_pass';
 
         $presenter = trim((string) ($v['presenter_description'] ?? ''));
@@ -43,7 +48,7 @@ class UgcOneShotPricing
                 $presenterAttached = (bool) ($ref && str_starts_with((string) $ref->mime_type, 'image/') && $ref->storage_url);
             }
         }
-        if ($presenterAttached) {
+        if ($presenterAttached && $engine !== 'omni') {
             $engine = 'veo_hq';
         }
         if ($isTestPass && ! $presenterAttached) {

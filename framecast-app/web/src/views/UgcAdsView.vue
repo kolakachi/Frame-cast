@@ -243,7 +243,10 @@ const selected = ref([]); // chosen characters
 // character is available. Veo carries a real cast face into any creative
 // scene (google/veo-3.1, face in reference_images, 58 cr/s); Seedance
 // invents a fitting presenter with no character (castless, 33 cr/s).
-const castEngine = ref("seedance"); // 'veo' | 'seedance'
+const castEngine = ref("seedance"); // 'veo' | 'omni' | 'seedance'
+// Both cast engines carry a real character face; Seedance cannot render one
+// at all, which is why it is the castless option rather than a cheaper one.
+const castsCharacter = computed(() => castEngine.value === "veo" || castEngine.value === "omni");
 
 // Placed below duration and castEngine on purpose: an immediate watcher that
 // reads them from further up the file runs before their `const` is
@@ -341,7 +344,7 @@ const perCharacter = computed(() => plan.value?.credits_per_character ?? 0);
 // Engine follows the cast: a photoreal character reference is declined by
 // Seedance's moderation, so character-cast takes generate on Veo (12 cr/s,
 // identity via start frame); castless takes use Seedance (18 cr/s).
-const ONESHOT_RATES = { seedance25: 33, seedance25_480: 15, veo: 22, veo_hq: 58 };
+const ONESHOT_RATES = { seedance25: 33, seedance25_480: 15, veo: 22, veo_hq: 58, omni: 22 };
 const planSeconds = computed(() =>
   (plan.value?.segments ?? []).reduce((t, x) => t + Math.max(1, Number(x.seconds || 0)), 0)
 );
@@ -352,6 +355,7 @@ const oneShotRate = computed(() => {
   // A demo take is a normal 720p Seedance render (the real clip is spliced
   // in post) — castless and full-quality, outranking cast/draft choices.
   if (hasDemo.value) return ONESHOT_RATES.seedance25;
+  if (castEngine.value === "omni" && selected.value.length) return ONESHOT_RATES.omni;
   if (castEngine.value === "veo" && selected.value.length) return ONESHOT_RATES.veo_hq;
   return draftQuality.value ? ONESHOT_RATES.seedance25_480 : ONESHOT_RATES.seedance25;
 });
@@ -771,7 +775,7 @@ async function generate() {
     if (oneShotEligible.value) {
       // Veo carries the chosen character; Seedance is castless and takes the
       // director's written presenter instead.
-      const presenter = castEngine.value === "veo" ? selected.value[0] : null;
+      const presenter = castsCharacter.value ? selected.value[0] : null;
       const oneShotPayload = {
         format: plan.value.format,
         segments: plan.value.segments,
@@ -780,7 +784,7 @@ async function generate() {
           ? [presenter.name, presenter.description].filter(Boolean).join(" — ")
           : (plan.value.presenter || ""),
         character_id: presenter?.id ?? null,
-        engine: castEngine.value === "veo" ? "veo" : "seedance25",
+        engine: castEngine.value === "veo" ? "veo" : castEngine.value === "omni" ? "omni" : "seedance25",
         quality: castEngine.value === "seedance" && draftQuality.value ? "draft" : "full",
         product_asset_id: productAsset.value?.id ?? null,
         product_asset_ids: productAssets.value.map((a) => a.id),
@@ -1219,6 +1223,12 @@ onMounted(() => {
                 <span v-if="hasDemo">Not available with a demo clip — a demo runs castless on Seedance.</span>
                 <span v-else>Their real face, dropped into any scene the ad needs — Google's best renderer · 58 cr/s</span>
               </label>
+              <label :class="['ugc-style-pill', { on: castEngine === 'omni', disabled: hasDemo }]">
+                <input v-model="castEngine" type="radio" value="omni" :disabled="hasDemo" />
+                <b>Use one of your characters — faster, cheaper</b>
+                <span v-if="hasDemo">Not available with a demo clip — a demo runs castless on Seedance.</span>
+                <span v-else>The same real face, on Google's newer model · 22 cr/s</span>
+              </label>
               <label :class="['ugc-style-pill', { on: castEngine === 'seedance' }]">
                 <input v-model="castEngine" type="radio" value="seedance" />
                 <b>Let us cast a presenter</b>
@@ -1230,7 +1240,7 @@ onMounted(() => {
               <span><b>Draft quality</b> — 480p at half the credits, to preview a concept before a full 720p take · 15 cr/s</span>
             </label>
 
-            <div v-for="c in selected" :key="c.id" v-show="castEngine === 'veo' || !oneShotEligible" class="ugc-ch">
+            <div v-for="c in selected" :key="c.id" v-show="castsCharacter || !oneShotEligible" class="ugc-ch">
               <div class="ugc-ch-av">
                 <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" alt="" />
                 <span v-else>☺</span>
@@ -1260,7 +1270,7 @@ onMounted(() => {
               </div>
               <button class="ugc-ch-x" type="button" @click="toggleCharacter(c)">✕</button>
             </div>
-            <div v-if="castEngine === 'veo' || !oneShotEligible" class="ugc-card-f">
+            <div v-if="castsCharacter || !oneShotEligible" class="ugc-card-f">
               <button class="ugc-btn" @click="openPicker">{{ selected.length ? "＋ Swap character" : "＋ Pick a character" }}</button>
               <span v-if="!selected.length" class="ugc-hint">Choose a character to front this ad — their face carries into the scene.</span>
             </div>

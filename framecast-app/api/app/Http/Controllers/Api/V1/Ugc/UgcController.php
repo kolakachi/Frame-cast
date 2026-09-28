@@ -1042,7 +1042,7 @@ class UgcController extends Controller
         // Pricing below is mirrored in App\Services\Ugc\UgcOneShotPricing for the
         // developer API's quotes; change both, or the API's quote will not match
         // the credits check further down and every create will be refused.
-        $engine = in_array($request->input('engine'), ['seedance25', 'veo'], true) ? $request->input('engine') : 'seedance25';
+        $engine = in_array($request->input('engine'), ['seedance25', 'veo', 'omni'], true) ? $request->input('engine') : 'seedance25';
 
         // The $9 Test Pass buys a look at the product, not the whole catalogue:
         // Seedance only (Veo HQ costs nearly twice as much per second and would
@@ -1055,7 +1055,10 @@ class UgcController extends Controller
         // chunks. (Seedance declines photoreal faces, so a real cast is
         // always Veo.) Product photos ride in the same reference set.
         $characterFrame = null;
-        if ($presenterImageAttached) {
+        // Omni also carries a face in reference_images, at 22cr/s against
+        // veo_hq's 58, so an explicit choice of it stands. veo_hq stays the
+        // default for a cast presenter until Omni has production mileage.
+        if ($presenterImageAttached && $engine !== 'omni') {
             $engine = 'veo_hq';
         }
 

@@ -170,7 +170,11 @@ class CreditService
     // 50%-margin floor: 2 x COGS / \$0.014 (the cheapest pack's per-credit
     // price), so margin holds >=50% for every pack. Seedance 720p \$0.2312/s,
     // Veo-fast \$0.15/s, Veo-3.1 \$0.40/s (all with audio).
-    public const VIDEO_ONESHOT_PER_SECOND = ['seedance25' => 33, 'veo' => 22, 'veo_hq' => 58];
+    // Gemini Omni 1.1 bills \$0.15/s at 720p — the same as Veo 3.1 Fast, but
+    // it takes reference_images, so a cast presenter no longer has to go to
+    // veo_hq at 58. Length is the model's to choose, so the quote reserves
+    // ReplicateVeoAdapter::OMNI_MAX_SECONDS and refunds what is not used.
+    public const VIDEO_ONESHOT_PER_SECOND = ['seedance25' => 33, 'veo' => 22, 'veo_hq' => 58, 'omni' => 22];
 
     // Seedance at 480p (draft): ~\$0.1028/s upstream vs \$0.2312/s at 720p,
     // so half the rate, same margin structure.
