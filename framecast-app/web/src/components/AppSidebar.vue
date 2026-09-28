@@ -22,6 +22,7 @@ const sidebarStore = useSidebarStore();
 // the team, so the entry is hidden rather than shown and then refused.
 const authStore = useAuthStore();
 const isInternal = computed(() => Boolean(authStore.user?.is_internal));
+const createEnabled = ref(false);
 const isCollapsed = computed(() => sidebarStore.collapsed);
 
 const router = useRouter();
@@ -54,6 +55,7 @@ const TABS = [
 function tabTap(tab) {
   mobileOpen.value = false;
   if (tab.action === "create") {
+    if (createEnabled.value) { router.push({ name: 'create' }); return; }
     // The dashboard owns the wizard; anywhere else, go there and open it.
     window.dispatchEvent(new CustomEvent("wyv:new-video"));
     if (props.activePage !== "dashboard") router.push({ name: "dashboard" });
@@ -72,7 +74,7 @@ const hideTabs = isEditorScreen;
 
 const screenTitle = computed(() => {
   const named = {
-    dashboard: "Dashboard", videos: "Videos", calendar: "Calendar", jobs: "Jobs",
+    create: "Create", dashboard: "Dashboard", videos: "Videos", calendar: "Calendar", jobs: "Jobs",
     channels: "Channels", series: "Series", clients: "Clients", settings: "Settings",
     characters: "Characters", voices: "Voices", "asset-library": "Assets", "ugc-ads": "UGC Ads", "from-my-footage": "From My Footage",
     editor: "Editor", "project-editor": "Editor", "project-variants": "Variants",
@@ -89,6 +91,7 @@ const workspaceError = ref('');
 const activeWorkspaceId = computed(() => props.user?.workspace_id ?? null);
 const activeWorkspaceName = computed(() => switchTargets.value.find(w => Number(w.id) === Number(activeWorkspaceId.value))?.name || workspaceStore.workspaceName);
 onMounted(async () => {
+  try { createEnabled.value = (await api.get('/create/capabilities')).data.data.enabled; } catch { createEnabled.value = false; }
   try { switchTargets.value = (await api.get('/workspace-access')).data.data; }
   catch { workspaceError.value = 'Could not load workspaces. Refresh to retry.'; }
 });
@@ -381,6 +384,7 @@ onBeforeUnmount(() => {
     <router-link v-if="!isCollapsed && switchTargets.some(w => Number(w.id) === Number(activeWorkspaceId) && w.is_client)" class="client-work-link" to="/client-work">Client brief &amp; requests →</router-link>
     <div class="sidebar-nav">
       <div class="nav-section-label">Workspace</div>
+      <button v-if="createEnabled" :class="['nav-item', activePage === 'create' ? 'active' : '']" type="button" data-tooltip="Create" @click="nav('create')">✦ Create</button>
       <button
         :class="['nav-item', activePage === 'dashboard' ? 'active' : '']"
         data-tooltip="Dashboard"

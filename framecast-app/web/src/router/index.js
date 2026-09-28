@@ -33,6 +33,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 
 const routes = [
+  { path: '/create/:conversationId?', name: 'create', component: () => import('../views/CreateView.vue'), meta: { requiresAuth: true } },
   { path: '/client-work', name: 'client-work', component: () => import('../views/ClientWorkView.vue'), meta: { requiresAuth: true } },
   { path: '/delivery/:token', name: 'client-delivery', component: () => import('../views/ClientDeliveryView.vue'), meta: { public: true } },
   { path: '/', redirect: '/dashboard' },

@@ -1,9 +1,9 @@
 # Create / Hyperframes — implementation TODO
 
-Status: **E0 local renderer proof complete for trusted fixtures; E1 in progress; E2–E6 remain pending.**
+Status: **E0 complete; E1 creative/model evaluation deferred by user; E2/E3 local app integration in progress; E4–E6 pending.**
 Created: 2026-09-28.
 
-Start with E0. Complete and record each gate before moving to the next. Production deployment and public MCP access are separate gates, not consequences of a successful local demo.
+Sequencing update, 2026-09-28: the user requested finishing integration before comparing models and applying their strengths. E1 creative acceptance is therefore deferred, not passed, and does not block local E2/E3 engineering. Production deployment and public MCP access remain separate gates. Paid calls stay disabled; the existing $5 test cap has not been increased.
 
 ## Sources and decisions
 
@@ -57,7 +57,7 @@ Local checks pass for cooperative cancellation, deadlines, missing assets/font/o
 
 ## E1 — prove the agent locally
 
-Progress: verified public endpoint schema snapshots, strict JSON action loop, scoped source tools, local journal, bounded execution and disabled-by-default Replicate adapter implemented. 21 deterministic tests pass; a scripted provider completed a real offline Hyperframes render. See [E1 verification](hyperframes-e1-verification.md). Real-model creativity, vision and measured costs remain unverified.
+Progress: verified public endpoint schema snapshots, strict JSON action loop, scoped source tools, local journal, bounded execution and disabled-by-default Replicate adapter implemented. 41 deterministic tests pass; scripted and real providers completed offline Hyperframes renders. See [E1 verification](hyperframes-e1-verification.md). Measured test costs and sampled visual review exist, but creative acceptance and the model comparison remain incomplete.
 
 ### E1.1 Replicate endpoint contract
 
@@ -92,6 +92,19 @@ Progress: verified public endpoint schema snapshots, strict JSON action loop, sc
 **Current evidence:** real product teaser and opening edit rendered; 41 deterministic tests pass. Second user review: “Still too basic—improve the creative direction.” Creative acceptance and the incomplete benchmark remain open. Paid tests stopped at the original $5 reservation cap; see round-up evidence and per-case costs. Approved live testing uses the app credential and explicit image-transfer permission within a shared $5 cap; this is an authorized exception to the separate-credential plan.
 
 ## E2 — app domain, execution and accounting
+
+### E2.1 Local app-to-worker slice
+
+- [x] Add a separate, allowlisted local Create surface, off by default and unavailable in production.
+- [x] Persist conversations, ordered messages, source/reference attachment roles, runs and immutable revisions.
+- [x] Exercise quote expiry, approval/replay, shared operation capacity, cancellation, lease fencing, conflicting drafts and restore-as-new with isolated tests.
+- [x] Run the real API → host coordinator → offline Hyperframes renderer → private MP4 → download → restore flow without paid calls.
+- [x] Add an explicit operator recovery command for interrupted **fixture** runs; never treat lease expiry as proof the worker stopped.
+- [ ] Complete paid-agent receipts/settlement and immutable user-asset staging. The host bridge currently executes a clearly labelled fixed fixture only.
+- [ ] Register final compositions through the Project/Asset/ExportJob contracts and add scene-editor discriminator guards. Local previews deliberately do not create scene projects or public assets yet.
+
+See [local app integration evidence and setup](hyperframes-app-integration-verification.md). These checks close only the local fixture slice, not the full E2/E3 gates below.
+
 
 - [ ] Add workspace-scoped conversations, messages, attachments, compositions, immutable revisions, runs and artifact relationships; follow the technical spec's schema and reuse existing entities where appropriate.
 - [ ] Preserve the distinction between source assets, reference-only assets, previews and final outputs.
@@ -164,4 +177,4 @@ Progress: verified public endpoint schema snapshots, strict JSON action loop, sc
 
 Use stable task references such as E0.2/CTA revision in commits and verification notes. Tick a task only when its implementation and required checks pass. Every completed phase records commit, runtime identity, commands, outputs and limitations. Do not put credentials or private customer media in the evidence document.
 
-Immediate next implementation slice: **E1 creative quality and source-preservation evaluation. Real Sonnet generation/edit renders exist, but human review says creative quality needs improvement. See hyperframes-e1-verification.md; E1 stays open.**
+Immediate next implementation slice: **finish E2 paid-agent accounting/asset staging and final project/artifact registration, then complete E3 multimodal routing and E4 timed editing. Model comparisons remain deferred by user instruction; E1 creative acceptance stays open.**

@@ -31,6 +31,13 @@ use App\Http\Controllers\Api\V1\Publishing\ScheduledPostController;
 use Illuminate\Broadcasting\BroadcastController;
 use Illuminate\Support\Facades\Route;
 
+// Private local coordinator. Separate credential, no browser/session access.
+Route::prefix('internal/create')->middleware('throttle:120,1')->group(function (): void {
+    Route::post('/claim', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'claim']);
+    Route::post('/runs/{id}/heartbeat', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'heartbeat']);
+    Route::post('/runs/{id}/finish', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'finish']);
+});
+
 // OAuth for MCP connectors (ChatGPT, Claude web). Public clients, PKCE,
 // dynamic registration. The consent page is the SPA route /oauth/authorize;
 // it calls context/decide with the user's session.
@@ -206,6 +213,23 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/public/projects/{token}', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'show']);
 
     Route::middleware('auth.jwt')->group(function (): void {
+        Route::prefix('create')->group(function (): void {
+            $controller = \App\Http\Controllers\Api\V1\Create\CreateController::class;
+            Route::get('/capabilities', [$controller, 'capabilities']);
+            Route::get('/conversations', [$controller, 'index']);
+            Route::post('/conversations', [$controller, 'store']);
+            Route::get('/conversations/{id}', [$controller, 'show']);
+            Route::patch('/conversations/{id}', [$controller, 'update']);
+            Route::post('/conversations/{id}/messages', [$controller, 'message']);
+            Route::post('/conversations/{id}/attachments', [$controller, 'attach']);
+            Route::delete('/conversations/{id}/attachments/{assetId}', [$controller, 'detach'])->whereNumber('assetId');
+            Route::post('/conversations/{id}/quotes', [$controller, 'quote']);
+            Route::post('/conversations/{id}/runs', [$controller, 'approve']);
+            Route::post('/conversations/{id}/runs/{runId}/cancel', [$controller, 'cancel']);
+            Route::post('/conversations/{id}/revisions/{revisionId}/restore', [$controller, 'restore']);
+            Route::get('/conversations/{id}/revisions/{revisionId}/artifact', [$controller, 'artifact']);
+        });
+
         // Client workspaces. An agency works for several clients, each kept
         // apart, all spending the agency's one pool of credits.
         Route::get('/workspaces/clients', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'index']);
