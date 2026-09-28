@@ -69,11 +69,11 @@ Progress: verified public endpoint schema snapshots, strict JSON action loop, sc
 ### E1.2 Bounded tool loop
 
 - [ ] Load pinned router/core/CLI and relevant creative/animation guidance on demand; host authorization and budget rules take precedence.
-- [ ] Implement scoped read/write/patch, asset manifest, timeline, installed primitive lookup, validation, snapshot inspection and media-proposal tools.
+- [x] Implement scoped read/write/patch, asset manifest, timeline, installed primitive lookup, validation, snapshot inspection and media-proposal tools. Bounded local tools and combined preview implemented.
 - [ ] Supply the brief, approved facts, brand, transcript, asset manifest and base revision; preserve stable IDs and locked inputs.
 - [x] Enforce maximum calls, tokens, elapsed time, cost and two repair cycles after the first draft. Pause rather than retry indefinitely. Local limits verified; cost uses conservative per-call reservations, not assumed billing metrics.
 - [ ] Inspect sampled output frames using a verified image-capable endpoint. Validate audio and timing separately; never claim every frame was checked from a few samples.
-- [ ] Persist progress so restarting a job does not lose the current revision or repeat completed paid steps.
+- [x] Persist progress so restarting a job does not lose the current revision or repeat completed paid steps. Local journal/no-replay tests pass; unknown outcomes pause for reconciliation. Production leases remain E2.
 
 ### E1.3 Quality and cost fixtures
 
@@ -84,12 +84,12 @@ Progress: verified public endpoint schema snapshots, strict JSON action loop, sc
 - [ ] Run the same five briefs through each candidate: product promo, footage overlay, typography explainer, reference-inspired layout, and targeted follow-up edit.
 - [ ] Include difficult cases: long text, missing benefit claims, contradictory request, too-short footage and a requested new spoken hook.
 - [ ] Score instruction adherence, source preservation, readability, audio alignment, repair count, latency and total cost per acceptable output.
-- [ ] Confirm composition-only requests make zero image/video-generation calls.
+- [x] Confirm composition-only requests make zero image/video-generation calls. Local provider permits only the two inspected text/vision endpoints; media proposals pause, rendering is offline.
 - [ ] Record the model choice and measured ceilings. Do not assume a cheaper token rate gives a cheaper successful video.
 
 **E1 exit:** a real prompt produces an acceptable local video and a follow-up prompt modifies it without losing source fidelity. Provider compatibility and measured costs are documented.
 
-**Current evidence:** real product teaser and opening edit rendered; 30 deterministic tests pass. User review: “Works, but creative quality needs improvement.” Broad creative/fidelity benchmark remains open. Approved live testing uses the app credential and explicit image-transfer permission within a shared $5 cap; this is an authorized exception to the separate-credential plan.
+**Current evidence:** real product teaser and opening edit rendered; 41 deterministic tests pass. Second user review: “Still too basic—improve the creative direction.” Creative acceptance and the incomplete benchmark remain open. Paid tests stopped at the original $5 reservation cap; see round-up evidence and per-case costs. Approved live testing uses the app credential and explicit image-transfer permission within a shared $5 cap; this is an authorized exception to the separate-credential plan.
 
 ## E2 — app domain, execution and accounting
 

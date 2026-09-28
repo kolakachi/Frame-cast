@@ -1,5 +1,7 @@
 import {readFile,writeFile,rename} from 'node:fs/promises';
 import {parseAction,hostPolicy} from './protocol.mjs';
+import {briefGate,assertLockedSource} from './brief-guard.mjs';
+import {promptHistory,primitives} from './prompt-context.mjs';
 import {digest} from './workspace.mjs';
 
 // One owner per local run. Production locking/leases belong to E2.
@@ -17,6 +19,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const started=Date.now(),previousElapsed=state.elapsedMs;
   const save=async()=>{state.elapsedMs=previousElapsed+Date.now()-started;await writeFile(stateFile+'.tmp',JSON.stringify(state,null,2),{mode:0o600});await rename(stateFile+'.tmp',stateFile);};
   if(state.pending){state.status='needs_attention';state.reason='Interrupted action: reconcile before retrying';await save();return state;}
+  const gate=briefGate(context);if(gate){Object.assign(state,gate);await save();return state;}
   const timeout=AbortSignal.timeout(Math.max(1,cap.elapsedMs-state.elapsedMs));
   const boundedSignal=signal?AbortSignal.any([signal,timeout]):timeout;
   const bounded = work => new Promise((resolve,reject)=>{
@@ -28,7 +31,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     while(state.calls<cap.calls) {
       boundedSignal.throwIfAborted();
       await workspace.verifyAssets();
-      const prompt=JSON.stringify({context,remainingCalls:cap.calls-state.calls,history:state.messages});
+      const prompt=JSON.stringify({context,remainingCalls:cap.calls-state.calls,revision:state.revision,history:promptHistory(state.messages)});
       if(Buffer.byteLength(prompt)+Buffer.byteLength(skills)>cap.contextBytes)throw Error('Context limit reached');
       const reservation=provider.maxCallUsd;
       if(!Number.isFinite(reservation)||reservation<0||state.reservedUsd+reservation>cap.budgetUsd)throw Error('Model budget exhausted');
@@ -36,8 +39,10 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       state.reservedOutputTokens+=cap.maxOutputTokens;
       state.reservedUsd+=reservation;state.calls++;state.pending={kind:'provider',call:state.calls};await save();
       const reviewImage=state.reviewImage;
+      const callStarted=Date.now();
       const response=await bounded(()=>provider.complete({prompt,system:hostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,image:reviewImage||initialImage,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
       boundedSignal.throwIfAborted();
+      state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(prompt),systemBytes:Buffer.byteLength(hostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics});
       // Persist returned output before dispatch. Never repeat an uncertain paid create.
       state.pending=null;state.messages.push({role:'assistant',content:response.text});await save();
       let action;
@@ -55,8 +60,16 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           if(old.split(action.before).length!==2)throw Error('Patch must match exactly once');
           text=old.replace(action.before,action.after);
         }
+        if(action.path==='index.html')assertLockedSource(context,text);
         await workspace.write(action.path,text);state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision};
       } else if(action.type==='assets') result=workspace.assets;
+      else if(action.type==='primitives') result=primitives;
+      else if(action.type==='timeline') {if(!tools.timeline)throw Error('Timeline tool not installed');result=await bounded(()=>tools.timeline({signal:boundedSignal}));}
+      else if(action.type==='preview') {
+        result=await bounded(()=>tools.check({signal:boundedSignal}));
+        if(result.ok){state.checkedRevision=state.revision;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;result={...result,providerImage:undefined};}}
+        else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
+      }
       else if(action.type==='check') {
         result=await bounded(()=>tools.check({signal:boundedSignal}));
         if(result.ok)state.checkedRevision=state.revision;

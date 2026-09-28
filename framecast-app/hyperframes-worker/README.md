@@ -113,3 +113,16 @@ default; importing it never reads credentials or starts a prediction.
 
 See `../docs/product/hyperframes-e1-verification.md` for verified schemas,
 implemented constraints and the outstanding real-model acceptance gates.
+
+
+E1 now includes combined `preview`, `timeline`, installed `primitives`, compact
+model history, source locks, per-call metrics and a locally locked test budget.
+The benchmark driver is paid tooling, not part of the ordinary test suite. It
+shares `artifacts/live/budget.json`, never resets it, skips existing runs and
+avoids follow-up edits when creation has not passed. Do not raise or reset its
+cap without explicit approval. The current $5 test budget has paused new calls.
+
+`python3 agent/verify-benchmark.py` checks existing benchmark renders offline
+using ffmpeg/ffprobe. It verifies only artifacts present and explicitly reports
+that scope; it does not mean the benchmark matrix or creative acceptance passed.
+See the E1 verification document for failed cases and the user's creative review.

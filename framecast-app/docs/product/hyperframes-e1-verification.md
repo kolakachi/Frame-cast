@@ -102,3 +102,50 @@ Run `node --test agent/tests/agent.test.mjs` for deterministic coverage. Paid sm
 is an explicitly authorized local harness, not a normal test command: it reads the
 configured token, sends approved images and uses the shared ledger. Artifacts and
 journals stay ignored by Git. Do not reset the ledger to evade the spending cap.
+
+
+## Round-up attempt — subsequent local work
+
+**E1 remains open.** The second product sample was also rejected by the user:
+“Still too basic—improve the creative direction.” A stronger product-first creative
+contract is implemented but has not been tested in a paid run or human-approved.
+Do not substitute the model's positive self-review for that acceptance.
+
+Implemented: compact old source payloads (full journal retained), combined
+`preview`, timeline inspection, installed primitive lookup, per-call metrics,
+structured brand/facts/transcript slot, exact runtime filenames and locked source
+regions. Structured host guards pause product conflicts, unsupported claims,
+short footage and new speech before spending. These are not automatic semantic
+detection of every conflicting user prompt. Local budget reservations now lock
+the ledger and settlement reloads it; unknown requests retain reservations.
+Production transactional accounting remains E2. **41 Node tests pass.**
+
+| New case | Requests | Estimated model cost | Result |
+|---|---:|---:|---|
+| Sonnet product | 4 | $0.120204 | Rendered; creative quality rejected |
+| Sonnet opening edit | 7 | $0.151794 | Rendered; sampled model review passed |
+| Opus product | 10 | $0.500170 | Call limit; unfinished repairs |
+| Opus opening edit | 10 | $0.472825 | Call limit; no approved draft |
+| Sonnet presenter overlay | 6 | $0.238242 | Blocked removal of locked source timing |
+| Sonnet typography | 7 | $0.216048 | Rendered 1080×1920, 15s; human review pending |
+| Sonnet editorial reference | 1 | $0.043743 | Draft written; next call blocked by budget |
+
+The editorial draft was inspected offline: it requested nonexistent
+`local font.ttf`. Validation failed, so it was not rendered or represented as a
+success. Exact runtime filenames and compact error hints now address that issue.
+
+Fresh offline snapshots from the earlier Sonnet original/opening-edit sources at
+**7s and 13s are byte-for-byte identical**. This verifies unchanged sampled scenes,
+not all-frame identity; the earlier encoded SSIM difference remains unexplained.
+
+The shared ledger stopped further calls at the original $5 reservation cap:
+96 requests, **$3.468019 known token-price estimates**, **$4.871791 reserved**
+including headroom and unresolved requests. Two earlier requests remain
+unreconciled. These are not invoice-confirmed totals. No cap increase applied;
+a request to raise the total cap to $8 is pending user approval.
+
+Still needed: accepted creative output, agent-authored presenter/audio fidelity,
+three styles from the same footage, remaining Opus briefs, long-copy and
+contradictory-brief live cases, and completed scoring. Sonnet is the provisional
+next-test choice, not a certified production winner. The local benchmark report
+and media-verification JSON preserve results. Do not tick the whole phase.
