@@ -28,6 +28,7 @@ class CreateIntegrationTest extends TestCase
         $this->buildDeveloperSchema();
         (require database_path('migrations/2026_09_25_200000_create_api_operations.php'))->up();
         (require database_path('migrations/2026_09_28_120000_create_composition_conversations.php'))->up();
+        (require database_path('migrations/2026_09_29_000000_create_composition_attempts.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -227,6 +228,210 @@ class CreateIntegrationTest extends TestCase
         $this->conversations->message($this->owner, $c->id, ['content' => 'Second instruction', 'expected_version' => 1, 'idempotency_key' => 'second-message']);
         $quote = $this->conversations->quote($this->owner, $c->id, 2);
         $this->assertSame(['Keep my source audio.', 'Second instruction'], array_column($quote->payload_json['messages'], 'content'));
+    }
+
+    private function imageAttachment(object $c, string $purpose = 'reference'): Asset
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        \Illuminate\Support\Facades\Storage::fake('minio');
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII=');
+        \Illuminate\Support\Facades\Storage::disk('minio')->put('sample.png', $png);
+        $asset = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'status' => 'ready', 'storage_url' => 'minio://sample.png']);
+        $this->conversations->attach($this->owner, $c->id, $asset->id, $purpose, 1);
+        return $asset;
+    }
+
+    public function test_quoted_inputs_are_private_immutable_and_keep_reference_role(): void
+    {
+        $c = $this->brief(); $asset = $this->imageAttachment($c);
+        $q = $this->conversations->quote($this->owner, $c->id, 2);
+        $f = $q->payload_json['input_files'][0];
+        $this->assertSame('reference', $f['purpose']);
+        $this->assertSame('image/png', $f['mime_type']);
+        $this->assertSame($f['sha256'], hash('sha256', \Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path'])));
+        \Illuminate\Support\Facades\Storage::disk('minio')->put('sample.png', 'Changed original');
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'frozen-input');
+        $claim = $this->runs->claim();
+        $this->assertArrayNotHasKey('storage_path', $claim['input']['input_files'][0]);
+        $served = $this->runs->inputFile($run->id, $claim['lease_token'], $asset->id);
+        $this->assertSame($f['sha256'], $served['sha256']);
+        $this->rejected(403, fn () => $this->runs->inputFile($run->id, str_repeat('x', 64), $asset->id));
+        $this->rejected(404, fn () => $this->runs->inputFile($run->id, $claim['lease_token'], $asset->id + 1));
+        $this->runs->cancel($this->workspace->id, $c->id, $run->id);
+        $this->rejected(409, fn () => $this->runs->inputFile($run->id, $claim['lease_token'], $asset->id));
+    }
+
+    public function test_missing_or_changed_snapshot_and_expired_lease_cannot_be_downloaded(): void
+    {
+        $c = $this->brief(); $asset = $this->imageAttachment($c, 'source');
+        $q = $this->conversations->quote($this->owner, $c->id, 2);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'changed-input');
+        $claim = $this->runs->claim();
+        \Illuminate\Support\Facades\Storage::disk('local')->put($q->payload_json['input_files'][0]['storage_path'], 'corrupted');
+        $this->rejected(409, fn () => $this->runs->inputFile($run->id, $claim['lease_token'], $asset->id));
+        DB::table('composition_runs')->where('id', $run->id)->update(['lease_expires_at' => now()->subSecond()]);
+        $this->rejected(409, fn () => $this->runs->inputFile($run->id, $claim['lease_token'], $asset->id));
+    }
+
+    public function test_archived_asset_cannot_be_approved_after_snapshot(): void
+    {
+        $c = $this->brief(); $asset = $this->imageAttachment($c);
+        $q = $this->conversations->quote($this->owner, $c->id, 2);
+        $asset->update(['status' => 'archived']);
+        $this->rejected(409, fn () => $this->conversations->approve($this->owner, $c->id, $q->id, 'archived-input'));
+        $this->assertSame(0, DB::table('api_operations')->count());
+    }
+
+    public function test_staging_rejects_remote_urls_byte_overflow_and_cleans_partial_copies(): void
+    {
+        $c = $this->brief(); $asset = $this->imageAttachment($c);
+        $other = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'status' => 'ready', 'storage_url' => 'http://127.0.0.1/private']);
+        $this->conversations->attach($this->owner, $c->id, $other->id, 'source', 2);
+        $this->rejected(422, fn () => $this->conversations->quote($this->owner, $c->id, 3));
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles('create/inputs'));
+        $this->assertSame(0, ApiQuote::count()); Http::assertNothingSent();
+        config(['create.input_file_bytes' => 10]);
+        $this->rejected(422, fn () => $this->conversations->quote($this->owner, $c->id, 3));
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles('create/inputs'));
+    }
+
+    public function test_followup_quote_freezes_exact_base_revision_bundle(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'First draft', 'bundle' => ['index.html' => '<h1>First</h1>']], 'private.mp4', str_repeat('a', 64));
+        $current = $this->conversations->conversation($this->owner, $c->id);
+        $q = $this->conversations->quote($this->owner, $c->id, (int) $current->version);
+        $this->assertSame($current->head_revision_id, $q->payload_json['base_revision_id']);
+        $this->assertSame(['index.html' => '<h1>First</h1>'], $q->payload_json['base_bundle']);
+        $this->assertSame(hash('sha256', json_encode(['index.html' => '<h1>First</h1>'])), $q->payload_json['base_bundle_hash']);
+    }
+
+    public function test_input_http_endpoint_requires_worker_and_current_lease(): void
+    {
+        $c = $this->brief(); $asset = $this->imageAttachment($c);
+        $q = $this->conversations->quote($this->owner, $c->id, 2);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'http-input');
+        $claim = $this->runs->claim(); $url = "/api/internal/create/runs/{$run->id}/inputs/{$asset->id}";
+        config(['create.worker_token' => str_repeat('w', 64)]);
+        $this->postJson($url, ['lease_token' => $claim['lease_token']])->assertForbidden();
+        $this->withToken(str_repeat('w', 64))->postJson($url, ['lease_token' => str_repeat('z', 64)])->assertForbidden();
+        $this->withToken(str_repeat('w', 64))->postJson($url, ['lease_token' => $claim['lease_token']])->assertOk()->assertHeader('Content-Type', 'image/png');
+        $asset->update(['status' => 'archived']);
+        $this->withToken(str_repeat('w', 64))->postJson($url, ['lease_token' => $claim['lease_token']])->assertNotFound();
+    }
+
+    public function test_restored_revision_inherits_original_bytes_after_library_change(): void
+    {
+        $c = $this->brief(); $asset = $this->imageAttachment($c);
+        $q = $this->conversations->quote($this->owner, $c->id, 2);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'inherit');
+        $claim = $this->runs->claim();
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'Proof', 'bundle' => ['index.html' => '<h1>Proof</h1>']], 'preview.mp4', str_repeat('a', 64));
+        $revision = DB::table('composition_revisions')->value('id');
+        $restored = $this->conversations->restore($this->owner, $c->id, $revision, 3);
+        $asset->update(['storage_url' => 'https://invalid.example/changed.png']);
+        $next = $this->conversations->quote($this->owner, $c->id, 4);
+        $this->assertSame($q->payload_json['input_files'], $next->payload_json['input_files']);
+        $this->assertSame($restored, $next->payload_json['base_revision_id']);
+        $this->assertSame(['index.html' => '<h1>Proof</h1>'], $next->payload_json['base_bundle']);
+        $this->conversations->attach($this->owner, $c->id, $asset->id, 'source', 4);
+        $this->rejected(409, fn () => $this->conversations->quote($this->owner, $c->id, 5));
+    }
+
+    public function test_input_quota_and_cleanup_keep_run_inputs_but_remove_expired_orphans(): void
+    {
+        $c = $this->brief(); $this->imageAttachment($c);
+        config(['create.input_workspace_bytes' => 1]);
+        $this->rejected(422, fn () => $this->conversations->quote($this->owner, $c->id, 2));
+        config(['create.input_workspace_bytes' => 1073741824]);
+        $q = $this->conversations->quote($this->owner, $c->id, 2);
+        $kept = $q->payload_json['input_files'][0]['storage_path'];
+        $this->conversations->approve($this->owner, $c->id, $q->id, 'retention');
+        $orphanQuote = $this->conversations->quote($this->owner, $c->id, 2);
+        $orphan = $orphanQuote->payload_json['input_files'][0]['storage_path'];
+        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+        touch($disk->path($kept), now()->subDays(2)->timestamp);
+        touch($disk->path($orphan), now()->subDays(2)->timestamp);
+        app(\App\Services\Create\ArtifactRetentionService::class)->sweep();
+        $this->assertTrue($disk->exists($kept)); $this->assertTrue($disk->exists($orphan));
+        $orphanQuote->update(['expires_at' => now()->subMinute()]);
+        app(\App\Services\Create\ArtifactRetentionService::class)->sweep();
+        $this->assertTrue($disk->exists($kept)); $this->assertFalse($disk->exists($orphan));
+    }
+
+    public function test_attempt_replay_never_reauthorizes_execution_or_changes_request(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim(); $service = app(\App\Services\Create\AttemptService::class);
+        $first = $service->begin($run->id, $claim['lease_token'], 'render-1', 'render', str_repeat('a', 64));
+        $this->assertTrue($first['may_execute']);
+        $again = $service->begin($run->id, $claim['lease_token'], 'render-1', 'render', str_repeat('a', 64));
+        $this->assertFalse($again['may_execute']); $this->assertSame($first['id'], $again['id']);
+        $this->rejected(409, fn () => $service->begin($run->id, $claim['lease_token'], 'render-1', 'render', str_repeat('b', 64)));
+        $this->rejected(409, fn () => $service->begin($run->id, $claim['lease_token'], 'render-2', 'render', str_repeat('a', 64)));
+        $this->rejected(422, fn () => $service->begin($run->id, $claim['lease_token'], 'media-1', 'media', str_repeat('a', 64)));
+        $this->assertSame(1, DB::table('api_operation_jobs')->where('status', 'pending')->count());
+    }
+
+    public function test_unsettled_attempt_prevents_run_close_and_unknown_keeps_capacity(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim(); $service = app(\App\Services\Create\AttemptService::class);
+        $attempt = $service->begin($run->id, $claim['lease_token'], 'render-1', 'render', str_repeat('a', 64));
+        $this->rejected(409, fn () => $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'Stopped'], null, null));
+        $service->settle($run->id, $claim['lease_token'], $attempt['id'], ['status' => 'unknown']);
+        $this->assertSame('needs_attention', DB::table('api_operations')->value('status'));
+        $this->assertTrue($service->settle($run->id, $claim['lease_token'], $attempt['id'], ['status' => 'unknown'])['replayed']);
+        $this->runs->cancel($this->workspace->id, $c->id, $run->id);
+        $this->assertSame('needs_attention', DB::table('composition_runs')->value('status'));
+        $this->assertSame(1, DB::table('api_operation_jobs')->where('status', 'pending')->count());
+        $this->artisan('create:reconcile-fixture', ['run' => $run->id, '--worker-stopped' => true])->assertExitCode(0);
+        $this->assertSame('failed', DB::table('composition_attempts')->value('status'));
+    }
+
+    public function test_confirmed_render_receipt_settles_once_and_can_replay_after_finish(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim(); $service = app(\App\Services\Create\AttemptService::class);
+        $attempt = $service->begin($run->id, $claim['lease_token'], 'render-1', 'render', str_repeat('a', 64));
+        $receipt = ['status' => 'succeeded', 'cost_microusd' => 0];
+        $service->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'Artifact delivery failed'], null, null);
+        $this->assertTrue($service->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt)['replayed']);
+        $this->rejected(409, fn () => $service->settle($run->id, $claim['lease_token'], $attempt['id'], ['status' => 'failed', 'cost_microusd' => 0]));
+        $this->assertSame(0, DB::table('credit_ledger')->count());
+    }
+
+    public function test_synthetic_paid_policy_charges_shared_ledger_exactly_once_and_respects_allowance(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim(); $service = app(\App\Services\Create\AttemptService::class);
+        // Synthetic approval only: no public quote path permits this yet, and no provider is contacted.
+        $input = json_decode($run->input_json, true); $input['mode'] = 'agent';
+        $input['execution_policy']['agent'] = ['provider' => 'test-provider', 'model' => 'test-model', 'credits' => 7, 'cost_limit_microusd' => 50000, 'max_calls' => 3];
+        DB::table('composition_runs')->where('id', $run->id)->update(['input_json' => json_encode($input)]);
+        DB::table('api_operations')->where('id', $run->operation_id)->update(['authorized_credits' => 10, 'reserved_credits' => 10]);
+        $this->rejected(503, fn () => $service->begin($run->id, $claim['lease_token'], 'call-1', 'agent', str_repeat('a', 64)));
+        config(['create.paid_execution_enabled' => true]);
+        $attempt = $service->begin($run->id, $claim['lease_token'], 'call-1', 'agent', str_repeat('a', 64));
+        $this->rejected(409, fn () => $service->begin($run->id, $claim['lease_token'], 'call-2', 'agent', str_repeat('b', 64)));
+        $receipt = ['status' => 'succeeded', 'prediction_id' => 'synthetic-id', 'cost_microusd' => 12000];
+        $this->rejected(422, fn () => $service->settle($run->id, $claim['lease_token'], $attempt['id'], array_merge($receipt, ['cost_microusd' => 50001])));
+        $service->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt);
+        $this->assertTrue($service->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt)['replayed']);
+        $this->assertSame(93, (int) $this->workspace->fresh()->credits_monthly);
+        $this->assertSame(1, DB::table('credit_ledger')->count());
+        $this->assertSame($run->operation_id, DB::table('credit_ledger')->value('api_operation_id'));
+        $this->assertSame($attempt['id'], json_decode(DB::table('credit_ledger')->value('metadata'), true)['composition_attempt_id']);
+        $this->assertSame(7, (int) DB::table('api_operations')->value('spent_credits'));
+        $this->assertSame(3, (int) DB::table('api_operations')->value('reserved_credits'));
+    }
+
+    public function test_expired_or_cancelled_attempt_cannot_start_but_cancel_can_settle_known_work(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim(); $service = app(\App\Services\Create\AttemptService::class);
+        $attempt = $service->begin($run->id, $claim['lease_token'], 'render-1', 'render', str_repeat('a', 64));
+        $this->runs->cancel($this->workspace->id, $c->id, $run->id);
+        $this->rejected(409, fn () => $service->begin($run->id, $claim['lease_token'], 'render-2', 'render', str_repeat('a', 64)));
+        $service->settle($run->id, $claim['lease_token'], $attempt['id'], ['status' => 'failed', 'cost_microusd' => 0]);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'cancelled', 'summary' => 'Stopped'], null, null);
+        $this->assertSame('cancelled', DB::table('api_operations')->value('status'));
     }
 
 }

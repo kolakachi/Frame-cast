@@ -11,5 +11,7 @@ export function briefGate(context) {
   return null;
 }
 export function assertLockedSource(context,text) {
-  for(const fragment of context.lockedSourceFragments??[])if(!text.includes(fragment))throw Error('Edit would change a locked source region');
+  for(const fragment of context.lockedSourceFragments??[]) {
+    if(!fragment || text.split(fragment).length !== 2)throw Object.assign(Error('Keep each locked source region exactly once and unchanged. Read the current draft and edit only unlocked layout or copy.'),{code:'AUTHORING_REJECTED'});
+  }
 }

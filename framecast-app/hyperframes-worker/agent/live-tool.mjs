@@ -7,7 +7,7 @@ if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline'].includes(
 const source='/output/live/'+id,root='/tmp/live-project',out=source+'/'+operation;
 await mkdir(root,{recursive:true});await mkdir(out,{recursive:true});await mkdir(process.env.HOME,{recursive:true});
 for(const file of await readdir(source+'/project')){
- if(!/^[a-zA-Z0-9_.-]+\.(html|css|js|png|svg|ttf|mp4|wav)$/.test(file)||(await lstat(source+'/project/'+file)).isSymbolicLink())throw Error('Invalid staged file');
+ if(!/^[a-zA-Z0-9_.-]+\.(html|css|js|png|jpg|webp|svg|ttf|mp4|mp3|wav)$/.test(file)||(await lstat(source+'/project/'+file)).isSymbolicLink())throw Error('Invalid staged file');
  await copyFile(source+'/project/'+file,root+'/'+file);
 }
 await copyFile('/opt/worker/node_modules/gsap/dist/gsap.min.js',root+'/gsap.min.js');await copyFile('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',root+'/font.ttf');

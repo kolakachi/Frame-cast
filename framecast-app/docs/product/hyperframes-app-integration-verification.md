@@ -1,6 +1,8 @@
 # Create — local app integration
 
-Date: 2026-09-28. **Local fixture integration, not production acceptance.**
+Date: 2026-09-29. **Offline agent integration verified; full E2 and production acceptance remain open.**
+
+Current evidence is in the final “E2 agent bridge and lifecycle” section. Earlier dated sections describe checkpoints, not the current implementation.
 
 The user asked to finish integration before model comparisons. E1 creative evaluation is deferred rather than accepted. This batch makes the Laravel app and Vue conversation talk to the isolated Hyperframes renderer. It does not enable new paid tests or increase the existing $5 cap.
 
@@ -82,11 +84,164 @@ This revokes the lease, cancels the shared operation and releases capacity. Old 
 
 ## Still required before the integration is complete
 
-- Wire the existing E1 agent into this durable bridge, stage immutable workspace assets and support source-preserving follow-up edits. Fixed-fixture success does not verify those paths.
-- Provider-call receipts, cost attribution, bounded paid reservation/debit/settlement, unknown-cost reconciliation and PostgreSQL concurrency verification. Paid admission currently refuses to run even if `CREATE_MODE` is changed.
-- Composition Project discriminator, scene-operation guards, final Asset/ExportJob registration, lifecycle quotas and retention cleanup.
+- The E1 runner, immutable input staging, follow-up edit bridge, storage quota/cleanup and PostgreSQL admission races are now verified offline (see latest section). A real creative provider and verified cost adapter are still gated.
+- Provider-call receipts, cost attribution, bounded paid reservation/debit/settlement, unknown-cost reconciliation. PostgreSQL admission/claim/attempt races now pass; paid settlement races remain unverified. Paid admission currently refuses to run even if `CREATE_MODE` is changed.
+- Composition Project discriminator, scene-operation guards, final Asset/ExportJob registration and final-output lifecycle adapters. Local input quotas/orphan cleanup are implemented.
 - Direct upload progress/retry, image creation/editing/animation routes, generated-media approvals, final share/schedule/approval and variants.
 - Speech-timed editing and source maps, plus remaining desktop/mobile acceptance cases.
 - Model/creative comparison, measured customer pricing and explicit production pilot approval.
 
 Do not tick E2 or E3 complete from this fixture slice. Do not publish it as a customer-ready prompt-to-video experience.
+
+
+## E2 input handoff — 2026-09-28
+
+Implemented as a separate backend checkpoint; **E2 is not complete**.
+
+- Quote preparation copies supported workspace-owned managed objects into private
+  local snapshots, before taking conversation/credit-pool locks. SHA-256, actual
+  MIME, byte size, source/reference purpose and bounded transcript text accompany
+  each file. The base revision's bundle and hash are frozen into the quote.
+- PNG, JPEG, WebP, MP4, MP3 and WAV are accepted after inspecting bytes. Arbitrary
+  HTTP URLs, SVG/HTML and unrecognized formats are refused. Limits are 100 MiB per
+  file and 200 MiB per quote. Failed captures remove their completed snapshots.
+- Approval rechecks asset availability. Changing the original stored object after
+  quoting does not change approved snapshot bytes. Archiving/deleting an asset
+  blocks approval or subsequent worker download.
+- Worker input downloads require the private worker credential plus the current
+  run lease, active allowlisted workspace and matching run asset. Expired,
+  cancelled, wrong-asset and changed-snapshot requests are rejected. Storage paths
+  stay server-side; the model gets neither storage credentials nor arbitrary URLs.
+- Host staging validates filenames, byte bounds and hashes, separates references
+  from reusable sources, and saves the base bundle without overwriting an earlier
+  attempt. The fixture renderer deliberately does not consume those attachments.
+
+Verification: **50 Node tests pass** (45 E1 + 5 input-staging cases). **110 API
+regression tests pass, one existing skip, 983 assertions.** Tests cover private
+HTTP downloads, expired/cancelled/wrong leases, archived assets, changed snapshots,
+source/reference preservation, size limits, traversal, cleanup and base revisions.
+The legacy developer tests require their explicit accounting-off baseline when
+running alongside a local `.env` that enables accounting; Create tests enable it
+in their own setup. Use `-e DEVELOPER_OPERATION_ACCOUNTING=false` in the disposable
+PHP test container command.
+
+Real disposable HTTP smoke passed: attachment → quote → approval/replay → leased
+input download → hash-verified staging → offline render → authenticated MP4
+retrieval → restore-as-new. Run `e28cfee9-b00e-4891-a713-a106b4714e1f` produced a
+247,846-byte MP4. Evidence is in the ignored `artifacts/app-integration/evidence.json`.
+The test used a synthetic image in temporary local storage and a disposable SQLite
+account, not customer media. **Zero paid calls.**
+
+Still pending: connect the model adapter to durable execution/receipts, account
+for known and unknown provider costs, inherit exact asset sets on follow-up/restore,
+clean expired unused snapshots with storage quotas, and register final app artifacts.
+No production rollout, paid enablement, or full E2 completion is claimed. The
+running normal local app has not been rebuilt for this checkpoint; verification
+used the current source mounted into the disposable API harness.
+
+
+## E2 attempt accounting — 2026-09-29
+
+This is a verified accounting foundation, **not paid-agent enablement**.
+
+- New additive migration: `2026_09_29_000000_create_composition_attempts.php`.
+  Attempts are unique per run/key, bind a request hash, and carry the immutable
+  quoted operation kind/provider/model/credit and cost ceilings. No prompts,
+  source files, provider keys or model output are stored in receipt rows.
+- A start is recorded before execution. Its replay returns `may_execute=false`;
+  it cannot authorize a second provider call. Per-kind attempt ceilings and pending
+  credit ceilings are checked while locking the run and shared operation.
+- Confirmed worker receipts settle once through `CreditService` under the shared
+  operation context. Ledger metadata names the exact run and attempt. Conflicting
+  receipts, oversize costs and stale leases are rejected. Provider receipt IDs
+  are unique per provider. Identical settled receipt replay makes no new debit.
+- Unknown outcomes preserve the reservation and capacity and mark the run and
+  operation `needs_attention`. Pending attempts also register in the existing
+  operation dependency table. Finishing/cancelling a run cannot bypass them.
+  Late/unknown paid receipts still require a future provider-verification and
+  reconciliation workflow; there is no automatic retry or release.
+- The offline render worker now uses this start/settle lifecycle. Uncertain
+  receipt acknowledgements pause work instead of re-running it. The fixture
+  recovery command only reconciles zero-cost offline attempts after explicit
+  operator confirmation that the renderer stopped; it cannot release paid ones.
+
+The public quote path still authorizes only one zero-credit offline render.
+`create.paid_execution_enabled` is hard-disabled with no environment switch.
+Synthetic tests exercise a hypothetical seven-credit attempt to prove atomic
+ledger integration; this is **not a selected customer price**. The generic
+settlement rule charges the quoted attempt amount on success or a known billable
+failure, and zero on a confirmed zero-cost failure. A verified provider adapter
+must supply actual usage/cost evidence before this rule can serve customers;
+worker claims alone are not proof of an invoice. No model call was made here.
+
+Verification: **55 Node tests; 115 passing API tests, one existing skip, 1,012
+assertions**. Tests include replayed starts, changed request hashes, attempt and
+credit ceilings, unknown outcomes, cancellation, receipt replay after completion,
+per-attempt ledger attribution and lost acknowledgements. SQLite tests do not
+certify concurrent PostgreSQL admission; that remains a release gate.
+
+Disposable HTTP smoke passed on run
+`230d2bb0-e85c-4e6b-93b1-3e606d0e02c3`: frozen input → approval → recorded render
+attempt → real offline render → settled zero-cost receipt → download → restore.
+Database inspection confirmed the attempt and dependency completed, the parent
+operation completed with zero reserved/spent credits, and a 247,846-byte MP4.
+The normal local app was not migrated/rebuilt for this checkpoint, and production
+was untouched. Deploy the new migration before running the updated coordinator.
+
+Remaining E2 work includes the real model execution bridge and verified cost
+adapter, operator reconciliation for paid/late results, final Project/Asset/
+ExportJob registration, inherited asset/retention handling and PostgreSQL race
+verification. E2 stays open; creative benchmarking stays separate.
+
+
+## E2 agent bridge and lifecycle — 2026-09-29
+
+**Current state: significant backend gates verified offline; E2 remains open.**
+
+- `composition-agent.mjs` connects the existing E1 runner to the exact frozen
+  conversation, base bundle, source/reference metadata and approved attempt policy.
+  Provider, tools, execution arguments and credentials remain host-owned. Every
+  agent call is durably admitted and settled before its output reaches a tool.
+- Sources are copied into the protected render workspace. Reference-only files
+  remain outside it. The local provider is an explicit scripted contract probe,
+  not an AI model: read → text patch → check → snapshots → finish. It does not
+  interpret arbitrary prompts. Paid execution and provider credentials stay off.
+- Follow-up quotes and restored versions inherit original input bytes, even after
+  a library URL changes. A role change on an inherited asset is rejected rather
+  than silently turning reference media into footage. Old snapshots are not
+  deleted if preparation of a new quote fails.
+- Local input storage is capped at 1 GiB per workspace, serialized with a host
+  filesystem lock. The existing 100 MiB/file, 200 MiB/quote and 20-file caps remain.
+  `create:cleanup` removes orphaned inputs/previews older than 24 hours. It keeps
+  all admitted-run inputs, unexpired quote inputs, saved revision artifacts and
+  files for active/unknown runs. Local enabled schedulers run it hourly. This is
+  deliberately conservative, not a full conversation-deletion/export-retention
+  policy. No cleanup or migrations were run on the normal app database.
+
+Verification:
+
+- **57 Node tests pass.** New cases verify context forwarding, reference exclusion,
+  protected source bytes, exact follow-up diff, and lost settlement stopping tools.
+- **117 API tests pass, 1 existing skip, 1,021 assertions.** Includes inherited
+  bytes after restore/library change, role changes, quota refusal and retention.
+- Real disposable HTTP flow performed **10 accounted offline agent calls** and
+  two real Hyperframes renders: initial creation → private MP4 → restore → follow-up
+  quote → exact source-preserving edit → second saved revision. Initial MP4:
+  **241,021 bytes**. No paid calls. Run IDs:
+  `4c73f39f-70a6-44de-b782-15813698751d`,
+  `57a976c7-b718-451c-9e30-a1fcf418b2d4`.
+- Real **PostgreSQL 16** concurrency proof passed with three separate PHP processes
+  racing each of approval, claim and attempt admission: one operation, one lease,
+  one authorized execution. Running cancellation followed by lease expiry retained
+  unknown capacity and did not requeue work. Harness:
+  `api/tests/Support/create-pg-concurrency.php`. It refuses any database other than
+  `create_e2_proof` on `create-e2-pg` and requires `CREATE_PG_PROOF=1`; use an empty
+  disposable database in an isolated Docker network, never the local app database.
+
+Still required for full E2: verified real-provider receipts/unknown reconciliation;
+final Project/Asset/ExportJob relationships and scene-editor guards; final-output
+access/lifecycle adapters and broader recovery/settlement concurrency tests. Model
+creativity remains deferred separately. Current changes were tested from mounted
+source in disposable containers. The normal local API and long-running coordinator
+must be rebuilt/migrated/restarted together before they use this version. No push,
+production deployment or additional paid usage was performed.

@@ -54,14 +54,22 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       let result;
       if(action.type==='read')result={text:action.path.startsWith('references/')&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
       else if(action.type==='write'||action.type==='patch') {
-        let text=action.content;
-        if(action.type==='patch') {
-          const old=await workspace.read(action.path);
-          if(old.split(action.before).length!==2)throw Error('Patch must match exactly once');
-          text=old.replace(action.before,action.after);
+        try {
+          let text=action.content;
+          if(action.type==='patch') {
+            const old=await workspace.read(action.path);
+            if(old.split(action.before).length!==2)throw Object.assign(Error('Patch must match exactly once. Read the current source before retrying.'),{code:'AUTHORING_REJECTED'});
+            text=old.replace(action.before,action.after);
+          }
+          if(action.path==='index.html')assertLockedSource(context,text);
+          await workspace.write(action.path,text);state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision};
+        } catch(e) {
+          // Only known pre-write authoring rejections are repairable. Filesystem,
+          // sandbox and uncertain write failures still stop the run.
+          if(e.code!=='AUTHORING_REJECTED')throw e;
+          if(++state.repairs>cap.repairs)throw Error('Authoring repair limit reached');
+          result={error:e.message,sourceUnchanged:true,remainingRepairs:cap.repairs-state.repairs};
         }
-        if(action.path==='index.html')assertLockedSource(context,text);
-        await workspace.write(action.path,text);state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision};
       } else if(action.type==='assets') result=workspace.assets;
       else if(action.type==='primitives') result=primitives;
       else if(action.type==='timeline') {if(!tools.timeline)throw Error('Timeline tool not installed');result=await bounded(()=>tools.timeline({signal:boundedSignal}));}
@@ -91,7 +99,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       } else if(action.type==='needs_input') {state.status='needs_input';state.question=action.question;}
       else if(action.type==='propose_media') {state.status='awaiting_media_approval';state.proposal=action.description;}
       await workspace.verifyAssets();boundedSignal.throwIfAborted();
-      if(result && Buffer.byteLength(JSON.stringify(result))>16000)result={truncated:true,summary:JSON.stringify(result).slice(0,12000)};
+      if(result && action.type!=='read' && Buffer.byteLength(JSON.stringify(result))>16000)result={truncated:true,summary:JSON.stringify(result).slice(0,12000)};
       state.pending=null;state.messages.push({role:'tool',content:result??{status:state.status}});await save();
       if(state.status!=='running')return state;
     }

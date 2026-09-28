@@ -86,3 +86,7 @@ Schedule::call(function (): void {
     rescue(fn () => \Illuminate\Support\Facades\Mail::to($email)
         ->queue(new \App\Mail\CreditLedgerAlert($report)), null, false);
 })->dailyAt('08:30')->name('verify-credit-ledger')->withoutOverlapping();
+
+// Local Create pilot only: retain every saved revision and admitted run input.
+Schedule::command('create:cleanup')->hourly()->withoutOverlapping()
+    ->when(fn () => app()->environment('local') && config('create.enabled'));

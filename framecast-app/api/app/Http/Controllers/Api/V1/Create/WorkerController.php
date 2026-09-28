@@ -31,6 +31,34 @@ class WorkerController extends Controller
         return response()->json(['data' => $this->runs->heartbeat($id, $input['lease_token'], $input['sequence'], $input['stage'])]);
     }
 
+    public function inputFile(Request $r, string $id, int $assetId)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64']);
+        $file = $this->runs->inputFile($id, $input['lease_token'], $assetId);
+        return response()->file(Storage::disk('local')->path($file['storage_path']), [
+            'Content-Type' => $file['mime_type'], 'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    public function beginAttempt(Request $r, string $id)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'attempt_key' => 'required|string|max:100',
+            'kind' => 'required|in:agent,media,render', 'request_hash' => 'required|regex:/^[a-f0-9]{64}$/']);
+        return response()->json(['data' => app(\App\Services\Create\AttemptService::class)->begin($id, $input['lease_token'], $input['attempt_key'], $input['kind'], $input['request_hash'])]);
+    }
+
+    public function settleAttempt(Request $r, string $id, string $attemptId)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'status' => 'required|in:succeeded,failed,unknown',
+            'prediction_id' => 'nullable|string|max:160', 'cost_microusd' => 'nullable|integer|min:0']);
+        if (isset($input['cost_microusd'])) $input['cost_microusd'] = (int) $input['cost_microusd'];
+        return response()->json(['data' => app(\App\Services\Create\AttemptService::class)->settle($id, $input['lease_token'], $attemptId, $input)]);
+    }
+
     public function finish(Request $r, string $id)
     {
         $this->authorizeWorker($r);

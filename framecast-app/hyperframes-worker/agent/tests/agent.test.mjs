@@ -64,7 +64,30 @@ test('timeline and installed primitives dispatch without arbitrary commands',asy
 test('mismatched products pause without a paid call or invented endorsement',async t=>{const h=await harness(t,[]);h.args.context.productIdentityConflict=true;assert.equal((await h.run()).status,'needs_input');assert.equal(h.seen.length,0);});
 test('unsupported claims and short footage need a decision before spending',async t=>{for(const extra of [{requestedClaims:['Guaranteed cure']},{sourceDuration:5,duration:15}]){const h=await harness(t,[]);Object.assign(h.args.context,extra);assert.equal((await h.run()).status,'needs_input');assert.equal(h.seen.length,0);}});
 test('new spoken hook is a media proposal, never an automatic purchase',async t=>{const h=await harness(t,[]);h.args.context.requestedNewSpeech=true;assert.equal((await h.run()).status,'awaiting_media_approval');assert.equal(h.seen.length,0);});
-test('locked source regions reject destructive edits before writing',async t=>{const h=await harness(t,[action({type:'write',path:'index.html',content:'Changed everything'})]);h.args.context.lockedSourceFragments=['<h1>Original</h1>'];assert.equal((await h.run()).reason,'Edit would change a locked source region');assert.equal(await readFile(h.root+'/index.html','utf8'),'<h1>Original</h1>');});
+test('locked source rejection gives bounded repair without changing the source',async t=>{
+ const h=await harness(t,[action({type:'write',path:'index.html',content:'Changed everything'}),action({type:'write',path:'index.html',content:'<main><h1>Original</h1></main>'}),action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Preserved source'})]);
+ h.args.context.lockedSourceFragments=['<h1>Original</h1>'];
+ const state=await h.run();assert.equal(state.status,'preview_ready');assert.equal(state.repairs,1);assert.match(h.seen[1].prompt,/sourceUnchanged/);assert.equal(await readFile(h.root+'/index.html','utf8'),'<main><h1>Original</h1></main>');
+});
+test('repeated destructive or duplicated locked sources exhaust repair allowance',async t=>{
+ const bad=action({type:'write',path:'index.html',content:'<h1>Original</h1><h1>Original</h1>'});
+ const h=await harness(t,[bad,bad,bad]);h.args.context.lockedSourceFragments=['<h1>Original</h1>'];
+ assert.equal((await h.run()).reason,'Authoring repair limit reached');assert.equal(h.seen.length,3);assert.equal(await readFile(h.root+'/index.html','utf8'),'<h1>Original</h1>');
+});
+test('failed exact patch can recover by reading the current source',async t=>{
+ const h=await harness(t,[action({type:'patch',path:'index.html',before:'Missing',after:'Changed'}),action({type:'read',path:'index.html'}),action({type:'patch',path:'index.html',before:'Original',after:'Updated'}),action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Done'})]);
+ assert.equal((await h.run()).status,'preview_ready');assert.equal(await readFile(h.root+'/index.html','utf8'),'<h1>Updated</h1>');
+});
+test('source reads are not silently truncated by diagnostic report limits',async t=>{
+ const h=await harness(t,[action({type:'read',path:'index.html'}),action({type:'needs_input',question:'Confirm?'})]);
+ await writeFile(h.root+'/index.html','x'.repeat(20000)+'END_OF_SOURCE');
+ assert.equal((await h.run()).status,'needs_input');assert.match(h.seen[1].prompt,/END_OF_SOURCE/);
+});
+test('sandbox write rejection remains terminal, not an authoring retry',async t=>{
+ const h=await harness(t,[action({type:'write',path:'../outside.html',content:'unsafe'})]);
+ assert.equal((await h.run()).reason,'Source path is not allowed');assert.equal(h.seen.length,1);
+});
+
 test('concurrent test reservations cannot exceed cap',async t=>{const {TestBudget}=await import('../budget.mjs');const h=await harness(t,[]);const budget=new TestBudget(h.root+'/budget.json',.02);const results=await Promise.allSettled(Array.from({length:4},()=>budget.reserve({prompt:'x',system:'x',maxTokens:100,model:'sonnet'})));assert.equal(results.filter(r=>r.status==='fulfilled').length,1);const data=JSON.parse(await readFile(h.root+'/budget.json'));assert.equal(data.calls.length,1);});
 test('settlement preserves other reservations and is idempotent',async t=>{const {TestBudget}=await import('../budget.mjs');const h=await harness(t,[]);const budget=new TestBudget(h.root+'/budget.json',1);const a=await budget.reserve({prompt:'x',system:'x',maxTokens:100,model:'sonnet'});await budget.reserve({prompt:'x',system:'x',maxTokens:100,model:'sonnet'});const response={predictionId:'a',metrics:{token_input_count:10,token_output_count:10}};await a(response);await a(response);const data=JSON.parse(await readFile(h.root+'/budget.json'));assert.equal(data.calls.length,2);assert.equal(data.calls[1].status,'reserved');await assert.rejects(a({...response,predictionId:'b'}),/another prediction/);});
 test('failed inspection keeps blocking findings and fixes without warning noise',async()=>{const {inspectionReport}=await import('../inspection-report.mjs');const result=inspectionReport(JSON.stringify({ok:false,lint:{findings:[{severity:'warning',message:'noise'.repeat(10000)},{severity:'error',code:'nested',message:'Nested media',fixHint:'Move media to root'}]}}));assert.equal(result.ok,false);assert.equal(result.errors.length,1);assert.equal(result.errors[0].fixHint,'Move media to root');assert.ok(JSON.stringify(result).length<1000);assert.equal(inspectionReport('not json').ok,false);});

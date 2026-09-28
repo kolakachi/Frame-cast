@@ -57,14 +57,15 @@ Local checks pass for cooperative cancellation, deadlines, missing assets/font/o
 
 ## E1 — prove the agent locally
 
-Progress: verified public endpoint schema snapshots, strict JSON action loop, scoped source tools, local journal, bounded execution and disabled-by-default Replicate adapter implemented. 41 deterministic tests pass; scripted and real providers completed offline Hyperframes renders. See [E1 verification](hyperframes-e1-verification.md). Measured test costs and sampled visual review exist, but creative acceptance and the model comparison remain incomplete.
+Progress: verified public endpoint schema snapshots, strict JSON action loop, scoped source tools, local journal, bounded execution and disabled-by-default Replicate adapter implemented. 45 deterministic tests pass; scripted and real providers completed offline Hyperframes renders. Latest scripted smoke verifies rejected-edit recovery and exact source preservation at zero provider cost. See [E1 verification](hyperframes-e1-verification.md). Measured test costs and sampled visual review exist, but creative acceptance and the model comparison remain incomplete.
 
 ### E1.1 Replicate endpoint contract
 
 - [ ] Inspect actual schemas for shortlisted endpoints: image input, prompt/system context, output limits, structured output/tool support, streaming, cancellation and usage metadata.
 - [x] Implement a provider adapter against verified capabilities. If native tool calls are unavailable, use a validated action envelope executed by our runner; never execute free-form model output as shell commands.
 - [x] Use fake provider responses first to prove tool dispatch, malformed-output handling, context carryover and bounded retries.
-- [ ] Configure a separate test credential and explicit total paid-test budget before real provider calls. Record requests, actual provider cost and outcomes without logging secrets.
+- [x] Establish explicit credential and total test-budget authorization. User approved the configured credential instead of a separate credential, with a $5 total cap. Reservations and requests are recorded without secrets; latest instruction is offline work only.
+- [ ] Reconcile actual provider billing and unknown requests; current token estimates are not invoice-confirmed charges.
 
 ### E1.2 Bounded tool loop
 
@@ -73,6 +74,7 @@ Progress: verified public endpoint schema snapshots, strict JSON action loop, sc
 - [ ] Supply the brief, approved facts, brand, transcript, asset manifest and base revision; preserve stable IDs and locked inputs.
 - [x] Enforce maximum calls, tokens, elapsed time, cost and two repair cycles after the first draft. Pause rather than retry indefinitely. Local limits verified; cost uses conservative per-call reservations, not assumed billing metrics.
 - [ ] Inspect sampled output frames using a verified image-capable endpoint. Validate audio and timing separately; never claim every frame was checked from a few samples.
+- [x] Recover from rejected locked-source edits and stale exact patches within the shared two-repair cap; keep source reads complete within context limits. 45 tests and a real scripted offline render pass.
 - [x] Persist progress so restarting a job does not lose the current revision or repeat completed paid steps. Local journal/no-replay tests pass; unknown outcomes pause for reconciliation. Production leases remain E2.
 
 ### E1.3 Quality and cost fixtures
@@ -87,9 +89,11 @@ Progress: verified public endpoint schema snapshots, strict JSON action loop, sc
 - [x] Confirm composition-only requests make zero image/video-generation calls. Local provider permits only the two inspected text/vision endpoints; media proposals pause, rendering is offline.
 - [ ] Record the model choice and measured ceilings. Do not assume a cheaper token rate gives a cheaper successful video.
 
+**Latest E1 checkpoint:** offline hardening verified. No new paid calls; the $5 cap remains unchanged. Real creative acceptance, presenter/audio fidelity and benchmark coverage below remain open. Do not mark this phase complete from the scripted smoke.
+
 **E1 exit:** a real prompt produces an acceptable local video and a follow-up prompt modifies it without losing source fidelity. Provider compatibility and measured costs are documented.
 
-**Current evidence:** real product teaser and opening edit rendered; 41 deterministic tests pass. Second user review: “Still too basic—improve the creative direction.” Creative acceptance and the incomplete benchmark remain open. Paid tests stopped at the original $5 reservation cap; see round-up evidence and per-case costs. Approved live testing uses the app credential and explicit image-transfer permission within a shared $5 cap; this is an authorized exception to the separate-credential plan.
+**Current evidence:** real product teaser and opening edit rendered; 45 E1 deterministic tests pass. Second user review: “Still too basic—improve the creative direction.” Creative acceptance and the incomplete benchmark remain open. Paid tests stopped at the original $5 reservation cap; see round-up evidence and per-case costs. Approved live testing uses the app credential and explicit image-transfer permission within a shared $5 cap; this is an authorized exception to the separate-credential plan.
 
 ## E2 — app domain, execution and accounting
 
@@ -100,7 +104,12 @@ Progress: verified public endpoint schema snapshots, strict JSON action loop, sc
 - [x] Exercise quote expiry, approval/replay, shared operation capacity, cancellation, lease fencing, conflicting drafts and restore-as-new with isolated tests.
 - [x] Run the real API → host coordinator → offline Hyperframes renderer → private MP4 → download → restore flow without paid calls.
 - [x] Add an explicit operator recovery command for interrupted **fixture** runs; never treat lease expiry as proof the worker stopped.
-- [ ] Complete paid-agent receipts/settlement and immutable user-asset staging. The host bridge currently executes a clearly labelled fixed fixture only.
+- [x] Freeze supported managed attachments and the exact base revision into local quote inputs; verify hashes, retain source/reference roles, and require a live worker lease for downloads. Node, API and real HTTP/render checks pass.
+- [x] Record attempts before external execution; deny replayed execution, settle confirmed receipts idempotently through shared accounting and retain unknown holds. Offline render lifecycle and synthetic debit tests pass.
+- [x] Connect the E1 action runner to frozen app context and per-call accounting. Verify offline read → patch → check → snapshot → render and follow-up edits through the real HTTP coordinator. The injected provider is explicitly scripted; this is not creative/model acceptance.
+- [x] Inherit immutable input snapshots through edits/restores, protect source bytes, keep reference media outside the render workspace, cap local input storage, and clean expired orphaned files while retaining saved/unknown work.
+- [x] Verify real PostgreSQL concurrency for same-key approval, worker claims and attempt admission, plus cancellation/lease expiry without replay or release.
+- [ ] Add production-provider cost verification and late/unknown reconciliation before enabling any paid model. The provider-independent bridge is wired, but the app continues to use only the offline contract provider.
 - [ ] Register final compositions through the Project/Asset/ExportJob contracts and add scene-editor discriminator guards. Local previews deliberately do not create scene projects or public assets yet.
 
 See [local app integration evidence and setup](hyperframes-app-integration-verification.md). These checks close only the local fixture slice, not the full E2/E3 gates below.
@@ -109,13 +118,13 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 - [ ] Add workspace-scoped conversations, messages, attachments, compositions, immutable revisions, runs and artifact relationships; follow the technical spec's schema and reuse existing entities where appropriate.
 - [ ] Preserve the distinction between source assets, reference-only assets, previews and final outputs.
 - [ ] Add authorization and plan gates for reads, edits, generation, download and publishing; test cross-workspace IDs and viewer restrictions.
-- [ ] Implement expected-revision checks, preserved conflicting drafts and restore-as-new; never overwrite a completed version.
-- [ ] Add quote fingerprints, expiry, explicit approval, credit reservation and settlement through the shared accounting service.
+- [x] Implement expected-revision checks, preserved conflicting drafts and restore-as-new; never overwrite a completed version.
+- [x] Add quote fingerprints, expiry, explicit approval, credit reservation and settlement through the shared accounting service. Offline and synthetic charged-receipt tests pass; verified paid-provider receipts remain gated above.
 - [ ] Attribute agent, media and render costs separately; release only confirmed-unused reservations. Unknown provider outcomes remain reconcilable.
 - [ ] Implement durable state transitions, per-run leases, fenced callbacks, idempotent admission and after-commit dispatch.
 - [ ] Handle disconnect, duplicate submit, worker restart, timeout, late callback, cancellation and stranded holds without duplicate work/charges.
 - [ ] Register verified output in private storage; deliver expiring scoped URLs and enforce lifecycle/retention rules.
-- [ ] Add local feature flag/workspace allowlist; default production and public API admission off.
+- [x] Add local feature flag/workspace allowlist; default production and public API admission off.
 
 **E2 exit:** accounted, authorized runs survive retries and crashes in the local stack. Existing generation/export flows still pass their relevant checks.
 

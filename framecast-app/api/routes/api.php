@@ -35,6 +35,9 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('internal/create')->middleware('throttle:120,1')->group(function (): void {
     Route::post('/claim', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'claim']);
     Route::post('/runs/{id}/heartbeat', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'heartbeat']);
+    Route::post('/runs/{id}/inputs/{assetId}', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'inputFile'])->whereNumber('assetId');
+    Route::post('/runs/{id}/attempts', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'beginAttempt']);
+    Route::post('/runs/{id}/attempts/{attemptId}/settle', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'settleAttempt']);
     Route::post('/runs/{id}/finish', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'finish']);
 });
 

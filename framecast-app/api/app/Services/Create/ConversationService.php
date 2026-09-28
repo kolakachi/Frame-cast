@@ -87,19 +87,46 @@ class ConversationService
         $this->authorize($user, true);
         // Never present a fixture as AI output or silently enable an unpriced provider.
         abort_unless(config('create.mode') === 'fixture', 503, 'Paid generation is awaiting accounting and model acceptance.');
-        return DB::transaction(function () use ($user, $id, $version) {
-            $c = $this->conversation($user, $id, true);
-            abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Review a fresh plan.');
-            $messages = DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['role', 'content'])->all();
-            abort_if(! count($messages), 422, 'Add a brief first.');
-            $attachments = DB::table('create_attachments')->where('conversation_id', $id)->orderBy('id')->get(['asset_id', 'purpose'])->all();
-            $payload = ['kind' => 'composition_fixture', 'conversation_id' => $id, 'version' => $version,
-                'base_revision_id' => $c->head_revision_id, 'messages' => $messages, 'attachments' => $attachments,
-                'settings' => json_decode($c->settings_json, true), 'mode' => 'fixture'];
-            return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $user->workspace_id,
-                'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => 0,
-                'expires_at' => now()->addMinutes(10)]);
-        });
+        $c = $this->conversation($user, $id);
+        abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Review a fresh plan.');
+        $attachments = DB::table('create_attachments')->where('conversation_id', $id)->orderBy('id')->get(['asset_id', 'purpose'])->all();
+        $snapshots = app(InputSnapshotService::class);
+        // Storage I/O happens before acquiring conversation/pool locks.
+        $inherited = $snapshots->inherited($id, $c->head_revision_id);
+        $snapshots->verify($inherited);
+        $inheritedIds = array_column($inherited, 'asset_id');
+        // A revision's source is immutable, even if its library item was replaced.
+        foreach ($attachments as $attachment) {
+            $previous = collect($inherited)->firstWhere('asset_id', $attachment->asset_id);
+            abort_if($previous && $previous['purpose'] !== $attachment->purpose, 409, 'Start a new conversation to change an existing source to reference-only or vice versa.');
+        }
+        $newFiles = $snapshots->capture((int) $user->workspace_id, array_values(array_filter($attachments, fn ($a) => ! in_array($a->asset_id, $inheritedIds, true))));
+        $files = array_merge($inherited, $newFiles);
+        if (count($files) > 20 || array_sum(array_column($files, 'bytes')) > config('create.input_total_bytes')) {
+            $snapshots->discard($newFiles);
+            abort(422, 'Inherited and new attachments exceed the local preview size limit.');
+        }
+        try {
+            return DB::transaction(function () use ($user, $id, $version, $files, $attachments) {
+                $c = $this->conversation($user, $id, true);
+                abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Review a fresh plan.');
+                $messages = DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['role', 'content'])->all();
+                abort_if(! count($messages), 422, 'Add a brief first.');
+                $base = $c->head_revision_id ? DB::table('composition_revisions')->where('conversation_id', $id)->where('id', $c->head_revision_id)->firstOrFail() : null;
+                $payload = ['kind' => 'composition_fixture', 'conversation_id' => $id, 'version' => $version,
+                    'base_revision_id' => $c->head_revision_id, 'messages' => $messages, 'attachments' => $attachments,
+                    'execution_policy' => ['agent' => ['provider' => 'offline', 'model' => 'offline-contract-v1', 'credits' => 0, 'cost_limit_microusd' => 0, 'max_calls' => 5], 'render' => ['provider' => 'offline', 'model' => 'hyperframes-0.8.82', 'credits' => 0, 'cost_limit_microusd' => 0, 'max_calls' => 1]],
+                    'input_files' => $files, 'base_bundle' => $base ? json_decode($base->bundle_json, true) : null,
+                    'base_bundle_hash' => $base?->bundle_hash,
+                    'settings' => json_decode($c->settings_json, true), 'mode' => 'fixture'];
+                return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $user->workspace_id,
+                    'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => 0,
+                    'expires_at' => now()->addMinutes(10)]);
+            });
+        } catch (\Throwable $e) {
+            $snapshots->discard($newFiles);
+            throw $e;
+        }
     }
 
     public function approve(User $user, string $id, string $quoteId, string $key): object
@@ -128,6 +155,9 @@ class ConversationService
                 abort_unless(config('create.mode') === 'fixture' && $quote->credits_max === 0, 503);
                 abort_if(DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->whereIn('status', self::ACTIVE)->exists(), 409, 'Another creation is active or awaiting recovery.');
                 abort_if(DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('created_at', '>=', now()->startOfDay())->count() >= 10, 429, 'Local pilot daily limit reached.');
+                foreach ($p['input_files'] ?? [] as $file) {
+                    abort_unless(Asset::where('workspace_id', $user->workspace_id)->whereKey($file['asset_id'])->where('status', '!=', 'archived')->exists(), 409, 'An attached asset is no longer available.');
+                }
                 $operation = OperationAccounting::reserve($quote, null);
                 $runId = (string) Str::uuid();
                 DB::table('composition_runs')->insert(['id' => $runId, 'conversation_id' => $id, 'workspace_id' => $user->workspace_id,

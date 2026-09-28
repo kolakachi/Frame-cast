@@ -32,7 +32,9 @@ class RunService
                 'status' => 'running', 'stage' => 'Preparing local render', 'lease_hash' => hash('sha256', $token),
                 'lease_expires_at' => now()->addSeconds(config('create.lease_seconds')), 'updated_at' => now(),
             ]);
-            return ['id' => $run->id, 'lease_token' => $token, 'input' => json_decode($run->input_json, true)];
+            $input = json_decode($run->input_json, true);
+            $input['input_files'] = array_map(function ($file) { unset($file['storage_path']); return $file; }, $input['input_files'] ?? []);
+            return ['id' => $run->id, 'lease_token' => $token, 'input' => $input];
         });
     }
 
@@ -50,6 +52,24 @@ class RunService
             abort_unless($run->result_hash || (in_array($run->status, ['running', 'cancel_requested'], true)
                 && now()->lessThan($run->lease_expires_at)), 409, 'Worker lease expired.');
         });
+    }
+
+    public function inputFile(string $id, string $token, int $assetId): array
+    {
+        $file = DB::transaction(function () use ($id, $token, $assetId) {
+            $run = $this->leased($id, $token);
+            abort_unless($run->status === 'running' && now()->lessThan($run->lease_expires_at)
+                && in_array((int) $run->workspace_id, config('create.workspaces', []), true), 409, 'Input lease is no longer current.');
+            abort_unless(\App\Models\Workspace::whereKey($run->workspace_id)->where('status', 'active')->exists(), 403);
+            $input = json_decode($run->input_json, true);
+            $file = collect($input['input_files'] ?? [])->first(fn ($f) => (int) $f['asset_id'] === $assetId);
+            abort_unless($file, 404);
+            abort_unless(\App\Models\Asset::where('workspace_id', $run->workspace_id)->whereKey($assetId)->where('status', '!=', 'archived')->exists(), 404);
+            return $file;
+        });
+        // Hash the immutable copy outside the transaction, never fetch the mutable original here.
+        app(InputSnapshotService::class)->verify([$file]);
+        return $file;
     }
 
     public function heartbeat(string $id, string $token, int $sequence, string $stage): array
@@ -97,6 +117,7 @@ class RunService
             $input = json_decode($run->input_json, true);
             abort_unless($input['mode'] === 'fixture', 503, 'Paid settlement is not enabled.');
             $status = $result['status'];
+            abort_if($status !== 'needs_attention' && AttemptService::unresolved($id), 409, 'External attempts require settlement before closing this run.');
             if ($run->status === 'cancel_requested') abort_unless(in_array($status, ['cancelled', 'needs_attention'], true), 409, 'Stop the worker before acknowledging cancellation.');
             if ($status === 'preview_ready') {
                 abort_unless($artifactPath && $artifactHash, 422, 'A verified encoded preview is required.');

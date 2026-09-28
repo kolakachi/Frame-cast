@@ -21,7 +21,9 @@ class ReconcileCreateFixture extends Command
         $ok = DB::transaction(function () {
             $run = DB::table('composition_runs')->where('id', $this->argument('run'))->lockForUpdate()->first();
             if (! $run || $run->status !== 'needs_attention' || (json_decode($run->input_json, true)['mode'] ?? '') !== 'fixture') return false;
+            if (DB::table('composition_attempts')->where('run_id', $run->id)->where(fn ($q) => $q->where('provider', '!=', 'offline')->orWhere('credit_limit', '>', 0)->orWhere('cost_limit_microusd', '>', 0))->exists()) return false;
             if (! OperationAccounting::cancel($run->operation_id, $run->workspace_id)) return false;
+            DB::table('composition_attempts')->where('run_id', $run->id)->whereIn('status', ['started', 'unknown'])->update(['status' => 'failed', 'cost_microusd' => 0, 'updated_at' => now()]);
             DB::table('composition_runs')->where('id', $run->id)->update([
                 'status' => 'cancelled', 'stage' => 'Local fixture reconciled', 'error' => 'Operator confirmed the worker stopped. A new run can be approved.',
                 'lease_hash' => null, 'lease_expires_at' => null, 'updated_at' => now(),

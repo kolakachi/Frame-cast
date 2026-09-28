@@ -142,10 +142,67 @@ The shared ledger stopped further calls at the original $5 reservation cap:
 96 requests, **$3.468019 known token-price estimates**, **$4.871791 reserved**
 including headroom and unresolved requests. Two earlier requests remain
 unreconciled. These are not invoice-confirmed totals. No cap increase applied;
-a request to raise the total cap to $8 is pending user approval.
+the later request to raise the total cap to $8 was declined. The user requested offline work only; the $5 cap remains unchanged.
 
 Still needed: accepted creative output, agent-authored presenter/audio fidelity,
 three styles from the same footage, remaining Opus briefs, long-copy and
 contradictory-brief live cases, and completed scoring. Sonnet is the provisional
 next-test choice, not a certified production winner. The local benchmark report
 and media-verification JSON preserve results. Do not tick the whole phase.
+
+
+## Offline hardening — 2026-09-28 follow-up
+
+User decision: **keep the $5 cap and finish offline work only**. No new provider
+calls or image transfers were made. The ledger remains at 96 requests,
+$4.871791 reserved and $3.468019 in known token-price estimates. These are not
+invoice totals, and unresolved reservations were not released.
+
+Changes verified:
+
+- Locked-source removal or duplication is rejected before writing. The agent
+  receives an actionable correction within the existing two-repair allowance.
+  This fixes the immediate abort observed in the presenter benchmark without
+  relaxing source locks. Repeated violations stop; sandbox/filesystem failures
+  still stop immediately. Literal source locks are not semantic video analysis.
+- An exact patch that no longer matches can read the current draft and correct
+  itself within the same allowance. No automatic replay of uncertain work.
+- Full bounded source reads reach the model. The 16 KB diagnostic summarizer no
+  longer silently truncates HTML needed for targeted edits; the overall context
+  and source-size limits still apply.
+- The live harness now supplies scenario-specific approved copy rather than
+  product copy for every brief, explicit separation for the mismatched-product
+  fixture, and a persisted source hash as the base revision. These harness changes
+  passed syntax checks, but have **not** been re-tested with a paid model. Use a
+  fresh test ID; old journals must not be reset or rewritten to force a replay.
+
+Verification:
+
+- **45 deterministic Node tests pass**, including recovery after a rejected edit,
+  duplicate source rejection, bounded repair exhaustion, complete source reads,
+  patch recovery and terminal sandbox violations.
+- Rebuilt offline renderer verifies **223 pinned skill files**. The scripted
+  smoke also loads hash-verified core and determinism guidance.
+- Real offline Hyperframes smoke: six scripted actions, one rejected destructive
+  edit, one repair, exact source comparison proving only CTA text changed, then
+  check, snapshots, MP4 render and encoded-media validation. Render took 23.391s;
+  peak memory 704,839,680 bytes. Provider cost **$0**.
+- Local artifact:
+  `hyperframes-worker/artifacts/agent-smoke/f9fd63ba-a69a-47a7-bbe0-c74cd13d9ae5/renders/c1f76b03-bccc-4879-8976-58825c05c955/video.mp4`.
+
+Reproduce without paid calls:
+
+```sh
+cd framecast-app/hyperframes-worker
+node --test agent/tests/agent.test.mjs
+docker compose -f compose.local.yml build smoke
+docker compose -f compose.local.yml run --rm smoke node agent/fake-smoke.mjs
+```
+
+**E1 as a whole remains open.** A scripted offline render establishes engineering
+behavior, not model creativity. Still required for the original exit criterion:
+accepted real creative output, agent-authored presenter/audio preservation,
+remaining style/brief comparisons and difficult-input runs, measured cost per
+acceptable output, and invoice reconciliation. Model selection and reviewed
+positive visual exemplars remain unproven. No paid admission or production
+readiness is implied by this offline pass.

@@ -7,7 +7,8 @@ $app = require __DIR__.'/../../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => '/tmp/create-fixture.sqlite',
     'database.connections.sqlite.foreign_key_constraints' => false, 'cors.allowed_origins' => ['http://127.0.0.1:5188'], 'cache.default' => 'array', 'session.driver' => 'array',
-    'services.posthog.key' => '', 'create.enabled' => true, 'create.workspaces' => [1], 'create.mode' => 'fixture', 'developer.operation_accounting' => true]);
+    'services.posthog.key' => '', 'create.enabled' => true, 'create.workspaces' => [1], 'create.mode' => 'fixture', 'developer.operation_accounting' => true,
+    'filesystems.disks.minio' => ['driver' => 'local', 'root' => '/tmp/create-input-fixtures', 'throw' => true]]);
 \Illuminate\Support\Facades\Http::preventStrayRequests();
 \Illuminate\Support\Facades\Redis::shouldReceive('get')->andReturn(null);
 class CreateHttpFixtureSchema { use \Tests\Support\BuildsDeveloperSchema; public function build(): void { $this->buildDeveloperSchema(); } }
@@ -16,9 +17,12 @@ if (! \Illuminate\Support\Facades\Schema::hasTable('create_conversations')) {
     (new CreateHttpFixtureSchema)->build();
     (require database_path('migrations/2026_09_25_200000_create_api_operations.php'))->up();
     (require database_path('migrations/2026_09_28_120000_create_composition_conversations.php'))->up();
+    (require database_path('migrations/2026_09_29_000000_create_composition_attempts.php'))->up();
     \App\Models\Workspace::create(['name' => 'Create fixture', 'status' => 'active', 'plan_tier' => 'creator', 'plan_status' => 'active', 'credits_monthly' => 100]);
     $user = \App\Models\User::create(['email' => 'create-fixture@example.test', 'name' => 'Local tester', 'role' => 'owner', 'status' => 'active']);
     $user->forceFill(['workspace_id' => 1])->save();
+    \Illuminate\Support\Facades\Storage::disk('minio')->put('reference.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII='));
+    \App\Models\Asset::create(['workspace_id' => 1, 'asset_type' => 'image', 'title' => 'Synthetic input fixture', 'status' => 'ready', 'storage_url' => 'minio://reference.png']);
 }
 $app->instance(\App\Http\Middleware\AuthenticateWithJwt::class, new class extends \App\Http\Middleware\AuthenticateWithJwt {
     public function __construct() {}
