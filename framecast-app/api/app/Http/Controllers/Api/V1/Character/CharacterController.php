@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Character;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateCharacterImageJob;
+use App\Jobs\GenerateCharacterSheetJob;
 use App\Models\Asset;
 use App\Models\Character;
 use App\Models\CharacterImageGeneration;
@@ -330,6 +331,55 @@ class CharacterController extends Controller
      *
      * Adapter routing + credit pricing live in GenerateCharacterImageJob.
      */
+    /**
+     * Four angles of one character, in one approved spend.
+     *
+     * Each angle is charged by GenerateCharacterImageJob as it succeeds, so
+     * the 65 credits quoted here is a ceiling rather than a debit: an angle
+     * that fails costs nothing and the sheet is built from whatever landed.
+     */
+    public function generateSheet(Request $request, int $characterId): JsonResponse
+    {
+        $user      = $request->user();
+        $character = Character::query()
+            ->whereKey($characterId)
+            ->where('workspace_id', $user->workspace_id)
+            ->firstOrFail();
+
+        // The sheet matches an existing face; it cannot invent one. Without a
+        // reference photo the four angles would be four different people.
+        if (! $character->reference_asset_id) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'reference_required',
+                    'message' => 'Add a reference photo to this character first — the sheet matches an existing face rather than inventing one.',
+                ],
+            ], 422);
+        }
+
+        $cost    = GenerateCharacterSheetJob::COST;
+        $credits = app(CreditService::class);
+        $balance = $credits->balance((int) $user->workspace_id);
+
+        if ($balance < $cost) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'insufficient_credits',
+                    'message' => "You need {$cost} credits to generate an identity sheet. Your balance is {$balance}.",
+                    'context' => ['balance' => $balance, 'required' => $cost, 'shortage' => $cost - $balance],
+                ],
+            ], 402);
+        }
+
+        GenerateCharacterSheetJob::dispatch($character->getKey(), (int) $user->getKey());
+
+        return response()->json(['data' => [
+            'status'  => 'queued',
+            'credits' => $cost,
+            'angles'  => array_column(GenerateCharacterSheetJob::ANGLES, 'label'),
+        ]], 202);
+    }
+
     public function generateImage(Request $request, int $characterId): JsonResponse
     {
         /** @var User $user */
@@ -550,6 +600,34 @@ class CharacterController extends Controller
             'created_at'         => $c->created_at?->toIso8601String(),
             'updated_at'         => $c->updated_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * The character's most recent identity sheet, or null. Sheets are assets
+     * tagged with the character, not a column on it, so regenerating keeps the
+     * older ones rather than overwriting them — this returns the newest.
+     */
+    public function sheet(Request $request, int $characterId): JsonResponse
+    {
+        $user      = $request->user();
+        $character = Character::query()
+            ->whereKey($characterId)
+            ->where('workspace_id', $user->workspace_id)
+            ->firstOrFail();
+
+        $asset = Asset::query()
+            ->where('workspace_id', $character->workspace_id)
+            ->whereJsonContains('tags', 'character_sheet')
+            ->whereJsonContains('tags', 'character:'.$character->getKey())
+            ->orderByDesc('id')
+            ->first();
+
+        return response()->json(['data' => $asset ? [
+            'asset_id'   => $asset->getKey(),
+            'url'        => $this->assetUrl($asset),
+            'title'      => $asset->title,
+            'created_at' => optional($asset->created_at)->toIso8601String(),
+        ] : null]);
     }
 
     private function assetUrl(?Asset $asset): ?string

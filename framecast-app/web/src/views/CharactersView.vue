@@ -60,6 +60,65 @@ const createError = ref("");
 const deleteTarget = ref(null);
 const deletePending = ref(false);
 
+// ── Identity sheet ────────────────────────────────────────────────────
+// Four angles of one character, generated in order so each matches the last.
+// The job runs four image generations back to back, so this polls rather than
+// waits: the sheet arrives as a new asset and we watch for an id newer than
+// the one we opened with.
+const sheetTarget = ref(null);
+const sheetAsset = ref(null);
+const sheetState = ref("idle");   // idle | working | error
+const sheetError = ref("");
+const SHEET_COST = 65;
+let sheetTimer = null;
+
+async function loadSheet() {
+  if (!sheetTarget.value) return;
+  try {
+    const res = await api.get(`/characters/${sheetTarget.value.id}/sheet`);
+    sheetAsset.value = res.data?.data || null;
+  } catch {
+    // A failed poll is not a failed sheet — keep whatever is on screen.
+  }
+}
+
+async function openSheet(character) {
+  sheetTarget.value = character;
+  sheetAsset.value = null;
+  sheetState.value = "idle";
+  sheetError.value = "";
+  await loadSheet();
+}
+
+function closeSheet() {
+  if (sheetTimer) { clearInterval(sheetTimer); sheetTimer = null; }
+  sheetTarget.value = null;
+  sheetState.value = "idle";
+}
+
+async function generateSheet() {
+  if (!sheetTarget.value) return;
+  const before = sheetAsset.value?.asset_id ?? 0;
+  sheetState.value = "working";
+  sheetError.value = "";
+  try {
+    await api.post(`/characters/${sheetTarget.value.id}/generate-sheet`);
+  } catch (e) {
+    sheetState.value = "error";
+    sheetError.value = e.response?.data?.error?.message || "The sheet could not be started.";
+    return;
+  }
+  if (sheetTimer) clearInterval(sheetTimer);
+  sheetTimer = setInterval(async () => {
+    await loadSheet();
+    if ((sheetAsset.value?.asset_id ?? 0) > before) {
+      sheetState.value = "idle";
+      clearInterval(sheetTimer);
+      sheetTimer = null;
+    }
+  }, 5000);
+}
+
 // ── Generate-image modal ──────────────────────────────────────────────
 // POST kicks off a queue job (returns 202) so the long OpenAI call doesn't
 // hold the HTTP connection open past Cloudflare's request timeout. We then
@@ -318,6 +377,7 @@ function refreshPendingPoll() {
 }
 
 onBeforeUnmount(() => {
+  if (sheetTimer) { clearInterval(sheetTimer); sheetTimer = null; }
   if (pendingPollTimer.value) clearTimeout(pendingPollTimer.value);
   stopGenPolling();
 });
@@ -667,6 +727,7 @@ async function confirmDelete() {
                   </div>
                   <div class="char-card-actions">
                     <button class="char-card-act accent" type="button" title="Generate test image" @click.stop="openGenerate(c)">✦</button>
+                    <button class="char-card-act" type="button" title="Identity sheet" @click.stop="openSheet(c)">▦</button>
                     <button class="char-card-act" type="button" title="Edit" @click.stop="openEdit(c)">✎</button>
                     <button class="char-card-act danger" type="button" title="Delete" @click.stop="deleteTarget = c">✕</button>
                   </div>
@@ -809,6 +870,59 @@ async function confirmDelete() {
             <button class="btn btn-ghost btn-sm" type="button" @click="deleteTarget = null">Cancel</button>
             <button class="btn btn-primary btn-sm" type="button" :disabled="deletePending" @click="confirmDelete">
               {{ deletePending ? 'Deleting…' : 'Delete' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Identity sheet: four angles of one character, downloadable -->
+    <Teleport to="body">
+      <div v-if="sheetTarget" class="cv-backdrop" @click.self="closeSheet">
+        <div class="cv-modal">
+          <div class="cv-head">
+            <div class="cv-title">▦ Identity sheet — {{ sheetTarget.name }}</div>
+            <button class="cv-close" @click="closeSheet">×</button>
+          </div>
+          <div class="cv-body">
+            <p class="sheet-lead">
+              Four angles of the same person — front, three-quarter left and right, and profile —
+              generated in order so each one matches the last. They join this character's reference
+              photos, which is what keeps them recognisable in a video.
+            </p>
+
+            <p v-if="!sheetTarget.reference_asset" class="sheet-note">
+              This character has no reference photo yet. A sheet matches an existing face rather
+              than inventing one — generate or upload a photo first.
+            </p>
+
+            <div v-if="sheetAsset" class="sheet-preview">
+              <img :src="sheetAsset.url" :alt="`Identity sheet for ${sheetTarget.name}`" />
+            </div>
+
+            <p v-if="sheetState === 'working'" class="sheet-note">
+              Generating four angles in order — this takes a couple of minutes. You can close this
+              and come back; it keeps running.
+            </p>
+            <p v-if="sheetError" class="sheet-note danger">{{ sheetError }}</p>
+          </div>
+          <div class="cv-foot">
+            <a
+              v-if="sheetAsset"
+              class="btn btn-ghost btn-sm"
+              :href="sheetAsset.url"
+              :download="`${sheetTarget.name}-identity-sheet.png`"
+              target="_blank"
+              rel="noopener"
+            >↓ Download</a>
+            <button class="btn btn-ghost btn-sm" type="button" @click="closeSheet">Close</button>
+            <button
+              class="btn btn-primary btn-sm"
+              type="button"
+              :disabled="sheetState === 'working' || !sheetTarget.reference_asset"
+              @click="generateSheet"
+            >
+              {{ sheetState === 'working' ? 'Generating…' : (sheetAsset ? `Regenerate · ${SHEET_COST} cr` : `Generate sheet · ${SHEET_COST} cr`) }}
             </button>
           </div>
         </div>
@@ -1334,4 +1448,34 @@ async function confirmDelete() {
 }
 .lock-wall h2 { font-size: 20px; margin: 0 0 10px; }
 .lock-wall p { font-size: 14px; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 20px; }
+
+/* ── Identity sheet ─────────────────────────────────────────────────── */
+.cv-body { padding: 0 20px 4px; }
+.sheet-lead {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  margin: 0 0 14px;
+}
+.sheet-note {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  margin: 12px 0 0;
+}
+.sheet-note.danger { color: #f87171; }
+/* The sheet is portrait-ish and can be tall; cap it so the footer stays
+   reachable without scrolling the whole modal on a phone. */
+.sheet-preview {
+  margin-top: 4px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+}
+.sheet-preview img {
+  display: block;
+  width: 100%;
+  max-height: 46vh;
+  object-fit: contain;
+}
 </style>
