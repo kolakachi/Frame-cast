@@ -160,10 +160,14 @@ class VoiceProfileController extends Controller
             return response()->json([
                 'error' => [
                     'code'    => 'voice_cloning_limit',
-                    // "includes 0 cloned voice(s)" reads like a bug to someone
-                    // on a plan that simply has no cloning. Say what it is.
+                    // Name the plan that has it and the plan they are on.
+                    // "available on paid plans" was written for free accounts
+                    // but Starter's allowance is also zero, so everyone who
+                    // bought Starter — including every lifetime and AppSumo
+                    // Starter — was told to upgrade to a paid plan while
+                    // holding one. Creator is the first tier that clones.
                     'message' => (int) ($usage['voice_cloning_limit'] ?? 0) === 0
-                        ? 'Voice cloning is available on paid plans. Upgrade to clone your own voice.'
+                        ? "Voice cloning starts on the Creator plan. {$usage['plan']} does not include it."
                         : "Your plan includes {$usage['voice_cloning_limit']} cloned voice(s). Upgrade or remove one to add another.",
                     'context' => ['used' => $usage['voice_cloning_used'], 'limit' => $usage['voice_cloning_limit']],
                 ],

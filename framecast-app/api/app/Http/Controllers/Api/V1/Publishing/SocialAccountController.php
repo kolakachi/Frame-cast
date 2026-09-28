@@ -42,14 +42,19 @@ class SocialAccountController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        // Publishing is a paid capability, so connecting is too: letting a free
-        // account finish an OAuth round trip only to be refused at the moment
-        // it schedules a post is a worse experience than saying so up front.
+        // Checked before the OAuth round trip rather than after it: being
+        // refused at the moment you schedule a post, having already granted
+        // access, is a worse experience than being told up front.
+        //
+        // Every plan publishes except the UGC Test Pass, so that pass is the
+        // only thing this refuses. The old wording said "available on paid
+        // plans", which told someone who had just paid for the pass to go and
+        // buy a paid plan.
         if (! app(\App\Services\CreditService::class)->canPublishToSocial((int) $user->workspace_id)) {
             return response()->json([
                 'error' => [
                     'code' => 'upgrade_required',
-                    'message' => 'Connecting a social account and publishing from WyvStudio are available on paid plans. Upgrade to connect your channels.',
+                    'message' => 'The UGC Test Pass does not include publishing to social accounts. Any plan from Starter up connects your channels.',
                 ],
             ], 402);
         }
