@@ -28,7 +28,7 @@ try{
  });
  page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
  await page.goto('http://127.0.0.1:5188/create/'+evidence.conversation);
- await page.getByText('LOCAL SAMPLE PREVIEW',{exact:true}).waitFor();
+ await page.getByText('Local sample preview',{exact:true}).waitFor();
  if(await page.getByRole('button',{name:'Got it',exact:true}).count())await page.getByRole('button',{name:'Got it',exact:true}).click();
  await page.locator('video').waitFor();
  if(await page.getByRole('button',{name:'Save sample to videos',exact:true}).count()) await page.getByRole('button',{name:'Save sample to videos',exact:true}).click();
@@ -38,13 +38,14 @@ try{
  const before=await page.locator('video').evaluate(v=>({time:v.currentTime,src:v.currentSrc}));
  // Trigger a real server refresh through an added message; player must keep its src and position.
  const followup='Keep this sample for comparison '+Date.now()+'.';
- await page.getByLabel('YOUR BRIEF OR NEXT CHANGE').fill(followup);
- await page.getByRole('button',{name:'Save brief ↑',exact:true}).click();
+ await page.getByLabel('Describe what you want to create or change').fill(followup);
+ await page.getByRole('button',{name:'Send',exact:true}).click();
  await page.getByText(followup,{exact:true}).waitFor();
  await page.waitForTimeout(1500);
  const after=await page.locator('video').evaluate(v=>({time:v.currentTime,src:v.currentSrc}));
  assert.equal(after.src,before.src);assert.ok(after.time>before.time,'Playback reset during refresh');
- await page.getByRole('button',{name:'Details',exact:true}).click();
+ await page.getByRole('button',{name:'Details & versions',exact:true}).click();
+ await page.getByRole('button',{name:'Versions',exact:true}).click();
  await page.getByRole('button',{name:/^Version 1/}).click();
  await page.getByRole('button',{name:'Restore as a new version'}).waitFor();
  await page.getByRole('button',{name:'Compare with current',exact:true}).click();
@@ -55,7 +56,7 @@ try{
  await page.waitForFunction(()=>document.querySelector('video')?.readyState>=2);
  await page.screenshot({path:root+'/artifacts/app-integration/desktop.png',fullPage:true});
 
- await page.getByRole('button',{name:'Add from library',exact:true}).click();
+ await page.getByRole('button',{name:'From library',exact:true}).click();
  await page.getByRole('dialog').waitFor();await page.keyboard.press('Escape');
  await page.locator('dialog[open]').waitFor({state:'hidden'});assert.equal(await page.locator('dialog[open]').count(),0);
  await page.locator('video').evaluate(v=>v.pause());

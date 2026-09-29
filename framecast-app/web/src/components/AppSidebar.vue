@@ -384,7 +384,6 @@ onBeforeUnmount(() => {
     <router-link v-if="!isCollapsed && switchTargets.some(w => Number(w.id) === Number(activeWorkspaceId) && w.is_client)" class="client-work-link" to="/client-work">Client brief &amp; requests →</router-link>
     <div class="sidebar-nav">
       <div class="nav-section-label">Workspace</div>
-      <button v-if="createEnabled" :class="['nav-item', activePage === 'create' ? 'active' : '']" type="button" data-tooltip="Create" @click="nav('create')">✦ Create</button>
       <button
         :class="['nav-item', activePage === 'dashboard' ? 'active' : '']"
         data-tooltip="Dashboard"
@@ -515,6 +514,14 @@ onBeforeUnmount(() => {
           <path d="M16.5 10.5L21.5 7.5v9l-5-3" />
         </svg>
         From My Footage
+      </button>
+      <button v-if="createEnabled" :class="['nav-item', activePage === 'create' ? 'active' : '']" type="button" data-tooltip="Create" @click="nav('create')">
+        <svg class="nav-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="M7 15l3-3 3 3 4-4" />
+        </svg>
+        Create
+        <span class="nav-pilot">PILOT</span>
       </button>
       <button
         :class="['nav-item', activePage === 'calendar' ? 'active' : '']"
@@ -1159,6 +1166,16 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   display: block;
 }
+.nav-pilot {
+  margin-left: auto;
+  font: 600 9px/1 ui-monospace, Menlo, monospace;
+  letter-spacing: 1px;
+  padding: 3px 5px;
+  border-radius: 3px;
+  background: var(--color-accent, #ff6b35);
+  color: #0b0d11;
+}
+.sidebar.collapsed .nav-pilot { display: none; }
 .nav-count {
   margin-left: auto;
   background: var(--color-bg-elevated);

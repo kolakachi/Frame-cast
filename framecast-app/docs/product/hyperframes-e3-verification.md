@@ -107,3 +107,35 @@ the pre-existing affiliate arrival test); production web build passes.
 Not run: the browser tests, because no Playwright install is available
 here. The E3 exit remains open on that run.
 
+## Slice 1 — shell parity with the approved mockup (2026-09-29, late)
+
+The built screen was compared with `create-ui/agent-new.html` and
+`create-ui/agent.html` rendered side by side at desktop and phone sizes. The
+layout now follows the mockup: header with title, version status, credit
+balance, New creation, Recent conversations and a Details & versions toggle;
+right-aligned brief bubbles carrying the files attached for that brief (REUSE
+or REFERENCE); WyvStudio replies with speaker and time; the working card with
+spinner and "Stop · keeps what is done so far"; the plan and cost as a warning
+card with the cost line in its footer; the result card with meta row and
+actions; pending uploads as chips above a rounded composer with + Attach,
+From library, a Video/Image switch before the first brief and a round send
+button; the empty state and examples; a docked Details/Versions panel (output
+summary with editable settings, approved facts, files, conversation name and
+archive; versions with current/viewing tags and saved outputs); Recent
+conversations grouped by day with an All Videos link. The local-preview
+banner and pill are gone; fixture honesty stays in the quote and the result
+meta. The sidebar lists Create after UGC Ads with a PILOT tag.
+
+Deliberately not copied because they are not true yet: auto-run under 15
+credits and free text/colour/size edits (composer note says every paid
+creation is quoted), the brand-kit chip, voiceover and thumbnail examples, the
+placement overlays and per-video credit breakdown. Those arrive with the plan
+turn and later slices.
+
+API change: attachments now return `attached_at`, duration and dimensions so a
+chip can sit in the brief it belongs to. Checks: Create suite 49 passed; web
+unit tests 43 passed (1 pre-existing affiliate failure); production build
+passes; screenshots at 1440×900 and 390×844 compared with the mockup. The two
+browser tests were updated to the new labels but not run, because port 8018 is
+held by the paid pilot.
+

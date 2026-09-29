@@ -8,7 +8,7 @@ import FinishedVideoPlayer from '../components/FinishedVideoPlayer.vue'
 import UiSelect from '../components/UiSelect.vue'
 import CreateDialog from '../components/create/CreateDialog.vue'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
-import CreateAttachment from '../components/create/CreateAttachment.vue'
+import { useWorkspaceStore } from '../stores/workspace'
 
 const auth = useAuthStore(), route = useRoute(), router = useRouter()
 const available = ref(false), loaded = ref(false), busy = ref(false), error = ref(''), conflict = ref(false)
@@ -44,6 +44,59 @@ async function animateResult(){await guarded(async()=>{const rev=currentRevision
 async function saveSettings() {await guarded(async()=>{await api.patch(base(),{expected_version:conversation.value.version,settings:{...settingsDraft.value,approved_facts:factsText.value.split('\n').map(s=>s.trim()).filter(Boolean)}});quote.value=null;await refresh()})}
 function openSettings() {try{settingsDraft.value={...settingsDraft.value,...JSON.parse(conversation.value?.settings_json||'{}')};factsText.value=(settingsDraft.value.approved_facts||[]).join('\n')}catch{}details.value=true}
 
+const workspaceStore = useWorkspaceStore()
+const credits = computed(() => workspaceStore.usage?.credits_balance)
+const panelTab = ref('details'), panelHeading = ref(null)
+let panelReturnFocus = null
+function togglePanel() { if (details.value) { closePanel(); return } panelReturnFocus = document.activeElement; openSettings(); nextTick(() => panelHeading.value?.focus()) }
+function closePanel() { details.value = false; nextTick(() => panelReturnFocus?.focus?.()) }
+function onKey(e) { if (e.key === 'Escape' && details.value && !delivery.value && !showHistory.value && !libraryOpen.value && !compareOpen.value) closePanel() }
+function time(value) { return value ? new Date(value).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '' }
+function sizeLabel(a) {
+  const d = a.dimensions || {}, dims = d.width && d.height ? `${d.width}×${d.height}` : ''
+  const dur = a.duration_seconds ? `0:${String(Math.round(a.duration_seconds)).padStart(2, '0')}` : ''
+  return [dur, dims].filter(Boolean).join(' · ') || a.asset_type
+}
+// Attachments sit in the message they were added for: everything attached
+// before a brief belongs to that brief; anything attached after the latest
+// brief is still waiting in the composer.
+const messageAttachments = computed(() => {
+  const out = {}, list = [...(data.value?.attachments || [])].sort((a, b) => Date.parse(a.attached_at || 0) - Date.parse(b.attached_at || 0))
+  const briefs = (data.value?.messages || []).filter(m => m.role === 'user')
+  for (const a of list) {
+    const at = Date.parse(a.attached_at || 0)
+    const owner = briefs.find(m => Date.parse(m.created_at) >= at)
+    if (owner) (out[owner.id] ||= []).push(a)
+  }
+  return out
+})
+const pendingAttachments = computed(() => {
+  const briefs = (data.value?.messages || []).filter(m => m.role === 'user')
+  const last = briefs.length ? Date.parse(briefs[briefs.length - 1].created_at) : -Infinity
+  return (data.value?.attachments || []).filter(a => Date.parse(a.attached_at || 0) > last)
+})
+const headStatus = computed(() => {
+  if (!conversation.value) return null
+  if (active.value?.status === 'needs_attention') return { cls: 'warn', text: 'NEEDS A CHECK' }
+  if (active.value) return { cls: 'info', text: `UPDATING · VERSION ${(currentNumber.value || 0) + 1}` }
+  if (currentNumber.value) return { cls: 'neutral', text: `VERSION ${currentNumber.value}` }
+  return null
+})
+const settingsNow = computed(() => { try { return JSON.parse(conversation.value?.settings_json || '{}') } catch { return {} } })
+const outputSummary = computed(() => {
+  const st = settingsNow.value, ratio = { '9:16': 'Portrait 9:16', '16:9': 'Landscape 16:9', '1:1': 'Square 1:1', '4:5': 'Feed 4:5' }[st.aspect_ratio] || 'Portrait 9:16'
+  if ((st.output_kind || kind.value) === 'image') return `${ratio} · image`
+  return [ratio, `${st.duration_seconds || 15} seconds`, st.audio === 'silent' ? 'silent' : 'your audio', st.language && st.language !== 'en' ? st.language.toUpperCase() : null].filter(Boolean).join(' · ')
+})
+const historyGroups = computed(() => {
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const groups = [{ label: 'TODAY', items: [] }, { label: 'YESTERDAY', items: [] }, { label: 'EARLIER', items: [] }]
+  for (const c of filteredHistory.value) {
+    const t = Date.parse(c.updated_at)
+    groups[t >= today.getTime() ? 0 : t >= today.getTime() - 864e5 ? 1 : 2].items.push(c)
+  }
+  return groups.filter(g => g.items.length)
+})
 let timer, searchTimer, epoch = 0, mediaEpoch = 0, historyEpoch = 0, libraryEpoch = 0, compareEpoch = 0
 let mediaKey = '', sendingKey = null, approvalKey = null, uploadRunning = false
 const id = computed(() => route.params.conversationId)
@@ -62,10 +115,10 @@ const kind = computed(() => {
 })
 const filteredHistory = computed(() => history.value.filter(c => historyFilter.value === 'all' || state(c) === historyFilter.value))
 const examples = [
-  { title:'Package my footage', copy:'Keep your voice. Add a clear story.', prompt:'Keep my original voice and footage. Add three benefit callouts and a clear ending.', kind:'video', icon:'▷' },
-  { title:'Bring a product to life', copy:'Start with your product photos.', prompt:'Make a short product launch video from these photos. Keep the product accurate and use only claims I provide.', kind:'video', icon:'▧' },
-  { title:'Explain an idea', copy:'A simple message, thoughtfully paced.', prompt:'Help me turn my idea into a clear, short visual explainer. Ask me for any facts you need.', kind:'video', icon:'✦' },
-  { title:'Plan a product image', copy:'Save the brief for image creation.', prompt:'Create a clean product image from my photo, keeping its shape, label and colours unchanged.', kind:'image', icon:'◈' },
+  { title:'Package a take I already have', copy:'Keep the voice, add callouts and an offer. Usually no new footage.', prompt:'Turn this take into a launch video. Keep my voice, add three benefit callouts and end on our offer.', kind:'video' },
+  { title:'Promo from product photos', copy:'Motion, headline and offer over stills. No footage needed.', prompt:'Make a 15-second promo from these product photos, keeping the product accurate and using only claims I provide.', kind:'video' },
+  { title:'Kinetic-text explainer', copy:'Script-led, no media required.', prompt:'Explain my idea with big kinetic text on brand colours, no voice. Ask me for any facts you need.', kind:'video' },
+  { title:'Product image from a photo', copy:'Same product, new setting. Quoted before it runs.', prompt:'Create a clean product image from my photo on a warm studio background, keeping its shape, label and colours unchanged.', kind:'image' },
 ]
 function state(c) { return ['queued','running','cancel_requested'].includes(c.latest_run_status) ? 'working' : ['failed','needs_attention','needs_input'].includes(c.latest_run_status) ? 'needs' : c.head_revision_id ? 'done' : 'draft' }
 function stateLabel(c) { return c.archived_at ? 'Archived' : ({working:'In progress',needs:'Needs attention',done:'Ready',draft:'Brief saved'})[state(c)] }
@@ -202,92 +255,245 @@ watch(id, async (value, old) => {
 })
 watch(() => auth.user?.workspace_id, () => window.location.assign('/create'))
 onMounted(async () => {
+  window.addEventListener('keydown', onKey)
+  if (!workspaceStore.usage && auth.user?.workspace_id) workspaceStore.load(auth.user.workspace_id).catch(() => {})
   prompt.value = readDraft(id.value)
   try {capabilities.value = (await api.get('/create/capabilities')).data.data; available.value = true; await loadHistory(); await refresh()}
   catch(e) {if(e.response?.status !== 404) error.value = message(e)}
   finally {loaded.value = true}
   timer = setInterval(async () => {clock.value = Date.now(); if(active.value && active.value.status !== 'needs_attention' && !locked.value) {try {await refresh()} catch(e) {error.value = message(e)}}},2000)
 })
-onBeforeUnmount(() => {clearInterval(timer);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;libraryEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
+onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterval(timer);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;libraryEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
 </script>
 
 <template>
   <div class="fc-shell">
     <AppSidebar :user="auth.user" active-page="create" @logout="auth.logout()" />
-    <main class="main create-main" :class="{'has-details':details}">
-      <header class="create-header">
-        <div class="heading"><span class="eyebrow">CREATE <span class="local-pill">LOCAL PREVIEW</span></span><h1>{{ conversation?.title || 'New creation' }}</h1></div>
-        <nav aria-label="Creation controls"><button :disabled="locked" @click="router.push({name:'create'})">＋ New</button><button :disabled="locked" @click="showHistory = true">History</button><button :aria-expanded="details" @click="details ? details = false : openSettings()">Details</button></nav>
+    <main class="agent-main">
+      <header class="agent-header">
+        <div><div class="crumb">Create</div><h1>{{ conversation?.title || 'New creation' }}</h1></div>
+        <span v-if="headStatus" :class="['status', `status--${headStatus.cls}`]">{{ headStatus.text }}</span>
+        <div class="header-actions">
+          <span v-if="credits !== null && credits !== undefined" class="credits" :title="`${credits.toLocaleString()} credits available`">{{ credits.toLocaleString() }} cr</span>
+          <button v-if="conversation" type="button" class="quiet" :disabled="locked" @click="router.push({name:'create'})">+ New creation</button>
+          <button type="button" class="quiet" :disabled="locked" aria-haspopup="dialog" @click="showHistory = true">Recent conversations</button>
+          <button v-if="conversation" type="button" class="quiet" :aria-expanded="details" aria-controls="details-panel" @click="togglePanel">Details &amp; versions</button>
+        </div>
       </header>
       <p v-if="!loaded" class="loading">Opening your workspace…</p>
-      <section v-else-if="!available" class="create-empty"><h2>Create is not enabled here yet.</h2><router-link to="/dashboard">Back to dashboard</router-link></section>
-      <div v-else class="conversation-column" @dragover.prevent="dragging = canWrite" @dragleave.self="dragging = false" @drop.prevent="canWrite && !conversation?.archived_at && chooseFiles($event.dataTransfer.files)">
-        <div v-if="dragging" class="drop-overlay">Drop your footage, photos or audio here</div>
-        <aside class="local-note"><span>✦</span><p><strong>Your creative workspace, coming together.</strong> {{ paid ? 'Describe a creation, review its cost, then approve. Your earlier versions stay available.' : 'Save briefs and prepare media here. The local render uses a fixed sample; paid AI is off.' }}</p></aside>
-        <section v-if="!data?.messages?.length && !currentRevision" class="create-empty">
-          <div class="create-spark">✦</div><h2>What are we making?</h2><p>Start with an idea. Bring a photo, a recording, or a reference.<br />Keep the whole creative conversation in one place.</p>
-          <button v-if="canWrite && !conversation?.archived_at" class="dropzone" @click="fileInput.click()">＋ Drop files here, or browse your device <small>PNG / JPG / WebP · MP4 · MP3 / WAV<br />20 files · 100 MB each · 200 MB total</small></button>
-          <div class="examples"><button v-for="item in examples.filter(item => !conversation || item.kind === kind)" :key="item.title" :disabled="!canWrite || !!conversation?.archived_at" @click="example(item)"><span>{{ item.icon }}</span><strong>{{ item.title }}</strong><small>{{ item.copy }}</small></button></div>
-        </section>
-        <div v-if="conversation?.archived_at" class="notice"><p>This conversation is archived. Its briefs and versions are preserved.</p><button v-if="canWrite" :disabled="locked" @click="updateConversation(false)">Restore conversation</button></div>
-        <article v-for="m in data?.messages || []" :key="m.id" class="message" :class="m.role"><span class="eyebrow">{{ m.role === 'user' ? 'YOU' : 'WYVSTUDIO' }}</span><p>{{ m.content }}</p></article>
-        <section v-if="data?.attachments?.length" class="attachment-section" aria-label="Attached media"><h2 class="eyebrow">YOUR MATERIAL</h2><div class="attachments"><CreateAttachment v-for="a in data.attachments" :key="a.asset_id" :asset="a" :removable="canWrite && !conversation?.archived_at" :disabled="locked" @remove="detach(a)" /></div></section>
-        <section v-if="active" class="run-card" aria-live="polite"><span class="run-indicator" /><div><strong>{{ active.stage }}</strong><p v-if="active.status === 'needs_attention'">This run needs a recovery check before continuing. Your earlier versions are safe; no automatic retry will spend more.</p><small v-else>You can leave and return. Work continues in the background.</small></div><button v-if="canWrite && active.status !== 'needs_attention'" :disabled="locked || active.status === 'cancel_requested'" @click="cancel">{{ active.status === 'cancel_requested' ? 'Stopping…' : 'Stop' }}</button></section>
-        <details v-if="data?.runs?.some(r => ['failed','cancelled','needs_input'].includes(r.status))" class="past-runs"><summary>Earlier attempts</summary><p v-for="run in data.runs.filter(r => ['failed','cancelled','needs_input'].includes(r.status))" :key="run.id">{{ run.status === 'needs_input' ? 'Your input is needed' : run.status === 'failed' ? 'Stopped' : 'Cancelled' }} — {{ run.error || run.stage }}</p></details>
-        <section v-if="currentRevision" class="result-card">
-          <div class="result-heading"><span class="eyebrow">{{ outputMeta.fixture === false ? (imageOutput ? 'IMAGE RESULT' : 'VIDEO RESULT') : 'LOCAL SAMPLE PREVIEW' }}</span><span class="version">V{{ currentRevision.number }} · {{ isOldRevision ? 'Earlier version' : 'Current' }}{{ currentRevision.export_job_id ? ' · Saved to Videos' : '' }}</span></div>
-          <p>{{ currentRevision.summary }}</p>
-          <p v-if="currentRevision.conflict" class="notice">{{ outputMeta.variant_group ? 'An alternative variation. Inspect it, then choose Restore as a new version to make it current.' : 'Your brief changed while this was being made. This draft is preserved; your current version stayed unchanged.' }}</p>
-          <p v-if="isOldRevision" class="notice">You are viewing version {{ currentRevision.number }}. Version {{ currentNumber }} is still current. Download uses the version shown here.</p>
-          <p v-if="artifactLoading">Loading your result…</p><img v-if="media && imageOutput" :src="media" class="created-image" alt="Generated image" /><div v-else-if="media" class="player-wrap"><FinishedVideoPlayer ref="player" :src="media" /><div v-if="safeZones" class="safe-zones" aria-hidden="true" /></div>
-          <button v-if="!media && !artifactLoading" @click="loadArtifact">Retry video preview</button>
-          <div class="result-actions"><button v-if="media" class="primary" @click="download">↓ Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button><button v-if="canWrite && !isOldRevision && !conversation.archived_at" :disabled="locked || !!currentRevision.output_asset_id" @click="saveOutput">{{ currentRevision.output_asset_id ? (imageOutput ? 'Saved to Assets' : 'Saved to Videos') : (imageOutput ? 'Save to Assets' : paid ? 'Save to Videos' : 'Save sample to videos') }}</button><button v-if="paid && imageOutput && currentRevision.output_asset_id && canWrite && !conversation.archived_at" :disabled="locked" @click="animateResult">Animate image</button><button v-if="paid && !isOldRevision" @click="editResult">Edit with a prompt</button><button v-if="isOldRevision" @click="compare">Compare with current</button><button v-if="canWrite && isOldRevision && !conversation.archived_at" :disabled="locked" @click="restore">Restore as a new version</button><button v-if="isOldRevision" @click="selectedRevision = null">Back to current</button></div>
-          <div v-if="canWrite && !conversation.archived_at && currentRevision.output_asset_id" class="result-actions"><button @click="requestDelivery('share')">Share this version</button><button v-if="currentRevision.share_enabled" @click="requestDelivery('unshare')">Disable share link</button><button v-if="!imageOutput && currentRevision.export_job_id" @click="requestDelivery('schedule')">Schedule this version</button></div>
-          <label v-if="!imageOutput" class="consent"><input v-model="safeZones" type="checkbox" /> Show approximate safe margins (preview only)</label><p class="delivery-note">Delivery uses this exact version. Local share links work only on this computer. Scheduling needs a connected account and a separate confirmation.</p>
-        </section>
-        <section v-if="quote" class="approval-card"><span class="eyebrow">READY FOR YOUR REVIEW</span><h2>{{ quote.paid ? 'Review your creation' : 'Try the local sample' }}</h2><p>{{ quote.description }}</p><p v-if="quote.settings?.video_mode === 'animate_image'">{{ quote.settings.duration_seconds }} seconds · 480p image animation · silent output. Generated motion may change details; inspect before use.</p><p v-if="quote.variants > 1">{{ quote.variants }} variations, each with a separate result. Successful outputs are kept if another variation fails.</p><div class="quote-total"><strong>{{ quote.credits_max }} credits</strong><span>{{ quote.paid ? 'Maximum cost · unused credits released' : 'No paid calls' }}</span></div><label v-if="quote.paid" class="consent"><input v-model="providerApproved" type="checkbox" /> Send this brief and its approved media to Replicate to create the result. I have permission to use any people, products and supplied claims.</label><small>{{ expiredQuote ? 'This approval expired. Review a fresh plan to continue.' : `Approval expires at ${new Date(quote.expires_at).toLocaleTimeString()}` }}</small><div class="result-actions"><button v-if="expiredQuote" class="primary" :disabled="locked" @click="plan">Refresh plan</button><button v-else class="primary" :disabled="locked || quote.paid && !providerApproved" @click="approve">{{ quote.paid ? 'Approve creation' : 'Approve sample render' }}</button><button :disabled="locked" @click="quote = null">Not now</button></div></section>
-        <div v-else-if="conversation && canWrite && !active && data?.messages?.length && !conversation.archived_at" class="next-step"><p v-if="kind === 'image' && !paid">Your image brief is saved. Image generation and editing are not enabled in this local preview yet.</p><template v-else><UiSelect v-if="paid" v-model="variantCount" label="Number of variations" :options="[{value:1,label:'One result'},{value:2,label:'Two variations'},{value:3,label:'Three variations'}]" /><button :disabled="locked" @click="plan">{{ paid ? 'Review plan and cost →' : 'Review local sample plan →' }}</button></template></div>
-        <button v-for="run in (data?.runs || []).filter(r=>r.status === 'failed')" :key="run.id" :disabled="locked || !!active" @click="plan(run.id)">Review cost to retry failed result</button><div ref="end" />
-        <form v-if="canWrite && !conversation?.archived_at" class="composer-dock" @submit.prevent="send">
-          <div v-if="error" class="create-error" role="alert"><p>{{ error }}</p><p v-if="conflict">We refreshed the conversation. Your unsent text is still here; review the latest version before trying again.</p><button type="button" aria-label="Dismiss error" @click="error = ''; conflict = false">×</button></div>
-          <div v-for="u in uploads" :key="u.key" class="upload-row">
-            <img v-if="u.file.type.startsWith('image/') && u.preview_url" :src="u.preview_url" alt="Selected upload" /><span v-else class="file-symbol">{{ u.file.type.startsWith('audio/') ? '♫' : '▷' }}</span>
-            <div class="upload-body"><strong>{{ u.file.name }}</strong><small>{{ (u.file.size / 1048576).toFixed(1) }} MB · {{ u.state === 'uploading' ? `Uploading ${u.progress}%` : u.state === 'failed' ? 'Upload needs attention' : 'Ready to upload' }}</small><progress v-if="u.state === 'uploading'" :value="u.progress" max="100" :aria-label="`Uploading ${u.file.name}`" />
-              <template v-if="u.state !== 'uploading'"><UiSelect v-model="u.purpose" label="Use uploaded file as" :disabled="u.state === 'failed'" :options="[{value:'reference',label:'Inspiration only'},{value:'source',label:'Reuse in my creation'}]" /><label v-if="u.purpose === 'source'" class="consent"><input v-model="u.confirmed" type="checkbox" /> I own this media or have permission to reuse it.</label><p v-if="u.error" class="upload-error">{{ u.error }}</p></template>
-            </div><div class="upload-actions"><button type="button" :disabled="locked || !!u.error && u.state === 'ready' || u.purpose === 'source' && !u.confirmed" @click="upload(u)">{{ u.state === 'failed' ? 'Retry upload' : 'Upload' }}</button><button type="button" :disabled="u.state === 'uploading'" :aria-label="`Remove pending ${u.file.name}`" @click="removeUpload(u)">×</button></div>
+      <section v-else-if="!available" class="empty"><h2>Create is not enabled here yet.</h2><router-link to="/dashboard">Back to dashboard</router-link></section>
+      <div v-else class="agent-content">
+        <section class="conversation" aria-label="Conversation" @dragover.prevent="dragging = canWrite" @dragleave.self="dragging = false" @drop.prevent="canWrite && !conversation?.archived_at && chooseFiles($event.dataTransfer.files)">
+          <div v-if="dragging" class="drop-overlay">Drop your footage, photos or audio here</div>
+          <div class="messages">
+            <div v-if="!data?.messages?.length && !currentRevision" class="empty">
+              <h2>What are we making?</h2>
+              <p>A video or an image. Describe the result and attach what you have; you see the cost before anything is spent.</p>
+              <button v-if="canWrite && !conversation?.archived_at" type="button" class="dropzone" @click="fileInput.click()">Drop files here, or click to attach footage, photos or audio<small>PNG / JPG / WebP · MP4 · MP3 / WAV · up to 100 MB each</small></button>
+              <div class="examples"><button v-for="item in examples.filter(item => !conversation || item.kind === kind)" :key="item.title" type="button" class="example" :disabled="!canWrite || !!conversation?.archived_at" @click="example(item)"><b>{{ item.title }}</b>{{ item.copy }}</button></div>
+            </div>
+            <div v-if="conversation?.archived_at" class="icard"><div class="icard__body"><p>This conversation is archived. Its briefs and versions are preserved.</p></div><div class="icard__foot"><span class="spacer" /><button v-if="canWrite" type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="updateConversation(false)">Restore conversation</button></div></div>
+
+            <template v-for="m in data?.messages || []" :key="m.id">
+              <div v-if="m.role === 'user'" class="user-message message">
+                <div v-if="messageAttachments[m.id]?.length" class="attachments">
+                  <span v-for="a in messageAttachments[m.id]" :key="a.asset_id" class="chip">
+                    <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="chip__thumb" />
+                    <span v-else :class="['chip__thumb', a.asset_type === 'video' ? 'thumb--video' : a.asset_type === 'audio' ? 'thumb--audio' : 'thumb--image']" />
+                    <span><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }}</small></span>
+                    <span :class="['chip__role', a.purpose === 'source' ? '' : 'chip__role--ref']">{{ a.purpose === 'source' ? 'REUSE' : 'REFERENCE' }}</span>
+                  </span>
+                </div>
+                <p>{{ m.content }}</p>
+              </div>
+              <div v-else class="assistant-message message">
+                <span class="speaker">WyvStudio <time>{{ time(m.created_at) }}</time></span>
+                <p>{{ m.content }}</p>
+              </div>
+            </template>
+
+            <div v-if="data?.runs?.some(r => ['failed','cancelled','needs_input'].includes(r.status))" class="assistant-message">
+              <details class="run-card"><summary>Earlier attempts</summary><p v-for="run in data.runs.filter(r => ['failed','cancelled','needs_input'].includes(r.status))" :key="run.id" class="run-line">{{ run.status === 'needs_input' ? 'Your input is needed' : run.status === 'failed' ? 'Stopped' : 'Cancelled' }} · {{ run.error || run.stage }}<button v-if="run.status === 'failed' && canWrite" type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!active" @click="plan(run.id)">Review cost to retry</button></p></details>
+            </div>
+
+            <div v-if="currentRevision" class="assistant-message">
+              <span class="speaker">WyvStudio <time>{{ time(currentRevision.created_at) }}</time></span>
+              <p>{{ currentRevision.summary }}</p>
+              <p v-if="currentRevision.conflict" class="notice">{{ outputMeta.variant_group ? 'An alternative variation. Inspect it, then restore it as a new version to make it current.' : 'Your brief changed while this was being made. This draft is kept; your current version did not change.' }}</p>
+              <p v-if="isOldRevision" class="notice">You are viewing version {{ currentRevision.number }}. Version {{ currentNumber }} is still current. Download uses the version shown here.</p>
+              <div :class="['result', currentRevision.export_job_id || (imageOutput && currentRevision.output_asset_id) ? 'result--done' : '']">
+                <div class="result__stage">
+                  <p v-if="artifactLoading" class="muted">Loading your result…</p>
+                  <img v-if="media && imageOutput" :src="media" class="created-image" alt="Generated image" />
+                  <div v-else-if="media" class="player-wrap"><FinishedVideoPlayer ref="player" :src="media" /><div v-if="safeZones" class="safe-zones" aria-hidden="true" /></div>
+                  <button v-if="!media && !artifactLoading" type="button" class="btn btn--ghost btn--sm" @click="loadArtifact">Retry preview</button>
+                </div>
+                <div class="result__meta">
+                  <b>Version {{ currentRevision.number }}{{ imageOutput ? ' · image' : ' · video' }}</b>
+                  <span class="muted">{{ outputMeta.fixture === false ? (currentRevision.export_job_id ? 'Saved to Videos' : currentRevision.output_asset_id ? 'Saved to Assets' : 'Preview') : 'Local sample preview' }}</span>
+                  <span :class="['status', isOldRevision ? 'status--neutral' : 'status--ok']">{{ isOldRevision ? 'EARLIER' : 'CURRENT' }}</span>
+                </div>
+                <div class="result__actions">
+                  <button v-if="media" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
+                  <button v-if="canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked || !!currentRevision.output_asset_id" @click="saveOutput">{{ currentRevision.output_asset_id ? (imageOutput ? 'Saved to Assets' : 'Saved to videos') : (imageOutput ? 'Save to Assets' : paid ? 'Save to videos' : 'Save sample to videos') }}</button>
+                  <button v-if="canWrite && !conversation.archived_at && currentRevision.output_asset_id" type="button" class="btn btn--outline" @click="requestDelivery('share')">Share link</button>
+                  <button v-if="canWrite && !conversation.archived_at && currentRevision.share_enabled" type="button" class="btn btn--ghost" @click="requestDelivery('unshare')">Turn off share link</button>
+                  <button v-if="canWrite && !conversation.archived_at && !imageOutput && currentRevision.export_job_id" type="button" class="btn btn--outline" @click="requestDelivery('schedule')">Schedule post</button>
+                  <button v-if="paid && imageOutput && currentRevision.output_asset_id && canWrite && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="animateResult">Animate image</button>
+                  <button v-if="paid && !isOldRevision" type="button" class="btn btn--ghost" @click="editResult">Edit with a prompt</button>
+                  <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="compare">Compare with current</button>
+                  <button v-if="canWrite && isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="restore">Restore as a new version</button>
+                  <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="selectedRevision = null">Back to current</button>
+                  <button v-if="!imageOutput && media" type="button" class="btn btn--ghost btn--safe" :aria-pressed="safeZones" @click="safeZones = !safeZones">Show safe margins</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="active" class="assistant-message" aria-live="polite">
+              <div :class="['icard', active.status === 'needs_attention' ? 'icard--warn' : 'icard--info']">
+                <div class="icard__body working">
+                  <div class="working__row"><span v-if="active.status !== 'needs_attention'" class="spinner" aria-hidden="true" /><div><div class="working__label">{{ active.stage }}</div><div class="working__step">{{ active.status === 'needs_attention' ? 'This run needs a recovery check before it continues. Earlier versions are safe, and nothing retries on its own.' : 'You can leave this page. Earlier versions stay downloadable while this runs.' }}</div></div></div>
+                </div>
+                <div v-if="canWrite && active.status !== 'needs_attention'" class="icard__foot"><span class="spacer" /><button type="button" class="btn btn--ghost btn--sm" :disabled="locked || active.status === 'cancel_requested'" @click="cancel">{{ active.status === 'cancel_requested' ? 'Stopping…' : 'Stop · keeps what is done so far' }}</button></div>
+              </div>
+            </div>
+
+            <div v-if="quote" class="assistant-message">
+              <span class="speaker">WyvStudio</span>
+              <div class="icard icard--warn">
+                <div class="icard__body">
+                  <p class="icard__summary">{{ quote.paid ? 'Here is what this will cost.' : 'This renders the fixed local sample.' }} {{ quote.description }}</p>
+                  <p v-if="quote.settings?.video_mode === 'animate_image'" class="muted">{{ quote.settings.duration_seconds }} seconds · 480p image animation · silent. Generated motion may change details; check before use.</p>
+                  <p v-if="quote.variants > 1" class="muted">{{ quote.variants }} variations, each with its own result. A finished variation is kept if another one fails.</p>
+                  <label v-if="quote.paid" class="consent"><input v-model="providerApproved" type="checkbox" /> Send this brief and its approved media to Replicate. I have permission to use any people, products and claims in it.</label>
+                  <small class="muted">{{ expiredQuote ? 'This approval expired. Review a fresh plan to continue.' : `Approval open until ${new Date(quote.expires_at).toLocaleTimeString()}` }}</small>
+                </div>
+                <div class="icard__foot">
+                  <div class="cost-line"><b>{{ quote.paid ? `Up to ${quote.credits_max} credits` : 'No credits' }}</b><span>{{ quote.paid ? '· reserved when you approve, unused part returned' : '· no paid calls' }}</span></div>
+                  <span class="spacer" />
+                  <button type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="quote = null">Not now</button>
+                  <button v-if="expiredQuote" type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="plan">Refresh plan</button>
+                  <button v-else type="button" class="btn btn--primary btn--sm" :disabled="locked || quote.paid && !providerApproved" @click="approve">{{ quote.paid ? 'Approve' : 'Approve sample render' }}</button>
+                </div>
+              </div>
+            </div>
+            <div v-else-if="conversation && canWrite && !active && data?.messages?.length && !conversation.archived_at" class="next-step">
+              <p v-if="kind === 'image' && !paid" class="muted">Your image brief is saved. Image generation and editing are not enabled in this local preview yet.</p>
+              <template v-else><UiSelect v-if="paid" v-model="variantCount" label="Results" :options="[{value:1,label:'One result'},{value:2,label:'Two variations'},{value:3,label:'Three variations'}]" /><button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="plan">{{ paid ? 'Review plan and cost' : 'Review local sample plan' }}</button></template>
+            </div>
+            <div ref="end" />
           </div>
-          <div class="composer-box"><label for="create-prompt" class="eyebrow">YOUR BRIEF OR NEXT CHANGE</label><textarea ref="composer" id="create-prompt" v-model="prompt" rows="3" maxlength="10000" placeholder="Describe what you want to create or change…" @input="sendingKey = null" @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send" />
-            <footer><div class="composer-tools"><button type="button" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV. Up to 20 files, 100 MB each and 200 MB total." @click="fileInput.click()">＋ Attach files</button><button type="button" :disabled="locked" @click="showLibrary">Add from library</button><UiSelect v-if="!conversation" v-model="outputKind" label="Creation type" :options="[{value:'video',label:'Video brief'},{value:'image',label:'Image brief'}]" /></div><button class="primary send" type="submit" :disabled="locked || !prompt.trim()">{{ busy ? 'Saving…' : 'Save brief ↑' }}</button></footer>
-          </div><p class="composer-note">Uploads stay private. Nothing generates or transcribes automatically. ⌘ / Ctrl + Enter to save.</p>
-        </form>
-        <p v-if="error && (!canWrite || conversation?.archived_at)" class="create-error" role="alert">{{ error }}</p>
+
+          <div v-if="canWrite && !conversation?.archived_at" class="composer-dock">
+            <div v-if="error" class="create-error" role="alert"><p>{{ error }}</p><p v-if="conflict">We refreshed the conversation. Your unsent text is still here; check the latest version before trying again.</p><button type="button" aria-label="Dismiss error" @click="error = ''; conflict = false">×</button></div>
+            <div v-if="uploads.length || pendingAttachments.length" class="attached">
+              <div v-for="a in pendingAttachments" :key="'a' + a.asset_id" class="upload">
+                <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
+                <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small></div>
+                <button type="button" class="upload__x" :disabled="locked" :aria-label="`Remove ${a.title}`" @click="detach(a)">×</button>
+              </div>
+              <div v-for="u in uploads" :key="u.key" :class="['upload', u.error ? 'upload--error' : '']">
+                <img v-if="u.file.type.startsWith('image/') && u.preview_url" :src="u.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', u.file.type.startsWith('audio/') ? 'thumb--audio' : 'thumb--video']" />
+                <div>
+                  <b :title="u.file.name">{{ u.file.name }}</b>
+                  <small>{{ u.error || (u.state === 'uploading' ? `uploading · ${u.progress}%` : `${(u.file.size / 1048576).toFixed(1)} MB · ready`) }}</small>
+                  <div v-if="u.state === 'uploading'" class="upload__bar"><span :style="{ width: u.progress + '%' }" /></div>
+                  <label v-if="u.purpose === 'source' && u.state !== 'uploading'" class="consent consent--sm"><input v-model="u.confirmed" type="checkbox" /> I own this or have permission to reuse it.</label>
+                </div>
+                <span v-if="u.state !== 'uploading'" class="role-toggle" role="group" :aria-label="`Use ${u.file.name} as`"><button type="button" :aria-pressed="u.purpose === 'source'" :disabled="u.state === 'failed'" @click="u.purpose = 'source'">REUSE</button><button type="button" :aria-pressed="u.purpose === 'reference'" :disabled="u.state === 'failed'" @click="u.purpose = 'reference'">REFERENCE</button></span>
+                <button v-if="u.state !== 'uploading'" type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!u.error && u.state === 'ready' || u.purpose === 'source' && !u.confirmed" @click="upload(u)">{{ u.state === 'failed' ? 'Retry upload' : 'Upload' }}</button>
+                <button type="button" class="upload__x" :disabled="u.state === 'uploading'" :aria-label="`Remove pending ${u.file.name}`" @click="removeUpload(u)">×</button>
+              </div>
+            </div>
+            <form class="prompt-form" @submit.prevent="send">
+              <label for="create-prompt" class="sr-only">Describe what you want to create or change</label>
+              <textarea ref="composer" id="create-prompt" v-model="prompt" rows="2" maxlength="10000" placeholder="Describe what you want to create or change…" @input="sendingKey = null" @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send" />
+              <div class="composer-bottom">
+                <button type="button" class="quiet" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV. Up to 20 files, 100 MB each and 200 MB total." @click="fileInput.click()">+ Attach</button>
+                <button type="button" class="quiet" :disabled="locked" @click="showLibrary">From library</button>
+                <span v-if="!conversation" class="seg" role="group" aria-label="What to make"><button type="button" :aria-pressed="outputKind === 'video'" @click="outputKind = 'video'">Video</button><button type="button" :aria-pressed="outputKind === 'image'" @click="outputKind = 'image'">Image</button></span>
+                <button class="send" type="submit" :disabled="locked || !prompt.trim()" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
+              </div>
+            </form>
+            <p class="composer-note">Planning is free. Every paid creation is quoted, and runs only after you approve. Uploads stay private.</p>
+          </div>
+          <p v-if="error && (!canWrite || conversation?.archived_at)" class="create-error" role="alert">{{ error }}</p>
+        </section>
+
+        <div v-if="details" class="panel-scrim" aria-hidden="true" @click="closePanel" />
+        <aside v-if="details && conversation" id="details-panel" aria-label="Details and versions">
+          <div class="panel-heading"><h2 ref="panelHeading" tabindex="-1">{{ kind === 'image' ? 'This image' : 'This video' }}</h2><button type="button" class="quiet" aria-label="Close details" @click="closePanel">×</button></div>
+          <div class="detail-tabs" role="group" aria-label="Panel"><button type="button" :aria-pressed="panelTab === 'details'" @click="panelTab = 'details'">Details</button><button type="button" :aria-pressed="panelTab === 'versions'" @click="panelTab = 'versions'">Versions</button></div>
+          <template v-if="panelTab === 'details'">
+            <section>
+              <h3>OUTPUT</h3>
+              <p>{{ outputSummary }}</p>
+              <p v-if="!paid" class="muted">{{ kind === 'image' ? 'Image generation is not enabled in this local preview. Your image brief and references are saved.' : 'The local sample is 15 seconds, portrait, 1080p. Other settings apply once generation is enabled.' }}</p>
+              <details v-if="paid" class="panel-edit"><summary>Change output</summary>
+                <UiSelect v-model="settingsDraft.aspect_ratio" label="Format" :options="[{value:'9:16',label:'Portrait · 9:16'},{value:'16:9',label:'Landscape · 16:9'},{value:'1:1',label:'Square'},{value:'4:5',label:'Feed · 4:5'}]" />
+                <label v-if="kind === 'video'" class="field-label">Length in seconds<input v-model.number="settingsDraft.duration_seconds" type="number" min="5" max="30" class="input" /></label>
+                <UiSelect v-model="settingsDraft.language" label="Language" :options="[{value:'en',label:'English'},{value:'fr',label:'French'},{value:'es',label:'Spanish'},{value:'de',label:'German'},{value:'pt',label:'Portuguese'}]" />
+                <template v-if="kind === 'video'"><UiSelect v-model="settingsDraft.audio" label="Audio" :options="[{value:'original',label:'Keep supplied audio'},{value:'silent',label:'Silent'}]" /><UiSelect v-model="settingsDraft.captions" label="Captions" :options="[{value:'off',label:'Off'},{value:'provided',label:'Use my exact text'}]" /><textarea v-if="settingsDraft.captions === 'provided'" v-model="settingsDraft.caption_text" class="input" placeholder="Paste the exact words." /></template>
+                <button type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!active || !canWrite" @click="saveSettings">Apply</button>
+              </details>
+            </section>
+            <section v-if="paid">
+              <h3>APPROVED FACTS</h3>
+              <textarea v-model="factsText" class="input" rows="3" placeholder="One verified fact per line. Only these claims can appear." />
+              <p class="muted">Anything not listed here is left out rather than guessed.</p>
+              <button type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!active || !canWrite" @click="saveSettings">Save facts</button>
+            </section>
+            <section>
+              <h3>FILES IN THIS {{ kind === 'image' ? 'IMAGE' : 'VIDEO' }}</h3>
+              <div v-for="a in data?.attachments || []" :key="a.asset_id" class="asset">
+                <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="asset__thumb" /><span v-else :class="['asset__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
+                <span><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small></span>
+                <button v-if="canWrite && !conversation.archived_at" type="button" class="upload__x" :disabled="locked" :aria-label="`Remove ${a.title}`" @click="detach(a)">×</button>
+              </div>
+              <p v-if="!data?.attachments?.length" class="muted">No files yet.</p>
+              <button v-if="canWrite && !conversation.archived_at" type="button" class="quiet" :disabled="locked" @click="showLibrary">+ Add from library</button>
+            </section>
+            <section>
+              <h3>CONVERSATION</h3>
+              <label for="conversation-title" class="field-label">Conversation name<input id="conversation-title" v-model="rename" class="input" maxlength="160" :disabled="!canWrite" /></label>
+              <div class="row-actions"><button v-if="canWrite" type="button" class="btn btn--ghost btn--sm" :disabled="locked || !rename.trim()" @click="updateConversation()">Save name</button><button v-if="canWrite" type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!active" @click="updateConversation(!conversation.archived_at)">{{ conversation.archived_at ? 'Restore conversation' : 'Archive conversation' }}</button></div>
+              <p v-if="active" class="muted">Stop or recover the running creation before archiving.</p>
+              <p v-if="settingsDraft.origin_conversation_id" class="muted"><router-link :to="{name:'create',params:{conversationId:settingsDraft.origin_conversation_id}}">Back to the source image conversation</router-link></p>
+            </section>
+          </template>
+          <template v-else>
+            <section>
+              <p class="muted">Every change is a new version. Restoring an old one makes a new version; nothing is overwritten.</p>
+              <div v-if="active" class="version"><div class="version__row"><span><b>Version {{ (currentNumber || 0) + 1 }}</b><small>{{ active.stage }}</small></span><span class="status status--info">BUILDING</span></div></div>
+              <button v-for="r in [...revisions].reverse()" :key="r.id" type="button" :class="['version', r.id === conversation.head_revision_id ? 'is-current' : '', r.id === currentRevision?.id ? 'is-viewing' : '']" @click="selectedRevision = r.id === conversation.head_revision_id ? null : r.id">
+                <span class="version__row"><span><b>Version {{ r.number }}</b><small>{{ date(r.created_at) }} · {{ r.restored_from_id ? 'restored' : r.conflict ? 'saved draft' : 'built' }}</small></span><span v-if="r.id === conversation.head_revision_id" class="status status--ok">CURRENT</span><span v-else-if="r.id === currentRevision?.id" class="status status--neutral">VIEWING</span></span>
+              </button>
+              <p v-if="!revisions.length" class="muted">Your first result will appear here.</p>
+            </section>
+            <section v-if="revisions.some(r => r.export_job_id || r.output_asset_id)">
+              <h3>SAVED</h3>
+              <div v-for="r in [...revisions].reverse().filter(r => r.export_job_id || r.output_asset_id)" :key="'s' + r.id" class="version"><span class="version__row"><span><b>Version {{ r.number }}</b><small>{{ r.export_job_id ? 'in All Videos' : 'in Assets' }}{{ r.share_enabled ? ' · shared' : '' }}</small></span><span v-if="r.has_newer_changes && r.id === conversation.head_revision_id" class="status status--warn">OLDER THAN BRIEF</span></span></div>
+            </section>
+          </template>
+        </aside>
       </div>
       <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,audio/mpeg,audio/wav,audio/x-wav" multiple hidden @change="chooseFiles($event.target.files)" />
-      <CreateDialog :open="!!delivery" :title="delivery?.action === 'unshare' ? 'Disable this share link?' : 'Use this version?'" @close="delivery=null"><template v-if="delivery"><p>Version {{ delivery.revision.number }} is the exact file for this action.</p><p v-if="delivery.revision.has_newer_changes" class="notice">Newer changes are not in this file. Update your creation or continue with this version.</p><label v-if="delivery.revision.has_newer_changes" class="consent"><input v-model="delivery.allowOlder" type="checkbox" /> Continue with this earlier result.</label><p v-if="delivery.action === 'share'" class="muted">Anyone with the link can view this version until you disable it. No other files or conversation messages are shared.</p><p v-if="shareUrl"><a :href="shareUrl" target="_blank" rel="noopener">Open share page</a><input class="field" readonly :value="shareUrl" aria-label="Share link" @focus="$event.target.select()" /></p><div class="result-actions"><button v-if="delivery.revision.has_newer_changes" @click="updateForDelivery">Update creation</button><button class="primary" :disabled="locked || delivery.revision.has_newer_changes && !delivery.allowOlder" @click="performDelivery">{{ delivery.action === 'share' ? 'Create share link' : delivery.action === 'unshare' ? 'Disable link' : delivery.action === 'schedule' ? 'Choose account and time' : 'Download this version' }}</button></div><p v-if="error" class="create-error">{{ error }}</p></template></CreateDialog>
+      <CreateDialog :open="!!delivery" :title="delivery?.action === 'unshare' ? 'Turn off this share link?' : 'Use this version?'" @close="delivery=null"><template v-if="delivery"><p>Version {{ delivery.revision.number }} is the exact file for this action.</p><p v-if="delivery.revision.has_newer_changes" class="notice">Newer changes are not in this file. Update your creation or continue with this version.</p><label v-if="delivery.revision.has_newer_changes" class="consent"><input v-model="delivery.allowOlder" type="checkbox" /> Continue with this earlier result.</label><p v-if="delivery.action === 'share'" class="muted">Anyone with the link can view this version until you turn it off. No other files or messages are shared.</p><p v-if="shareUrl"><a :href="shareUrl" target="_blank" rel="noopener">Open share page</a><input class="input" readonly :value="shareUrl" aria-label="Share link" @focus="$event.target.select()" /></p><div class="row-actions"><button v-if="delivery.revision.has_newer_changes" type="button" class="btn btn--ghost btn--sm" @click="updateForDelivery">Update creation</button><button type="button" class="btn btn--primary btn--sm" :disabled="locked || delivery.revision.has_newer_changes && !delivery.allowOlder" @click="performDelivery">{{ delivery.action === 'share' ? 'Create share link' : delivery.action === 'unshare' ? 'Turn off link' : delivery.action === 'schedule' ? 'Choose account and time' : 'Download this version' }}</button></div><p v-if="error" class="create-error">{{ error }}</p></template></CreateDialog>
       <SchedulePostModal v-if="scheduleTarget" :export-job-id="scheduleTarget.revision.export_job_id" :delivery-path="`${base()}/revisions/${scheduleTarget.revision.id}/delivery`" :delivery-context="{expected_version:scheduleTarget.version,allow_older:scheduleTarget.allowOlder}" :allow-ai-caption="false" @close="scheduleTarget=null" />
-      <CreateDialog :open="showHistory" title="Conversation history" drawer @close="showHistory = false">
-        <input v-model="search" type="search" class="field" aria-label="Search conversations" placeholder="Search titles, briefs or file names…" />
-        <div class="history-filters"><button v-for="f in [{value:'all',label:'All'},{value:'working',label:'In progress'},{value:'needs',label:'Needs you'},{value:'done',label:'Ready'}]" :key="f.value" :aria-pressed="historyFilter === f.value" @click="historyFilter = f.value">{{ f.label }}</button></div>
+      <CreateDialog :open="showHistory" title="Recent conversations" drawer @close="showHistory = false">
+        <div class="drawer-top"><input v-model="search" type="search" class="input" aria-label="Search conversations" placeholder="Search titles, briefs or file names…" /><router-link to="/videos" class="quiet" @click="showHistory = false">All Videos</router-link></div>
+        <div class="drawer-filters" role="group" aria-label="Filter"><button v-for="f in [{value:'all',label:'All'},{value:'working',label:'In progress'},{value:'needs',label:'Needs you'},{value:'done',label:'Ready'}]" :key="f.value" type="button" :aria-pressed="historyFilter === f.value" @click="historyFilter = f.value">{{ f.label }}</button></div>
         <label class="consent"><input v-model="archivedHistory" type="checkbox" /> Show archived conversations</label>
         <p class="muted" v-if="historyLoading">Searching…</p><p class="muted" v-else-if="!filteredHistory.length">No matching conversations.</p>
-        <router-link v-for="c in filteredHistory" :key="c.id" class="history-item" :to="{name:'create',params:{conversationId:c.id}}" @click="showHistory = false"><div><strong>{{ c.title }}</strong><time>{{ date(c.updated_at) }}</time></div><p>{{ c.last_message || 'Add your first brief or attachment' }}</p><span :class="['status',state(c)]">{{ stateLabel(c) }}</span></router-link><small class="muted">Showing up to 100 matching conversations.</small>
-      </CreateDialog>
-      <CreateDialog :open="details" title="Creation details" drawer docked @close="details = false">
-        <p class="eyebrow">{{ kind === 'image' ? 'IMAGE BRIEF' : 'VIDEO BRIEF' }}</p><p v-if="!paid" class="muted">{{ kind === 'image' ? 'Image generation, editing and animation are not enabled yet. Your image brief and references are saved here.' : 'The offline video sample is 15 seconds, portrait, 1080p. Other output settings, voice, music and caption choices are not applied yet.' }}</p>
-        <section v-if="conversation && paid">
-          <UiSelect v-model="settingsDraft.aspect_ratio" label="Format" :options="[{value:'9:16',label:'Portrait · 9:16'},{value:'16:9',label:'Landscape · 16:9'},{value:'1:1',label:'Square'},{value:'4:5',label:'Feed · 4:5'}]" />
-          <label v-if="kind === 'video'" class="muted">Length in seconds<input v-model.number="settingsDraft.duration_seconds" type="number" min="5" max="30" class="field" /></label>
-          <UiSelect v-model="settingsDraft.language" label="Language" :options="[{value:'en',label:'English'},{value:'fr',label:'French'},{value:'es',label:'Spanish'},{value:'de',label:'German'},{value:'pt',label:'Portuguese'}]" />
-          <template v-if="kind === 'video'"><UiSelect v-model="settingsDraft.audio" label="Audio" :options="[{value:'original',label:'Keep supplied audio'},{value:'silent',label:'Silent'}]" /><p class="muted">Attach licensed music or your recorded voice as source audio. New voice synthesis requires a separate supported operation.</p><UiSelect v-model="settingsDraft.captions" label="Captions" :options="[{value:'off',label:'Off'},{value:'provided',label:'Use my exact text'}]" /><textarea v-if="settingsDraft.captions === 'provided'" v-model="settingsDraft.caption_text" class="field" placeholder="Paste the exact words. Automatic transcription is not included." /></template>
-          <label class="muted">Approved facts<textarea v-model="factsText" class="field" placeholder="One verified fact per line. Leave blank to avoid adding factual claims." /></label>
-          <button :disabled="locked || !!active || !canWrite" @click="saveSettings">Apply settings</button>
-        </section>
-        <p v-if="settingsDraft.origin_conversation_id" class="muted"><router-link :to="{name:'create',params:{conversationId:settingsDraft.origin_conversation_id}}">Back to source image conversation</router-link></p><template v-if="conversation"><label for="conversation-title">Conversation name</label><input id="conversation-title" v-model="rename" class="field" maxlength="160" :disabled="!canWrite" /><div class="result-actions"><button v-if="canWrite" :disabled="locked || !rename.trim()" @click="updateConversation()">Save name</button><button v-if="canWrite" :disabled="locked || !!active" @click="updateConversation(!conversation.archived_at)">{{ conversation.archived_at ? 'Restore conversation' : 'Archive conversation' }}</button></div><p class="muted" v-if="active">Stop or reconcile the active run before archiving.</p></template>
-        <h3>Version history</h3><p class="muted">Inspecting an older version does not replace your current result.</p><button v-for="r in [...revisions].reverse()" :key="r.id" class="revision-item" @click="selectedRevision = r.id; details = false"><strong>Version {{ r.number }}{{ r.id === conversation?.head_revision_id ? ' · Current' : r.conflict ? ' · Saved draft' : '' }}</strong><small>{{ date(r.created_at) }} · {{ r.export_job_id ? 'Saved to Videos' : 'Preview' }}</small></button><p v-if="!revisions.length" class="muted">Your first result will appear here.</p>
+        <template v-for="g in historyGroups" :key="g.label">
+          <div class="drawer-group">{{ g.label }}</div>
+          <router-link v-for="c in g.items" :key="c.id" :class="['session', c.id === id ? 'is-current' : '']" :to="{name:'create',params:{conversationId:c.id}}" @click="showHistory = false"><span class="session__thumb" /><div><b>{{ c.title }}</b><small>{{ c.last_message || 'Add your first brief or attachment' }}</small><span :class="['status', state(c) === 'working' ? 'status--info' : state(c) === 'needs' ? 'status--warn' : state(c) === 'done' ? 'status--ok' : 'status--neutral']">{{ stateLabel(c).toUpperCase() }}</span></div><time>{{ date(c.updated_at) }}</time></router-link>
+        </template>
+        <small class="muted">Showing up to 100 matching conversations.</small>
       </CreateDialog>
       <CreateDialog :open="libraryOpen" title="Add from your library" @close="libraryOpen = false">
-        <form class="library-search" @submit.prevent="libraryPage = 1; loadLibrary()"><input v-model="librarySearch" class="field" type="search" aria-label="Search library" placeholder="Find a photo, video or audio file…" /><button>Search</button></form><UiSelect v-model="purpose" label="How to use this asset" :options="[{value:'reference',label:'Inspiration only'},{value:'source',label:'Reuse in my creation'}]" /><p class="muted">Inspiration helps describe a style. It does not give permission to copy footage, people or branding.</p><label v-if="purpose === 'source'" class="consent"><input v-model="reuseConfirmed" type="checkbox" /> I own this media or have permission to reuse it.</label>
-        <div class="library-grid"><button v-for="a in library" :key="a.id" :disabled="locked || purpose === 'source' && !reuseConfirmed" @click="attach(a)"><img v-if="a.asset_type === 'image' && a.storage_url" :src="a.storage_url" alt="" /><span v-else class="file-symbol">{{ a.asset_type === 'video' ? '▷' : '♫' }}</span><strong>{{ a.title || a.asset_type }}</strong><small>{{ a.asset_type }}</small></button></div><p v-if="!library.length" class="muted">No matching media. Attach files directly in the composer.</p><div class="result-actions"><button :disabled="libraryPage <= 1" @click="libraryPage--; loadLibrary()">Previous</button><span>{{ libraryPage }} / {{ libraryLastPage }}</span><button :disabled="libraryPage >= libraryLastPage" @click="libraryPage++; loadLibrary()">Next</button></div><p v-if="error" class="create-error" role="alert">{{ error }}</p>
+        <form class="library-search" @submit.prevent="libraryPage = 1; loadLibrary()"><input v-model="librarySearch" class="input" type="search" aria-label="Search library" placeholder="Find a photo, video or audio file…" /><button type="submit" class="btn btn--ghost btn--sm">Search</button></form><UiSelect v-model="purpose" label="How to use this asset" :options="[{value:'reference',label:'Reference only'},{value:'source',label:'Reuse in my creation'}]" /><p class="muted">A reference helps describe a style. It does not give permission to copy footage, people or branding.</p><label v-if="purpose === 'source'" class="consent"><input v-model="reuseConfirmed" type="checkbox" /> I own this media or have permission to reuse it.</label>
+        <div class="library-grid"><button v-for="a in library" :key="a.id" type="button" :disabled="locked || purpose === 'source' && !reuseConfirmed" @click="attach(a)"><img v-if="a.asset_type === 'image' && a.storage_url" :src="a.storage_url" alt="" /><span v-else class="file-symbol">{{ a.asset_type === 'video' ? '▷' : '♫' }}</span><strong>{{ a.title || a.asset_type }}</strong><small>{{ a.asset_type }}</small></button></div><p v-if="!library.length" class="muted">No matching media. Attach files directly in the composer.</p><div class="row-actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage <= 1" @click="libraryPage--; loadLibrary()">Previous</button><span>{{ libraryPage }} / {{ libraryLastPage }}</span><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage >= libraryLastPage" @click="libraryPage++; loadLibrary()">Next</button></div><p v-if="error" class="create-error" role="alert">{{ error }}</p>
       </CreateDialog>
       <CreateDialog :open="compareOpen" title="Compare versions" @close="compareOpen = false"><div class="comparison"><section><h3>Version {{ currentRevision?.number }} · Earlier</h3><img v-if="media && imageOutput" :src="media" class="created-image" alt="Earlier image" /><FinishedVideoPlayer v-else-if="media" :src="media" /></section><section><h3>Version {{ currentNumber }} · Current</h3><img v-if="compareMedia && imageOutput" :src="compareMedia" class="created-image" alt="Current image" /><FinishedVideoPlayer v-else-if="compareMedia" :src="compareMedia" /><p v-else>Loading current version…</p></section></div><p class="muted">Inspect each version to compare. This does not change the current version.</p></CreateDialog>
     </main>
@@ -295,6 +501,188 @@ onBeforeUnmount(() => {clearInterval(timer);clearTimeout(searchTimer);epoch++;me
 </template>
 
 <style scoped>
-.player-wrap{position:relative}.safe-zones{position:absolute;inset:10% 10% 20%;border:1px dashed #fff9;pointer-events:none;box-shadow:0 0 0 1px #0005}.player-wrap .safe-zones:after{content:"Keep essential content inside";position:absolute;top:4px;left:4px;font-size:10px;color:white;text-shadow:0 1px 2px black}
-.created-image{display:block;max-width:100%;max-height:70vh;object-fit:contain;margin:16px auto;border-radius:12px}.fc-shell{min-height:100vh;background:var(--color-bg-deep,#0a0a0f);color:var(--color-text-primary,#ececf3)}.create-main{margin-left:var(--sidebar-width,220px);min-height:100vh;padding:26px 34px;min-width:0}.create-header{display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid #ffffff10;padding-bottom:20px;margin-bottom:22px}.heading{min-width:0}.create-header h1{font-size:21px;line-height:1.4;margin:8px 0 0;max-width:640px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.eyebrow{font-size:10px;letter-spacing:1.5px;color:#a29aaa;font-weight:600}.local-pill{font-size:9px;letter-spacing:.7px;color:#efae8c;border:1px solid #ab61454a;border-radius:5px;padding:3px 6px;margin-left:9px}nav,.result-actions,.history-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}button,.result-actions a{border:1px solid #ffffff16;border-radius:9px;background:#ffffff05;color:inherit;padding:9px 13px;cursor:pointer;font:inherit;font-size:12px;text-decoration:none;transition:background .15s}button:hover,.result-actions a:hover{background:#ffffff0d}button:disabled{opacity:.4;cursor:default}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #ff6b32;outline-offset:3px}.primary,.result-actions a.primary{background:#ff6b32;color:#fff;border-color:#ff6b32}.primary:hover{background:#f75d24}.conversation-column{width:min(100%,880px);margin:auto;min-width:0;position:relative}.local-note{display:flex;align-items:flex-start;gap:10px;color:#9d94a4;border-radius:12px;padding:10px 14px;background:#ffffff03;font-size:12px;line-height:1.65}.local-note>span{color:#ff8453}.local-note p{margin:0}.local-note strong{color:#beb5c5;font-weight:500}.create-empty{text-align:center;padding:34px 0 20px}.create-spark{font-size:30px;color:#ff8250}.create-empty h2{font-size:32px;letter-spacing:-1px;margin:12px 0}.create-empty>p{font-size:14px;line-height:1.8;color:#9c94a6;margin:12px auto 24px}.dropzone{width:100%;border:1px dashed #5b4754;background:linear-gradient(130deg,#ff6b3506,#ffffff02);padding:23px;font-size:13px}.dropzone small{display:block;color:#958c9d;font-size:11px;margin-top:8px}.examples{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:16px}.examples button{text-align:left;padding:18px;display:grid;grid-template-columns:26px 1fr;column-gap:8px}.examples span{color:#e8a586;grid-row:span 2;font-size:20px}.examples strong{font-size:12px;font-weight:500}.examples small{color:#948c9d;font-size:11px;margin-top:6px;line-height:1.5}.message{padding:20px 24px;border-radius:16px;background:#1b1922;border:1px solid #ffffff07;margin:24px 0}.message.assistant{background:transparent;border:0;padding-left:0}.message p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.75;font-size:14px;margin:10px 0 0}.attachment-section{margin:24px 0}.attachments{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}.attachment-section h2{margin-bottom:12px}.result-card{margin:28px 0;padding:22px;border:1px solid #ffffff17;border-radius:18px;background:#131219}.result-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.version{font-size:11px;color:#b4aab9}.result-card>p{font-size:13px;line-height:1.7;color:#aaa0b2}.result-actions{margin-top:16px}.delivery-note{font-size:11px!important;color:#837a8d!important;margin-bottom:0}.run-card{display:flex;align-items:flex-start;gap:12px;border:1px solid #ff6b3530;border-radius:14px;padding:18px;margin:20px 0;font-size:13px}.run-card>div{flex:1}.run-indicator{width:8px;height:8px;border-radius:50%;background:#ff8248;margin-top:5px}.run-card small{display:block;color:#9e94a8;font-size:12px;line-height:1.6;margin-top:7px}.run-card p{color:#b8a9c0;line-height:1.7}.past-runs{font-size:12px;color:#a39aaa;margin-top:20px}.past-runs p{line-height:1.7}.past-runs summary{cursor:pointer}.approval-card{border:1px solid #aa553f68;border-radius:14px;padding:24px;margin:22px 0;background:linear-gradient(130deg,#ff6b3508,#16131b)}.approval-card h2{font-size:18px}.approval-card p{color:#aca2b6;font-size:13px;line-height:1.8}.approval-card small{display:block;font-size:11px;line-height:1.6;color:#a69bae;margin-top:12px}.quote-total{display:flex;align-items:center;gap:12px}.quote-total strong{font-size:22px}.quote-total span{font-size:11px;color:#9bcea9}.next-step{margin:24px 0;font-size:13px;color:#b6aabd}.composer-dock{position:sticky;bottom:0;margin-top:26px;padding:12px 0 5px;background:linear-gradient(transparent,#0a0a0f 22%);z-index:2}.composer-box{border:1px solid #5e47534f;border-radius:18px;background:#1b1922;padding:17px 18px;box-shadow:0 8px 32px #0004}.composer-box textarea{background:transparent;border:0;color:inherit;font:inherit;font-size:14px;line-height:1.7;resize:vertical;min-height:75px;max-height:220px;padding:10px 0;width:100%}.composer-box footer{display:flex;align-items:center;justify-content:space-between;gap:12px}.composer-tools{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.composer-tools button{font-size:11px;padding:7px 9px}.composer-note{font-size:10px;color:#94899f;text-align:center;line-height:1.6}.send{white-space:nowrap}.field{display:block;width:100%;min-width:0;box-sizing:border-box;background:#0d0c12;color:inherit;padding:12px;border:1px solid #ffffff18;border-radius:9px;font:inherit;font-size:13px;margin:10px 0}.muted{font-size:12px;color:#a69aaf;line-height:1.8}.consent{display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.6;color:#bfb4c6;margin:12px 0}.consent input{accent-color:#ff6b35;margin-top:3px}.history-filters{margin:14px 0}.history-filters button{padding:7px 10px;font-size:11px}.history-filters [aria-pressed=true]{color:#ff9b70;background:#ff6b3513;border-color:#ff6b3555}.history-item{display:block;color:inherit;text-decoration:none;padding:18px 0;border-bottom:1px solid #ffffff0d}.history-item>div{display:flex;gap:12px;justify-content:space-between;align-items:center}.history-item strong{font-weight:500;font-size:13px;overflow-wrap:anywhere}.history-item time{font-size:10px;color:#8f849b;white-space:nowrap}.history-item p{font-size:12px;color:#92879d;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;margin:8px 0}.status{font-size:10px;color:#b0a4bd}.status.done{color:#82cfa2}.status.needs{color:#efa789}.status.working{color:#a6a0f7}.revision-item{display:block;width:100%;text-align:left;margin:8px 0;padding:14px}.revision-item strong{font-weight:500}.revision-item small{display:block;color:#9b8fa7;margin-top:7px}.create-error{position:relative;color:#f4bba9;padding:12px 40px 12px 16px;background:#352322;border-radius:10px;font-size:12px;line-height:1.6;margin:12px 0}.create-error p{margin:0}.create-error button{position:absolute;right:5px;top:6px;border:0;padding:4px 8px}.notice{background:#a7833210;color:#cbb58a!important;border:1px solid #a7833230;border-radius:10px;padding:12px;font-size:12px;line-height:1.6;margin:16px 0}.upload-row{display:flex;align-items:flex-start;gap:10px;background:#211d28;border:1px solid #ffffff16;border-radius:12px;padding:12px;margin-bottom:8px}.upload-row>img{width:54px;height:54px;object-fit:contain;border-radius:6px;background:#0a0910}.upload-body{min-width:0;flex:1}.upload-body>strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;font-size:12px}.upload-body>small{display:block;color:#a396af;font-size:11px;margin:7px 0}.upload-body :deep(.ui-select){margin-top:8px}.upload-actions{display:flex;gap:5px}.upload-actions button{font-size:11px;padding:7px}.upload-error{color:#efaf98;font-size:12px}.file-symbol{display:grid;place-items:center;width:50px;height:50px;background:#0e0c15;border-radius:7px;color:#b79ba8;font-size:24px}progress{width:100%;accent-color:#ff6b35}.library-search{display:flex;gap:8px;align-items:center;margin-bottom:15px}.library-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}.library-grid button{text-align:left;min-width:0;padding:10px}.library-grid img,.library-grid .file-symbol{height:85px;width:100%;object-fit:contain;background:#0d0b13;border-radius:6px;margin-bottom:8px}.library-grid strong{font-size:11px;font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.library-grid small{font-size:10px;color:#9f91ad}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:12px}.comparison h3{font-size:13px}.drop-overlay{position:fixed;inset:15%;z-index:20;display:grid;place-items:center;border:2px dashed #ff8e5d;border-radius:24px;background:#1c1526ed;pointer-events:none}.loading{text-align:center;padding:60px;color:#a99eb4}@media(min-width:1280px){.create-main.has-details{padding-right:390px}}@media(min-width:1550px){.conversation-column{max-width:950px}}@media(max-width:860px){.create-main{margin-left:0;padding:22px 16px 90px}.create-header{align-items:flex-start;gap:14px;flex-direction:column}.heading{width:100%}.create-header h1{font-size:19px}.create-empty{padding-top:20px}.create-empty h2{font-size:28px}.local-note{font-size:11px}.composer-dock{position:fixed;left:16px;right:16px;bottom:66px;max-height:50dvh;overflow:auto;border-radius:18px;background:#0a0a0f;padding:0}.composer-note{display:none}.composer-box textarea{min-height:55px;max-height:120px}.create-main{padding-bottom:300px}.composer-box footer{align-items:flex-end}.composer-tools{gap:4px}.composer-tools button{padding:6px}.send{padding:9px}.result-card{padding:14px}.result-heading{align-items:flex-start;flex-direction:column;gap:8px}.examples button{padding:13px;grid-template-columns:1fr}.examples span{display:none}.upload-row{flex-wrap:wrap}.upload-actions{margin-left:auto}.library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.comparison{grid-template-columns:1fr}}
+/* Tokens from the approved create-ui mockup, on the app's own accent. */
+.fc-shell{--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}
+.agent-main{margin-left:var(--sidebar-width,220px);height:100dvh;display:flex;flex-direction:column;min-width:0}
+button{font:inherit;cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}
+button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.muted{color:var(--text-3)}
+.agent-header{display:flex;align-items:center;gap:14px;padding:0 28px;min-height:64px;border-bottom:1px solid var(--line);flex-wrap:wrap;flex-shrink:0}
+.agent-header h1{margin:0;font-size:16px;font-weight:700;max-width:52ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crumb{font-size:13px;color:var(--text-3)}
+.header-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.quiet{border:1px solid var(--line-3);border-radius:var(--r);background:transparent;padding:8px 12px;color:var(--text-2);font-size:13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center}
+.quiet:hover{background:var(--bg-4);color:var(--text)}
+.quiet[aria-expanded="true"]{border-color:var(--accent-line);color:var(--accent);background:var(--accent-soft)}
+.credits{display:flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid var(--line-2);border-radius:var(--r);font:12px var(--mono);color:var(--warn)}
+.credits::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.status{font:10px var(--mono);letter-spacing:1.5px;padding:4px 8px;border-radius:4px;border:1px solid;white-space:nowrap}
+.status--warn{color:var(--warn);background:var(--warn-soft);border-color:var(--warn-line)}.status--ok{color:var(--ok);background:var(--ok-soft);border-color:var(--ok-line)}.status--info{color:var(--info);background:var(--info-soft);border-color:var(--info-line)}.status--neutral{color:var(--text-2);background:var(--line-2);border-color:var(--line-2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:9px 14px;border-radius:var(--r-md);border:1px solid transparent;font-weight:700;font-size:13px;text-decoration:none}
+.btn--primary{background:var(--accent);color:var(--accent-ink)}.btn--primary:hover{filter:brightness(1.06)}
+.btn--outline{background:var(--bg-4);border-color:var(--line-3);color:var(--text)}
+.btn--ghost{background:transparent;border-color:var(--line-3);color:var(--text-2);font-weight:600}.btn--ghost:hover{color:var(--text);background:var(--bg-4)}
+.btn--sm{padding:7px 11px;font-size:12px;border-radius:7px}
+.btn--safe[aria-pressed="true"]{border-color:var(--info);background:var(--info-soft);color:var(--info)}
+.input{width:100%;padding:9px 11px;border:1px solid var(--line-3);border-radius:var(--r);background:var(--bg-3);color:var(--text);font:inherit;font-size:13px}
+.field-label{display:flex;flex-direction:column;gap:6px;font:10px var(--mono);letter-spacing:1.2px;color:var(--text-3)}
+.field-label .input,#details-panel .input{font-family:var(--font-sans,"DM Sans",sans-serif);font-size:13px;letter-spacing:0}
+.row-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.agent-content{display:flex;flex:1;min-height:0;position:relative}
+.conversation{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.messages{flex:1;overflow:auto;padding:32px max(24px,calc((100% - 760px)/2)) 16px;display:flex;flex-direction:column;gap:28px}
+.user-message{align-self:flex-end;max-width:560px;background:var(--bg-4);border:1px solid var(--line-3);border-radius:16px 16px 4px 16px;padding:14px 18px;font-size:14px;line-height:1.55}
+.user-message p{margin:0;white-space:pre-wrap}
+.attachments{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.chip{display:flex;align-items:center;gap:10px;padding:5px 10px 5px 5px;border:1px solid var(--line-3);border-radius:var(--r);background:var(--bg-3);max-width:260px}
+.chip>span:nth-child(2){min-width:0}
+.chip b{font-size:13px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip small{font:10px var(--mono);color:var(--text-3)}
+.chip__thumb{width:26px;height:26px;border-radius:5px;flex-shrink:0;object-fit:cover}
+.thumb--video{background:#3a2f4a}.thumb--image{background:#2a3441}.thumb--audio{background:#243a33}
+.chip__role{font:9px var(--mono);letter-spacing:1px;color:var(--ok)}.chip__role--ref{color:var(--info)}
+.assistant-message{display:flex;flex-direction:column;gap:12px;max-width:760px;font-size:15px;line-height:1.6;color:#d5d9e0}
+.assistant-message>p{margin:0}
+.speaker{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--text-3)}
+.speaker::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--accent)}
+.speaker time{font:11px var(--mono);color:var(--text-4);font-weight:400;margin-left:4px}
+.icard{border:1px solid var(--line-2);border-radius:14px;background:var(--bg-3);overflow:hidden}
+.icard__body{padding:14px 16px;display:flex;flex-direction:column;gap:10px;font-size:14px}
+.icard__body p{margin:0}
+.icard__summary{font-size:15px;line-height:1.55;color:var(--text)}
+.icard__foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line);background:var(--bg-5)}
+.icard__foot .spacer,.spacer{flex:1}
+.icard--warn{border-color:var(--warn-edge)}.icard--warn .icard__foot{background:var(--warn-bg);border-color:var(--warn-edge)}
+.icard--info{border-color:var(--info-line)}
+.cost-line{display:flex;align-items:baseline;gap:8px;font-size:13px;color:var(--text-2)}
+.cost-line b{font:500 16px var(--mono);color:var(--warn)}
+.working{gap:10px}
+.working__row{display:flex;align-items:center;gap:12px}
+.spinner{width:16px;height:16px;border-radius:50%;border:2px solid var(--line-3);border-top-color:var(--accent);animation:spin 1s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.working__label{font-size:14px;font-weight:700}.working__step{font-size:12px;color:var(--text-3)}
+.run-card{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--bg-3)}
+.run-card summary{list-style:none;cursor:pointer;font-size:13px;font-weight:700;display:flex;gap:10px}
+.run-card summary::-webkit-details-marker{display:none}
+.run-card summary::after{content:"▾";margin-left:auto;color:var(--text-4)}
+.run-card[open] summary::after{content:"▴"}
+.run-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 0;font-size:13px;color:var(--text-2)}
+.result{border:1px solid var(--line-2);border-radius:14px;background:var(--bg-3);overflow:hidden}
+.result--done{border-color:var(--ok-line)}
+.result__stage{display:flex;justify-content:center;align-items:center;min-height:120px;padding:20px;background:var(--bg-2)}
+.result__stage .player-wrap{width:100%;max-width:420px}
+.result__meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px 0;font-size:13px}
+.result__meta b{font-weight:700}.result__meta .status{margin-left:auto}
+.result__actions{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px 14px}
+.player-wrap{position:relative}
+.safe-zones{position:absolute;inset:14% 6% 35%;border:1px dashed #fff9;pointer-events:none;box-shadow:0 0 0 1px #0005}
+.player-wrap .safe-zones:after{content:"Keep essential content inside";position:absolute;top:4px;left:4px;font-size:10px;color:#fff;text-shadow:0 1px 2px #000}
+.created-image{display:block;max-width:100%;max-height:60vh;object-fit:contain;border-radius:10px}
+.notice{background:var(--warn-soft);color:#e8d29b!important;border:1px solid var(--warn-line);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.55;margin:0}
+.next-step{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.next-step p{margin:0;font-size:13px}
+.composer-dock{padding:8px max(24px,calc((100% - 760px)/2)) 16px;background:linear-gradient(transparent,var(--bg) 24%);flex-shrink:0}
+.attached{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.upload{display:flex;align-items:center;gap:10px;padding:6px 8px 6px 6px;border:1px solid var(--line-3);border-radius:var(--r);background:var(--bg-4);font-size:13px;min-width:240px;max-width:100%}
+.upload__thumb{width:30px;height:30px;border-radius:5px;flex-shrink:0;object-fit:cover;background:#2a3441}
+.upload>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.upload b{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.upload small{font:10px var(--mono);color:var(--text-3)}
+.upload__bar{height:3px;border-radius:2px;background:var(--line-2);overflow:hidden}.upload__bar span{display:block;height:100%;background:var(--accent)}
+.upload--error{border-color:#4a2b2b}.upload--error small{color:#e07a7a}
+.upload__x{width:22px;height:22px;border:0;background:transparent;color:var(--text-3);font-size:16px;flex-shrink:0}
+.role-toggle{display:inline-flex;gap:2px;padding:2px;border-radius:6px;background:var(--bg-3);border:1px solid var(--line-2)}
+.role-toggle button{border:0;background:transparent;color:var(--text-3);font:500 9px var(--mono);letter-spacing:.5px;padding:3px 6px;border-radius:4px}
+.role-toggle button[aria-pressed="true"]{background:var(--line-2);color:var(--text)}
+.consent{display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.55;color:var(--text-2)}
+.consent input{accent-color:var(--accent);margin-top:3px}
+.consent--sm{font-size:11px}
+.prompt-form{background:var(--bg-3);border:1px solid var(--line-3);border-radius:16px;padding:12px 14px}
+.prompt-form:focus-within{border-color:var(--text-4)}
+.prompt-form textarea{width:100%;resize:none;max-height:160px;background:none;border:0;color:var(--text);font:inherit;font-size:15px;line-height:1.5;outline:none}
+.composer-bottom{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
+.composer-bottom .quiet{border:0;padding:6px 8px;font-size:12px}
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:7px;border:1px solid var(--line-2);background:var(--bg-4)}
+.seg button{border:0;background:transparent;color:var(--text-3);font-size:12px;font-weight:600;padding:4px 10px;border-radius:5px}
+.seg button[aria-pressed="true"]{background:var(--line-3);color:var(--text)}
+.send{margin-left:auto;width:36px;height:36px;border:0;border-radius:var(--r-md);background:var(--accent);color:var(--accent-ink);display:grid;place-items:center}
+.composer-note{font-size:11px;color:var(--text-4);margin:8px 4px 0}
+.empty{margin:auto;max-width:560px;display:flex;flex-direction:column;gap:18px;text-align:center;align-items:center;padding:40px 0}
+.empty h2{margin:0;font-size:28px;font-weight:800;letter-spacing:-.4px}
+.empty p{margin:0;color:var(--text-3);line-height:1.55}
+.examples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%;text-align:left}
+.example{border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--bg-3);padding:12px 14px;font-size:13px;line-height:1.45;color:var(--text-2);text-align:center}
+.example:hover{border-color:var(--text-4);color:var(--text)}
+.example b{display:block;font-size:13px;color:var(--text);margin-bottom:3px}
+.dropzone{width:100%;padding:22px;border:1px dashed var(--line-3);border-radius:var(--r-lg);color:var(--text-3);font-size:13px;background:transparent;display:flex;flex-direction:column;gap:6px;align-items:center}
+.dropzone small{font:10px var(--mono);color:var(--text-4)}
+.dropzone:hover{border-color:var(--accent);color:var(--text-2)}
+#details-panel{width:320px;flex-shrink:0;border-left:1px solid var(--line);background:var(--bg-2);overflow:auto;display:flex;flex-direction:column}
+.panel-scrim{display:none}
+.panel-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 18px 0}
+.panel-heading h2{margin:0;font-size:15px;outline:none}
+.panel-heading .quiet{padding:4px 10px;font-size:16px}
+.detail-tabs{display:flex;gap:6px;padding:12px 18px 0;border-bottom:1px solid var(--line)}
+.detail-tabs button{padding:10px 0;margin-right:12px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--text-3);font-size:13px;font-weight:600}
+.detail-tabs button[aria-pressed="true"]{color:var(--text);border-bottom-color:var(--accent);font-weight:700}
+#details-panel section{border-bottom:1px solid var(--line);padding:14px 18px;display:flex;flex-direction:column;gap:8px}
+#details-panel h3{margin:0;font:10px var(--mono);letter-spacing:1.5px;color:var(--text-3)}
+#details-panel p{margin:0;font-size:13px;line-height:1.5}
+.panel-edit summary{cursor:pointer;font-size:12px;color:var(--text-2);font-weight:600}
+.panel-edit[open]{display:flex;flex-direction:column;gap:8px}
+.asset{display:flex;align-items:center;gap:10px;font-size:13px}
+.asset>span:nth-child(2){flex:1;min-width:0}
+.asset__thumb{width:34px;height:34px;border-radius:6px;flex-shrink:0;object-fit:cover;background:#2a3441}
+.asset b{display:block;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.asset small{font:10px var(--mono);color:var(--text-3)}
+.version{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--bg-3);text-align:left;color:inherit;width:100%}
+.version__row{display:flex;align-items:center;gap:10px;width:100%}
+.version b{font-size:13px}.version small{display:block;font:10px var(--mono);color:var(--text-3)}
+.version .status{margin-left:auto}
+.version.is-current{border-color:var(--accent-line)}.version.is-viewing{border-color:var(--info-line)}
+.drawer-top{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.drawer-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.drawer-filters button{border:1px solid var(--line-3);border-radius:999px;background:transparent;color:var(--text-3);font-size:12px;padding:5px 10px}
+.drawer-filters button[aria-pressed="true"]{color:var(--text);border-color:var(--text-4);background:var(--bg-4)}
+.drawer-group{font:10px var(--mono);letter-spacing:1.5px;color:var(--text-4);padding:12px 6px 4px}
+.session{display:flex;gap:12px;align-items:flex-start;padding:10px;border:1px solid transparent;border-radius:var(--r-md);color:inherit;text-decoration:none}
+.session:hover{background:var(--bg-3);border-color:var(--line-2)}
+.session.is-current{border-color:var(--accent-line);background:var(--bg-3)}
+.session__thumb{width:30px;height:54px;border-radius:4px;background:#1a1f2b;border:1px solid var(--line-3);flex-shrink:0}
+.session>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.session b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session small{font-size:12px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session .status{font-size:9px;padding:3px 6px;align-self:flex-start}
+.session time{font:11px var(--mono);color:var(--text-4);white-space:nowrap}
+.create-error{position:relative;color:#f4bba9;padding:10px 40px 10px 14px;background:#352322;border-radius:10px;font-size:12px;line-height:1.6;margin:0 0 8px}
+.create-error p{margin:0}
+.create-error button{position:absolute;right:6px;top:6px;border:0;background:transparent;color:inherit;padding:4px 8px}
+.file-symbol{display:grid;place-items:center;width:50px;height:50px;background:var(--bg-4);border-radius:7px;color:var(--text-3);font-size:24px}
+.library-search{display:flex;gap:8px;align-items:center;margin-bottom:15px}
+.library-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}
+.library-grid button{text-align:left;min-width:0;padding:10px;border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--bg-3);color:inherit}
+.library-grid img,.library-grid .file-symbol{height:85px;width:100%;object-fit:contain;background:var(--bg-2);border-radius:6px;margin-bottom:8px}
+.library-grid strong{font-size:11px;font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.library-grid small{font-size:10px;color:var(--text-3)}
+.comparison{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.comparison h3{font-size:13px}
+.drop-overlay{position:absolute;inset:16px;z-index:20;display:grid;place-items:center;border:2px dashed var(--accent);border-radius:20px;background:#1c1526ed;pointer-events:none}
+.loading{text-align:center;padding:60px;color:var(--text-3)}
+@media(max-width:1100px){#details-panel{width:290px}}
+@media(max-width:860px){
+  .agent-main{margin-left:0;padding-top:calc(52px + env(safe-area-inset-top));height:calc(100dvh - 66px)}
+  .agent-header{padding:10px 14px;gap:8px}
+  .agent-header h1{font-size:15px;max-width:70vw}
+  .header-actions{margin-left:0;width:100%}
+  .messages{padding:20px 14px}
+  .composer-dock{padding:8px 12px 12px}
+  .examples,.comparison{grid-template-columns:1fr}
+  .library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .result__meta .status{margin-left:0}
+  .panel-scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:24}
+  #details-panel{position:fixed;right:0;top:0;bottom:0;z-index:25;width:min(340px,100%);box-shadow:-30px 0 100px rgba(0,0,0,.6)}
+  .composer-note{display:none}
+  .credits{display:none}
+}
 </style>

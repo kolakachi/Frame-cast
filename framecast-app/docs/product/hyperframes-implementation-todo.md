@@ -193,4 +193,6 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 
 Use stable task references such as E0.2/CTA revision in commits and verification notes. Tick a task only when its implementation and required checks pass. Every completed phase records commit, runtime identity, commands, outputs and limitations. Do not put credentials or private customer media in the evidence document.
 
+Create UI parity (owner review 2026-09-29): slice 1 shell parity done; next slice 2 plan turn (free assistant reply with a structured plan the quote binds to), then editable plan pieces with free composition-only edits, placement overlays, and the states sheet. Owner decision: jobs under 15 credits auto-run.
+
 Immediate next implementation slice: **E3 exit run on the committed build — `create-e3-browser.mjs` and `create-browser.mjs` against the disposable harness (needs a Playwright install via `PLAYWRIGHT_MODULE`; none is present on this machine as of 2026-09-29 evening, so only the API suite (53 tests), the web unit tests and the production build were run). Then E4 timed editing. Model comparisons remain deferred; E1 creative acceptance and paid/production release gates stay open.**
