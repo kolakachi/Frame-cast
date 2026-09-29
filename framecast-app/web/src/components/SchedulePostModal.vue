@@ -8,7 +8,11 @@ const router = useRouter()
 
 const props = defineProps({
   exportJobId: { type: Number, default: null },
+  deliveryPath: {type:String,default:'/scheduled-posts'},
+  deliveryContext: {type:Object,default:()=>({})},
+  allowAiCaption: {type:Boolean,default:true},
 })
+const deliveryKeys = new Map()
 const emit = defineEmits(['close', 'scheduled'])
 
 // ── State ─────────────────────────────────────────────────
@@ -194,7 +198,9 @@ async function submit(opts = {}) {
     const created = []
     for (const accountId of selectedAccountIds.value) {
       const account = accounts.value.find(a => a.id === accountId)
-      const res = await api.post('/scheduled-posts', {
+      const res = await api.post(props.deliveryPath, {
+        ...props.deliveryContext,
+        ...(props.deliveryPath !== '/scheduled-posts' ? {action:'schedule',confirmed:true,idempotency_key:deliveryKeys.get(accountId) || (deliveryKeys.set(accountId,crypto.randomUUID()),deliveryKeys.get(accountId))} : {}),
         export_job_id:     selectedExportId.value,
         social_account_id: accountId,
         caption:           captions.value[accountId] ?? captions.value['default'] ?? '',
@@ -223,7 +229,7 @@ async function submit(opts = {}) {
       startPolling(created.map(p => p.id).filter(Boolean))
     }
   } catch (e) {
-    error.value = e?.response?.data?.error?.message || 'Failed to schedule post.'
+    error.value = e?.response?.data?.error?.message || e?.response?.data?.message || 'Failed to schedule post.'
     saving.value = false
   }
 }
@@ -402,7 +408,7 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
                       {{ acc.platform === 'youtube' ? (descriptions[acc.id] ?? '').length : (captions[acc.id] ?? '').length }}
                       / {{ acc.platform === 'youtube' ? 5000 : 2200 }}
                     </div>
-                    <button class="sp-ai-btn" :disabled="!selectedExportId || generatingCaption[acc.id]" @click="generateCaption(acc.id, acc.platform)">
+                    <button v-if="allowAiCaption" class="sp-ai-btn" :disabled="!selectedExportId || generatingCaption[acc.id]" @click="generateCaption(acc.id, acc.platform)">
                       {{ generatingCaption[acc.id] ? 'Generating…' : `✦ Generate ${acc.platform === 'youtube' ? 'description' : 'caption'} with AI` }}
                     </button>
                   </div>

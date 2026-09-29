@@ -135,7 +135,7 @@ class ScheduledPostController extends Controller
             // can supersede it — a delayed job cannot be cancelled, so the
             // stale one has to recognise itself and stand down.
             PublishVideoJob::dispatch($post->getKey(), $publishNow ? null : $post->scheduled_at?->toIso8601String())
-                ->delay($publishNow ? 0 : max(0, now()->diffInSeconds($post->scheduled_at) - self::PUBLISH_LEAD_SECONDS));
+                ->delay($publishNow ? 0 : max(0, now()->diffInSeconds($post->scheduled_at) - self::PUBLISH_LEAD_SECONDS))->afterCommit();
         }
 
         return response()->json(['data' => ['post' => $this->serialize($post)]], 201);

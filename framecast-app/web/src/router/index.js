@@ -54,6 +54,7 @@ const routes = [
   { path: '/auth/reset', name: 'reset-password', component: ResetPasswordView, meta: { guestOnly: true } },
   { path: '/approve/:token', name: 'approval-review', component: ApprovalReviewView, meta: { public: true } },
   // Public share page for cold-DM motion — no auth needed
+  {path:'/creation/:token',name:'creation-share',component:()=>import('../views/CreationShareView.vue'),meta:{public:true}},
   { path: '/sample/:token', name: 'sample', component: SampleView, meta: { public: true } },
   { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/assets', name: 'asset-library', component: AssetLibraryView, meta: { requiresAuth: true } },
