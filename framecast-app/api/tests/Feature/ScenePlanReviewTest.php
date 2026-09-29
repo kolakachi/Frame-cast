@@ -30,7 +30,7 @@ class ScenePlanReviewTest extends TestCase
         $project = Project::create(['workspace_id' => 1, 'status' => 'generating', 'script_text' => 'Grind coffee beans.', 'duration_target_seconds' => 15]);
         $existing = Scene::create(['project_id' => $project->id, 'scene_order' => 1, 'script_text' => 'Original scene.']);
         $credits = $this->createMock(CreditService::class);
-        $credits->expects($this->never())->method('deduct'); $this->app->instance(CreditService::class, $credits);
+        $credits->expects($this->never())->method('deductQuietly'); $this->app->instance(CreditService::class, $credits);
         $ai = $this->createMock(AIGenerationAdapter::class);
         $ai->expects($this->exactly(6))->method('generate')->willReturnCallback(fn ($template) => ['content' => $template === 'scene_breakdown'
             ? '{"scenes":[{"script_text":"Become more likable."}]}'
@@ -46,7 +46,7 @@ class ScenePlanReviewTest extends TestCase
     {
         $project = Project::create(['workspace_id' => 1, 'status' => 'generating', 'script_text' => 'Grind coffee beans.', 'duration_target_seconds' => 15]);
         $credits = $this->createMock(CreditService::class);
-        $credits->expects($this->once())->method('deduct'); $this->app->instance(CreditService::class, $credits);
+        $credits->expects($this->once())->method('deductQuietly'); $this->app->instance(CreditService::class, $credits);
         $ai = $this->createMock(AIGenerationAdapter::class);
         $ai->expects($this->exactly(2))->method('generate')->willReturnOnConsecutiveCalls(
             ['content' => '{"scenes":[{"script_text":"Grind coffee beans."}]}'],

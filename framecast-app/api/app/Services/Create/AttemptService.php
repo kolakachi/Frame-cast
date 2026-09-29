@@ -44,10 +44,21 @@ class AttemptService
         });
     }
 
-    public function settle(string $runId, string $lease, string $id, array $result): array
+    public function bindPrediction(string $runId, string $lease, string $id, string $prediction): void
+    {
+        DB::transaction(function () use ($runId,$lease,$id,$prediction) {
+            $this->leased($runId,$lease,false);
+            $a=DB::table('composition_attempts')->where('run_id',$runId)->where('id',$id)->lockForUpdate()->firstOrFail();
+            abort_unless($a->status==='started' && preg_match('/^[a-zA-Z0-9_-]{1,160}$/D',$prediction),409);
+            abort_if($a->prediction_id && $a->prediction_id!==$prediction,409,'Prediction already bound.');
+            DB::table('composition_attempts')->where('id',$id)->update(['prediction_id'=>$prediction,'updated_at'=>now()]);
+        });
+    }
+
+    public function settle(string $runId, string $lease, string $id, array $result, ?VerifiedAttemptReceipt $verified = null): array
     {
         $hash = hash('sha256', json_encode([$result['status'], $result['prediction_id'] ?? null, $result['cost_microusd'] ?? null]));
-        return DB::transaction(function () use ($runId, $lease, $id, $result, $hash) {
+        return DB::transaction(function () use ($runId, $lease, $id, $result, $hash, $verified) {
             // Match CreditService's pool-before-operation lock order.
             $unlocked = DB::table('composition_runs')->where('id', $runId)->firstOrFail();
             $workspace = Workspace::findOrFail($unlocked->workspace_id);
@@ -63,7 +74,12 @@ class AttemptService
             $cost = $result['cost_microusd'] ?? null;
             abort_unless(in_array($status, ['succeeded', 'failed', 'unknown'], true), 422);
             abort_unless($status === 'unknown' || (is_int($cost) && $cost >= 0 && $cost <= $attempt->cost_limit_microusd), 422, 'Known usage must fit the approved ceiling; otherwise report unknown.');
-            $prediction = $result['prediction_id'] ?? null;
+            $prediction = $result['prediction_id'] ?? $attempt->prediction_id;
+            abort_if($attempt->prediction_id && $prediction !== $attempt->prediction_id,409,'Receipt prediction does not match the bound attempt.');
+            if ($attempt->provider !== 'offline' && $status !== 'unknown') {
+                abort_unless($verified && $verified->attemptId === $id && $verified->status === $status
+                    && $verified->predictionId === $prediction && $verified->costMicrousd === $cost, 409, 'Verified provider state and billing evidence are required. Hold retained.');
+            }
             abort_unless($attempt->provider === 'offline' || $status === 'unknown' || (is_string($prediction) && strlen($prediction) > 0), 422, 'Provider receipt ID is required.');
             $credits = $status === 'unknown' ? 0 : (($status === 'succeeded' || $cost > 0) ? (int) $attempt->credit_limit : 0);
             $previous = Context::getHidden(OperationAccounting::CONTEXT);

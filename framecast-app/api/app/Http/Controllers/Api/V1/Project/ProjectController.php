@@ -140,6 +140,8 @@ class ProjectController extends Controller
             return $this->error('not_found', 'Project not found.', 404);
         }
 
+        if ($project->isComposition()) return response()->json(['data'=>['project'=>$this->serializeProject($project),'scenes'=>[]]]);
+
         $scenes = Scene::query()
             ->where('project_id', $project->getKey())
             ->orderBy('scene_order')
@@ -2022,6 +2024,8 @@ class ProjectController extends Controller
             'brand_kit_id' => $project->brand_kit_id,
             'template_id' => $project->template_id,
             'niche_id' => $project->niche_id,
+            'editor_kind' => $project->editor_kind ?: 'scene',
+            'create_conversation_id' => $project->isComposition() ? DB::table('create_conversations')->where('project_id',$project->id)->value('id') : null,
             'source_type' => $project->source_type,
             'source_content_raw' => $project->source_content_raw,
             'source_content_normalized' => $project->source_content_normalized,

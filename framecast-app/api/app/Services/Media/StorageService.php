@@ -16,6 +16,14 @@ class StorageService
     private const MINIO = 'minio';
     private const B2    = 'b2_legacy';
 
+    public function isCreatePrivate(string $url): bool { return str_starts_with($url, 'create-private://'); }
+
+    private function createPath(string $url): string
+    {
+        abort_unless(preg_match('~^create-private://([a-f0-9-]{36}/[a-f0-9]{64}\.mp4)$~D', $url, $matches), 422);
+        return 'create/previews/'.$matches[1];
+    }
+
     // ── Writes ───────────────────────────────────────────────────────────────
 
     /**
@@ -38,6 +46,7 @@ class StorageService
      */
     public function delete(string $storageUrl): bool
     {
+        if ($this->isCreatePrivate($storageUrl)) { return false; /* Immutable bytes are managed by Create retention. */ }
         $path = $this->extractPath($storageUrl);
 
         if ($path === null) {
@@ -64,6 +73,10 @@ class StorageService
      */
     public function url(string $storageUrl): string
     {
+        if ($this->isCreatePrivate($storageUrl)) {
+            $asset = \App\Models\Asset::where('storage_url',$storageUrl)->where('status','!=','archived')->firstOrFail();
+            return \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content',now()->addMinutes(5),['assetId'=>$asset->id]);
+        }
         $path = $this->extractPath($storageUrl);
 
         if ($path === null) {
@@ -89,6 +102,7 @@ class StorageService
      */
     public function readStream(string $storageUrl): mixed
     {
+        if ($this->isCreatePrivate($storageUrl)) { return Storage::disk('local')->readStream($this->createPath($storageUrl)); }
         $path = $this->extractPath($storageUrl);
 
         if ($path === null) {
@@ -110,6 +124,7 @@ class StorageService
      */
     public function size(string $storageUrl): ?int
     {
+        if ($this->isCreatePrivate($storageUrl)) { return Storage::disk('local')->exists($this->createPath($storageUrl)) ? Storage::disk('local')->size($this->createPath($storageUrl)) : null; }
         $path = $this->extractPath($storageUrl);
 
         if ($path === null) {
@@ -130,6 +145,7 @@ class StorageService
      */
     public function get(string $storageUrl): ?string
     {
+        if ($this->isCreatePrivate($storageUrl)) { return Storage::disk('local')->get($this->createPath($storageUrl)); }
         $path = $this->extractPath($storageUrl);
 
         if ($path === null) {
@@ -148,6 +164,7 @@ class StorageService
      */
     public function exists(string $storageUrl): bool
     {
+        if ($this->isCreatePrivate($storageUrl)) { return Storage::disk('local')->exists($this->createPath($storageUrl)); }
         $path = $this->extractPath($storageUrl);
 
         if ($path === null) {
@@ -170,6 +187,7 @@ class StorageService
      */
     public function isManagedUrl(string $storageUrl): bool
     {
+        if ($this->isCreatePrivate($storageUrl)) { return true; }
         $url = trim($storageUrl);
 
         if ($url === '') {
@@ -194,6 +212,7 @@ class StorageService
      */
     public function extractPath(string $storageUrl): ?string
     {
+        if ($this->isCreatePrivate($storageUrl)) { return $this->createPath($storageUrl); }
         $url = trim($storageUrl);
 
         if ($url === '') {

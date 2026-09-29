@@ -30,6 +30,9 @@ const output=await fetch(api+'/api/v1/create/'+base+'/revisions/'+revision.id+'/
 assert.equal(output.status,200);assert.equal(output.headers.get('content-type'),'video/mp4');
 const bytes=Buffer.from(await output.arrayBuffer());assert.ok(bytes.length>1000);
 await mkdir(root+'/artifacts/app-integration',{recursive:true});await writeFile(root+'/artifacts/app-integration/preview.mp4',bytes);
+const saved=await call(base+'/revisions/'+revision.id+'/save-output',{expected_version:3});
+assert.ok(saved.project_id);assert.ok(saved.export_job_id);assert.ok(saved.asset_id);
+assert.deepEqual(await call(base+'/revisions/'+revision.id+'/save-output',{expected_version:3}),saved);
 const restored=await call(base+'/revisions/'+revision.id+'/restore',{expected_version:3});assert.notEqual(restored.revision_id,revision.id);
 const final=await call(base,null,'GET');assert.equal(final.revisions.length,2);
 const firstSource=await readFile(root+'/artifacts/live/app-'+run.id+'/project/index.html','utf8');
@@ -45,5 +48,5 @@ assert.equal(editSource,firstSource.replace('Local agent proof','Local edit proo
 assert.equal(edited.revisions.length,3);
 const inherited=JSON.parse(await readFile(root+'/artifacts/live/app-'+editRun.id+'/inputs/manifest.json','utf8'));
 assert.equal(inherited[0].sha256,staged[0].sha256);
-const evidence={agentCalls:10,followUpRun:editRun.id,exactEditVerified:true,conversation:c.id,run:run.id,artifactBytes:bytes.length,revision:revision.id,restored:restored.revision_id,worker:stdout.trim(),inputSnapshotVerified:true,paidCalls:0};
+const evidence={registeredOutput:saved,agentCalls:10,followUpRun:editRun.id,exactEditVerified:true,conversation:c.id,run:run.id,artifactBytes:bytes.length,revision:revision.id,restored:restored.revision_id,worker:stdout.trim(),inputSnapshotVerified:true,paidCalls:0};
 await writeFile(root+'/artifacts/app-integration/evidence.json',JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));

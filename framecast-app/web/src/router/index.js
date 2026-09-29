@@ -165,11 +165,12 @@ router.beforeEach(async function (to) {
 
   // Generic links (jobs, channels, old bookmarks) use the same result-first
   // destination as the dashboard until Edit video was explicitly chosen.
-  if (to.name === 'project-editor' && Number(to.params.projectId) >= 216) {
+  if (['project-editor', 'generation-progress'].includes(to.name)) {
     try {
       const { data } = await api.get(`/projects/${to.params.projectId}`)
       const project = data?.data?.project
-      if (project && project.source_type !== 'blank' && !project.visual_brief?.editor_opened_at
+      if (project?.editor_kind === 'composition' && project.create_conversation_id) return { name: 'create', params: { conversationId: project.create_conversation_id } }
+      if (to.name === 'project-editor' && Number(to.params.projectId) >= 216 && project && project.source_type !== 'blank' && !project.visual_brief?.editor_opened_at
           && ['generating', 'ready_for_review'].includes(project.status)) {
         return { name: 'generation-progress', params: { projectId: to.params.projectId } }
       }

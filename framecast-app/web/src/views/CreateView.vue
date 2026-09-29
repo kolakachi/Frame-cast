@@ -55,6 +55,9 @@ async function plan() {
 async function approve() {
   await guarded(async () => { await api.post(`${base()}/runs`, { quote_id: quote.value.id, approved: true, idempotency_key: approvalKey }); quote.value = null; await refresh() })
 }
+async function saveOutput() {
+  await guarded(async () => { await api.post(`${base()}/revisions/${currentRevision.value.id}/save-output`, { expected_version: conversation.value.version }); await refresh() })
+}
 async function cancel() { await guarded(async () => { await api.post(`${base()}/runs/${active.value.id}/cancel`); await refresh() }) }
 async function showLibrary() {
   await guarded(async () => { library.value = (await api.get('/assets', { params: { per_page: 100 } })).data.data.assets ?? []; libraryOpen.value = true })
@@ -147,7 +150,7 @@ onBeforeUnmount(() => { clearInterval(timer); epoch++; mediaEpoch++; if (media.v
               <span class="eyebrow">LOCAL SAMPLE PREVIEW</span><p>{{ currentRevision.summary }}</p>
               <p v-if="currentRevision.conflict" class="create-error">The brief changed during this render. This draft is preserved in history; it did not replace your current version.</p>
               <p v-if="artifactLoading">Loading video…</p><FinishedVideoPlayer v-if="media" :src="media" />
-              <div class="result-actions"><a v-if="media" :href="media" download="wyvstudio-local-preview.mp4">Download sample</a><button v-if="canWrite && currentRevision.id !== conversation.head_revision_id" :disabled="busy" @click="restore">Restore as a new version</button></div>
+              <div class="result-actions"><a v-if="media" :href="media" download="wyvstudio-local-preview.mp4">Download sample</a><button v-if="canWrite && currentRevision.id === conversation.head_revision_id && !conversation.archived_at" :disabled="busy || !!currentRevision.export_job_id" @click="saveOutput">{{ currentRevision.export_job_id ? 'Saved to videos' : 'Save sample to videos' }}</button><button v-if="canWrite && currentRevision.id !== conversation.head_revision_id" :disabled="busy" @click="restore">Restore as a new version</button></div>
             </section>
             <section v-if="quote" class="approval-card"><h2>Review before starting</h2><p>{{ quote.description }}</p><strong>{{ quote.credits_max }} credits · no paid calls</strong><small>Approval expires {{ new Date(quote.expires_at).toLocaleTimeString() }}</small><button class="primary" :disabled="busy" @click="approve">Approve sample render</button><button :disabled="busy" @click="quote = null">Dismiss</button></section>
             <button v-else-if="conversation && canWrite && !active && data?.messages?.length && !conversation.archived_at" :disabled="busy" class="plan-button" @click="plan">Review local sample plan</button>

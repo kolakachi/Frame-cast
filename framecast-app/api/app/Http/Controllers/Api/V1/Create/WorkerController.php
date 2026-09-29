@@ -50,6 +50,14 @@ class WorkerController extends Controller
         return response()->json(['data' => app(\App\Services\Create\AttemptService::class)->begin($id, $input['lease_token'], $input['attempt_key'], $input['kind'], $input['request_hash'])]);
     }
 
+    public function bindPrediction(Request $r, string $id, string $attemptId)
+    {
+        $this->authorizeWorker($r);
+        $input=$r->validate(['lease_token'=>'required|string|size:64','prediction_id'=>'required|regex:/^[a-zA-Z0-9_-]{1,160}$/']);
+        app(\App\Services\Create\AttemptService::class)->bindPrediction($id,$input['lease_token'],$attemptId,$input['prediction_id']);
+        return response()->json(['data'=>['recorded'=>true]]);
+    }
+
     public function settleAttempt(Request $r, string $id, string $attemptId)
     {
         $this->authorizeWorker($r);

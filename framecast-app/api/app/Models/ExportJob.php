@@ -12,6 +12,10 @@ class ExportJob extends Model
     protected static function booted(): void
     {
         static::creating(function (ExportJob $job): void {
+            if ($job->project_id && Project::find($job->project_id)?->isComposition()) {
+                abort_unless($job->composition_revision_id && $job->composition_hash && $job->status === 'completed', 422, 'Composition exports must be registered from a verified revision.');
+                return;
+            }
             // Nullable migration allows older queued workers and rolling deploys.
             if ($job->project_id && \Illuminate\Support\Facades\Schema::hasColumn('export_jobs', 'source_fingerprint')) {
                 $project = Project::find($job->project_id);

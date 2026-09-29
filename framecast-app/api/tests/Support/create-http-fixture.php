@@ -18,6 +18,8 @@ if (! \Illuminate\Support\Facades\Schema::hasTable('create_conversations')) {
     (require database_path('migrations/2026_09_25_200000_create_api_operations.php'))->up();
     (require database_path('migrations/2026_09_28_120000_create_composition_conversations.php'))->up();
     (require database_path('migrations/2026_09_29_000000_create_composition_attempts.php'))->up();
+        (require database_path('migrations/2026_09_29_120000_link_composition_outputs.php'))->up();
+        (require database_path('migrations/2026_09_29_130000_create_composition_reconciliations.php'))->up();
     \App\Models\Workspace::create(['name' => 'Create fixture', 'status' => 'active', 'plan_tier' => 'creator', 'plan_status' => 'active', 'credits_monthly' => 100]);
     $user = \App\Models\User::create(['email' => 'create-fixture@example.test', 'name' => 'Local tester', 'role' => 'owner', 'status' => 'active']);
     $user->forceFill(['workspace_id' => 1])->save();

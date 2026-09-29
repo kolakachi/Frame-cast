@@ -31,6 +31,7 @@ class BreakdownScenesJob implements ShouldQueue
         GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'processing');
 
         $project = Project::query()->find($this->projectId);
+        $project?->assertSceneEditor();
 
         if (! $project || ! $project->script_text || $project->status === 'failed') {
             return;

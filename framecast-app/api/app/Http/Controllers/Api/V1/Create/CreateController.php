@@ -38,7 +38,7 @@ class CreateController extends Controller
     {
         $c = $this->service->conversation($r->user(), $id);
         $revisions = DB::table('composition_revisions')->where('conversation_id', $id)->orderBy('number')->get([
-            'id', 'number', 'parent_revision_id', 'restored_from_id', 'run_id', 'summary', 'conflict', 'created_at', 'artifact_hash',
+            'id', 'number', 'output_asset_id', 'export_job_id', 'parent_revision_id', 'restored_from_id', 'run_id', 'summary', 'conflict', 'created_at', 'artifact_hash',
         ]);
         // Storage keys, worker credentials and source HTML never enter the browser response.
         return response()->json(['data' => [
@@ -121,6 +121,13 @@ class CreateController extends Controller
         $input = $r->validate(['expected_version' => 'required|integer|min:0']);
         $revision = $this->service->restore($r->user(), $id, $revisionId, $input['expected_version']);
         return response()->json(['data' => ['revision_id' => $revision]], 201);
+    }
+
+    public function saveOutput(Request $r, string $id, string $revisionId)
+    {
+        $input = $r->validate(['expected_version'=>'required|integer|min:0']);
+        return response()->json(['data'=>app(\App\Services\Create\CompositionOutputService::class)
+            ->register($r->user(),$id,$revisionId,$input['expected_version'])]);
     }
 
     public function artifact(Request $r, string $id, string $revisionId)

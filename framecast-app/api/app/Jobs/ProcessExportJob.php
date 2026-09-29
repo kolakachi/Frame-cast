@@ -68,6 +68,10 @@ class ProcessExportJob implements ShouldQueue
             return;
         }
 
+        // Compositions already contain their final encoding. Never recover them
+        // by silently running the scene renderer, even if the file is missing.
+        if ($exportJob->project?->isComposition()) return;
+
         // Already completed on a prior attempt — nothing to do unless the file vanished.
         if ($exportJob->status === 'completed' && $exportJob->output_asset_id) {
             $outputAsset = Asset::query()->find((int) $exportJob->output_asset_id);

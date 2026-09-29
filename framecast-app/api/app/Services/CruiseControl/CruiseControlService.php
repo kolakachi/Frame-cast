@@ -68,6 +68,7 @@ class CruiseControlService
      */
     public function resolve(string $intent, Project $project, ?Scene $scope, array $history = []): array
     {
+        $project->assertSceneEditor();
         $apiKey = config('services.openai.api_key');
         if (! $apiKey) {
             return [

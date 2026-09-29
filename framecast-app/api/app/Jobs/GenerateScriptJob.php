@@ -39,6 +39,7 @@ class GenerateScriptJob implements ShouldQueue
     public function handle(AIGenerationAdapter $aiGeneration, MediaTranscriptionService $transcriptionService): void
     {
         $project = Project::query()->find($this->projectId);
+        $project?->assertSceneEditor();
 
         if (! $project) {
             return;

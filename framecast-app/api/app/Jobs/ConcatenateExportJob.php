@@ -45,6 +45,7 @@ class ConcatenateExportJob implements ShouldQueue
     public function handle(): void
     {
         $exportJob = ExportJob::query()->find($this->exportJobId);
+        if ($exportJob?->project?->isComposition()) return;
 
         if (! $exportJob || $exportJob->status === 'failed') {
             return;
@@ -244,6 +245,7 @@ class ConcatenateExportJob implements ShouldQueue
         $this->recordFailureTrace($exception, 'export', $this->exportJobId);
 
         $exportJob = ExportJob::query()->find($this->exportJobId);
+        if ($exportJob?->project?->isComposition()) return;
         if (! $exportJob) { return; }
 
         $userSafeFailure = $this->summarizeFailureForUser($exception);

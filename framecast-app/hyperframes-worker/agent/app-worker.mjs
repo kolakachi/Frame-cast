@@ -56,6 +56,7 @@ async function execute(run){
    stage='Running the offline agent contract check';
    agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,
     provider:offlineContractProvider(run.input.base_bundle),guidanceDirectory:root+'/agent/guidance',signal:aborter.signal,
+    bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),
     begin:payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token}),
     settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),receipt:()=>({status:'succeeded',cost_microusd:0}),
     invoke:async(operation,{times=[],signal}={})=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:180000,maxBuffer:2000000});return JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));}});

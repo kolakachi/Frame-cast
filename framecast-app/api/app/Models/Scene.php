@@ -10,6 +10,11 @@ class Scene extends Model
 {
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        static::saving(fn (Scene $scene) => Project::find($scene->project_id)?->assertSceneEditor());
+    }
+
     protected $fillable = [
         'project_id',
         'scene_order',

@@ -6,7 +6,7 @@ import {loadCoreGuidance,readGuidanceReference} from './context.mjs';
 
 // Dependencies are host-owned. Neither a prompt nor a tool result chooses the
 // provider, accounting policy, filesystem root or executable.
-export async function executeCompositionAgent({directory,input,manifest,provider,begin,settle,receipt,invoke,guidanceDirectory,signal}) {
+export async function executeCompositionAgent({directory,input,manifest,provider,begin,settle,bindPrediction,receipt,invoke,guidanceDirectory,signal}) {
  const assets=[];
  for(const file of manifest){
   // Reference-only media is described in context, never made renderable.
@@ -24,7 +24,11 @@ export async function executeCompositionAgent({directory,input,manifest,provider
  let call=0;
  const accountedProvider={id:provider.id,maxCallUsd:provider.maxCallUsd,complete:args=>accountedCall({
   key:'agent-'+(++call),kind:'agent',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:args.image??null},begin,settle,
-  execute:()=>provider.complete(args),receipt,
+  execute:attemptId=>provider.complete({...args,onPrediction:async id=>{
+   // Record the provider identity in both app accounting and the local journal.
+   if(!bindPrediction)throw Error('Prediction recorder is required');
+   await bindPrediction(attemptId,id);await args.onPrediction(id);
+  }}),receipt,
  })};
  const state=await runAgent({stateFile:directory+'/agent-state.json',workspace:new Workspace(directory+'/project',assets),provider:accountedProvider,
   context:{brief:messages.at(-1).content,messages,baseRevision:input.base_revision_id,

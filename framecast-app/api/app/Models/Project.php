@@ -15,7 +15,16 @@ class Project extends Model
 
     public function usesAutomaticFinish(): bool
     {
-        return (int) $this->getKey() >= self::AUTOMATIC_FINISH_MIN_ID;
+        return ! $this->isComposition() && (int) $this->getKey() >= self::AUTOMATIC_FINISH_MIN_ID;
+    }
+
+    public function isComposition(): bool { return $this->editor_kind === 'composition'; }
+
+    public function assertSceneEditor(): void
+    {
+        if ($this->isComposition()) throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+            'error' => ['code'=>'unsupported_editor_kind','message'=>'Open this video in Create to edit its composition.'],
+        ], 422));
     }
 
     /**

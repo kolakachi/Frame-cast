@@ -47,6 +47,7 @@ class RenderSceneSegmentJob implements ShouldQueue
     public function handle(): void
     {
         $exportJob = ExportJob::query()->find($this->exportJobId);
+        if ($exportJob?->project?->isComposition()) return;
 
         if (! $exportJob || $exportJob->status === 'failed') {
             return;

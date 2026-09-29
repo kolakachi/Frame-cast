@@ -18,6 +18,8 @@ if ($action !== 'parent') {
         $value=match($action) {
             'approve'=>app(ConversationService::class)->approve(User::findOrFail(1),$state['conversation'],$state['quote'],$state['key'])->id,
             'claim'=>app(RunService::class)->claim(),
+            'reconcile'=>app(\App\Services\Create\ReconciliationService::class)->reconcile(new \App\Services\Create\VerifiedAttemptReceipt($state['attempt'],'failed',null,0,'Offline process-stop proof'),true),
+            'register'=>app(\App\Services\Create\CompositionOutputService::class)->register(User::findOrFail(1),$state['conversation'],$state['revision'],$state['version']),
             'attempt'=>app(AttemptService::class)->begin($state['run'],$state['lease'],'agent-1','agent',str_repeat('a',64)),
             default=>throw new RuntimeException('Unknown proof action'),
         };
@@ -65,4 +67,20 @@ check(DB::table('composition_runs')->value('status')==='cancel_requested','Cance
 DB::table('composition_runs')->update(['lease_expires_at'=>now()->subMinute()]);
 check(app(RunService::class)->claim()===null && DB::table('composition_runs')->value('status')==='needs_attention','Expiry requeued unknown work');
 check(DB::table('api_operations')->value('status')==='needs_attention' && DB::table('composition_attempts')->value('status')==='started','Unknown capacity released');
-echo json_encode(['database'=>'PostgreSQL','admissionWorkers'=>3,'claimWorkers'=>3,'attemptWorkers'=>3,'operations'=>1,'attempts'=>1,'cancellationExpiry'=>'held','paidCalls'=>0]).PHP_EOL;
+(require database_path('migrations/2026_09_29_130000_create_composition_reconciliations.php'))->up();
+$reconciled=race('reconcile',['attempt'=>DB::table('composition_attempts')->value('id')]);
+check(count(array_filter($reconciled,fn($r)=>!$r['replayed']))===1 && DB::table('composition_reconciliations')->count()===1,'Duplicate reconciliation');
+check((int)DB::table('api_operations')->value('reserved_credits')===0,'Confirmed unused hold not released');
+// Add the shared contracts needed for final output registration.
+Schema::table('projects',function(Blueprint $t){foreach((new \App\Models\Project)->getFillable() as $c)if($c!=='api_key_id')$t->text($c)->nullable();$t->timestamps();});
+Schema::table('assets',function(Blueprint $t){foreach((new \App\Models\Asset)->getFillable() as $c)$t->text($c)->nullable();$t->timestamps();});
+Schema::create('export_jobs',function(Blueprint $t){$t->id();foreach((new \App\Models\ExportJob)->getFillable() as $c){if(in_array($c,['project_id','workspace_id','output_asset_id']))$t->bigInteger($c)->nullable();elseif(str_ends_with($c,'_at'))$t->timestamp($c)->nullable();else $t->text($c)->nullable();}});
+(require database_path('migrations/2026_09_29_120000_link_composition_outputs.php'))->up();
+$q=$service->quote($user,$c->id,1);$run=$service->approve($user,$c->id,$q->id,'next-approval');$claim=app(RunService::class)->claim();
+$bytes='offline output fixture';$hash=hash('sha256',$bytes);$path='create/previews/'.$run->id.'/'.$hash.'.mp4';
+\Illuminate\Support\Facades\Storage::disk('local')->put($path,$bytes);
+app(RunService::class)->finish($run->id,$claim['lease_token'],['status'=>'preview_ready','summary'=>'Proof','bundle'=>['index.html'=>'<h1>Proof</h1>']],$path,$hash);
+$revision=DB::table('composition_revisions')->value('id');
+$outputs=race('register',['conversation'=>$c->id,'revision'=>$revision,'version'=>2]);
+check(count(array_unique(array_column($outputs,'export_job_id')))===1 && DB::table('export_jobs')->count()===1 && DB::table('assets')->count()===1,'Duplicate final outputs');
+echo json_encode(['database'=>'PostgreSQL','admissionWorkers'=>3,'claimWorkers'=>3,'attemptWorkers'=>3,'reconciliationWorkers'=>3,'registrationWorkers'=>3,'singleExecution'=>true,'singleReconciliation'=>true,'singleOutput'=>true,'paidCalls'=>0]).PHP_EOL;

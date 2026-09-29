@@ -108,6 +108,7 @@ class ProjectExportService
      */
     public function assertExportable(Project $project, $scenes = null): void
     {
+        $project->assertSceneEditor();
         $scenes ??= Scene::query()->where('project_id', $project->getKey())->orderBy('scene_order')->get();
 
         if ($scenes->isEmpty()) {

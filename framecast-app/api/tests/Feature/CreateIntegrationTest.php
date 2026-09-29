@@ -29,6 +29,8 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_09_25_200000_create_api_operations.php'))->up();
         (require database_path('migrations/2026_09_28_120000_create_composition_conversations.php'))->up();
         (require database_path('migrations/2026_09_29_000000_create_composition_attempts.php'))->up();
+        (require database_path('migrations/2026_09_29_120000_link_composition_outputs.php'))->up();
+        (require database_path('migrations/2026_09_29_130000_create_composition_reconciliations.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -54,6 +56,77 @@ class CreateIntegrationTest extends TestCase
     {
         try { $fn(); $this->fail('Expected HTTP '.$status); }
         catch (HttpException $e) { $this->assertSame($status, $e->getStatusCode()); }
+    }
+
+    private function registeredOutput(): array
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $bytes = 'offline encoded video fixture'; $hash = hash('sha256',$bytes);
+        $path = 'create/previews/'.$run->id.'/'.$hash.'.mp4';
+        \Illuminate\Support\Facades\Storage::fake('local');
+        \Illuminate\Support\Facades\Storage::disk('local')->put($path,$bytes);
+        $this->runs->finish($run->id,$claim['lease_token'],['status'=>'preview_ready','summary'=>'Test','bundle'=>['index.html'=>'<h1>Test</h1>']],$path,$hash);
+        $revision = DB::table('composition_revisions')->value('id');
+        $output = app(\App\Services\Create\CompositionOutputService::class)->register($this->owner,$c->id,$revision,2);
+        return [$c,$revision,$output];
+    }
+
+    public function test_composition_registration_is_private_idempotent_and_scene_safe(): void
+    {
+        [$c,$revision,$output] = $this->registeredOutput();
+        $again = app(\App\Services\Create\CompositionOutputService::class)->register($this->owner,$c->id,$revision,2);
+        $this->assertSame($output,$again); $this->assertSame(1,\App\Models\ExportJob::count());
+        $project = \App\Models\Project::findOrFail($output['project_id']);
+        $this->assertTrue($project->isComposition()); $this->assertFalse($project->usesAutomaticFinish());
+        $this->assertSame(0,\App\Models\Scene::count());
+        $asset = Asset::findOrFail($output['asset_id']); $storage = app(\App\Services\Media\StorageService::class);
+        $this->assertTrue($storage->isCreatePrivate($asset->storage_url));
+        $this->assertSame('offline encoded video fixture',$storage->get($asset->storage_url));
+        $this->assertFalse($storage->delete($asset->storage_url));
+        $this->assertTrue($storage->exists($asset->storage_url));
+        $url = $storage->url($asset->storage_url);
+        $this->get($url)->assertOk()->assertHeader('Content-Type','video/mp4');
+        $this->get(preg_replace('/signature=[^&]+/','signature=bad',$url))->assertForbidden();
+        $this->workspace->update(['status'=>'suspended']); $this->get($url)->assertNotFound();
+    }
+
+    public function test_registered_output_rechecks_write_access_and_signed_url_expiry(): void
+    {
+        [$c,$revision,$output] = $this->registeredOutput();
+        $this->owner->role = 'viewer';
+        $this->rejected(403,fn()=>app(\App\Services\Create\CompositionOutputService::class)->register($this->owner,$c->id,$revision,2));
+        $asset = Asset::findOrFail($output['asset_id']);
+        $url = app(\App\Services\Media\StorageService::class)->url($asset->storage_url);
+        $this->travel(6)->minutes();
+        try { $this->get($url)->assertForbidden(); } finally { $this->travelBack(); }
+        $this->assertSame(1,\App\Models\ExportJob::count());
+    }
+
+    public function test_composition_export_freshness_tracks_restore_and_old_head(): void
+    {
+        [$c,$revision,$output]=$this->registeredOutput();
+        $project=\App\Models\Project::findOrFail($output['project_id']);
+        $export=\App\Models\ExportJob::findOrFail($output['export_job_id']);
+        $service=app(\App\Services\Export\ExportFreshnessService::class);
+        $this->assertFalse($service->check($project,$export)['is_stale']);
+        $this->conversations->restore($this->owner,$c->id,$revision,2);
+        $this->assertTrue($service->check($project,$export)['is_stale']);
+        $this->rejected(409,fn()=>app(\App\Services\Create\CompositionOutputService::class)->register($this->owner,$c->id,$revision,3));
+    }
+
+    public function test_composition_mutations_and_free_unwatermarked_save_are_blocked(): void
+    {
+        [$c,$revision,$output]=$this->registeredOutput();
+        $project=\App\Models\Project::findOrFail($output['project_id']);
+        try { app(\App\Services\Export\ProjectExportService::class)->assertExportable($project); $this->fail('Scene export accepted'); }
+        catch(\Illuminate\Http\Exceptions\HttpResponseException $e){$this->assertSame(422,$e->getResponse()->status());}
+        $request=\Illuminate\Http\Request::create('/api/v1/scenes','POST',['project_id'=>$project->id]);
+        $request->setUserResolver(fn()=>$this->owner);
+        $result=app(\App\Http\Middleware\GuardCompositionAccess::class)->handle($request,fn()=>response('unsafe'));
+        $this->assertSame(422,$result->status());
+        $this->assertSame('unsupported_editor_kind',$result->getData(true)['error']['code']);
+        $this->workspace->update(['plan_tier'=>'free']);
+        $this->rejected(402,fn()=>app(\App\Services\Create\CompositionOutputService::class)->register($this->owner,$c->id,$revision,2));
     }
 
     public function test_feature_off_and_non_allowlisted_workspaces_cannot_create(): void
@@ -413,7 +486,8 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(409, fn () => $service->begin($run->id, $claim['lease_token'], 'call-2', 'agent', str_repeat('b', 64)));
         $receipt = ['status' => 'succeeded', 'prediction_id' => 'synthetic-id', 'cost_microusd' => 12000];
         $this->rejected(422, fn () => $service->settle($run->id, $claim['lease_token'], $attempt['id'], array_merge($receipt, ['cost_microusd' => 50001])));
-        $service->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt);
+        $verified = new \App\Services\Create\VerifiedAttemptReceipt($attempt['id'],'succeeded','synthetic-id',12000,'Synthetic verifier test');
+        $service->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt, $verified);
         $this->assertTrue($service->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt)['replayed']);
         $this->assertSame(93, (int) $this->workspace->fresh()->credits_monthly);
         $this->assertSame(1, DB::table('credit_ledger')->count());
@@ -421,6 +495,40 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($attempt['id'], json_decode(DB::table('credit_ledger')->value('metadata'), true)['composition_attempt_id']);
         $this->assertSame(7, (int) DB::table('api_operations')->value('spent_credits'));
         $this->assertSame(3, (int) DB::table('api_operations')->value('reserved_credits'));
+    }
+
+    public function test_verified_late_provider_receipt_reconciles_once_without_reexecution(): void
+    {
+        [, , $run]=$this->admitted(); $claim=$this->runs->claim(); $attempts=app(\App\Services\Create\AttemptService::class);
+        $input=json_decode($run->input_json,true);$input['mode']='agent';
+        $input['execution_policy']['agent']=['provider'=>'replicate','model'=>'anthropic/test','credits'=>7,'cost_limit_microusd'=>50000,'max_calls'=>2];
+        DB::table('composition_runs')->where('id',$run->id)->update(['input_json'=>json_encode($input)]);
+        DB::table('api_operations')->where('id',$run->operation_id)->update(['authorized_credits'=>10,'reserved_credits'=>10]);
+        config(['create.paid_execution_enabled'=>true,'services.replicate.api_token'=>'fake-offline-test']);
+        $requestHash=hash('sha256',json_encode(['prompt'=>'Test prompt','system'=>'Test system','maxTokens'=>1024,'image'=>null]));
+        $a=$attempts->begin($run->id,$claim['lease_token'],'agent-1','agent',$requestHash);
+        $attempts->bindPrediction($run->id,$claim['lease_token'],$a['id'],'prediction-test');
+        $this->rejected(409,fn()=>$attempts->bindPrediction($run->id,$claim['lease_token'],$a['id'],'other'));
+        $this->rejected(409,fn()=>$attempts->settle($run->id,$claim['lease_token'],$a['id'],['status'=>'succeeded','prediction_id'=>'prediction-test','cost_microusd'=>12000]));
+        $attempts->settle($run->id,$claim['lease_token'],$a['id'],['status'=>'unknown']);
+        $this->assertSame(100,(int)$this->workspace->fresh()->credits_monthly);
+        $a=DB::table('composition_attempts')->where('id',$a['id'])->first();
+        $verifier=app(\App\Services\Create\ProviderReceiptVerifier::class);
+        $this->rejected(422,fn()=>$verifier->verify($a,null,'Billing record test'));
+        Http::fake(['https://api.replicate.com/v1/predictions/prediction-test'=>Http::sequence()->push(['id'=>'prediction-test','model'=>'wrong/model','status'=>'succeeded'])->push(['id'=>'prediction-test','model'=>'anthropic/test','status'=>'succeeded','input'=>['prompt'=>'Test prompt','system_prompt'=>'Test system','max_tokens'=>1024]])]);
+        $this->rejected(409,fn()=>$verifier->verify($a,12000,'Billing record test'));
+        $receipt=$verifier->verify($a,12000,'Billing record test');
+        $service=app(\App\Services\Create\ReconciliationService::class);
+        $this->rejected(403,fn()=>$service->reconcile($receipt,false));
+        $service->reconcile($receipt,true);
+        $this->assertTrue($service->reconcile($receipt,true)['replayed']);
+        $this->assertSame(93,(int)$this->workspace->fresh()->credits_monthly);
+        $this->assertSame(1,DB::table('credit_ledger')->count());
+        $this->assertSame(0,(int)DB::table('api_operations')->value('reserved_credits'));
+        $this->assertSame('failed',DB::table('composition_runs')->value('status'));
+        $this->assertNull(DB::table('composition_runs')->value('lease_hash'));
+        $this->assertSame('unknown',DB::table('composition_reconciliations')->value('previous_status'));
+        Http::assertSent(fn($r)=>$r->method()==='GET');
     }
 
     public function test_expired_or_cancelled_attempt_cannot_start_but_cancel_can_settle_known_work(): void

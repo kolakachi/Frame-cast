@@ -1,8 +1,8 @@
 # Create — local app integration
 
-Date: 2026-09-29. **Offline agent integration verified; full E2 and production acceptance remain open.**
+Date: 2026-09-29. **E2 local/offline engineering verified. Paid-provider activation, creative acceptance and production readiness remain open.**
 
-Current evidence is in the final “E2 agent bridge and lifecycle” section. Earlier dated sections describe checkpoints, not the current implementation.
+Current evidence is in the final “E2 local engineering closure” section. Earlier dated sections describe checkpoints, not the current implementation.
 
 The user asked to finish integration before model comparisons. E1 creative evaluation is deferred rather than accepted. This batch makes the Laravel app and Vue conversation talk to the isolated Hyperframes renderer. It does not enable new paid tests or increase the existing $5 cap.
 
@@ -245,3 +245,89 @@ creativity remains deferred separately. Current changes were tested from mounted
 source in disposable containers. The normal local API and long-running coordinator
 must be rebuilt/migrated/restarted together before they use this version. No push,
 production deployment or additional paid usage was performed.
+
+
+## E2 local engineering closure — 2026-09-29
+
+This section supersedes earlier checkpoint status, not their historical evidence.
+E2 engineering is complete for the authorized **local/offline** scope. E1 creative
+acceptance remains deferred. The actual app worker still injects a scripted
+provider and cannot interpret arbitrary prompts; no additional model spend occurred.
+
+### Shared outputs and editor boundaries
+
+An explicit **Save sample to videos** action registers one composition Project,
+Asset and completed ExportJob for the current immutable revision. Repeating it is
+idempotent. No Scene rows or render jobs are created. Composition projects are
+routed to their originating Create conversation, including editor/generation
+bookmarks. Scene mutations, the scene assistant, generation/export jobs and public
+publishing paths reject unsupported composition actions. Existing scene projects
+retain their default discriminator and relevant regression checks pass.
+
+MP4 bytes stay in private local storage. Asset delivery uses five-minute signed
+URLs and checks the local flag, workspace allowlist, active workspace and asset
+state. Invalid/expired signatures fail. Free watermark requirements and monthly
+export allowances apply at registration; the unwatermarked fixture cannot bypass
+a Free plan. Restore creates a new head and makes the older export stale. Saved
+revision assets cannot be directly deleted; conservative cleanup retains them.
+This does not complete E6's user-facing deletion/retention policy.
+
+### Recovery and billing boundary
+
+The host records a prediction ID before waiting for its result. Non-offline
+settlement cannot trust a worker-provided cost. `ProviderReceiptVerifier` performs
+only a GET, checks prediction identity, model, exact input hash and terminal state.
+Replicate's verified model contract lacks invoice cost: an operator must supply
+actual integer micro-USD and an auditable billing reference. This is **manual
+billing attestation**, not automatic invoice validation.
+
+`create:reconcile-attempt ATTEMPT --worker-stopped --cost-microusd=ACTUAL
+--billing-reference=REFERENCE` is local-only. Confirm the host has stopped first;
+never use a lease timeout alone as proof. It settles inside shared accounting,
+records immutable reconciliation evidence, revokes the old lease and closes only
+confirmed-unused capacity. It does not resume or repeat the generation. Missing,
+nonterminal, mismatched or over-ceiling receipts retain the hold. If a prediction
+ID was never durably recorded, investigate it rather than fabricating a receipt.
+The existing `create:reconcile-fixture` remains the zero-cost offline recovery path.
+
+### Verification
+
+- **134 API tests passed, 1 existing skip; 1,095 assertions.** Create, developer API,
+  export freshness, scene image editing and scene plan review. The latter's stale
+  mock expectations now name the existing `deductQuietly` call; no billing behavior
+  changed to satisfy a test.
+- **57 Node tests passed**; production web build passed.
+- Real isolated **PostgreSQL 16** test: three processes race each of approval,
+  claim, attempt admission, reconciliation and output registration. One admitted
+  execution, one reconciliation and one final Asset/ExportJob. Cancellation and
+  expired leases retain unknown holds without requeueing.
+- Mocked provider tests verify model/input/ID mismatch rejection, immutable binding,
+  unverified cost rejection, unknown hold, stopped-worker requirement, one debit,
+  replay and late-worker fencing. No Replicate network call was made.
+- Real isolated HTTP test: ten offline agent calls, two Hyperframes renders,
+  immutable attachment handoff, explicit output registration/replay, restore and
+  exact follow-up edit. First MP4: 241,021 bytes. Runs
+  `4efc41b0-b13d-4552-a997-bb8744a9ab9a` and
+  `2846b621-5f28-4797-8c0d-62a388f7152a`.
+- Browser test: desktop/mobile, save to Videos, stable playback during refresh,
+  history selection, dialog escape, no horizontal overflow or JS errors. Browser
+  external requests are blocked. Evidence remains ignored under
+  `hyperframes-worker/artifacts/app-integration/`.
+
+### Local installation
+
+The local API, queue workers, scheduler and realtime service now use the same
+built image. The attempt, output-link and reconciliation migrations were applied
+only to the local database. A fresh database dump and each service's storage were
+backed up under ignored `hyperframes-worker/artifacts/local-enable/e2-final-backup/`;
+storage was restored after recreation. The offline host coordinator was restarted.
+Local Create remains allowlisted to workspace 1 (`kolakachi@gmail.com`). A fresh
+sample completed through the installed coordinator and was saved in the normal
+local library: conversation `12e8c13e-74dc-4dd1-8638-65c2c6934662`, project `98`,
+asset `1333`, export `100`. The 241,021-byte file matches its stored SHA-256; six
+zero-cost attempts settled and no paid execution was enabled.
+
+No push, production deployment, paid model execution or additional image transfer
+was performed. E3 remains the next phase: finish conversational UX, images and
+composition-aware sharing/scheduling. Paid activation still requires real receipt
+acceptance, customer pricing and the deferred model/creative evaluation.

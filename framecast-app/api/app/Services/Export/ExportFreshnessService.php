@@ -9,6 +9,11 @@ class ExportFreshnessService
 {
     public function fingerprint(Project $project): string
     {
+        if ($project->isComposition()) {
+            $c = \Illuminate\Support\Facades\DB::table('create_conversations')->where('project_id',$project->id)->first();
+            $r = $c?->head_revision_id ? \Illuminate\Support\Facades\DB::table('composition_revisions')->where('id',$c->head_revision_id)->first() : null;
+            return hash('sha256', json_encode([$r?->id,$r?->bundle_hash,$r?->artifact_hash]));
+        }
         $payload = [
             'project' => $project->only(['aspect_ratio', 'primary_language', 'music_asset_id', 'music_settings_json', 'waveform_settings_json']),
             'scenes' => ($project->relationLoaded('scenes') ? $project->scenes : $project->scenes()->orderBy('scene_order')->orderBy('id')->get())->map(fn ($scene) => $scene->only([
@@ -23,6 +28,11 @@ class ExportFreshnessService
 
     public function check(Project $project, ExportJob $export): array
     {
+        if ($project->isComposition()) {
+            $c = \Illuminate\Support\Facades\DB::table('create_conversations')->where('project_id',$project->id)->first();
+            $r = $c?->head_revision_id ? \Illuminate\Support\Facades\DB::table('composition_revisions')->where('id',$c->head_revision_id)->first() : null;
+            return ['is_stale'=>!$r || $r->id !== $export->composition_revision_id || $r->bundle_hash !== $export->composition_hash,'verified'=>true];
+        }
         if ($export->source_fingerprint) {
             return ['is_stale' => ! hash_equals($export->source_fingerprint, $this->fingerprint($project)), 'verified' => true];
         }

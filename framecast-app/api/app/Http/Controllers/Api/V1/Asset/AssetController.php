@@ -222,6 +222,7 @@ class AssetController extends Controller
         }
 
         // Block deletion if the asset is linked to any scene or project.
+        abort_if(data_get($asset->metadata_json,'composition_revision_id'), 409, 'This output belongs to a saved Create version. Archive the conversation instead.');
         $usageCount = $this->countAssetUsages($assetId, $user->workspace_id);
 
         if ($usageCount > 0) {
@@ -361,6 +362,11 @@ class AssetController extends Controller
 
         $storageService = app(StorageService::class);
         $rawStorageUrl  = (string) $asset->storage_url;
+        if ($storageService->isCreatePrivate($rawStorageUrl)) {
+            abort_unless(app()->environment(['local','testing']) && config('create.enabled')
+                && in_array((int)$asset->workspace_id, config('create.workspaces',[]),true)
+                && $asset->status !== 'archived' && $asset->workspace?->status === 'active', 404);
+        }
         $path           = $storageService->extractPath($rawStorageUrl);
 
         if ($path === null) {
@@ -385,7 +391,7 @@ class AssetController extends Controller
         $isVideoMedia = ($asset->asset_type ?? '') === 'video'
             || str_starts_with((string) ($asset->mime_type ?? ''), 'video/');
 
-        if ($isVideoMedia && ! $request->boolean('download')) {
+        if ($isVideoMedia && ! $storageService->isCreatePrivate($rawStorageUrl) && ! $request->boolean('download')) {
             try {
                 return redirect()->away($storageService->url($rawStorageUrl));
             } catch (\Throwable) {
@@ -585,6 +591,7 @@ class AssetController extends Controller
             return (string) $asset->storage_url;
         }
 
+        if (app(StorageService::class)->isCreatePrivate((string)$asset->storage_url)) return app(StorageService::class)->url($asset->storage_url);
         return URL::temporarySignedRoute(
             'media.assets.content',
             now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)),

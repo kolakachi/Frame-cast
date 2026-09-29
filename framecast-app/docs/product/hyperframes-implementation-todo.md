@@ -1,6 +1,6 @@
 # Create / Hyperframes — implementation TODO
 
-Status: **E0 complete; E1 creative/model evaluation deferred by user; E2/E3 local app integration in progress; E4–E6 pending.**
+Status: **E0 complete; E1 creative/model evaluation deferred by user; E2 local/offline engineering complete; E3–E6 pending. Paid-provider acceptance remains gated.**
 Created: 2026-09-28.
 
 Sequencing update, 2026-09-28: the user requested finishing integration before comparing models and applying their strengths. E1 creative acceptance is therefore deferred, not passed, and does not block local E2/E3 engineering. Production deployment and public MCP access remain separate gates. Paid calls stay disabled; the existing $5 test cap has not been increased.
@@ -109,24 +109,26 @@ Progress: verified public endpoint schema snapshots, strict JSON action loop, sc
 - [x] Connect the E1 action runner to frozen app context and per-call accounting. Verify offline read → patch → check → snapshot → render and follow-up edits through the real HTTP coordinator. The injected provider is explicitly scripted; this is not creative/model acceptance.
 - [x] Inherit immutable input snapshots through edits/restores, protect source bytes, keep reference media outside the render workspace, cap local input storage, and clean expired orphaned files while retaining saved/unknown work.
 - [x] Verify real PostgreSQL concurrency for same-key approval, worker claims and attempt admission, plus cancellation/lease expiry without replay or release.
-- [ ] Add production-provider cost verification and late/unknown reconciliation before enabling any paid model. The provider-independent bridge is wired, but the app continues to use only the offline contract provider.
-- [ ] Register final compositions through the Project/Asset/ExportJob contracts and add scene-editor discriminator guards. Local previews deliberately do not create scene projects or public assets yet.
+- [x] Add a reconciliation boundary: durably bind prediction IDs, verify terminal Replicate identity/model/input, require operator-attested billing evidence, fence the old lease, settle once, and retain unknown holds. Mocked provider and PostgreSQL race checks pass. Automatic billing verification and live paid activation remain release gates below.
+- [x] Explicitly save a verified local sample through Project/Asset/ExportJob contracts; mark composition projects, route them back to Create, and guard scene-only mutation/export paths. Files remain private; no scene rows or duplicate renders.
 
-See [local app integration evidence and setup](hyperframes-app-integration-verification.md). These checks close only the local fixture slice, not the full E2/E3 gates below.
+See [local app integration evidence and setup](hyperframes-app-integration-verification.md). The final evidence section closes E2 engineering in the authorized local/offline scope. This is not E1 creative acceptance, E3 UI completion, or paid/production readiness.
 
 
-- [ ] Add workspace-scoped conversations, messages, attachments, compositions, immutable revisions, runs and artifact relationships; follow the technical spec's schema and reuse existing entities where appropriate.
-- [ ] Preserve the distinction between source assets, reference-only assets, previews and final outputs.
-- [ ] Add authorization and plan gates for reads, edits, generation, download and publishing; test cross-workspace IDs and viewer restrictions.
+- [x] Add workspace-scoped conversations, messages, attachments, compositions, immutable revisions, runs and shared Project/Asset/ExportJob relationships.
+- [x] Preserve source/reference roles and immutable inputs; register outputs only through an explicit save action.
+- [x] Enforce local/workspace/write access, export allowance and watermark restrictions; signed delivery expires in five minutes. Cross-workspace/viewer checks pass. Publishing is denied until E3 supplies composition-aware delivery.
 - [x] Implement expected-revision checks, preserved conflicting drafts and restore-as-new; never overwrite a completed version.
 - [x] Add quote fingerprints, expiry, explicit approval, credit reservation and settlement through the shared accounting service. Offline and synthetic charged-receipt tests pass; verified paid-provider receipts remain gated above.
-- [ ] Attribute agent, media and render costs separately; release only confirmed-unused reservations. Unknown provider outcomes remain reconcilable.
-- [ ] Implement durable state transitions, per-run leases, fenced callbacks, idempotent admission and after-commit dispatch.
-- [ ] Handle disconnect, duplicate submit, worker restart, timeout, late callback, cancellation and stranded holds without duplicate work/charges.
-- [ ] Register verified output in private storage; deliver expiring scoped URLs and enforce lifecycle/retention rules.
+- [x] Attribute agent/media/render attempt costs separately; release only confirmed-unused reservations. Verify unknown receipt recovery with synthetic billing; media generation and paid tariffs remain disabled.
+- [x] Persist durable transitions, fenced leases and idempotent admission. The host claims committed rows; no pre-commit queue dispatch.
+- [x] Verify disconnect/replay/restart/timeout/late callbacks/cancellation and stranded holds without repeating work. Recovery is operator-driven and requires proof of stopped work.
+- [x] Register verified private output; deliver expiring signed URLs, protect saved revisions from asset deletion and orphan cleanup. Full user-facing deletion/retention policy remains E6.
 - [x] Add local feature flag/workspace allowlist; default production and public API admission off.
 
-**E2 exit:** accounted, authorized runs survive retries and crashes in the local stack. Existing generation/export flows still pass their relevant checks.
+**E2 local exit met (2026-09-29):** accounted, authorized offline runs survive the covered retries/crashes, save into shared video contracts and preserve previous versions. 134 API tests pass (one existing skip), 57 Node tests pass, PostgreSQL process races and real HTTP/render/browser checks pass. Installed locally for workspace 1; no push or production change.
+
+**Paid/production release gates, deliberately not marked complete:** live receipt/billing contract acceptance, customer-approved pricing (including render/media cost), real provider execution and creative evaluation, production isolation/retention/monitoring. `paid_execution_enabled` remains hard-disabled; the local agent is a scripted contract provider, not a prompt-following AI. Operator billing attestation is not automatic invoice verification.
 
 ## E3 — Create UI and multimodal routing
 
@@ -186,4 +188,4 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 
 Use stable task references such as E0.2/CTA revision in commits and verification notes. Tick a task only when its implementation and required checks pass. Every completed phase records commit, runtime identity, commands, outputs and limitations. Do not put credentials or private customer media in the evidence document.
 
-Immediate next implementation slice: **finish E2 paid-agent accounting/asset staging and final project/artifact registration, then complete E3 multimodal routing and E4 timed editing. Model comparisons remain deferred by user instruction; E1 creative acceptance stays open.**
+Immediate next implementation slice: **E3 Create UI and multimodal routing, then E4 timed editing. E2 local engineering is complete. Model comparisons remain deferred; E1 creative acceptance and paid/production release gates stay open.**

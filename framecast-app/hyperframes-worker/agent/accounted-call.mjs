@@ -6,7 +6,7 @@ export async function accountedCall({key,kind,input,begin,settle,execute,receipt
  const attempt=await begin({attempt_key:key,kind,request_hash:digest(JSON.stringify(input))});
  if(!attempt.may_execute)throw Error('Attempt already recorded; reconcile instead of executing again');
  let output;
- try{output=await execute();}
+ try{output=await execute(attempt.id);}
  catch(error){
   try{await settle(attempt.id,{status:'unknown'});}catch{/* durable started receipt still retains the hold */}
   error.code='ATTEMPT_NEEDS_ATTENTION';

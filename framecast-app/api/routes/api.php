@@ -37,6 +37,7 @@ Route::prefix('internal/create')->middleware('throttle:120,1')->group(function (
     Route::post('/runs/{id}/heartbeat', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'heartbeat']);
     Route::post('/runs/{id}/inputs/{assetId}', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'inputFile'])->whereNumber('assetId');
     Route::post('/runs/{id}/attempts', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'beginAttempt']);
+    Route::post('/runs/{id}/attempts/{attemptId}/prediction', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'bindPrediction']);
     Route::post('/runs/{id}/attempts/{attemptId}/settle', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'settleAttempt']);
     Route::post('/runs/{id}/finish', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'finish']);
 });
@@ -48,7 +49,7 @@ Route::prefix('v1/oauth')->group(function (): void {
     Route::post('/register', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'register'])->middleware('throttle:10,1');
     Route::post('/token', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'token'])->middleware('throttle:60,1');
     Route::post('/revoke', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'revoke'])->middleware('throttle:60,1');
-    Route::middleware('auth.jwt')->group(function (): void {
+    Route::middleware(['auth.jwt', \App\Http\Middleware\GuardCompositionAccess::class])->group(function (): void {
         Route::post('/authorize/context', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'context']);
         Route::post('/authorize/decide', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'decide']);
     });
@@ -57,7 +58,7 @@ Route::prefix('v1/oauth')->group(function (): void {
 // Developer API: the only surface an API key can reach (see
 // AuthenticateWithJwt::API_KEY_NAMESPACE). Thin, versioned wrappers over the
 // same services the dashboard uses; sessions may call it too.
-Route::prefix('developer/v1')->middleware(['auth.jwt', 'throttle.developer', \App\Http\Middleware\TrackApiOperation::class, \App\Http\Middleware\SerializeProjectMutation::class])->group(function (): void {
+Route::prefix('developer/v1')->middleware(['auth.jwt', \App\Http\Middleware\GuardCompositionAccess::class, 'throttle.developer', \App\Http\Middleware\TrackApiOperation::class, \App\Http\Middleware\SerializeProjectMutation::class])->group(function (): void {
     Route::get('/capabilities', [\App\Http\Controllers\Api\Developer\V1\CapabilitiesController::class, 'show']);
     Route::post('/operations/{quoteId}/cancel', [\App\Http\Controllers\Api\Developer\V1\OperationController::class, 'cancel']);
     Route::get('/operations/{quoteId}', [\App\Http\Controllers\Api\Developer\V1\OperationController::class, 'show']);
@@ -215,7 +216,7 @@ Route::prefix('v1')->group(function (): void {
     // Public share page for the /sample/<token> cold-DM motion.
     Route::get('/public/projects/{token}', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'show']);
 
-    Route::middleware('auth.jwt')->group(function (): void {
+    Route::middleware(['auth.jwt', \App\Http\Middleware\GuardCompositionAccess::class])->group(function (): void {
         Route::prefix('create')->group(function (): void {
             $controller = \App\Http\Controllers\Api\V1\Create\CreateController::class;
             Route::get('/capabilities', [$controller, 'capabilities']);
@@ -229,6 +230,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/conversations/{id}/quotes', [$controller, 'quote']);
             Route::post('/conversations/{id}/runs', [$controller, 'approve']);
             Route::post('/conversations/{id}/runs/{runId}/cancel', [$controller, 'cancel']);
+            Route::post('/conversations/{id}/revisions/{revisionId}/save-output', [$controller, 'saveOutput']);
             Route::post('/conversations/{id}/revisions/{revisionId}/restore', [$controller, 'restore']);
             Route::get('/conversations/{id}/revisions/{revisionId}/artifact', [$controller, 'artifact']);
         });
