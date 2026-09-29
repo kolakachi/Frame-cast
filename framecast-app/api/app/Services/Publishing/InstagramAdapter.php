@@ -25,6 +25,7 @@ class InstagramAdapter implements PlatformAdapter, SupportsPageSelection, Provid
     // which is how we reach the linked IG account and publish. Verified needed
     // on 2026-08-27 — see FacebookAdapter for the detail.
     private const SCOPES = [
+        'public_profile',
         'instagram_basic',
         'instagram_content_publish',
         'pages_show_list',
@@ -41,6 +42,7 @@ class InstagramAdapter implements PlatformAdapter, SupportsPageSelection, Provid
             redirectUri: (string) config('services.meta.instagram_redirect_uri'),
             scopes:      self::SCOPES,
             state:       $state,
+            configId:    config('services.meta.instagram_login_config_id'),
         );
     }
 

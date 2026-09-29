@@ -56,6 +56,12 @@ return [
         'graph_version'           => env('META_GRAPH_VERSION', 'v21.0'),
         'instagram_redirect_uri'  => env('META_INSTAGRAM_REDIRECT_URI', env('APP_URL').'/api/v1/social/instagram/callback'),
         'facebook_redirect_uri'   => env('META_FACEBOOK_REDIRECT_URI', env('APP_URL').'/api/v1/social/facebook/callback'),
+        // Facebook Login for Business configuration ids (Meta dashboard →
+        // Facebook Login for Business → Configurations). When set, the login
+        // dialog is opened with config_id instead of a scope list; business-type
+        // apps only complete the classic scope dialog for their own admins.
+        'facebook_login_config_id'  => env('META_FACEBOOK_LOGIN_CONFIG_ID'),
+        'instagram_login_config_id' => env('META_INSTAGRAM_LOGIN_CONFIG_ID'),
     ],
 
     'openai' => [
