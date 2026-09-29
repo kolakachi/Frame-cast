@@ -16,6 +16,11 @@ return [
     'planner' => env('CREATE_PLANNER', 'offline'),
     'planner_model' => env('CREATE_PLANNER_MODEL', 'anthropic/claude-sonnet-5'),
     'plan_daily_limit' => (int) env('CREATE_PLAN_DAILY_LIMIT', 40),
+    // Owner decision 2026-09-29: jobs up to this many credits run without a
+    // separate approval, after provider consent in the conversation.
+    'auto_run_credits' => (int) env('CREATE_AUTO_RUN_CREDITS', 15),
+    'auto_run_daily_limit' => (int) env('CREATE_AUTO_RUN_DAILY_LIMIT', 20),
+    'free_edit_daily_limit' => (int) env('CREATE_FREE_EDIT_DAILY_LIMIT', 60),
     'lease_seconds' => 90,
     'input_workspace_bytes' => 1024 * 1024 * 1024,
     'input_file_bytes' => 100 * 1024 * 1024,

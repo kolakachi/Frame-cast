@@ -145,6 +145,20 @@ async function reviewPlanCost(p) {
   if (planDirty(p)) { let ok = true; await guarded(async () => { try { await savePlanEdits(p) } catch (e) { ok = false; throw e } }); if (!ok) return }
   await plan()
 }
+// ---- free edits (text and colours) ----
+const autoRan = ref(null), leversOpen = ref(false), leverDraft = ref({})
+let editKey = null
+const editableFields = computed(() => currentRevision.value?.variables || [])
+function openLevers() { leverDraft.value = Object.fromEntries(editableFields.value.map(v => [v.id, v.default])); leversOpen.value = !leversOpen.value; editKey = null }
+const leverChanges = computed(() => Object.fromEntries(Object.entries(leverDraft.value).filter(([k, v]) => v !== (editableFields.value.find(f => f.id === k) || {}).default)))
+async function applyLevers() {
+  if (!Object.keys(leverChanges.value).length) return
+  await guarded(async () => {
+    editKey ||= crypto.randomUUID()
+    await api.post(`${base()}/revisions/${currentRevision.value.id}/edits`, { expected_version: conversation.value.version, idempotency_key: editKey, values: leverChanges.value })
+    editKey = null; leversOpen.value = false; selectedRevision.value = null; await refresh()
+  })
+}
 let timer, searchTimer, epoch = 0, mediaEpoch = 0, historyEpoch = 0, libraryEpoch = 0, compareEpoch = 0
 let mediaKey = '', sendingKey = null, approvalKey = null, uploadRunning = false
 const id = computed(() => route.params.conversationId)
@@ -154,6 +168,7 @@ const currentRevision = computed(() => revisions.value.find(r => r.id === (selec
 const currentNumber = computed(() => revisions.value.find(r => r.id === conversation.value?.head_revision_id)?.number)
 const isOldRevision = computed(() => currentRevision.value && currentRevision.value.id !== conversation.value?.head_revision_id)
 const active = computed(() => data.value?.runs?.find(r => ['queued','running','cancel_requested','needs_attention'].includes(r.status)))
+watch(() => active.value?.id, now => { if (!now) autoRan.value = null })
 const canWrite = computed(() => ['owner','admin','editor','super_admin','platform_admin','client_admin','client_editor'].includes(auth.user?.role))
 const hasUpload = computed(() => uploads.value.some(u => ['queued','uploading'].includes(u.state)))
 const locked = computed(() => busy.value || hasUpload.value)
@@ -218,7 +233,16 @@ async function send() {
   // The plan turn follows every brief. It is free; failure leaves the brief saved.
   if (!error.value && canWrite.value && !active.value) await makePlan()
 }
-async function plan(retryRunId = null) { await guarded(async () => { providerApproved.value=false; quote.value = (await api.post(`${base()}/quotes`,{expected_version:conversation.value.version,variant_count:variantCount.value,...(typeof retryRunId === 'string' ? {retry_run_id:retryRunId} : {})})).data.data; approvalKey = crypto.randomUUID(); clock.value = Date.now() }) }
+async function plan(retryRunId = null) { await guarded(async () => {
+  providerApproved.value=false
+  quote.value = (await api.post(`${base()}/quotes`,{expected_version:conversation.value.version,variant_count:variantCount.value,...(typeof retryRunId === 'string' ? {retry_run_id:retryRunId} : {})})).data.data
+  approvalKey = crypto.randomUUID(); clock.value = Date.now()
+  // Owner decision: small jobs just run and show their cost. The server re-checks eligibility.
+  if (quote.value.auto_run) {
+    await api.post(`${base()}/runs`,{quote_id:quote.value.id,approved:true,auto:true,idempotency_key:approvalKey})
+    autoRan.value = quote.value.credits_max; quote.value = null; await refresh(); await loadHistory()
+  }
+}) }
 async function approve() { if(expiredQuote.value) return; await guarded(async () => { await api.post(`${base()}/runs`,{quote_id:quote.value.id,approved:true,provider_approved:providerApproved.value,idempotency_key:approvalKey}); quote.value = null; await refresh(); await loadHistory() }) }
 async function saveOutput() { await guarded(async () => { await api.post(`${base()}/revisions/${currentRevision.value.id}/save-output`,{expected_version:conversation.value.version}); await refresh() }) }
 async function cancel() { await guarded(async () => { await api.post(`${base()}/runs/${active.value.id}/cancel`); await refresh() }) }
@@ -439,11 +463,25 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <button v-if="canWrite && !conversation.archived_at && currentRevision.share_enabled" type="button" class="btn btn--ghost" @click="requestDelivery('unshare')">Turn off share link</button>
                   <button v-if="canWrite && !conversation.archived_at && !imageOutput && currentRevision.export_job_id" type="button" class="btn btn--outline" @click="requestDelivery('schedule')">Schedule post</button>
                   <button v-if="paid && imageOutput && currentRevision.output_asset_id && canWrite && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="animateResult">Animate image</button>
+                  <button v-if="canWrite && !conversation.archived_at && !active && editableFields.length" type="button" class="btn btn--ghost" :aria-expanded="leversOpen" @click="openLevers">Edit text and colours <span class="tier tier--free">FREE</span></button>
                   <button v-if="paid && !isOldRevision" type="button" class="btn btn--ghost" @click="editResult">Edit with a prompt</button>
                   <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="compare">Compare with current</button>
                   <button v-if="canWrite && isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="restore">Restore as a new version</button>
                   <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="selectedRevision = null">Back to current</button>
                   <button v-if="!imageOutput && media" type="button" class="btn btn--ghost btn--safe" :aria-pressed="safeZones" @click="safeZones = !safeZones">Show safe margins</button>
+                </div>
+                <div v-if="leversOpen" class="levers">
+                  <div class="levers__grid">
+                    <label v-for="f in editableFields" :key="f.id" class="field-label">{{ f.label.toUpperCase() }}
+                      <span v-if="f.type === 'color'" class="colour"><input v-model="leverDraft[f.id]" type="color" :aria-label="f.label" /><input v-model="leverDraft[f.id]" class="input" maxlength="7" :aria-label="`${f.label} hex`" /></span>
+                      <select v-else-if="f.type === 'enum'" v-model="leverDraft[f.id]" class="input"><option v-for="o in f.options" :key="o" :value="o">{{ o }}</option></select>
+                      <input v-else v-model="leverDraft[f.id]" class="input" :type="f.type === 'number' ? 'number' : 'text'" maxlength="200" />
+                    </label>
+                  </div>
+                  <div class="levers__foot">
+                    <span class="muted">{{ isOldRevision ? 'Makes a new version from this one; the current version stays as it is.' : 'Makes a new version. No model call, no credits.' }} Size changes need the assistant to re-lay the design; ask in the chat.</span>
+                    <button type="button" class="btn btn--ok btn--sm" :disabled="locked || !Object.keys(leverChanges).length" @click="applyLevers">Apply as a new version <span class="sub">free</span></button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -451,7 +489,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             <div v-if="active" class="assistant-message" aria-live="polite">
               <div :class="['icard', active.status === 'needs_attention' ? 'icard--warn' : 'icard--info']">
                 <div class="icard__body working">
-                  <div class="working__row"><span v-if="active.status !== 'needs_attention'" class="spinner" aria-hidden="true" /><div><div class="working__label">{{ active.stage }}</div><div class="working__step">{{ active.status === 'needs_attention' ? 'This run needs a recovery check before it continues. Earlier versions are safe, and nothing retries on its own.' : 'You can leave this page. Earlier versions stay downloadable while this runs.' }}</div></div></div>
+                  <div class="working__row"><span v-if="active.status !== 'needs_attention'" class="spinner" aria-hidden="true" /><div><div class="working__label">{{ active.stage }}<span v-if="autoRan !== null" class="tier tier--quoted auto-tag">RAN AUTOMATICALLY · UP TO {{ autoRan }} CREDITS</span></div><div class="working__step">{{ active.status === 'needs_attention' ? 'This run needs a recovery check before it continues. Earlier versions are safe, and nothing retries on its own.' : 'You can leave this page. Earlier versions stay downloadable while this runs.' }}</div></div></div>
                 </div>
                 <div v-if="canWrite && active.status !== 'needs_attention'" class="icard__foot"><span class="spacer" /><button type="button" class="btn btn--ghost btn--sm" :disabled="locked || active.status === 'cancel_requested'" @click="cancel">{{ active.status === 'cancel_requested' ? 'Stopping…' : 'Stop · keeps what is done so far' }}</button></div>
               </div>
@@ -465,6 +503,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <p v-if="quote.settings?.video_mode === 'animate_image'" class="muted">{{ quote.settings.duration_seconds }} seconds · 480p image animation · silent. Generated motion may change details; check before use.</p>
                   <p v-if="quote.variants > 1" class="muted">{{ quote.variants }} variations, each with its own result. A finished variation is kept if another one fails.</p>
                   <label v-if="quote.paid" class="consent"><input v-model="providerApproved" type="checkbox" /> Send this brief and its approved media to Replicate. I have permission to use any people, products and claims in it.</label>
+                  <p v-if="quote.paid" class="muted">After this approval, jobs under 15 credits in this conversation run without asking and show their cost.</p>
                   <small class="muted">{{ expiredQuote ? 'This approval expired. Review a fresh plan to continue.' : `Approval open until ${new Date(quote.expires_at).toLocaleTimeString()}` }}</small>
                 </div>
                 <div class="icard__foot">
@@ -515,7 +554,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 <button class="send" type="submit" :disabled="locked || !prompt.trim()" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
               </div>
             </form>
-            <p class="composer-note">Planning is free. Every paid creation is quoted, and runs only after you approve. Uploads stay private.</p>
+            <p class="composer-note">Planning and text or colour changes are free. Small jobs under 15 credits just run and show their cost; anything more is quoted first. Uploads stay private.</p>
           </div>
           <p v-if="error && (!canWrite || conversation?.archived_at)" class="create-error" role="alert">{{ error }}</p>
         </section>
@@ -690,6 +729,15 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .quote{display:flex;flex-direction:column;gap:4px}
 .quote__line{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--text-3)}
 .quote__line b{font:500 12px var(--mono);color:var(--text)}
+.levers{display:flex;flex-direction:column;gap:12px;padding:14px;border-top:1px solid var(--line);background:var(--bg-2)}
+.levers__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.levers__foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px}
+.levers__foot .muted{flex:1 1 260px}
+.colour{display:flex;gap:6px;align-items:center}
+.colour input[type=color]{width:36px;height:34px;padding:0;border:1px solid var(--line-3);border-radius:6px;background:none}
+.btn--ok{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+.btn .sub{font:500 11px var(--mono);opacity:.8}
+.auto-tag{margin-left:10px;font-size:10px}
 .cost-line{display:flex;align-items:baseline;gap:8px;font-size:13px;color:var(--text-2)}
 .cost-line b{font:500 16px var(--mono);color:var(--warn)}
 .working{gap:10px}
@@ -812,7 +860,7 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
   .header-actions{margin-left:0;width:100%}
   .messages{padding:20px 14px}
   .composer-dock{padding:8px 12px 12px}
-  .examples,.comparison,.plan-cols{grid-template-columns:1fr}
+  .examples,.comparison,.plan-cols,.levers__grid{grid-template-columns:1fr}
   .library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .result__meta .status{margin-left:0}
   .panel-scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:24}

@@ -183,13 +183,24 @@ class ConversationService
         }
     }
 
-    public function approve(User $user, string $id, string $quoteId, string $key, bool $providerApproved = false): object
+    /** Small jobs run without a separate approval, once the user has consented to the provider here. */
+    public function autoRunEligible(User $user, object $c, ApiQuote $quote): bool
+    {
+        $p = $quote->payload_json;
+        if (($p['kind'] ?? '') !== 'composition_fixture' || ! empty($p['free_edit'])) return false;
+        if ((int) $quote->credits_max > (int) config('create.auto_run_credits', 15)) return false;
+        if ($p['mode'] === 'agent' && ! $c->provider_consent_at) return false;
+        $today = DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('created_at', '>=', now()->startOfDay())->whereNotNull('input_json->auto_run')->count();
+        return $today < (int) config('create.auto_run_daily_limit', 20);
+    }
+
+    public function approve(User $user, string $id, string $quoteId, string $key, bool $providerApproved = false, bool $auto = false): object
     {
         $this->authorize($user, true);
         abort_unless(OperationAccounting::enabled(), 503, 'Shared operation accounting must be enabled for local integration testing.');
         $operation = null;
         try {
-            return DB::transaction(function () use ($user, $id, $quoteId, $key, $providerApproved, &$operation) {
+            return DB::transaction(function () use ($user, $id, $quoteId, $key, $providerApproved, $auto, &$operation) {
                 // Same sorted pool/spender lock order as CreditService. No provider work under these locks.
                 $workspace = Workspace::findOrFail($user->workspace_id);
                 Workspace::whereIn('id', array_unique([$workspace->id, $workspace->parent_workspace_id ?: $workspace->id]))->orderBy('id')->lockForUpdate()->get();
@@ -207,9 +218,13 @@ class ConversationService
                 abort_if($quote->isExpired() || $quote->consumed_at, 409, 'This quote expired or was already used.');
                 abort_unless((int) $c->version === $p['version'] && $c->head_revision_id === $p['base_revision_id'], 409, 'The brief changed. Review a new quote.');
                 abort_unless($p['mode']===config('create.mode') && ($p['mode']==='fixture' || PilotPolicy::enabled()),503);
-                if($p['mode']==='agent') { abort_unless($providerApproved,422,'Confirm sending this brief and approved media to Replicate.'); abort_unless(($p['pilot_budget_id']??null)===config('create.pilot_budget_id'),409,'Pilot approval changed. Get a fresh quote.'); PilotPolicy::admit($p['execution_policy']); }
+                if($auto) { abort_unless($this->autoRunEligible($user,$c,$quote),409,'This job needs your approval.'); $p['auto_run']=true; $providerApproved=$providerApproved || (bool)$c->provider_consent_at; }
+                $free=!empty($p['free_edit']);
+                if($p['mode']==='agent' && $free) { abort_unless(($p['execution_policy']['render']['credits']??1)===0 && count($p['execution_policy'])===1,422,'Invalid free edit.'); }
+                elseif($p['mode']==='agent') { abort_unless($providerApproved,422,'Confirm sending this brief and approved media to Replicate.'); abort_unless(($p['pilot_budget_id']??null)===config('create.pilot_budget_id'),409,'Pilot approval changed. Get a fresh quote.'); PilotPolicy::admit($p['execution_policy']); }
                 abort_if(DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->whereIn('status', self::ACTIVE)->when($p['variant_group']??null,fn($q,$group)=>$q->where(fn($q)=>$q->whereNull('input_json->variant_group')->orWhere('input_json->variant_group','!=',$group)))->exists(), 409, 'Another creation is active or awaiting recovery.');
-                abort_if(DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('created_at', '>=', now()->startOfDay())->count() >= 10, 429, 'Local pilot daily limit reached.');
+                abort_if(! $free && DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('created_at', '>=', now()->startOfDay())->whereNull('input_json->free_edit')->count() >= 10, 429, 'Local pilot daily limit reached.');
+                if($p['mode']==='agent' && $providerApproved && ! $c->provider_consent_at) DB::table('create_conversations')->where('id',$id)->update(['provider_consent_at'=>now()]);
                 foreach ($p['input_files'] ?? [] as $file) {
                     abort_unless(Asset::where('workspace_id', $user->workspace_id)->whereKey($file['asset_id'])->where('status', '!=', 'archived')->exists(), 409, 'An attached asset is no longer available.');
                 }

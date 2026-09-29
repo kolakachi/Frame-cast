@@ -34,6 +34,7 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_09_29_180000_add_create_output_metadata.php'))->up();
         (require database_path('migrations/2026_09_29_190000_create_composition_deliveries.php'))->up();
         (require database_path('migrations/2026_09_30_120000_create_create_plans.php'))->up();
+        (require database_path('migrations/2026_09_30_130000_add_create_provider_consent.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -160,6 +161,64 @@ class CreateIntegrationTest extends TestCase
         $viewer = User::create(['email' => 'viewer@example.test', 'name' => 'V', 'role' => 'viewer', 'status' => 'active']);
         $viewer->forceFill(['workspace_id' => $this->workspace->id])->save();
         $this->rejected(403, fn () => $plans->propose($viewer, $c->id, 2, 'four'));
+    }
+
+    public function test_free_edit_rerenders_variables_without_a_model_call_or_credits(): void
+    {
+        [$c, , $run] = $this->admitted(); $lease = $this->runs->claim();
+        $html = '<!doctype html><html lang="en" data-composition-variables=\'[{"id":"headline","type":"string","label":"Headline","default":"Your product. Your story."},{"id":"cta","type":"string","label":"Button text","default":"Explore the collection"},{"id":"color_background","type":"color","label":"Background","default":"#17151d"},{"id":"color_accent","type":"color","label":"Accent","default":"#ff6b32"}]\'><head></head><body><div id="root" data-composition-id="main"><div id="cta">Explore the collection</div></div></body></html>';
+        $this->runs->finish($run->id, $lease['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => $html]], 'private/v1.mp4', 'hash');
+        $c = $this->conversations->conversation($this->owner, $c->id);
+        $rev = DB::table('composition_revisions')->first();
+        $decl = \App\Services\Create\CompositionVariables::declarations($html);
+        $this->assertSame(['headline', 'cta', 'color_background', 'color_accent'], array_column($decl, 'id'));
+
+        $edits = app(\App\Services\Create\FreeEditService::class);
+        $this->rejected(422, fn () => $edits->apply($this->owner, $c->id, $rev->id, ['price' => '$9'], (int) $c->version, 'x1'));
+        $this->rejected(422, fn () => $edits->apply($this->owner, $c->id, $rev->id, ['color_accent' => 'orange'], (int) $c->version, 'x2'));
+        $this->rejected(422, fn () => $edits->apply($this->owner, $c->id, $rev->id, ['cta' => 'Explore the collection'], (int) $c->version, 'x3'));
+
+        $edit = $edits->apply($this->owner, $c->id, $rev->id, ['cta' => 'Get 20% off', 'color_accent' => '#22AA66'], (int) $c->version, 'free-1');
+        $this->assertSame($edit->id, $edits->apply($this->owner, $c->id, $rev->id, ['cta' => 'Get 20% off'], (int) $c->version, 'free-1')->id, 'same key replays');
+        $input = json_decode($edit->input_json, true);
+        $this->assertTrue($input['free_edit']);
+        $this->assertSame(['render'], array_keys($input['execution_policy']), 'no agent, no media');
+        $this->assertSame(0, (int) ApiQuote::find($edit->quote_id)->credits_max);
+        $this->assertSame(['cta' => 'Get 20% off', 'color_accent' => '#22aa66'], $input['edit_values']);
+        $baked = \App\Services\Create\CompositionVariables::declarations($input['base_bundle']['index.html']);
+        $this->assertSame('Get 20% off', collect($baked)->firstWhere('id', 'cta')['default']);
+        $this->assertSame('#22aa66', collect($baked)->firstWhere('id', 'color_accent')['default']);
+        $this->assertSame('Your product. Your story.', collect($baked)->firstWhere('id', 'headline')['default']);
+        $this->assertSame($rev->id, $input['source_revision_id']);
+        $this->assertSame(0, (int) DB::table('api_operations')->where('id', $edit->operation_id)->value('reserved_credits'));
+
+        // Finishing it makes version 2 current, and the version list exposes its fields.
+        $lease = $this->runs->claim();
+        $this->runs->finish($edit->id, $lease['lease_token'], ['status' => 'preview_ready', 'summary' => 'Free', 'bundle' => $input['base_bundle']], 'private/v2.mp4', 'hash2');
+        $head = $this->conversations->conversation($this->owner, $c->id)->head_revision_id;
+        $this->assertSame(2, (int) DB::table('composition_revisions')->where('id', $head)->value('number'));
+        config(['create.free_edit_daily_limit' => 1]);
+        $this->rejected(429, fn () => $edits->apply($this->owner, $c->id, $head, ['cta' => 'Shop now'], (int) $this->conversations->conversation($this->owner, $c->id)->version, 'free-2'));
+    }
+
+    public function test_small_jobs_auto_run_only_under_the_threshold_and_after_consent(): void
+    {
+        $c = $this->brief();
+        $q = $this->conversations->quote($this->owner, $c->id, 1);
+        $this->assertTrue($this->conversations->autoRunEligible($this->owner, $c, $q), 'a free fixture render is a small job');
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'auto-1', false, true);
+        $this->assertTrue(json_decode($run->input_json, true)['auto_run']);
+
+        // Over the threshold, or in paid mode without consent, it needs approval.
+        $big = ApiQuote::find($q->id)->replicate(); $big->id = ApiQuote::newId(); $big->credits_max = 16; $big->consumed_at = null; $big->idempotency_key = null; $big->save();
+        $this->assertFalse($this->conversations->autoRunEligible($this->owner, $c, $big));
+        $paid = ApiQuote::find($q->id)->replicate(); $paid->id = ApiQuote::newId(); $paid->credits_max = 10; $paid->consumed_at = null; $paid->idempotency_key = null;
+        $paid->payload_json = array_merge($q->payload_json, ['mode' => 'agent']); $paid->save();
+        $this->assertFalse($this->conversations->autoRunEligible($this->owner, $c, $paid), 'no provider consent yet');
+        DB::table('create_conversations')->where('id', $c->id)->update(['provider_consent_at' => now()]);
+        $this->assertTrue($this->conversations->autoRunEligible($this->owner, $this->conversations->conversation($this->owner, $c->id), $paid));
+        config(['create.auto_run_daily_limit' => 1]);
+        $this->assertFalse($this->conversations->autoRunEligible($this->owner, $this->conversations->conversation($this->owner, $c->id), $paid), 'daily auto-run ceiling');
     }
 
     private function brief(): object

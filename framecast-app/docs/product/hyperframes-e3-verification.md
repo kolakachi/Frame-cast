@@ -181,3 +181,41 @@ copy. The paid pilot on 8018 was not touched; its router adds the plans table
 additively on its next request, and its planner stays offline unless
 `CREATE_PLANNER` is set.
 
+## Slice 3 — free edits and auto-run (2026-09-29)
+
+**Free edits.** Compositions now declare HyperFrames variables for their
+on-screen lines and main colours (`data-composition-variables`), and the
+agent is instructed to do so and to read text through `getVariables()`. The
+result card offers "Edit text and colours · FREE": the fields come from the
+version's own declarations; applying bakes the new values into the
+declarations and queues a render-only run (no agent, no provider, 0 credits,
+`free_edit_daily_limit` 60/day). It always makes a new version on top of the
+current one, so an older version can be the starting point without being
+overwritten. Unknown fields, malformed colours and no-op edits are refused.
+Size is deliberately not a free edit: compositions are laid out in pixels, so
+a new ratio needs the agent to re-lay the design and stays a priced request.
+
+**Auto-run (owner decision).** A quote at or under `auto_run_credits` (15)
+runs without a separate approval, capped at `auto_run_daily_limit` (20) a
+day. In paid mode it additionally requires that the user has approved sending
+this conversation's brief and media to the provider once
+(`create_conversations.provider_consent_at`, recorded on that first
+approval). The server re-checks eligibility on the auto approval. Variation
+groups and free edits are not auto-run. The working card says "Ran
+automatically · up to N credits".
+
+**Proven end to end** on a disposable fixture API with the real worker and
+the pinned HyperFrames 0.8.82 container: brief → plan → auto-run → render
+(41 s) → free edit of button text and accent colour → render-only run (26 s)
+→ version 2 current, with the frame showing "Get 20% off" on the new green.
+Driven again through the browser with no console errors. The sample fixture
+now declares four variables and the offline agent edits the variable, which is
+what renders.
+
+Checks: API 162 passed (Create 54); worker 59; web 43 (1 pre-existing).
+Browser tests for port 8018 still not run while the paid pilot holds it.
+Still open in this lane: running plan media (AI image, animation, voiceover,
+stock) as child operations within the approved amount; placement overlays;
+the states sheet; agent-call repricing (currently up to 75 credits a call,
+which keeps agent edits above the auto-run line).
+

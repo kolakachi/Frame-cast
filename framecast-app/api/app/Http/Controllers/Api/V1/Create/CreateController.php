@@ -52,6 +52,8 @@ class CreateController extends Controller
             'share_enabled', 'metadata_json', 'id', 'number', 'output_asset_id', 'export_job_id', 'parent_revision_id', 'restored_from_id', 'run_id', 'summary', 'conflict', 'created_at', 'artifact_hash',
         ]);
         $revisions->each(function($revision)use($c){$revision->has_newer_changes=\App\Services\Create\DeliveryService::stale($c,$revision);});
+        $bundles = DB::table('composition_revisions')->where('conversation_id', $id)->pluck('bundle_json', 'id');
+        $revisions->each(function($revision)use($bundles){$revision->variables=\App\Services\Create\CompositionVariables::declarations(json_decode($bundles[$revision->id] ?? '{}', true)['index.html'] ?? null);});
         // Storage keys, worker credentials and source HTML never enter the browser response.
         return response()->json(['data' => [
             'conversation' => $c,
@@ -128,6 +130,13 @@ class CreateController extends Controller
         return $this->show($r, $id);
     }
 
+    public function freeEdit(Request $r, string $id, string $revisionId)
+    {
+        $input = $r->validate(['expected_version' => 'required|integer|min:0', 'idempotency_key' => 'required|string|max:128', 'values' => 'required|array|min:1|max:20']);
+        $run = app(\App\Services\Create\FreeEditService::class)->apply($r->user(), $id, $revisionId, $input['values'], $input['expected_version'], $input['idempotency_key']);
+        return response()->json(['data' => ['id' => $run->id, 'status' => $run->status]], 202);
+    }
+
     public function plan(Request $r, string $id)
     {
         $input = $r->validate(['expected_version' => 'required|integer|min:0', 'idempotency_key' => 'required|string|max:128']);
@@ -147,14 +156,16 @@ class CreateController extends Controller
         $variants=app(\App\Services\Create\VariantService::class);
         $q=isset($input['retry_run_id']) ? $variants->retryQuote($r->user(),$id,$input['retry_run_id'],$input['expected_version']) : $variants->quote($r->user(),$id,$input['expected_version'],$input['variant_count']??1);
         return response()->json(['data' => ['id' => $q->id, 'credits_max' => $q->credits_max, 'expires_at' => $q->expires_at,
-            'variants'=>count($q->payload_json['variant_quotes']??[1]),'paid'=>$q->payload_json['mode']==='agent','settings'=>$q->payload_json['settings'],
+            'variants'=>count($q->payload_json['variant_quotes']??[1]),'auto_run'=>$this->service->autoRunEligible($r->user(),$this->service->conversation($r->user(),$id),$q),'paid'=>$q->payload_json['mode']==='agent','settings'=>$q->payload_json['settings'],
             'description' => $q->payload_json['mode']==='agent' ? 'Create from your brief using Replicate. Your brief and approved media may be sent to the provider. Only used calls are charged; unused reserved credits are released. The displayed amount is a maximum, not a flat charge.' : 'Local integration test: render the fixed 15-second sample. This does not generate from your prompt or use your attachments. No paid model calls.']]);
     }
 
     public function approve(Request $r, string $id)
     {
-        $input = $r->validate(['quote_id' => 'required|string|max:32', 'idempotency_key' => 'required|string|max:128', 'approved' => 'required|accepted', 'provider_approved'=>'sometimes|boolean']);
-        $run = app(\App\Services\Create\VariantService::class)->approve($r->user(), $id, $input['quote_id'], $input['idempotency_key'], $r->boolean('provider_approved'));
+        $input = $r->validate(['quote_id' => 'required|string|max:32', 'idempotency_key' => 'required|string|max:128', 'approved' => 'required|accepted', 'provider_approved'=>'sometimes|boolean', 'auto'=>'sometimes|boolean']);
+        $run = $r->boolean('auto')
+            ? $this->service->approve($r->user(), $id, $input['quote_id'], $input['idempotency_key'], $r->boolean('provider_approved'), true)
+            : app(\App\Services\Create\VariantService::class)->approve($r->user(), $id, $input['quote_id'], $input['idempotency_key'], $r->boolean('provider_approved'));
         return response()->json(['data' => ['id' => $run->id, 'status' => $run->status]], 202);
     }
 

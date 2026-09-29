@@ -1,6 +1,6 @@
 // Local app bridge. Paid calls require both app and host opt-in plus durable limits.
 // Credentials stay on the host; no shell text or Docker socket enters the sandbox.
-import {readFile,writeFile,mkdir,copyFile,access} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,copyFile,access,readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {PilotBudget} from './pilot-budget.mjs';
 import {ReplicateProvider} from './replicate.mjs';
@@ -55,7 +55,17 @@ async function execute(run){
   const manifest=await stageInputs({directory:dir+'/inputs',files:run.input.input_files??[],baseBundle:run.input.base_bundle,
    download:(assetId)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal:AbortSignal.timeout(60000)})});
   if(lost||cancelled||stopping)throw Error('Stopped while preparing inputs');
-  const paid=run.input.mode==='agent';
+  const freeEdit=run.input.free_edit===true;
+  // A free edit is a re-render of an existing bundle with new variable values:
+  // no model, no provider credential, no spend.
+  const paid=run.input.mode==='agent'&&!freeEdit;
+  if(freeEdit){
+   const policy=run.input.execution_policy??{};
+   if(Object.keys(policy).join()!=='render'||policy.render.credits!==0||!run.input.base_bundle)throw Error('Invalid free edit contract');
+   for(const [name,text] of Object.entries(run.input.base_bundle)){if(!/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(name))throw Error('Invalid bundle file');await writeFile(dir+'/project/'+name,text,{mode:0o600});}
+   for(const file of manifest)if(file.purpose==='source')await copyFile(dir+'/inputs/'+file.path,dir+'/project/'+file.name);
+   stage='Applying your changes';
+  }
   let providerToken;
   if(paid){
    if(process.env.CREATE_AGENT_LIVE!=='1')throw Error('Live local host is not enabled');
@@ -105,7 +115,8 @@ async function execute(run){
   if(cancelled||stopping){await finish(run,{status:'cancelled',summary:'Local render stopped'});return;}
   const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
   if(report.status!=='ready')throw Error('Render did not produce a verified output');
-  const result={status:'preview_ready',summary:paid?agentResult.state.summary:'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
+  const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
+  const result=freeEdit?{status:'preview_ready',summary:'Updated '+Object.keys(run.input.edit_values??{}).length+' field(s). Free: no model call, one render.',bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?agentResult.state.summary:'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
   // Persist completion before sending: a callback failure must not trigger rendering again.
   await writeFile(dir+'/completion.json',JSON.stringify({result,report}),{mode:0o600});
   if(!report.directory.startsWith('/output/live/'+id+'/render/') || report.artifact !== 'video.mp4')throw Error('Invalid artifact path');
