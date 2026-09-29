@@ -690,6 +690,7 @@ watch([currentPage, perPage], () => {
                 <span>{{ asset.usage_count }}×</span>
               </div>
               <div class="asset-tags">
+                <span v-if="asset.metadata_json?.create_conversation_id" class="asset-tag">Create</span>
                 <span v-for="tag in asset.tags.slice(0, 3)" :key="tag" class="asset-tag">{{ tag }}</span>
               </div>
             </div>
@@ -721,6 +722,7 @@ watch([currentPage, perPage], () => {
           <div>
             <div class="drawer-title">{{ selectedAsset.title }}</div>
             <div class="drawer-subtitle">{{ selectedAsset.asset_type.replace('_', ' ') }} · {{ selectedAsset.mime_type || 'Unknown format' }}</div>
+            <router-link v-if="selectedAsset.metadata_json?.create_conversation_id" class="drawer-origin" :to="{ name: 'create', params: { conversationId: selectedAsset.metadata_json.create_conversation_id } }">Made in Create · open the conversation →</router-link>
           </div>
           <button class="close-btn" type="button" @click="closeAsset">×</button>
         </div>
@@ -1396,6 +1398,8 @@ watch([currentPage, perPage], () => {
 .drawer-inner { padding: 22px; overflow-y: auto; height: 100%; }
 .drawer-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 .drawer-title { font-size: 15px; font-weight: 600; }
+.drawer-origin { display: inline-block; margin-top: 6px; font-size: 12px; color: var(--accent, #ff6b35); text-decoration: none; }
+.drawer-origin:hover { text-decoration: underline; }
 .drawer-subtitle { margin-top: 3px; font-size: 12px; color: #6a6a7c; }
 .close-btn {
   width: 30px;

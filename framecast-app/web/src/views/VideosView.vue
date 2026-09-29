@@ -39,6 +39,7 @@ const STATUS_OPTIONS = [
 ]
 
 const SOURCE_LABELS = {
+  composition: 'Create',
   prompt: 'Prompt',
   script: 'Script',
   images: 'Images',
@@ -168,6 +169,12 @@ function cancelRename() {
 }
 
 function openProject(project) {
+  // A creation made in Create has no scenes; its home is its conversation.
+  if (project.editor_kind === 'composition') {
+    if (project.create_conversation_id) router.push({ name: 'create', params: { conversationId: project.create_conversation_id } })
+    else router.push({ name: 'create' })
+    return
+  }
   // generation_pending covers scenes still rendering images/animations after
   // project.status has already flipped to ready_for_review.
   if (project.status === 'generating' || project.generation_pending || (Number(project.id) >= 216 && project.status === 'ready_for_review' && project.source_type !== 'blank' && !project.visual_brief?.editor_opened_at)) {
@@ -360,8 +367,8 @@ onMounted(async () => {
                 </div>
 
                 <div class="project-actions" @click.stop>
-                  <button class="btn btn-ghost btn-sm" type="button" @click="openVariants(project.id)">Variants</button>
-                  <button class="btn btn-ghost btn-sm" type="button" @click="openProject(project)">Open</button>
+                  <button v-if="project.editor_kind !== 'composition'" class="btn btn-ghost btn-sm" type="button" @click="openVariants(project.id)">Variants</button>
+                  <button class="btn btn-ghost btn-sm" type="button" @click="openProject(project)">{{ project.editor_kind === 'composition' ? 'Open in Create' : 'Open' }}</button>
                 </div>
               </div>
             </article>

@@ -132,22 +132,25 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 
 ## E3 — Create UI and multimodal routing
 
-**2026-09-29 checkpoint:** conversation UI and private intake are implemented and installed locally. See [E3 verification](hyperframes-e3-verification.md). E3 remains open: image execution, generated image actions, variants, output settings and delivery are not complete. Image briefs are saved but explicitly blocked from the unrelated video fixture. Paid execution remains off.
+**2026-09-29 checkpoint (morning):** conversation UI and private intake implemented and installed locally. See [E3 verification](hyperframes-e3-verification.md).
+
+**2026-09-29 checkpoint (evening):** the next slice was found uncommitted and committed as two checkpoints after the Create suite passed (48 tests, 247 assertions) and the web build passed: `ce4b28a` (image quotes on shared pricing with consent rules, animate_image quotes, PilotPolicy envelopes, VariantService with atomic admission and failed-only retry, DeliveryService/DeliveryController with revision pinning and freshness warnings, output metadata and deliveries migrations, worker media provider and pilot budget) and `13702fb` (quote card with variation count, retry of failed results, image result actions, delivery dialog, share/unshare, scheduling through the shared modal, safe-margin overlay, settings and approved facts panel, public `/creation/:token` page). Library surfacing followed: All Videos opens a creation in its conversation and hides scene-only actions; the asset drawer links a saved image back to Create. Paid execution remains off locally (`CREATE_MODE=fixture`).
 
 - [x] Apply the `create-ui/` conversation layout within the existing app shell and colours; retain Create, inline results and an optional desktop details panel/mobile drawer. Implement only verified actions; remaining multimodal controls are tracked below.
 - [x] New creation empty state, examples, persistent composer, tab-local draft recovery and resumable history with title/brief/file search, rename, archive and restore.
 - [x] Private direct uploads before a brief, searchable library, source/reference choice with reuse confirmation, inline previews, progress/remove/retry and format/size limits. Uploading does not dispatch transcription or generation.
-- [ ] Distinguish inspiration from authorized source reuse; normalize essential settings conversationally and ask for unsupported claims.
-- [ ] Route image generation/editing to existing image operations. Reuse source ownership, edit masks/reference rules, consent and pricing gates.
-- [ ] Image results: inspect, download, edit, explicit variations and animate; each operation stays linked to its source and conversation.
-- [ ] Video results: stable custom playback, seek, volume, fullscreen and follow-up briefs implemented; real semantic edits and optional safe-zone guides remain. Real offline-render playback is verified.
-- [ ] Compact plan/quote approval, current stage, cancellation and actionable error/recovery messages in the conversation.
-- [ ] Details panel hidden by default; mobile drawer and keyboard/focus behavior verified. Keep duration, language, voice, music and captions available without a mandatory form.
-- [ ] Distinguish current revision, preview and completed export. Download/share/schedule target exact artifacts and warn about newer unexported changes.
+- [x] Distinguish inspiration from authorized source reuse (purpose per attachment; reference-only images never reach a model; reuse attestation). Agent instruction asks for clarification on unsupported claims.
+- [ ] Normalize essential settings conversationally (today: details panel + approved facts; a brief that states a ratio or length does not yet update settings).
+- [x] Route image generation/editing to existing image operations: quotes priced by `ImageAdapterFactory`, source ownership and reuse consent enforced, ≤4 source images ≤10 MB, reference-only excluded (`ce4b28a`).
+- [x] Image results: inspect, download, save to Assets, edit (as a new brief on the saved output), up to three quoted variations, animate as a new video conversation linked to the source (`13702fb`).
+- [x] Video results: playback, seek, volume, fullscreen, follow-up briefs, safe-margin overlay (preview only). Real semantic edits of a composition are agent work and move to E4.
+- [x] Compact plan/quote approval, current stage, cancellation, earlier attempts and retry-only-failed in the conversation.
+- [x] Details panel hidden by default; mobile drawer and keyboard/focus verified in the morning checkpoint; ratio, length, language, audio, captions and approved facts editable there without a mandatory form. Voice and music are not Create settings yet (composition mode keeps supplied audio).
+- [x] Current revision, preview and completed export are distinct; download/share/schedule pin the shown revision and warn about newer changes (`DeliveryService::stale`).
 - [x] Add history inspect/compare/restore, keep current and viewed versions distinct, preserve previous working outputs, and refresh conflicts without discarding unsent text.
-- [ ] Add explicit variant setup/preview/quote approval, maximum three outputs and retry-only-failed behavior.
-- [ ] Finished videos appear in All Videos; images in Assets. Use shared artifact records, not duplicate files. Link both to their originating conversation; group variants.
-- [ ] Reuse publishing/account restrictions and separate confirmation for share/schedule. Rendering never automatically publishes.
+- [x] Explicit variant count (1–3) on the quote, group approval atomic, each variation its own hold and result; retry quotes only for a confirmed failed run.
+- [x] Finished videos appear in All Videos as composition projects and open in their conversation; saved images appear in Assets with a link back. Shared Project/ExportJob/Asset records, no duplicate files. Variations are versions of one conversation, which is the grouping.
+- [x] Publishing goes through the shared scheduled-post controller (plan, export ownership, account); share and schedule need separate confirmation; rendering never publishes.
 - [ ] Replace illustrative prices, timing guarantees and prototype notices with verified values and accurate UI copy.
 
 **E3 exit:** local user can create an image or video, revise it, return later, find it in the proper library and perform the permitted delivery actions. Tests use mocks except explicitly budgeted live smoke runs.
@@ -190,4 +193,4 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 
 Use stable task references such as E0.2/CTA revision in commits and verification notes. Tick a task only when its implementation and required checks pass. Every completed phase records commit, runtime identity, commands, outputs and limitations. Do not put credentials or private customer media in the evidence document.
 
-Immediate next implementation slice: **finish E3 image operation routing and consent/pricing contracts, then variants and explicit delivery actions. Continue to E4 timed editing afterward. E2 local engineering is complete. Model comparisons remain deferred; E1 creative acceptance and paid/production release gates stay open.**
+Immediate next implementation slice: **E3 close-out — conversational settings normalization, the copy audit (prices, timings, prototype notices), and the E3 exit run (browser tests `create-e3-browser.mjs` and `create-browser.mjs` against the disposable harness on the committed build). Then E4 timed editing. Model comparisons remain deferred; E1 creative acceptance and paid/production release gates stay open.**
