@@ -1,4 +1,5 @@
 <script setup>
+import { voiceDescription } from "../lib/voices.js";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter, onBeforeRouteLeave } from "vue-router";
 import { editorReadiness } from "../lib/editorReadiness";
@@ -1856,26 +1857,6 @@ const activeVoiceIsGemini = computed(() => {
 });
 
 // ── Voice picker modal: descriptions, personas, preview ──────────────
-// What-to-expect blurbs for the built-in Gemini voices (keyed by name).
-// Voices without an entry fall back to their character word (gender_label).
-const VOICE_DESCRIPTIONS = {
-  Kore: "Firm, clear — a confident default narrator.",
-  Charon: "Informative and steady — great for explainers.",
-  Puck: "Upbeat and punchy — reads young and energetic.",
-  Zephyr: "Bright and lively.",
-  Leda: "Youthful and bright — reads like a young woman / teen.",
-  Fenrir: "Excitable, high-energy — good for hype.",
-  Aoede: "Breezy and easy — relaxed and friendly.",
-  Sulafat: "Warm and gentle — soothing.",
-  Gacrux: "Mature and warm — reads older.",
-  Algenib: "Gravelly and textured — reads as an older man.",
-  Vindemiatrix: "Gentle and soft — a kind, mature woman.",
-  Achernar: "Soft and calm.",
-  Orus: "Firm and grounded.",
-  Achird: "Friendly and approachable.",
-  Enceladus: "Breathy and intimate.",
-  Schedar: "Even and measured.",
-};
 // One-click personalities — set the best-matching Gemini voice + a delivery
 // direction (voice_prompt). Best-effort: shifts age/character feel, not pitch.
 const VOICE_PERSONAS = [
@@ -1898,13 +1879,6 @@ const clonedVoices = computed(() => (voiceProfiles.value || []).filter((v) => v.
 const geminiVoices = computed(() => (voiceProfiles.value || []).filter((v) => !v.is_cloned && v.provider === "google"));
 const otherVoices = computed(() => (voiceProfiles.value || []).filter((v) => !v.is_cloned && v.provider !== "google"));
 
-function voiceDescription(p) {
-  // Lead with gender (Male/Female), then the character blurb (accent) or our
-  // static description. Cloned/Neutral skip the gender prefix.
-  const blurb = VOICE_DESCRIPTIONS[p.provider_voice_key] || p.accent || "";
-  const g = p.gender_label && !["Neutral", "Cloned"].includes(p.gender_label) ? p.gender_label : "";
-  return [g, blurb].filter(Boolean).join(" · ") || "Voice";
-}
 
 function openVoiceModal() { showVoiceModal.value = true; }
 function closeVoiceModal() {

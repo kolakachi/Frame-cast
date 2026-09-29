@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { voiceHeadline } from "../lib/voices.js";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../services/api";
@@ -30,6 +31,48 @@ const sourceContent = ref("");
 const aspectRatio = ref("9:16");
 const selectedVoiceKey = ref("");
 const voicePickerOpen = ref(false);
+// Voice samples: made once per voice on the server and cached for everyone, so
+// playing them is free. Best-effort; a failed sample never blocks setup.
+const previewLoadingKey = ref("");
+const previewPlayingKey = ref("");
+const previewError = ref("");
+let previewAudio = null;
+function stopPreview() {
+  try { previewAudio?.pause(); } catch { /* ignore */ }
+  previewPlayingKey.value = "";
+}
+async function previewVoice(v) {
+  if (!v) return;
+  if (previewPlayingKey.value === v.provider_voice_key) { stopPreview(); return; }
+  stopPreview();
+  previewError.value = "";
+  previewLoadingKey.value = v.provider_voice_key;
+  try {
+    const res = await api.post("/voice-profiles/preview", { voice_profile_id: v.id });
+    const url = res.data?.data?.preview_url;
+    if (!url) throw new Error("no sample");
+    previewAudio ??= new Audio();
+    previewAudio.src = url;
+    previewAudio.onended = () => { previewPlayingKey.value = ""; };
+    await previewAudio.play();
+    previewPlayingKey.value = v.provider_voice_key;
+  } catch {
+    previewError.value = "That sample could not play right now. You can still pick the voice and change it later.";
+  } finally {
+    previewLoadingKey.value = "";
+  }
+}
+function chooseVoice(v) {
+  selectedVoiceKey.value = v.provider_voice_key;
+  voicePickerOpen.value = false;
+}
+// "Achird · Male": the star name and gender, shown small under the description.
+function voiceMeta(v) {
+  const g = v.gender_label && !["Neutral"].includes(v.gender_label) ? v.gender_label : "";
+  return [v.name, g].filter(Boolean).join(" · ");
+}
+onBeforeUnmount(stopPreview);
+watch(step, () => { stopPreview(); voicePickerOpen.value = false; });
 const selectedStyle = ref("cinematic");
 const visualType = ref("ai_images");
 
@@ -736,53 +779,73 @@ onMounted(async () => {
           </div>
 
           <div class="ob-field">
-            <label class="ob-label">Voice</label>
+            <label class="ob-label" id="ob-voice-label">Voice</label>
             <div class="ob-picker-wrap">
-              <button
-                type="button"
-                class="ob-picker-trigger"
-                @click="voicePickerOpen = !voicePickerOpen"
-              >
-                <span class="ob-picker-trigger-glyph">🎙</span>
-                <span class="ob-picker-trigger-label">{{
-                  selectedVoiceOption?.name ?? "Pick a voice"
-                }}</span>
-                <span class="ob-picker-trigger-sub">{{
-                  selectedVoiceOption?.gender_label ?? ""
-                }}</span>
-                <span class="ob-picker-trigger-caret">▾</span>
-              </button>
-              <div v-if="voicePickerOpen" class="ob-picker-panel">
+              <div class="ob-picker-bar">
+                <button
+                  v-if="selectedVoiceOption"
+                  type="button"
+                  class="ob-play"
+                  :class="{ playing: previewPlayingKey === selectedVoiceOption.provider_voice_key }"
+                  :aria-label="previewPlayingKey === selectedVoiceOption.provider_voice_key ? 'Stop sample' : 'Play a sample of this voice'"
+                  @click="previewVoice(selectedVoiceOption)"
+                >
+                  <span v-if="previewLoadingKey === selectedVoiceOption.provider_voice_key" class="ob-play-spin"></span>
+                  <span v-else>{{ previewPlayingKey === selectedVoiceOption.provider_voice_key ? "■" : "▶" }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="ob-picker-trigger"
+                  aria-labelledby="ob-voice-label"
+                  :aria-expanded="voicePickerOpen"
+                  @click="voicePickerOpen = !voicePickerOpen"
+                >
+                  <span class="ob-picker-trigger-text">
+                    <span class="ob-picker-trigger-label">{{
+                      selectedVoiceOption ? voiceHeadline(selectedVoiceOption) : "Pick a voice"
+                    }}</span>
+                    <span v-if="selectedVoiceOption" class="ob-picker-trigger-sub">{{ voiceMeta(selectedVoiceOption) }}</span>
+                  </span>
+                  <span class="ob-picker-trigger-caret">▾</span>
+                </button>
+              </div>
+              <div v-if="voicePickerOpen" class="ob-picker-panel" role="listbox" aria-labelledby="ob-voice-label">
                 <div
                   v-for="v in voices"
                   :key="v.provider_voice_key"
-                  :class="[
-                    'ob-picker-row',
-                    selectedVoiceKey === v.provider_voice_key ? 'selected' : '',
-                  ]"
-                  @click="
-                    selectedVoiceKey = v.provider_voice_key;
-                    voicePickerOpen = false;
-                  "
+                  role="option"
+                  tabindex="0"
+                  :aria-selected="selectedVoiceKey === v.provider_voice_key"
+                  :class="['ob-picker-row', selectedVoiceKey === v.provider_voice_key ? 'selected' : '']"
+                  @click="chooseVoice(v)"
+                  @keydown.enter.prevent="chooseVoice(v)"
+                  @keydown.space.prevent="chooseVoice(v)"
                 >
-                  <span class="ob-picker-row-glyph">🎙</span>
-                  <div class="ob-picker-row-text">
-                    <div class="ob-picker-row-name">{{ v.name }}</div>
-                    <div class="ob-picker-row-desc">
-                      {{ v.gender_label || "neutral"
-                      }}{{ v.description ? " · " + v.description : "" }}
-                    </div>
-                  </div>
-                  <span
-                    v-if="selectedVoiceKey === v.provider_voice_key"
-                    class="ob-picker-row-check"
-                    >✓</span
+                  <button
+                    type="button"
+                    class="ob-play ob-play--row"
+                    :class="{ playing: previewPlayingKey === v.provider_voice_key }"
+                    :aria-label="(previewPlayingKey === v.provider_voice_key ? 'Stop sample of ' : 'Play a sample of ') + voiceHeadline(v)"
+                    @click.stop="previewVoice(v)"
+                    @keydown.enter.stop
+                    @keydown.space.stop
                   >
+                    <span v-if="previewLoadingKey === v.provider_voice_key" class="ob-play-spin"></span>
+                    <span v-else>{{ previewPlayingKey === v.provider_voice_key ? "■" : "▶" }}</span>
+                  </button>
+                  <div class="ob-picker-row-text">
+                    <div class="ob-picker-row-name">{{ voiceHeadline(v) }}</div>
+                    <div class="ob-picker-row-desc">{{ voiceMeta(v) }}</div>
+                  </div>
+                  <span v-if="selectedVoiceKey === v.provider_voice_key" class="ob-picker-row-check">✓</span>
                 </div>
               </div>
             </div>
+            <p class="ob-voice-hint">
+              Press ▶ to hear a voice. Not sure? Keep this one. You can change it any time, for a whole channel or a single scene.
+            </p>
+            <p v-if="previewError" class="ob-voice-hint ob-voice-hint--warn" role="status">{{ previewError }}</p>
           </div>
-
           <div class="ob-actions">
             <button class="ob-btn ob-btn-ghost" type="button" @click="back">
               Back
@@ -1227,6 +1290,38 @@ onMounted(async () => {
 .ob-picker-wrap {
   position: relative;
 }
+.ob-picker-bar {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.ob-play {
+  width: 44px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ob-play:hover { border-color: var(--border-strong); }
+.ob-play.playing { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.ob-play:focus-visible, .ob-picker-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ob-play--row { width: 36px; height: 36px; border-radius: 7px; background: rgba(255, 255, 255, 0.06); }
+.ob-play-spin {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25); border-top-color: var(--accent);
+  animation: ob-spin 0.8s linear infinite;
+}
+@keyframes ob-spin { to { transform: rotate(360deg); } }
+.ob-picker-trigger-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ob-voice-hint { margin: 8px 0 0; font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+.ob-voice-hint--warn { color: #f5a524; }
 .ob-picker-trigger {
   display: flex;
   align-items: center;
@@ -1263,8 +1358,6 @@ onMounted(async () => {
 .ob-picker-trigger-sub {
   color: var(--text-dim);
   font-size: 12px;
-  margin-left: 4px;
-  flex: 1;
 }
 .ob-picker-trigger-caret {
   font-size: 10px;
