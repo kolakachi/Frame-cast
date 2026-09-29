@@ -91,3 +91,36 @@ test('sandbox write rejection remains terminal, not an authoring retry',async t=
 test('concurrent test reservations cannot exceed cap',async t=>{const {TestBudget}=await import('../budget.mjs');const h=await harness(t,[]);const budget=new TestBudget(h.root+'/budget.json',.02);const results=await Promise.allSettled(Array.from({length:4},()=>budget.reserve({prompt:'x',system:'x',maxTokens:100,model:'sonnet'})));assert.equal(results.filter(r=>r.status==='fulfilled').length,1);const data=JSON.parse(await readFile(h.root+'/budget.json'));assert.equal(data.calls.length,1);});
 test('settlement preserves other reservations and is idempotent',async t=>{const {TestBudget}=await import('../budget.mjs');const h=await harness(t,[]);const budget=new TestBudget(h.root+'/budget.json',1);const a=await budget.reserve({prompt:'x',system:'x',maxTokens:100,model:'sonnet'});await budget.reserve({prompt:'x',system:'x',maxTokens:100,model:'sonnet'});const response={predictionId:'a',metrics:{token_input_count:10,token_output_count:10}};await a(response);await a(response);const data=JSON.parse(await readFile(h.root+'/budget.json'));assert.equal(data.calls.length,2);assert.equal(data.calls[1].status,'reserved');await assert.rejects(a({...response,predictionId:'b'}),/another prediction/);});
 test('failed inspection keeps blocking findings and fixes without warning noise',async()=>{const {inspectionReport}=await import('../inspection-report.mjs');const result=inspectionReport(JSON.stringify({ok:false,lint:{findings:[{severity:'warning',message:'noise'.repeat(10000)},{severity:'error',code:'nested',message:'Nested media',fixHint:'Move media to root'}]}}));assert.equal(result.ok,false);assert.equal(result.errors.length,1);assert.equal(result.errors[0].fixHint,'Move media to root');assert.ok(JSON.stringify(result).length<1000);assert.equal(inspectionReport('not json').ok,false);});
+
+test('media action runs the sandbox tool, protects the derived file and rejects unknown inputs', async () => {
+  const {runAgent} = await import('../runner.mjs');
+  const {Workspace} = await import('../workspace.mjs');
+  const {mkdtemp, writeFile} = await import('node:fs/promises');
+  const {tmpdir} = await import('node:os');
+  const dir = await mkdtemp(tmpdir() + '/media-');
+  await writeFile(dir + '/index.html', '<html></html>');
+  await writeFile(dir + '/asset-1-x.mp4', 'video');
+  const ws = new Workspace(dir, [{path: 'asset-1-x.mp4', sha256: (await import('../workspace.mjs')).digest('video')}]);
+  const steps = [
+    {type: 'media', op: 'trim', input: 'secret.mp4', params: {start: 0, end: 1}},
+    {type: 'media', op: 'trim', input: 'asset-1-x.mp4', params: {start: 0, end: 1}},
+    {type: 'needs_input', question: 'stop'},
+  ];
+  let i = 0, calls = [];
+  const provider = {id: 't', maxCallUsd: 0, complete: async () => ({text: JSON.stringify(steps[i++])})};
+  const state = await runAgent({stateFile: dir + '/state.json', workspace: ws, provider, context: {brief: 'x'},
+    limits: {calls: 5, repairs: 3, budgetUsd: 0},
+    tools: {media: async args => { calls.push(args.input); await writeFile(dir + '/derived-1-trim.mp4', 'cut'); return {ok: true, output: 'derived-1-trim.mp4', sha256: (await import('../workspace.mjs')).digest('cut')}; }}});
+  assert.equal(state.status, 'needs_input');
+  assert.deepEqual(calls, ['asset-1-x.mp4'], 'unknown input never reaches the tool');
+  assert.equal(ws.assets.find(a => a.path === 'derived-1-trim.mp4').derivedFrom, 'asset-1-x.mp4');
+  await writeFile(dir + '/derived-1-trim.mp4', 'tampered');
+  await assert.rejects(() => ws.verifyAssets(), /Protected asset changed/);
+});
+
+test('media params must be a small object', async () => {
+  const {parseAction} = await import('../protocol.mjs');
+  assert.equal(parseAction('{"type":"media","op":"speed","input":"a.mp4","params":{"factor":2}}').params.factor, 2);
+  assert.throws(() => parseAction('{"type":"media","op":"speed","input":"a.mp4","params":"--rm -rf"}'), /Invalid media params/);
+  assert.throws(() => parseAction('{"type":"media","op":"speed","input":"a.mp4"}'), /Unexpected or missing/);
+});

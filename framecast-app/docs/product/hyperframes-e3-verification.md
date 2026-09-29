@@ -219,3 +219,40 @@ stock) as child operations within the approved amount; placement overlays;
 the states sheet; agent-call repricing (currently up to 75 credits a call,
 which keeps agent edits above the auto-run line).
 
+## Slice 4 — sandbox media tools (2026-09-29, E4 foundation)
+
+The agent can now edit supplied footage inside the existing render sandbox
+(no network, read-only root, no capabilities, 2 CPUs, 2 GB) with a `media`
+action: probe, silences, trim, cut (ranges), remove_silence, clean_audio,
+loudness, stabilize, speed (0.25–4, pitch kept), crop (9:16, 1:1, 4:5, 16:9
+around a focus point), frame, grade (warm, cool, punchy, muted, mono, film).
+Each is a fixed ffmpeg recipe with bounded numbers; the model never supplies a
+command, filter or path, only a file already in the project. Cut-type
+operations return a source map from output time to source time so overlays
+stay on the right moment. Clips are limited to 3 minutes. Derived files are
+protected like supplied assets, uploaded before the render, stored as private
+library assets with `derived_from_asset_id`, operation and parameters, renamed
+to their stored name in the composition, and inherited by later runs and free
+edits. The planner lists them as free tools.
+
+Proven: every operation run in the locked container on a generated clip
+(silence detection found both gaps; removing them took 8.0 s to 5.81 s;
+invalid look, path escape and too-short trim refused). Then end to end with
+the real worker on a disposable harness: upload a take → build with a
+sandbox trim → derived file saved to the library as "Trim · take.mp4" (from
+the original, op trim) → free edit inherited both files and rendered. The
+harness's SQLite now uses a busy timeout and WAL; production uses Postgres.
+
+Opus 5.5: `ANTHROPIC_API_KEY` is set locally. Two live planner calls against
+`claude-opus-5-5`: 23 s / ~$0.05, then after asking for concise fields 16 s /
+~$0.035. The plan proposed the new footage tools on its own and listed the
+missing offer code instead of inventing one. Planner stays `offline` locally
+until `CREATE_PLANNER=anthropic` and `CREATE_PLANNER_MODEL=claude-opus-5-5`
+are set, which was not done while the paid pilot is running. The build agent
+still runs on Replicate; an Anthropic provider for the worker is next.
+
+Checks: API 163 passed; worker 61 passed. Not in this slice: timestamped
+transcripts from the app's transcription service and overlays bound to
+spoken words (E4 items 1 and 3), green-screen keying (needs alpha video
+support in the renderer).
+

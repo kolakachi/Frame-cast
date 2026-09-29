@@ -1,6 +1,6 @@
 // Local app bridge. Paid calls require both app and host opt-in plus durable limits.
 // Credentials stay on the host; no shell text or Docker socket enters the sandbox.
-import {readFile,writeFile,mkdir,copyFile,access,readdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,copyFile,access,readdir,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {PilotBudget} from './pilot-budget.mjs';
 import {ReplicateProvider} from './replicate.mjs';
@@ -86,7 +86,7 @@ async function execute(run){
    await finish(run,{status:'preview_ready',summary:image.summary,bundle:image.bundle},image.artifact,image.type);
    return;
   }
-  const provider=paid?new ReplicateProvider({contract:JSON.parse(await readFile(root+'/agent/contracts/sonnet.json','utf8')),token:providerToken,enabled:true,maxCallUsd:.3}):offlineContractProvider(run.input.base_bundle);
+  const provider=paid?new ReplicateProvider({contract:JSON.parse(await readFile(root+'/agent/contracts/sonnet.json','utf8')),token:providerToken,enabled:true,maxCallUsd:.3}):offlineContractProvider(run.input.base_bundle,manifest);
   if(paid){const complete=provider.complete.bind(provider);provider.complete=async args=>{reservation=await pilotBudget.reserve('anthropic/claude-4.5-sonnet',.3);return complete(args);};}
   let agentResult;
   if(run.input.execution_policy?.agent){
@@ -96,11 +96,32 @@ async function execute(run){
     bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),
     begin:payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token}),
     settle,receipt:output=>paid?({status:'succeeded',prediction_id:output.predictionId}):({status:'succeeded',cost_microusd:0}),
-    invoke:async(operation,{times=[],signal}={})=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:180000,maxBuffer:2000000});const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));if(paid&&operation==='snapshot'&&result.ok)result.providerImage='data:image/jpeg;base64,'+(await readFile(dir+'/snapshot/contact-sheet.jpg')).toString('base64');return result;}});
+    invoke:async(operation,{times=[],signal,op,input,params}={})=>{if(operation==='media')await writeFile(dir+'/media-request.json',JSON.stringify({op,input,params:params??{}}),{mode:0o600});await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:180000,maxBuffer:2000000});const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));if(operation==='media')await unlink(dir+'/media-request.json').catch(()=>{});if(paid&&operation==='snapshot'&&result.ok)result.providerImage='data:image/jpeg;base64,'+(await readFile(dir+'/snapshot/contact-sheet.jpg')).toString('base64');return result;}});
    if(['needs_input','awaiting_media_approval'].includes(agentResult.state.status)){
     await finish(run,{status:'needs_input',summary:(agentResult.state.question??agentResult.state.proposal??'Please clarify your brief.').slice(0,2000)});return;
    }
    if(agentResult.state.status!=='preview_ready')throw Object.assign(Error(agentResult.state.reason??'Agent needs input before rendering'),{code:agentResult.state.status==='needs_attention'?'ATTEMPT_NEEDS_ATTENTION':'AGENT_STOPPED'});
+  }
+  // Derived media becomes a permanent source before rendering: upload it, give
+  // it its stored name, and point the composition at that name, so later
+  // versions and free edits inherit exactly these bytes.
+  if(agentResult?.derived?.length){
+   stage='Saving your edited footage';await beat();
+   const ids=new Map(manifest.map(f=>[f.name,f.asset_id]));
+   for(const d of agentResult.derived){
+    const from=ids.get(d.derivedFrom);if(!from)throw Error('Derived media has no known source');
+    const form=new FormData();form.append('lease_token',run.lease_token);form.append('derived_from_asset_id',String(from));form.append('operation',d.operation);form.append('params',JSON.stringify(d.params??{}));
+    form.append('file',new Blob([await readFile(dir+'/project/'+d.path)]),d.path);
+    const response=await fetch(new URL('/api/internal/create/runs/'+run.id+'/derived',base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},body:form,signal:aborter.signal});
+    if(!response.ok)throw Error('Derived media upload failed ('+response.status+')');
+    const record=(await response.json()).data;
+    if(record.sha256!==d.sha256)throw Error('Derived media hash mismatch');
+    await rename(dir+'/project/'+d.path,dir+'/project/'+record.name);ids.set(d.path,record.asset_id);ids.set(record.name,record.asset_id);
+    for(const name of (await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n))){
+     const text=await readFile(dir+'/project/'+name,'utf8');if(text.includes(d.path))await writeFile(dir+'/project/'+name,text.split(d.path).join(record.name),{mode:0o600});
+    }
+    for(const [k,v] of Object.entries(agentResult.bundle))agentResult.bundle[k]=v.split(d.path).join(record.name);
+   }
   }
   stage=paid?'Rendering your video':'Rendering the local sample';
   await accountedCall({key:'render-1',kind:'render',input:{runId:run.id,mode:run.input.mode},

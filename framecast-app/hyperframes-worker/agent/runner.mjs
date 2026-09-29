@@ -70,6 +70,15 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           if(++state.repairs>cap.repairs)throw Error('Authoring repair limit reached');
           result={error:e.message,sourceUnchanged:true,remainingRepairs:cap.repairs-state.repairs};
         }
+      } else if(action.type==='media') {
+        if(!tools.media)throw Error('Media tool not installed');
+        if(!workspace.assets.some(a=>a.path===action.input))result={ok:false,error:'Input is not a file in this project. Call assets to list them.'};
+        else {
+          result=await bounded(()=>tools.media({op:action.op,input:action.input,params:action.params,signal:boundedSignal}));
+          // A derived file is protected from later changes like any supplied asset.
+          if(result.ok && result.output)workspace.assets.push({path:result.output,sha256:result.sha256,derivedFrom:action.input,operation:action.op,params:action.params});
+          if(!result.ok && ++state.repairs>cap.repairs)throw Error('Media repair limit reached');
+        }
       } else if(action.type==='assets') result=workspace.assets;
       else if(action.type==='primitives') result=primitives;
       else if(action.type==='timeline') {if(!tools.timeline)throw Error('Timeline tool not installed');result=await bounded(()=>tools.timeline({signal:boundedSignal}));}

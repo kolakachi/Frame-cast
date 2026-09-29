@@ -6,7 +6,7 @@ require __DIR__.'/../../vendor/autoload.php';
 $app = require __DIR__.'/../../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => '/tmp/create-fixture.sqlite',
-    'database.connections.sqlite.foreign_key_constraints' => false, 'cors.allowed_origins' => ['http://127.0.0.1:5188'], 'cache.default' => 'array', 'session.driver' => 'array',
+    'database.connections.sqlite.foreign_key_constraints' => false, 'database.connections.sqlite.busy_timeout' => 10000, 'database.connections.sqlite.journal_mode' => 'wal', 'cors.allowed_origins' => ['http://127.0.0.1:5188'], 'cache.default' => 'array', 'session.driver' => 'array',
     'services.posthog.key' => '', 'create.enabled' => true, 'create.workspaces' => [1], 'create.mode' => 'fixture', 'developer.operation_accounting' => true,
     'filesystems.disks.minio' => ['driver' => 'local', 'root' => '/tmp/create-input-fixtures', 'throw' => true]]);
 if(getenv('CREATE_LIVE_PILOT')==='e3-2026-09-29') {

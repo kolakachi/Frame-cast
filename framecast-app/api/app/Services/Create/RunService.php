@@ -3,7 +3,7 @@
 namespace App\Services\Create;
 
 use App\Services\Developer\OperationAccounting;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\{DB, Storage};
 use Illuminate\Support\Str;
 
 /** Leases fence callbacks, not external costs. Expiry always requires reconciliation. */
@@ -62,7 +62,7 @@ class RunService
                 && in_array((int) $run->workspace_id, config('create.workspaces', []), true), 409, 'Input lease is no longer current.');
             abort_unless(\App\Models\Workspace::whereKey($run->workspace_id)->where('status', 'active')->exists(), 403);
             $input = json_decode($run->input_json, true);
-            $file = collect($input['input_files'] ?? [])->first(fn ($f) => (int) $f['asset_id'] === $assetId);
+            $file = collect(array_merge($input['input_files'] ?? [], $input['derived_files'] ?? []))->first(fn ($f) => (int) $f['asset_id'] === $assetId);
             abort_unless($file, 404);
             abort_unless(\App\Models\Asset::where('workspace_id', $run->workspace_id)->whereKey($assetId)->where('status', '!=', 'archived')->exists(), 404);
             return $file;
@@ -70,6 +70,50 @@ class RunService
         // Hash the immutable copy outside the transaction, never fetch the mutable original here.
         app(InputSnapshotService::class)->verify([$file]);
         return $file;
+    }
+
+    public const DERIVED_OPS = ['trim', 'cut', 'remove_silence', 'clean_audio', 'loudness', 'stabilize', 'speed', 'crop', 'frame', 'grade'];
+    private const DERIVED_TYPES = ['video/mp4' => ['video', 'mp4'], 'audio/mpeg' => ['audio', 'mp3'], 'audio/x-wav' => ['audio', 'wav'], 'audio/wav' => ['audio', 'wav'], 'image/png' => ['image', 'png'], 'image/jpeg' => ['image', 'jpg']];
+
+    /**
+     * A file the sandbox made from a source file (stabilised, trimmed, cleaned).
+     * Stored like a private upload, listed in the library with where it came
+     * from, and recorded on the run so later versions and free edits inherit it.
+     */
+    public function derived(string $id, string $token, \Illuminate\Http\UploadedFile $file, int $fromAssetId, string $op, array $params): array
+    {
+        abort_unless(in_array($op, self::DERIVED_OPS, true), 422, 'Unknown media operation.');
+        abort_unless($file->isValid() && $file->getSize() > 0 && $file->getSize() <= (int) config('create.input_file_bytes'), 422, 'Derived file size is not allowed.');
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file->getRealPath());
+        $type = self::DERIVED_TYPES[$mime] ?? null;
+        abort_unless($type, 422, 'Derived file type is not allowed.');
+        $hash = hash_file('sha256', $file->getRealPath());
+        return DB::transaction(function () use ($id, $token, $file, $fromAssetId, $op, $params, $type, $mime, $hash) {
+            $run = $this->leased($id, $token);
+            abort_unless($run->status === 'running' && now()->lessThan($run->lease_expires_at), 409, 'Stale worker result.');
+            $input = json_decode($run->input_json, true);
+            $derived = $input['derived_files'] ?? [];
+            if ($same = collect($derived)->firstWhere('sha256', $hash)) return $same;
+            abort_if(count($derived) >= 20, 422, 'Too many derived files in one run.');
+            $sources = collect(array_merge($input['input_files'] ?? [], $derived))->where('purpose', 'source');
+            $parent = $sources->first(fn ($f) => (int) $f['asset_id'] === $fromAssetId);
+            abort_unless($parent, 422, 'Derived media must come from a source file of this run.');
+            $suffix = $run->workspace_id.'/'.Str::uuid().'/'.$hash.'.'.$type[1];
+            $path = 'create/uploads/'.$suffix;
+            abort_unless(Storage::disk('local')->putFileAs(dirname($path), $file, basename($path)), 503, 'Could not store derived media.');
+            $origin = \App\Models\Asset::whereKey($fromAssetId)->value('title') ?: 'media';
+            $asset = \App\Models\Asset::create(['workspace_id' => $run->workspace_id, 'asset_type' => $type[0],
+                'title' => mb_substr(ucfirst(str_replace('_', ' ', $op)).' · '.$origin, 0, 180), 'storage_url' => 'create-upload://'.$suffix,
+                'mime_type' => $mime, 'file_size_bytes' => $file->getSize(), 'status' => 'active', 'restriction_scope' => 'workspace',
+                'metadata_json' => ['derived_from_asset_id' => $fromAssetId, 'operation' => $op, 'params' => $params,
+                    'create_conversation_id' => $run->conversation_id, 'composition_run_id' => $run->id]]);
+            $record = ['asset_id' => (int) $asset->id, 'purpose' => 'source', 'name' => 'asset-'.$asset->id.'-'.$hash.'.'.$type[1],
+                'sha256' => $hash, 'bytes' => (int) $file->getSize(), 'mime_type' => $mime, 'asset_type' => $type[0],
+                'storage_path' => $path, 'duration_seconds' => null, 'transcript' => '', 'derived_from_asset_id' => $fromAssetId, 'operation' => $op];
+            $input['derived_files'] = [...$derived, $record];
+            DB::table('composition_runs')->where('id', $id)->update(['input_json' => json_encode($input), 'updated_at' => now()]);
+            return $record;
+        });
     }
 
     public function heartbeat(string $id, string $token, int $sequence, string $stage): array

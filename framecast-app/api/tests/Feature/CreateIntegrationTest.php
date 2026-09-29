@@ -221,6 +221,39 @@ class CreateIntegrationTest extends TestCase
         $this->assertFalse($this->conversations->autoRunEligible($this->owner, $this->conversations->conversation($this->owner, $c->id), $paid), 'daily auto-run ceiling');
     }
 
+    public function test_derived_media_is_stored_with_provenance_and_inherited_by_later_runs(): void
+    {
+        $c = $this->brief(); $source = $this->imageAttachment($c, 'source');
+        $q = $this->conversations->quote($this->owner, $c->id, 2);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'derive-1');
+        $lease = $this->runs->claim()['lease_token'];
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6zd8AAAAASUVORK5CYII=');
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('derived-1-grade.png', $png);
+
+        $this->rejected(422, fn () => $this->runs->derived($run->id, $lease, $file, $source->id, 'rm_rf', []));
+        $this->rejected(422, fn () => $this->runs->derived($run->id, $lease, $file, $source->id + 999, 'grade', []), );
+        $this->rejected(403, fn () => $this->runs->derived($run->id, str_repeat('x', 64), $file, $source->id, 'grade', []));
+        $bad = \Illuminate\Http\UploadedFile::fake()->createWithContent('x.png', '<?php echo 1;');
+        $this->rejected(422, fn () => $this->runs->derived($run->id, $lease, $bad, $source->id, 'grade', []));
+
+        $record = $this->runs->derived($run->id, $lease, $file, $source->id, 'grade', ['look' => 'warm']);
+        $this->assertSame('source', $record['purpose']);
+        $this->assertMatchesRegularExpression('/^asset-\d+-[a-f0-9]{64}\.png$/', $record['name']);
+        $this->assertSame($record, $this->runs->derived($run->id, $lease, $file, $source->id, 'grade', ['look' => 'warm']), 'same bytes replay');
+        $asset = Asset::find($record['asset_id']);
+        $this->assertSame((int) $this->workspace->id, (int) $asset->workspace_id);
+        $this->assertStringStartsWith('create-upload://', $asset->storage_url);
+        $this->assertSame(['derived_from_asset_id' => $source->id, 'operation' => 'grade', 'params' => ['look' => 'warm']],
+            array_intersect_key($asset->metadata_json, array_flip(['derived_from_asset_id', 'operation', 'params'])));
+        $this->assertSame($record['sha256'], $this->runs->inputFile($run->id, $lease, $record['asset_id'])['sha256'], 'the worker can re-download it');
+
+        // Finish; the next run inherits the derived file alongside the original source.
+        $this->runs->finish($run->id, $lease, ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<img src="'.$record['name'].'">']], 'private/v1.mp4', 'h');
+        $head = $this->conversations->conversation($this->owner, $c->id)->head_revision_id;
+        $inherited = app(\App\Services\Create\InputSnapshotService::class)->inherited($c->id, $head);
+        $this->assertEqualsCanonicalizing([$source->id, $record['asset_id']], array_column($inherited, 'asset_id'));
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

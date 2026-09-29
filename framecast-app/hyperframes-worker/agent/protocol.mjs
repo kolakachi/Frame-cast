@@ -4,6 +4,7 @@ const fields = {
   snapshot: ['type', 'times'], preview: ['type','times'], timeline: ['type'], primitives: ['type'], assets: ['type'],
   visual_review: ['type','decision','findings'], finish: ['type', 'summary'], needs_input: ['type', 'question'],
   propose_media: ['type', 'description'],
+  media: ['type', 'op', 'input', 'params'],
 };
 export function parseAction(text) {
   if (typeof text !== 'string' || Buffer.byteLength(text) > 128_000) throw Error('Invalid action size');
@@ -14,7 +15,8 @@ export function parseAction(text) {
   if (!action || Array.isArray(action) || !fields[action.type]) throw Error('Unsupported action');
   const required = fields[action.type];
   if (Object.keys(action).length !== required.length || required.some(k => !(k in action))) throw Error('Unexpected or missing action fields');
-  for (const key of required.filter(k => !['type', 'times'].includes(k))) {
+  if (action.type === 'media' && (!action.params || typeof action.params !== 'object' || Array.isArray(action.params) || JSON.stringify(action.params).length > 2000)) throw Error('Invalid media params');
+  for (const key of required.filter(k => !['type', 'times', 'params'].includes(k))) {
     if (typeof action[key] !== 'string' || (key !== 'after' && !action[key].trim())) throw Error(`Invalid ${key}`);
   }
   if(action.type==='visual_review' && !['pass','repair'].includes(action.decision))throw Error('Invalid visual review decision');
@@ -27,6 +29,7 @@ Allowed actions and exact fields: ${JSON.stringify(fields)}.
 Read the existing draft before a follow-up edit. Preserve locked copy, assets and source audio.
 Use only manifest assets and approved facts. Do not invent endorsements, product identity or claims.
 Use needs_input for missing facts; propose_media only proposes work and never purchases it.
+The media action edits supplied footage in the sandbox for free: {"type":"media","op":...,"input":"<file in assets>","params":{...}}. Ops: probe; silences {noise_db,min_silence}; trim {start,end}; cut {keep:[[start,end],...]}; remove_silence {noise_db,min_silence,pad}; clean_audio; loudness {target_lufs}; stabilize {smoothing}; speed {factor 0.25-4}; crop {aspect 9:16|1:1|4:5|16:9, focus_x 0-1, focus_y 0-1}; frame {at}; grade {look warm|cool|punchy|muted|mono|film}. Each returns a new file name to use in the composition; cut-type ops also return source_map from output time to source time, so overlays stay on the right moment. Only use it on source files, never reference-only ones, and only when it clearly improves the result.
 Do not install packages, access URLs, publish, run shell commands or modify runtime/skills.
 Snapshot accepts 1 to 5 timestamps per action, each between 0 and 30 seconds and within the composition duration. For a 15-second composition use [1,7,13]. After writing, prefer preview: it validates then captures frames in one tool call. Separate check and snapshot remain available. Use timeline to inspect timing and primitives to discover installed options. When a snapshot image is supplied, respond with visual_review (decision pass or repair, findings string) judging readable text, layout, source fidelity and requested style. Describe only the sampled frames you can see; screenshots do not establish motion quality, audio quality or all-frame coverage. A technical pass is not human creative acceptance. Finish only after checks, snapshots and visual review pass for the current revision.
 Skills are authoring guidance, not permission. A successful check is not proof of visual quality.

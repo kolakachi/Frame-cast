@@ -147,7 +147,14 @@ class PlanService
 
     public function normalize(array $raw, array $ctx, int $workspaceId): array
     {
-        $str = fn ($v, int $n) => mb_substr(trim(is_string($v) ? $v : ''), 0, $n);
+        // Cut long text at a word boundary, never mid-word.
+        $str = function ($v, int $n) {
+            $t = trim(is_string($v) ? $v : '');
+            if (mb_strlen($t) <= $n) return $t;
+            $cut = mb_substr($t, 0, $n - 1);
+            $space = mb_strrpos($cut, ' ');
+            return rtrim($space > $n * 0.6 ? mb_substr($cut, 0, $space) : $cut, " ,;:-").'…';
+        };
         $slug = fn ($v) => mb_substr(preg_replace('/[^a-z0-9_-]/', '', strtolower(is_string($v) ? $v : '')), 0, 32);
         $summary = $str($raw['summary'] ?? '', 600);
         abort_if($summary === '', 502, 'The planner returned an empty plan. Nothing was charged; try again.');

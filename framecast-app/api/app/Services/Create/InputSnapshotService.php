@@ -23,7 +23,9 @@ class InputSnapshotService
             $revision = DB::table('composition_revisions')->where('conversation_id', $conversationId)->where('id', $revisionId)->firstOrFail();
             if ($revision->run_id) {
                 $run = DB::table('composition_runs')->where('conversation_id', $conversationId)->where('id', $revision->run_id)->firstOrFail();
-                return json_decode($run->input_json, true)['input_files'] ?? [];
+                // Files the sandbox derived during that run are sources for the next one.
+                $input = json_decode($run->input_json, true);
+                return array_values(array_merge($input['input_files'] ?? [], $input['derived_files'] ?? []));
             }
             $revisionId = $revision->restored_from_id;
         }

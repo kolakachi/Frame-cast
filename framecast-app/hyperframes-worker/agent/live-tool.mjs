@@ -3,7 +3,18 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {inspectionReport} from './inspection-report.mjs';
 import {renderRun} from '../scripts/lib/render-run.mjs';
 const [id,operation,times='1,6,12']=process.argv.slice(2);
-if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline'].includes(operation))throw Error('Invalid local job');
+if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media'].includes(operation))throw Error('Invalid local job');
+if(operation==='media'){
+ // Operates on the run's own project folder; the request was written by the host.
+ const {mediaOp,nextNameFactory}=await import('./media-tool.mjs');
+ const dir='/output/live/'+id,project=dir+'/project';
+ await mkdir(dir+'/media',{recursive:true});
+ let result;
+ try{result=await mediaOp({projectDir:project,request:JSON.parse(await readFile(dir+'/media-request.json','utf8')),nextName:await nextNameFactory(project)});}
+ catch(e){result={ok:false,error:String(e.message).slice(0,600)};}
+ await writeFile(dir+'/media/result.json',JSON.stringify(result,null,2));
+ process.exit(0);
+}
 const source='/output/live/'+id,root='/tmp/live-project',out=source+'/'+operation;
 await mkdir(root,{recursive:true});await mkdir(out,{recursive:true});await mkdir(process.env.HOME,{recursive:true});
 for(const file of await readdir(source+'/project')){
