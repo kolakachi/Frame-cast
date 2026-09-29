@@ -1,3 +1,4 @@
+import {uploadProviderImage} from './provider-files.mjs';
 import {setTimeout as sleep} from 'node:timers/promises';
 const origin='https://api.replicate.com/v1';
 export class ReplicateProvider {
@@ -5,6 +6,12 @@ export class ReplicateProvider {
     if(!enabled || !token)throw Error('Live provider requires explicit enablement and a test credential');
     if(!/^anthropic\/[a-z0-9.-]+$/.test(contract.model)||!Number.isFinite(maxCallUsd)||maxCallUsd<=0)throw Error('Invalid model or conservative per-call reservation');
     this.contract=contract;this.token=token;this.fetch=fetchImpl;this.maxCallUsd=maxCallUsd;this.pollMs=pollMs;this.id=contract.model+':'+contract.observedVersion;
+  }
+  async prepareImage(image,signal) {
+    if(!image || !image.startsWith('data:'))return image;
+    const match=image.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+    if(!match)throw Error('Invalid image input');
+    return uploadProviderImage({bytes:Buffer.from(match[2],'base64'),type:match[1],token:this.token,signal,fetchImpl:this.fetch});
   }
   async request(route,method,body,signal) {
     const response=await this.fetch(origin+route,{method,redirect:'error',headers:{Authorization:`Bearer ${this.token}`,'Content-Type':'application/json','Cancel-After':'120s'},body:body?JSON.stringify(body):undefined,signal});

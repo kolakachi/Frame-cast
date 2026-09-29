@@ -1,7 +1,10 @@
-// Local app bridge. Fixed fixture only until paid settlement and model acceptance pass.
-// No model credential is read, no shell text is executed, and no Docker socket enters the sandbox.
+// Local app bridge. Paid calls require both app and host opt-in plus durable limits.
+// Credentials stay on the host; no shell text or Docker socket enters the sandbox.
 import {readFile,writeFile,mkdir,copyFile,access} from 'node:fs/promises';
 import path from 'node:path';
+import {PilotBudget} from './pilot-budget.mjs';
+import {ReplicateProvider} from './replicate.mjs';
+import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
 import {executeCompositionAgent,offlineContractProvider} from './composition-agent.mjs';
 import {accountedCall} from './accounted-call.mjs';
@@ -21,13 +24,13 @@ async function request(endpoint,body,form=false){
  const response=await fetch(new URL('/api/internal/create/'+endpoint,base),{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/json',...(!form?{'Content-Type':'application/json'}:{})},body:form?body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
  if(!response.ok)throw Error('Coordinator returned HTTP '+response.status);return (await response.json()).data;
 }
-async function finish(run,result,artifact){
+async function finish(run,result,artifact,type='video/mp4'){
  const form=new FormData();form.set('lease_token',run.lease_token);form.set('result',JSON.stringify(result));
- if(artifact)form.set('artifact',new Blob([await readFile(artifact)],{type:'video/mp4'}),'preview.mp4');
+ if(artifact)form.set('artifact',new Blob([await readFile(artifact)],{type}),type==='video/mp4'?'preview.mp4':artifact.split('/').at(-1));
  return request('runs/'+run.id+'/finish',form,true);
 }
 async function execute(run){
- if(!/^[a-f0-9-]{36}$/.test(run.id)||run.input.mode!=='fixture')throw Error('Unsupported run contract');
+ if(!/^[a-f0-9-]{36}$/.test(run.id)||!['fixture','agent'].includes(run.input.mode))throw Error('Unsupported run contract');
  const id='app-'+run.id,dir=root+'/artifacts/live/'+id,container='wyv-create-'+run.id;
  await mkdir(dir,{recursive:true});
  // A prior process may have spent/rendered. Never replay an interrupted run.
@@ -35,6 +38,7 @@ async function execute(run){
  await writeFile(dir+'/started.json',JSON.stringify({runId:run.id,startedAt:new Date().toISOString()}),{flag:'wx',mode:0o600});
  await mkdir(dir+'/project');
  for(const name of ['index.html','product.svg'])await copyFile(root+'/fixtures/'+name,dir+'/project/'+name);
+ await writeFile(dir+'/output-settings.json',JSON.stringify(run.input.mode==='fixture'?{aspect_ratio:'9:16',duration_seconds:15}:run.input.settings),{flag:'wx'});
  let seq=0,cancelled=false,lost=false,heartbeatBusy=false,stage='Preparing the local sample';
  const aborter=new AbortController();
  async function beat(){
@@ -51,18 +55,44 @@ async function execute(run){
   const manifest=await stageInputs({directory:dir+'/inputs',files:run.input.input_files??[],baseBundle:run.input.base_bundle,
    download:(assetId)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal:AbortSignal.timeout(60000)})});
   if(lost||cancelled||stopping)throw Error('Stopped while preparing inputs');
+  const paid=run.input.mode==='agent';
+  let providerToken;
+  if(paid){
+   if(process.env.CREATE_AGENT_LIVE!=='1')throw Error('Live local host is not enabled');
+   const env=await readFile(root+'/../api/.env','utf8');
+   providerToken=env.split('\n').find(l=>l.startsWith('REPLICATE_API_TOKEN='))?.split('=').slice(1).join('=').trim().replace(/^['"]|['"]$/g,'');
+   if(!providerToken)throw Error('Missing local provider credential');
+  }
+  const pilotBudget=new PilotBudget(root+'/artifacts/live/e3-2026-09-29-budget.json');
+  const begin=payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});
+  let reservation=null;
+  const settle=async(attemptId,result)=>{const confirmed=await request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token});if(reservation && confirmed.status==='succeeded'){await pilotBudget.settle(reservation,confirmed);reservation=null;}return confirmed;};
+  const bindPrediction=(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId});
+  if(paid&&run.input.execution_policy?.media){
+   stage=run.input.settings.output_kind==='image'?'Creating your image':'Animating your image';
+   const image=await executeImage({directory:dir,input:run.input,manifest,token:providerToken,begin,settle,bindPrediction,signal:aborter.signal,fetchImpl:async(url,options)=>{if(options?.method==='POST' && String(url).endsWith('/predictions'))reservation=await pilotBudget.reserve(run.input.execution_policy.media.model,run.input.execution_policy.media.cost_limit_microusd/1e6);return fetch(url,options);}});
+   if(image.type==='video/mp4'){await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/prepare-animation.mjs',id],{timeout:120000,maxBuffer:1000000});image.artifact=dir+'/animation-silent.mp4';}
+   await beat();if(cancelled||lost||stopping)throw Error('Stopped before delivering image');
+   await finish(run,{status:'preview_ready',summary:image.summary,bundle:image.bundle},image.artifact,image.type);
+   return;
+  }
+  const provider=paid?new ReplicateProvider({contract:JSON.parse(await readFile(root+'/agent/contracts/sonnet.json','utf8')),token:providerToken,enabled:true,maxCallUsd:.3}):offlineContractProvider(run.input.base_bundle);
+  if(paid){const complete=provider.complete.bind(provider);provider.complete=async args=>{reservation=await pilotBudget.reserve('anthropic/claude-4.5-sonnet',.3);return complete(args);};}
   let agentResult;
   if(run.input.execution_policy?.agent){
-   stage='Running the offline agent contract check';
+   stage=paid?'Designing your video':'Running the offline agent contract check';
    agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,
-    provider:offlineContractProvider(run.input.base_bundle),guidanceDirectory:root+'/agent/guidance',signal:aborter.signal,
+    provider,guidanceDirectory:root+'/agent/guidance',signal:aborter.signal,
     bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),
     begin:payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token}),
-    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),receipt:()=>({status:'succeeded',cost_microusd:0}),
-    invoke:async(operation,{times=[],signal}={})=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:180000,maxBuffer:2000000});return JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));}});
+    settle,receipt:output=>paid?({status:'succeeded',prediction_id:output.predictionId}):({status:'succeeded',cost_microusd:0}),
+    invoke:async(operation,{times=[],signal}={})=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:180000,maxBuffer:2000000});const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));if(paid&&operation==='snapshot'&&result.ok)result.providerImage='data:image/jpeg;base64,'+(await readFile(dir+'/snapshot/contact-sheet.jpg')).toString('base64');return result;}});
+   if(['needs_input','awaiting_media_approval'].includes(agentResult.state.status)){
+    await finish(run,{status:'needs_input',summary:(agentResult.state.question??agentResult.state.proposal??'Please clarify your brief.').slice(0,2000)});return;
+   }
    if(agentResult.state.status!=='preview_ready')throw Object.assign(Error(agentResult.state.reason??'Agent needs input before rendering'),{code:agentResult.state.status==='needs_attention'?'ATTEMPT_NEEDS_ATTENTION':'AGENT_STOPPED'});
   }
-  stage='Rendering the local sample';
+  stage=paid?'Rendering your video':'Rendering the local sample';
   await accountedCall({key:'render-1',kind:'render',input:{runId:run.id,mode:run.input.mode},
    begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
@@ -75,7 +105,7 @@ async function execute(run){
   if(cancelled||stopping){await finish(run,{status:'cancelled',summary:'Local render stopped'});return;}
   const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
   if(report.status!=='ready')throw Error('Render did not produce a verified output');
-  const result={status:'preview_ready',summary:'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
+  const result={status:'preview_ready',summary:paid?agentResult.state.summary:'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
   // Persist completion before sending: a callback failure must not trigger rendering again.
   await writeFile(dir+'/completion.json',JSON.stringify({result,report}),{mode:0o600});
   if(!report.directory.startsWith('/output/live/'+id+'/render/') || report.artifact !== 'video.mp4')throw Error('Invalid artifact path');

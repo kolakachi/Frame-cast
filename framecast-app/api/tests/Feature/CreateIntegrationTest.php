@@ -31,6 +31,8 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_09_29_000000_create_composition_attempts.php'))->up();
         (require database_path('migrations/2026_09_29_120000_link_composition_outputs.php'))->up();
         (require database_path('migrations/2026_09_29_130000_create_composition_reconciliations.php'))->up();
+        (require database_path('migrations/2026_09_29_180000_add_create_output_metadata.php'))->up();
+        (require database_path('migrations/2026_09_29_190000_create_composition_deliveries.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -547,7 +549,7 @@ class CreateIntegrationTest extends TestCase
         DB::table('composition_runs')->where('id', $run->id)->update(['input_json' => json_encode($input)]);
         DB::table('api_operations')->where('id', $run->operation_id)->update(['authorized_credits' => 10, 'reserved_credits' => 10]);
         $this->rejected(503, fn () => $service->begin($run->id, $claim['lease_token'], 'call-1', 'agent', str_repeat('a', 64)));
-        config(['create.paid_execution_enabled' => true]);
+        config(['create.paid_execution_enabled' => true,'create.pilot_budget_id'=>'test-pilot','create.pilot_budget_microusd'=>5000000]);
         $attempt = $service->begin($run->id, $claim['lease_token'], 'call-1', 'agent', str_repeat('a', 64));
         $this->rejected(409, fn () => $service->begin($run->id, $claim['lease_token'], 'call-2', 'agent', str_repeat('b', 64)));
         $receipt = ['status' => 'succeeded', 'prediction_id' => 'synthetic-id', 'cost_microusd' => 12000];
@@ -570,7 +572,7 @@ class CreateIntegrationTest extends TestCase
         $input['execution_policy']['agent']=['provider'=>'replicate','model'=>'anthropic/test','credits'=>7,'cost_limit_microusd'=>50000,'max_calls'=>2];
         DB::table('composition_runs')->where('id',$run->id)->update(['input_json'=>json_encode($input)]);
         DB::table('api_operations')->where('id',$run->operation_id)->update(['authorized_credits'=>10,'reserved_credits'=>10]);
-        config(['create.paid_execution_enabled'=>true,'services.replicate.api_token'=>'fake-offline-test']);
+        config(['create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>'test-pilot','create.pilot_budget_microusd'=>5000000,'services.replicate.api_token'=>'fake-offline-test']);
         $requestHash=hash('sha256',json_encode(['prompt'=>'Test prompt','system'=>'Test system','maxTokens'=>1024,'image'=>null]));
         $a=$attempts->begin($run->id,$claim['lease_token'],'agent-1','agent',$requestHash);
         $attempts->bindPrediction($run->id,$claim['lease_token'],$a['id'],'prediction-test');
@@ -606,6 +608,117 @@ class CreateIntegrationTest extends TestCase
         $service->settle($run->id, $claim['lease_token'], $attempt['id'], ['status' => 'failed', 'cost_microusd' => 0]);
         $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'cancelled', 'summary' => 'Stopped'], null, null);
         $this->assertSame('cancelled', DB::table('api_operations')->value('status'));
+    }
+
+    private function pilot(): void {
+        config(['create.mode'=>'agent','create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>'e3-test','create.pilot_budget_microusd'=>5000000]);
+        $this->workspace->update(['credits_monthly'=>10000]);
+    }
+    public function test_pilot_requires_media_consent_and_a_durable_budget(): void {
+        $this->pilot();$c=$this->brief();$q=$this->conversations->quote($this->owner,$c->id,1);
+        $this->assertSame(600,$q->credits_max);
+        $this->rejected(422,fn()=>$this->conversations->approve($this->owner,$c->id,$q->id,'without-consent'));
+        config(['create.pilot_budget_microusd'=>2000000]);
+        $this->rejected(402,fn()=>$this->conversations->approve($this->owner,$c->id,$q->id,'too-much',true));
+        $this->assertSame(0,DB::table('composition_runs')->count());
+        config(['create.pilot_budget_microusd'=>5000000]);
+        $run=$this->conversations->approve($this->owner,$c->id,$q->id,'approved',true);
+        $this->assertSame($run->id,$this->conversations->approve($this->owner,$c->id,$q->id,'approved',true)->id);
+        $this->assertSame(600,(int)DB::table('api_operations')->value('reserved_credits'));
+        // Started work remains budgeted across a process/config reload.
+        config(['create.pilot_budget_microusd'=>4700000]);
+        $this->rejected(402,fn()=>\App\Services\Create\PilotPolicy::admit($q->payload_json['execution_policy']));
+    }
+    public function test_pilot_metering_is_provider_verified_and_charged_once(): void {
+        $this->pilot();$c=$this->brief();$q=$this->conversations->quote($this->owner,$c->id,1);
+        $run=$this->conversations->approve($this->owner,$c->id,$q->id,'approve',true);$claim=$this->runs->claim();
+        $input=['prompt'=>'draw','system'=>'instructions','maxTokens'=>4096,'image'=>null];
+        $attempts=app(\App\Services\Create\AttemptService::class);
+        $a=$attempts->begin($run->id,$claim['lease_token'],'agent-1','agent',hash('sha256',json_encode($input)));
+        $attempts->bindPrediction($run->id,$claim['lease_token'],$a['id'],'prediction-test');
+        $receipt=['id'=>'prediction-test','model'=>'anthropic/claude-4.5-sonnet','status'=>'succeeded','input'=>['prompt'=>'draw','system_prompt'=>'instructions','max_tokens'=>4096], 'metrics'=>['token_input_count'=>1000,'token_output_count'=>100]];
+        Http::fake(['api.replicate.com/*'=>Http::response($receipt)]);
+        $verifier=app(\App\Services\Create\ProviderReceiptVerifier::class);
+        $verified=$verifier->metered(DB::table('composition_attempts')->first());
+        $this->assertSame(4500,$verified->costMicrousd);
+        $result=$attempts->settle($run->id,$claim['lease_token'],$a['id'],$verified->result(),$verified);
+        $this->assertSame(2,$result['charged_credits']);
+        $this->assertTrue($attempts->settle($run->id,$claim['lease_token'],$a['id'],$verified->result(),$verified)['replayed']);
+        $this->assertSame(1,DB::table('credit_ledger')->count());
+        $receipt['input']['prompt']='different';Http::swap(new \Illuminate\Http\Client\Factory);Http::fake(['api.replicate.com/*'=>Http::response($receipt)]);
+        $this->rejected(409,fn()=>$verifier->metered(DB::table('composition_attempts')->first()));
+    }
+    public function test_image_quote_uses_shared_pricing_and_rejects_inspiration_reuse(): void {
+        $this->pilot();$c=$this->conversations->create($this->owner,['output_kind'=>'image','aspect_ratio'=>'1:1']);
+        $this->conversations->message($this->owner,$c->id,['content'=>'Orange geometric shapes','expected_version'=>0,'idempotency_key'=>'brief']);
+        $q=$this->conversations->quote($this->owner,$c->id,1);
+        $this->assertSame(app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor('nano-banana'),$q->credits_max);
+        $this->assertSame('1:1',$q->payload_json['media_input']['aspect_ratio']);
+        $this->assertArrayNotHasKey('agent',$q->payload_json['execution_policy']);
+        $this->assertSame(100000,\App\Services\Create\PilotPolicy::ceiling($q->payload_json['execution_policy']));
+    }
+    public function test_settings_invalidate_quotes_and_require_caption_text(): void {
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $this->pilot();$c=$this->brief();$q=$this->conversations->quote($this->owner,$c->id,1);
+        $this->actingAs($this->owner)->patchJson('/api/v1/create/conversations/'.$c->id,['expected_version'=>1,'settings'=>['captions'=>'provided']])->assertStatus(422);
+        $this->actingAs($this->owner)->patchJson('/api/v1/create/conversations/'.$c->id,['expected_version'=>1,'settings'=>['aspect_ratio'=>'1:1','duration_seconds'=>10]])->assertOk();
+        $this->rejected(409,fn()=>$this->conversations->approve($this->owner,$c->id,$q->id,'stale',true));
+        $fresh=$this->conversations->quote($this->owner,$c->id,2);
+        $this->assertSame(10,$fresh->payload_json['settings']['duration_seconds']);
+    }
+
+    public function test_variation_admission_is_atomic_and_replay_safe(): void {
+        $this->pilot();
+        $c=$this->conversations->create($this->owner,['output_kind'=>'image']);
+        $this->conversations->message($this->owner,$c->id,['content'=>'Orange geometry','expected_version'=>0,'idempotency_key'=>'brief']);
+        $v=app(\App\Services\Create\VariantService::class);
+        $q=$v->quote($this->owner,$c->id,1,3);$this->assertSame(30,$q->credits_max);
+        config(['create.pilot_budget_microusd'=>250000]);
+        $this->rejected(402,fn()=>$v->approve($this->owner,$c->id,$q->id,'variants',true));
+        $this->assertSame(0,DB::table('composition_runs')->count());
+        $this->assertSame(0,DB::table('api_operations')->count());
+        config(['create.pilot_budget_microusd'=>5000000]);
+        $run=$v->approve($this->owner,$c->id,$q->id,'variants',true);
+        $this->assertSame($run->id,$v->approve($this->owner,$c->id,$q->id,'variants',true)->id);
+        $this->assertSame(3,DB::table('composition_runs')->count());
+        $this->assertSame(3,DB::table('api_operations')->count());
+        $this->rejected(409,fn()=>$v->retryQuote($this->owner,$c->id,$run->id,1));
+        $claim=$this->runs->claim();$this->runs->finish($claim['id'],$claim['lease_token'],['status'=>'failed','summary'=>'Confirmed pre-provider failure'],null,null);
+        $retry=$v->retryQuote($this->owner,$c->id,$claim['id'],1);
+        $this->assertSame($claim['id'],$retry->payload_json['retry_of']);
+        $v->approve($this->owner,$c->id,$retry->id,'retry',true);
+        $this->rejected(409,fn()=>$v->retryQuote($this->owner,$c->id,$claim['id'],1));
+        $this->assertSame(4,DB::table('composition_runs')->count());
+    }
+
+    public function test_delivery_pins_revision_requires_consent_and_warns_on_unsatisfied_changes(): void {
+        [$c,$revision,$output]=$this->registeredOutput();$service=app(\App\Services\Create\DeliveryService::class);
+        $input=['action'=>'share','expected_version'=>2,'confirmed'=>false];
+        $this->rejected(422,fn()=>$service->deliver($this->owner,$c->id,$revision,$input));
+        $input['confirmed']=true;$shared=$service->deliver($this->owner,$c->id,$revision,$input);
+        $token=basename($shared['url']);$url='/api/v1/public/creations/'.$token;
+        $this->getJson($url)->assertOk()->assertJsonPath('data.version',1);
+        $this->conversations->message($this->owner,$c->id,['content'=>'Change heading','expected_version'=>2,'idempotency_key'=>'edit']);$input['expected_version']=3;
+        $this->rejected(409,fn()=>$service->deliver($this->owner,$c->id,$revision,$input));
+        $input['allow_older']=true;$this->assertSame($shared['url'],$service->deliver($this->owner,$c->id,$revision,$input)['url']);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.version',1);
+        $this->owner->role='viewer';$this->rejected(403,fn()=>$service->deliver($this->owner,$c->id,$revision,$input));$this->owner->role='owner';
+        $input['action']='unshare';$service->deliver($this->owner,$c->id,$revision,$input);$this->getJson($url)->assertNotFound();
+        $this->workspace->update(['status'=>'suspended']);$this->getJson($url)->assertNotFound();
+    }
+
+    public function test_clarification_releases_unused_hold_and_fixture_metadata_is_honest(): void {
+        [$c,,$run]=$this->admitted();$claim=$this->runs->claim();
+        $this->runs->finish($run->id,$claim['lease_token'],['status'=>'needs_input','summary'=>'Please supply the price.'],null,null);
+        $this->assertSame('needs_input',DB::table('composition_runs')->where('id',$run->id)->value('status'));
+        $this->assertFalse(DB::table('api_operations')->where('id',$run->operation_id)->where('status','running')->exists());
+        $c=$this->conversations->create($this->owner,['duration_seconds'=>30,'aspect_ratio'=>'1:1']);
+        $this->conversations->message($this->owner,$c->id,['content'=>'Test','expected_version'=>0,'idempotency_key'=>'brief']);
+        $q=$this->conversations->quote($this->owner,$c->id,1);$r=$this->conversations->approve($this->owner,$c->id,$q->id,'fixture');$claim=$this->runs->claim();
+        $this->runs->finish($r->id,$claim['lease_token'],['status'=>'preview_ready','summary'=>'Fixture','bundle'=>['index.html'=>'fixture']],'private/path','hash');
+        $m=json_decode(DB::table('composition_revisions')->where('conversation_id',$c->id)->value('metadata_json'),true);
+        $this->assertSame(15,$m['settings']['duration_seconds']);$this->assertSame('9:16',$m['settings']['aspect_ratio']);
+        $this->assertSame(30,$m['requested_settings']['duration_seconds']);
     }
 
 }

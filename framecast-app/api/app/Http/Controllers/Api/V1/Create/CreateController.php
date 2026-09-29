@@ -16,7 +16,7 @@ class CreateController extends Controller
     public function capabilities(Request $r)
     {
         $this->service->authorize($r->user());
-        return response()->json(['data' => ['enabled' => true, 'mode' => config('create.mode'), 'paid_generation' => false, 'image_generation' => false, 'publishing' => false,
+        return response()->json(['data' => ['enabled' => true, 'mode' => config('create.mode'), 'paid_generation' => \App\Services\Create\PilotPolicy::enabled(), 'image_generation' => \App\Services\Create\PilotPolicy::enabled(), 'publishing' => true,
             'uploads' => ['max_files'=>20,'max_file_bytes'=>config('create.input_file_bytes'),'max_total_bytes'=>config('create.input_total_bytes'),'mime_types'=>array_keys(AttachmentUploadService::TYPES)]]]);
     }
 
@@ -42,18 +42,16 @@ class CreateController extends Controller
 
     public function store(Request $r)
     {
-        $r->validate(['aspect_ratio' => 'sometimes|in:9:16,16:9,1:1,4:5', 'duration_seconds' => 'sometimes|integer|min:5|max:30', 'output_kind'=>'sometimes|in:video,image']);
-        return response()->json(['data' => $this->service->create($r->user(), [
-            'output_kind'=>$r->input('output_kind','video'), 'aspect_ratio' => $r->input('aspect_ratio', '9:16'), 'duration_seconds' => $r->integer('duration_seconds', 15),
-        ])], 201);
+        return response()->json(['data'=>$this->service->create($r->user(),$r->validate(\App\Services\Create\OutputSettings::rules()))],201);
     }
 
     public function show(Request $r, string $id)
     {
         $c = $this->service->conversation($r->user(), $id);
         $revisions = DB::table('composition_revisions')->where('conversation_id', $id)->orderBy('number')->get([
-            'id', 'number', 'output_asset_id', 'export_job_id', 'parent_revision_id', 'restored_from_id', 'run_id', 'summary', 'conflict', 'created_at', 'artifact_hash',
+            'share_enabled', 'metadata_json', 'id', 'number', 'output_asset_id', 'export_job_id', 'parent_revision_id', 'restored_from_id', 'run_id', 'summary', 'conflict', 'created_at', 'artifact_hash',
         ]);
+        $revisions->each(function($revision)use($c){$revision->has_newer_changes=\App\Services\Create\DeliveryService::stale($c,$revision);});
         // Storage keys, worker credentials and source HTML never enter the browser response.
         return response()->json(['data' => [
             'conversation' => $c,
@@ -73,11 +71,17 @@ class CreateController extends Controller
     public function update(Request $r, string $id)
     {
         $this->service->authorize($r->user(), true);
-        $input = $r->validate(['title' => 'sometimes|required|string|max:160', 'archived' => 'sometimes|boolean', 'expected_version' => 'required|integer|min:0']);
+        $input = $r->validate(['title' => 'sometimes|required|string|max:160', 'archived' => 'sometimes|boolean', 'settings'=>'sometimes|array', 'expected_version' => 'required|integer|min:0']);
         DB::transaction(function () use ($r, $id, $input) {
             $c = $this->service->conversation($r->user(), $id, true);
             abort_unless((int) $c->version === $input['expected_version'], 409);
             $changes = ['version' => $c->version + 1, 'updated_at' => now()];
+            if(isset($input['settings'])) {
+                abort_if($c->archived_at || DB::table('composition_runs')->where('conversation_id',$id)->whereIn('status',ConversationService::ACTIVE)->exists(),409,'Wait for the current creation before changing settings.');
+                $settings=\App\Services\Create\OutputSettings::normalize(array_merge(json_decode($c->settings_json,true),$input['settings']));
+                abort_unless($settings['output_kind']===(json_decode($c->settings_json,true)['output_kind']??'video'),422,'Start a new conversation for a different output type.');
+                $changes['settings_json']=json_encode($settings);
+            }
             if (isset($input['title'])) $changes['title'] = $input['title'];
             if (($input['archived']??false) && DB::table('composition_runs')->where('conversation_id',$id)->whereIn('status',ConversationService::ACTIVE)->exists()) abort(409,'Stop or reconcile the current run before archiving.');
             if (isset($input['archived'])) $changes['archived_at'] = $input['archived'] ? now() : null;
@@ -124,16 +128,18 @@ class CreateController extends Controller
 
     public function quote(Request $r, string $id)
     {
-        $input = $r->validate(['expected_version' => 'required|integer|min:0']);
-        $q = $this->service->quote($r->user(), $id, $input['expected_version']);
+        $input = $r->validate(['expected_version'=>'required|integer|min:0','variant_count'=>'sometimes|integer|min:1|max:3','retry_run_id'=>'sometimes|uuid']);
+        $variants=app(\App\Services\Create\VariantService::class);
+        $q=isset($input['retry_run_id']) ? $variants->retryQuote($r->user(),$id,$input['retry_run_id'],$input['expected_version']) : $variants->quote($r->user(),$id,$input['expected_version'],$input['variant_count']??1);
         return response()->json(['data' => ['id' => $q->id, 'credits_max' => $q->credits_max, 'expires_at' => $q->expires_at,
-            'description' => 'Local integration test: render the fixed 15-second sample. This does not generate from your prompt or use your attachments. No paid model calls.']]);
+            'variants'=>count($q->payload_json['variant_quotes']??[1]),'paid'=>$q->payload_json['mode']==='agent','settings'=>$q->payload_json['settings'],
+            'description' => $q->payload_json['mode']==='agent' ? 'Create from your brief using Replicate. Your brief and approved media may be sent to the provider. Only used calls are charged; unused reserved credits are released. The displayed amount is a maximum, not a flat charge.' : 'Local integration test: render the fixed 15-second sample. This does not generate from your prompt or use your attachments. No paid model calls.']]);
     }
 
     public function approve(Request $r, string $id)
     {
-        $input = $r->validate(['quote_id' => 'required|string|max:32', 'idempotency_key' => 'required|string|max:128', 'approved' => 'required|accepted']);
-        $run = $this->service->approve($r->user(), $id, $input['quote_id'], $input['idempotency_key']);
+        $input = $r->validate(['quote_id' => 'required|string|max:32', 'idempotency_key' => 'required|string|max:128', 'approved' => 'required|accepted', 'provider_approved'=>'sometimes|boolean']);
+        $run = app(\App\Services\Create\VariantService::class)->approve($r->user(), $id, $input['quote_id'], $input['idempotency_key'], $r->boolean('provider_approved'));
         return response()->json(['data' => ['id' => $run->id, 'status' => $run->status]], 202);
     }
 
@@ -164,6 +170,6 @@ class CreateController extends Controller
         $this->service->conversation($r->user(), $id);
         $revision = DB::table('composition_revisions')->where('conversation_id', $id)->where('id', $revisionId)->firstOrFail();
         abort_unless($revision->artifact_path && Storage::disk('local')->exists($revision->artifact_path), 404);
-        return response()->file(Storage::disk('local')->path($revision->artifact_path), ['Content-Type' => 'video/mp4', 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
+        return response()->file(Storage::disk('local')->path($revision->artifact_path), ['Content-Type' => match(pathinfo($revision->artifact_path,PATHINFO_EXTENSION)) {'png'=>'image/png','jpg'=>'image/jpeg','webp'=>'image/webp',default=>'video/mp4'}, 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
     }
 }

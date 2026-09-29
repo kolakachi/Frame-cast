@@ -242,7 +242,7 @@ class ReplicateI2VAdapter implements I2VAdapter
      *
      * @return array{0:string,1:?string,2:array<string,mixed>} [modelSlug, version, input]
      */
-    private function buildRequestForTier(
+    public function buildRequestForTier(
         string $tier,
         string $imageUrl,
         string $prompt,

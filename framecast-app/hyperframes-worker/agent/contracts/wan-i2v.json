@@ -1,0 +1,77 @@
+{
+  "model": "wan-video/wan-2.5-i2v",
+  "observedVersion": "1b29bbbbfdbc25bba2294de3acd2b58b82e5b623f183880cdb37d76133d80f00",
+  "checkedAt": "2026-09-29",
+  "input": {
+    "type": "object",
+    "title": "Input",
+    "required": [
+      "image",
+      "prompt"
+    ],
+    "properties": {
+      "seed": {
+        "type": "integer",
+        "title": "Seed",
+        "x-order": 7,
+        "nullable": true,
+        "description": "Random seed for reproducible generation"
+      },
+      "audio": {
+        "type": "string",
+        "title": "Audio",
+        "format": "uri",
+        "x-order": 3,
+        "nullable": true,
+        "description": "Audio file (wav/mp3, 3-30s, \u226415MB) for voice/music synchronization"
+      },
+      "image": {
+        "type": "string",
+        "title": "Image",
+        "format": "uri",
+        "x-order": 0,
+        "description": "Input image for video generation"
+      },
+      "prompt": {
+        "type": "string",
+        "title": "Prompt",
+        "x-order": 1,
+        "description": "Text prompt for video generation"
+      },
+      "duration": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/duration"
+          }
+        ],
+        "default": 5,
+        "x-order": 5,
+        "description": "Duration of the generated video in seconds"
+      },
+      "resolution": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/resolution"
+          }
+        ],
+        "default": "720p",
+        "x-order": 4,
+        "description": "Video resolution"
+      },
+      "negative_prompt": {
+        "type": "string",
+        "title": "Negative Prompt",
+        "default": "",
+        "x-order": 2,
+        "description": "Negative prompt to avoid certain elements"
+      },
+      "enable_prompt_expansion": {
+        "type": "boolean",
+        "title": "Enable Prompt Expansion",
+        "default": true,
+        "x-order": 6,
+        "description": "If set to true, the prompt optimizer will be enabled"
+      }
+    }
+  }
+}

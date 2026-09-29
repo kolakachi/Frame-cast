@@ -31,10 +31,14 @@ class ConversationService
     public function create(User $user, array $settings): object
     {
         $this->authorize($user, true);
+        if(isset($settings['origin_revision_id'])) {
+            $origin=$this->conversation($user,$settings['origin_conversation_id']??'');
+            abort_unless(DB::table('composition_revisions')->where('conversation_id',$origin->id)->where('id',$settings['origin_revision_id'])->exists(),404);
+        }
         $id = (string) Str::uuid();
         DB::table('create_conversations')->insert([
             'id' => $id, 'workspace_id' => $user->workspace_id, 'created_by_user_id' => $user->id,
-            'title' => 'New creation', 'settings_json' => json_encode($settings), 'created_at' => now(), 'updated_at' => now(),
+            'title' => 'New creation', 'settings_json' => json_encode(OutputSettings::normalize($settings)), 'created_at' => now(), 'updated_at' => now(),
         ]);
         return $this->conversation($user, $id);
     }
@@ -86,14 +90,26 @@ class ConversationService
     {
         $this->authorize($user, true);
         // Never present a fixture as AI output or silently enable an unpriced provider.
-        abort_unless(config('create.mode') === 'fixture', 503, 'Paid generation is awaiting accounting and model acceptance.');
+        abort_unless(config('create.mode') === 'fixture' || (config('create.mode') === 'agent' && PilotPolicy::enabled()), 503, 'Paid local generation is not enabled.');
         $c = $this->conversation($user, $id);
-        abort_if((json_decode($c->settings_json,true)['output_kind']??'video') === 'image',422,'Image generation is not enabled in this local preview. Your image brief is saved.');
+        abort_if(config('create.mode') === 'fixture' && (json_decode($c->settings_json,true)['output_kind']??'video') === 'image',422,'Image generation is not enabled in this local preview. Your image brief is saved.');
         abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Review a fresh plan.');
+        $settings=json_decode($c->settings_json,true);
+        if(config('create.mode')==='agent' && ($settings['output_kind']??'video')==='video') {
+            $workspace=Workspace::findOrFail($user->workspace_id);
+            abort_if((\App\Services\WorkspaceUsageService::plans()[$workspace->plan_tier]['watermark']??true),402,'This local video pilot requires a plan with unwatermarked exports.');
+        }
         $attachments = DB::table('create_attachments')->where('conversation_id', $id)->orderBy('id')->get(['asset_id', 'purpose'])->all();
+        if(config('create.mode')==='agent' && ($settings['output_kind']??'video')==='image' && $c->head_revision_id) {
+            $base=DB::table('composition_revisions')->where('conversation_id',$id)->where('id',$c->head_revision_id)->firstOrFail();
+            abort_unless($base->output_asset_id,422,'Save this image to Assets before editing it.');
+            $oldRun=$base->run_id ? DB::table('composition_runs')->where('id',$base->run_id)->first() : null;
+            $usedIds=array_column(json_decode($oldRun->input_json??'{}',true)['input_files']??[],'asset_id');
+            $attachments=array_merge([(object)['asset_id'=>$base->output_asset_id,'purpose'=>'source']],array_values(array_filter($attachments,fn($a)=>!in_array($a->asset_id,$usedIds,true) && $a->asset_id!==$base->output_asset_id))); 
+        }
         $snapshots = app(InputSnapshotService::class);
         // Storage I/O happens before acquiring conversation/pool locks.
-        $inherited = $snapshots->inherited($id, $c->head_revision_id);
+        $inherited = ($settings['output_kind']??'video')==='image' ? [] : $snapshots->inherited($id, $c->head_revision_id);
         $snapshots->verify($inherited);
         $inheritedIds = array_column($inherited, 'asset_id');
         // A revision's source is immutable, even if its library item was replaced.
@@ -114,14 +130,31 @@ class ConversationService
                 $messages = DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['role', 'content'])->all();
                 abort_if(! count($messages), 422, 'Add a brief first.');
                 $base = $c->head_revision_id ? DB::table('composition_revisions')->where('conversation_id', $id)->where('id', $c->head_revision_id)->firstOrFail() : null;
+                $settings=json_decode($c->settings_json,true);
+                $paid=config('create.mode')==='agent';
+                $policy=$paid ? PilotPolicy::execution($settings) : ['agent'=>['provider'=>'offline','model'=>'offline-contract-v1','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>5],'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
+                if($paid && ($settings['output_kind']??'video')==='image') {
+                    abort_if(count(array_filter($files,fn($f)=>$f['asset_type']!=='image'))>0,422,'Image generation accepts images only. Start a video brief to use footage or audio.');
+                    abort_if(count(array_filter($files,fn($f)=>$f['bytes']>10*1024*1024))>0,422,'Image generation accepts source images up to 10 MB.');
+                    abort_if(count($files)>4,422,'Use at most four image inputs.');
+                    // Reference-only images are inspiration, never model edit inputs.
+                    abort_if(count(array_filter($files,fn($f)=>$f['purpose']==='reference'))>0,422,'Describe inspiration in the brief. Image editing only sends images you explicitly allow us to reuse.');
+                }
+                $mediaInput=($paid && ($settings['output_kind']??'video')==='image') ? app(\App\Services\Generation\Image\NanoBananaImageAdapter::class)->buildInput(end($messages)->content,$settings['aspect_ratio'],['allow_text'=>true]) : null;
+                if($paid && ($settings['video_mode']??'composition')==='animate_image') {
+                    abort_unless(count($files)===1 && $files[0]['asset_type']==='image' && $files[0]['purpose']==='source' && $files[0]['bytes']<=10*1024*1024,422,'Animation needs exactly one reusable image up to 10 MB.');
+                    [,,$mediaInput]=app(\App\Services\Generation\Video\ReplicateI2VAdapter::class)->buildRequestForTier('quick','pending-private-input',end($messages)->content,$settings['duration_seconds'],['resolution'=>'480p']);
+                    $mediaInput['enable_prompt_expansion']=false;
+                }
                 $payload = ['kind' => 'composition_fixture', 'conversation_id' => $id, 'version' => $version,
-                    'base_revision_id' => $c->head_revision_id, 'messages' => $messages, 'attachments' => $attachments,
-                    'execution_policy' => ['agent' => ['provider' => 'offline', 'model' => 'offline-contract-v1', 'credits' => 0, 'cost_limit_microusd' => 0, 'max_calls' => 5], 'render' => ['provider' => 'offline', 'model' => 'hyperframes-0.8.82', 'credits' => 0, 'cost_limit_microusd' => 0, 'max_calls' => 1]],
+                    'base_revision_id' => $c->head_revision_id, 'messages' => $messages, 'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->orderBy('asset_id')->get(['asset_id','purpose'])->all(),
+                    'execution_policy' => $policy, 'pilot_budget_id'=>$paid ? config('create.pilot_budget_id') : null,
                     'input_files' => $files, 'base_bundle' => $base ? json_decode($base->bundle_json, true) : null,
                     'base_bundle_hash' => $base?->bundle_hash,
-                    'settings' => json_decode($c->settings_json, true), 'mode' => 'fixture'];
+                    'media_input'=>$mediaInput,
+                    'settings' => $settings, 'mode' => $paid ? 'agent' : 'fixture'];
                 return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $user->workspace_id,
-                    'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => 0,
+                    'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => array_sum(array_map(fn($p)=>$p['credits']*$p['max_calls'],$policy)),
                     'expires_at' => now()->addMinutes(10)]);
             });
         } catch (\Throwable $e) {
@@ -130,13 +163,13 @@ class ConversationService
         }
     }
 
-    public function approve(User $user, string $id, string $quoteId, string $key): object
+    public function approve(User $user, string $id, string $quoteId, string $key, bool $providerApproved = false): object
     {
         $this->authorize($user, true);
         abort_unless(OperationAccounting::enabled(), 503, 'Shared operation accounting must be enabled for local integration testing.');
         $operation = null;
         try {
-            return DB::transaction(function () use ($user, $id, $quoteId, $key, &$operation) {
+            return DB::transaction(function () use ($user, $id, $quoteId, $key, $providerApproved, &$operation) {
                 // Same sorted pool/spender lock order as CreditService. No provider work under these locks.
                 $workspace = Workspace::findOrFail($user->workspace_id);
                 Workspace::whereIn('id', array_unique([$workspace->id, $workspace->parent_workspace_id ?: $workspace->id]))->orderBy('id')->lockForUpdate()->get();
@@ -153,17 +186,22 @@ class ConversationService
                 abort_unless(($p['kind'] ?? '') === 'composition_fixture' && ($p['conversation_id'] ?? '') === $id, 422, 'Wrong quote.');
                 abort_if($quote->isExpired() || $quote->consumed_at, 409, 'This quote expired or was already used.');
                 abort_unless((int) $c->version === $p['version'] && $c->head_revision_id === $p['base_revision_id'], 409, 'The brief changed. Review a new quote.');
-                abort_unless(config('create.mode') === 'fixture' && $quote->credits_max === 0, 503);
-                abort_if(DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->whereIn('status', self::ACTIVE)->exists(), 409, 'Another creation is active or awaiting recovery.');
+                abort_unless($p['mode']===config('create.mode') && ($p['mode']==='fixture' || PilotPolicy::enabled()),503);
+                if($p['mode']==='agent') { abort_unless($providerApproved,422,'Confirm sending this brief and approved media to Replicate.'); abort_unless(($p['pilot_budget_id']??null)===config('create.pilot_budget_id'),409,'Pilot approval changed. Get a fresh quote.'); PilotPolicy::admit($p['execution_policy']); }
+                abort_if(DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->whereIn('status', self::ACTIVE)->when($p['variant_group']??null,fn($q,$group)=>$q->where(fn($q)=>$q->whereNull('input_json->variant_group')->orWhere('input_json->variant_group','!=',$group)))->exists(), 409, 'Another creation is active or awaiting recovery.');
                 abort_if(DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('created_at', '>=', now()->startOfDay())->count() >= 10, 429, 'Local pilot daily limit reached.');
                 foreach ($p['input_files'] ?? [] as $file) {
                     abort_unless(Asset::where('workspace_id', $user->workspace_id)->whereKey($file['asset_id'])->where('status', '!=', 'archived')->exists(), 409, 'An attached asset is no longer available.');
+                }
+                if(isset($p['retry_of'])) {
+                    abort_if(DB::table('composition_runs')->where('input_json->retry_of',$p['retry_of'])->exists(),409,'Retry already approved.');
+                    abort_unless(DB::table('composition_runs')->where('id',$p['retry_of'])->where('workspace_id',$user->workspace_id)->where('status','failed')->exists() && !AttemptService::unresolved($p['retry_of']),409,'Original outcome is not retryable.');
                 }
                 $operation = OperationAccounting::reserve($quote, null);
                 $runId = (string) Str::uuid();
                 DB::table('composition_runs')->insert(['id' => $runId, 'conversation_id' => $id, 'workspace_id' => $user->workspace_id,
                     'quote_id' => $quoteId, 'operation_id' => $operation, 'idempotency_key' => $key, 'request_hash' => $hash,
-                    'input_json' => json_encode($p), 'status' => 'queued', 'stage' => 'Queued for local fixture render', 'created_at' => now(), 'updated_at' => now()]);
+                    'input_json' => json_encode($p), 'status' => 'queued', 'stage' => $p['mode']==='fixture' ? 'Queued for local fixture render' : 'Queued for your creation', 'created_at' => now(), 'updated_at' => now()]);
                 $quote->update(['consumed_at' => now(), 'idempotency_key' => 'create:'.$runId]);
                 return DB::table('composition_runs')->where('id', $runId)->first();
             });
@@ -186,7 +224,7 @@ class ConversationService
                 'number' => 1 + (int) DB::table('composition_revisions')->where('conversation_id', $id)->max('number'),
                 'parent_revision_id' => $c->head_revision_id, 'restored_from_id' => $old->id,
                 'bundle_json' => $old->bundle_json, 'bundle_hash' => $old->bundle_hash, 'artifact_path' => $old->artifact_path,
-                'artifact_hash' => $old->artifact_hash, 'summary' => 'Restored earlier version', 'created_at' => now(),
+                'artifact_hash' => $old->artifact_hash, 'metadata_json'=>$old->metadata_json??null, 'summary' => 'Restored earlier version', 'created_at' => now(),
             ]);
             DB::table('create_conversations')->where('id', $id)->update(['head_revision_id' => $new, 'version' => $c->version + 1, 'updated_at' => now()]);
             return $new;

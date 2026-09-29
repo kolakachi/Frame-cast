@@ -213,6 +213,8 @@ Route::prefix('v1')->group(function (): void {
         );
     });
 
+    Route::get('/public/creations/{token}', [\App\Http\Controllers\Api\V1\Create\DeliveryController::class, 'show']);
+
     // Public share page for the /sample/<token> cold-DM motion.
     Route::get('/public/projects/{token}', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'show']);
 
@@ -233,6 +235,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/conversations/{id}/runs/{runId}/cancel', [$controller, 'cancel']);
             Route::post('/conversations/{id}/revisions/{revisionId}/save-output', [$controller, 'saveOutput']);
             Route::post('/conversations/{id}/revisions/{revisionId}/restore', [$controller, 'restore']);
+            Route::post('/conversations/{id}/revisions/{revisionId}/delivery', [\App\Http\Controllers\Api\V1\Create\DeliveryController::class, 'store']);
             Route::get('/conversations/{id}/revisions/{revisionId}/artifact', [$controller, 'artifact']);
         });
 

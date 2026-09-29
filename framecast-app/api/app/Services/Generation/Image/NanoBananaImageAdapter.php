@@ -58,30 +58,8 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
             throw new RuntimeException('Replicate API token not configured.');
         }
 
-        $hint = self::ASPECT_RATIO_HINT[$aspectRatio] ?? self::ASPECT_RATIO_HINT['9:16'];
-        $fullPrompt = trim($prompt) . $hint
-            . ' No text, no watermarks, no captions.';
-
-        // Reference images (character/likeness). nano-banana (Gemini 2.5 Flash
-        // Image) accepts an image_input array and preserves identity / skin
-        // tone far better than gpt-image-2 under style changes.
-        $refs = $options['reference_image_urls']
-            ?? (isset($options['reference_image_url']) ? [$options['reference_image_url']] : []);
-        $refs = array_slice(array_values(array_filter((array) $refs)), 0, 4);
-
+        $input = $this->buildInput($prompt,$aspectRatio,$options);
         $url = 'https://api.replicate.com/v1/models/'.$this->modelSlug().'/predictions';
-        $input = [
-            'prompt'        => $fullPrompt,
-            'output_format' => 'png',
-            // CRITICAL: the model defaults to `match_input_image`, so with a
-            // reference it copies the reference's aspect (e.g. a 16:9 character)
-            // and ignores the text hint. Pin the requested aspect explicitly so
-            // generation always matches the project, not the reference.
-            'aspect_ratio'  => $this->aspectRatioInput($aspectRatio),
-        ];
-        if (! empty($refs)) {
-            $input['image_input'] = $refs;
-        }
         $body = ['input' => $input];
 
         $start = Http::withToken($apiToken)
@@ -128,6 +106,35 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
         }
 
         throw new RuntimeException('nano-banana polling timed out.');
+    }
+
+    /** Shared request contract for scene generation and Create's accounted runner. */
+    public function buildInput(string $prompt,string $aspectRatio,array $options=[]): array
+    {
+        $hint = self::ASPECT_RATIO_HINT[$aspectRatio] ?? self::ASPECT_RATIO_HINT['9:16'];
+        $fullPrompt = trim($prompt) . $hint
+            . (($options['allow_text']??false) ? ' Use only exact text supplied by the user; do not invent claims or branding.' : ' No text, no watermarks, no captions.');
+
+        // Reference images (character/likeness). nano-banana (Gemini 2.5 Flash
+        // Image) accepts an image_input array and preserves identity / skin
+        // tone far better than gpt-image-2 under style changes.
+        $refs = $options['reference_image_urls']
+            ?? (isset($options['reference_image_url']) ? [$options['reference_image_url']] : []);
+        $refs = array_slice(array_values(array_filter((array) $refs)), 0, 4);
+
+        $input = [
+            'prompt'        => $fullPrompt,
+            'output_format' => 'png',
+            // CRITICAL: the model defaults to `match_input_image`, so with a
+            // reference it copies the reference's aspect (e.g. a 16:9 character)
+            // and ignores the text hint. Pin the requested aspect explicitly so
+            // generation always matches the project, not the reference.
+            'aspect_ratio'  => $this->aspectRatioInput($aspectRatio),
+        ];
+        if (! empty($refs)) {
+            $input['image_input'] = $refs;
+        }
+        return $input;
     }
 
     public function providerKey(): string

@@ -115,7 +115,7 @@ class RunService
             }
             abort_unless(in_array($run->status, ['running', 'cancel_requested'], true) && now()->lessThan($run->lease_expires_at), 409, 'Stale worker result. Keep the local files for reconciliation.');
             $input = json_decode($run->input_json, true);
-            abort_unless($input['mode'] === 'fixture', 503, 'Paid settlement is not enabled.');
+            abort_unless($input['mode'] === 'fixture' || ($input['mode']==='agent' && PilotPolicy::enabled()), 503, 'Paid settlement is not enabled.');
             $status = $result['status'];
             abort_if($status !== 'needs_attention' && AttemptService::unresolved($id), 409, 'External attempts require settlement before closing this run.');
             if ($run->status === 'cancel_requested') abort_unless(in_array($status, ['cancelled', 'needs_attention'], true), 409, 'Stop the worker before acknowledging cancellation.');
@@ -132,6 +132,7 @@ class RunService
                 DB::table('composition_revisions')->insert([
                     'id' => $revision, 'conversation_id' => $c->id, 'run_id' => $id,
                     'number' => 1 + (int) DB::table('composition_revisions')->where('conversation_id', $c->id)->max('number'), 'parent_revision_id' => $input['base_revision_id'],
+                    'metadata_json'=>json_encode(['settings'=>$input['mode']==='fixture' ? array_merge($input['settings'],['output_kind'=>'video','duration_seconds'=>15,'aspect_ratio'=>'9:16']) : $input['settings'],'requested_settings'=>$input['settings'],'source_version'=>$input['version'],'attachments'=>collect($input['attachments']??[])->map(fn($a)=>(array)$a)->sortBy('asset_id')->values()->all(),'variant_group'=>$input['variant_group']??null,'variant_index'=>$input['variant_index']??null,'fixture'=>$input['mode']==='fixture','media'=>$result['media']??null]),
                     'bundle_json' => json_encode($bundle), 'bundle_hash' => hash('sha256', json_encode($bundle)),
                     'artifact_path' => $artifactPath, 'artifact_hash' => $artifactHash, 'summary' => $result['summary'],
                     'conflict' => $conflict, 'created_at' => now(),
@@ -146,7 +147,7 @@ class RunService
                 DB::table('api_operations')->where('id', $run->operation_id)->update(['status' => 'needs_attention', 'updated_at' => now()]);
             } else {
                 OperationAccounting::close($run->operation_id);
-                if (in_array($status, ['failed', 'cancelled'], true)) DB::table('api_operations')->where('id', $run->operation_id)->update(['status' => $status]);
+                if (in_array($status, ['failed', 'cancelled','needs_input'], true)) DB::table('api_operations')->where('id', $run->operation_id)->update(['status' => $status]);
             }
             return ['status' => $status, 'replayed' => false];
         });

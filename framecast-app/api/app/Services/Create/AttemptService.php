@@ -28,7 +28,7 @@ class AttemptService
             $credits = $policy['credits']; $cost = $policy['cost_limit_microusd'];
             abort_unless(is_int($credits) && $credits >= 0 && is_int($cost) && $cost >= 0, 422);
             abort_unless(($input['mode'] === 'fixture' && $credits === 0 && $cost === 0 && $policy['provider'] === 'offline')
-                || ($input['mode'] === 'agent' && config('create.paid_execution_enabled', false)), 503, 'Paid execution remains disabled.');
+                || ($input['mode'] === 'agent' && PilotPolicy::enabled()), 503, 'Paid execution remains disabled.');
             abort_if(DB::table('composition_attempts')->where('run_id', $runId)->where('kind', $kind)->count() >= $policy['max_calls'], 409, 'Quoted attempt limit reached.');
             $pending = DB::table('composition_attempts')->where('operation_id', $run->operation_id)->whereIn('status', ['started', 'unknown'])->sum('credit_limit');
             $op = DB::table('api_operations')->where('id', $run->operation_id)->lockForUpdate()->firstOrFail();
@@ -67,7 +67,7 @@ class AttemptService
             $attempt = DB::table('composition_attempts')->where('run_id', $runId)->where('id', $id)->lockForUpdate()->firstOrFail();
             if ($attempt->result_hash) {
                 abort_unless(hash_equals($attempt->result_hash, $hash), 409, 'A different receipt is already recorded.');
-                return ['status' => $attempt->status, 'charged_credits' => (int) $attempt->charged_credits, 'replayed' => true];
+                return ['status' => $attempt->status, 'charged_credits' => (int) $attempt->charged_credits, 'cost_microusd'=>$attempt->cost_microusd===null?null:(int)$attempt->cost_microusd, 'prediction_id'=>$attempt->prediction_id, 'replayed' => true];
             }
             abort_unless(in_array($run->status, ['running', 'cancel_requested'], true) && now()->lessThan($run->lease_expires_at), 409, 'Settlement requires a current lease.');
             $status = $result['status'];
@@ -81,13 +81,13 @@ class AttemptService
                     && $verified->predictionId === $prediction && $verified->costMicrousd === $cost, 409, 'Verified provider state and billing evidence are required. Hold retained.');
             }
             abort_unless($attempt->provider === 'offline' || $status === 'unknown' || (is_string($prediction) && strlen($prediction) > 0), 422, 'Provider receipt ID is required.');
-            $credits = $status === 'unknown' ? 0 : (($status === 'succeeded' || $cost > 0) ? (int) $attempt->credit_limit : 0);
+            $credits = $verified && str_starts_with($verified->evidence,'pilot-tariff:') && $attempt->kind==='agent' ? min((int)$attempt->credit_limit,(int)ceil($cost/4000)) : ($status === 'unknown' ? 0 : (($status === 'succeeded' || $cost > 0) ? (int) $attempt->credit_limit : 0));
             $previous = Context::getHidden(OperationAccounting::CONTEXT);
             try {
                 Context::addHidden(OperationAccounting::CONTEXT, $run->operation_id);
                 abort_unless(OperationAccounting::enabled() && app(CreditService::class)->deductQuietly((int) $run->workspace_id, $credits, 'create_'.$attempt->kind,
                     ['upstream_cost_usd' => $cost === null ? null : $cost / 1000000,
-                        'metadata' => ['composition_run_id' => $runId, 'composition_attempt_id' => $id]]), 409, 'Usage could not be settled. Hold retained.');
+                        'metadata' => ['composition_run_id' => $runId, 'composition_attempt_id' => $id,'cost_evidence'=>$verified?->evidence]]), 409, 'Usage could not be settled. Hold retained.');
             } finally {
                 Context::forgetHidden(OperationAccounting::CONTEXT);
                 if ($previous !== null) Context::addHidden(OperationAccounting::CONTEXT, $previous);
@@ -100,7 +100,7 @@ class AttemptService
             } else {
                 DB::table('api_operation_jobs')->where('id', 'create-call-'.$id)->update(['status' => $status === 'succeeded' ? 'completed' : 'failed', 'updated_at' => now()]);
             }
-            return ['status' => $status, 'charged_credits' => $credits, 'replayed' => false];
+            return ['status' => $status, 'charged_credits' => $credits, 'cost_microusd'=>$status==='unknown'?null:$cost, 'prediction_id'=>$prediction, 'replayed' => false];
         });
     }
 

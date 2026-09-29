@@ -9,7 +9,11 @@ config(['database.default' => 'sqlite', 'database.connections.sqlite.database' =
     'database.connections.sqlite.foreign_key_constraints' => false, 'cors.allowed_origins' => ['http://127.0.0.1:5188'], 'cache.default' => 'array', 'session.driver' => 'array',
     'services.posthog.key' => '', 'create.enabled' => true, 'create.workspaces' => [1], 'create.mode' => 'fixture', 'developer.operation_accounting' => true,
     'filesystems.disks.minio' => ['driver' => 'local', 'root' => '/tmp/create-input-fixtures', 'throw' => true]]);
-\Illuminate\Support\Facades\Http::preventStrayRequests();
+if(getenv('CREATE_LIVE_PILOT')==='e3-2026-09-29') {
+    // Explicit opt-in for the user-approved additional $5. Persistent DB plus a
+    // separate host budget prevent allowance reset by test-container recreation.
+    config(['create.mode'=>'agent','create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>'e3-2026-09-29','create.pilot_budget_microusd'=>5000000]);
+} else \Illuminate\Support\Facades\Http::preventStrayRequests();
 \Illuminate\Support\Facades\Redis::shouldReceive('get')->andReturn(null);
 class CreateHttpFixtureSchema { use \Tests\Support\BuildsDeveloperSchema; public function build(): void { $this->buildDeveloperSchema(); } }
 if (! file_exists('/tmp/create-fixture.sqlite')) touch('/tmp/create-fixture.sqlite');
@@ -20,7 +24,9 @@ if (! \Illuminate\Support\Facades\Schema::hasTable('create_conversations')) {
     (require database_path('migrations/2026_09_29_000000_create_composition_attempts.php'))->up();
         (require database_path('migrations/2026_09_29_120000_link_composition_outputs.php'))->up();
         (require database_path('migrations/2026_09_29_130000_create_composition_reconciliations.php'))->up();
-    \App\Models\Workspace::create(['name' => 'Create fixture', 'status' => 'active', 'plan_tier' => 'creator', 'plan_status' => 'active', 'credits_monthly' => 100]);
+        (require database_path('migrations/2026_09_29_180000_add_create_output_metadata.php'))->up();
+        (require database_path('migrations/2026_09_29_190000_create_composition_deliveries.php'))->up();
+    \App\Models\Workspace::create(['name' => 'Create fixture', 'status' => 'active', 'plan_tier' => 'creator', 'plan_status' => 'active', 'credits_monthly' => 10000]);
     $user = \App\Models\User::create(['email' => 'create-fixture@example.test', 'name' => 'Local tester', 'role' => 'owner', 'status' => 'active']);
     $user->forceFill(['workspace_id' => 1])->save();
     \Illuminate\Support\Facades\Storage::disk('minio')->put('reference.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII='));

@@ -22,21 +22,26 @@ export async function executeCompositionAgent({directory,input,manifest,provider
  const messages=input.messages??[];
  if(!messages.length||!messages.every(m=>['user','assistant'].includes(m.role)&&typeof m.content==='string'))throw Error('Invalid frozen conversation');
  let call=0;
- const accountedProvider={id:provider.id,maxCallUsd:provider.maxCallUsd,complete:args=>accountedCall({
+ const accountedProvider={id:provider.id,maxCallUsd:provider.maxCallUsd,complete:async args=>{
+  if(provider.prepareImage && args.image)args={...args,image:await provider.prepareImage(args.image,args.signal)};
+  return accountedCall({
   key:'agent-'+(++call),kind:'agent',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:args.image??null},begin,settle,
   execute:attemptId=>provider.complete({...args,onPrediction:async id=>{
    // Record the provider identity in both app accounting and the local journal.
    if(!bindPrediction)throw Error('Prediction recorder is required');
    await bindPrediction(attemptId,id);await args.onPrediction(id);
   }}),receipt,
- })};
+ });}};
+ const paid=input.mode==='agent',settings=input.settings??{};
+ const dims=({'9:16':[1080,1920],'16:9':[1920,1080],'1:1':[1080,1080],'4:5':[1080,1350]})[settings.aspect_ratio??'9:16'];
  const state=await runAgent({stateFile:directory+'/agent-state.json',workspace:new Workspace(directory+'/project',assets),provider:accountedProvider,
   context:{brief:messages.at(-1).content,messages,baseRevision:input.base_revision_id,
    assets:manifest.map(({storage_path,path,...file})=>({...file,renderable:file.purpose==='source'})),
-   approvedFacts:[],output:{width:1080,height:1920,durationSeconds:15},
-   instruction:'Reference-only attachments are context, not footage. Preserve source identities. Ask for clarification when claims are unsupported.'},
-  skills:await loadCoreGuidance(guidanceDirectory),signal,
-  limits:{calls:input.execution_policy?.agent?.max_calls??0,budgetUsd:0,elapsedMs:600000},
+   variantDirection:input.variant_direction??null,approvedFacts:settings.approved_facts??[],settings,output:{width:dims[0],height:dims[1],durationSeconds:settings.duration_seconds??15},
+   runtimeFiles:[{path:'gsap.min.js',purpose:'Local GSAP runtime'},{path:'font.ttf',purpose:'Local DejaVuSans font'}],
+   instruction:'Reference-only attachments are context, not footage. Preserve source identities. Ask for clarification when claims are unsupported. Use only approved facts and user supplied copy. Do not invent prices, guarantees, endorsements, narration or captions. Original audio is kept unless settings.audio is silent. Supplied caption_text is exact. If a requested feature needs new media, propose_media rather than fake it. For a new brief replace the sample entirely; it is unrelated to the brief. For an edit read the existing composition and change only what was asked. Use preview to check and inspect your work before finishing.'},
+  skills:await loadCoreGuidance(guidanceDirectory),signal,requireVisualReview:paid,
+  limits:{calls:input.execution_policy?.agent?.max_calls??0,budgetUsd:paid?2.4:0,contextBytes:paid?60000:200000,maxOutputTokens:4096,elapsedMs:600000},
   tools:{check:args=>invoke('check',args),snapshot:args=>invoke('snapshot',args),timeline:args=>invoke('timeline',args),guidance:name=>readGuidanceReference(guidanceDirectory,name)}});
  const bundle={};
  for(const name of (await readdir(directory+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)).sort())bundle[name]=await readFile(directory+'/project/'+name,'utf8');

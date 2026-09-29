@@ -31,7 +31,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     while(state.calls<cap.calls) {
       boundedSignal.throwIfAborted();
       await workspace.verifyAssets();
-      const prompt=JSON.stringify({context,remainingCalls:cap.calls-state.calls,revision:state.revision,history:promptHistory(state.messages)});
+      const prompt=JSON.stringify({context,attachedSnapshot:state.reviewImage ? {revision:state.snapshotRevision,instruction:'The attached image is the current contact sheet. Inspect it now and return visual_review. Do not request another snapshot unless you need different timestamps.'} : null,remainingCalls:cap.calls-state.calls,revision:state.revision,history:promptHistory(state.messages)});
       if(Buffer.byteLength(prompt)+Buffer.byteLength(skills)>cap.contextBytes)throw Error('Context limit reached');
       const reservation=provider.maxCallUsd;
       if(!Number.isFinite(reservation)||reservation<0||state.reservedUsd+reservation>cap.budgetUsd)throw Error('Model budget exhausted');
