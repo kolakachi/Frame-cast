@@ -381,6 +381,7 @@ async function loadSocialAccounts() {
 }
 
 async function connectPlatform(platform) {
+  socialConnectError.value = ''
   const res = await api.get(`/social/${platform}/connect`)
   const url = res.data?.data?.url
   if (!url) return
@@ -426,12 +427,26 @@ async function connectPlatform(platform) {
 const pageChoice = ref(null)      // { platform, selectionToken, pages: [] }
 const pageChoiceSaving = ref(false)
 const pageChoiceError = ref('')
+// What the provider said when a connection did not go through. The popup
+// closes itself, so without this the failure was silent: the list reloaded,
+// nothing appeared, and the user was left guessing.
+const socialConnectError = ref('')
 
 function handleOAuthResult(raw) {
   localStorage.removeItem('framecastOAuth')
 
   let payload = null
   try { payload = JSON.parse(raw) } catch { /* fall through to a plain refresh */ }
+
+  if (payload?.error) {
+    socialConnectError.value = payload.message
+      || ({
+        access_denied: 'The connection was cancelled on the provider side.',
+        invalid_state: 'The connection window expired. Please try again.',
+      }[payload.error] || 'The account could not be connected. Please try again.')
+    return
+  }
+  socialConnectError.value = ''
 
   if (payload?.select_page && Array.isArray(payload.pages) && payload.pages.length) {
     pageChoiceError.value = ''
@@ -1045,6 +1060,7 @@ onMounted(() => {
             </div>
 
             <template v-else>
+            <div v-if="socialConnectError" class="del-error" style="margin-bottom:14px" role="alert">{{ socialConnectError }}</div>
             <div class="connect-grid">
               <div
                 v-for="plat in PLATFORMS"

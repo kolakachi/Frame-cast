@@ -135,6 +135,15 @@ class SocialAccountController extends Controller
             return $this->closePopup(['connected' => $platform, 'username' => $data['platform_display_name'] ?? $data['platform_username']]);
 
         } catch (\Throwable $e) {
+            // The popup shows the message to the user and closes; nothing else
+            // ever sees it. Keep a server-side trace (no tokens, no code) so a
+            // "connect only works for you" report can be diagnosed from the
+            // log instead of a screenshot.
+            \Illuminate\Support\Facades\Log::warning('Social connect failed', [
+                'platform' => $platform, 'workspace_id' => $workspaceId,
+                'exception' => get_class($e), 'message' => $e->getMessage(),
+            ]);
+
             return $this->closePopup(['error' => 'exchange_failed', 'message' => $e->getMessage()]);
         }
     }
