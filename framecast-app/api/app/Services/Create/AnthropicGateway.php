@@ -32,6 +32,7 @@ class AnthropicGateway
             $response = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])
                 ->acceptJson()->timeout(120)->post('https://api.anthropic.com/v1/messages', [
                     'model' => $attempt->model, 'max_tokens' => (int) $input['max_tokens'],
+                    'output_config' => ['effort' => (string) config('create.agent_effort', 'medium')],
                     'system' => [['type' => 'text', 'text' => $input['system'], 'cache_control' => ['type' => 'ephemeral']]],
                     'messages' => [['role' => 'user', 'content' => $content]],
                 ]);
@@ -67,7 +68,7 @@ class AnthropicGateway
             'pilot-tariff:2026-09-30; anthropic usage returned to WyvStudio: in '.$in.', out '.$out.', cache write '.$write.', cache read '.$read);
         $settled = $attempts->settle($runId, $lease, $attemptId, $receipt->result(), $receipt);
         $text = collect($response->json('content', []))->where('type', 'text')->pluck('text')->implode('');
-        return ['text' => $text, 'message_id' => $id, 'cost_microusd' => $cost, 'charged_credits' => $settled['charged_credits'],
+        return ['text' => $text, 'message_id' => $id, 'stop_reason' => (string) $response->json('stop_reason'), 'cost_microusd' => $cost, 'charged_credits' => $settled['charged_credits'],
             'usage' => ['input_tokens' => $in, 'output_tokens' => $out, 'cache_write_tokens' => $write, 'cache_read_tokens' => $read], 'status' => 'succeeded'];
     }
 }

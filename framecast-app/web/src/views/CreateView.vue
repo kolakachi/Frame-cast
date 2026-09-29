@@ -502,7 +502,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <p class="icard__summary">{{ quote.paid ? 'Here is what this will cost.' : 'This renders the fixed local sample.' }} {{ quote.description }}</p>
                   <p v-if="quote.settings?.video_mode === 'animate_image'" class="muted">{{ quote.settings.duration_seconds }} seconds · 480p image animation · silent. Generated motion may change details; check before use.</p>
                   <p v-if="quote.variants > 1" class="muted">{{ quote.variants }} variations, each with its own result. A finished variation is kept if another one fails.</p>
-                  <label v-if="quote.paid" class="consent"><input v-model="providerApproved" type="checkbox" /> Send this brief and its approved media to Replicate. I have permission to use any people, products and claims in it.</label>
+                  <label v-if="quote.paid" class="consent"><input v-model="providerApproved" type="checkbox" /> Send this brief and its approved media to our AI providers (Anthropic, Replicate). I have permission to use any people, products and claims in it.</label>
                   <p v-if="quote.paid" class="muted">After this approval, jobs under 15 credits in this conversation run without asking and show their cost.</p>
                   <small class="muted">{{ expiredQuote ? 'This approval expired. Review a fresh plan to continue.' : `Approval open until ${new Date(quote.expires_at).toLocaleTimeString()}` }}</small>
                 </div>

@@ -95,6 +95,10 @@ class WorkerController extends Controller
         $this->authorizeWorker($r);
         $input = $r->validate(['lease_token' => 'required|string|size:64', 'prompt' => 'required|string|max:200000', 'system' => 'required|string|max:200000',
             'max_tokens' => 'required|integer|min:256|max:8192', 'image' => 'nullable|string|max:1500000']);
+        // The recorded hash covers the exact text; the global string trimming must not alter it.
+        $raw = json_decode($r->getContent(), true, 32, JSON_THROW_ON_ERROR);
+        foreach (['prompt', 'system', 'image'] as $k) $input[$k] = $raw[$k] ?? null;
+        abort_unless(is_string($input['prompt']) && is_string($input['system']), 422);
         return response()->json(['data' => app(\App\Services\Create\AnthropicGateway::class)->complete($id, $input['lease_token'], $attemptId, $input)]);
     }
 

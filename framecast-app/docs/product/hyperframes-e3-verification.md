@@ -265,3 +265,16 @@ support in the renderer).
 - A refused call is recorded against Anthropic's request id and costs nothing. A timeout or an over-ceiling cost holds the attempt as unknown for reconciliation. Automatic reconciliation of unknown Claude API attempts is not built yet; they need a manual check.
 - Local test spend has its own $5 ledger, separate from the Replicate pilot's.
 - Tests: API suite 715 passed, 1 skipped. Worker suite 64 passed. Node and PHP request hashes were checked to match on Unicode, slashes and control characters.
+
+### Live Opus 5.5 build runs (2026-09-29)
+
+Four local builds of one brief (Brewline cold brew, 15 s vertical, kinetic type), on a separate $5 test budget. Total Anthropic spend was about $1.45, including planner calls and three small API probes.
+
+- The planner worked each time in 17 to 19 s, at about $0.035 a plan. Prompt caching hit on every build call (5,315 cached tokens).
+- Run 1 was stopped before any model call. Laravel trims request strings, so the prompt no longer matched its recorded hash. Fixed: the gateway hashes the raw body. Covered by an HTTP test.
+- Run 2 stopped after one successful call. PHP's single-threaded test server queued heartbeats behind the 39 s model call. Fixed for the harness with `PHP_CLI_SERVER_WORKERS=4`; production PHP-FPM is unaffected.
+- Run 3 ran out of output. Opus 5.5 always thinks adaptively, and thinking counts as output, so the 4,096-token cap cut the file mid-string. Thinking cannot be disabled on this model. Fixed: `output_config.effort` defaults to medium (`CREATE_AGENT_EFFORT`), and the Opus path allows 8,192 output tokens. The worst-case call is still under the $0.30 ceiling.
+- Run 4 wrote a full composition and fixed each checker finding (a GSAP relative-tween conflict, occluded and overlapping text), then hit the 2-repair limit. Paid runs now allow 4 repairs; the call and cost limits are unchanged.
+- Run 5 passed all automated checks at revision 3. Its own visual review then correctly found clipped letters at 5 s and asked for one more repair, but the 8-call limit was reached. Cost: $0.32 for 8 calls, charged 85 credits.
+
+Open decision: an Opus build needs about 9 to 10 calls with its review. That means raising `max_calls` on the Opus path or accepting fewer review passes. Raising it also raises the most a build can charge.

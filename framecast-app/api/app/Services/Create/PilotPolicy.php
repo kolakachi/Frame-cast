@@ -26,7 +26,8 @@ class PilotPolicy
         if(config('create.agent_provider')==='anthropic') {
             abort_unless((string)config('services.anthropic.key')!=='',503,'The Claude API key is not configured.');
             return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,
-                'cost_limit_microusd'=>300000,'max_calls'=>8,'max_output_tokens'=>4096,'context_bytes'=>64000],
+                // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
+                'cost_limit_microusd'=>300000,'max_calls'=>8,'max_output_tokens'=>8192,'context_bytes'=>64000],
                 'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,

@@ -827,7 +827,8 @@ class CreateIntegrationTest extends TestCase
         $a=$attempts->begin($run->id,$claim['lease_token'],'agent-1','agent',$hash);
         Http::fake(['https://api.anthropic.com/*'=>Http::sequence()
             ->push(['id'=>'msg_01abc','content'=>[['type'=>'text','text'=>'{"type":"finish"}']],'usage'=>['input_tokens'=>10000,'output_tokens'=>2000,'cache_creation_input_tokens'=>4000,'cache_read_input_tokens'=>0]])
-            ->push(['type'=>'error'],400,['request-id'=>'req_011refused'])]);
+            ->push(['type'=>'error'],400,['request-id'=>'req_011refused'])
+            ->push(['id'=>'msg_02def','content'=>[['type'=>'text','text'=>'ok']],'usage'=>['input_tokens'=>100,'output_tokens'=>10]])]);
         $gateway=app(\App\Services\Create\AnthropicGateway::class);
         // The worker cannot send a different call from the one it recorded.
         $this->rejected(409,fn()=>$gateway->complete($run->id,$claim['lease_token'],$a['id'],['prompt'=>'Other','system'=>'Rules/1','max_tokens'=>1024]));
@@ -835,7 +836,7 @@ class CreateIntegrationTest extends TestCase
         // 10000*4 + 2000*20 + 4000*5 = 100000 microdollars -> 25 credits at the pilot tariff.
         $this->assertSame(['{"type":"finish"}',100000,25],[$out['text'],$out['cost_microusd'],$out['charged_credits']]);
         $this->assertSame(975,(int)$this->workspace->fresh()->credits_monthly);
-        Http::assertSent(fn($r)=>$r->hasHeader('x-api-key','test-key')&&$r['model']==='claude-opus-5-5'&&$r['system'][0]['cache_control']['type']==='ephemeral');
+        Http::assertSent(fn($r)=>$r->hasHeader('x-api-key','test-key')&&$r['model']==='claude-opus-5-5'&&$r['system'][0]['cache_control']['type']==='ephemeral'&&$r['output_config']['effort']==='medium');
         $this->rejected(409,fn()=>$gateway->complete($run->id,$claim['lease_token'],$a['id'],$call));
         // The worker's own settle reports the gateway's record and never charges again.
         $this->withToken(str_repeat('a',64))->postJson('/api/internal/create/runs/'.$run->id.'/attempts/'.$a['id'].'/settle',['lease_token'=>$claim['lease_token'],'status'=>'succeeded','prediction_id'=>'msg_01abc'])
@@ -847,11 +848,16 @@ class CreateIntegrationTest extends TestCase
         $row=DB::table('composition_attempts')->where('id',$b['id'])->first();
         $this->assertSame(['failed','req_011refused',0],[$row->status,$row->prediction_id,(int)$row->charged_credits]);
         $this->assertSame(975,(int)$this->workspace->fresh()->credits_monthly);
+        // Over HTTP, surrounding whitespace survives the app's string trimming, so the hash still matches.
+        $raw=['prompt'=>"  Build it\n",'system'=>"Rules/1\n",'max_tokens'=>1024,'image'=>null];
+        $c=$attempts->begin($run->id,$claim['lease_token'],'agent-3','agent',hash('sha256',json_encode(['prompt'=>$raw['prompt'],'system'=>$raw['system'],'maxTokens'=>1024,'image'=>null],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)));
+        $this->withToken(str_repeat('a',64))->postJson('/api/internal/create/runs/'.$run->id.'/attempts/'.$c['id'].'/anthropic',[...$raw,'lease_token'=>$claim['lease_token']])
+            ->assertOk()->assertJsonPath('data.text','ok')->assertJsonPath('data.message_id','msg_02def');
     }
 
     public function test_pilot_policy_switches_the_build_agent_to_the_claude_gateway(): void
     {
-        $this->pilot();
+        $this->pilot(); config(['create.agent_provider'=>'replicate']);
         $this->assertSame('replicate',\App\Services\Create\PilotPolicy::execution([])['agent']['provider']);
         config(['create.agent_provider'=>'anthropic','create.agent_model'=>'claude-opus-5-5','services.anthropic.key'=>'']);
         $this->rejected(503,fn()=>\App\Services\Create\PilotPolicy::execution([]));

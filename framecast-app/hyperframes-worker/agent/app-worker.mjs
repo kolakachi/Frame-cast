@@ -23,7 +23,7 @@ let stopping=false;
 process.on('SIGINT',()=>{stopping=true;});process.on('SIGTERM',()=>{stopping=true;});
 async function request(endpoint,body,form=false,timeoutMs=15000){
  const response=await fetch(new URL('/api/internal/create/'+endpoint,base),{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/json',...(!form?{'Content-Type':'application/json'}:{})},body:form?body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
- if(!response.ok)throw Error('Coordinator returned HTTP '+response.status);return (await response.json()).data;
+ if(!response.ok){const body=await response.json().catch(()=>({}));throw Error('Coordinator returned HTTP '+response.status+(body?.error?.message||body?.message?': '+String(body.error?.message||body.message).slice(0,200):''));}return (await response.json()).data;
 }
 async function finish(run,result,artifact,type='video/mp4'){
  const form=new FormData();form.set('lease_token',run.lease_token);form.set('result',JSON.stringify(result));

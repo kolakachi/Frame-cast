@@ -25,6 +25,8 @@ return [
     // anthropic (Claude API through the app's gateway).
     'agent_provider' => env('CREATE_AGENT_PROVIDER', 'replicate'),
     'agent_model' => env('CREATE_AGENT_MODEL', 'claude-opus-5-5'),
+    // Opus 5.5 cannot turn thinking off; effort bounds it (low, medium, high).
+    'agent_effort' => env('CREATE_AGENT_EFFORT', 'medium'),
     // Microdollars per token (= dollars per million tokens). Opus 5.5 list price.
     'anthropic_rates' => ['input' => 4, 'output' => 20, 'cache_write' => 5, 'cache_read' => 0.2],
     'lease_seconds' => 90,

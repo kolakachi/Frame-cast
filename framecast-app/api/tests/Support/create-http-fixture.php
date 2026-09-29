@@ -9,10 +9,10 @@ config(['database.default' => 'sqlite', 'database.connections.sqlite.database' =
     'database.connections.sqlite.foreign_key_constraints' => false, 'database.connections.sqlite.busy_timeout' => 10000, 'database.connections.sqlite.journal_mode' => 'wal', 'cors.allowed_origins' => ['http://127.0.0.1:5188'], 'cache.default' => 'array', 'session.driver' => 'array',
     'services.posthog.key' => '', 'create.enabled' => true, 'create.workspaces' => [1], 'create.mode' => 'fixture', 'developer.operation_accounting' => true,
     'filesystems.disks.minio' => ['driver' => 'local', 'root' => '/tmp/create-input-fixtures', 'throw' => true]]);
-if(getenv('CREATE_LIVE_PILOT')==='e3-2026-09-29') {
+if(in_array(getenv('CREATE_LIVE_PILOT'),['e3-2026-09-29','e3-opus-2026-09-29'],true)) {
     // Explicit opt-in for the user-approved additional $5. Persistent DB plus a
     // separate host budget prevent allowance reset by test-container recreation.
-    config(['create.mode'=>'agent','create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>'e3-2026-09-29','create.pilot_budget_microusd'=>5000000]);
+    config(['create.mode'=>'agent','create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>getenv('CREATE_LIVE_PILOT'),'create.pilot_budget_microusd'=>5000000]);
 } else \Illuminate\Support\Facades\Http::preventStrayRequests();
 \Illuminate\Support\Facades\Redis::shouldReceive('get')->andReturn(null);
 class CreateHttpFixtureSchema { use \Tests\Support\BuildsDeveloperSchema; public function build(): void { $this->buildDeveloperSchema(); } }
