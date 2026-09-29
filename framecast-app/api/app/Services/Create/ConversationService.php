@@ -57,14 +57,33 @@ class ConversationService
             }
             abort_unless((int) $c->version === $input['expected_version'], 409, 'Conversation changed. Refresh before sending.');
             $messageId = (string) Str::uuid();
+            $version = $c->version + 1;
             DB::table('create_messages')->insert([
                 'id' => $messageId, 'conversation_id' => $id, 'role' => 'user', 'content' => $input['content'],
-                'idempotency_key' => $input['idempotency_key'], 'request_hash' => $hash, 'sequence' => $c->version + 1, 'created_at' => now(), 'updated_at' => now(),
+                'idempotency_key' => $input['idempotency_key'], 'request_hash' => $hash, 'sequence' => $version, 'created_at' => now(), 'updated_at' => now(),
             ]);
-            DB::table('create_conversations')->where('id', $id)->update([
-                'version' => $c->version + 1, 'updated_at' => now(),
-                'title' => $c->title === 'New creation' ? Str::limit($input['content'], 80, '') : $c->title,
-            ]);
+            $updates = ['title' => $c->title === 'New creation' ? Str::limit($input['content'], 80, '') : $c->title];
+            // Settings the brief states in words are applied now, so the next
+            // quote reflects them; anything unsupported becomes a question in
+            // the conversation instead of a silent approximation. Each reply
+            // advances the version like any other change, which invalidates
+            // an older quote the same way a settings edit does.
+            $settings = json_decode($c->settings_json, true) ?: [];
+            $inferred = BriefSettings::infer($input['content'], $settings);
+            $replies = [];
+            if ($inferred['changes'] !== []) {
+                $updates['settings_json'] = json_encode(OutputSettings::normalize(array_merge($settings, $inferred['changes'])));
+                $replies[] = BriefSettings::describe($inferred['changes']);
+            }
+            array_push($replies, ...$inferred['questions']);
+            foreach ($replies as $i => $reply) {
+                $version++;
+                DB::table('create_messages')->insert([
+                    'id' => (string) Str::uuid(), 'conversation_id' => $id, 'role' => 'assistant', 'content' => $reply,
+                    'idempotency_key' => $messageId.':reply:'.$i, 'request_hash' => hash('sha256', $reply), 'sequence' => $version, 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            DB::table('create_conversations')->where('id', $id)->update($updates + ['version' => $version, 'updated_at' => now()]);
             return DB::table('create_messages')->where('id', $messageId)->first();
         });
     }

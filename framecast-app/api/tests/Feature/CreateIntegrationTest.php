@@ -40,6 +40,36 @@ class CreateIntegrationTest extends TestCase
         $this->conversations = app(ConversationService::class); $this->runs = app(RunService::class);
     }
 
+    public function test_brief_wording_sets_supported_settings_and_asks_about_unsupported_ones(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Make a square 20 second product video in French.', 'expected_version' => 0, 'idempotency_key' => 'm-1']);
+        $c = $this->conversations->conversation($this->owner, $c->id);
+        $settings = json_decode($c->settings_json, true);
+        $this->assertSame(['1:1', 20, 'fr'], [$settings['aspect_ratio'], $settings['duration_seconds'], $settings['language']]);
+        $rows = DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'sequence', 'content']);
+        $this->assertSame(['user', 'assistant'], $rows->pluck('role')->all());
+        $this->assertSame([1, 2], $rows->pluck('sequence')->map(fn ($v) => (int) $v)->all());
+        $this->assertSame(2, (int) $c->version, 'each reply advances the version so an older quote is invalidated');
+        $this->assertStringContainsString('square (1:1)', $rows[1]->content);
+
+        // Unsupported asks are questions, not silent approximations, and change nothing.
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Actually make it 90 seconds in Swahili.', 'expected_version' => 2, 'idempotency_key' => 'm-2']);
+        $c = $this->conversations->conversation($this->owner, $c->id);
+        $this->assertSame(20, json_decode($c->settings_json, true)['duration_seconds']);
+        $this->assertSame('fr', json_decode($c->settings_json, true)['language']);
+        $asks = DB::table('create_messages')->where('conversation_id', $c->id)->where('role', 'assistant')->where('sequence', '>', 2)->pluck('content');
+        $this->assertCount(2, $asks);
+        $this->assertStringContainsString('5 to 30 seconds', $asks[0]);
+        $this->assertStringContainsString('Swahili', $asks[1]);
+        $this->assertSame(5, (int) $c->version);
+
+        // Replaying the first message returns it unchanged and adds nothing.
+        $again = $this->conversations->message($this->owner, $c->id, ['content' => 'Make a square 20 second product video in French.', 'expected_version' => 0, 'idempotency_key' => 'm-1']);
+        $this->assertSame('user', $again->role);
+        $this->assertSame(5, DB::table('create_messages')->where('conversation_id', $c->id)->count());
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

@@ -81,3 +81,29 @@ conversational output settings; generated image result actions; up to three quot
 variants and failed-only retries; composition-aware sharing/scheduling with explicit
 confirmation and export freshness checks. The user deferred model comparison and
 creative acceptance; the UI does not claim these have passed.
+
+## Evening checkpoint, 2026-09-29
+
+The previous slice was found uncommitted and committed as `ce4b28a` (backend:
+image quotes, variants, retry, delivery, migrations, worker media provider)
+and `13702fb` (UI: quote card with variations, image actions, delivery
+dialog, share/schedule, safe margins, settings panel, `/creation/:token`).
+Added on top:
+
+- Library surfacing (`c0ec026`): All Videos opens a composition project in
+  its conversation and hides the scene-only Variants action; the asset drawer
+  links a saved Create image back to its conversation.
+- Conversational settings: `BriefSettings` reads format, length, language,
+  silence and no-captions from the brief, applies supported values before the
+  quote with an assistant message saying so, and answers unsupported lengths
+  and languages with a question. Each reply advances the conversation version,
+  so an older quote is invalidated exactly as a settings edit would.
+- Copy audit: no illustrative prices or timing guarantees; fixture and paid
+  wording checked.
+
+Verification: CreateIntegrationTest 49 tests, BriefSettingsTest 4 tests
+(53 passed, 272 assertions); web unit tests 43 passed (the one failure is
+the pre-existing affiliate arrival test); production web build passes.
+Not run: the browser tests, because no Playwright install is available
+here. The E3 exit remains open on that run.
+

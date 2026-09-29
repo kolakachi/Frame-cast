@@ -140,7 +140,7 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 - [x] New creation empty state, examples, persistent composer, tab-local draft recovery and resumable history with title/brief/file search, rename, archive and restore.
 - [x] Private direct uploads before a brief, searchable library, source/reference choice with reuse confirmation, inline previews, progress/remove/retry and format/size limits. Uploading does not dispatch transcription or generation.
 - [x] Distinguish inspiration from authorized source reuse (purpose per attachment; reference-only images never reach a model; reuse attestation). Agent instruction asks for clarification on unsupported claims.
-- [ ] Normalize essential settings conversationally (today: details panel + approved facts; a brief that states a ratio or length does not yet update settings).
+- [x] Normalize essential settings conversationally: a brief that states a format, length, language, silence or no-captions sets them before the quote and says so in the conversation; unsupported lengths and languages come back as a question and change nothing (`BriefSettings`, evening of 2026-09-29).
 - [x] Route image generation/editing to existing image operations: quotes priced by `ImageAdapterFactory`, source ownership and reuse consent enforced, ≤4 source images ≤10 MB, reference-only excluded (`ce4b28a`).
 - [x] Image results: inspect, download, save to Assets, edit (as a new brief on the saved output), up to three quoted variations, animate as a new video conversation linked to the source (`13702fb`).
 - [x] Video results: playback, seek, volume, fullscreen, follow-up briefs, safe-margin overlay (preview only). Real semantic edits of a composition are agent work and move to E4.
@@ -151,7 +151,7 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 - [x] Explicit variant count (1–3) on the quote, group approval atomic, each variation its own hold and result; retry quotes only for a confirmed failed run.
 - [x] Finished videos appear in All Videos as composition projects and open in their conversation; saved images appear in Assets with a link back. Shared Project/ExportJob/Asset records, no duplicate files. Variations are versions of one conversation, which is the grouping.
 - [x] Publishing goes through the shared scheduled-post controller (plan, export ownership, account); share and schedule need separate confirmation; rendering never publishes.
-- [ ] Replace illustrative prices, timing guarantees and prototype notices with verified values and accurate UI copy.
+- [x] Copy audited 2026-09-29: no illustrative prices or timing guarantees remain. Fixture mode says it renders a fixed sample and makes no paid calls; paid mode states the amount is a maximum with unused credits released and that the brief and approved media go to Replicate.
 
 **E3 exit:** local user can create an image or video, revise it, return later, find it in the proper library and perform the permitted delivery actions. Tests use mocks except explicitly budgeted live smoke runs.
 
@@ -193,4 +193,4 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 
 Use stable task references such as E0.2/CTA revision in commits and verification notes. Tick a task only when its implementation and required checks pass. Every completed phase records commit, runtime identity, commands, outputs and limitations. Do not put credentials or private customer media in the evidence document.
 
-Immediate next implementation slice: **E3 close-out — conversational settings normalization, the copy audit (prices, timings, prototype notices), and the E3 exit run (browser tests `create-e3-browser.mjs` and `create-browser.mjs` against the disposable harness on the committed build). Then E4 timed editing. Model comparisons remain deferred; E1 creative acceptance and paid/production release gates stay open.**
+Immediate next implementation slice: **E3 exit run on the committed build — `create-e3-browser.mjs` and `create-browser.mjs` against the disposable harness (needs a Playwright install via `PLAYWRIGHT_MODULE`; none is present on this machine as of 2026-09-29 evening, so only the API suite (53 tests), the web unit tests and the production build were run). Then E4 timed editing. Model comparisons remain deferred; E1 creative acceptance and paid/production release gates stay open.**
