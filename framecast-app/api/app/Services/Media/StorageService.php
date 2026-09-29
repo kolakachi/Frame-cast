@@ -16,10 +16,14 @@ class StorageService
     private const MINIO = 'minio';
     private const B2    = 'b2_legacy';
 
-    public function isCreatePrivate(string $url): bool { return str_starts_with($url, 'create-private://'); }
+    public function isCreatePrivate(string $url): bool { return str_starts_with($url, 'create-private://') || str_starts_with($url, 'create-upload://'); }
 
     private function createPath(string $url): string
     {
+        if (str_starts_with($url, 'create-upload://')) {
+            abort_unless(preg_match('~^create-upload://([1-9][0-9]*/[a-f0-9-]{36}/[a-f0-9]{64}\.(?:png|jpg|webp|mp4|mp3|wav))$~D', $url, $matches),422);
+            return 'create/uploads/'.$matches[1];
+        }
         abort_unless(preg_match('~^create-private://([a-f0-9-]{36}/[a-f0-9]{64}\.mp4)$~D', $url, $matches), 422);
         return 'create/previews/'.$matches[1];
     }

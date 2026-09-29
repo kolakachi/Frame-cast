@@ -129,6 +129,72 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(402,fn()=>app(\App\Services\Create\CompositionOutputService::class)->register($this->owner,$c->id,$revision,2));
     }
 
+    private function uploadPng(string $name='product.png'): \Illuminate\Http\UploadedFile
+    {
+        return \Illuminate\Http\UploadedFile::fake()->createWithContent($name,base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII='));
+    }
+
+    public function test_create_upload_is_private_idempotent_and_never_dispatches_paid_jobs(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $c=$this->conversations->create($this->owner,[]);
+        $service=app(\App\Services\Create\AttachmentUploadService::class);
+        $asset=$service->upload($this->owner,$c->id,$this->uploadPng(),'reference','upload-1',0);
+        $again=$service->upload($this->owner,$c->id,$this->uploadPng(),'reference','upload-1',0);
+        $this->assertSame($asset->id,$again->id);
+        $this->assertSame(1,Asset::count());$this->assertSame(1,DB::table('create_attachments')->count());
+        $this->assertSame('not_requested',$asset->transcription_status);
+        $this->assertStringStartsWith('create-upload://',$asset->storage_url);
+        Bus::assertNothingDispatched();
+        $storage=app(\App\Services\Media\StorageService::class);
+        $this->get($storage->url($asset->storage_url))->assertOk()->assertHeader('Content-Type','image/png');
+        $this->conversations->message($this->owner,$c->id,['content'=>'Use this for inspiration','expected_version'=>1,'idempotency_key'=>'brief']);
+        $quote=$this->conversations->quote($this->owner,$c->id,2);
+        $this->assertSame('reference',$quote->payload_json['input']['input_files'][0]['purpose'] ?? $quote->payload_json['input_files'][0]['purpose'] ?? 'missing');
+        $this->assertSame(0,DB::table('credit_ledger')->count());
+    }
+
+    public function test_upload_validation_permissions_quota_and_rollback(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $c=$this->brief();$service=app(\App\Services\Create\AttachmentUploadService::class);
+        $this->owner->role='viewer';$this->rejected(403,fn()=>$service->upload($this->owner,$c->id,$this->uploadPng(),'reference','u',1));$this->owner->role='owner';
+        $this->rejected(422,fn()=>$service->upload($this->owner,$c->id,\Illuminate\Http\UploadedFile::fake()->createWithContent('fake.png','<html>Not an image</html>'),'reference','u',1));
+        config(['create.input_workspace_bytes'=>1]);$this->rejected(422,fn()=>$service->upload($this->owner,$c->id,$this->uploadPng(),'reference','u',1));
+        config(['create.input_workspace_bytes'=>1073741824]);$this->rejected(409,fn()=>$service->upload($this->owner,$c->id,$this->uploadPng(),'reference','u',0));
+        $this->assertSame(0,Asset::count());$this->assertSame([],\Illuminate\Support\Facades\Storage::disk('local')->allFiles());
+        $asset=$service->upload($this->owner,$c->id,$this->uploadPng(),'reference','u',1);
+        $this->rejected(409,fn()=>$service->upload($this->owner,$c->id,$this->uploadPng(),'source','u',2));
+        $other=$this->conversations->create($this->owner,[]);
+        $this->rejected(409,fn()=>$service->upload($this->owner,$other->id,$this->uploadPng(),'reference','u',0));
+        $this->assertSame(1,Asset::count());
+    }
+
+    public function test_upload_http_requires_reuse_confirmation_and_image_briefs_cannot_render_video_fixture(): void
+    {
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);$this->actingAs($this->owner);
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $c=$this->postJson('/api/v1/create/conversations',['output_kind'=>'image'])->assertCreated()->json('data.id');
+        $this->post("/api/v1/create/conversations/$c/uploads",['asset_file'=>$this->uploadPng(),'purpose'=>'source','idempotency_key'=>'a','expected_version'=>0],['Accept'=>'application/json'])->assertStatus(422);
+        $this->post("/api/v1/create/conversations/$c/uploads",['asset_file'=>$this->uploadPng(),'purpose'=>'source','reuse_confirmed'=>true,'idempotency_key'=>'a','expected_version'=>0],['Accept'=>'application/json'])->assertOk()->assertJsonPath('data.attachments.0.purpose','source');
+        $this->postJson("/api/v1/create/conversations/$c/messages",['content'=>'Make a product image','expected_version'=>1,'idempotency_key'=>'brief'])->assertCreated();
+        $this->postJson("/api/v1/create/conversations/$c/quotes",['expected_version'=>2])->assertStatus(422);
+        $this->assertSame(0,\App\Models\ApiQuote::count());Bus::assertNothingDispatched();
+    }
+
+    public function test_history_search_archive_restore_and_active_archive_guard(): void
+    {
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);$this->actingAs($this->owner);
+        $c=$this->brief();
+        $this->getJson('/api/v1/create/conversations?search=SOURCE')->assertOk()->assertJsonPath('data.0.id',$c->id);
+        $this->patchJson("/api/v1/create/conversations/$c->id",['title'=>'Renamed','archived'=>true,'expected_version'=>1])->assertOk();
+        $this->getJson('/api/v1/create/conversations')->assertOk()->assertJsonCount(0,'data');
+        $this->getJson('/api/v1/create/conversations?archived=1')->assertOk()->assertJsonPath('data.0.title','Renamed');
+        $this->patchJson("/api/v1/create/conversations/$c->id",['archived'=>false,'expected_version'=>2])->assertOk();
+        $q=$this->conversations->quote($this->owner,$c->id,3);$this->conversations->approve($this->owner,$c->id,$q->id,'approve');
+        $this->patchJson("/api/v1/create/conversations/$c->id",['archived'=>true,'expected_version'=>3])->assertStatus(409);
+    }
+
     public function test_feature_off_and_non_allowlisted_workspaces_cannot_create(): void
     {
         config(['create.enabled' => false]); $this->rejected(404, fn () => $this->brief());

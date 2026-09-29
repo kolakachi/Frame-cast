@@ -1,6 +1,6 @@
 # Create / Hyperframes — implementation TODO
 
-Status: **E0 complete; E1 creative/model evaluation deferred by user; E2 local/offline engineering complete; E3–E6 pending. Paid-provider acceptance remains gated.**
+Status: **E0 complete; E1 creative/model evaluation deferred by user; E2 local/offline engineering complete; E3 conversation UI in progress; E4–E6 pending. Paid-provider acceptance remains gated.**
 Created: 2026-09-28.
 
 Sequencing update, 2026-09-28: the user requested finishing integration before comparing models and applying their strengths. E1 creative acceptance is therefore deferred, not passed, and does not block local E2/E3 engineering. Production deployment and public MCP access remain separate gates. Paid calls stay disabled; the existing $5 test cap has not been increased.
@@ -132,17 +132,19 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 
 ## E3 — Create UI and multimodal routing
 
-- [ ] Implement latest `create-ui/` designs within the real app shell using existing components; retain the Create label.
-- [ ] New creation empty state, examples, persistent composer and resumable conversation list with search/rename/archive.
-- [ ] Upload/library/reference attachments with inline previews, progress, remove/retry and clearly communicated limits.
+**2026-09-29 checkpoint:** conversation UI and private intake are implemented and installed locally. See [E3 verification](hyperframes-e3-verification.md). E3 remains open: image execution, generated image actions, variants, output settings and delivery are not complete. Image briefs are saved but explicitly blocked from the unrelated video fixture. Paid execution remains off.
+
+- [x] Apply the `create-ui/` conversation layout within the existing app shell and colours; retain Create, inline results and an optional desktop details panel/mobile drawer. Implement only verified actions; remaining multimodal controls are tracked below.
+- [x] New creation empty state, examples, persistent composer, tab-local draft recovery and resumable history with title/brief/file search, rename, archive and restore.
+- [x] Private direct uploads before a brief, searchable library, source/reference choice with reuse confirmation, inline previews, progress/remove/retry and format/size limits. Uploading does not dispatch transcription or generation.
 - [ ] Distinguish inspiration from authorized source reuse; normalize essential settings conversationally and ask for unsupported claims.
 - [ ] Route image generation/editing to existing image operations. Reuse source ownership, edit masks/reference rules, consent and pricing gates.
 - [ ] Image results: inspect, download, edit, explicit variations and animate; each operation stays linked to its source and conversation.
-- [ ] Video results: stable custom playback, seek, volume, fullscreen, inline follow-up edits and optional safe zones.
+- [ ] Video results: stable custom playback, seek, volume, fullscreen and follow-up briefs implemented; real semantic edits and optional safe-zone guides remain. Real offline-render playback is verified.
 - [ ] Compact plan/quote approval, current stage, cancellation and actionable error/recovery messages in the conversation.
 - [ ] Details panel hidden by default; mobile drawer and keyboard/focus behavior verified. Keep duration, language, voice, music and captions available without a mandatory form.
 - [ ] Distinguish current revision, preview and completed export. Download/share/schedule target exact artifacts and warn about newer unexported changes.
-- [ ] Add history inspect/compare/restore, concurrency conflict flow and retention of previous working outputs.
+- [x] Add history inspect/compare/restore, keep current and viewed versions distinct, preserve previous working outputs, and refresh conflicts without discarding unsent text.
 - [ ] Add explicit variant setup/preview/quote approval, maximum three outputs and retry-only-failed behavior.
 - [ ] Finished videos appear in All Videos; images in Assets. Use shared artifact records, not duplicate files. Link both to their originating conversation; group variants.
 - [ ] Reuse publishing/account restrictions and separate confirmation for share/schedule. Rendering never automatically publishes.
@@ -188,4 +190,4 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 
 Use stable task references such as E0.2/CTA revision in commits and verification notes. Tick a task only when its implementation and required checks pass. Every completed phase records commit, runtime identity, commands, outputs and limitations. Do not put credentials or private customer media in the evidence document.
 
-Immediate next implementation slice: **E3 Create UI and multimodal routing, then E4 timed editing. E2 local engineering is complete. Model comparisons remain deferred; E1 creative acceptance and paid/production release gates stay open.**
+Immediate next implementation slice: **finish E3 image operation routing and consent/pricing contracts, then variants and explicit delivery actions. Continue to E4 timed editing afterward. E2 local engineering is complete. Model comparisons remain deferred; E1 creative acceptance and paid/production release gates stay open.**

@@ -53,7 +53,7 @@ class InputSnapshotService
                 abort_if($asset->status === 'archived', 422, 'An attached asset is no longer available.');
                 $url = (string) $asset->storage_url;
                 // Only explicitly managed storage. The renderer gets bytes, never storage credentials or remote URLs.
-                abort_unless(preg_match('~^(minio|b2)://[^\x00-\x20]+$~D', $url)
+                abort_unless((preg_match('~^(minio|b2)://[^\x00-\x20]+$~D', $url) || app(StorageService::class)->isCreatePrivate($url))
                     && ! in_array('..', explode('/', $url), true), 422, 'Upload this attachment to your library before using it.');
                 $stream = app(StorageService::class)->readStream($url);
                 abort_unless(is_resource($stream), 422, 'The attached file could not be read.');

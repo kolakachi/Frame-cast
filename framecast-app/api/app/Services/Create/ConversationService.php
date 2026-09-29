@@ -88,6 +88,7 @@ class ConversationService
         // Never present a fixture as AI output or silently enable an unpriced provider.
         abort_unless(config('create.mode') === 'fixture', 503, 'Paid generation is awaiting accounting and model acceptance.');
         $c = $this->conversation($user, $id);
+        abort_if((json_decode($c->settings_json,true)['output_kind']??'video') === 'image',422,'Image generation is not enabled in this local preview. Your image brief is saved.');
         abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Review a fresh plan.');
         $attachments = DB::table('create_attachments')->where('conversation_id', $id)->orderBy('id')->get(['asset_id', 'purpose'])->all();
         $snapshots = app(InputSnapshotService::class);

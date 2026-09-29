@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api\V1\Create;
 
 use App\Http\Controllers\Controller;
-use App\Services\Create\{ConversationService, RunService};
+use App\Services\Create\{ConversationService, RunService, AttachmentUploadService};
+use App\Services\Media\StorageService;
+use App\Models\Asset;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Storage};
 
@@ -14,23 +16,35 @@ class CreateController extends Controller
     public function capabilities(Request $r)
     {
         $this->service->authorize($r->user());
-        return response()->json(['data' => ['enabled' => true, 'mode' => config('create.mode'), 'paid_generation' => false]]);
+        return response()->json(['data' => ['enabled' => true, 'mode' => config('create.mode'), 'paid_generation' => false, 'image_generation' => false, 'publishing' => false,
+            'uploads' => ['max_files'=>20,'max_file_bytes'=>config('create.input_file_bytes'),'max_total_bytes'=>config('create.input_total_bytes'),'mime_types'=>array_keys(AttachmentUploadService::TYPES)]]]);
     }
 
     public function index(Request $r)
     {
         $this->service->authorize($r->user());
-        return response()->json(['data' => DB::table('create_conversations')->where('workspace_id', $r->user()->workspace_id)
-            ->when(! $r->boolean('archived'), fn ($q) => $q->whereNull('archived_at'))
-            ->when($r->filled('search'), fn ($q) => $q->where('title', 'like', '%'.mb_substr($r->string('search'), 0, 100).'%'))
-            ->orderByDesc('updated_at')->limit(100)->get()]);
+        $query = DB::table('create_conversations')->where('workspace_id', $r->user()->workspace_id)
+            ->when($r->boolean('archived'), fn($q)=>$q->whereNotNull('archived_at'), fn($q)=>$q->whereNull('archived_at'));
+        if ($r->filled('search')) {
+            $term = '%'.mb_substr((string)$r->string('search'),0,100).'%';
+            $query->where(function($q) use($term) {
+                $q->whereRaw('LOWER(title) LIKE ?', [mb_strtolower($term)])
+                    ->orWhereExists(fn($m)=>$m->selectRaw('1')->from('create_messages')->whereColumn('conversation_id','create_conversations.id')->whereRaw('LOWER(content) LIKE ?', [mb_strtolower($term)]))
+                    ->orWhereExists(fn($a)=>$a->selectRaw('1')->from('create_attachments')->join('assets','assets.id','=','asset_id')
+                        ->whereColumn('conversation_id','create_conversations.id')->whereColumn('assets.workspace_id','create_conversations.workspace_id')->whereRaw('LOWER(assets.title) LIKE ?', [mb_strtolower($term)]));
+            });
+        }
+        return response()->json(['data'=>$query->select('create_conversations.*')->addSelect([
+            'latest_run_status'=>DB::table('composition_runs')->select('status')->whereColumn('conversation_id','create_conversations.id')->orderByDesc('created_at')->orderByDesc('id')->limit(1),
+            'last_message'=>DB::table('create_messages')->select('content')->whereColumn('conversation_id','create_conversations.id')->orderByDesc('sequence')->limit(1),
+        ])->orderByDesc('updated_at')->limit(100)->get()]);
     }
 
     public function store(Request $r)
     {
-        $r->validate(['aspect_ratio' => 'sometimes|in:9:16,16:9,1:1,4:5', 'duration_seconds' => 'sometimes|integer|min:5|max:30']);
+        $r->validate(['aspect_ratio' => 'sometimes|in:9:16,16:9,1:1,4:5', 'duration_seconds' => 'sometimes|integer|min:5|max:30', 'output_kind'=>'sometimes|in:video,image']);
         return response()->json(['data' => $this->service->create($r->user(), [
-            'aspect_ratio' => $r->input('aspect_ratio', '9:16'), 'duration_seconds' => $r->integer('duration_seconds', 15),
+            'output_kind'=>$r->input('output_kind','video'), 'aspect_ratio' => $r->input('aspect_ratio', '9:16'), 'duration_seconds' => $r->integer('duration_seconds', 15),
         ])], 201);
     }
 
@@ -44,9 +58,13 @@ class CreateController extends Controller
         return response()->json(['data' => [
             'conversation' => $c,
             'messages' => DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'role', 'content', 'created_at']),
-            'attachments' => DB::table('create_attachments as a')->join('assets', 'assets.id', '=', 'a.asset_id')
-                ->where('a.conversation_id', $id)->where('assets.workspace_id', $r->user()->workspace_id)
-                ->get(['a.asset_id', 'a.purpose', 'assets.title', 'assets.asset_type']),
+            'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->get()->map(function($attachment) use($r) {
+                $asset = Asset::where('workspace_id',$r->user()->workspace_id)->find($attachment->asset_id);
+                if (!$asset) return null;
+                $storage = app(StorageService::class);
+                return ['asset_id'=>$asset->id,'purpose'=>$attachment->purpose,'title'=>$asset->title,'asset_type'=>$asset->asset_type,
+                    'bytes'=>$asset->file_size_bytes,'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
+            })->filter()->values(),
             'revisions' => $revisions,
             'runs' => DB::table('composition_runs')->where('conversation_id', $id)->orderBy('created_at')->get(['id', 'status', 'stage', 'error', 'created_at']),
         ]]);
@@ -61,6 +79,7 @@ class CreateController extends Controller
             abort_unless((int) $c->version === $input['expected_version'], 409);
             $changes = ['version' => $c->version + 1, 'updated_at' => now()];
             if (isset($input['title'])) $changes['title'] = $input['title'];
+            if (($input['archived']??false) && DB::table('composition_runs')->where('conversation_id',$id)->whereIn('status',ConversationService::ACTIVE)->exists()) abort(409,'Stop or reconcile the current run before archiving.');
             if (isset($input['archived'])) $changes['archived_at'] = $input['archived'] ? now() : null;
             DB::table('create_conversations')->where('id', $id)->update($changes);
         });
@@ -73,9 +92,19 @@ class CreateController extends Controller
         return response()->json(['data' => $this->service->message($r->user(), $id, $input)], 201);
     }
 
+    public function upload(Request $r, string $id)
+    {
+        $this->service->authorize($r->user(),true);
+        $input = $r->validate(['asset_file'=>'required|file|max:102400','purpose'=>'required|in:source,reference',
+            'idempotency_key'=>'required|string|max:128','expected_version'=>'required|integer|min:0',
+            'reuse_confirmed'=>'exclude_unless:purpose,source|required|accepted']);
+        app(AttachmentUploadService::class)->upload($r->user(),$id,$r->file('asset_file'),$input['purpose'],$input['idempotency_key'],$input['expected_version']);
+        return $this->show($r,$id);
+    }
+
     public function attach(Request $r, string $id)
     {
-        $input = $r->validate(['asset_id' => 'required|integer|min:1', 'purpose' => 'required|in:source,reference', 'expected_version' => 'required|integer|min:0']);
+        $input = $r->validate(['asset_id' => 'required|integer|min:1', 'purpose' => 'required|in:source,reference', 'reuse_confirmed'=>'exclude_unless:purpose,source|required|accepted', 'expected_version' => 'required|integer|min:0']);
         $this->service->attach($r->user(), $id, $input['asset_id'], $input['purpose'], $input['expected_version']);
         return $this->show($r, $id);
     }

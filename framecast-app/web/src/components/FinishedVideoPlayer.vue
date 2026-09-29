@@ -6,6 +6,7 @@ const video = ref(null)
 const shell = ref(null)
 const playing = ref(false)
 const muted = ref(false)
+const volume = ref(1)
 const current = ref(0)
 const duration = ref(0)
 const error = ref('')
@@ -23,6 +24,8 @@ async function toggle() {
   }
 }
 function seek(event) { if (video.value && duration.value) video.value.currentTime = Number(event.target.value) }
+function setVolume(event) { if(video.value) {video.value.volume = Number(event.target.value); video.value.muted = video.value.volume === 0} }
+defineExpose({pause: () => video.value?.pause()})
 function toggleMute() { if (video.value) video.value.muted = !video.value.muted }
 async function fullscreen() {
   try {
@@ -39,7 +42,7 @@ async function fullscreen() {
       <video ref="video" :src="src" playsinline preload="metadata" aria-label="Finished video"
         @click="toggle" @loadedmetadata="sync" @durationchange="sync" @timeupdate="sync"
         @play="playing = true" @pause="playing = false" @ended="playing = false"
-        @volumechange="muted = video.muted" @error="error = 'This video could not be loaded. Refresh the page or download it.'" />
+        @volumechange="muted = video.muted; volume = video.volume" @error="error = 'This video could not be loaded. Refresh the page or download it.'" />
       <button v-if="!playing && !error" class="player-play-large" type="button" aria-label="Play video" @click="toggle">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="m9 5 11 7-11 7z" /></svg>
       </button>
@@ -55,6 +58,7 @@ async function fullscreen() {
         <button type="button" :aria-label="muted ? 'Unmute video' : 'Mute video'" :aria-pressed="muted" @click="toggleMute">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 5 6 9H3v6h3l5 4z"/><path v-if="muted" d="m16 9 6 6m0-6-6 6"/><path v-else d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg>
         </button>
+        <input class="player-volume" type="range" aria-label="Volume" min="0" max="1" step="0.05" :value="muted ? 0 : volume" @input="setVolume" />
         <button type="button" aria-label="Fullscreen" @click="fullscreen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button>
       </div>
     </div>
@@ -74,6 +78,7 @@ async function fullscreen() {
 .player-controls-row button { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; color: #e9e9ef; cursor: pointer; }
 .player-controls-row button:hover { background: #ffffff12; }
 .player-controls-row svg { width: 20px; height: 20px; }
+.player-volume { width: 64px; accent-color: var(--color-accent, #ff6b35); }
 .player-time { font-size: 12px; color: #eee; font-variant-numeric: tabular-nums; }
 .player-time span { color: #90909e; }
 .player-spacer { flex: 1; }

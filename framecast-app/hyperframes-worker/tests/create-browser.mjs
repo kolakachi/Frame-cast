@@ -31,7 +31,7 @@ try{
  await page.getByText('LOCAL SAMPLE PREVIEW',{exact:true}).waitFor();
  if(await page.getByRole('button',{name:'Got it',exact:true}).count())await page.getByRole('button',{name:'Got it',exact:true}).click();
  await page.locator('video').waitFor();
- await page.getByRole('button',{name:'Save sample to videos',exact:true}).click();
+ if(await page.getByRole('button',{name:'Save sample to videos',exact:true}).count()) await page.getByRole('button',{name:'Save sample to videos',exact:true}).click();
  await page.getByRole('button',{name:'Saved to videos',exact:true}).waitFor();
  await page.locator('video').evaluate(async video=>{video.muted=true;await video.play()});
  await page.waitForTimeout(1500);
@@ -45,20 +45,25 @@ try{
  const after=await page.locator('video').evaluate(v=>({time:v.currentTime,src:v.currentSrc}));
  assert.equal(after.src,before.src);assert.ok(after.time>before.time,'Playback reset during refresh');
  await page.getByRole('button',{name:'Details',exact:true}).click();
- await page.getByRole('button',{name:'Version 1',exact:true}).click();
+ await page.getByRole('button',{name:/^Version 1/}).click();
  await page.getByRole('button',{name:'Restore as a new version'}).waitFor();
+ await page.getByRole('button',{name:'Compare with current',exact:true}).click();
+ await page.getByRole('dialog',{name:'Compare versions',exact:true}).waitFor();
+ await page.waitForFunction(()=>[...document.querySelectorAll('dialog[open] video')].length===2 && [...document.querySelectorAll('dialog[open] video')].every(v=>v.readyState>=2));
+ await page.keyboard.press('Escape');
+ await page.locator('dialog[open]').waitFor({state:'hidden'});
  await page.waitForFunction(()=>document.querySelector('video')?.readyState>=2);
  await page.screenshot({path:root+'/artifacts/app-integration/desktop.png',fullPage:true});
- await page.getByRole('button',{name:'Close details ×'}).click();
- await page.getByRole('button',{name:'＋ Add from library'}).click();
+
+ await page.getByRole('button',{name:'Add from library',exact:true}).click();
  await page.getByRole('dialog').waitFor();await page.keyboard.press('Escape');
- assert.equal(await page.getByRole('dialog').count(),0);
+ await page.locator('dialog[open]').waitFor({state:'hidden'});assert.equal(await page.locator('dialog[open]').count(),0);
  await page.locator('video').evaluate(v=>v.pause());
  await page.setViewportSize({width:390,height:844});
  await page.evaluate(()=>window.scrollTo(0,0));
  await page.screenshot({path:root+'/artifacts/app-integration/mobile.png',fullPage:false,animations:'disabled'});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'Mobile horizontal overflow');
  assert.deepEqual(errors,[]);
- const result={desktop:true,mobile:true,stablePlayback:true,outputRegistration:true,historySelection:true,dialogEscape:true,errors};
+ const result={desktop:true,mobile:true,stablePlayback:true,outputRegistration:true,historySelection:true,versionComparison:true,dialogEscape:true,errors};
  await writeFile(root+'/artifacts/app-integration/browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }catch(e){ if(page){await page.screenshot({path:root+'/artifacts/app-integration/browser-error.png',fullPage:true});console.error((await page.locator('body').innerText()).slice(0,3000));console.error(errors);}throw e;}finally{await browser.close();}

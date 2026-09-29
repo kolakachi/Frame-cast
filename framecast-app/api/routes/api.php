@@ -225,6 +225,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/conversations/{id}', [$controller, 'show']);
             Route::patch('/conversations/{id}', [$controller, 'update']);
             Route::post('/conversations/{id}/messages', [$controller, 'message']);
+            Route::post('/conversations/{id}/uploads', [$controller, 'upload']);
             Route::post('/conversations/{id}/attachments', [$controller, 'attach']);
             Route::delete('/conversations/{id}/attachments/{assetId}', [$controller, 'detach'])->whereNumber('assetId');
             Route::post('/conversations/{id}/quotes', [$controller, 'quote']);
