@@ -8101,6 +8101,23 @@ onBeforeUnmount(() => {
                 <div v-if="activeSceneAIImagePending" class="preview-loading">
                   Generating AI image...
                 </div>
+                <!-- Animating and swapping used to show nothing at all. Both
+                     replace the visual, so the frame went blank or broke for
+                     as long as the work took, with no way to tell a slow job
+                     from a failed one. animation_in_progress was already
+                     tracked and read here; it simply never reached the
+                     template. A swap is worse: it nulls currentVisualUrl, so
+                     isSceneLoading below evaluates false and no overlay fired
+                     at all. -->
+                <div v-else-if="activeSceneAnimationPending" class="preview-loading">
+                  Animating this scene…
+                </div>
+                <div v-else-if="visualSwapPending" class="preview-loading">
+                  Swapping the visual…
+                </div>
+                <div v-else-if="activeSceneAnimationError" class="preview-loading error">
+                  {{ activeSceneAnimationError }}
+                </div>
                 <div v-else-if="activeSceneVisualGenerationError" class="preview-loading error">
                   {{ activeSceneVisualGenerationError }}
                 </div>
