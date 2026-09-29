@@ -28,6 +28,7 @@ class FacebookAdapter implements PlatformAdapter, SupportsPageSelection, Provide
     // 2026-08-27 and publishing broke, so it stays. Do not remove it again on
     // the reasoning that "we don't read engagement".
     private const SCOPES = [
+        'public_profile',
         'pages_show_list',
         'pages_read_engagement',
         'pages_manage_posts',
@@ -43,6 +44,7 @@ class FacebookAdapter implements PlatformAdapter, SupportsPageSelection, Provide
             redirectUri: (string) config('services.meta.facebook_redirect_uri'),
             scopes:      self::SCOPES,
             state:       $state,
+            configId:    config('services.meta.facebook_login_config_id'),
         );
     }
 

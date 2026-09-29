@@ -76,17 +76,27 @@ class MetaGraphHelper
         return $path === '' ? $base : rtrim($base, '/').'/'.ltrim($path, '/');
     }
 
-    public static function authUrl(string $redirectUri, array $scopes, string $state): string
+    public static function authUrl(string $redirectUri, array $scopes, string $state, ?string $configId = null): string
     {
         $base = str_replace('{version}', self::graphVersion(), self::AUTH_URL);
-
-        return $base.'?'.http_build_query([
+        $params = [
             'client_id'     => config('services.meta.app_id'),
             'redirect_uri'  => $redirectUri,
             'response_type' => 'code',
-            'scope'         => implode(',', $scopes),
             'state'         => $state,
-        ]);
+        ];
+        if ($configId !== null && $configId !== '') {
+            // Facebook Login for Business: the configuration carries the
+            // permissions and asset types; a scope list is ignored alongside it.
+            // The override keeps the code flow, since business configurations
+            // default to returning a token in the fragment.
+            $params['config_id'] = $configId;
+            $params['override_default_response_type'] = 'true';
+        } else {
+            $params['scope'] = implode(',', $scopes);
+        }
+
+        return $base.'?'.http_build_query($params);
     }
 
     /**
