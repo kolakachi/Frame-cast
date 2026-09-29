@@ -18,7 +18,7 @@ export class PilotBudget {
   });
  }
  async reserve(model,usd){
-  if(!((model==='anthropic/claude-4.5-sonnet'&&usd===.3)||(model==='google/nano-banana'&&usd===.1)||(model==='wan-video/wan-2.5-i2v'&&usd===.6)))throw Error('Unpriced pilot call');
+  if(!((model==='anthropic/claude-4.5-sonnet'&&usd===.3)||(model==='claude-opus-5-5'&&usd===.3)||(model==='google/nano-banana'&&usd===.1)||(model==='wan-video/wan-2.5-i2v'&&usd===.6)))throw Error('Unpriced pilot call');
   return this.ledger.update(ledger=>{
    const sum=ledger.calls.reduce((total,c)=>total+c.reservedUsd,0);
    if(sum+usd>5.000000001)throw Object.assign(Error('Additional $5 pilot allowance exhausted'),{code:'BUDGET_EXHAUSTED'});

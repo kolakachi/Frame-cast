@@ -256,3 +256,12 @@ transcripts from the app's transcription service and overlays bound to
 spoken words (E4 items 1 and 3), green-screen keying (needs alpha video
 support in the renderer).
 
+
+## Build agent on Claude Opus 5.5 through the app (2026-09-29)
+
+- The build agent can run on Opus 5.5 through the Claude API. Set `CREATE_AGENT_PROVIDER=anthropic` (default stays `replicate`) and `ANTHROPIC_API_KEY` in the local API env.
+- The worker never holds the key. It records the attempt, then posts the exact prompt to `POST /internal/create/runs/{id}/attempts/{attemptId}/anthropic`. The app checks the request hash, makes the call with prompt caching, reads token usage, binds the message id and settles.
+- Cost is computed from returned usage at $4 in, $20 out, $5 cache write and $0.20 cache read per million tokens, then charged at the pilot tariff of 1 credit per $0.004, capped at 75 credits a call.
+- A refused call is recorded against Anthropic's request id and costs nothing. A timeout or an over-ceiling cost holds the attempt as unknown for reconciliation. Automatic reconciliation of unknown Claude API attempts is not built yet; they need a manual check.
+- Local test spend has its own $5 ledger, separate from the Replicate pilot's.
+- Tests: API suite 715 passed, 1 skipped. Worker suite 64 passed. Node and PHP request hashes were checked to match on Unicode, slashes and control characters.

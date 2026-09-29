@@ -4,6 +4,7 @@ import {readFile,writeFile,mkdir,copyFile,access,readdir,rename,unlink} from 'no
 import path from 'node:path';
 import {PilotBudget} from './pilot-budget.mjs';
 import {ReplicateProvider} from './replicate.mjs';
+import {AnthropicGatewayProvider} from './anthropic-gateway.mjs';
 import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
 import {executeCompositionAgent,offlineContractProvider} from './composition-agent.mjs';
@@ -20,8 +21,8 @@ if(!token||token.length<32)throw Error('Set the matching local CREATE_WORKER_TOK
 const docker=process.env.DOCKER_BIN??'docker';
 let stopping=false;
 process.on('SIGINT',()=>{stopping=true;});process.on('SIGTERM',()=>{stopping=true;});
-async function request(endpoint,body,form=false){
- const response=await fetch(new URL('/api/internal/create/'+endpoint,base),{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/json',...(!form?{'Content-Type':'application/json'}:{})},body:form?body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
+async function request(endpoint,body,form=false,timeoutMs=15000){
+ const response=await fetch(new URL('/api/internal/create/'+endpoint,base),{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/json',...(!form?{'Content-Type':'application/json'}:{})},body:form?body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
  if(!response.ok)throw Error('Coordinator returned HTTP '+response.status);return (await response.json()).data;
 }
 async function finish(run,result,artifact,type='video/mp4'){
@@ -67,13 +68,17 @@ async function execute(run){
    stage='Applying your changes';
   }
   let providerToken;
+  const viaGateway=paid&&run.input.execution_policy?.agent?.provider==='anthropic'&&!run.input.execution_policy?.media;
   if(paid){
    if(process.env.CREATE_AGENT_LIVE!=='1')throw Error('Live local host is not enabled');
+  }
+  if(paid&&!viaGateway){
    const env=await readFile(root+'/../api/.env','utf8');
    providerToken=env.split('\n').find(l=>l.startsWith('REPLICATE_API_TOKEN='))?.split('=').slice(1).join('=').trim().replace(/^['"]|['"]$/g,'');
    if(!providerToken)throw Error('Missing local provider credential');
   }
-  const pilotBudget=new PilotBudget(root+'/artifacts/live/e3-2026-09-29-budget.json');
+  // Claude API calls keep their own local $5 test ledger so they never draw on the Replicate pilot's.
+  const pilotBudget=new PilotBudget(root+'/artifacts/live/'+(viaGateway?'e3-opus-budget.json':'e3-2026-09-29-budget.json'));
   const begin=payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});
   let reservation=null;
   const settle=async(attemptId,result)=>{const confirmed=await request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token});if(reservation && confirmed.status==='succeeded'){await pilotBudget.settle(reservation,confirmed);reservation=null;}return confirmed;};
@@ -86,8 +91,11 @@ async function execute(run){
    await finish(run,{status:'preview_ready',summary:image.summary,bundle:image.bundle},image.artifact,image.type);
    return;
   }
-  const provider=paid?new ReplicateProvider({contract:JSON.parse(await readFile(root+'/agent/contracts/sonnet.json','utf8')),token:providerToken,enabled:true,maxCallUsd:.3}):offlineContractProvider(run.input.base_bundle,manifest);
-  if(paid){const complete=provider.complete.bind(provider);provider.complete=async args=>{reservation=await pilotBudget.reserve('anthropic/claude-4.5-sonnet',.3);return complete(args);};}
+  const agentModel=run.input.execution_policy?.agent?.model;
+  const provider=viaGateway?new AnthropicGatewayProvider({model:agentModel,maxCallUsd:.3,
+    call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,150000)})
+   :paid?new ReplicateProvider({contract:JSON.parse(await readFile(root+'/agent/contracts/sonnet.json','utf8')),token:providerToken,enabled:true,maxCallUsd:.3}):offlineContractProvider(run.input.base_bundle,manifest);
+  if(paid){const complete=provider.complete.bind(provider);provider.complete=async args=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',.3);return complete(args);};}
   let agentResult;
   if(run.input.execution_policy?.agent){
    stage=paid?'Designing your video':'Running the offline agent contract check';

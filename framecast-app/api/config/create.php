@@ -21,6 +21,12 @@ return [
     'auto_run_credits' => (int) env('CREATE_AUTO_RUN_CREDITS', 15),
     'auto_run_daily_limit' => (int) env('CREATE_AUTO_RUN_DAILY_LIMIT', 20),
     'free_edit_daily_limit' => (int) env('CREATE_FREE_EDIT_DAILY_LIMIT', 60),
+    // Build agent provider for paid local runs: replicate (Sonnet 4.5) or
+    // anthropic (Claude API through the app's gateway).
+    'agent_provider' => env('CREATE_AGENT_PROVIDER', 'replicate'),
+    'agent_model' => env('CREATE_AGENT_MODEL', 'claude-opus-5-5'),
+    // Microdollars per token (= dollars per million tokens). Opus 5.5 list price.
+    'anthropic_rates' => ['input' => 4, 'output' => 20, 'cache_write' => 5, 'cache_read' => 0.2],
     'lease_seconds' => 90,
     'input_workspace_bytes' => 1024 * 1024 * 1024,
     'input_file_bytes' => 100 * 1024 * 1024,

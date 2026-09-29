@@ -26,7 +26,7 @@ export async function executeCompositionAgent({directory,input,manifest,provider
   if(provider.prepareImage && args.image)args={...args,image:await provider.prepareImage(args.image,args.signal)};
   return accountedCall({
   key:'agent-'+(++call),kind:'agent',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:args.image??null},begin,settle,
-  execute:attemptId=>provider.complete({...args,onPrediction:async id=>{
+  execute:attemptId=>provider.complete({...args,attemptId,recordPrediction:args.onPrediction,onPrediction:async id=>{
    // Record the provider identity in both app accounting and the local journal.
    if(!bindPrediction)throw Error('Prediction recorder is required');
    await bindPrediction(attemptId,id);await args.onPrediction(id);

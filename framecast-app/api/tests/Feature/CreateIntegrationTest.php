@@ -813,6 +813,53 @@ class CreateIntegrationTest extends TestCase
         Http::assertSent(fn($r)=>$r->method()==='GET');
     }
 
+    public function test_claude_gateway_makes_the_call_reads_usage_and_settles_once(): void
+    {
+        [, , $run]=$this->admitted(); $claim=$this->runs->claim(); $attempts=app(\App\Services\Create\AttemptService::class);
+        $input=json_decode($run->input_json,true);$input['mode']='agent';
+        $input['execution_policy']['agent']=['provider'=>'anthropic','model'=>'claude-opus-5-5','credits'=>75,'cost_limit_microusd'=>300000,'max_calls'=>3];
+        DB::table('composition_runs')->where('id',$run->id)->update(['input_json'=>json_encode($input)]);
+        DB::table('api_operations')->where('id',$run->operation_id)->update(['authorized_credits'=>225,'reserved_credits'=>225]);
+        $this->workspace->update(['credits_monthly'=>1000]);
+        config(['create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>'test-pilot','create.pilot_budget_microusd'=>5000000,'services.anthropic.key'=>'test-key','create.worker_token'=>str_repeat('a',64)]);
+        $call=['prompt'=>'Build it — "now"','system'=>'Rules/1','max_tokens'=>1024,'image'=>null];
+        $hash=hash('sha256',json_encode(['prompt'=>$call['prompt'],'system'=>$call['system'],'maxTokens'=>1024,'image'=>null],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
+        $a=$attempts->begin($run->id,$claim['lease_token'],'agent-1','agent',$hash);
+        Http::fake(['https://api.anthropic.com/*'=>Http::sequence()
+            ->push(['id'=>'msg_01abc','content'=>[['type'=>'text','text'=>'{"type":"finish"}']],'usage'=>['input_tokens'=>10000,'output_tokens'=>2000,'cache_creation_input_tokens'=>4000,'cache_read_input_tokens'=>0]])
+            ->push(['type'=>'error'],400,['request-id'=>'req_011refused'])]);
+        $gateway=app(\App\Services\Create\AnthropicGateway::class);
+        // The worker cannot send a different call from the one it recorded.
+        $this->rejected(409,fn()=>$gateway->complete($run->id,$claim['lease_token'],$a['id'],['prompt'=>'Other','system'=>'Rules/1','max_tokens'=>1024]));
+        $out=$gateway->complete($run->id,$claim['lease_token'],$a['id'],$call);
+        // 10000*4 + 2000*20 + 4000*5 = 100000 microdollars -> 25 credits at the pilot tariff.
+        $this->assertSame(['{"type":"finish"}',100000,25],[$out['text'],$out['cost_microusd'],$out['charged_credits']]);
+        $this->assertSame(975,(int)$this->workspace->fresh()->credits_monthly);
+        Http::assertSent(fn($r)=>$r->hasHeader('x-api-key','test-key')&&$r['model']==='claude-opus-5-5'&&$r['system'][0]['cache_control']['type']==='ephemeral');
+        $this->rejected(409,fn()=>$gateway->complete($run->id,$claim['lease_token'],$a['id'],$call));
+        // The worker's own settle reports the gateway's record and never charges again.
+        $this->withToken(str_repeat('a',64))->postJson('/api/internal/create/runs/'.$run->id.'/attempts/'.$a['id'].'/settle',['lease_token'=>$claim['lease_token'],'status'=>'succeeded','prediction_id'=>'msg_01abc'])
+            ->assertOk()->assertJsonPath('data.replayed',true)->assertJsonPath('data.cost_microusd',100000);
+        $this->assertSame(1,DB::table('credit_ledger')->count());
+        // A refused call is recorded against its request id and costs nothing.
+        $b=$attempts->begin($run->id,$claim['lease_token'],'agent-2','agent',$hash);
+        $this->rejected(502,fn()=>$gateway->complete($run->id,$claim['lease_token'],$b['id'],$call));
+        $row=DB::table('composition_attempts')->where('id',$b['id'])->first();
+        $this->assertSame(['failed','req_011refused',0],[$row->status,$row->prediction_id,(int)$row->charged_credits]);
+        $this->assertSame(975,(int)$this->workspace->fresh()->credits_monthly);
+    }
+
+    public function test_pilot_policy_switches_the_build_agent_to_the_claude_gateway(): void
+    {
+        $this->pilot();
+        $this->assertSame('replicate',\App\Services\Create\PilotPolicy::execution([])['agent']['provider']);
+        config(['create.agent_provider'=>'anthropic','create.agent_model'=>'claude-opus-5-5','services.anthropic.key'=>'']);
+        $this->rejected(503,fn()=>\App\Services\Create\PilotPolicy::execution([]));
+        config(['services.anthropic.key'=>'k']);
+        $agent=\App\Services\Create\PilotPolicy::execution([])['agent'];
+        $this->assertSame(['anthropic','claude-opus-5-5',300000],[$agent['provider'],$agent['model'],$agent['cost_limit_microusd']]);
+    }
+
     public function test_expired_or_cancelled_attempt_cannot_start_but_cancel_can_settle_known_work(): void
     {
         [$c, , $run] = $this->admitted(); $claim = $this->runs->claim(); $service = app(\App\Services\Create\AttemptService::class);

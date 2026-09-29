@@ -76,6 +76,11 @@ class WorkerController extends Controller
         $verified=null;
         if($input['status']!=='unknown') {
             $attempt=\Illuminate\Support\Facades\DB::table('composition_attempts')->where('run_id',$id)->where('id',$attemptId)->firstOrFail();
+            if($attempt->provider==='anthropic') {
+                // Settled by the gateway when it made the call; report that record.
+                abort_unless($attempt->result_hash, 409, 'This call was not completed through the gateway.');
+                return response()->json(['data'=>['status'=>$attempt->status,'charged_credits'=>(int)$attempt->charged_credits,'cost_microusd'=>$attempt->cost_microusd===null?null:(int)$attempt->cost_microusd,'prediction_id'=>$attempt->prediction_id,'replayed'=>true]]);
+            }
             if($attempt->provider!=='offline') {
                 $this->runs->validateResultLease($id,$input['lease_token']);
                 $verified=app(\App\Services\Create\ProviderReceiptVerifier::class)->metered($attempt);
@@ -83,6 +88,14 @@ class WorkerController extends Controller
             }
         }
         return response()->json(['data' => app(\App\Services\Create\AttemptService::class)->settle($id, $input['lease_token'], $attemptId, $input,$verified)]);
+    }
+
+    public function anthropic(Request $r, string $id, string $attemptId)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'prompt' => 'required|string|max:200000', 'system' => 'required|string|max:200000',
+            'max_tokens' => 'required|integer|min:256|max:8192', 'image' => 'nullable|string|max:1500000']);
+        return response()->json(['data' => app(\App\Services\Create\AnthropicGateway::class)->complete($id, $input['lease_token'], $attemptId, $input)]);
     }
 
     public function finish(Request $r, string $id)
