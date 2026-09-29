@@ -380,15 +380,41 @@ async function loadSocialAccounts() {
   }
 }
 
+// When the browser blocks the sign-in window, the provider URL is kept here
+// so the user can open it with a click of their own, which browsers allow.
+const pendingConnectUrl = ref('')
+
 async function connectPlatform(platform) {
   socialConnectError.value = ''
-  const res = await api.get(`/social/${platform}/connect`)
-  const url = res.data?.data?.url
-  if (!url) return
+  pendingConnectUrl.value = ''
 
+  // Open the window on the click itself. Opening it after the request came
+  // back counted as a pop-up in Safari and in Chrome's stricter modes, and a
+  // blocked window used to fail silently: nothing opened, nothing was said,
+  // and people clicked Connect five times in a row.
   localStorage.removeItem('framecastOAuth')
-  const popup = window.open(url, '_blank')
-  if (!popup) return
+  const popup = window.open('', '_blank')
+
+  let url = ''
+  try {
+    const res = await api.get(`/social/${platform}/connect`)
+    url = res.data?.data?.url || ''
+  } catch (e) {
+    if (popup) popup.close()
+    socialConnectError.value = e?.response?.data?.error?.message || 'Could not start the connection. Please try again.'
+    return
+  }
+  if (!url) {
+    if (popup) popup.close()
+    return
+  }
+
+  if (!popup) {
+    pendingConnectUrl.value = url
+    socialConnectError.value = 'Your browser blocked the sign-in window. Allow pop-ups for app.wyvstudio.com, or open it with the link below.'
+    return
+  }
+  popup.location.href = url
 
   // Listen via localStorage storage event (postMessage / popup inspection can
   // trigger COOP warnings while the popup is on the provider's domain).
@@ -438,6 +464,7 @@ function handleOAuthResult(raw) {
   let payload = null
   try { payload = JSON.parse(raw) } catch { /* fall through to a plain refresh */ }
 
+  pendingConnectUrl.value = ''
   if (payload?.error) {
     socialConnectError.value = payload.message
       || ({
@@ -1060,7 +1087,10 @@ onMounted(() => {
             </div>
 
             <template v-else>
-            <div v-if="socialConnectError" class="del-error" style="margin-bottom:14px" role="alert">{{ socialConnectError }}</div>
+            <div v-if="socialConnectError" class="del-error" style="margin-bottom:14px" role="alert">
+              {{ socialConnectError }}
+              <a v-if="pendingConnectUrl" :href="pendingConnectUrl" target="_blank" rel="noopener" style="display:inline-block;margin-left:8px;text-decoration:underline">Open the sign-in window</a>
+            </div>
             <div class="connect-grid">
               <div
                 v-for="plat in PLATFORMS"
