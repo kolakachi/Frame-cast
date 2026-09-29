@@ -139,3 +139,45 @@ passes; screenshots at 1440×900 and 390×844 compared with the mockup. The two
 browser tests were updated to the new labels but not run, because port 8018 is
 held by the paid pilot.
 
+## Slice 2 — the plan turn (2026-09-29)
+
+After every brief WyvStudio now answers with a plan before anything is
+priced or built. The plan says what it will make, lists the on-screen copy
+as editable lines, offers at most three pick-one decisions (each option tagged
+INCLUDED or with its credits), lists what is kept as-is, and under View
+details shows reused files, scenes with timings, output and any proposed
+WyvStudio media. Edits are saved to the plan; Review cost then quotes the
+creation, and the quote carries the approved plan. The worker passes it to
+the agent as the user-approved direction: exact on-screen copy (also treated
+as approved facts), chosen options, kept items, scene order, and no media the
+plan does not list. A newer brief makes a plan stale; planning again keeps the
+user's edited copy.
+
+Planning is free to the user and costs WyvStudio one model call, bounded by a
+daily limit per workspace (`CREATE_PLAN_DAILY_LIMIT`, 40). Planners:
+`offline` (deterministic, always used in fixture mode, and the default),
+`replicate` (a Claude model on Replicate, default `anthropic/claude-sonnet-5`)
+and `anthropic` (Claude API directly, for Opus 5.5; needs `ANTHROPIC_API_KEY`,
+caches the system prompt). Whatever the model returns is normalised: only this
+conversation's source files, scenes clamped to the length, unknown tools
+dropped, decisions without two options dropped, and every price taken from
+`CapabilityCatalogue`, never from the model. A planner failure answers 502,
+stores nothing and spends nothing.
+
+The planner knows WyvStudio's own tools with their prices (stock video and
+photos, AI image, image animation, catalogue or cloned voiceover, library
+music, brand kit) and may propose them. Executing proposed media as child
+operations is later work; today they are shown with their price and passed
+to the agent as allowed, not run.
+
+Checks: Create 52 tests, BriefSettings 5 (57 passed); developer/OAuth/key
+suites pass with `DEVELOPER_OPERATION_ACCOUNTING` now pinned off in
+phpunit.xml (the local .env had been leaking it in); worker 59 passed; web 43
+passed (1 pre-existing); a real browser run against a disposable fixture API
+on port 8019 (brief → plan → edit a line and an option → save → review cost →
+new brief → re-plan) with no console errors. Two defects found there and
+fixed: quoted copy was being read as settings, and re-planning dropped edited
+copy. The paid pilot on 8018 was not touched; its router adds the plans table
+additively on its next request, and its planner stays offline unless
+`CREATE_PLANNER` is set.
+

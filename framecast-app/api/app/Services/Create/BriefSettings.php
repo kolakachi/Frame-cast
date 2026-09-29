@@ -27,7 +27,9 @@ class BriefSettings
     {
         $changes = [];
         $questions = [];
-        $text = ' '.preg_replace('/\s+/', ' ', mb_strtolower($brief)).' ';
+        // Quoted words are copy the user wants on screen, not instructions.
+        $unquoted = preg_replace('/["“][^"”]*["”]/u', ' ', $brief);
+        $text = ' '.preg_replace('/\s+/', ' ', mb_strtolower($unquoted)).' ';
         $video = ($settings['output_kind'] ?? 'video') === 'video';
 
         foreach (self::RATIOS as $pattern => $ratio) {

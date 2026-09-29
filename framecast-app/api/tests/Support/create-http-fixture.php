@@ -32,6 +32,8 @@ if (! \Illuminate\Support\Facades\Schema::hasTable('create_conversations')) {
     \Illuminate\Support\Facades\Storage::disk('minio')->put('reference.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII='));
     \App\Models\Asset::create(['workspace_id' => 1, 'asset_type' => 'image', 'title' => 'Synthetic input fixture', 'status' => 'ready', 'storage_url' => 'minio://reference.png']);
 }
+// Added after the first harness databases existed; additive and idempotent.
+if (! \Illuminate\Support\Facades\Schema::hasTable('create_plans')) (require database_path('migrations/2026_09_30_120000_create_create_plans.php'))->up();
 $app->instance(\App\Http\Middleware\AuthenticateWithJwt::class, new class extends \App\Http\Middleware\AuthenticateWithJwt {
     public function __construct() {}
     public function handle(\Illuminate\Http\Request $request, \Closure $next): \Symfony\Component\HttpFoundation\Response {

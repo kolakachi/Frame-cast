@@ -10,6 +10,12 @@ return [
     'paid_execution_enabled' => (bool) env('CREATE_PAID_EXECUTION_ENABLED', false),
     'pilot_budget_id' => env('CREATE_PILOT_BUDGET_ID', ''),
     'pilot_budget_microusd' => (int) env('CREATE_PILOT_BUDGET_MICROUSD', 0),
+    // Planning is free to the user; WyvStudio pays for one model call per plan.
+    // offline = deterministic planner (always used in fixture mode);
+    // replicate = a Claude model on Replicate; anthropic = Claude API directly.
+    'planner' => env('CREATE_PLANNER', 'offline'),
+    'planner_model' => env('CREATE_PLANNER_MODEL', 'anthropic/claude-sonnet-5'),
+    'plan_daily_limit' => (int) env('CREATE_PLAN_DAILY_LIMIT', 40),
     'lease_seconds' => 90,
     'input_workspace_bytes' => 1024 * 1024 * 1024,
     'input_file_bytes' => 100 * 1024 * 1024,

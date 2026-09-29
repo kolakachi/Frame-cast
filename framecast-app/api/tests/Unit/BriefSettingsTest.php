@@ -34,6 +34,13 @@ class BriefSettingsTest extends TestCase
         $this->assertCount(1, BriefSettings::infer('a 2 minute video', $this->video)['questions']);
     }
 
+    public function test_quoted_copy_is_not_read_as_settings(): void
+    {
+        $r = BriefSettings::infer('Callouts "Assembles in 15 minutes" and "Square edges", keep it energetic.', $this->video);
+        $this->assertSame([], $r['changes']);
+        $this->assertSame([], $r['questions']);
+    }
+
     public function test_image_briefs_ignore_video_only_wording(): void
     {
         $r = BriefSettings::infer('A square product image, 20 seconds, silent.', ['output_kind' => 'image', 'aspect_ratio' => '9:16']);

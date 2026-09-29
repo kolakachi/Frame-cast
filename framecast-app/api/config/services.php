@@ -127,6 +127,10 @@ return [
         'host' => env('POSTHOG_HOST', 'https://us.i.posthog.com'),
     ],
 
+    'anthropic' => [
+        'key' => env('ANTHROPIC_API_KEY'),
+    ],
+
     'replicate' => [
         'api_token' => env('REPLICATE_API_TOKEN'),
 

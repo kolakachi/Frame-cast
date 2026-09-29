@@ -97,6 +97,54 @@ const historyGroups = computed(() => {
   }
   return groups.filter(g => g.items.length)
 })
+// ---- plan turn ----
+const plans = computed(() => data.value?.plans || [])
+const planByMessage = computed(() => Object.fromEntries(plans.value.map(p => [p.message_id, p])))
+const currentPlan = computed(() => [...plans.value].reverse().find(p => p.status === 'proposed' && !p.stale) || null)
+const stalePlan = computed(() => [...plans.value].reverse().find(p => p.status === 'proposed' && p.stale) || null)
+const planDrafts = ref({}), planning = ref(false)
+let planKey = null
+// Drafts are created before render (pre-flush watcher), never during it.
+watch(() => data.value?.plans, list => {
+  for (const p of list || []) {
+    if (p.status !== 'proposed' || p.stale || planDrafts.value[p.id]) continue
+    const sel = p.plan.selections
+    planDrafts.value[p.id] = { callouts: [...sel.callouts], choices: { ...sel.choices }, kept: [...sel.kept] }
+  }
+}, { immediate: true })
+function draftFor(p) { return planDrafts.value[p.id] || p.plan.selections }
+function planDirty(p) {
+  const d = planDrafts.value[p.id]; if (!d) return false
+  const sel = p.plan.selections
+  return JSON.stringify([d.callouts.map(t => t.trim()).filter(Boolean), d.choices, [...d.kept].sort()]) !== JSON.stringify([sel.callouts, sel.choices, [...sel.kept].sort()])
+}
+function optionCredits(p) {
+  const d = planDrafts.value[p.id] || p.plan.selections
+  const media = (p.plan.media || []).reduce((n, m) => n + (m.credits || 0), 0)
+  return media + (p.plan.decisions || []).reduce((n, dec) => n + ((dec.options.find(o => o.id === d.choices[dec.id]) || {}).credits || 0), 0)
+}
+function toggleKept(p, item) { const d = draftFor(p); d.kept = d.kept.includes(item) ? d.kept.filter(k => k !== item) : [...d.kept, item] }
+async function makePlan() {
+  if (!id.value || planning.value) return
+  planning.value = true
+  try {
+    await guarded(async () => {
+      planKey ||= crypto.randomUUID()
+      await api.post(`${base()}/plans`, { expected_version: conversation.value.version, idempotency_key: planKey })
+      planKey = null; quote.value = null; await refresh()
+      await nextTick(); end.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    })
+  } finally { planning.value = false }
+}
+async function savePlanEdits(p) {
+  const d = draftFor(p)
+  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, callouts: d.callouts.map(t => t.trim()).filter(Boolean), choices: d.choices, kept: d.kept })
+  const next = { ...planDrafts.value }; delete next[p.id]; planDrafts.value = next; quote.value = null; await refresh()
+}
+async function reviewPlanCost(p) {
+  if (planDirty(p)) { let ok = true; await guarded(async () => { try { await savePlanEdits(p) } catch (e) { ok = false; throw e } }); if (!ok) return }
+  await plan()
+}
 let timer, searchTimer, epoch = 0, mediaEpoch = 0, historyEpoch = 0, libraryEpoch = 0, compareEpoch = 0
 let mediaKey = '', sendingKey = null, approvalKey = null, uploadRunning = false
 const id = computed(() => route.params.conversationId)
@@ -167,6 +215,8 @@ async function send() {
     persistDraft(target,''); sendingKey = null; prompt.value = ''; quote.value = null; selectedRevision.value = null
     await refresh(); await loadHistory(); await nextTick(); end.value?.scrollIntoView({behavior:'smooth',block:'end'})
   })
+  // The plan turn follows every brief. It is free; failure leaves the brief saved.
+  if (!error.value && canWrite.value && !active.value) await makePlan()
 }
 async function plan(retryRunId = null) { await guarded(async () => { providerApproved.value=false; quote.value = (await api.post(`${base()}/quotes`,{expected_version:conversation.value.version,variant_count:variantCount.value,...(typeof retryRunId === 'string' ? {retry_run_id:retryRunId} : {})})).data.data; approvalKey = crypto.randomUUID(); clock.value = Date.now() }) }
 async function approve() { if(expiredQuote.value) return; await guarded(async () => { await api.post(`${base()}/runs`,{quote_id:quote.value.id,approved:true,provider_approved:providerApproved.value,idempotency_key:approvalKey}); quote.value = null; await refresh(); await loadHistory() }) }
@@ -308,7 +358,56 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
               </div>
               <div v-else class="assistant-message message">
                 <span class="speaker">WyvStudio <time>{{ time(m.created_at) }}</time></span>
-                <p>{{ m.content }}</p>
+                <template v-if="planByMessage[m.id]">
+                  <details v-if="planByMessage[m.id].status !== 'proposed'" class="run-card"><summary>Earlier plan · {{ planByMessage[m.id].plan.summary }}</summary></details>
+                  <div v-else :class="['icard', planByMessage[m.id].stale ? '' : 'icard--warn']">
+                    <div class="icard__body">
+                      <p class="icard__summary">{{ planByMessage[m.id].plan.summary }}</p>
+                      <p v-if="planByMessage[m.id].stale" class="notice">Your brief changed after this plan. Plan again to include it.</p>
+                      <template v-else>
+                        <div v-if="planByMessage[m.id].plan.callouts.length || draftFor(planByMessage[m.id]).callouts.length" class="claims">
+                          <span class="claims__label">ON-SCREEN COPY · EDIT BEFORE APPROVING</span>
+                          <div v-for="(t, i) in draftFor(planByMessage[m.id]).callouts" :key="i" class="claim"><span class="claim__n">{{ i + 1 }}</span><input v-model="draftFor(planByMessage[m.id]).callouts[i]" class="input" maxlength="120" :aria-label="`On-screen line ${i + 1}`" :disabled="!canWrite" /><button type="button" class="upload__x" :aria-label="`Remove line ${i + 1}`" :disabled="!canWrite" @click="draftFor(planByMessage[m.id]).callouts.splice(i, 1)">×</button></div>
+                          <button v-if="canWrite && draftFor(planByMessage[m.id]).callouts.length < 6" type="button" class="quiet quiet--sm" @click="draftFor(planByMessage[m.id]).callouts.push('')">+ Add a line</button>
+                          <span class="claims__note">Only the words here appear on screen.{{ planByMessage[m.id].plan.left_out ? ' ' + planByMessage[m.id].plan.left_out : '' }}</span>
+                        </div>
+                        <p v-else-if="planByMessage[m.id].plan.left_out" class="muted plan-note">{{ planByMessage[m.id].plan.left_out }}</p>
+                        <div v-for="dec in planByMessage[m.id].plan.decisions" :key="dec.id" class="decision">
+                          <b>{{ dec.question }}</b>
+                          <label v-for="o in dec.options" :key="o.id" class="choice"><input v-model="draftFor(planByMessage[m.id]).choices[dec.id]" type="radio" :name="`${planByMessage[m.id].id}-${dec.id}`" :value="o.id" :disabled="!canWrite" /><div><b>{{ o.label }} <span :class="['tier', o.kind === 'media' ? 'tier--media' : 'tier--free']">{{ o.kind === 'media' ? `~${o.credits} CREDITS` : 'INCLUDED' }}</span></b><p>{{ o.detail }}</p></div></label>
+                        </div>
+                        <div v-if="planByMessage[m.id].plan.kept_as_is.length" class="decision">
+                          <b>Kept as-is</b>
+                          <label v-for="k in planByMessage[m.id].plan.kept_as_is" :key="k" class="keep"><input type="checkbox" :checked="draftFor(planByMessage[m.id]).kept.includes(k)" :disabled="!canWrite" @change="toggleKept(planByMessage[m.id], k)" /> {{ k }}</label>
+                        </div>
+                      </template>
+                    </div>
+                    <details v-if="!planByMessage[m.id].stale" class="more">
+                      <summary>View details</summary>
+                      <div class="more__body">
+                        <div class="plan-cols">
+                          <div class="plan-col"><span class="legend ok">REUSED</span><ul><li v-for="r in planByMessage[m.id].plan.reused" :key="r.asset_id">{{ r.title }} <small>{{ r.use }}</small></li><li v-if="!planByMessage[m.id].plan.reused.length" class="muted">Nothing supplied</li></ul></div>
+                          <div v-if="planByMessage[m.id].plan.scenes.length" class="plan-col"><span class="legend info">SCENES</span><ul><li v-for="sc in planByMessage[m.id].plan.scenes" :key="sc.label + sc.start">{{ sc.label }} <small>{{ sc.start }}–{{ sc.end }}s</small></li></ul></div>
+                          <div class="plan-col"><span class="legend muted">OUTPUT</span><ul><li>{{ outputSummary }}</li></ul></div>
+                        </div>
+                        <div v-if="planByMessage[m.id].plan.media.length" class="quote">
+                          <div v-for="md in planByMessage[m.id].plan.media" :key="md.kind + md.description" class="quote__line"><span>{{ md.description }}</span><b>{{ md.credits ? md.credits + ' cr' : 'included' }}</b></div>
+                        </div>
+                      </div>
+                    </details>
+                    <div class="icard__foot">
+                      <template v-if="planByMessage[m.id].stale"><span class="spacer" /><button v-if="canWrite" type="button" class="btn btn--primary btn--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></template>
+                      <template v-else>
+                        <div class="cost-line"><b>{{ optionCredits(planByMessage[m.id]) ? `+${optionCredits(planByMessage[m.id])} credits for new media` : 'Planning was free' }}</b><span>· building is priced on the next step</span></div>
+                        <span class="spacer" />
+                        <UiSelect v-if="paid && canWrite" v-model="variantCount" label="Results" :options="[{value:1,label:'One result'},{value:2,label:'Two variations'},{value:3,label:'Three variations'}]" />
+                        <button v-if="canWrite && planDirty(planByMessage[m.id])" type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="guarded(() => savePlanEdits(planByMessage[m.id]))">Save changes</button>
+                        <button v-if="canWrite && !active && !quote && !(kind === 'image' && !paid)" type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="reviewPlanCost(planByMessage[m.id])">{{ paid ? 'Review cost' : 'Review local sample plan' }}</button>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <p v-else>{{ m.content }}</p>
               </div>
             </template>
 
@@ -377,9 +476,10 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 </div>
               </div>
             </div>
-            <div v-else-if="conversation && canWrite && !active && data?.messages?.length && !conversation.archived_at" class="next-step">
+            <div v-if="planning" class="assistant-message" aria-live="polite"><span class="speaker">WyvStudio</span><div class="icard icard--info"><div class="icard__body working"><div class="working__row"><span class="spinner" aria-hidden="true" /><div><div class="working__label">Planning</div><div class="working__step">Reading your brief and files. Planning is free.</div></div></div></div></div></div>
+            <div v-else-if="!quote && conversation && canWrite && !active && data?.messages?.length && !conversation.archived_at && !currentPlan" class="next-step">
               <p v-if="kind === 'image' && !paid" class="muted">Your image brief is saved. Image generation and editing are not enabled in this local preview yet.</p>
-              <template v-else><UiSelect v-if="paid" v-model="variantCount" label="Results" :options="[{value:1,label:'One result'},{value:2,label:'Two variations'},{value:3,label:'Three variations'}]" /><button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="plan">{{ paid ? 'Review plan and cost' : 'Review local sample plan' }}</button></template>
+              <button v-if="!stalePlan" type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="makePlan">Plan it</button>
             </div>
             <div ref="end" />
           </div>
@@ -555,6 +655,41 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .icard__foot .spacer,.spacer{flex:1}
 .icard--warn{border-color:var(--warn-edge)}.icard--warn .icard__foot{background:var(--warn-bg);border-color:var(--warn-edge)}
 .icard--info{border-color:var(--info-line)}
+.claims{display:flex;flex-direction:column;gap:6px}
+.claims__label{font:10px var(--mono);letter-spacing:1.5px;color:var(--text-3)}
+.claim{display:flex;align-items:center;gap:10px}
+.claim__n{width:20px;font:11px var(--mono);color:var(--text-4);text-align:right;flex-shrink:0}
+.claim .input{padding:8px 10px;font-size:14px}
+.claims__note{font-size:12px;color:var(--text-3)}
+.quiet--sm{padding:5px 9px;font-size:12px;align-self:flex-start}
+.plan-note{font-size:13px;margin:0}
+.decision{display:flex;flex-direction:column;gap:8px}
+.decision>b{font-size:13px}
+.choice{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line-3);border-radius:var(--r-md);background:var(--bg-2);cursor:pointer}
+.choice:has(input:checked){border-color:var(--ok-line);background:var(--ok-soft)}
+.choice input{accent-color:var(--ok);margin-top:4px}
+.choice b{font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.choice p{margin:2px 0 0;font-size:12px;color:var(--text-3)}
+.keep{display:flex;align-items:center;gap:8px;font-size:13px}
+.keep input{accent-color:var(--ok)}
+.tier{font:500 11px var(--mono);letter-spacing:.5px}.tier--free{color:var(--ok)}.tier--media{color:var(--accent)}
+.more{border-top:1px solid var(--line)}
+.more summary{list-style:none;cursor:pointer;padding:10px 16px;font-size:13px;font-weight:600;color:var(--text-3);display:flex}
+.more summary::-webkit-details-marker{display:none}
+.more summary::after{content:"▾";margin-left:auto;color:var(--text-4)}
+.more[open] summary::after{content:"▴"}
+.more__body{padding:0 16px 14px;display:flex;flex-direction:column;gap:12px;font-size:13px;color:var(--text-2)}
+.plan-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.plan-col{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg-2)}
+.plan-col ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+.plan-col li{display:flex;justify-content:space-between;gap:8px}
+.plan-col li small{font:10px var(--mono);color:var(--text-3);text-align:right}
+.legend{display:flex;align-items:center;gap:8px;font:10px var(--mono);letter-spacing:1.5px}
+.legend::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.legend.ok{color:var(--ok)}.legend.info{color:var(--info)}.legend.muted{color:var(--text-3)}
+.quote{display:flex;flex-direction:column;gap:4px}
+.quote__line{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--text-3)}
+.quote__line b{font:500 12px var(--mono);color:var(--text)}
 .cost-line{display:flex;align-items:baseline;gap:8px;font-size:13px;color:var(--text-2)}
 .cost-line b{font:500 16px var(--mono);color:var(--warn)}
 .working{gap:10px}
@@ -677,7 +812,7 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
   .header-actions{margin-left:0;width:100%}
   .messages{padding:20px 14px}
   .composer-dock{padding:8px 12px 12px}
-  .examples,.comparison{grid-template-columns:1fr}
+  .examples,.comparison,.plan-cols{grid-template-columns:1fr}
   .library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .result__meta .status{margin-left:0}
   .panel-scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:24}

@@ -66,6 +66,7 @@ class CreateController extends Controller
             })->filter()->values(),
             'revisions' => $revisions,
             'runs' => DB::table('composition_runs')->where('conversation_id', $id)->orderBy('created_at')->get(['id', 'status', 'stage', 'error', 'created_at']),
+            'plans' => \Illuminate\Support\Facades\Schema::hasTable('create_plans') ? DB::table('create_plans')->where('conversation_id', $id)->orderBy('created_at')->get()->map(fn ($p) => app(\App\Services\Create\PlanService::class)->present($p, $c))->values() : [],
         ]]);
     }
 
@@ -125,6 +126,19 @@ class CreateController extends Controller
             DB::table('create_conversations')->where('id', $id)->update(['version' => $c->version + 1, 'updated_at' => now()]);
         });
         return $this->show($r, $id);
+    }
+
+    public function plan(Request $r, string $id)
+    {
+        $input = $r->validate(['expected_version' => 'required|integer|min:0', 'idempotency_key' => 'required|string|max:128']);
+        return response()->json(['data' => app(\App\Services\Create\PlanService::class)->propose($r->user(), $id, $input['expected_version'], $input['idempotency_key'])], 201);
+    }
+
+    public function selectPlan(Request $r, string $id, string $planId)
+    {
+        $input = $r->validate(['expected_version' => 'required|integer|min:0', 'callouts' => 'sometimes|array|max:6', 'callouts.*' => 'nullable|string|max:120',
+            'choices' => 'sometimes|array|max:3', 'choices.*' => 'string|max:32', 'kept' => 'sometimes|array|max:8', 'kept.*' => 'string|max:80']);
+        return response()->json(['data' => app(\App\Services\Create\PlanService::class)->select($r->user(), $id, $planId, $input['expected_version'], $input)]);
     }
 
     public function quote(Request $r, string $id)

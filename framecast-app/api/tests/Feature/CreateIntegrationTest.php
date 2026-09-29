@@ -33,6 +33,7 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_09_29_130000_create_composition_reconciliations.php'))->up();
         (require database_path('migrations/2026_09_29_180000_add_create_output_metadata.php'))->up();
         (require database_path('migrations/2026_09_29_190000_create_composition_deliveries.php'))->up();
+        (require database_path('migrations/2026_09_30_120000_create_create_plans.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -68,6 +69,97 @@ class CreateIntegrationTest extends TestCase
         $again = $this->conversations->message($this->owner, $c->id, ['content' => 'Make a square 20 second product video in French.', 'expected_version' => 0, 'idempotency_key' => 'm-1']);
         $this->assertSame('user', $again->role);
         $this->assertSame(5, DB::table('create_messages')->where('conversation_id', $c->id)->count());
+    }
+
+    public function test_offline_plan_is_a_free_assistant_turn_with_editable_selections(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Launch video with callouts "Sit-stand in 8 seconds" and "Holds two monitors".', 'expected_version' => 0, 'idempotency_key' => 'b1']);
+        $v = (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $plans = app(\App\Services\Create\PlanService::class);
+        $p = $plans->propose($this->owner, $c->id, $v, 'plan-1');
+        $this->assertSame('offline-planner-v1', $p['provider']);
+        $this->assertSame(['Sit-stand in 8 seconds', 'Holds two monitors'], $p['plan']['callouts']);
+        $this->assertSame('type_on', $p['plan']['selections']['choices']['opening']);
+        $this->assertFalse($p['stale']);
+        $msg = DB::table('create_messages')->where('id', $p['message_id'])->first();
+        $this->assertSame('assistant', $msg->role);
+        $this->assertSame($v + 1, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $this->assertSame($p['id'], $plans->propose($this->owner, $c->id, $v, 'plan-1')['id'], 'same key replays');
+        $this->assertSame(0, (int) DB::table('api_operations')->count(), 'planning reserves nothing');
+
+        $v++;
+        $edited = $plans->select($this->owner, $c->id, $p['id'], $v, ['callouts' => ['Sit-stand in 8 seconds', '', 'Assembles in 15 minutes'], 'choices' => ['opening' => 'reveal']]);
+        $this->assertSame(['Sit-stand in 8 seconds', 'Assembles in 15 minutes'], $edited['plan']['selections']['callouts']);
+        $this->rejected(422, fn () => $plans->select($this->owner, $c->id, $p['id'], $v + 1, ['choices' => ['opening' => 'fireworks']]));
+        $this->rejected(409, fn () => $plans->select($this->owner, $c->id, $p['id'], $v, ['choices' => ['opening' => 'type_on']]));
+
+        // The quote carries the approved plan.
+        $q = $this->conversations->quote($this->owner, $c->id, $v + 1);
+        $this->assertSame(['Sit-stand in 8 seconds', 'Assembles in 15 minutes'], $q->payload_json['plan']['on_screen_copy']);
+        $this->assertSame('Slow reveal', $q->payload_json['plan']['choices'][0]['chosen']);
+
+        // A new brief makes the plan stale: it is no longer quoted or editable.
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Actually keep it calm.', 'expected_version' => $v + 1, 'idempotency_key' => 'b2']);
+        $cNow = $this->conversations->conversation($this->owner, $c->id);
+        $this->assertNull(\App\Services\Create\PlanService::forQuote($cNow));
+        // Planning again keeps the user's edited copy.
+        $again = $plans->propose($this->owner, $c->id, (int) $cNow->version, 'plan-2');
+        $this->assertSame(['Sit-stand in 8 seconds', 'Assembles in 15 minutes'], $again['plan']['callouts']);
+        $cNow = $this->conversations->conversation($this->owner, $c->id);
+        $this->rejected(409, fn () => $plans->select($this->owner, $c->id, $p['id'], (int) $cNow->version, ['choices' => ['opening' => 'type_on']]));
+    }
+
+    public function test_model_plan_is_normalised_and_priced_by_the_catalogue(): void
+    {
+        config(['create.mode' => 'agent', 'create.planner' => 'anthropic', 'create.planner_model' => 'claude-opus-5-5', 'services.anthropic.key' => 'test-key']);
+        $asset = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'title' => 'take.mp4', 'status' => 'active', 'storage_url' => 'https://b2/take.mp4']);
+        $foreign = 999999;
+        $reply = ['summary' => 'I will open on your take and punch in on the product.',
+            'reused' => [['asset_id' => $asset->id, 'use' => 'First 4 seconds'], ['asset_id' => $foreign, 'use' => 'not yours']],
+            'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 4, 'idea' => 'Take'], ['label' => 'Too long', 'start' => 10, 'end' => 90, 'idea' => 'clamped'], ['label' => 'Bad', 'start' => 5, 'end' => 5]],
+            'callouts' => ['Holds two monitors'],
+            'decisions' => [['id' => 'Intro Style!', 'question' => 'Energetic intro?', 'options' => [
+                ['id' => 'punch', 'label' => 'Punch-in', 'detail' => 'Included', 'kind' => 'included', 'tool' => null],
+                ['id' => 'gen', 'label' => 'Generated motion', 'detail' => 'New clip', 'kind' => 'media', 'tool' => 'animate_image', 'credits' => 1],
+            ]], ['id' => 'lonely', 'question' => 'One option only', 'options' => [['id' => 'a', 'label' => 'A']]]],
+            'kept_as_is' => ['take.mp4 audio'],
+            'media' => [['kind' => 'ai_image', 'description' => 'Studio background', 'credits' => 1], ['kind' => 'launch_rocket', 'description' => 'not a tool']],
+            'left_out' => 'No price was given.'];
+        Http::fake(['api.anthropic.com/*' => Http::response(['id' => 'msg_1', 'content' => [['type' => 'text', 'text' => 'Here you go: '.json_encode($reply)]],
+            'usage' => ['input_tokens' => 1200, 'output_tokens' => 400, 'cache_read_input_tokens' => 900]])]);
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
+        $this->conversations->attach($this->owner, $c->id, $asset->id, 'source', 0);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Energetic launch.', 'expected_version' => 1, 'idempotency_key' => 'b1']);
+        $p = app(\App\Services\Create\PlanService::class)->propose($this->owner, $c->id, 2, 'p1');
+        $plan = $p['plan'];
+        $this->assertSame('anthropic:claude-opus-5-5', $p['provider']);
+        $this->assertSame([$asset->id], array_column($plan['reused'], 'asset_id'), 'only this conversation\'s source files');
+        $this->assertEquals([['label' => 'Hook', 'start' => 0.0, 'end' => 4.0, 'idea' => 'Take'], ['label' => 'Too long', 'start' => 10.0, 'end' => 15.0, 'idea' => 'clamped']], $plan['scenes']);
+        $this->assertCount(1, $plan['decisions'], 'a decision with one option is dropped');
+        $this->assertSame('introstyle', $plan['decisions'][0]['id']);
+        $gen = $plan['decisions'][0]['options'][1];
+        $this->assertSame(\App\Services\CreditService::animationCost('quick', '480p', 5), $gen['credits'], 'price comes from the catalogue, not the model');
+        $this->assertSame(['ai_image'], array_column($plan['media'], 'kind'), 'unknown tools are dropped');
+        $this->assertSame(app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor(null), $plan['media'][0]['credits']);
+        $this->assertSame(900, json_decode(DB::table('create_plans')->where('id', $p['id'])->value('usage_json'), true)['cache_read_tokens']);
+        Http::assertSent(fn ($r) => $r->url() === 'https://api.anthropic.com/v1/messages' && $r['model'] === 'claude-opus-5-5'
+            && $r['system'][0]['cache_control']['type'] === 'ephemeral' && $r->hasHeader('x-api-key', 'test-key'));
+    }
+
+    public function test_planning_is_limited_per_day_and_failures_cost_nothing(): void
+    {
+        $c = $this->brief(); $plans = app(\App\Services\Create\PlanService::class);
+        config(['create.plan_daily_limit' => 1]);
+        $plans->propose($this->owner, $c->id, 1, 'one');
+        $this->rejected(429, fn () => $plans->propose($this->owner, $c->id, 2, 'two'));
+        config(['create.plan_daily_limit' => 40, 'create.mode' => 'agent', 'create.planner' => 'replicate', 'services.replicate.api_token' => 't']);
+        Http::fake(['api.replicate.com/*' => Http::response(['error' => 'down'], 500)]);
+        $this->rejected(502, fn () => $plans->propose($this->owner, $c->id, 2, 'three'));
+        $this->assertSame(1, DB::table('create_plans')->count());
+        $viewer = User::create(['email' => 'viewer@example.test', 'name' => 'V', 'role' => 'viewer', 'status' => 'active']);
+        $viewer->forceFill(['workspace_id' => $this->workspace->id])->save();
+        $this->rejected(403, fn () => $plans->propose($viewer, $c->id, 2, 'four'));
     }
 
     private function brief(): object

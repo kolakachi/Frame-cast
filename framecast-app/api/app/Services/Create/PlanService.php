@@ -1,0 +1,190 @@
+<?php
+namespace App\Services\Create;
+
+use App\Models\{Asset, User};
+use App\Services\Create\Planning\{AnthropicPlanner, OfflinePlanner, Planner, ReplicatePlanner};
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+/**
+ * The plan turn. A plan is free to the user: WyvStudio pays for the single
+ * planning call, bounded by a daily limit. The model proposes; this service
+ * decides what is allowed (only supplied files, only known tools, prices from
+ * the catalogue) and the quote binds to the plan the user approved.
+ */
+class PlanService
+{
+    public function __construct(private ConversationService $conversations) {}
+
+    public function planner(): Planner
+    {
+        $choice = config('create.mode') === 'fixture' ? 'offline' : (string) config('create.planner', 'offline');
+        return match ($choice) {
+            'replicate' => new ReplicatePlanner((string) config('create.planner_model', 'anthropic/claude-sonnet-5'), (string) config('services.replicate.api_token')),
+            'anthropic' => new AnthropicPlanner((string) config('create.planner_model', 'claude-opus-5-5'), (string) config('services.anthropic.key')),
+            default => new OfflinePlanner,
+        };
+    }
+
+    public function propose(User $user, string $id, int $version, string $key): array
+    {
+        $this->conversations->authorize($user, true);
+        $c = $this->conversations->conversation($user, $id);
+        $hash = hash('sha256', $id.'|'.$version);
+        $old = DB::table('create_plans')->where('conversation_id', $id)->where('idempotency_key', $key)->first();
+        if ($old) {
+            abort_unless(hash_equals($old->request_hash, $hash), 409, 'This request key already belongs to a different plan.');
+            return $this->present($old, $c);
+        }
+        abort_if($c->archived_at, 409, 'Restore this conversation before planning.');
+        abort_unless((int) $c->version === $version, 409, 'Conversation changed. Refresh before planning.');
+        $briefs = DB::table('create_messages')->where('conversation_id', $id)->where('role', 'user')->orderBy('sequence')->get(['content', 'sequence']);
+        abort_if($briefs->isEmpty(), 422, 'Add a brief first.');
+        $today = DB::table('create_plans')->join('create_conversations', 'create_conversations.id', '=', 'create_plans.conversation_id')
+            ->where('create_conversations.workspace_id', $user->workspace_id)->where('create_plans.created_at', '>=', now()->startOfDay())->count();
+        abort_if($today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
+
+        $context = $this->context($user, $c);
+        try {
+            $result = $this->planner()->plan($context);
+        } catch (\Throwable $e) {
+            report($e);
+            abort(502, 'The planner could not make a plan just now. Nothing was charged; try again.');
+        }
+        $plan = $this->normalize($result['plan'], $context, (int) $user->workspace_id);
+
+        return DB::transaction(function () use ($user, $id, $version, $key, $hash, $plan, $result, $briefs) {
+            $c = $this->conversations->conversation($user, $id, true);
+            abort_unless((int) $c->version === $version, 409, 'The conversation changed while planning. Plan again.');
+            $messageId = (string) Str::uuid(); $planId = (string) Str::uuid(); $next = $c->version + 1;
+            DB::table('create_messages')->insert(['id' => $messageId, 'conversation_id' => $id, 'role' => 'assistant', 'content' => $plan['summary'],
+                'idempotency_key' => 'plan:'.$planId, 'request_hash' => hash('sha256', $plan['summary']), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('create_plans')->where('conversation_id', $id)->where('status', 'proposed')->update(['status' => 'superseded', 'updated_at' => now()]);
+            DB::table('create_plans')->insert(['id' => $planId, 'conversation_id' => $id, 'message_id' => $messageId, 'brief_sequence' => (int) $briefs->last()->sequence,
+                'idempotency_key' => $key, 'request_hash' => $hash, 'provider' => mb_substr($result['provider'], 0, 120), 'plan_json' => json_encode($plan),
+                'usage_json' => $result['usage'] ? json_encode($result['usage']) : null, 'status' => 'proposed', 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
+            return $this->present(DB::table('create_plans')->where('id', $planId)->first(), DB::table('create_conversations')->where('id', $id)->first());
+        });
+    }
+
+    /** Save the user's edits to callouts, choices and kept items. */
+    public function select(User $user, string $id, string $planId, int $version, array $input): array
+    {
+        $this->conversations->authorize($user, true);
+        return DB::transaction(function () use ($user, $id, $planId, $version, $input) {
+            $c = $this->conversations->conversation($user, $id, true);
+            abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Refresh before editing the plan.');
+            $row = DB::table('create_plans')->where('conversation_id', $id)->where('id', $planId)->lockForUpdate()->firstOrFail();
+            abort_unless($row->status === 'proposed' && ! $this->stale($row, $c), 409, 'This plan is out of date. Plan again from the latest brief.');
+            $plan = json_decode($row->plan_json, true);
+            $sel = $plan['selections'];
+            if (array_key_exists('callouts', $input)) {
+                $sel['callouts'] = array_values(array_filter(array_map(fn ($t) => mb_substr(trim((string) $t), 0, 120), (array) $input['callouts']), fn ($t) => $t !== ''));
+                abort_if(count($sel['callouts']) > 6, 422, 'Use at most six callouts.');
+            }
+            foreach ((array) ($input['choices'] ?? []) as $decision => $option) {
+                $d = collect($plan['decisions'])->firstWhere('id', $decision);
+                abort_unless($d && collect($d['options'])->firstWhere('id', $option), 422, 'Choose one of the offered options.');
+                $sel['choices'][$decision] = $option;
+            }
+            if (array_key_exists('kept', $input)) {
+                $kept = array_values((array) $input['kept']);
+                abort_if(array_diff($kept, $plan['kept_as_is']) !== [], 422, 'Only listed items can be kept as-is.');
+                $sel['kept'] = $kept;
+            }
+            $plan['selections'] = $sel;
+            $plan['credits'] = $this->credits($plan);
+            DB::table('create_plans')->where('id', $planId)->update(['plan_json' => json_encode($plan), 'updated_at' => now()]);
+            DB::table('create_conversations')->where('id', $id)->update(['version' => $c->version + 1, 'updated_at' => now()]);
+            return $this->present(DB::table('create_plans')->where('id', $planId)->first(), DB::table('create_conversations')->where('id', $id)->first());
+        });
+    }
+
+    /** The approved plan a quote binds to, or null when there is no current plan. */
+    public static function forQuote(object $c): ?array
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('create_plans')) return null;
+        $row = DB::table('create_plans')->where('conversation_id', $c->id)->where('status', 'proposed')->orderByDesc('created_at')->first();
+        if (! $row || (new self(app(ConversationService::class)))->stale($row, $c)) return null;
+        $p = json_decode($row->plan_json, true); $s = $p['selections'];
+        return ['plan_id' => $row->id, 'summary' => $p['summary'], 'reused' => $p['reused'], 'scenes' => $p['scenes'],
+            'on_screen_copy' => $s['callouts'], 'kept_as_is' => $s['kept'],
+            'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
+            'media' => $p['media'], 'left_out' => $p['left_out']];
+    }
+
+    public function stale(object $plan, object $c): bool
+    {
+        $last = DB::table('create_messages')->where('conversation_id', $c->id)->where('role', 'user')->max('sequence');
+        return (int) $last !== (int) $plan->brief_sequence;
+    }
+
+    public function present(object $row, object $c): array
+    {
+        return ['id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
+            'stale' => $row->status === 'proposed' && $this->stale($row, $c), 'plan' => json_decode($row->plan_json, true), 'created_at' => $row->created_at];
+    }
+
+    private function context(User $user, object $c): array
+    {
+        $settings = json_decode($c->settings_json, true) ?: [];
+        $files = DB::table('create_attachments')->where('conversation_id', $c->id)->orderBy('asset_id')->get()->map(function ($a) use ($user) {
+            $asset = Asset::where('workspace_id', $user->workspace_id)->find($a->asset_id);
+            return $asset ? ['asset_id' => (int) $asset->id, 'title' => (string) $asset->title, 'asset_type' => $asset->asset_type, 'purpose' => $a->purpose,
+                'duration_seconds' => $asset->duration_seconds, 'dimensions' => $asset->dimensions_json] : null;
+        })->filter()->values()->all();
+        return [
+            'messages' => DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'content'])->map(fn ($m) => (array) $m)->all(),
+            'files' => $files, 'settings' => $settings, 'approved_facts' => $settings['approved_facts'] ?? [],
+            'tools' => CapabilityCatalogue::forWorkspace((int) $user->workspace_id), 'brand_kits' => CapabilityCatalogue::brandKits((int) $user->workspace_id),
+            // The user's edits to the last plan are their decisions; a new plan starts from them.
+            'previous_plan' => ($prev = DB::table('create_plans')->where('conversation_id', $c->id)->orderByDesc('created_at')->first())
+                ? ['summary' => json_decode($prev->plan_json, true)['summary'] ?? '', 'approved_copy' => json_decode($prev->plan_json, true)['selections']['callouts'] ?? [],
+                    'kept_as_is' => json_decode($prev->plan_json, true)['selections']['kept'] ?? []] : null,
+        ];
+    }
+
+    public function normalize(array $raw, array $ctx, int $workspaceId): array
+    {
+        $str = fn ($v, int $n) => mb_substr(trim(is_string($v) ? $v : ''), 0, $n);
+        $slug = fn ($v) => mb_substr(preg_replace('/[^a-z0-9_-]/', '', strtolower(is_string($v) ? $v : '')), 0, 32);
+        $summary = $str($raw['summary'] ?? '', 600);
+        abort_if($summary === '', 502, 'The planner returned an empty plan. Nothing was charged; try again.');
+        $image = ($ctx['settings']['output_kind'] ?? 'video') === 'image';
+        $duration = (float) ($ctx['settings']['duration_seconds'] ?? 15);
+        $sources = collect($ctx['files'])->where('purpose', 'source')->keyBy('asset_id');
+        $reused = collect((array) ($raw['reused'] ?? []))->filter(fn ($r) => is_array($r) && $sources->has((int) ($r['asset_id'] ?? 0)))
+            ->map(fn ($r) => ['asset_id' => (int) $r['asset_id'], 'title' => $sources[(int) $r['asset_id']]['title'], 'use' => $str($r['use'] ?? '', 120)])->unique('asset_id')->values()->all();
+        $scenes = $image ? [] : collect((array) ($raw['scenes'] ?? []))->filter(fn ($s) => is_array($s))->map(fn ($s) => [
+            'label' => $str($s['label'] ?? '', 40), 'start' => round(max(0, min($duration, (float) ($s['start'] ?? 0))), 1),
+            'end' => round(max(0, min($duration, (float) ($s['end'] ?? 0))), 1), 'idea' => $str($s['idea'] ?? '', 160),
+        ])->filter(fn ($s) => $s['label'] !== '' && $s['end'] > $s['start'])->take(8)->values()->all();
+        $callouts = collect((array) ($raw['callouts'] ?? []))->map(fn ($t) => $str($t, 120))->filter()->unique()->take(6)->values()->all();
+        $known = collect(CapabilityCatalogue::forWorkspace($workspaceId))->keyBy('kind');
+        $decisions = collect((array) ($raw['decisions'] ?? []))->filter(fn ($d) => is_array($d))->map(function ($d) use ($str, $slug, $known) {
+            $options = collect((array) ($d['options'] ?? []))->filter(fn ($o) => is_array($o))->map(function ($o) use ($str, $slug, $known) {
+                $media = ($o['kind'] ?? '') === 'media' && $known->has($o['tool'] ?? '');
+                return ['id' => $slug($o['id'] ?? $o['label'] ?? ''), 'label' => $str($o['label'] ?? '', 60), 'detail' => $str($o['detail'] ?? '', 160),
+                    'kind' => $media ? 'media' : 'included', 'tool' => $media ? $o['tool'] : null, 'credits' => $media ? (int) $known[$o['tool']]['credits'] : 0];
+            })->filter(fn ($o) => $o['id'] !== '' && $o['label'] !== '')->unique('id')->take(3)->values()->all();
+            return ['id' => $slug($d['id'] ?? $d['question'] ?? ''), 'question' => $str($d['question'] ?? '', 120), 'options' => $options];
+        })->filter(fn ($d) => $d['id'] !== '' && $d['question'] !== '' && count($d['options']) >= 2)->unique('id')->take(3)->values()->all();
+        $kept = collect((array) ($raw['kept_as_is'] ?? []))->map(fn ($t) => $str($t, 80))->filter()->unique()->take(8)->values()->all();
+        $media = collect((array) ($raw['media'] ?? []))->filter(fn ($m) => is_array($m) && $known->has($m['kind'] ?? ''))
+            ->map(fn ($m) => ['kind' => $m['kind'], 'description' => $str($m['description'] ?? '', 200), 'credits' => (int) $known[$m['kind']]['credits']])->take(6)->values()->all();
+        $plan = ['summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions,
+            'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300),
+            'selections' => ['callouts' => $callouts, 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
+        $plan['credits'] = $this->credits($plan);
+        return $plan;
+    }
+
+    /** Media the plan would add on top of building the composition. */
+    private function credits(array $plan): array
+    {
+        $media = array_sum(array_column($plan['media'], 'credits'));
+        $choices = collect($plan['decisions'])->sum(fn ($d) => collect($d['options'])->firstWhere('id', $plan['selections']['choices'][$d['id']] ?? null)['credits'] ?? 0);
+        return ['media' => $media + $choices];
+    }
+}

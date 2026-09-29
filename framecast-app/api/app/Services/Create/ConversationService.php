@@ -171,6 +171,7 @@ class ConversationService
                     'input_files' => $files, 'base_bundle' => $base ? json_decode($base->bundle_json, true) : null,
                     'base_bundle_hash' => $base?->bundle_hash,
                     'media_input'=>$mediaInput,
+                    'plan'=>PlanService::forQuote($c),
                     'settings' => $settings, 'mode' => $paid ? 'agent' : 'fixture'];
                 return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $user->workspace_id,
                     'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => array_sum(array_map(fn($p)=>$p['credits']*$p['max_calls'],$policy)),
