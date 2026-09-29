@@ -157,9 +157,9 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 
 ## E4 — speech-timed editing and reusable styles
 
-- [ ] Timestamped transcription linked to source ranges; preserve a source-to-output map through trims and cuts.
+- [x] Timestamped transcription linked to source ranges; preserve a source-to-output map through trims and cuts. Built in slice 6 (2026-09-29): the agent's free `transcript` action, app-side Whisper with word timings cached on the asset by exact bytes, and word times carried through trim, cut, silence removal and speed.
 - [~] Non-destructive silence/mistake cuts with checks against changing meaning or audio/video synchronization. Silence cuts, trims and range cuts with a source-to-output map are built (slice 4, 2026-09-29); mistake detection needs timestamped transcripts.
-- [ ] Bind overlays to spoken moments; recompute output timestamps after cuts.
+- [~] Bind overlays to spoken moments; recompute output timestamps after cuts. The agent now receives mapped word times and is told to time text to them; there is no automatic check yet that an overlay actually lands on its word.
 - [ ] Explicit hold/shorten/loop/replace behavior for short clips; never silently restart animation.
 - [ ] Reference-style analysis and workspace-scoped saved preferences with explicit user approval, versions and edit/delete controls.
 - [ ] Generated media dependencies have separate approvals and resumable parent runs; reuse completed assets after failures.

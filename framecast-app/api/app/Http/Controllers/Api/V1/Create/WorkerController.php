@@ -90,6 +90,13 @@ class WorkerController extends Controller
         return response()->json(['data' => app(\App\Services\Create\AttemptService::class)->settle($id, $input['lease_token'], $attemptId, $input,$verified)]);
     }
 
+    public function transcript(Request $r, string $id)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'asset_id' => 'required|integer|min:1']);
+        return response()->json(['data' => app(\App\Services\Create\TranscriptService::class)->forRun($id, $input['lease_token'], (int) $input['asset_id'])]);
+    }
+
     public function anthropic(Request $r, string $id, string $attemptId)
     {
         $this->authorizeWorker($r);

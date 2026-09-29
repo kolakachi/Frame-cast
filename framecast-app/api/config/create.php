@@ -29,6 +29,9 @@ return [
     'agent_effort' => env('CREATE_AGENT_EFFORT', 'medium'),
     // Microdollars per token (= dollars per million tokens). Opus 5.5 list price.
     'anthropic_rates' => ['input' => 4, 'output' => 20, 'cache_write' => 5, 'cache_read' => 0.2],
+    // Word-timed transcripts of supplied speech (free; OpenAI Whisper cost is about $0.006 a minute).
+    'transcript_daily_limit' => (int) env('CREATE_TRANSCRIPT_DAILY_LIMIT', 30),
+    'transcript_max_seconds' => 600,
     'lease_seconds' => 90,
     'input_workspace_bytes' => 1024 * 1024 * 1024,
     'input_file_bytes' => 100 * 1024 * 1024,

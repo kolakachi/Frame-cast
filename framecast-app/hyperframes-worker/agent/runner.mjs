@@ -1,5 +1,6 @@
 import {readFile,writeFile,rename} from 'node:fs/promises';
 import {parseAction,hostPolicy} from './protocol.mjs';
+import {chainFor,mapThrough,compact} from './transcript-map.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
 import {digest} from './workspace.mjs';
@@ -76,10 +77,23 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         else {
           result=await bounded(()=>tools.media({op:action.op,input:action.input,params:action.params,signal:boundedSignal}));
           // A derived file is protected from later changes like any supplied asset.
-          if(result.ok && result.output)workspace.assets.push({path:result.output,sha256:result.sha256,derivedFrom:action.input,operation:action.op,params:action.params});
+          if(result.ok && result.output)workspace.assets.push({path:result.output,sha256:result.sha256,derivedFrom:action.input,operation:action.op,params:action.params,...(result.source_map?{sourceMap:result.source_map}:{})});
           if(!result.ok && ++state.repairs>cap.repairs)throw Error('Media repair limit reached');
         }
-      } else if(action.type==='assets') result=workspace.assets;
+      } else if(action.type==='transcript') {
+        if(!tools.transcript)throw Error('Transcript tool not installed');
+        try {
+          // Transcribe the original once; carry its times through this run's edits.
+          const {root,steps}=chainFor(action.input,workspace.assets);
+          const t=await bounded(()=>tools.transcript({input:root,signal:boundedSignal}));
+          const mapped={words:mapThrough(t.words,steps),segments:mapThrough(t.segments,steps)};
+          result={ok:true,input:action.input,timeline:steps.length?'mapped from '+root+' through '+steps.map(s=>s.operation).join(', '):'original',...compact(mapped)};
+        } catch(e) {
+          if(boundedSignal.aborted)throw e;
+          result={ok:false,error:e.message};
+          if(++state.repairs>cap.repairs)throw Error('Transcript repair limit reached');
+        }
+      } else if(action.type==='assets') result=workspace.assets.map(({sourceMap,...a})=>a);
       else if(action.type==='primitives') result=primitives;
       else if(action.type==='timeline') {if(!tools.timeline)throw Error('Timeline tool not installed');result=await bounded(()=>tools.timeline({signal:boundedSignal}));}
       else if(action.type==='preview') {

@@ -99,7 +99,9 @@ async function execute(run){
   let agentResult;
   if(run.input.execution_policy?.agent){
    stage=paid?'Designing your video':'Running the offline agent contract check';
+   const assetIds=new Map(manifest.map(f=>[f.name,f.asset_id]));
    agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,
+    transcribe:async({input})=>{const assetId=assetIds.get(input);if(!assetId)throw Error('Only supplied audio or video can be transcribed');return request('runs/'+run.id+'/transcripts',{lease_token:run.lease_token,asset_id:assetId},false,150000);},
     provider,guidanceDirectory:root+'/agent/guidance',signal:aborter.signal,
     bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),
     begin:payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token}),

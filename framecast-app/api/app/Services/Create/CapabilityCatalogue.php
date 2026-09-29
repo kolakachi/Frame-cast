@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Schema;
 class CapabilityCatalogue
 {
     public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'library_music', 'brand_kit',
-        'stabilize', 'remove_silence', 'clean_audio', 'loudness', 'speed', 'crop', 'grade', 'trim'];
+        'transcript', 'stabilize', 'remove_silence', 'clean_audio', 'loudness', 'speed', 'crop', 'grade', 'trim'];
 
     public static function forWorkspace(int $workspaceId): array
     {
@@ -28,6 +28,7 @@ class CapabilityCatalogue
             ['kind' => 'library_music', 'what' => 'A track from the licensed music library', 'credits' => 0],
             ['kind' => 'brand_kit', 'what' => "The workspace's brand colours, fonts and logo", 'credits' => 0],
             // Free edits to the user's own footage, run in the render sandbox.
+            ['kind' => 'transcript', 'what' => 'Word-timed transcript of speech, so text and visuals land on spoken words', 'credits' => 0],
             ['kind' => 'stabilize', 'what' => 'Steady shaky handheld footage', 'credits' => 0],
             ['kind' => 'remove_silence', 'what' => 'Cut pauses and dead air from speech', 'credits' => 0],
             ['kind' => 'clean_audio', 'what' => 'Reduce background noise in a voice recording', 'credits' => 0],

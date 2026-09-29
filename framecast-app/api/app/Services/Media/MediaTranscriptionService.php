@@ -63,6 +63,27 @@ class MediaTranscriptionService
     }
 
     /**
+     * Word-timed transcript of a local audio or video file the caller owns.
+     * The caller must check provider_key: on any provider failure this class
+     * returns a placeholder marked 'local_fallback', never real speech.
+     */
+    public function transcribeLocalMediaWithTimestamps(string $path, string $mimeType): array
+    {
+        $audio = $path;
+        if (str_starts_with($mimeType, 'video/')) {
+            $audio = sys_get_temp_dir().'/framecast-transcribe-'.Str::uuid().'.mp3';
+            $result = Process::timeout(120)->run(['ffmpeg', '-y', '-i', $path, '-vn', '-acodec', 'libmp3lame', '-ar', '44100', '-ac', '1', $audio]);
+            if (! $result->successful() || ! file_exists($audio)) throw new RuntimeException('Could not extract audio from video for transcription.');
+        }
+        try {
+            $result = $this->transcribeLocalFileWithOptions($audio, 'media file', true);
+            return [...$result, 'words' => $result['words'] ?? [], 'segments' => $result['segments'] ?? []];
+        } finally {
+            if ($audio !== $path) @unlink($audio);
+        }
+    }
+
+    /**
      * @return array{transcript:string,provider_key:string,model:string,words?:array<int, array{text:string,start:float,end:float}>,segments?:array<int, array{text:string,start:float,end:float}>}
      */
     private function transcribeLocalFileWithOptions(string $path, string $fallbackTitle, bool $withTimestamps): array

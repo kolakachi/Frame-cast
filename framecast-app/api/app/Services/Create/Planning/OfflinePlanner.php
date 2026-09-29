@@ -43,7 +43,8 @@ class OfflinePlanner implements Planner
                 ],
             ]],
             'kept_as_is' => array_merge($sources->map(fn ($f) => $f['title'])->all(), array_map(fn ($f) => '"'.Str::limit($f, 60).'"', array_slice($c['approved_facts'] ?? [], 0, 2))),
-            'media' => [],
+            'media' => $sources->contains(fn ($f) => in_array($f['asset_type'], ['video', 'audio'], true))
+                ? [['kind' => 'transcript', 'description' => 'Word-timed transcript so captions and callouts land on the spoken words']] : [],
             'left_out' => $callouts ? '' : 'No exact on-screen lines were given, so I will ask before adding claims.',
         ];
         return ['plan' => $plan, 'provider' => 'offline-planner-v1', 'usage' => []];

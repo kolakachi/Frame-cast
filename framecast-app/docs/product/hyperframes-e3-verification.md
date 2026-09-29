@@ -278,3 +278,12 @@ Four local builds of one brief (Brewline cold brew, 15 s vertical, kinetic type)
 - Run 5 passed all automated checks at revision 3. Its own visual review then correctly found clipped letters at 5 s and asked for one more repair, but the 8-call limit was reached. Cost: $0.32 for 8 calls, charged 85 credits.
 
 Open decision: an Opus build needs about 9 to 10 calls with its review. That means raising `max_calls` on the Opus path or accepting fewer review passes. Raising it also raises the most a build can charge.
+
+## Slice 6: word-timed transcripts (2026-09-29)
+
+- **Agent action.** `{"type":"transcript","input":"<file>"}` returns words as `[text,start,end]` on that file's own timeline. Output is capped at 1,500 words and 300 segments for context.
+- **App side.** `POST /internal/create/runs/{id}/transcripts` transcribes the run's immutable input copy with OpenAI Whisper word timestamps. The worker never holds the key. Results are cached on the asset against the file's SHA-256, so versions and free edits reuse them. It is free, limited to 30 a day per workspace and to clips up to 10 minutes. The media service's placeholder transcript, returned on provider failure, is refused with a 503.
+- **Timing through edits.** The runner transcribes the original once and carries times through the edits the agent made in the run. Trims, cuts and silence removal use the source map. Speed rescales time. Stabilize, clean audio, loudness, crop and grade keep timing. A word whose midpoint was cut is dropped, and a word straddling a cut is clipped.
+- **Planning.** Both planners propose the transcript step for supplied video or audio. The catalogue lists it at 0 credits.
+- **Tests.** API 716 passed with 1 skipped. Worker 70 passed, including mapping, the runner action and the protocol shape.
+- **Live check.** A 4-second spoken clip went through the harness, the container's audio extraction and real Whisper. The first call took 4.3 s and the repeat was cached in 47 ms. Whisper rendered "Save twenty percent" as "Save 20", dropping a word. On-screen copy must come from approved text, not from the transcript.

@@ -254,6 +254,39 @@ class CreateIntegrationTest extends TestCase
         $this->assertEqualsCanonicalizing([$source->id, $record['asset_id']], array_column($inherited, 'asset_id'));
     }
 
+    public function test_transcript_is_word_timed_cached_by_bytes_and_never_a_placeholder(): void
+    {
+        $c = $this->brief(); $source = $this->imageAttachment($c, 'source');
+        $q = $this->conversations->quote($this->owner, $c->id, 2);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'transcript-1');
+        $lease = $this->runs->claim()['lease_token'];
+        $samples = str_repeat("\0\0", 800);
+        $wav = 'RIFF'.pack('V', 36 + strlen($samples)).'WAVEfmt '.pack('VvvVVvv', 16, 1, 1, 8000, 16000, 2, 16).'data'.pack('V', strlen($samples)).$samples;
+        $audio = $this->runs->derived($run->id, $lease, \Illuminate\Http\UploadedFile::fake()->createWithContent('derived-1-clean_audio.wav', $wav), $source->id, 'clean_audio', []);
+        config(['services.openai.api_key' => 'test-openai', 'create.transcript_daily_limit' => 30]);
+        Http::fake(['https://api.openai.com/v1/audio/transcriptions' => Http::sequence()
+            ->push(['text' => 'Save twenty percent', 'words' => [['word' => 'Save', 'start' => 0.1, 'end' => 0.4], ['word' => 'twenty', 'start' => 0.4, 'end' => 0.8], ['word' => 'percent', 'start' => 0.8, 'end' => 1.25]],
+                'segments' => [['text' => 'Save twenty percent', 'start' => 0.1, 'end' => 1.25]]])]);
+        $service = app(\App\Services\Create\TranscriptService::class);
+        $this->rejected(422, fn () => $service->forRun($run->id, $lease, $source->id), );
+        $t = $service->forRun($run->id, $lease, $audio['asset_id']);
+        $this->assertSame([['text' => 'Save', 'start' => 0.1, 'end' => 0.4], ['text' => 'twenty', 'start' => 0.4, 'end' => 0.8], ['text' => 'percent', 'start' => 0.8, 'end' => 1.25]], $t['words']);
+        $this->assertFalse($t['cached']);
+        // Same bytes: served from the asset, no second provider call.
+        $this->assertTrue($service->forRun($run->id, $lease, $audio['asset_id'])['cached']);
+        Http::assertSentCount(1);
+        $this->assertSame('Save twenty percent', Asset::find($audio['asset_id'])->transcript_text);
+        // A provider failure yields the media service's placeholder; that must not pass as speech.
+        $meta = Asset::find($audio['asset_id'])->metadata_json; unset($meta['create_transcript']);
+        Asset::whereKey($audio['asset_id'])->update(['metadata_json' => json_encode($meta)]);
+        Http::fake(['https://api.openai.com/*' => Http::response(['error' => 'down'], 500)]);
+        $this->rejected(503, fn () => $service->forRun($run->id, $lease, $audio['asset_id']));
+        config(['create.transcript_daily_limit' => 2]);
+        $this->rejected(429, fn () => $service->forRun($run->id, $lease, $audio['asset_id']));
+        $this->rejected(403, fn () => $service->forRun($run->id, str_repeat('x', 64), $audio['asset_id']));
+        $this->assertContains('transcript', array_column(\App\Services\Create\CapabilityCatalogue::forWorkspace($this->workspace->id), 'kind'));
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
