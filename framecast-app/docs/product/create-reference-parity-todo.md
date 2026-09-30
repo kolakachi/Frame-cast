@@ -68,11 +68,14 @@ Every video type needs this, so it goes first.
 ## Slice C: consistent character and poses (Q3, Q6)
 
 - [ ] **Character from the Characters library.** A brief can name a saved workspace character, or supply mascot images or clips as source.
-- [ ] **Pose sheet.** A `character_poses` item makes 4 to 8 poses of one character (neutral, talking, pointing, surprised, waving) from one reference image, with identity kept. Candidates: the existing gpt-image-2 character edits, or Flux Kontext on Replicate. Priced per pose.
-- [ ] **Transparent cut-outs.** Poses come out with transparent backgrounds so the agent can layer them over colour fields and UI. Add background removal: a media op, or a model such as `rembg`.
-- [ ] **Halftone look.** Add `halftone` and `grain` looks to the sandbox media tool, as ffmpeg filters on stills and clips, plus a CSS or SVG option the agent can use.
-- [ ] **Pose continuity rule.** The same character is used across beats and switched between poses on beats, as a narrator does; the agent is told this in its instructions.
+- [x] **Pose sheet.** A `character_poses` item makes 4 to 8 poses of one character (neutral, talking, pointing, surprised, waving) from one reference image, with identity kept. Candidates: the existing gpt-image-2 character edits, or Flux Kontext on Replicate. Priced per pose.
+- [x] **Transparent cut-outs.** Poses come out with transparent backgrounds so the agent can layer them over colour fields and UI. Add background removal: a media op, or a model such as `rembg`.
+- [x] **Halftone look.** Add `halftone` and `grain` looks to the sandbox media tool, as ffmpeg filters on stills and clips, plus a CSS or SVG option the agent can use.
+- [x] **Pose continuity rule.** The same character is used across beats and switched between poses on beats, as a narrator does; the agent is told this in its instructions.
 - **Done when:** one build shows the same original character in at least 4 poses with the halftone look, and a reviewer reads it as one character.
+- **Status 2026-09-30: done.** Run `b42e61ce` (conversation `8be58343`) showed one original film-reel mascot in four poses (talking, pointing, surprised, waving), cut out over the UI with the halftone look throughout. It took 13 calls, $1.35 and about 7.5 minutes; the pose sheet was 210 credits. Nano Banana Pro makes the poses and `851-labs/background-remover` cuts them out.
+- **Fixes found on the way:** the background remover is a community model and must be run by version id; a dropped connection mid-sheet is retried per pose; failed plan items now log the real error.
+- **Still open:** naming a saved character from the Characters library is built but not yet tested live. The layout barely changes between beats; that is slice F's job.
 
 ## Slice D: talking character shots (Q4)
 
