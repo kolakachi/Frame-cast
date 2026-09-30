@@ -32,7 +32,8 @@ class AnthropicGateway
         set_time_limit(320);
         $attempts = app(AttemptService::class);
         $body = ['model' => $attempt->model, 'max_tokens' => (int) $input['max_tokens'],
-            'output_config' => ['effort' => (string) config('create.agent_effort', 'medium')],
+            // The effort approved with the run, so a later settings change never alters a build in flight.
+            'output_config' => ['effort' => (string) (data_get(json_decode((string) DB::table('composition_runs')->where('id', $runId)->value('input_json'), true), 'execution_policy.agent.effort') ?: config('create.agent_effort', 'medium'))],
             'system' => [['type' => 'text', 'text' => $input['system'], 'cache_control' => ['type' => 'ephemeral']]],
             'messages' => [['role' => 'user', 'content' => $content]]];
         // A failure to connect means nothing was sent, so it is safe to try again.

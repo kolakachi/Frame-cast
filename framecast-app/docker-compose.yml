@@ -24,6 +24,9 @@ services:
     environment:
       REVERB_HOST: reverb
       REDIS_QUEUE_RETRY_AFTER: 2400
+      # Build agent effort for local tests; override per restart with
+      # CREATE_AGENT_EFFORT=xhigh docker compose up -d --no-deps api
+      CREATE_AGENT_EFFORT: ${CREATE_AGENT_EFFORT:-medium}
     working_dir: /var/www/html
     ports:
       - "8000:8000"
