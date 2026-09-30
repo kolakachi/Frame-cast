@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class CapabilityCatalogue
 {
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'brand_kit',
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'brand_kit',
         'transcript', 'stabilize', 'remove_silence', 'clean_audio', 'loudness', 'speed', 'crop', 'grade', 'trim'];
 
     public static function forWorkspace(int $workspaceId): array
@@ -28,6 +28,7 @@ class CapabilityCatalogue
             // Generated audio on Replicate, priced at the usual peg (cost / $0.004):
             // ElevenLabs Music is $0.0083 per second of output; Stable Audio 2.5 is $0.20 a file.
             ['kind' => 'music', 'what' => 'An original instrumental music bed made for this video, sized to its length', 'credits' => self::musicCredits(15)],
+            ['kind' => 'character_poses', 'what' => 'One consistent character (a saved character, your own mascot image, or a new original one) in up to 5 poses, cut out on transparent backgrounds', 'credits' => self::POSE_CREDITS],
             ['kind' => 'sfx', 'what' => 'A set of up to 6 short sound effects (clicks, whooshes, pops) for on-screen beats', 'credits' => self::SFX_CREDITS],
             // library_music is withheld: the workspace library holds placeholder
             // tracks, not licensed music (2026-10-01). Restore once real tracks exist.
@@ -50,6 +51,8 @@ class CapabilityCatalogue
     }
 
     public const SFX_CREDITS = 50;
+    /** Nano Banana Pro at 35 credits an image: a base character plus up to 5 poses. Cut-outs are negligible. */
+    public const POSE_CREDITS = 210;
 
     /** One second of padding so the bed covers the whole video. */
     public static function musicCredits(int $seconds): int

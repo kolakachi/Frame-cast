@@ -25,3 +25,13 @@ test('a file already staged is not downloaded again',async()=>{
  await buyPlanMedia({items:[items[0]],directory:dir,manifest:[{asset_id:7}],produce:async()=>({status:'succeeded',file,reused:true}),download:async()=>{n++;return ok();}});
  assert.equal(n,0);
 });
+
+test('a pose sheet stages every pose file with its label',async()=>{
+ const dir=await mkdtemp(tmpdir()+'/pm-'),manifest=[];
+ const mk=(id,body)=>{const b=Buffer.from(body),h=createHash('sha256').update(b).digest('hex');return {f:{asset_id:id,sha256:h,bytes:b.length,name:`asset-${id}-${h}.png`,purpose:'source',asset_type:'image',mime_type:'image/png'},b};};
+ const a=mk(11,'pose-a'),c=mk(12,'pose-b');
+ const r=await buyPlanMedia({items:[{kind:'character_poses',description:'Mascot: talking, pointing'}],directory:dir,manifest,produce:async()=>({status:'succeeded',file:a.f,more_files:[c.f],poses:['talking','pointing']}),
+  download:async id=>({ok:true,arrayBuffer:async()=>id===11?a.b:c.b})});
+ assert.deepEqual(r[0].files,[{file:a.f.name,pose:'talking'},{file:c.f.name,pose:'pointing'}]);
+ assert.equal(manifest.length,2);
+});

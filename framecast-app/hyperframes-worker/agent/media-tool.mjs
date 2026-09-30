@@ -13,6 +13,10 @@ const LOOKS={
  muted:'eq=contrast=.95:saturation=.72',
  mono:'hue=s=0,eq=contrast=1.08',
  film:'curves=preset=vintage,eq=saturation=.9',
+ // Print textures: film grain, and a mono halftone dot screen (for photos and footage;
+ // for cut-out characters use a CSS dot-screen overlay so transparency is kept).
+ grain:'noise=alls=16:allf=t+u,eq=contrast=1.04',
+ halftone:"format=gray,geq=lum='255*gt(lum(X\\,Y)/255\\,(1+sin(X*0.9)*sin(Y*0.9))/2)'",
 };
 const RATIOS={'9:16':9/16,'1:1':1,'4:5':4/5,'16:9':16/9};
 const num=(v,min,max,dflt)=>{const n=v===undefined?dflt:Number(v);if(!Number.isFinite(n)||n<min||n>max)throw Error(`Value out of range (${min}–${max})`);return n;};

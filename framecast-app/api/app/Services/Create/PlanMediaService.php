@@ -27,6 +27,7 @@ class PlanMediaService
         if ($done && $done->status === 'succeeded' && $done->description_hash === $hash) {
             $record = json_decode($done->record_json, true);
             if (! empty($record['file'])) $record['file'] = app(RunService::class)->reuseGenerated($runId, $lease, $record['file']);
+            foreach ($record['more_files'] ?? [] as $k => $f) $record['more_files'][$k] = app(RunService::class)->reuseGenerated($runId, $lease, $f);
             return [...$record, 'reused' => true, 'charged_credits' => 0];
         }
 
@@ -50,13 +51,18 @@ class PlanMediaService
             }
             $file = $made['path'] !== '' ? app(RunService::class)->generated($runId, $lease, $made['path'], $made['title'],
                 ['plan_media' => ['plan_id' => $planId, 'index' => $index, 'kind' => $item['kind'], 'description' => $item['description']], 'provider_id' => $made['provider_id']]) : null;
+            // Items that make several files (a pose sheet) store each one.
+            $more = [];
+            foreach ($made['extra'] ?? [] as $x) $more[] = app(RunService::class)->generated($runId, $lease, $x['path'], $x['title'],
+                ['plan_media' => ['plan_id' => $planId, 'index' => $index, 'kind' => $item['kind'], 'pose' => $x['pose'] ?? null], 'provider_id' => $made['provider_id']]);
             $id = preg_replace('/[^a-zA-Z0-9_-]/', '-', $made['provider_id']);
             $attempts->bindPrediction($runId, $lease, $attempt['id'], substr($id.'-'.substr($attempt['id'], 0, 8), 0, 160));
             $credits = (int) $item['credits'];
             $receipt = new VerifiedAttemptReceipt($attempt['id'], 'succeeded', substr($id.'-'.substr($attempt['id'], 0, 8), 0, 160), $credits * 4000,
                 'pilot-tariff:catalogue; '.$item['kind'].' at its listed price of '.$credits.' credits');
             $settled = $attempts->settle($runId, $lease, $attempt['id'], $receipt->result(), $receipt);
-            $record = ['kind' => $item['kind'], 'description' => $item['description'], 'status' => 'succeeded', 'file' => $file, 'brand' => $made['brand'] ?? null, 'cues' => $made['cues'] ?? null];
+            $record = ['kind' => $item['kind'], 'description' => $item['description'], 'status' => 'succeeded', 'file' => $file, 'brand' => $made['brand'] ?? null, 'cues' => $made['cues'] ?? null,
+                'more_files' => $more ?: null, 'poses' => $made['poses'] ?? null];
             $this->record($run, $planId, $index, $item, $hash, 'succeeded', $record, (int) $settled['charged_credits'], null);
             return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];
         } finally {

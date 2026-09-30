@@ -632,6 +632,30 @@ class CreateIntegrationTest extends TestCase
         catch (\RuntimeException $e) { $this->assertStringContainsString('Prompt rejected', $e->getMessage()); }
     }
 
+    public function test_a_pose_sheet_keeps_one_character_cuts_out_each_pose_and_stores_every_file(): void
+    {
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII=');
+        $asked = [];
+        $this->app->instance(\App\Services\Generation\Image\NanoBananaProImageAdapter::class, new class($asked) extends \App\Services\Generation\Image\NanoBananaProImageAdapter {
+            public function __construct(public array &$asked) {}
+            public function generate(string $prompt, string $style, string $aspectRatio = '9:16', array $options = []): array { $this->asked[] = [$prompt, $options['reference_image_url'] ?? null]; return ['image_url' => 'https://replicate.delivery/img-'.count($this->asked).'.png']; }
+        });
+        config(['services.replicate.api_token' => 'r8-test']);
+        Http::fake([
+            'https://api.replicate.com/v1/models/851-labs/background-remover/predictions' => Http::response(['id' => 'bg', 'status' => 'succeeded', 'output' => 'https://replicate.delivery/cut.png']),
+            'https://replicate.delivery/cut.png' => Http::response($png),
+        ]);
+        $dir = sys_get_temp_dir().'/poses-'.\Illuminate\Support\Str::uuid(); mkdir($dir);
+        $made = app(\App\Services\Create\PlanMediaExecutor::class)->produce('character_poses', 'A small round orange mascot: talking, pointing to the card, surprised', ['workspace_id' => $this->workspace->id], $dir);
+        $this->assertSame(['talking', 'pointing to the card', 'surprised'], $made['poses']);
+        $this->assertCount(2, $made['extra'], 'one file per pose');
+        $this->assertStringStartsWith('A small round orange mascot', $asked[0][0], 'with no saved character or photo, a base character is drawn first');
+        $this->assertNull($asked[0][1]);
+        $this->assertSame(['https://replicate.delivery/img-1.png'], array_unique(array_column(array_slice($asked, 1), 1)), 'every pose uses the same reference');
+        Http::assertSentCount(6);
+        $this->assertSame(210, \App\Services\Create\CapabilityCatalogue::credits('character_poses', $this->workspace->id));
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

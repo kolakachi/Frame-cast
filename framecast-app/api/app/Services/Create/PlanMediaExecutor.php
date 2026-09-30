@@ -17,7 +17,7 @@ use RuntimeException;
  */
 class PlanMediaExecutor
 {
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'brand_kit'];
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'brand_kit'];
 
     /** @return array{path:string,mime:string,title:string,provider_id:string,note?:string,brand?:array} */
     public function produce(string $kind, string $description, array $ctx, string $dir): array
@@ -31,6 +31,7 @@ class PlanMediaExecutor
             'library_music' => $this->music($description, $ctx, $dir),
             'music' => $this->generatedMusic($description, $ctx, $dir),
             'sfx' => $this->soundSheet($description, $dir),
+            'character_poses' => $this->characterPoses($description, $ctx, $dir),
             'brand_kit' => $this->brand($ctx, $dir),
             default => throw new RuntimeException('This plan item cannot be made here.'),
         };
@@ -116,6 +117,56 @@ class PlanMediaExecutor
             'music_length_ms' => $seconds * 1000, 'force_instrumental' => true, 'output_format' => 'mp3_high_quality']);
         $path = self::fillMusic($this->fetch($url, $dir.'/music.mp3'), $seconds, $dir);
         return ['path' => $path, 'mime' => (new \finfo(FILEINFO_MIME_TYPE))->file($path), 'title' => 'Music · '.Str::limit($description, 60, '…'), 'provider_id' => 'music-'.Str::uuid()];
+    }
+
+    public const DEFAULT_POSES = ['talking, mid-sentence, friendly', 'waving hello', 'pointing to one side', 'surprised', 'thumbs up'];
+
+    /**
+     * One character in several poses, identity kept by Nano Banana Pro from a
+     * single reference, each cut out on a transparent background. The
+     * reference is a saved workspace character named in the description, the
+     * first supplied image, or a new original character drawn first.
+     */
+    private function characterPoses(string $description, array $ctx, string $dir): array
+    {
+        [$who, $list] = array_pad(explode(':', $description, 2), 2, '');
+        $poses = array_values(array_slice(array_filter(array_map('trim', preg_split('/[,;\n]+/', $list))), 0, 5)) ?: self::DEFAULT_POSES;
+        $nano = app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class);
+        $refUrl = null; $name = 'Character';
+        $saved = \App\Models\Character::where('workspace_id', $ctx['workspace_id'])->where('status', '!=', 'archived')->get()
+            ->first(fn ($c) => $c->name && str_contains(mb_strtolower($description), mb_strtolower($c->name)));
+        $refAsset = $saved ? Asset::find($saved->reference_asset_id ?: $saved->preview_asset_id) : null;
+        if ($refAsset?->storage_url) {
+            $refUrl = $this->replicateUpload((string) app(StorageService::class)->get((string) $refAsset->storage_url), $refAsset->mime_type ?: 'image/png');
+            $name = $saved->name;
+        } elseif ($photo = collect($ctx['source_images'] ?? [])->first()) {
+            $refUrl = $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo));
+            $name = 'Your character';
+        } else {
+            $base = $nano->generate(trim($who) !== '' ? trim($who).'. Full body, front view, standing, plain flat cream background, centred.' : 'An original friendly mascot character. Full body, front view, plain flat cream background.', '3d', '1:1');
+            $refUrl = $base['image_url'] ?? $this->replicateUpload(base64_decode((string) ($base['image_b64'] ?? '')), 'image/png');
+        }
+        $keep = ' Same character exactly: same body shape, colours, face, details and texture. Full body, plain flat cream background, centred, nothing else in frame.';
+        $files = [];
+        foreach ($poses as $i => $pose) {
+            $r = $nano->generate('The character from the reference image, '.$pose.'.'.$keep, '3d', '1:1', ['reference_image_url' => $refUrl]);
+            $src = $r['image_url'] ?? $this->replicateUpload(base64_decode((string) ($r['image_b64'] ?? '')), 'image/png');
+            $cut = $this->replicate('851-labs/background-remover', ['image' => $src, 'format' => 'png', 'background_type' => 'rgba']);
+            $path = $this->fetch($cut, $dir.'/pose-'.$i.'.png');
+            $files[] = ['path' => $path, 'title' => $name.' · '.Str::limit($pose, 40, '…'), 'pose' => $pose];
+        }
+        return ['path' => $files[0]['path'], 'mime' => 'image/png', 'title' => $files[0]['title'], 'provider_id' => 'poses-'.Str::uuid(), 'extra' => array_slice($files, 1), 'poses' => array_column($files, 'pose')];
+    }
+
+    /** Upload bytes to Replicate's file store so a model can read a private image. */
+    private function replicateUpload(string $bytes, string $mime): string
+    {
+        if ($bytes === '') throw new RuntimeException('The character image could not be read.');
+        $r = Http::withToken((string) config('services.replicate.api_token'))->timeout(60)->attach('content', $bytes, 'image.'.(str_contains($mime, 'jpeg') ? 'jpg' : 'png'), ['Content-Type' => $mime])
+            ->post('https://api.replicate.com/v1/files');
+        $url = $r->json('urls.get');
+        if (! $r->successful() || ! is_string($url)) throw new RuntimeException('The character image could not be prepared for the model.');
+        return $url;
     }
 
     /**
