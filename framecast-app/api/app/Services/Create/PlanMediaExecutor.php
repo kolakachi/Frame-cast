@@ -254,7 +254,14 @@ class PlanMediaExecutor
         $token = (string) config('services.replicate.api_token');
         if ($token === '') throw new RuntimeException('The media provider is not configured.');
         $http = fn () => Http::withToken($token)->acceptJson()->timeout(90);
-        $p = $http()->withHeaders(['Prefer' => 'wait=60'])->post('https://api.replicate.com/v1/models/'.$model.'/predictions', ['input' => $input])->json();
+        $res = $http()->withHeaders(['Prefer' => 'wait=60'])->post('https://api.replicate.com/v1/models/'.$model.'/predictions', ['input' => $input]);
+        // Community models are run by version id, not by name.
+        if ($res->status() === 404) {
+            $version = $http()->get('https://api.replicate.com/v1/models/'.$model)->json('latest_version.id');
+            if (! is_string($version) || $version === '') throw new RuntimeException('The '.explode('/', $model)[1].' model is not available.');
+            $res = $http()->withHeaders(['Prefer' => 'wait=60'])->post('https://api.replicate.com/v1/predictions', ['version' => $version, 'input' => $input]);
+        }
+        $p = $res->json();
         $deadline = time() + 240;
         while (in_array($p['status'] ?? '', ['starting', 'processing'], true) && time() < $deadline) {
             sleep(2);

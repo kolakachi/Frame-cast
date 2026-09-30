@@ -642,7 +642,9 @@ class CreateIntegrationTest extends TestCase
         });
         config(['services.replicate.api_token' => 'r8-test']);
         Http::fake([
-            'https://api.replicate.com/v1/models/851-labs/background-remover/predictions' => Http::response(['id' => 'bg', 'status' => 'succeeded', 'output' => 'https://replicate.delivery/cut.png']),
+            'https://api.replicate.com/v1/models/851-labs/background-remover/predictions' => Http::response(['detail' => 'Not found'], 404),
+            'https://api.replicate.com/v1/models/851-labs/background-remover' => Http::response(['latest_version' => ['id' => 'ver123']]),
+            'https://api.replicate.com/v1/predictions' => Http::response(['id' => 'bg', 'status' => 'succeeded', 'output' => 'https://replicate.delivery/cut.png']),
             'https://replicate.delivery/cut.png' => Http::response($png),
         ]);
         $dir = sys_get_temp_dir().'/poses-'.\Illuminate\Support\Str::uuid(); mkdir($dir);
@@ -652,7 +654,8 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringStartsWith('A small round orange mascot', $asked[0][0], 'with no saved character or photo, a base character is drawn first');
         $this->assertNull($asked[0][1]);
         $this->assertSame(['https://replicate.delivery/img-1.png'], array_unique(array_column(array_slice($asked, 1), 1)), 'every pose uses the same reference');
-        Http::assertSentCount(6);
+        Http::assertSentCount(12);
+        Http::assertSent(fn ($r) => $r->url() === 'https://api.replicate.com/v1/predictions' && $r['version'] === 'ver123');
         $this->assertSame(210, \App\Services\Create\CapabilityCatalogue::credits('character_poses', $this->workspace->id));
     }
 
