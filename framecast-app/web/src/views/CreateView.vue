@@ -65,7 +65,7 @@ const panelTab = ref('details'), panelHeading = ref(null)
 let panelReturnFocus = null
 function togglePanel() { if (details.value) { closePanel(); return } panelReturnFocus = document.activeElement; openSettings(); nextTick(() => panelHeading.value?.focus()) }
 function closePanel() { details.value = false; nextTick(() => panelReturnFocus?.focus?.()) }
-function onKey(e) { if (e.key === 'Escape' && details.value && !delivery.value && !showHistory.value && !libraryOpen.value && !linkOpen.value && !stylesOpen.value && !styleSave.value && !compareOpen.value) closePanel() }
+function onKey(e) { if (e.key === 'Escape' && details.value && !delivery.value && !showHistory.value && !libraryOpen.value && !linkOpen.value && !stylesOpen.value && !styleSave.value && !pronOpen.value && !compareOpen.value) closePanel() }
 function time(value) { return value ? new Date(value).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '' }
 function sizeLabel(a) {
   const d = a.dimensions || {}, dims = d.width && d.height ? `${d.width}×${d.height}` : ''
@@ -137,6 +137,17 @@ function optionCredits(p) {
   const d = planDrafts.value[p.id] || p.plan.selections
   const media = (p.plan.media || []).reduce((n, m) => n + (m.credits || 0), 0)
   return media + (p.plan.decisions || []).reduce((n, dec) => n + ((dec.options.find(o => o.id === d.choices[dec.id]) || {}).credits || 0), 0)
+}
+// How the voice says brand names; changes only what is spoken.
+const pronOpen = ref(false), pronRows = ref([])
+async function openPronunciations() {
+  await guarded(async () => { pronRows.value = ((await api.get('/create/pronunciations')).data.data || []).map(r => ({ ...r })); if (!pronRows.value.length) pronRows.value.push({ written: '', spoken: '' }); pronOpen.value = true })
+}
+async function savePronunciations() {
+  await guarded(async () => {
+    const items = pronRows.value.map(r => ({ written: r.written.trim(), spoken: r.spoken.trim() })).filter(r => r.written && r.spoken)
+    await api.put('/create/pronunciations', { items }); pronOpen.value = false
+  })
 }
 // Voices for the script, described in plain words (see lib/voices.js).
 function voiceOptions(current) {
@@ -517,7 +528,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                               <option v-for="v in voiceOptions(draftFor(planByMessage[m.id]).voice)" :key="v.key" :value="v.key">{{ v.label }}</option>
                             </select>
                           </label>
-                          <span class="claims__note">Only these words are spoken. Approving the plan approves this script.</span>
+                          <span class="claims__note">Only these words are spoken. Approving the plan approves this script. <button type="button" class="quiet quiet--sm" @click="openPronunciations">Pronunciations</button></span>
                         </div>
                         <div v-for="dec in planByMessage[m.id].plan.decisions" :key="dec.id" class="decision">
                           <b>{{ dec.question }}</b>
@@ -777,6 +788,19 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
         </template>
         <small class="muted">Showing up to 100 matching conversations.</small>
       </CreateDialog>
+      <CreateDialog :open="pronOpen" title="Pronunciations" @close="pronOpen = false">
+        <form class="link-form" @submit.prevent="savePronunciations">
+          <p class="muted link-form__note">How the voice should say a word, for example WyvStudio as "Weave Studio". Only the voice changes; the screen keeps the written word. Applies to new voiceovers in this workspace.</p>
+          <div v-for="(r, i) in pronRows" :key="i" class="pron-row">
+            <input v-model="r.written" class="input" maxlength="60" placeholder="Written" :aria-label="`Written word ${i + 1}`" />
+            <span class="muted" aria-hidden="true">said as</span>
+            <input v-model="r.spoken" class="input" maxlength="80" placeholder="Spoken" :aria-label="`Spoken as ${i + 1}`" />
+            <button type="button" class="upload__x" :aria-label="`Remove pronunciation ${i + 1}`" @click="pronRows.splice(i, 1)">×</button>
+          </div>
+          <button v-if="pronRows.length < 30" type="button" class="quiet quiet--sm" @click="pronRows.push({ written: '', spoken: '' })">+ Add a word</button>
+          <div class="link-form__actions"><button type="button" class="btn btn--ghost btn--sm" @click="pronOpen = false">Cancel</button><button type="submit" class="btn btn--primary btn--sm" :disabled="busy">Save</button></div>
+        </form>
+      </CreateDialog>
       <CreateDialog :open="!!styleSave" title="Save as a style" @close="styleSave = null">
         <form class="link-form" @submit.prevent="confirmSaveStyle">
           <label for="style-name" class="link-form__label">Name</label>
@@ -829,6 +853,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .free-plan{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px}.free-plan ul{margin:0;padding-left:16px}.free-plan__swatch{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;border:1px solid var(--line-2)}
 .claims{display:flex;flex-direction:column;gap:3px;margin-top:4px}.claims__row{font-size:11px;color:var(--text-2);display:flex;gap:6px;align-items:flex-start}
 .voice-pick{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:4px}.voice-pick select{background:transparent;border:1px solid var(--line-2);color:var(--text-2);border-radius:8px;padding:4px 8px;font-size:12px}
+.pron-row{display:grid;grid-template-columns:1fr auto 1fr auto;gap:8px;align-items:center}
 .ref-note{display:block;font-size:11px;color:var(--text-3);margin-top:2px;max-width:420px}
 .fc-shell{--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}
 .agent-main{margin-left:var(--sidebar-width,220px);height:100dvh;display:flex;flex-direction:column;min-width:0}

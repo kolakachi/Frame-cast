@@ -37,6 +37,7 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_09_30_130000_add_create_provider_consent.php'))->up();
         (require database_path('migrations/2026_10_01_120000_create_create_plan_media.php'))->up();
         (require database_path('migrations/2026_10_01_130000_create_create_styles.php'))->up();
+        (require database_path('migrations/2026_10_01_140000_create_create_pronunciations.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -583,6 +584,8 @@ class CreateIntegrationTest extends TestCase
         $made = app(\App\Services\Create\PlanMediaExecutor::class)->produce('voiceover', 'Narration', ['workspace_id' => $this->workspace->id, 'narration' => ['Line one.', 'Line two'], 'voice' => 'Charon', 'approved_copy' => ['On screen']], $dir);
         $this->assertSame($wav, file_get_contents($made['path']));
         $this->assertSame([['Line one. Line two.', 'Charon']], $spoken, 'the approved script is spoken, not the on-screen copy');
+        DB::table('create_pronunciations')->insert(['workspace_id' => $this->workspace->id, 'written' => 'WyvStudio', 'spoken' => 'Weave Studio', 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertSame('Try Weave Studio, then Weave Studio again. WyvStudioX stays.', \App\Services\Create\PlanMediaExecutor::pronounce('Try wyvstudio, then WyvStudio again. WyvStudioX stays.', $this->workspace->id), 'whole words only, any case');
     }
 
     private function brief(): object

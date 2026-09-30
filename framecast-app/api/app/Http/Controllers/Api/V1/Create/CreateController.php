@@ -113,6 +113,26 @@ class CreateController extends Controller
         return $this->show($r,$id);
     }
 
+    public function pronunciations(Request $r)
+    {
+        return response()->json(['data' => DB::table('create_pronunciations')->where('workspace_id', $r->user()->workspace_id)->orderBy('written')->get(['written', 'spoken'])]);
+    }
+
+    /** Replace the workspace's pronunciation list. */
+    public function savePronunciations(Request $r)
+    {
+        $this->service->authorize($r->user(), true);
+        $input = $r->validate(['items' => 'present|array|max:30', 'items.*.written' => 'required|string|max:60', 'items.*.spoken' => 'required|string|max:80']);
+        $ws = $r->user()->workspace_id;
+        DB::transaction(function () use ($input, $ws) {
+            DB::table('create_pronunciations')->where('workspace_id', $ws)->delete();
+            foreach (collect($input['items'])->unique(fn ($i) => mb_strtolower(trim($i['written']))) as $i) {
+                DB::table('create_pronunciations')->insert(['workspace_id' => $ws, 'written' => trim($i['written']), 'spoken' => trim($i['spoken']), 'created_at' => now(), 'updated_at' => now()]);
+            }
+        });
+        return $this->pronunciations($r);
+    }
+
     public function styles(Request $r)
     {
         return response()->json(['data' => app(\App\Services\Create\StyleService::class)->list($r->user())]);

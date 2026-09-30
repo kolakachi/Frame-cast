@@ -84,6 +84,7 @@ class PlanMediaExecutor
         $lines = ! empty($ctx['narration']) ? $ctx['narration'] : ($ctx['approved_copy'] ?? []);
         $text = trim(implode(' ', array_map(fn ($l) => preg_match('/[.!?…]$/u', trim((string) $l)) ? trim((string) $l) : trim((string) $l).'.', $lines)));
         if ($text === '') throw new RuntimeException('Narration needs approved lines. Add the exact words to say and plan again.');
+        $text = self::pronounce($text, (int) $ctx['workspace_id']);
         $opts = ['provider' => 'gemini'];
         $voice = \App\Services\Generation\TTS\GeminiVoices::resolve($ctx['voice'] ?? null);
         if ($kind === 'cloned_voiceover' || ($ctx['voice'] ?? null) === 'clone') {
@@ -103,6 +104,16 @@ class PlanMediaExecutor
             [$path, $mime] = [$wav, 'audio/x-wav'];
         }
         return ['path' => $path, 'mime' => $mime, 'title' => 'Narration · '.Str::limit($text, 60, '…'), 'provider_id' => 'tts-'.Str::uuid()];
+    }
+
+    /** Apply the workspace's pronunciations to spoken text only (whole words, any case). */
+    public static function pronounce(string $text, int $workspaceId): string
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('create_pronunciations')) return $text;
+        foreach (\Illuminate\Support\Facades\DB::table('create_pronunciations')->where('workspace_id', $workspaceId)->get() as $p) {
+            $text = preg_replace('/(?<![\p{L}\p{N}])'.preg_quote($p->written, '/').'(?![\p{L}\p{N}])/iu', $p->spoken, $text);
+        }
+        return $text;
     }
 
     private function music(string $q, array $ctx, string $dir): array

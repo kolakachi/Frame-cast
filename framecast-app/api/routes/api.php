@@ -228,6 +228,8 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/capabilities', [$controller, 'capabilities']);
             Route::get('/conversations', [$controller, 'index']);
             Route::get('/styles', [$controller, 'styles']);
+            Route::get('/pronunciations', [$controller, 'pronunciations']);
+            Route::put('/pronunciations', [$controller, 'savePronunciations']);
             Route::post('/styles', [$controller, 'saveStyle']);
             Route::patch('/styles/{styleId}', [$controller, 'updateStyle'])->whereUuid('styleId');
             Route::delete('/styles/{styleId}', [$controller, 'deleteStyle'])->whereUuid('styleId');
