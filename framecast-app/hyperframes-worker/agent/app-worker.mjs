@@ -109,11 +109,13 @@ async function execute(run){
    return;
   }
   const agentModel=run.input.execution_policy?.agent?.model;
-  const provider=viaGateway?new AnthropicGatewayProvider({model:agentModel,maxCallUsd:.3,
+  // The per-call cap approved with the run (deeper effort gets a higher one).
+  const callCapUsd=(run.input.execution_policy?.agent?.cost_limit_microusd??300000)/1e6;
+  const provider=viaGateway?new AnthropicGatewayProvider({model:agentModel,maxCallUsd:callCapUsd,
     call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,300000)})
    :paid?new ReplicateProvider({contract:JSON.parse(await readFile(root+'/agent/contracts/sonnet.json','utf8')),token:providerToken,enabled:true,maxCallUsd:.3}):offlineContractProvider(run.input.base_bundle,manifest);
   // Reserve local allowance before the app records the attempt, so running out never leaves a held call.
-  if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',.3);};
+  if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',callCapUsd);};
   let agentResult;
   if(run.input.execution_policy?.agent){
    // Buy the approved plan items first, so the design can use them.
