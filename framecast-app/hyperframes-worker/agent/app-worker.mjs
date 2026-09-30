@@ -22,6 +22,13 @@ if(!token||token.length<32)throw Error('Set the matching local CREATE_WORKER_TOK
 const docker=process.env.DOCKER_BIN??'docker';
 let stopping=false;
 process.on('SIGINT',()=>{stopping=true;});process.on('SIGTERM',()=>{stopping=true;});
+// Words cut from the user's own speech are always listed, so meaning never changes silently.
+function cutNote(edits){
+ if(!Array.isArray(edits)||!edits.length)return '';
+ const removed=edits.flatMap(e=>e.removed),content=edits.flatMap(e=>e.content_removed);
+ const q=w=>'\u201c'+w.slice(0,12).join(' ')+'\u201d'+(w.length>12?' and more':'');
+ return '\n\nRemoved from your footage: '+q(removed)+'.'+(content.length?' This includes words that were not filler or repeats: '+q(content)+'.':'');
+}
 async function request(endpoint,body,form=false,timeoutMs=15000){
  const response=await fetch(new URL('/api/internal/create/'+endpoint,base),{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/json',...(!form?{'Content-Type':'application/json'}:{})},body:form?body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
  if(!response.ok){const body=await response.json().catch(()=>({}));throw Error('Coordinator returned HTTP '+response.status+(body?.error?.message||body?.message?': '+String(body.error?.message||body.message).slice(0,200):''));}return (await response.json()).data;
@@ -156,7 +163,7 @@ async function execute(run){
   const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
   if(report.status!=='ready')throw Error('Render did not produce a verified output');
   const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
-  const result=freeEdit?{status:'preview_ready',summary:'Updated '+Object.keys(run.input.edit_values??{}).length+' field(s). Free: no model call, one render.',bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?agentResult.state.summary:'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
+  const result=freeEdit?{status:'preview_ready',summary:'Updated '+Object.keys(run.input.edit_values??{}).length+' field(s). Free: no model call, one render.',bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?(agentResult.state.summary??'')+cutNote(agentResult.state.edits):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
   // Persist completion before sending: a callback failure must not trigger rendering again.
   await writeFile(dir+'/completion.json',JSON.stringify({result,report}),{mode:0o600});
   if(!report.directory.startsWith('/output/live/'+id+'/render/') || report.artifact !== 'video.mp4')throw Error('Invalid artifact path');

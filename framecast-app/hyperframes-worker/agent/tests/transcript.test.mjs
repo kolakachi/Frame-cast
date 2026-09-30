@@ -48,3 +48,32 @@ test('transcript action shape is fixed',async()=>{
  assert.equal(parseAction('{"type":"transcript","input":"a.mp4"}').input,'a.mp4');
  assert.throws(()=>parseAction('{"type":"transcript","input":"a.mp4","extra":1}'),/Unexpected or missing/);
 });
+test('cut suggestions find filler, false starts and pauses',async()=>{
+ const {suggestCuts}=await import('../transcript-map.mjs');
+ const w=[['So',0,0.2],['um',0.3,0.5],['we',0.6,0.8],['we',0.9,1.1],['built',1.2,1.5],['this',1.6,1.8],['.',1.8,1.8],['It',3.2,3.4],['works',3.5,3.9]];
+ const c=suggestCuts(w);
+ assert.deepEqual(c.map(x=>[x.reason,x.text]),[['filler','um'],['repeat','we'],['pause','']]);
+ assert.deepEqual([c[1].start,c[1].end],[0.6,0.9]);
+});
+test('a cut reports removed words and flags content that was not filler or a repeat',async()=>{
+ const {removedWords}=await import('../transcript-map.mjs');
+ const w=[['So',0,0.2],['um',0.3,0.5],['we',0.6,0.8],['we',0.9,1.1],['built',1.2,1.5],['this',1.6,1.8]];
+ const clean=removedWords(w,{sourceMap:[{src_start:0,src_end:0.25},{src_start:0.85,src_end:2}]});
+ assert.deepEqual(clean,{removed:['um','we'],content:[]});
+ const lossy=removedWords(w,{sourceMap:[{src_start:0,src_end:1.15}]});
+ assert.deepEqual(lossy.content,['built','this']);
+});
+test('cutting transcribed speech reports removed words, flags lost content and records the edit',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace,digest}=await import('../workspace.mjs');
+ const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/cut-');await writeFile(dir+'/index.html','<html></html>');await writeFile(dir+'/asset-1-x.mp4','video');
+ const ws=new Workspace(dir,[{path:'asset-1-x.mp4',sha256:digest('video')}]);
+ const said=[{text:'So',start:0,end:0.2},{text:'um',start:0.3,end:0.5},{text:'save',start:0.6,end:0.9},{text:'twenty',start:1.0,end:1.4}];
+ const steps=[{type:'transcript',input:'asset-1-x.mp4'},{type:'media',op:'cut',input:'asset-1-x.mp4',params:{keep:[[0,0.25],[0.55,0.95]]}},{type:'needs_input',question:'stop'}];let i=0;
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:ws,provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:5,repairs:3,budgetUsd:0},
+  tools:{transcript:async()=>({words:said,segments:[]}),media:async()=>{await writeFile(dir+'/derived-1-cut.mp4','c');return {ok:true,output:'derived-1-cut.mp4',sha256:digest('c'),info:{duration:2.0},source_map:[{out_start:0,out_end:0.25,src_start:0,src_end:0.25},{out_start:0.25,out_end:0.65,src_start:0.55,src_end:0.95}]};}}});
+ const cut=state.messages.filter(m=>m.role==='tool').map(m=>m.content).find(r=>r.output==='derived-1-cut.mp4');
+ assert.deepEqual(cut.removed_words,['um','twenty']);assert.deepEqual(cut.content_removed,['twenty']);assert.match(cut.sync_warning,/drift/);
+ assert.deepEqual(state.edits[0].content_removed,['twenty']);
+ assert.deepEqual(state.transcripts['derived-1-cut.mp4'].map(w=>w[0]),['So','save'],'the cut file has its own mapped transcript');
+});

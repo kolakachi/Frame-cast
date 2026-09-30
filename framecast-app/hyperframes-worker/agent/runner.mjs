@@ -1,6 +1,6 @@
 import {readFile,writeFile,rename} from 'node:fs/promises';
 import {parseAction,hostPolicy} from './protocol.mjs';
-import {chainFor,mapThrough,compact} from './transcript-map.mjs';
+import {chainFor,mapThrough,compact,suggestCuts,removedWords} from './transcript-map.mjs';
 import {rowsOf,timingFindings} from './timing-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
@@ -95,6 +95,16 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           result=await bounded(()=>tools.media({op:action.op,input:action.input,params:action.params,signal:boundedSignal}));
           // A derived file is protected from later changes like any supplied asset.
           if(result.ok && result.output)workspace.assets.push({path:result.output,sha256:result.sha256,derivedFrom:action.input,operation:action.op,params:action.params,...(result.source_map?{sourceMap:result.source_map}:{})});
+          // Cutting transcribed speech: say exactly which words went, flag any that were not filler or a repeat, and check sync.
+          if(result.ok && result.output && result.source_map && state.transcripts?.[action.input]){
+            const words=state.transcripts[action.input],step={operation:action.op,sourceMap:result.source_map};
+            const {removed,content}=removedWords(words,step);
+            state.transcripts[result.output]=mapThrough(words.map(([text,start,end])=>({text,start,end})),[step]).map(w=>[w.text,w.start,w.end]);
+            const expected=result.source_map.reduce((t,m)=>t+(m.src_end-m.src_start),0),actual=Number(result.info?.duration);
+            result={...result,removed_words:removed,...(content.length?{content_removed:content,warning:'These words are not filler or repeats; removing them may change the meaning. Adjust the cut or say so in your summary.'}:{}),
+              ...(Number.isFinite(actual)&&Math.abs(actual-expected)>0.15?{sync_warning:`Output is ${actual.toFixed(2)} s but the kept ranges total ${expected.toFixed(2)} s; audio and video may drift.`}:{})};
+            if(removed.length)(state.edits??=[]).push({input:action.input,output:result.output,op:action.op,removed,content_removed:content});
+          }
           if(!result.ok && ++state.repairs>cap.repairs)throw Error('Media repair limit reached');
         }
       } else if(action.type==='transcript') {
@@ -105,7 +115,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           const t=await bounded(()=>tools.transcript({input:root,signal:boundedSignal}));
           const mapped={words:mapThrough(t.words,steps),segments:mapThrough(t.segments,steps)};
           state.transcripts={...(state.transcripts||{}),[action.input]:mapped.words.map(w=>[w.text,w.start,w.end])};
-          result={ok:true,input:action.input,timeline:steps.length?'mapped from '+root+' through '+steps.map(s=>s.operation).join(', '):'original',...compact(mapped)};
+          result={ok:true,input:action.input,timeline:steps.length?'mapped from '+root+' through '+steps.map(s=>s.operation).join(', '):'original',...compact(mapped),suggested_cuts:suggestCuts(mapped.words).map(({indices,...c})=>c)};
         } catch(e) {
           if(boundedSignal.aborted)throw e;
           result={ok:false,error:e.message};
