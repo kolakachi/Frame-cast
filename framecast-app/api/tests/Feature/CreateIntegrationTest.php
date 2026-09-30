@@ -287,6 +287,7 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(429, fn () => $service->forRun($run->id, $lease, $audio['asset_id']));
         $this->rejected(403, fn () => $service->forRun($run->id, str_repeat('x', 64), $audio['asset_id']));
         $this->assertContains('transcript', array_column(\App\Services\Create\CapabilityCatalogue::forWorkspace($this->workspace->id), 'kind'));
+        $this->assertNotContains('library_music', array_column(\App\Services\Create\CapabilityCatalogue::forWorkspace($this->workspace->id), 'kind'), 'placeholder tracks are not offered as licensed music');
     }
 
     public function test_reference_link_is_fetched_privately_studied_and_never_renderable(): void

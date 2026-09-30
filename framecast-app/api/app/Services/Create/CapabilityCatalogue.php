@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class CapabilityCatalogue
 {
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'library_music', 'brand_kit',
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'brand_kit',
         'transcript', 'stabilize', 'remove_silence', 'clean_audio', 'loudness', 'speed', 'crop', 'grade', 'trim'];
 
     public static function forWorkspace(int $workspaceId): array
@@ -25,7 +25,8 @@ class CapabilityCatalogue
             ['kind' => 'ai_image', 'what' => 'A new generated image or scene background', 'credits' => app(ImageAdapterFactory::class)->costFor(null)],
             ['kind' => 'animate_image', 'what' => 'A 5-second generated motion clip from a still', 'credits' => CreditService::animationCost('quick', '480p', 5)],
             ['kind' => 'voiceover', 'what' => 'Narration of approved lines in a catalogue voice, per line', 'credits' => CreditService::TTS_GEMINI],
-            ['kind' => 'library_music', 'what' => 'A track from the licensed music library', 'credits' => 0],
+            // library_music is withheld: the workspace library holds placeholder
+            // tracks, not licensed music (2026-10-01). Restore once real tracks exist.
             ['kind' => 'brand_kit', 'what' => "The workspace's brand colours, fonts and logo", 'credits' => 0],
             // Free edits to the user's own footage, run in the render sandbox.
             ['kind' => 'transcript', 'what' => 'Word-timed transcript of speech, so text and visuals land on spoken words', 'credits' => 0],

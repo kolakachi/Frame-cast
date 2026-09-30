@@ -38,3 +38,11 @@ test('lost agent settlement stops before tools and retains uncertainty',async()=
   assert.equal(result.state.status,'needs_attention');assert.equal(tools,0);assert.equal(result.state.calls,1);
  }finally{await rm(directory,{recursive:true,force:true});}
 });
+test('an exhausted allowance stops before any attempt is recorded',async()=>{
+ const {directory,files}=await setup();let began=0;
+ try{
+  const provider={...offlineContractProvider(),reserve:async()=>{throw Object.assign(Error('Additional $6 pilot allowance exhausted'),{code:'BUDGET_EXHAUSTED'});}};
+  const result=await executeCompositionAgent({directory,input:{messages:[{role:'user',content:'A product sample'}],execution_policy:{agent:{max_calls:5}}},manifest:files,provider,begin:async()=>{began++;return {id:'a',may_execute:true};},settle:async()=>({}),receipt:()=>({status:'succeeded',cost_microusd:0}),invoke:async()=>({ok:true}),guidanceDirectory:root+'agent/guidance'});
+  assert.equal(result.state.status,'budget_exhausted');assert.equal(began,0,'no attempt is begun, so nothing is left held');assert.equal(result.state.pending,null);
+ }finally{await rm(directory,{recursive:true,force:true});}
+});

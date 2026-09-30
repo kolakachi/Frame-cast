@@ -87,7 +87,8 @@ async function execute(run){
    if(!providerToken)throw Error('Missing local provider credential');
   }
   // Claude API calls keep their own local $5 test ledger so they never draw on the Replicate pilot's.
-  const pilotBudget=new PilotBudget(root+'/artifacts/live/'+(viaGateway?'e3-opus-budget.json':'e3-2026-09-29-budget.json'));
+  // Opus test allowance: $5, plus $1 the owner added on 2026-10-01 to finish the E4 correction test.
+  const pilotBudget=new PilotBudget(root+'/artifacts/live/'+(viaGateway?'e3-opus-budget.json':'e3-2026-09-29-budget.json'),viaGateway?6:5);
   const begin=payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});
   let reservation=null;
   const settle=async(attemptId,result)=>{const confirmed=await request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token});if(reservation && confirmed.status==='succeeded'){await pilotBudget.settle(reservation,confirmed);reservation=null;}return confirmed;};
@@ -104,7 +105,8 @@ async function execute(run){
   const provider=viaGateway?new AnthropicGatewayProvider({model:agentModel,maxCallUsd:.3,
     call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,300000)})
    :paid?new ReplicateProvider({contract:JSON.parse(await readFile(root+'/agent/contracts/sonnet.json','utf8')),token:providerToken,enabled:true,maxCallUsd:.3}):offlineContractProvider(run.input.base_bundle,manifest);
-  if(paid){const complete=provider.complete.bind(provider);provider.complete=async args=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',.3);return complete(args);};}
+  // Reserve local allowance before the app records the attempt, so running out never leaves a held call.
+  if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',.3);};
   let agentResult;
   if(run.input.execution_policy?.agent){
    // Buy the approved plan items first, so the design can use them.
