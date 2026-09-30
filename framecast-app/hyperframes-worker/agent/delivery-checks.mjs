@@ -18,15 +18,18 @@ export async function levelIfNeeded(file,{silent=false,ffmpeg='ffmpeg'}={}){
  if(silent)return {status:'silent'};
  const before=await measure(file,ffmpeg);
  if(before.lufs===null||before.lufs<-60)return {status:'no_audio'};
- if(before.lufs>=LOW&&before.lufs<=HIGH&&(before.peak===null||before.peak<=0))return {status:'ok',lufs:before.lufs,peak:before.peak};
+ if(before.lufs>=LOW&&before.lufs<=HIGH&&(before.peak===null||before.peak<=-1))return {status:'ok',lufs:before.lufs,peak:before.peak};
  const tmp=file+'.level.mp4';
  try{
   await run(ffmpeg,['-hide_banner','-loglevel','error','-y','-i',file,'-map','0','-c:v','copy','-af',`loudnorm=I=${TARGET}:TP=-1.5:LRA=11`,'-c:a','aac','-b:a','192k','-movflags','+faststart',tmp],{timeout:180000,maxBuffer:4000000});
   let after=await measure(tmp,ffmpeg);
   // One loudnorm pass often lands short and hot; correct the gain once more under a limiter.
-  if(after.lufs!==null&&(Math.abs(after.lufs-TARGET)>0.5||(after.peak??-99)>-1)){
-   const fix=file+'.fix.mp4',gain=(TARGET-after.lufs).toFixed(2);
-   await run(ffmpeg,['-hide_banner','-loglevel','error','-y','-i',tmp,'-map','0','-c:v','copy','-af',`volume=${gain}dB,alimiter=limit=0.84:level=false`,'-c:a','aac','-b:a','192k','-movflags','+faststart',fix],{timeout:180000,maxBuffer:4000000});
+  // One loudnorm pass often lands short and hot, and AAC encoding overshoots the
+  // limiter; correct gain under a -3 dB sample limiter, at most twice, until the
+  // true peak is at or below -1 dB.
+  for(let pass=0;pass<2&&after.lufs!==null&&(Math.abs(after.lufs-TARGET)>0.5||(after.peak??-99)>-1);pass++){
+   const fix=file+'.fix.mp4',gain=(TARGET-after.lufs-(pass&&after.peak>-1?after.peak+1.5:0)).toFixed(2);
+   await run(ffmpeg,['-hide_banner','-loglevel','error','-y','-i',tmp,'-map','0','-c:v','copy','-af',`volume=${gain}dB,alimiter=limit=0.708:level=false`,'-c:a','aac','-b:a','192k','-movflags','+faststart',fix],{timeout:180000,maxBuffer:4000000});
    await rename(fix,tmp);after=await measure(tmp,ffmpeg);
   }
   await rename(tmp,file);

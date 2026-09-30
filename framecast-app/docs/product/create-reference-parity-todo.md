@@ -84,11 +84,21 @@ Every video type needs this, so it goes first.
 
 ## Slice E: real product UI (Q5)
 
-- [ ] **UI from the page capture.** The agent rebuilds 2 to 4 of the brand's real screens (hero, feature, pricing, dashboard) as HTML cards, guided by the page screenshot and brand notes.
-- [ ] **Numbers only from approved facts.** Prices, counts and customer figures appear only if approved; otherwise neutral placeholders such as "Your product".
-- [ ] **Build-on-cue.** Cards fill in as their feature is spoken, checked with `data-spoken` like any timed text.
-- [ ] **Optional supplied screenshots.** The user may attach real product screenshots as source for exact UI.
+- [x] **UI from the page capture.** The agent rebuilds 2 to 4 of the brand's real screens (hero, feature, pricing, dashboard) as HTML cards, guided by the page screenshot and brand notes.
+- [x] **Numbers only from approved facts.** Prices, counts and customer figures appear only if approved; otherwise neutral placeholders such as "Your product".
+- [x] **Build-on-cue.** Cards fill in as their feature is spoken, checked with `data-spoken` like any timed text.
+- [x] **Optional supplied screenshots.** The user may attach real product screenshots as source for exact UI.
 - **Done when:** the WyvStudio build shows recognisable WyvStudio UI building in sync with the named features, with no unapproved numbers.
+- **Status 2026-10-01: done.** Run `767540ee` (conversation `244ed471`) rebuilt WyvStudio's UI from the page capture: a browser window with Script and Link cards, a Voiced waveform, Captioned chips, a phone preview, and the logo with an orange CTA. Seven elements are tied to the spoken words, and the grounded-numbers check found nothing invented. It took 6 calls, $0.66 and 169 credits, with the call limit raised to 16 (owner).
+- **Fixes found on the way:**
+  - Replies were cut off at the output limit; compositions are now split into markup, `style.css` and `main.js`, each under about 6,000 characters.
+  - Cut-off replies filled the context; they are now summarised in the history.
+  - The script ran 16.9 s for a 15 s video; it is now sized at about 2 words a second minus 1.5 s.
+  - The timeline registration now stays inline in `index.html`.
+  - A dropped connection to Anthropic is retried, then recorded as not sent.
+  - A checked draft is delivered at the call limit with its open issues.
+  - The mix's true peak overshot after AAC encoding; the limiter is now at −3 dB with a corrective pass, giving −14.3 LUFS and a −2.3 dB peak.
+- **Open from the delivery checks:** CTA text contrast is 2.84:1, under 3:1, and one tile runs outside its container at 10.8 s. Both are shown in "Before you post".
 
 ## Slice F: craft and format (Q6, Q8)
 
