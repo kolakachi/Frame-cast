@@ -147,6 +147,11 @@ class PlanService
         })->filter()->values()->all();
         return [
             'messages' => DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'content'])->map(fn ($m) => (array) $m)->all(),
+            // Text and colour fields of the current version; a request that only changes these is free.
+            'current_variables' => ($head = $c->head_revision_id ? DB::table('composition_revisions')->where('id', $c->head_revision_id)->value('bundle_json') : null)
+                ? array_map(fn ($d) => ['id' => $d['id'], 'type' => $d['type'], 'label' => $d['label'] ?? $d['id'], 'current' => $d['default'] ?? null],
+                    array_values(array_filter(CompositionVariables::declarations((string) (json_decode($head, true)['index.html'] ?? '')), fn ($d) => in_array($d['type'] ?? '', ['string', 'color'], true))))
+                : [],
             'files' => $files, 'settings' => $settings, 'house_style' => StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id), 'approved_facts' => $settings['approved_facts'] ?? [],
             'tools' => CapabilityCatalogue::forWorkspace((int) $user->workspace_id), 'brand_kits' => CapabilityCatalogue::brandKits((int) $user->workspace_id),
             // The user's edits to the last plan are their decisions; a new plan starts from them.
@@ -194,6 +199,13 @@ class PlanService
         $plan = ['summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions,
             'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300),
             'selections' => ['callouts' => $callouts, 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
+        // A text/colour-only request becomes a free edit, validated against the real fields.
+        $free = [];
+        if (is_array($raw['free_edit'] ?? null) && ! empty($ctx['current_variables'])) {
+            $decls = array_map(fn ($v) => ['id' => $v['id'], 'type' => $v['type'], 'default' => $v['current']], $ctx['current_variables']);
+            try { $free = CompositionVariables::validate($decls, $raw['free_edit']); } catch (\Symfony\Component\HttpKernel\Exception\HttpException) { $free = []; }
+        }
+        $plan['free_edit'] = $free ?: null;
         $plan['credits'] = $this->credits($plan);
         return $plan;
     }

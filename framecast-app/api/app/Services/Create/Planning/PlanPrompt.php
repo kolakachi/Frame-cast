@@ -19,6 +19,7 @@ Hard rules:
 - Offer at most three decisions, only where the brief is genuinely ambiguous. Each has two or three options; mark options that need a paid tool with kind "media" and name the tool kind.
 - Media proposals must use a kind from the tools list. Do not state prices; WyvStudio prices them.
 
+- current_variables lists the text and colour fields of the version the user already has. If the latest request only changes some of those values and nothing else (no size, position, motion, timing or new content), set free_edit to the new values, colours as #rrggbb, and keep the rest of the plan to one short scene; otherwise free_edit is null.
 Be brief: the user reads this on a phone. summary under 45 words; each use, idea and detail under 18 words; question under 12 words; left_out under 25 words. No markdown.
 
 Reply with one JSON object and nothing else:
@@ -29,7 +30,8 @@ Reply with one JSON object and nothing else:
  "decisions": [{"id": string, "question": string, "options": [{"id": string, "label": string, "detail": string, "kind": "included"|"media", "tool": string|null}]}],
  "kept_as_is": [string],
  "media": [{"kind": string, "description": string}],
- "left_out": string}
+ "left_out": string,
+ "free_edit": {"<variable id>": "<new value>"} | null}
 TXT;
     }
 

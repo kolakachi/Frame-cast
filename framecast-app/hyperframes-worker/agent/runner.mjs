@@ -74,6 +74,10 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       else if(action.type==='write'||action.type==='patch') {
         try {
           let text=action.content;
+          // Editing an existing version: change it with patches, not a full rewrite,
+          // unless the request is a redesign. A rewrite costs as much as a first build.
+          if(action.type==='write'&&context.editOnly&&await workspace.read(action.path).then(()=>true,()=>false))
+            throw Object.assign(Error('This is an edit of an existing version. Change it with patch actions (several small patches are fine); write would rebuild the whole file.'),{code:'AUTHORING_REJECTED'});
           if(action.type==='patch') {
             const old=await workspace.read(action.path);
             if(old.split(action.before).length!==2)throw Object.assign(Error('Patch must match exactly once. Read the current source before retrying.'),{code:'AUTHORING_REJECTED'});

@@ -442,6 +442,19 @@ class CreateIntegrationTest extends TestCase
         $this->assertNull(\App\Services\Create\RunService::deliveryChecks('nope'));
     }
 
+    public function test_text_and_colour_only_plans_become_free_edits_checked_against_real_fields(): void
+    {
+        $plans = app(\App\Services\Create\PlanService::class);
+        $ctx = ['files' => [], 'current_variables' => [['id' => 'headline', 'type' => 'string', 'label' => 'Headline', 'current' => 'Save twenty percent'],
+            ['id' => 'color_accent', 'type' => 'color', 'label' => 'Accent', 'current' => '#ffcc00']]];
+        $raw = ['summary' => 'Orange offer text.', 'scenes' => [['label' => 'Edit', 'start' => 0, 'end' => 1, 'idea' => 'Recolour']], 'left_out' => ''];
+        $ok = $plans->normalize([...$raw, 'free_edit' => ['color_accent' => '#FF6B35', 'headline' => 'Save twenty percent']], $ctx, $this->workspace->id);
+        $this->assertSame(['color_accent' => '#ff6b35'], $ok['free_edit'], 'unchanged values are dropped; colours normalised');
+        $this->assertNull($plans->normalize([...$raw, 'free_edit' => ['font_size' => '200px']], $ctx, $this->workspace->id)['free_edit'], 'a field the version does not have is not free');
+        $this->assertNull($plans->normalize([...$raw, 'free_edit' => ['color_accent' => 'orange']], $ctx, $this->workspace->id)['free_edit'], 'an invalid colour is not applied');
+        $this->assertNull($plans->normalize([...$raw, 'free_edit' => ['headline' => 'x']], ['files' => [], 'current_variables' => []], $this->workspace->id)['free_edit'], 'a first build has nothing to edit');
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

@@ -124,3 +124,14 @@ test('media params must be a small object', async () => {
   assert.throws(() => parseAction('{"type":"media","op":"speed","input":"a.mp4","params":"--rm -rf"}'), /Invalid media params/);
   assert.throws(() => parseAction('{"type":"media","op":"speed","input":"a.mp4"}'), /Unexpected or missing/);
 });
+test('edit-only runs must patch, while redesigns may rewrite',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');
+ const {mkdtemp,writeFile,readFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ for(const [brief,expectRewrite] of [['Make the headline orange',false],['Redesign it from scratch in a new style',true]]){
+  const dir=await mkdtemp(tmpdir()+'/edit-');await writeFile(dir+'/index.html','<html><h1>Old</h1></html>');
+  const ws=new Workspace(dir,[]);const steps=[{type:'write',path:'index.html',content:'<html><h1>New</h1></html>'},{type:'needs_input',question:'stop'}];let i=0;
+  const state=await runAgent({stateFile:dir+'/s.json',workspace:ws,provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief,baseRevision:'r1',editOnly:!expectRewrite},limits:{calls:4,repairs:3,budgetUsd:0},tools:{}});
+  const first=state.messages.find(m=>m.role==='tool').content;
+  if(expectRewrite)assert.equal(first.revision,1);else{assert.match(first.error,/patch actions/);assert.match(await readFile(dir+'/index.html','utf8'),/Old/);}
+ }
+});

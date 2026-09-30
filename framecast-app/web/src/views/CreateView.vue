@@ -172,6 +172,17 @@ async function applyLevers() {
     editKey = null; leversOpen.value = false; selectedRevision.value = null; await refresh()
   })
 }
+// A plan that only changes existing text and colours can be applied as a free edit.
+let freePlanKey = null
+async function applyPlanFreeEdit(values) {
+  const head = conversation.value?.head_revision_id
+  if (!head || !values || !Object.keys(values).length) return
+  await guarded(async () => {
+    freePlanKey ||= crypto.randomUUID()
+    await api.post(`${base()}/revisions/${head}/edits`, { expected_version: conversation.value.version, idempotency_key: freePlanKey, values })
+    freePlanKey = null; selectedRevision.value = null; await refresh()
+  })
+}
 let timer, searchTimer, epoch = 0, mediaEpoch = 0, historyEpoch = 0, libraryEpoch = 0, compareEpoch = 0
 let mediaKey = '', sendingKey = null, approvalKey = null, uploadRunning = false
 const id = computed(() => route.params.conversationId)
@@ -435,6 +446,12 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <div v-else :class="['icard', planByMessage[m.id].stale ? '' : 'icard--warn']">
                     <div class="icard__body">
                       <p class="icard__summary">{{ planByMessage[m.id].plan.summary }}</p>
+                      <div v-if="planByMessage[m.id].plan.free_edit" class="free-plan" role="group" aria-label="Free change">
+                        <b>This is a free change</b>
+                        <span class="muted">It only edits text and colours already in your video. No model call, one render.</span>
+                        <ul><li v-for="(v, k) in planByMessage[m.id].plan.free_edit" :key="k"><span class="muted">{{ (editableFields.find(f => f.id === k) || {}).label || k }}:</span> <span v-if="String(v).startsWith('#')" class="free-plan__swatch" :style="{ background: v }" /> {{ v }}</li></ul>
+                        <button type="button" class="btn btn--primary btn--sm" :disabled="locked || !canWrite" @click="applyPlanFreeEdit(planByMessage[m.id].plan.free_edit)">Apply for free</button>
+                      </div>
                       <p v-if="planByMessage[m.id].stale" class="notice">Your brief changed after this plan. Plan again to include it.</p>
                       <template v-else>
                         <div v-if="planByMessage[m.id].plan.callouts.length || draftFor(planByMessage[m.id]).callouts.length" class="claims">
@@ -744,6 +761,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .style-row__body{display:flex;flex-direction:column;gap:4px;min-width:0}
 @media (max-width:560px){.style-row{grid-template-columns:1fr auto auto}.style-row__swatches{display:none}}
 .checks{border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px;color:var(--text-2)}.checks b{font-size:12px;color:var(--text)}.checks ul{margin:6px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:3px}.checks__warn{color:#f5a524}
+.free-plan{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px}.free-plan ul{margin:0;padding-left:16px}.free-plan__swatch{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;border:1px solid var(--line-2)}
 .ref-note{display:block;font-size:11px;color:var(--text-3);margin-top:2px;max-width:420px}
 .fc-shell{--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}
 .agent-main{margin-left:var(--sidebar-width,220px);height:100dvh;display:flex;flex-direction:column;min-width:0}

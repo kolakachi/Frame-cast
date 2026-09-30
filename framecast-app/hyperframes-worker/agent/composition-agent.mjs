@@ -39,6 +39,8 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  const workspace=new Workspace(directory+'/project',assets);
  const state=await runAgent({stateFile:directory+'/agent-state.json',workspace,provider:accountedProvider,
   context:{brief:messages.at(-1).content,messages,baseRevision:input.base_revision_id,
+   // An edit of an existing version changes it with patches; only a redesign may rewrite it.
+   editOnly:!!input.base_bundle&&!/\b(redesign|start over|from scratch|completely new|brand new|totally different)\b/i.test(String(messages.at(-1)?.content||'')),
    assets:manifest.map(({storage_path,path,...file})=>({...file,renderable:file.purpose==='source'})),
    plan:input.plan??null,
    planMedia,
