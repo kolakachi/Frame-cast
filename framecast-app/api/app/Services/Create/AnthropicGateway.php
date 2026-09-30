@@ -22,6 +22,10 @@ class AnthropicGateway
         $hash = hash('sha256', json_encode($canonical, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR));
         abort_unless(hash_equals($attempt->request_hash, $hash), 409, 'The call does not match the recorded attempt.');
 
+        // Output tokens are bounded by what was approved with the run.
+        $policy = data_get(json_decode((string) DB::table('composition_runs')->where('id', $runId)->value('input_json'), true), 'execution_policy.agent', []);
+        abort_unless((int) $input['max_tokens'] <= (int) ($policy['max_output_tokens'] ?? 8192), 422, 'The output limit is above what this run approved.');
+
         $content = [];
         if (! empty($input['image'])) {
             abort_unless(preg_match('~^data:(image/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$~', $input['image'], $m) && strlen($m[2]) <= 1_400_000, 422, 'Only an inline review image is accepted.');
@@ -33,7 +37,7 @@ class AnthropicGateway
         $attempts = app(AttemptService::class);
         $body = ['model' => $attempt->model, 'max_tokens' => (int) $input['max_tokens'],
             // The effort approved with the run, so a later settings change never alters a build in flight.
-            'output_config' => ['effort' => (string) (data_get(json_decode((string) DB::table('composition_runs')->where('id', $runId)->value('input_json'), true), 'execution_policy.agent.effort') ?: config('create.agent_effort', 'medium'))],
+            'output_config' => ['effort' => (string) (data_get($policy, 'effort') ?: config('create.agent_effort', 'medium'))],
             'system' => [['type' => 'text', 'text' => $input['system'], 'cache_control' => ['type' => 'ephemeral']]],
             'messages' => [['role' => 'user', 'content' => $content]]];
         // A failure to connect means nothing was sent, so it is safe to try again.
