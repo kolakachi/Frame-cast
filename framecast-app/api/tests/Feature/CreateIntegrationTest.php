@@ -659,6 +659,36 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(210, \App\Services\Create\CapabilityCatalogue::credits('character_poses', $this->workspace->id));
     }
 
+    public function test_style_routes_pick_a_pack_a_saved_style_a_reference_or_free_design_and_freeze_into_the_run(): void
+    {
+        $plans = app(\App\Services\Create\PlanService::class);
+        $ctx = ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'silent']];
+        $raw = ['summary' => 'Explainer.', 'scenes' => [], 'left_out' => ''];
+        $this->assertContains('product-ui', array_column(\App\Services\Create\StylePacks::catalogue(), 'slug'), 'the built-in packs are listed');
+        $pack = $plans->normalize([...$raw, 'style' => ['route' => 'pack', 'pack' => 'kinetic-type', 'why' => 'Words carry this one']], $ctx, $this->workspace->id)['style'];
+        $this->assertSame(['pack', 'kinetic-type', 'Kinetic type'], [$pack['route'], $pack['pack'], $pack['name']]);
+        $this->assertSame('free', $plans->normalize([...$raw, 'style' => ['route' => 'pack', 'pack' => 'made-up']], $ctx, $this->workspace->id)['style']['route'], 'an unknown pack falls back to free design');
+        $this->assertSame('free', $plans->normalize([...$raw, 'style' => ['route' => 'reference']], $ctx, $this->workspace->id)['style']['route'], 'no studied reference, no reference route');
+        $this->assertSame('free', $plans->normalize($raw, $ctx, $this->workspace->id)['style']['route'], 'no pick means free design');
+        $pinned = $plans->normalize([...$raw, 'style' => ['route' => 'free']], [...$ctx, 'settings' => [...$ctx['settings'], 'style_pack' => 'data-story']], $this->workspace->id)['style'];
+        $this->assertSame(['pack', 'data-story'], [$pinned['route'], $pinned['pack']], 'the user\'s pick in the composer wins');
+        $saved = $plans->normalize([...$raw, 'style' => ['route' => 'pack', 'pack' => 'kinetic-type']], [...$ctx, 'house_style' => ['name' => 'Our look']], $this->workspace->id)['style'];
+        $this->assertSame(['saved', 'Our look'], [$saved['route'], $saved['name']], 'a chosen saved style wins over a planner pick');
+        $this->rejected(422, fn () => \App\Services\Create\OutputSettings::normalize(['style_pack' => 'made-up']));
+
+        // The user switches the route on the plan card; the pack's rules and example are frozen into the quote.
+        config(['create.planner' => 'offline']);
+        $c = $this->brief();
+        $p = $plans->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-style');
+        $plans->select($this->owner, $c->id, $p['id'], (int) $this->conversations->conversation($this->owner, $c->id)->version, ['style' => ['route' => 'pack', 'pack' => 'editorial-frame']]);
+        $this->rejected(422, fn () => $plans->select($this->owner, $c->id, $p['id'], (int) $this->conversations->conversation($this->owner, $c->id)->version, ['style' => ['route' => 'saved']]));
+        $q = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $frozen = $q->payload_json['style_pack'];
+        $this->assertSame(['pack', 'editorial-frame'], [$frozen['route'], $frozen['slug']]);
+        $this->assertStringContainsString('# Editorial frame', $frozen['rules']);
+        $this->assertNotEmpty($frozen['version']);
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

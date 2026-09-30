@@ -1,0 +1,13 @@
+{
+ "slug": "kinetic-type",
+ "name": "Kinetic type",
+ "when": "The words are the visual: a message, offer or manifesto with little or no footage.",
+ "video_types": [
+  "social ad",
+  "announcement",
+  "quote",
+  "hook reel"
+ ],
+ "look": "Huge display type on bold flat colour, one accent word per line",
+ "pace": "Fast, cuts on the beat, 1 to 2 s per phrase"
+}

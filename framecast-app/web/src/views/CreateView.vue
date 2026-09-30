@@ -124,14 +124,14 @@ watch(() => data.value?.plans, list => {
   for (const p of list || []) {
     if (p.status !== 'proposed' || p.stale || planDrafts.value[p.id]) continue
     const sel = p.plan.selections
-    planDrafts.value[p.id] = { callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', choices: { ...sel.choices }, kept: [...sel.kept] }
+    planDrafts.value[p.id] = { callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', style: styleKey(sel.style), choices: { ...sel.choices }, kept: [...sel.kept] }
   }
 }, { immediate: true })
 function draftFor(p) { return planDrafts.value[p.id] || p.plan.selections }
 function planDirty(p) {
   const d = planDrafts.value[p.id]; if (!d) return false
   const sel = p.plan.selections
-  return JSON.stringify([d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.choices, [...d.kept].sort()]) !== JSON.stringify([sel.callouts, sel.narration || [], sel.voice || '', sel.choices, [...sel.kept].sort()])
+  return JSON.stringify([d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', d.choices, [...d.kept].sort()]) !== JSON.stringify([sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), sel.choices, [...sel.kept].sort()])
 }
 function optionCredits(p) {
   const d = planDrafts.value[p.id] || p.plan.selections
@@ -172,7 +172,7 @@ async function makePlan() {
 }
 async function savePlanEdits(p) {
   const d = draftFor(p)
-  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), choices: d.choices, kept: d.kept })
+  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), ...(d.style && d.style !== styleKey(p.plan.selections.style) ? { style: { route: d.style.split(':')[0], pack: d.style.split(':')[1] || null } } : {}), choices: d.choices, kept: d.kept })
   const next = { ...planDrafts.value }; delete next[p.id]; planDrafts.value = next; quote.value = null; await refresh()
 }
 async function reviewPlanCost(p) {
@@ -259,11 +259,23 @@ async function refresh() {
 }
 // Saved styles: the look of a finished version or a studied reference, kept only when asked.
 const styles = ref([]), pendingStyleId = ref(''), stylesOpen = ref(false), styleSave = ref(null), styleName = ref(''), styleEdits = ref({})
-const currentStyleId = computed(() => { try { return conversation.value ? (JSON.parse(conversation.value.settings_json || '{}').style_id || '') : pendingStyleId.value } catch { return '' } })
-async function loadStyles() { try { styles.value = (await api.get('/create/styles')).data.data || [] } catch { /* optional */ } }
+// Built-in style packs: a craft to start from. The picker holds 'pack:<slug>', a saved style id, or '' to let WyvStudio choose.
+const packs = ref([])
+const currentStyleId = computed(() => { try { if(!conversation.value) return pendingStyleId.value; const s = JSON.parse(conversation.value.settings_json || '{}'); return s.style_pack ? 'pack:' + s.style_pack : (s.style_id || '') } catch { return '' } })
+async function loadStyles() { try { const r = (await api.get('/create/styles')).data; styles.value = r.data || []; packs.value = r.packs || [] } catch { /* optional */ } }
+function styleSettings(value) { return value.startsWith('pack:') ? { style_pack: value.slice(5), style_id: null } : { style_id: value || null, style_pack: null } }
 async function chooseStyle(value) {
   if(!conversation.value) { pendingStyleId.value = value; return }
-  await guarded(async () => { await api.patch(base(),{expected_version:conversation.value.version,settings:{style_id:value || null}}); quote.value = null; await refresh() })
+  await guarded(async () => { await api.patch(base(),{expected_version:conversation.value.version,settings:styleSettings(value)}); quote.value = null; await refresh() })
+}
+function styleKey(s) { return s ? `${s.route}:${s.pack || ''}` : '' }
+// Routes the plan card offers: the planner's pick, every built-in pack, and free design.
+function styleOptions(p) {
+  const cur = p.plan.selections.style || p.plan.style
+  const list = packs.value.map(k => ({ key: `pack:${k.slug}`, label: k.name }))
+  if (cur && cur.route !== 'pack' && cur.route !== 'free') list.unshift({ key: styleKey(cur), label: cur.name })
+  list.push({ key: 'free:', label: 'Free design' })
+  return list
 }
 function askSaveStyle(target, suggested) { styleSave.value = target; styleName.value = suggested || ''; }
 async function confirmSaveStyle() {
@@ -275,7 +287,7 @@ async function deleteStyle(s) { await guarded(async () => { await api.delete(`/c
 async function ensureConversation() {
   if(id.value) return id.value
   const draft = prompt.value
-  const c = (await api.post('/create/conversations',{output_kind:outputKind.value,...(pendingStyleId.value ? {style_id:pendingStyleId.value} : {})})).data.data
+  const c = (await api.post('/create/conversations',{output_kind:outputKind.value,...(pendingStyleId.value ? Object.fromEntries(Object.entries(styleSettings(pendingStyleId.value)).filter(([,v]) => v)) : {})})).data.data
   persistDraft(c.id,draft); persistDraft(null,'')
   await router.replace({name:'create',params:{conversationId:c.id}}); persistDraft(null,''); await refresh()
   return c.id
@@ -530,6 +542,12 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                           </label>
                           <span class="claims__note">Only these words are spoken. Approving the plan approves this script. <button type="button" class="quiet quiet--sm" @click="openPronunciations">Pronunciations</button></span>
                         </div>
+                        <label v-if="planByMessage[m.id].plan.style" class="voice-pick style-line"><span class="muted">Style</span>
+                          <select :value="planDrafts[planByMessage[m.id].id]?.style ?? styleKey(planByMessage[m.id].plan.selections.style)" :disabled="!canWrite || !planDrafts[planByMessage[m.id].id]" aria-label="Style this video starts from" @change="planDrafts[planByMessage[m.id].id].style = $event.target.value">
+                            <option v-for="o in styleOptions(planByMessage[m.id])" :key="o.key" :value="o.key">{{ o.label }}</option>
+                          </select>
+                          <span v-if="planByMessage[m.id].plan.style.why" class="muted">{{ planByMessage[m.id].plan.style.why }}</span>
+                        </label>
                         <div v-for="dec in planByMessage[m.id].plan.decisions" :key="dec.id" class="decision">
                           <b>{{ dec.question }}</b>
                           <label v-for="o in dec.options" :key="o.id" class="choice"><input v-model="draftFor(planByMessage[m.id]).choices[dec.id]" type="radio" :name="`${planByMessage[m.id].id}-${dec.id}`" :value="o.id" :disabled="!canWrite" /><div><b>{{ o.label }} <span :class="['tier', o.kind === 'media' ? 'tier--media' : 'tier--free']">{{ o.kind === 'media' ? `~${o.credits} CREDITS` : 'INCLUDED' }}</span></b><p>{{ o.detail }}</p></div></label>
@@ -705,7 +723,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 <button type="button" class="quiet" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV. Up to 20 files, 100 MB each and 200 MB total." @click="fileInput.click()">+ Attach</button>
                 <button type="button" class="quiet" :disabled="locked" @click="showLibrary">From library</button>
                 <button type="button" class="quiet" :disabled="locked" title="A public post from X, YouTube or TikTok, used as a style reference" @click="openLink">From a link</button>
-                <label v-if="styles.length" class="style-pick"><span class="sr-only">Style</span><select :value="currentStyleId" :disabled="locked" aria-label="Saved style" @change="chooseStyle($event.target.value)"><option value="">No saved style</option><option v-for="s in styles" :key="s.id" :value="s.id">Style: {{ s.name }}</option></select></label>
+                <label v-if="styles.length || packs.length" class="style-pick"><span class="sr-only">Style</span><select :value="currentStyleId" :disabled="locked" aria-label="Style" @change="chooseStyle($event.target.value)"><option value="">Style: WyvStudio chooses</option><optgroup v-if="packs.length" label="WyvStudio styles"><option v-for="k in packs" :key="k.slug" :value="'pack:' + k.slug">Style: {{ k.name }}</option></optgroup><optgroup v-if="styles.length" label="Your styles"><option v-for="s in styles" :key="s.id" :value="s.id">Style: {{ s.name }}</option></optgroup></select></label>
                 <button v-if="styles.length" type="button" class="quiet" @click="stylesOpen = true">Manage styles</button>
                 <span v-if="!conversation" class="seg" role="group" aria-label="What to make"><button type="button" :aria-pressed="outputKind === 'video'" @click="outputKind = 'video'">Video</button><button type="button" :aria-pressed="outputKind === 'image'" @click="outputKind = 'image'">Image</button></span>
                 <button class="send" type="submit" :disabled="locked || !prompt.trim()" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
@@ -852,7 +870,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .checks{border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px;color:var(--text-2)}.checks b{font-size:12px;color:var(--text)}.checks ul{margin:6px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:3px}.checks__warn{color:#f5a524}
 .free-plan{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px}.free-plan ul{margin:0;padding-left:16px}.free-plan__swatch{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;border:1px solid var(--line-2)}
 .claims{display:flex;flex-direction:column;gap:3px;margin-top:4px}.claims__row{font-size:11px;color:var(--text-2);display:flex;gap:6px;align-items:flex-start}
-.voice-pick{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:4px}.voice-pick select{background:transparent;border:1px solid var(--line-2);color:var(--text-2);border-radius:8px;padding:4px 8px;font-size:12px}
+.voice-pick{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:4px}.style-line{flex-wrap:wrap;margin:8px 0}.voice-pick select{background:transparent;border:1px solid var(--line-2);color:var(--text-2);border-radius:8px;padding:4px 8px;font-size:12px}
 .pron-row{display:grid;grid-template-columns:1fr auto 1fr auto;gap:8px;align-items:center}
 .ref-note{display:block;font-size:11px;color:var(--text-3);margin-top:2px;max-width:420px}
 .fc-shell{--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}

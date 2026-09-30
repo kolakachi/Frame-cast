@@ -8,12 +8,14 @@ class OutputSettings
         'audio'=>'sometimes|in:original,silent','captions'=>'sometimes|in:off,provided',
         'caption_text'=>'nullable|string|max:4000','approved_facts'=>'sometimes|array|max:20',
         'approved_facts.*'=>'string|max:500', 'output_kind'=>'sometimes|in:video,image','video_mode'=>'sometimes|in:composition,animate_image',
-        'origin_conversation_id'=>'sometimes|uuid','origin_revision_id'=>'sometimes|uuid','style_id'=>'sometimes|nullable|uuid',
+        'origin_conversation_id'=>'sometimes|uuid','origin_revision_id'=>'sometimes|uuid','style_id'=>'sometimes|nullable|uuid','style_pack'=>'sometimes|nullable|string|max:40',
     ]; }
     public static function normalize(array $input): array {
         abort_if(array_diff(array_keys($input),array_filter(array_keys(self::rules()),fn($k)=>!str_contains($k,'.'))),422,'Unsupported output setting.');
         $s=validator($input,self::rules())->validate();
         $s+=['output_kind'=>'video','aspect_ratio'=>'9:16','duration_seconds'=>15,'language'=>'en','audio'=>'original','captions'=>'off','approved_facts'=>[]];
+        abort_if(!empty($s['style_pack']) && !StylePacks::exists($s['style_pack']),422,'That style is not available.');
+        abort_if(!empty($s['style_pack']) && !empty($s['style_id']),422,'Choose one style: a WyvStudio style or one of yours.');
         abort_if($s['captions']==='provided' && !trim($s['caption_text']??''),422,'Provide the exact caption text first.');
         abort_if(($s['video_mode']??'composition')==='animate_image' && ($s['output_kind']!=='video' || !in_array($s['duration_seconds'],[5,10],true)),422,'Image animation supports 5 or 10 seconds.');
         return $s;

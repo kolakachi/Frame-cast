@@ -1,0 +1,12 @@
+{
+ "slug": "product-ui",
+ "name": "Product UI build",
+ "when": "Software and app products: the real UI assembles on screen as each feature is named.",
+ "video_types": [
+  "product explainer",
+  "feature launch",
+  "onboarding"
+ ],
+ "look": "Clean product surfaces on a calm field, brand accent on the active element",
+ "pace": "Medium, 3 to 4 s beats, builds inside one continuous surface"
+}

@@ -23,6 +23,7 @@ Hard rules:
 - Sound: most videos should have a music bed; include the music tool with a short mood description (genre, energy, tempo) matched to the brand and pacing. When UI builds on screen or cuts land hard, include the sfx tool with a description listing up to 6 cue names, for example "UI sounds: soft click, card pop, quick whoosh". Skip both when settings.audio is silent.
 - Character: when the brief or reference calls for a narrator, mascot or recurring character, include character_poses. Describe it as "<who the character is>: <pose 1>, <pose 2>, ..." with up to 5 poses matched to the beats (talking, pointing, surprised, waving, thumbs up and so on). Name a saved workspace character if one fits; otherwise describe an original one, never a copy of a reference's character.
 - narration is the voiceover script. Write it when the video should speak and settings.audio is not silent and no supplied footage already carries speech: about 2 words per second of the video minus 1.5 s (so about 27 words for 15 s), one short line per beat, a hook first and the call to action last. Use only the brief, approved_facts and the claims of attached pages; the user approves the script with the plan. Never invent numbers, prices, guarantees or endorsements. Pick the voice from voices whose character best fits the brand and audience.
+- Style: choose the route the build starts from. "reference" when a studied reference file is attached and the user wants its feel; "saved" when house_style is set; "pack" when one of style_packs clearly fits the brief and video type (avoid the recent_style_packs unless one is clearly the best fit, so a workspace's videos do not all look alike); "free" when none fits. A pack is a starting craft, not a template. Give a short why.
 Be brief: the user reads this on a phone. summary under 45 words; each use, idea and detail under 18 words; question under 12 words; left_out under 25 words. No markdown.
 
 Reply with one JSON object and nothing else:
@@ -36,6 +37,7 @@ Reply with one JSON object and nothing else:
  "left_out": string,
  "narration": [string] (the spoken script, one line per beat; [] for no voice),
  "voice": string (a key from voices),
+ "style": {"route": "pack"|"saved"|"reference"|"free", "pack": string|null (a slug from style_packs), "why": string (under 14 words)},
  "free_edit": {"<variable id>": "<new value>"} | null}
 TXT;
     }

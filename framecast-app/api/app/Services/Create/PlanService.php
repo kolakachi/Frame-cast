@@ -87,6 +87,14 @@ class PlanService
                 $sel['narration'] = array_values(array_filter(array_map(fn ($t) => mb_substr(trim((string) $t), 0, 160), (array) $input['narration']), fn ($t) => $t !== ''));
                 abort_if(count($sel['narration']) > 8, 422, 'Use at most eight narration lines.');
             }
+            if (array_key_exists('style', $input)) {
+                // The user may switch between the routes this conversation supports.
+                $want = (array) $input['style'];
+                $ctx = $this->context($user, $c);
+                $picked = StylePacks::route(['route' => $want['route'] ?? null, 'pack' => $want['pack'] ?? null, 'why' => 'Chosen by you'], [...$ctx, 'settings' => [...$ctx['settings'], 'style_pack' => null], 'house_style' => ($want['route'] ?? null) === 'saved' ? $ctx['house_style'] : null]);
+                abort_unless($picked['route'] === ($want['route'] ?? null), 422, 'That style is not available for this brief.');
+                $sel['style'] = $picked;
+            }
             if (array_key_exists('voice', $input)) {
                 abort_unless(\App\Services\Generation\TTS\GeminiVoices::isGeminiVoice((string) $input['voice']) || $input['voice'] === 'clone', 422, 'Choose one of the listed voices.');
                 $sel['voice'] = (string) $input['voice'];
@@ -119,7 +127,7 @@ class PlanService
         return ['plan_id' => $row->id, 'summary' => $p['summary'], 'reused' => $p['reused'], 'scenes' => $p['scenes'],
             'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
-            'media' => $p['media'], 'left_out' => $p['left_out']];
+            'media' => $p['media'], 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null];
     }
 
     public function stale(object $plan, object $c): bool
@@ -166,6 +174,10 @@ class PlanService
             'voices' => array_merge(array_map(fn ($k) => ['key' => $k, 'character' => \App\Services\Generation\TTS\GeminiVoices::VOICES[$k], 'gender' => \App\Services\Generation\TTS\GeminiVoices::gender($k)], array_keys(\App\Services\Generation\TTS\GeminiVoices::VOICES)),
                 \Illuminate\Support\Facades\Schema::hasTable('voice_profiles') && DB::table('voice_profiles')->where('workspace_id', $user->workspace_id)->where('is_cloned', true)->exists() ? [['key' => 'clone', 'character' => "The workspace's own cloned voice", 'gender' => '']] : []),
             'files' => $files, 'settings' => $settings, 'house_style' => StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id), 'approved_facts' => $settings['approved_facts'] ?? [],
+            // Built-in style packs to start from, and the ones this workspace used last, so the planner varies them.
+            'style_packs' => StylePacks::catalogue(),
+            'recent_style_packs' => DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->orderByDesc('created_at')->limit(6)->pluck('input_json')
+                ->map(fn ($j) => data_get(json_decode($j, true), 'style_pack.slug'))->filter()->unique()->take(3)->values()->all(),
             'tools' => CapabilityCatalogue::forWorkspace((int) $user->workspace_id), 'brand_kits' => CapabilityCatalogue::brandKits((int) $user->workspace_id),
             // The user's edits to the last plan are their decisions; a new plan starts from them.
             'previous_plan' => ($prev = DB::table('create_plans')->where('conversation_id', $c->id)->orderByDesc('created_at')->first())
@@ -229,9 +241,10 @@ class PlanService
             $kind = $voice === 'clone' && $known->has('cloned_voiceover') ? 'cloned_voiceover' : 'voiceover';
             if ($known->has($kind)) $media[] = ['kind' => $kind, 'description' => 'Narration of the approved script', 'credits' => (int) $known[$kind]['credits']];
         }
+        $style = StylePacks::route(is_array($raw['style'] ?? null) ? $raw['style'] : [], $ctx);
         $plan = ['summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions, 'narration' => $narration, 'voice' => $voice,
-            'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300),
-            'selections' => ['callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
+            'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300), 'style' => $style,
+            'selections' => ['callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'style' => $style, 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
         // A text/colour-only request becomes a free edit, validated against the real fields.
         $free = [];
         if (is_array($raw['free_edit'] ?? null) && ! empty($ctx['current_variables'])) {

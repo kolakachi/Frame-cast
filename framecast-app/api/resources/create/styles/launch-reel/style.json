@@ -1,0 +1,12 @@
+{
+ "slug": "launch-reel",
+ "name": "Launch reel",
+ "when": "A product or feature launch that should feel like a keynote reveal.",
+ "video_types": [
+  "launch",
+  "teaser",
+  "feature reveal"
+ ],
+ "look": "Dark, deep background with glow, glass surfaces and one hero reveal",
+ "pace": "Slow build, then fast; ends on a held logo and offer"
+}

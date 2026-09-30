@@ -186,6 +186,9 @@ class ConversationService
                     'plan'=>$plan,
                     'plan_media'=>$planMedia,
                     'style'=>StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id),
+                    // The craft the build starts from, frozen here so later edits to a pack never change this run.
+                    'style_pack'=>StylePacks::resolve($plan['style_route'] ?? null, (int) $user->workspace_id, $settings,
+                        DB::table('create_attachments')->where('conversation_id',$id)->where('purpose','reference')->orderBy('asset_id')->pluck('asset_id')->map(fn($a)=>(int)$a)->all()),
                     'settings' => $settings, 'mode' => $paid ? 'agent' : 'fixture'];
                 return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $user->workspace_id,
                     'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => array_sum(array_map(fn($p)=>$p['total_credits'] ?? $p['credits']*$p['max_calls'],$policy)),

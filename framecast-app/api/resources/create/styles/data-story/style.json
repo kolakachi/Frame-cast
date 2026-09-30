@@ -1,0 +1,13 @@
+{
+ "slug": "data-story",
+ "name": "Data story",
+ "when": "The point is a number, comparison or result, and approved figures exist.",
+ "video_types": [
+  "results",
+  "comparison",
+  "report",
+  "case study"
+ ],
+ "look": "Charts, counters and comparisons on a clean grid, one colour for the key figure",
+ "pace": "Medium, each figure gets its own beat and a hold"
+}

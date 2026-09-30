@@ -1,0 +1,12 @@
+{
+ "slug": "editorial-frame",
+ "name": "Editorial frame",
+ "when": "A designed, magazine-like explainer: mono labels, timecodes and hard cuts give it a crafted, premium feel.",
+ "video_types": [
+  "explainer",
+  "brand story",
+  "product intro"
+ ],
+ "look": "Flat colour fields, mono corner labels and timecodes, a serif accent",
+ "pace": "Steady, about 4 to 5 s beats with hard cuts"
+}

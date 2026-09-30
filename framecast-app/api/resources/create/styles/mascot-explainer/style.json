@@ -1,0 +1,12 @@
+{
+ "slug": "mascot-explainer",
+ "name": "Mascot explainer",
+ "when": "A friendly narrator character explains a product or idea, reacting on each beat.",
+ "video_types": [
+  "explainer",
+  "brand intro",
+  "social ad"
+ ],
+ "look": "A textured character cut out over flat colour fields and UI",
+ "pace": "Medium-fast, a pose change or reaction every 2 to 3 s"
+}
