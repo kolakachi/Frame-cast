@@ -51,10 +51,14 @@ async function execute(run){
  await writeFile(dir+'/output-settings.json',JSON.stringify(run.input.mode==='fixture'?{aspect_ratio:'9:16',duration_seconds:15}:run.input.settings),{flag:'wx'});
  let seq=0,cancelled=false,lost=false,heartbeatBusy=false,stage='Preparing the local sample';
  const aborter=new AbortController();
+ // One slow heartbeat is not a lost lease (a busy single-threaded dev server
+ // queues it behind a long model call). The lease is lost when the app rejects
+ // it, or when no heartbeat has succeeded for 60 s of the 90 s lease.
+ let lastBeat=Date.now();
  async function beat(){
   if(heartbeatBusy)return;heartbeatBusy=true;
-  try{const state=await request('runs/'+run.id+'/heartbeat',{lease_token:run.lease_token,sequence:++seq,stage});cancelled||=state.cancel_requested;}
-  catch{lost=true;}finally{heartbeatBusy=false;}
+  try{const state=await request('runs/'+run.id+'/heartbeat',{lease_token:run.lease_token,sequence:++seq,stage},false,45000);cancelled||=state.cancel_requested;lastBeat=Date.now();}
+  catch(e){if(/HTTP (403|404|409)\b/.test(String(e.message))||Date.now()-lastBeat>60000)lost=true;}finally{heartbeatBusy=false;}
   if(cancelled||lost||stopping){aborter.abort();try{await exec(docker,['rm','-f',container]);}catch{/* final inspection below decides whether cancellation is safe */}}
  }
  await beat();
@@ -87,8 +91,8 @@ async function execute(run){
    if(!providerToken)throw Error('Missing local provider credential');
   }
   // Claude API calls keep their own local $5 test ledger so they never draw on the Replicate pilot's.
-  // Opus test allowance: $5, plus $1 and then $0.50 the owner added on 2026-10-01 for the E4 correction test.
-  const pilotBudget=new PilotBudget(root+'/artifacts/live/'+(viaGateway?'e3-opus-budget.json':'e3-2026-09-29-budget.json'),viaGateway?6.5:5);
+  // Opus test allowance: $5, plus $1, $0.50 and $0.60 the owner added on 2026-10-01 for the E4 correction test.
+  const pilotBudget=new PilotBudget(root+'/artifacts/live/'+(viaGateway?'e3-opus-budget.json':'e3-2026-09-29-budget.json'),viaGateway?7.1:5);
   const begin=payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});
   let reservation=null;
   const settle=async(attemptId,result)=>{const confirmed=await request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token});if(reservation && confirmed.status==='succeeded'){await pilotBudget.settle(reservation,confirmed);reservation=null;}return confirmed;};

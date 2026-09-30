@@ -455,6 +455,29 @@ class CreateIntegrationTest extends TestCase
         $this->assertNull($plans->normalize([...$raw, 'free_edit' => ['headline' => 'x']], ['files' => [], 'current_variables' => []], $this->workspace->id)['free_edit'], 'a first build has nothing to edit');
     }
 
+    public function test_a_held_run_with_every_call_settled_can_be_closed_without_repeating_anything(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $attempts = app(\App\Services\Create\AttemptService::class);
+        $a = $attempts->begin($run->id, $claim['lease_token'], 'render-1', 'render', str_repeat('a', 64));
+        $attempts->settle($run->id, $claim['lease_token'], $a['id'], ['status' => 'succeeded', 'cost_microusd' => 0]);
+        $service = app(\App\Services\Create\ReconciliationService::class);
+        $this->rejected(409, fn () => $service->closeSettled($run->id, true), );
+        DB::table('composition_runs')->where('id', $run->id)->update(['lease_expires_at' => now()->subMinute()]);
+        $this->runs->claim();
+        $this->assertSame('needs_attention', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+        $this->rejected(403, fn () => $service->closeSettled($run->id, false));
+        $this->assertSame('failed', $service->closeSettled($run->id, true)['status']);
+        $this->assertSame(0, (int) DB::table('api_operations')->where('id', $run->operation_id)->value('reserved_credits'));
+        $this->assertNotSame('needs_attention', DB::table('api_operations')->where('id', $run->operation_id)->value('status'));
+        // An unresolved call still requires a verified receipt.
+        [, , $run2] = $this->admitted(); $claim2 = $this->runs->claim();
+        $b = $attempts->begin($run2->id, $claim2['lease_token'], 'render-1', 'render', str_repeat('b', 64));
+        DB::table('composition_runs')->where('id', $run2->id)->update(['lease_expires_at' => now()->subMinute()]);
+        $this->runs->claim();
+        $this->rejected(409, fn () => $service->closeSettled($run2->id, true));
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

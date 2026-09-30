@@ -44,4 +44,25 @@ class ReconciliationService
             return $result;
         });
     }
+
+    /**
+     * Close a held run whose worker stopped after every paid call was already
+     * settled: nothing is in doubt, so no receipt is needed. Releases the
+     * unused credit hold and repeats nothing.
+     */
+    public function closeSettled(string $runId, bool $workerStopped): array
+    {
+        abort_unless(app()->environment(['local','testing']) && config('create.enabled') && $workerStopped, 403);
+        return DB::transaction(function () use ($runId) {
+            $run = DB::table('composition_runs')->where('id',$runId)->lockForUpdate()->firstOrFail();
+            abort_unless($run->status === 'needs_attention', 409, 'Only a held run can be closed.');
+            abort_if(AttemptService::unresolved($run->id), 409, 'Some calls are still unresolved; reconcile them with a verified receipt.');
+            // Same order as reconcile(): reopen, then close, so the hold is released and the operation settles.
+            DB::table('api_operations')->where('id',$run->operation_id)->update(['status'=>'running']);
+            OperationAccounting::close($run->operation_id);
+            DB::table('composition_runs')->where('id',$run->id)->update(['status'=>'failed','lease_hash'=>null,'lease_expires_at'=>null,
+                'stage'=>'The worker stopped after every paid call was settled; nothing was repeated.','error'=>'Start a new approved run to continue.','updated_at'=>now()]);
+            return ['status'=>'failed','charged_credits'=>(int) DB::table('composition_attempts')->where('run_id',$run->id)->sum('charged_credits')];
+        });
+    }
 }
