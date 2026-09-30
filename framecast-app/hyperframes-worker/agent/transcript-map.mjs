@@ -71,3 +71,14 @@ export function removedWords(words,step){
  const removed=w.map((x,i)=>({...x,i})).filter(x=>!kept.has(x.i));
  return {removed:removed.map(x=>x.text),content:removed.filter(x=>!planned.has(x.i)).map(x=>x.text)};
 }
+
+// Keep ranges that remove the suggested filler and false starts (and, if
+// asked, long pauses) from a clip of the given duration.
+export function tightenRanges(words,duration,{pauses=false,pad=0.04}={}){
+ const cuts=suggestCuts(words).filter(c=>c.reason!=='pause'||pauses).map(c=>[Math.max(0,c.start-pad),Math.min(duration,c.reason==='repeat'?c.end:c.end+pad)]).filter(([s,e])=>e-s>0.05).sort((a,b)=>a[0]-b[0]);
+ const merged=[];for(const c of cuts){const last=merged.at(-1);if(last&&c[0]<=last[1])last[1]=Math.max(last[1],c[1]);else merged.push([...c]);}
+ const keep=[];let at=0;
+ for(const [s,e] of merged){if(s-at>=0.1)keep.push([+at.toFixed(3),+s.toFixed(3)]);at=e;}
+ if(duration-at>=0.1)keep.push([+at.toFixed(3),+duration.toFixed(3)]);
+ return {keep:keep.slice(0,20),removed:merged.length};
+}

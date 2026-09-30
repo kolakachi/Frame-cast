@@ -1,6 +1,6 @@
 import {readFile,writeFile,rename} from 'node:fs/promises';
 import {parseAction,hostPolicy} from './protocol.mjs';
-import {chainFor,mapThrough,compact,suggestCuts,removedWords} from './transcript-map.mjs';
+import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
 import {rowsOf,timingFindings} from './timing-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
@@ -91,7 +91,16 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       } else if(action.type==='media') {
         if(!tools.media)throw Error('Media tool not installed');
         if(!workspace.assets.some(a=>a.path===action.input))result={ok:false,error:'Input is not a file in this project. Call assets to list them.'};
-        else {
+        else if(action.op==='tighten'&&!state.transcripts?.[action.input]){
+          result={ok:false,error:'Call transcript on this file first; tighten cuts from its word timings.'};
+          if(++state.repairs>cap.repairs)throw Error('Media repair limit reached');
+        } else {
+          // tighten: the transcript's filler and false-start cuts, applied as one cut.
+          if(action.op==='tighten'){
+            const probe=await bounded(()=>tools.media({op:'probe',input:action.input,params:{},signal:boundedSignal}));
+            const plan=tightenRanges(state.transcripts[action.input].map(([text,start,end])=>({text,start,end})),Number(probe?.info?.duration)||0,{pauses:action.params?.pauses===true});
+            action={...action,op:plan.removed?'cut':'probe',params:plan.removed?{keep:plan.keep}:{}};
+          }
           result=await bounded(()=>tools.media({op:action.op,input:action.input,params:action.params,signal:boundedSignal}));
           // A derived file is protected from later changes like any supplied asset.
           if(result.ok && result.output)workspace.assets.push({path:result.output,sha256:result.sha256,derivedFrom:action.input,operation:action.op,params:action.params,...(result.source_map?{sourceMap:result.source_map}:{})});

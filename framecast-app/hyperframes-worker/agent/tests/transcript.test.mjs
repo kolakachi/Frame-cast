@@ -77,3 +77,25 @@ test('cutting transcribed speech reports removed words, flags lost content and r
  assert.deepEqual(state.edits[0].content_removed,['twenty']);
  assert.deepEqual(state.transcripts['derived-1-cut.mp4'].map(w=>w[0]),['So','save'],'the cut file has its own mapped transcript');
 });
+test('tighten turns filler and false-start suggestions into keep ranges',async()=>{
+ const {tightenRanges}=await import('../transcript-map.mjs');
+ const w=[{text:'So',start:0,end:0.3},{text:'um',start:0.4,end:0.7},{text:'we',start:0.9,end:1.1},{text:'we',start:1.3,end:1.5},{text:'brew',start:1.6,end:2.0},{text:'it',start:3.4,end:3.6}];
+ assert.deepEqual(tightenRanges(w,4),{keep:[[0,0.36],[0.74,0.86],[1.3,4]],removed:2},'the cut never clips the word that is kept');
+ assert.equal(tightenRanges(w,4,{pauses:true}).keep.length,4,'a long pause is dropped only when asked');
+ assert.deepEqual(tightenRanges([{text:'clean',start:0,end:1}],2),{keep:[[0,2]],removed:0});
+});
+test('the tighten action cuts the suggested ranges and reports what went',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace,digest}=await import('../workspace.mjs');
+ const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/tighten-');await writeFile(dir+'/index.html','<html></html>');await writeFile(dir+'/asset-1-x.mp4','video');
+ const ws=new Workspace(dir,[{path:'asset-1-x.mp4',sha256:digest('video')}]);
+ const said=[{text:'So',start:0,end:0.3},{text:'um',start:0.4,end:0.7},{text:'we',start:0.9,end:1.1},{text:'we',start:1.3,end:1.5},{text:'brew',start:1.6,end:2.0}];
+ const steps=[{type:'media',op:'tighten',input:'asset-1-x.mp4',params:{}},{type:'transcript',input:'asset-1-x.mp4'},{type:'media',op:'tighten',input:'asset-1-x.mp4',params:{}},{type:'needs_input',question:'stop'}];let i=0;const ops=[];
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:ws,provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:6,repairs:3,budgetUsd:0},
+  tools:{transcript:async()=>({words:said,segments:[]}),media:async({op,params})=>{ops.push([op,params]);if(op==='probe')return {ok:true,info:{duration:2.2}};await writeFile(dir+'/derived-1-cut.mp4','c');const map=[];let o=0;for(const [s,e] of params.keep){map.push({out_start:o,out_end:o+e-s,src_start:s,src_end:e});o+=e-s;}return {ok:true,output:'derived-1-cut.mp4',sha256:digest('c'),info:{duration:o},source_map:map};}}});
+ const results=state.messages.filter(m=>m.role==='tool').map(m=>m.content);
+ assert.match(results[0].error,/transcript on this file first/);
+ const cut=results.find(r=>r.output==='derived-1-cut.mp4');
+ assert.deepEqual(cut.removed_words,['um','we']);assert.equal(cut.content_removed,undefined);
+ assert.deepEqual(ops.map(o=>o[0]),['probe','cut']);
+});

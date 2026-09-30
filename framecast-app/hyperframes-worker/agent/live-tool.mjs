@@ -22,6 +22,8 @@ for(const file of await readdir(source+'/project')){
  await copyFile(source+'/project/'+file,root+'/'+file);
 }
 await copyFile('/opt/worker/node_modules/gsap/dist/gsap.min.js',root+'/gsap.min.js');await copyFile('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',root+'/font.ttf');
+// Licensed display and text fonts (SIL OFL), vendored in runtime/fonts.
+for(const f of ['inter.ttf','anton.ttf','bebas-neue.ttf','playfair.ttf','space-grotesk.ttf','caveat.ttf'])await copyFile('/opt/worker/runtime/fonts/'+f,root+'/'+f);
 let result;
 let settings={aspect_ratio:'9:16',duration_seconds:15};
 try{settings=JSON.parse(await readFile(source+'/output-settings.json','utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
