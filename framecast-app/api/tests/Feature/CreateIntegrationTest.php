@@ -487,6 +487,24 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($summary, DB::table('composition_revisions')->where('run_id', $run->id)->value('summary'));
     }
 
+    public function test_a_finished_build_whose_save_failed_can_be_recovered_without_repeating_or_charging(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'Coordinator returned HTTP 500'], null, null);
+        $dir = sys_get_temp_dir().'/recover-'.\Illuminate\Support\Str::uuid(); mkdir($dir);
+        (new \Symfony\Component\Process\Process(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=108x192:d=15', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', $dir.'/video.mp4']))->mustRun();
+        file_put_contents($dir.'/completion.json', json_encode(['result' => ['status' => 'preview_ready', 'summary' => 'Built.', 'bundle' => ['index.html' => '<html>built</html>'], 'delivery_checks' => ['ok' => true]]]));
+        $credits = (int) $this->workspace->fresh()->credits_monthly;
+        $this->artisan('create:recover-finished', ['run' => $run->id, 'completion' => $dir.'/completion.json', 'artifact' => $dir.'/video.mp4'])->assertSuccessful();
+        $this->assertSame('preview_ready', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+        $rev = DB::table('composition_revisions')->where('run_id', $run->id)->first();
+        $this->assertSame('<html>built</html>', json_decode($rev->bundle_json, true)['index.html']);
+        $this->assertSame($rev->id, $this->conversations->conversation($this->owner, $c->id)->head_revision_id);
+        $this->assertSame($credits, (int) $this->workspace->fresh()->credits_monthly, 'nothing is charged again');
+        $this->assertNull(DB::table('composition_runs')->where('id', $run->id)->value('lease_hash'));
+        $this->artisan('create:recover-finished', ['run' => $run->id, 'completion' => $dir.'/completion.json', 'artifact' => $dir.'/video.mp4'])->assertFailed();
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
