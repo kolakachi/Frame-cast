@@ -7,6 +7,7 @@ import AppSidebar from '../components/AppSidebar.vue'
 import FinishedVideoPlayer from '../components/FinishedVideoPlayer.vue'
 import UiSelect from '../components/UiSelect.vue'
 import CreateDialog from '../components/create/CreateDialog.vue'
+import ThinkingLine from '../components/create/ThinkingLine.vue'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 
@@ -259,7 +260,17 @@ async function ensureConversation() {
   await router.replace({name:'create',params:{conversationId:c.id}}); persistDraft(null,''); await refresh()
   return c.id
 }
-const linkStudying = ref(''), claimPicks = ref({})
+const linkStudying = ref(''), claimPicks = ref({}), pendingText = ref('')
+const VIDEO_HOSTS = ['x.com', 'twitter.com', 'mobile.twitter.com', 'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com']
+const studySteps = computed(() => {
+  let host = ''; try { host = new URL(linkStudying.value).hostname.toLowerCase() } catch {}
+  return VIDEO_HOSTS.includes(host)
+    ? ['Fetching the video', 'Finding the cuts', 'Listening for speech', 'Reading frames', 'Writing style notes']
+    : ['Reading the page', 'Capturing the page', 'Looking at the design', 'Checking claims against the page', 'Writing brand notes']
+})
+// Keep the live thinking row in view as it appears.
+watch([() => linkStudying.value, () => planning.value, () => pendingText.value], async () => { await nextTick(); end.value?.scrollIntoView({ behavior: 'smooth', block: 'end' }) })
+const planSteps = ['Reading your brief', 'Looking at your files', 'Planning the scenes', 'Choosing the tools', 'Pricing the plan']
 const linkKeys = {}
 async function approveClaims(a) {
   const picked = (a.suggested_claims || []).filter((c, i) => claimPicks.value[a.asset_id + ':' + i]).map(c => c.text)
@@ -279,6 +290,8 @@ async function send() {
     // Links in the brief are studied first: video posts as style references, other pages as brand pages.
     const known = new Set((data.value?.attachments || []).map(a => a.source?.requested_url).filter(Boolean))
     const links = [...new Set((text.match(/https:\/\/[^\s<>"')]+/g) || []).map(u => u.replace(/[.,;:!?]+$/, '')))].filter(u => !known.has(u)).slice(0, 3)
+    // Show the message right away while its links are studied.
+    if (links.length) { pendingText.value = text; prompt.value = '' }
     for (const url of links) {
       linkStudying.value = url
       linkKeys[url] ||= crypto.randomUUID()
@@ -288,10 +301,12 @@ async function send() {
     linkStudying.value = ''
     sendingKey ||= crypto.randomUUID()
     await api.post(`${base(target)}/messages`,{content:text,expected_version:conversation.value.version,idempotency_key:sendingKey})
-    persistDraft(target,''); sendingKey = null; prompt.value = ''; quote.value = null; selectedRevision.value = null
+    persistDraft(target,''); sendingKey = null; prompt.value = ''; pendingText.value = ''; quote.value = null; selectedRevision.value = null
     await refresh(); await loadHistory(); await nextTick(); end.value?.scrollIntoView({behavior:'smooth',block:'end'})
   })
   linkStudying.value = ''
+  // A failed study leaves the message unsent: give the text back to the box.
+  if (pendingText.value) { if (!prompt.value) prompt.value = pendingText.value; pendingText.value = '' }
   // The plan turn follows every brief. It is free; failure leaves the brief saved.
   if (!error.value && canWrite.value && !active.value) await makePlan()
 }
@@ -442,7 +457,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
         <section class="conversation" aria-label="Conversation" @dragover.prevent="dragging = canWrite" @dragleave.self="dragging = false" @drop.prevent="canWrite && !conversation?.archived_at && chooseFiles($event.dataTransfer.files)">
           <div v-if="dragging" class="drop-overlay">Drop your footage, photos or audio here</div>
           <div class="messages">
-            <div v-if="!data?.messages?.length && !currentRevision" class="empty">
+            <div v-if="!data?.messages?.length && !currentRevision && !pendingText" class="empty">
               <h2>What are we making?</h2>
               <p>A video or an image. Describe the result and attach what you have; you see the cost before anything is spent.</p>
               <button v-if="canWrite && !conversation?.archived_at" type="button" class="dropzone" @click="fileInput.click()">Drop files here, or click to attach footage, photos or audio<small>PNG / JPG / WebP · MP4 · MP3 / WAV · up to 100 MB each</small></button>
@@ -586,7 +601,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             <div v-if="active" class="assistant-message" aria-live="polite">
               <div :class="['icard', active.status === 'needs_attention' ? 'icard--warn' : 'icard--info']">
                 <div class="icard__body working">
-                  <div class="working__row"><span v-if="active.status !== 'needs_attention'" class="spinner" aria-hidden="true" /><div><div class="working__label">{{ active.stage }}<span v-if="autoRan !== null" class="tier tier--quoted auto-tag">RAN AUTOMATICALLY · UP TO {{ autoRan }} CREDITS</span></div><div class="working__step">{{ active.status === 'needs_attention' ? 'This run needs a recovery check before it continues. Earlier versions are safe, and nothing retries on its own.' : 'You can leave this page. Earlier versions stay downloadable while this runs.' }}</div></div></div>
+                  <ThinkingLine v-if="active.status !== 'needs_attention'" :key="active.id" :label="active.stage" :started-at="active.created_at" :detail="active.status === 'needs_attention' ? 'This run needs a recovery check before it continues. Earlier versions are safe, and nothing retries on its own.' : 'You can leave this page. Earlier versions stay downloadable while this runs.'" /><div v-else class="working__row"><div><div class="working__label">{{ active.stage }}</div><div class="working__step">{{ active.status === 'needs_attention' ? 'This run needs a recovery check before it continues. Earlier versions are safe, and nothing retries on its own.' : 'You can leave this page. Earlier versions stay downloadable while this runs.' }}</div></div></div><div v-if="autoRan !== null" class="auto-tag-row"><span v-if="autoRan !== null" class="tier tier--quoted auto-tag">RAN AUTOMATICALLY · UP TO {{ autoRan }} CREDITS</span></div>
                 </div>
                 <div v-if="canWrite && active.status !== 'needs_attention'" class="icard__foot"><span class="spacer" /><button type="button" class="btn btn--ghost btn--sm" :disabled="locked || active.status === 'cancel_requested'" @click="cancel">{{ active.status === 'cancel_requested' ? 'Stopping…' : 'Stop · keeps what is done so far' }}</button></div>
               </div>
@@ -616,7 +631,9 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 </div>
               </div>
             </div>
-            <div v-if="planning" class="assistant-message" aria-live="polite"><span class="speaker">WyvStudio</span><div class="icard icard--info"><div class="icard__body working"><div class="working__row"><span class="spinner" aria-hidden="true" /><div><div class="working__label">Planning</div><div class="working__step">Reading your brief and files. Planning is free.</div></div></div></div></div></div>
+            <div v-if="pendingText" class="user-message message">{{ pendingText }}</div>
+            <div v-if="linkStudying" class="assistant-message"><span class="speaker">WyvStudio</span><ThinkingLine :key="linkStudying" :steps="studySteps" :detail="linkStudying" :step-seconds="5" /></div>
+            <div v-if="planning" class="assistant-message"><span class="speaker">WyvStudio</span><ThinkingLine :steps="planSteps" detail="Planning is free. You see the cost before anything is spent." :step-seconds="4" /></div>
             <div v-else-if="!quote && conversation && canWrite && !active && data?.messages?.length && !conversation.archived_at && !currentPlan" class="next-step">
               <p v-if="kind === 'image' && !paid" class="muted">Your image brief is saved. Image generation and editing are not enabled in this local preview yet.</p>
               <button v-if="!stalePlan" type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="makePlan">Plan it</button>
@@ -663,7 +680,6 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 <button class="send" type="submit" :disabled="locked || !prompt.trim()" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
               </div>
             </form>
-            <p v-if="linkStudying" class="composer-note" role="status">Studying {{ linkStudying }}. This can take up to a minute.</p>
             <p class="composer-note">Planning and text or colour changes are free. Small jobs under 15 credits just run and show their cost; anything more is quoted first. Uploads stay private.</p>
           </div>
           <p v-if="error && (!canWrite || conversation?.archived_at)" class="create-error" role="alert">{{ error }}</p>
