@@ -1,6 +1,7 @@
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {rename,unlink} from 'node:fs/promises';
 const run=promisify(execFile);
-export const TARGET=-14,LOW=-17,HIGH=-11;
+// Social target -14 LUFS; level anything more than 1 LU away (parity standard).
+export const TARGET=-14,LOW=-15,HIGH=-13;
 
 // Integrated loudness and true peak of the encoded file (EBU R128).
 export function parseLoudness(stderr){

@@ -611,6 +611,16 @@ class CreateIntegrationTest extends TestCase
         $this->assertEqualsWithDelta(0.0, $sfx['cues'][0]['start'], 0.05);
         $this->assertEqualsWithDelta(1.3, $sfx['cues'][1]['start'], 0.05);
         $this->assertEqualsWithDelta(2.6, $sfx['cues'][2]['start'], 0.05);
+        $ev = fn ($t, $v) => [0 => '', 1 => $t, 2 => (string) $v];
+        $ranges = \App\Services\Create\PlanMediaExecutor::cueRanges([$ev('start', 0.1), $ev('end', 0.3), $ev('start', 0.4), $ev('end', 1.5), $ev('start', 1.55), $ev('end', 3.0), $ev('start', 3.3)], 4.0);
+        $this->assertSame([[0.0, 0.4], [3.0, 3.3]], $ranges, 'fragments merge into one cue, specks are dropped, and trailing silence adds nothing');
+        // A song that ends early is looped with a crossfade to fill the bed.
+        $short = $dir.'/short.wav';
+        (new \Symfony\Component\Process\Process(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=220:d=5', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono', '-filter_complex', '[0][1]concat=n=2:v=0:a=1', '-t', '12', $short]))->mustRun();
+        $bed = \App\Services\Create\PlanMediaExecutor::fillMusic($short, 12, $dir);
+        $probe = new \Symfony\Component\Process\Process(['ffmpeg', '-hide_banner', '-nostats', '-ss', '8', '-t', '3', '-i', $bed, '-af', 'volumedetect', '-f', 'null', '-']); $probe->run();
+        preg_match('/mean_volume: ([-0-9.]+) dB/', $probe->getErrorOutput(), $mv);
+        $this->assertGreaterThan(-30, (float) $mv[1], 'the bed is audible after the song would have ended');
     }
 
     public function test_a_failed_audio_generation_is_reported_not_charged(): void

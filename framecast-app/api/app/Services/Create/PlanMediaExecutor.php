@@ -114,8 +114,42 @@ class PlanMediaExecutor
         $seconds = max(5, (int) ($ctx['duration_seconds'] ?? 15)) + 1;
         $url = $this->replicate('elevenlabs/music', ['prompt' => Str::limit('Instrumental background music for a short video: '.$description.'. No vocals, steady energy, clean ending.', 900, ''),
             'music_length_ms' => $seconds * 1000, 'force_instrumental' => true, 'output_format' => 'mp3_high_quality']);
-        $path = $this->fetch($url, $dir.'/music.mp3');
+        $path = self::fillMusic($this->fetch($url, $dir.'/music.mp3'), $seconds, $dir);
         return ['path' => $path, 'mime' => (new \finfo(FILEINFO_MIME_TYPE))->file($path), 'title' => 'Music · '.Str::limit($description, 60, '…'), 'provider_id' => 'music-'.Str::uuid()];
+    }
+
+    /**
+     * Music models sometimes finish the song early and leave silence. Keep the
+     * audible part, loop it with a crossfade until the bed covers the video,
+     * and fade out over the last second.
+     */
+    public static function fillMusic(string $path, int $seconds, string $dir): string
+    {
+        $r = Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-nostats', '-i', $path, '-af', 'silencedetect=n=-40dB:d=1', '-f', 'null', '-']);
+        $log = $r->errorOutput().$r->output();
+        $total = (float) trim(Process::timeout(20)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
+        $audible = $total;
+        // A silence that runs to the end of the file (ffmpeg reports its end at EOF) is the early ending.
+        preg_match_all('/silence_start: ([0-9.]+)/', $log, $s);
+        preg_match_all('/silence_end: ([0-9.]+)/', $log, $e);
+        if ($s[1] && (count($s[1]) > count($e[1]) || (float) end($e[1]) >= $total - 0.25)) $audible = (float) end($s[1]);
+        if ($audible >= $seconds - 0.5 || $audible < 3) {
+            $out = $dir.'/music-bed.wav';
+            Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $path, '-t', (string) $seconds, '-af', 'afade=t=out:st='.max(0, $seconds - 1).':d=1', $out]);
+            return is_file($out) ? $out : $path;
+        }
+        $body = $dir.'/music-body.wav';
+        Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $path, '-t', (string) round($audible, 2), $body]);
+        $chain = $body; $len = $audible; $i = 0;
+        while ($len < $seconds + 1 && $i < 8) {
+            $next = $dir.'/music-loop-'.(++$i).'.wav';
+            Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $chain, '-i', $body, '-filter_complex', 'acrossfade=d=0.8', $next]);
+            if (! is_file($next)) break;
+            $chain = $next; $len += $audible - 0.8;
+        }
+        $out = $dir.'/music-bed.wav';
+        Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $chain, '-t', (string) $seconds, '-af', 'afade=t=out:st='.max(0, $seconds - 1).':d=1', $out]);
+        return is_file($out) ? $out : $path;
     }
 
     /**
@@ -125,7 +159,7 @@ class PlanMediaExecutor
     private function soundSheet(string $description, string $dir): array
     {
         $names = array_values(array_slice(array_filter(array_map('trim', preg_split('/[,;\n]+/', preg_replace('/^[^:]*:\s*/', '', $description)))), 0, 6)) ?: ['soft UI click', 'quick whoosh', 'light pop'];
-        $url = $this->replicate('stability-ai/stable-audio-2.5', ['prompt' => 'A sequence of '.count($names).' separate, short, clean sound effects with one second of silence between them, in this order: '.implode('; ', $names).'. No music, no voice.',
+        $url = $this->replicate('stability-ai/stable-audio-2.5', ['prompt' => 'Sound design sheet: '.count($names).' distinct one-shot sound effects, each 0.4 to 1 second long, separated by one and a half seconds of complete silence, in this order: '.implode('; ', $names).'. Each effect is a single clear sound, not a rhythm or loop. No music, no voice.',
             'duration' => (int) min(20, count($names) * 2 + 1), 'steps' => 8]);
         $raw = $this->fetch($url, $dir.'/sfx.audio');
         $wav = $dir.'/sfx.wav';
@@ -134,15 +168,33 @@ class PlanMediaExecutor
         preg_match_all('/silence_(start|end): ([0-9.]+)/', $r->errorOutput().$r->output(), $m, PREG_SET_ORDER);
         $d = Process::timeout(20)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $wav]);
         $total = (float) trim($d->output());
-        $sounds = []; $at = 0.0;
-        foreach ($m as $e) {
-            if ($e[1] === 'start') { if ((float) $e[2] - $at >= 0.08) $sounds[] = [round($at, 2), round((float) $e[2], 2)]; }
-            else $at = (float) $e[2];
-        }
-        if ($total - $at >= 0.08) $sounds[] = [round($at, 2), round($total, 2)];
+        $sounds = self::cueRanges($m, $total);
         if (! $sounds) throw new RuntimeException('No distinct sound effects were produced.');
         $cues = array_map(fn ($s, $i) => ['name' => $names[$i] ?? 'sound '.($i + 1), 'start' => $s[0], 'end' => $s[1]], array_slice($sounds, 0, 6), array_keys(array_slice($sounds, 0, 6)));
         return ['path' => $wav, 'mime' => 'audio/x-wav', 'title' => 'Sound effects · '.implode(', ', array_slice($names, 0, 3)), 'provider_id' => 'sfx-'.Str::uuid(), 'cues' => $cues];
+    }
+
+    /**
+     * Sound ranges from silencedetect events: fragments closer than 0.35 s
+     * merge into one cue, and specks under 0.15 s are dropped.
+     *
+     * @param array<int, array{0:string,1:string,2:string}> $events
+     */
+    public static function cueRanges(array $events, float $total): array
+    {
+        $raw = []; $at = 0.0; $silent = false;
+        foreach ($events as $e) {
+            if ($e[1] === 'start') { if ((float) $e[2] - $at > 0.01) $raw[] = [$at, (float) $e[2]]; $silent = true; }
+            else { $at = (float) $e[2]; $silent = false; }
+        }
+        // Sound runs to the end only if the file does not finish in silence.
+        if (! $silent && $total - $at > 0.01) $raw[] = [$at, $total];
+        $merged = [];
+        foreach ($raw as $r) {
+            if ($merged && $r[0] - $merged[count($merged) - 1][1] < 0.35) $merged[count($merged) - 1][1] = $r[1];
+            else $merged[] = $r;
+        }
+        return array_values(array_map(fn ($r) => [round($r[0], 2), round($r[1], 2)], array_filter($merged, fn ($r) => $r[1] - $r[0] >= 0.15)));
     }
 
     /** Run an official Replicate model and return its output URL. */
