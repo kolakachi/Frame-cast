@@ -1,6 +1,7 @@
 import {readFile,writeFile,rename} from 'node:fs/promises';
 import {parseAction,hostPolicy} from './protocol.mjs';
 import {chainFor,mapThrough,compact} from './transcript-map.mjs';
+import {rowsOf,timingFindings} from './timing-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
 import {digest} from './workspace.mjs';
@@ -28,6 +29,22 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     boundedSignal.addEventListener('abort',abort,{once:true});
     Promise.resolve().then(()=>{boundedSignal.throwIfAborted();return work();}).then(resolve,reject).finally(()=>boundedSignal.removeEventListener('abort',abort));
   });
+  // Timing rules the renderer cannot see: spoken cues and media shorter than its slot.
+  const timing=async()=>{
+    if(!tools.timeline)return {ok:true};
+    const html=await workspace.read('index.html').catch(()=>'');
+    if(!/<(video|audio)\b|data-spoken/.test(html))return {ok:true};
+    const tl=await bounded(()=>tools.timeline({signal:boundedSignal}));
+    if(!tl?.ok)return {ok:true};
+    const rows=rowsOf(tl.diagnostics);
+    state.durations??={};
+    for(const r of rows)if(['video','audio'].includes(r.kind)&&r.src&&state.durations[r.src]===undefined&&tools.media&&workspace.assets.some(a=>a.path===r.src)){
+      const p=await bounded(()=>tools.media({op:'probe',input:r.src,params:{},signal:boundedSignal})).catch(()=>null);
+      state.durations[r.src]=Number(p?.info?.duration)||null;
+    }
+    const errors=timingFindings({rows,html,durations:state.durations,transcripts:state.transcripts||{}});
+    return errors.length?{ok:false,diagnostics:{ok:false,errors}}:{ok:true};
+  };
   try {
     while(state.calls<cap.calls) {
       boundedSignal.throwIfAborted();
@@ -87,6 +104,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           const {root,steps}=chainFor(action.input,workspace.assets);
           const t=await bounded(()=>tools.transcript({input:root,signal:boundedSignal}));
           const mapped={words:mapThrough(t.words,steps),segments:mapThrough(t.segments,steps)};
+          state.transcripts={...(state.transcripts||{}),[action.input]:mapped.words.map(w=>[w.text,w.start,w.end])};
           result={ok:true,input:action.input,timeline:steps.length?'mapped from '+root+' through '+steps.map(s=>s.operation).join(', '):'original',...compact(mapped)};
         } catch(e) {
           if(boundedSignal.aborted)throw e;
@@ -98,11 +116,13 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       else if(action.type==='timeline') {if(!tools.timeline)throw Error('Timeline tool not installed');result=await bounded(()=>tools.timeline({signal:boundedSignal}));}
       else if(action.type==='preview') {
         result=await bounded(()=>tools.check({signal:boundedSignal}));
+        if(result.ok){const t=await timing();if(!t.ok)result=t;}
         if(result.ok){state.checkedRevision=state.revision;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;result={...result,providerImage:undefined};}}
         else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
       }
       else if(action.type==='check') {
         result=await bounded(()=>tools.check({signal:boundedSignal}));
+        if(result.ok){const t=await timing();if(!t.ok)result=t;}
         if(result.ok)state.checkedRevision=state.revision;
         else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
       } else if(action.type==='snapshot') {
