@@ -106,6 +106,12 @@ Every video type needs this, so it goes first.
 - [ ] **16:9 at 60 fps.** Offer 60 fps output for UI-heavy explainers where the renderer supports it; confirm render time and file size.
 - [ ] **Reference-matching pass.** Opus's visual review compares the build's pacing and structure with the reference notes (beats, cut rhythm, closing lockup) and repairs if they are clearly off.
 - [ ] **Longer builds when needed.** Parity builds may need 12 calls or more; measure, then set the call limit and price for this tier.
+- [ ] **Motion blur on the final render.** HyperFrames 0.8.82 has no blur option, but it renders up to 240 fps. Render at 4× the output frame rate and blend each 4 frames into 1 with ffmpeg (`tmix`), a 180° shutter as in Barty-Bart/motion-graphics. Final render only, since it takes about 4× the render time; measure time and file size first.
+- [ ] **Spring and cursor motion kit.** A small helper in the sandbox runtime next to GSAP: closed-form springs with presets (fast, slow, soft, camera) and a cursor that moves along a path, clicks and drags. Agent guidance: one element morphs through states (pill → card → terminal → chart) with the cursor driving each change, instead of new cards fading in. Ideas from motion-graphics (MIT).
+- [ ] **Interaction recipes.** Named recipes in the agent instructions: button press, progress, toggle, slider, drag-and-drop, terminal typing, chart tooltip and chapter card, so product UI (slice E) looks used, not shown.
+- [ ] **Easing and energy rules.** Six named easings with when to use each; ease in to exit and ease out to reveal across a cut; overlap and stagger entrances; keep something moving during holds. From Diffusion Studio's easing guide (MPL-2.0, ideas only).
+- [ ] **Slow-drift check.** A timeline check that flags moves under about 1 pixel per frame, which stutter instead of glide.
+- [ ] **Transitions and light leaks.** Whip, push, mask wipe and light-leak transitions as CSS/GSAP recipes, modelled on Remotion's transitions and light-leaks patterns. No Remotion dependency; its licence needs a paid company licence above 3 people.
 - **Done when:** the parity acceptance test passes.
 
 ---
@@ -132,6 +138,7 @@ Every video type needs this, so it goes first.
 | Character poses | gpt-image-2 edits (in the app), Flux Kontext | Slice C |
 | Background removal | rembg or a similar model | Slice C |
 | Lip-synced talking shots | Hedra, OmniHuman, Kling lip sync, Sync Labs | Slice D |
+| Motion ideas | Barty-Bart/motion-graphics (MIT), Diffusion Studio easing guide, Remotion patterns | Slice F, ideas only; HyperFrames stays the engine |
 | 3D mascot, if ever | Meshy, Tripo, Rodin plus three.js in HyperFrames | Not planned |
 
 ## Order
