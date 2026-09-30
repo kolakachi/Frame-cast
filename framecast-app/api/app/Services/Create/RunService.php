@@ -116,6 +116,59 @@ class RunService
         });
     }
 
+    /**
+     * A file the app made for this run from the approved plan (stock, AI image,
+     * narration). Stored like a private upload and recorded with the run's
+     * derived files, so the worker downloads it and later versions inherit it.
+     */
+    public function generated(string $id, string $token, string $localPath, string $title, array $meta): array
+    {
+        abort_unless(is_file($localPath) && filesize($localPath) > 0 && filesize($localPath) <= (int) config('create.input_file_bytes'), 422, 'Generated file size is not allowed.');
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($localPath);
+        $type = self::DERIVED_TYPES[$mime] ?? null;
+        abort_unless($type, 422, 'Generated file type is not allowed.');
+        $hash = hash_file('sha256', $localPath);
+        return DB::transaction(function () use ($id, $token, $localPath, $title, $meta, $type, $mime, $hash) {
+            $run = $this->leased($id, $token);
+            abort_unless($run->status === 'running' && now()->lessThan($run->lease_expires_at), 409, 'Stale worker result.');
+            $input = json_decode($run->input_json, true);
+            $derived = $input['derived_files'] ?? [];
+            if ($same = collect($derived)->firstWhere('sha256', $hash)) return $same;
+            abort_if(count($derived) >= 20, 422, 'Too many derived files in one run.');
+            $suffix = $run->workspace_id.'/'.Str::uuid().'/'.$hash.'.'.$type[1];
+            $path = 'create/uploads/'.$suffix;
+            $stream = fopen($localPath, 'rb');
+            try { abort_unless(Storage::disk('local')->put($path, $stream, ['visibility' => 'private']), 503, 'Could not store generated media.'); }
+            finally { if (is_resource($stream)) fclose($stream); }
+            $asset = \App\Models\Asset::create(['workspace_id' => $run->workspace_id, 'asset_type' => $type[0], 'title' => mb_substr($title, 0, 180),
+                'storage_url' => 'create-upload://'.$suffix, 'mime_type' => $mime, 'file_size_bytes' => filesize($localPath), 'status' => 'active', 'restriction_scope' => 'workspace',
+                'metadata_json' => [...$meta, 'create_conversation_id' => $run->conversation_id, 'composition_run_id' => $run->id]]);
+            $record = ['asset_id' => (int) $asset->id, 'purpose' => 'source', 'name' => 'asset-'.$asset->id.'-'.$hash.'.'.$type[1],
+                'sha256' => $hash, 'bytes' => (int) filesize($localPath), 'mime_type' => $mime, 'asset_type' => $type[0],
+                'storage_path' => $path, 'duration_seconds' => null, 'transcript' => '', 'derived_from_asset_id' => null, 'operation' => 'plan_media'];
+            $input['derived_files'] = [...$derived, $record];
+            DB::table('composition_runs')->where('id', $id)->update(['input_json' => json_encode($input), 'updated_at' => now()]);
+            return $record;
+        });
+    }
+
+    /** Adds an already-stored file (a plan item bought by an earlier run) to this run. */
+    public function reuseGenerated(string $id, string $token, array $record): array
+    {
+        return DB::transaction(function () use ($id, $token, $record) {
+            $run = $this->leased($id, $token);
+            abort_unless($run->status === 'running' && now()->lessThan($run->lease_expires_at), 409, 'Stale worker result.');
+            abort_unless(\App\Models\Asset::where('workspace_id', $run->workspace_id)->whereKey($record['asset_id'])->where('status', '!=', 'archived')->exists(), 404);
+            $input = json_decode($run->input_json, true);
+            $derived = $input['derived_files'] ?? [];
+            if (! collect($derived)->firstWhere('asset_id', $record['asset_id'])) {
+                $input['derived_files'] = [...$derived, $record];
+                DB::table('composition_runs')->where('id', $id)->update(['input_json' => json_encode($input), 'updated_at' => now()]);
+            }
+            return $record;
+        });
+    }
+
     public function heartbeat(string $id, string $token, int $sequence, string $stage): array
     {
         return DB::transaction(function () use ($id, $token, $sequence, $stage) {

@@ -90,6 +90,15 @@ class WorkerController extends Controller
         return response()->json(['data' => app(\App\Services\Create\AttemptService::class)->settle($id, $input['lease_token'], $attemptId, $input,$verified)]);
     }
 
+    public function planMedia(Request $r, string $id, int $index)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64']);
+        // Generation can take minutes (animation especially).
+        set_time_limit(420);
+        return response()->json(['data' => app(\App\Services\Create\PlanMediaService::class)->produce($id, $input['lease_token'], $index)]);
+    }
+
     public function transcript(Request $r, string $id)
     {
         $this->authorizeWorker($r);

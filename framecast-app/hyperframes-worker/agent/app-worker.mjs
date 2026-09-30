@@ -5,6 +5,7 @@ import path from 'node:path';
 import {PilotBudget} from './pilot-budget.mjs';
 import {ReplicateProvider} from './replicate.mjs';
 import {AnthropicGatewayProvider} from './anthropic-gateway.mjs';
+import {buyPlanMedia} from './plan-media.mjs';
 import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
 import {executeCompositionAgent,offlineContractProvider} from './composition-agent.mjs';
@@ -98,9 +99,17 @@ async function execute(run){
   if(paid){const complete=provider.complete.bind(provider);provider.complete=async args=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',.3);return complete(args);};}
   let agentResult;
   if(run.input.execution_policy?.agent){
+   // Buy the approved plan items first, so the design can use them.
+   let planMedia=[];
+   if(paid&&Array.isArray(run.input.plan_media)&&run.input.plan_media.length){
+    planMedia=await buyPlanMedia({items:run.input.plan_media,directory:dir+'/inputs',manifest,signal:aborter.signal,onStage:s=>{stage=s;},
+     produce:i=>request('runs/'+run.id+'/plan-media/'+i,{lease_token:run.lease_token},false,420000),
+     download:(assetId,signal)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal:AbortSignal.any([signal??aborter.signal,AbortSignal.timeout(120000)])})});
+    if(lost||cancelled||stopping)throw Error('Stopped while getting plan media');
+   }
    stage=paid?'Designing your video':'Running the offline agent contract check';
    const assetIds=new Map(manifest.map(f=>[f.name,f.asset_id]));
-   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,
+   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,
     transcribe:async({input})=>{const assetId=assetIds.get(input);if(!assetId)throw Error('Only supplied audio or video can be transcribed');return request('runs/'+run.id+'/transcripts',{lease_token:run.lease_token,asset_id:assetId},false,150000);},
     provider,guidanceDirectory:root+'/agent/guidance',signal:aborter.signal,
     bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),

@@ -35,6 +35,7 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_09_29_190000_create_composition_deliveries.php'))->up();
         (require database_path('migrations/2026_09_30_120000_create_create_plans.php'))->up();
         (require database_path('migrations/2026_09_30_130000_add_create_provider_consent.php'))->up();
+        (require database_path('migrations/2026_10_01_120000_create_create_plan_media.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -330,6 +331,66 @@ class CreateIntegrationTest extends TestCase
         // A post longer than 5 minutes is refused before download.
         \Illuminate\Support\Facades\Process::fake(fn () => \Illuminate\Support\Facades\Process::result(json_encode(['duration' => 900])));
         $this->rejected(422, fn () => $service->add($this->owner, $c->id, 'https://www.tiktok.com/@a/video/1', (int) $this->conversations->conversation($this->owner, $c->id)->version, 'ref-2'));
+    }
+
+    public function test_plan_media_is_bought_under_one_approval_charged_on_success_and_reused_on_retry(): void
+    {
+        $this->pilot(); config(['create.planner' => 'offline']);
+        $c = $this->brief();
+        $plan = app(\App\Services\Create\PlanService::class)->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-pm');
+        $imageCredits = \App\Services\Create\CapabilityCatalogue::credits('ai_image', $this->workspace->id);
+        $json = json_decode(DB::table('create_plans')->where('id', $plan['id'])->value('plan_json'), true);
+        $json['media'] = [['kind' => 'ai_image', 'description' => 'Cold brew glass on ice, warm light', 'credits' => 999],
+            ['kind' => 'stock_image', 'description' => 'coffee beans close up', 'credits' => 0],
+            ['kind' => 'voiceover', 'description' => 'Narrate the callouts', 'credits' => 3],
+            ['kind' => 'stabilize', 'description' => 'not bought: a sandbox edit', 'credits' => 0]];
+        DB::table('create_plans')->where('id', $plan['id'])->update(['plan_json' => json_encode($json)]);
+
+        $q = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $this->assertSame(['ai_image', 'stock_image', 'voiceover'], array_column($q->payload_json['plan_media'], 'kind'), 'sandbox edits are not purchases');
+        $this->assertSame($imageCredits, $q->payload_json['plan_media'][0]['credits'], 'price comes from the catalogue, not the plan');
+        $media = $q->payload_json['execution_policy']['plan_media'];
+        $this->assertSame([$imageCredits + 0 + 3, 3], [$media['total_credits'], $media['max_calls']]);
+        $agent = $q->payload_json['execution_policy']['agent'];
+        $this->assertSame($agent['credits'] * $agent['max_calls'] + $imageCredits + 3, (int) $q->credits_max, 'one approval covers the build and every item');
+
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII=');
+        $calls = [];
+        app()->instance(\App\Services\Create\PlanMediaExecutor::class, new class($png, $calls) extends \App\Services\Create\PlanMediaExecutor {
+            public function __construct(private string $png, private array &$calls) {}
+            public function produce(string $kind, string $description, array $ctx, string $dir): array {
+                $this->calls[] = $kind;
+                if ($kind === 'voiceover') throw new \RuntimeException('Narration needs approved lines.');
+                file_put_contents($dir.'/x.png', $this->png.($kind === 'stock_image' ? 'stock' : ''));
+                return ['path' => $dir.'/x.png', 'mime' => 'image/png', 'title' => ucfirst($kind), 'provider_id' => $kind.'-1'];
+            }
+        });
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'approve-pm', true);
+        $claim = $this->runs->claim();
+        $service = app(\App\Services\Create\PlanMediaService::class);
+        $before = (int) $this->workspace->fresh()->credits_monthly + (int) $this->workspace->fresh()->credits_topup;
+        $image = $service->produce($run->id, $claim['lease_token'], 0);
+        $this->assertSame(['succeeded', $imageCredits, false], [$image['status'], $image['charged_credits'], $image['reused']]);
+        $this->assertSame($image['file']['sha256'], $this->runs->inputFile($run->id, $claim['lease_token'], $image['file']['asset_id'])['sha256'], 'the worker can download it');
+        $this->assertSame(0, $service->produce($run->id, $claim['lease_token'], 1)['charged_credits']);
+        $voice = $service->produce($run->id, $claim['lease_token'], 2);
+        $this->assertSame(['failed', 0, 'Narration needs approved lines.'], [$voice['status'], $voice['charged_credits'], $voice['error']]);
+        $replay = $service->produce($run->id, $claim['lease_token'], 0);
+        $this->assertSame([true, 0], [$replay['reused'], $replay['charged_credits']], 'a replayed request never charges again');
+        $this->rejected(404, fn () => $service->produce($run->id, $claim['lease_token'], 9));
+        $after = (int) $this->workspace->fresh()->credits_monthly + (int) $this->workspace->fresh()->credits_topup;
+        $this->assertSame($imageCredits, $before - $after, 'only the successful paid item was charged');
+
+        // The build fails; the user retries the same plan. Bought items are reused free; the failed one is tried again.
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'Stopped'], null, null);
+        $q2 = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $run2 = $this->conversations->approve($this->owner, $c->id, $q2->id, 'approve-pm-2', true);
+        $claim2 = $this->runs->claim();
+        $again = $service->produce($run2->id, $claim2['lease_token'], 0);
+        $this->assertSame([true, 0, $image['file']['asset_id']], [$again['reused'], $again['charged_credits'], $again['file']['asset_id']]);
+        $this->assertSame($image['file']['sha256'], $this->runs->inputFile($run2->id, $claim2['lease_token'], $image['file']['asset_id'])['sha256']);
+        $service->produce($run2->id, $claim2['lease_token'], 2);
+        $this->assertSame(['ai_image', 'stock_image', 'voiceover', 'voiceover'], $calls, 'the image was not made twice');
     }
 
     private function brief(): object

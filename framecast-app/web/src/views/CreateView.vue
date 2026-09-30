@@ -526,6 +526,10 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <small class="muted">{{ expiredQuote ? 'This approval expired. Review a fresh plan to continue.' : `Approval open until ${new Date(quote.expires_at).toLocaleTimeString()}` }}</small>
                 </div>
                 <div class="icard__foot">
+                  <div v-if="quote.plan_media?.length" class="quote__items" aria-label="Bought for this plan">
+                    <div v-for="(md, i) in quote.plan_media" :key="i" class="quote__line"><span>{{ md.description }}</span><b>{{ md.credits ? md.credits + ' cr' : 'included' }}</b></div>
+                    <small class="muted">Each item is charged only if it is made. A retry of this plan reuses what was already made.</small>
+                  </div>
                   <div class="cost-line"><b>{{ quote.paid ? `Up to ${quote.credits_max} credits` : 'No credits' }}</b><span>{{ quote.paid ? '· reserved when you approve, unused part returned' : '· no paid calls' }}</span></div>
                   <span class="spacer" />
                   <button type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="quote = null">Not now</button>
@@ -759,6 +763,7 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .legend::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
 .legend.ok{color:var(--ok)}.legend.info{color:var(--info)}.legend.muted{color:var(--text-3)}
 .quote{display:flex;flex-direction:column;gap:4px}
+.quote__items{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
 .quote__line{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--text-3)}
 .quote__line b{font:500 12px var(--mono);color:var(--text)}
 .levers{display:flex;flex-direction:column;gap:12px;padding:14px;border-top:1px solid var(--line);background:var(--bg-2)}

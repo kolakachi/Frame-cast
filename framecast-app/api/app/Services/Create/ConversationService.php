@@ -165,16 +165,28 @@ class ConversationService
                     [,,$mediaInput]=app(\App\Services\Generation\Video\ReplicateI2VAdapter::class)->buildRequestForTier('quick','pending-private-input',end($messages)->content,$settings['duration_seconds'],['resolution'=>'480p']);
                     $mediaInput['enable_prompt_expansion']=false;
                 }
+                // Plan items the app buys before the build, each at its catalogue price, all under this one approval.
+                $plan = PlanService::forQuote($c);
+                $planMedia = $paid && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition' && $plan
+                    ? collect($plan['media'] ?? [])->filter(fn ($m) => in_array($m['kind'] ?? '', PlanMediaExecutor::KINDS, true))->take(6)
+                        ->map(fn ($m) => ['kind' => $m['kind'], 'description' => (string) $m['description'], 'credits' => (int) (CapabilityCatalogue::credits($m['kind'], (int) $user->workspace_id) ?? 0)])->values()->all()
+                    : [];
+                if ($planMedia) {
+                    $top = max(array_column($planMedia, 'credits'));
+                    $policy['plan_media'] = ['provider' => 'wyvstudio', 'model' => 'catalogue-2026-10', 'credits' => $top, 'cost_limit_microusd' => $top * 4000,
+                        'max_calls' => count($planMedia), 'total_credits' => array_sum(array_column($planMedia, 'credits'))];
+                }
                 $payload = ['kind' => 'composition_fixture', 'conversation_id' => $id, 'version' => $version,
                     'base_revision_id' => $c->head_revision_id, 'messages' => $messages, 'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->orderBy('asset_id')->get(['asset_id','purpose'])->all(),
                     'execution_policy' => $policy, 'pilot_budget_id'=>$paid ? config('create.pilot_budget_id') : null,
                     'input_files' => $files, 'base_bundle' => $base ? json_decode($base->bundle_json, true) : null,
                     'base_bundle_hash' => $base?->bundle_hash,
                     'media_input'=>$mediaInput,
-                    'plan'=>PlanService::forQuote($c),
+                    'plan'=>$plan,
+                    'plan_media'=>$planMedia,
                     'settings' => $settings, 'mode' => $paid ? 'agent' : 'fixture'];
                 return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $user->workspace_id,
-                    'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => array_sum(array_map(fn($p)=>$p['credits']*$p['max_calls'],$policy)),
+                    'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => array_sum(array_map(fn($p)=>$p['total_credits'] ?? $p['credits']*$p['max_calls'],$policy)),
                     'expires_at' => now()->addMinutes(10)]);
             });
         } catch (\Throwable $e) {

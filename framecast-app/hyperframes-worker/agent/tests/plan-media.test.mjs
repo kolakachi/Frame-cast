@@ -1,0 +1,27 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';import {mkdtemp,readFile} from 'node:fs/promises';import {tmpdir} from 'node:os';
+import {buyPlanMedia} from '../plan-media.mjs';
+const bytes=Buffer.from('png-bytes'),sha=createHash('sha256').update(bytes).digest('hex');
+const file={asset_id:7,sha256:sha,bytes:bytes.length,name:`asset-7-${sha}.png`,purpose:'source',asset_type:'image',mime_type:'image/png'};
+const items=[{kind:'ai_image',description:'glass'},{kind:'voiceover',description:'narrate'},{kind:'brand_kit',description:'brand'}];
+const ok=()=>({ok:true,arrayBuffer:async()=>bytes});
+test('buys each item, stages files as sources and reports failures without stopping',async()=>{
+ const dir=await mkdtemp(tmpdir()+'/pm-'),manifest=[],stages=[];
+ const replies=[{status:'succeeded',file,charged_credits:16},{status:'failed',error:'No lines',charged_credits:0},{status:'succeeded',file:null,brand:{colors:['#F26A1B']}}];
+ const r=await buyPlanMedia({items,directory:dir,manifest,produce:async i=>replies[i],download:async()=>ok(),onStage:s=>stages.push(s)});
+ assert.deepEqual(r.map(x=>[x.kind,x.status,x.file??null]),[['ai_image','succeeded',file.name],['voiceover','failed',null],['brand_kit','succeeded',null]]);
+ assert.equal(r[2].brand.colors[0],'#F26A1B');assert.equal(r[1].error,'No lines');
+ assert.equal(manifest[0].path,'source/'+file.name);assert.equal(manifest[0].plan_media.kind,'ai_image');
+ assert.deepEqual(await readFile(dir+'/source/'+file.name),bytes);
+ assert.match(stages[0],/Getting an AI image \(1 of 3\)/);
+});
+test('a tampered or mislabelled file is refused',async()=>{
+ const dir=await mkdtemp(tmpdir()+'/pm-');
+ await assert.rejects(buyPlanMedia({items:[items[0]],directory:dir,manifest:[],produce:async()=>({status:'succeeded',file}),download:async()=>({ok:true,arrayBuffer:async()=>Buffer.from('other')})}),/hash or size/);
+ await assert.rejects(buyPlanMedia({items:[items[0]],directory:dir,manifest:[],produce:async()=>({status:'succeeded',file:{...file,name:'../../x.png'}}),download:async()=>ok()}),/Invalid plan media record/);
+});
+test('a file already staged is not downloaded again',async()=>{
+ const dir=await mkdtemp(tmpdir()+'/pm-');let n=0;
+ await buyPlanMedia({items:[items[0]],directory:dir,manifest:[{asset_id:7}],produce:async()=>({status:'succeeded',file,reused:true}),download:async()=>{n++;return ok();}});
+ assert.equal(n,0);
+});

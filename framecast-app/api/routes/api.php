@@ -39,6 +39,7 @@ Route::prefix('internal/create')->middleware('throttle:120,1')->group(function (
     Route::post('/runs/{id}/derived', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'derived']);
     Route::post('/runs/{id}/attempts', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'beginAttempt']);
     Route::post('/runs/{id}/attempts/{attemptId}/prediction', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'bindPrediction']);
+    Route::post('/runs/{id}/plan-media/{index}', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'planMedia'])->whereNumber('index');
     Route::post('/runs/{id}/transcripts', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'transcript']);
     Route::post('/runs/{id}/attempts/{attemptId}/anthropic', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'anthropic']);
     Route::post('/runs/{id}/attempts/{attemptId}/settle', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'settleAttempt']);

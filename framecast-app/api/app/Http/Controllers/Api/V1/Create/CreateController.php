@@ -163,8 +163,8 @@ class CreateController extends Controller
         $variants=app(\App\Services\Create\VariantService::class);
         $q=isset($input['retry_run_id']) ? $variants->retryQuote($r->user(),$id,$input['retry_run_id'],$input['expected_version']) : $variants->quote($r->user(),$id,$input['expected_version'],$input['variant_count']??1);
         return response()->json(['data' => ['id' => $q->id, 'credits_max' => $q->credits_max, 'expires_at' => $q->expires_at,
-            'variants'=>count($q->payload_json['variant_quotes']??[1]),'auto_run'=>$this->service->autoRunEligible($r->user(),$this->service->conversation($r->user(),$id),$q),'paid'=>$q->payload_json['mode']==='agent','settings'=>$q->payload_json['settings'],
-            'description' => $q->payload_json['mode']==='agent' ? 'Create from your brief using Replicate. Your brief and approved media may be sent to the provider. Only used calls are charged; unused reserved credits are released. The displayed amount is a maximum, not a flat charge.' : 'Local integration test: render the fixed 15-second sample. This does not generate from your prompt or use your attachments. No paid model calls.']]);
+            'variants'=>count($q->payload_json['variant_quotes']??[1]),'plan_media'=>array_map(fn($m)=>['kind'=>$m['kind'],'description'=>$m['description'],'credits'=>$m['credits']],$q->payload_json['plan_media']??[]),'auto_run'=>$this->service->autoRunEligible($r->user(),$this->service->conversation($r->user(),$id),$q),'paid'=>$q->payload_json['mode']==='agent','settings'=>$q->payload_json['settings'],
+            'description' => $q->payload_json['mode']==='agent' ? 'Create from your brief with our AI providers. Your brief and approved media may be sent to them. Only used calls are charged; unused reserved credits are released. The displayed amount is a maximum, not a flat charge.' : 'Local integration test: render the fixed 15-second sample. This does not generate from your prompt or use your attachments. No paid model calls.']]);
     }
 
     public function approve(Request $r, string $id)
