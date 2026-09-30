@@ -339,3 +339,11 @@ Built and tested this session: slice 7 (plan media under one approval), timing c
   - API 721 passed with 1 skipped; worker 90 passed; web build passed.
 - **Live test with $0.50 more (cap $6.50).** Version 1 did not finish. The synthetic take is a brown gradient with a voice and no face, so Opus's visual review kept judging the speaker "not visible" against the plan's keep-as-is note and rebuilt. It hit the cap at call 11 ($0.39). The correction and free-edit steps had no version to act on; the planner correctly proposed no free edit.
 - **Conclusion.** The remaining proof needs a real talking-head clip. The synthetic one misleads visual review. The code paths are covered by tests; the live proof of a patch-mode correction and a free edit from the plan is still open.
+
+### E4 test on the local app in the owner's account (2026-10-01)
+
+- **Setup.** Run in workspace 1 (kolakachi@gmail.com) on the local stack with the UGC LUX clip (asset 1319, a real 16 s talking head), conversation `19266222-df34-4e5b-8414-6585c7d82bd2`. The local API image was rebuilt from current code and six additive Create migrations were applied. The owner set paid mode with a $4.50 app-side ceiling; the Opus ledger cap was $7.10.
+- **Run 1: 4 calls, 43 credits, lease lost.** `php artisan serve` handled requests one at a time, so a heartbeat queued behind a 36 s Opus call and timed out. Fixed in the worker: only a rejected heartbeat, or none succeeding for 60 s, loses the lease. A new recovery path, `closeSettled`, closed the held run with every call already settled.
+- **Run 2: 9 calls, 72 credits, stopped at the cap.** Opus cut 5.16–6.48 s from the take and laid text over the real footage. It then spent repairs on WCAG contrast failures in its captions and stopped at the $7.10 cap mid-repair. No version was produced.
+- **Findings.** A first build on real footage can take 9 to 12 calls when the checker finds contrast issues. A $0.30 reservation per call means the last $0.28 of any cap can never be used.
+- **Cleanup owed.** The owner's local `.env` is still in paid mode; set `CREATE_MODE=fixture` and restart the API container.
