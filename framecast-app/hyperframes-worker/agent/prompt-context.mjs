@@ -3,6 +3,8 @@ import {parseAction} from './protocol.mjs';
 // immutable brief, facts, locks and base revision stay in context on every call.
 export function promptHistory(messages, recent=6) {
   return messages.map((entry,index)=>{
+    // A cut-off or malformed reply is never replayed in full: it only fills the context.
+    if(entry.role==='assistant'&&typeof entry.content==='string'){try{parseAction(entry.content);}catch{return {role:'assistant',content:'Earlier reply was cut off or malformed; it began: '+entry.content.slice(0,300)};}}
     if(index>=messages.length-recent)return entry;
     if(entry.role==='assistant'){
       try {

@@ -82,7 +82,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       let action;
       try {action=parseAction(response.text);} catch(e) {
         if(++state.repairs>cap.repairs)throw Error('Action repair limit reached');
-        state.messages.push({role:'tool',content:{error:e.message}});await save();continue;
+        const cut=response.stopReason==='max_tokens'||/Unterminated|Unexpected end/i.test(e.message);
+        state.messages.push({role:'tool',content:{error:e.message,...(cut?{hint:'Your reply was cut off by the output limit (thinking counts toward it). Split the work into smaller writes: index.html with markup only, then style.css and main.js as separate write actions, each under 6,000 characters, linked from index.html.'}:{})}});await save();continue;
       }
       state.pending={kind:'tool',action};await save();
       let result;

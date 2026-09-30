@@ -145,3 +145,14 @@ test('the same findings after a repair come back with a plain note to change app
  const [first,second]=state.messages.filter(m=>m.role==='tool').map(m=>m.content);
  assert.equal(first.diagnostics.repeated,undefined);assert.equal(second.diagnostics.repeated,true);assert.match(second.diagnostics.note,/data-layout-allow-overlap/);
 });
+test('a cut-off reply gets a split-the-work hint and is never replayed in full',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');const {promptHistory}=await import('../prompt-context.mjs');
+ const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/cut-');await writeFile(dir+'/index.html','<html></html>');
+ const ws=new Workspace(dir,[]);const long='{"type":"write","path":"index.html","content":"'+'x'.repeat(9000);let i=0;
+ const replies=[{text:long,stopReason:'max_tokens'},{text:JSON.stringify({type:'needs_input',question:'stop'})}];
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:ws,provider:{id:'t',maxCallUsd:0,complete:async()=>replies[i++]},context:{brief:'x'},limits:{calls:4,repairs:3,budgetUsd:0},tools:{}});
+ const err=state.messages.find(m=>m.role==='tool').content;
+ assert.match(err.hint,/style\.css and main\.js/);
+ const hist=promptHistory(state.messages);assert.ok(JSON.stringify(hist).length<3000,'the cut-off reply is summarised');
+});

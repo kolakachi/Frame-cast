@@ -16,6 +16,6 @@ export class AnthropicGatewayProvider {
     const out=await this.call(attemptId,{prompt,system,max_tokens:maxTokens,image:image??null});
     if(out?.status!=='succeeded'||!/^[a-zA-Z0-9_-]+$/.test(out.message_id??'')||typeof out.text!=='string')throw Error('Gateway returned no usable answer');
     await recordPrediction(out.message_id);
-    return {text:out.text,predictionId:out.message_id,metrics:out.usage??{},actualCostUsd:out.cost_microusd/1e6};
+    return {text:out.text,predictionId:out.message_id,metrics:out.usage??{},actualCostUsd:out.cost_microusd/1e6,stopReason:out.stop_reason??null};
   }
 }
