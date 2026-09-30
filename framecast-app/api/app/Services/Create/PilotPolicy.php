@@ -27,8 +27,9 @@ class PilotPolicy
             abort_unless((string)config('services.anthropic.key')!=='',503,'The Claude API key is not configured.');
             return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,
                 // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
-                // 12 calls: an Opus build needs about 10 to include its own visual review (2026-09-30 decision).
-                'cost_limit_microusd'=>300000,'max_calls'=>12,'max_output_tokens'=>8192,'context_bytes'=>64000],
+                // 16 calls (owner, 2026-10-01): UI-heavy parity builds with visual repairs need 14 to 16;
+                // plain builds still finish in 7 to 8. Worst case 16 x $0.30.
+                'cost_limit_microusd'=>300000,'max_calls'=>16,'max_output_tokens'=>8192,'context_bytes'=>64000],
                 'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,
