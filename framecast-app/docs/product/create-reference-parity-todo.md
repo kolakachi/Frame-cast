@@ -101,30 +101,33 @@ Every video type needs this, so it goes first.
   - The mix's true peak overshot after AAC encoding; the limiter is now at −3 dB with a corrective pass, giving −14.3 LUFS and a −2.3 dB peak.
 - **Open from the delivery checks:** CTA text contrast is 2.84:1, under 3:1, and one tile runs outside its container at 10.8 s. Both are shown in "Before you post".
 
-## Slice F: craft and format (Q6, Q8)
+## Slice F: the harness (Q6, Q8, and every video type)
 
-- [ ] **Effort test first.** Every viral Opus 5.5 build ran on xhigh or max effort; ours run on medium to avoid cut-off replies and hold cost. Run one parity build on xhigh with the same brief and compare quality, calls, cost and cut-offs. If it wins, use xhigh for new builds and medium for fixes and re-renders.
-- [ ] **Beat sheet with states.** The plan carries a beat-by-beat state list: each beat's time, what is on screen and its state, a hook in the first 2 s and a payoff every 3 to 5 s. The owner approves it with the script, and the agent builds against it.
-- [ ] **Cuts on the music's beat.** Measure the tempo and beat times of the music bed after it is bought, and give the agent a beat grid so cuts and pops land on beats. A timeline check flags cuts well off the grid.
-- [ ] **Scored critique loop.** Visual review renders stills, scores each one out of 10, names the 3 worst problems and fixes them. Repeat until every still scores 8 or more, or the call limit is reached.
-- [ ] **Build in stages.** Stills first, then a rough timing pass, then the full pass, so a wrong direction is caught before a full build is spent on it.
-- [ ] **Editorial frame kit.** Mono corner labels, timecodes, beat counters and hard cuts to flat colour, as reusable guidance for the agent. It is a style option, not a default.
-- [ ] **16:9 at 60 fps.** Offer 60 fps output for UI-heavy explainers where the renderer supports it; confirm render time and file size.
-- [ ] **Reference-matching pass.** Opus's visual review compares the build's pacing and structure with the reference notes (beats, cut rhythm, closing lockup) and repairs if they are clearly off.
-- [ ] **Longer builds when needed.** Parity builds may need 12 calls or more; measure, then set the call limit and price for this tier.
-- [ ] **Motion blur on the final render.** HyperFrames 0.8.82 has no blur option, but it renders up to 240 fps. Render at 4× the output frame rate and blend each 4 frames into 1 with ffmpeg (`tmix`), a 180° shutter as in Barty-Bart/motion-graphics. Final render only, since it takes about 4× the render time; measure time and file size first.
-- [ ] **Spring and cursor motion kit.** A small helper in the sandbox runtime next to GSAP: closed-form springs with presets (fast, slow, soft, camera) and a cursor that moves along a path, clicks and drags. Agent guidance: one element morphs through states (pill → card → terminal → chart) with the cursor driving each change, instead of new cards fading in. Ideas from motion-graphics (MIT).
-- [ ] **Interaction recipes.** Named recipes in the agent instructions: button press, progress, toggle, slider, drag-and-drop, terminal typing, chart tooltip and chapter card, so product UI (slice E) looks used, not shown.
-- [ ] **Easing and energy rules.** Six named easings with when to use each; ease in to exit and ease out to reveal across a cut; overlap and stagger entrances; keep something moving during holds. From Diffusion Studio's easing guide (MPL-2.0, ideas only).
-- [ ] **Slow-drift check.** A timeline check that flags moves under about 1 pixel per frame, which stutter instead of glide.
-- [ ] **Transitions and light leaks.** Whip, push, mask wipe and light-leak transitions as CSS/GSAP recipes, modelled on Remotion's transitions and light-leaks patterns. No Remotion dependency; its licence needs a paid company licence above 3 people.
-- **Done when:** the parity acceptance test passes.
-- **Notes, not yet scheduled:**
-  - **Call budget for longer films.** The best-known Opus films took 163 calls and 7 to 12 hours. Sixteen calls fit a 15 s parity build; longer or premium films need their own limit and price.
-  - **Every format from one timeline.** Lay scenes out with a layout function and render 9:16, 1:1 and 16:9 in parallel, reframing type and UI rather than cropping.
-  - **Pricing anchor.** Agencies charged about $1,000 for this kind of video a year ago. achxvi, who made the Pocketsflow sample, sells music, a mascot in any style, product features, a closing offer, any language and up to 3 edits.
-- Source for the items above: 0xMovez, "How to build motion design studio with Opus 5.5" (x.com/0xMovez/status/2104216919033192746).
+The prompt is 10% of a video and the harness is 90%. This slice gets the 90% right: what makes output stand out for motion, UGC and product videos alike. Five levers plus one test, in order.
 
+- [ ] **0. Effort test.** Every viral Opus 5.5 build ran on xhigh or max; ours run on medium. Run one parity build on xhigh with the same brief and compare quality, calls, cost and cut-off replies. If it wins, use xhigh for new builds and medium for fixes.
+- [ ] **1. Style packs.** One pack per look or format: rules, a worked example (our own source code, or study notes and key frames for outside references), a poster frame and tags (video type, look, pace, format). The planner picks one pack per brief and it backs the style picker. The build must differ from the pack's example on at least 4 of 6 points (structure, opening, signature shot, camera path, score shape, ending), so videos don't all look alike. Seed 6 to 10 packs across motion (kinetic type, product UI, editorial frame, halftone), UGC (hook formats and script shapes) and explainers. Model: lemo-opuscar's style packs.
+- [ ] **2. Director's plan.** The plan carries a beat sheet: each beat's time, start and end state, and its *reads* (what the viewer must understand, in order, each with time to land and never two at once). A hook in the first 2 s, a payoff every 3 to 5 s, a closing that echoes the opening. The owner approves it with the script; the agent builds key frames as stills first, then motion.
+- [ ] **3. Scored critique loop.** Visual review scores stills against one rubric, names the 3 worst problems and fixes them until every still scores 8 or more, or the call limit is reached. The rubric and checks cover the failures seen most:
+  - subject too small or against the edge, colour on the same colour, captions covering the subject, a beat too fast to read;
+  - reading time: each text block stays on screen for its length at about 15 characters a second plus 1.5 s;
+  - slow drift under about 1 pixel per frame, which stutters;
+  - black or blank frames in transitions.
+- [ ] **4. Motion kit.** One sandbox helper plus guidance:
+  - closed-form springs with presets, one spring per target change so motion stays continuous;
+  - a cursor that moves, clicks and drags, and one element that morphs through states instead of new cards fading in;
+  - named easings, ease in to exit and ease out to reveal across a cut, overlapping and staggered entrances, something moving during holds;
+  - interaction recipes (button press, progress, toggle, slider, drag-and-drop, terminal typing, chart tooltip) and transition recipes (whip, push, mask wipe, light leak) in CSS/GSAP;
+  - character acting: anticipation and overshoot on every pose change, no twinning, reactions after causes;
+  - motion blur on the final render: render at 4× the frame rate and blend in ffmpeg (about 4× render time).
+- [ ] **5. Sound pass.** Measure the music's tempo and beats and give the agent a beat grid so cuts land on beats. Duck the music under the voice (voice about 10 dB above it), a sound on every visible action, one real silence before the peak, and sound used as a transition (J- and L-cuts). Uses audio we already buy; also closes the open "true ducking" item in slice B.
+- **Done when:** the parity acceptance test passes, and a UGC and a plain motion build made with the same harness are rated clearly better than builds made before this slice.
+- **Later, off the main path:**
+  - 60 fps output for UI-heavy explainers.
+  - Every format from one timeline (9:16, 1:1, 16:9 reframed, not cropped).
+  - A call limit and price for longer or premium films (the best-known Opus films took 163 calls and 7 to 12 hours).
+  - Pricing anchor: agencies charged about $1,000 for this kind of video; achxvi sells music, a mascot, features, an offer, any language and 3 edits.
+- **Sources (ideas only, no code copied):** Barty-Bart/motion-graphics and ClaudeAnimationBase (MIT), lemo-opuscar (MIT), Diffusion Studio's easing guide (MPL-2.0), Remotion's transition patterns, 0xMovez's Opus 5.5 course, athemeroy's production brief (CC-BY 4.0). shipvideo (launchvideo.io) is a competitor baseline our output must clearly beat.
 
 ---
 
@@ -150,7 +153,7 @@ Every video type needs this, so it goes first.
 | Character poses | gpt-image-2 edits (in the app), Flux Kontext | Slice C |
 | Background removal | rembg or a similar model | Slice C |
 | Lip-synced talking shots | Hedra, OmniHuman, Kling lip sync, Sync Labs | Slice D |
-| Motion ideas | Barty-Bart/motion-graphics (MIT), Diffusion Studio easing guide, Remotion patterns | Slice F, ideas only; HyperFrames stays the engine |
+| Motion and style ideas | motion-graphics, lemo-opuscar, ClaudeAnimationBase, Diffusion Studio, Remotion | Slice F, ideas only; HyperFrames stays the engine |
 | 3D mascot, if ever | Meshy, Tripo, Rodin plus three.js in HyperFrames | Not planned |
 
 ## Order
@@ -160,4 +163,4 @@ Every video type needs this, so it goes first.
 3. **Slice E.** Uses what already exists; big impact for SaaS and product videos.
 4. **Slice C.** The narrator.
 5. **Slice D.** Premium, and priced separately.
-6. **Slice F**, then the parity acceptance test.
+6. **Slice F**: the effort test, then style packs, director's plan, critique loop, motion kit and sound pass; then the parity acceptance test.
