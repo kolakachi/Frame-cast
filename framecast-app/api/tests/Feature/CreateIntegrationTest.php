@@ -505,6 +505,40 @@ class CreateIntegrationTest extends TestCase
         $this->artisan('create:recover-finished', ['run' => $run->id, 'completion' => $dir.'/completion.json', 'artifact' => $dir.'/video.mp4'])->assertFailed();
     }
 
+    public function test_a_web_page_is_captured_as_a_reference_and_its_claims_are_only_suggestions(): void
+    {
+        $pages = \App\Services\Create\References\PageReferenceService::class;
+        foreach (['http://wyvstudio.com', 'https://localhost/x', 'https://10.0.0.5/', 'https://user:pw@wyvstudio.com', 'https://intranet'] as $bad) $this->rejected(422, fn () => $pages::publicUrl($bad));
+        $pages::$resolve = fn ($h) => $h === 'evil.example' ? ['192.168.1.9'] : ['104.21.1.1'];
+        $this->rejected(422, fn () => $pages::publicUrl('https://evil.example/'));
+        $this->assertSame('https://wyvstudio.com/', $pages::publicUrl('https://wyvstudio.com'));
+
+        $c = $this->brief();
+        $jpg = base64_decode('/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYxLjE5LjEwMQD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABNAAEBAAAAAAAAAAAAAAAAAAAABgEBAQEAAAAAAAAAAAAAAAAAAAYHEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAbgBAAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8ArQGOroAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB/9k=');
+        \Illuminate\Support\Facades\Process::fake(function ($p) use ($jpg) {
+            $cmd = $p->command;
+            foreach ($cmd as $arg) if (str_starts_with($arg, '--screenshot=')) { file_put_contents(substr($arg, 13), str_repeat('p', 2000)); return \Illuminate\Support\Facades\Process::result(''); }
+            if ($cmd[0] === 'ffmpeg') { file_put_contents(end($cmd), $jpg); return \Illuminate\Support\Facades\Process::result(''); }
+            return \Illuminate\Support\Facades\Process::result('', 'unexpected', 1);
+        });
+        $this->app->instance(\App\Services\Generation\UrlContentExtractor::class, new class extends \App\Services\Generation\UrlContentExtractor {
+            public function extract(string $url): string { return "Title: WyvStudio\n\nBranded short-form video without a shoot. Make ads, reels and explainers in minutes."; }
+        });
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'k', 'create.agent_model' => 'claude-opus-5-5']);
+        Http::fake(['https://api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => json_encode(['summary' => 'AI short-video studio for brands.', 'look' => 'Dark, orange accent', 'palette' => ['#0A0A0F', '#FF6B35', 'red'],
+            'claims' => [['text' => 'Branded video without a shoot', 'quote' => 'Branded short-form video without a shoot'], ['text' => 'Used by 10,000 brands', 'quote' => 'Trusted by 10,000 brands'],
+                ['text' => 'Ads in minutes', 'quote' => 'make ads, reels and explainers in   minutes']]])]], 'usage' => ['input_tokens' => 2000, 'output_tokens' => 300]])]);
+        $asset = app($pages)->add($this->owner, $c->id, 'https://wyvstudio.com', (int) $this->conversations->conversation($this->owner, $c->id)->version, 'page-1');
+        $this->assertSame('reference', DB::table('create_attachments')->where('asset_id', $asset->id)->value('purpose'), 'the screenshot is never footage');
+        $this->assertSame('Page · wyvstudio.com', $asset->title);
+        $a = $asset->metadata_json['reference_analysis'];
+        $this->assertSame(['Branded video without a shoot', 'Ads in minutes'], array_column($a['suggested_claims'], 'text'), 'a claim the page does not make is dropped');
+        $this->assertSame(['#0A0A0F', '#FF6B35'], $a['notes']['palette']);
+        $brief = \App\Services\Create\PlanService::referenceBrief($asset);
+        $this->assertSame(['Branded video without a shoot', 'Ads in minutes'], $brief['page_claims_not_approved']);
+        $pages::$resolve = null;
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

@@ -259,16 +259,39 @@ async function ensureConversation() {
   await router.replace({name:'create',params:{conversationId:c.id}}); persistDraft(null,''); await refresh()
   return c.id
 }
+const linkStudying = ref(''), claimPicks = ref({})
+const linkKeys = {}
+async function approveClaims(a) {
+  const picked = (a.suggested_claims || []).filter((c, i) => claimPicks.value[a.asset_id + ':' + i]).map(c => c.text)
+  if (!picked.length) return
+  await guarded(async () => {
+    let current = []; try { current = JSON.parse(conversation.value.settings_json || '{}').approved_facts || [] } catch {}
+    const facts = [...new Set([...current, ...picked])].slice(0, 20)
+    await api.patch(base(), { expected_version: conversation.value.version, settings: { approved_facts: facts } })
+    claimPicks.value = {}; quote.value = null; await refresh()
+  })
+}
 async function send() {
   if(!prompt.value.trim() || hasUpload.value) return
   const text = prompt.value.trim()
   await guarded(async () => {
     const target = await ensureConversation()
+    // Links in the brief are studied first: video posts as style references, other pages as brand pages.
+    const known = new Set((data.value?.attachments || []).map(a => a.source?.requested_url).filter(Boolean))
+    const links = [...new Set((text.match(/https:\/\/[^\s<>"')]+/g) || []).map(u => u.replace(/[.,;:!?]+$/, '')))].filter(u => !known.has(u)).slice(0, 3)
+    for (const url of links) {
+      linkStudying.value = url
+      linkKeys[url] ||= crypto.randomUUID()
+      const r = await api.post(`${base(target)}/references`, { url, idempotency_key: linkKeys[url], expected_version: conversation.value.version }, { timeout: 150000 })
+      if (id.value === target) data.value = r.data.data
+    }
+    linkStudying.value = ''
     sendingKey ||= crypto.randomUUID()
     await api.post(`${base(target)}/messages`,{content:text,expected_version:conversation.value.version,idempotency_key:sendingKey})
     persistDraft(target,''); sendingKey = null; prompt.value = ''; quote.value = null; selectedRevision.value = null
     await refresh(); await loadHistory(); await nextTick(); end.value?.scrollIntoView({behavior:'smooth',block:'end'})
   })
+  linkStudying.value = ''
   // The plan turn follows every brief. It is free; failure leaves the brief saved.
   if (!error.value && canWrite.value && !active.value) await makePlan()
 }
@@ -606,7 +629,12 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             <div v-if="uploads.length || pendingAttachments.length" class="attached">
               <div v-for="a in pendingAttachments" :key="'a' + a.asset_id" class="upload">
                 <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
-                <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small><small v-if="a.reference?.summary" class="ref-note">{{ a.reference.summary }}</small><button v-if="a.reference?.summary && canWrite" type="button" class="quiet quiet--sm" @click="askSaveStyle({asset_id:a.asset_id}, a.title)">Save as style</button></div>
+                <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small><small v-if="a.reference?.summary" class="ref-note">{{ a.reference.summary }}</small>
+                  <div v-if="a.suggested_claims?.length && canWrite" class="claims">
+                    <small class="muted">Claims on this page. Tick the ones that may appear on screen:</small>
+                    <label v-for="(c, i) in a.suggested_claims" :key="i" class="claims__row" :title="'From the page: ' + c.quote"><input v-model="claimPicks[a.asset_id + ':' + i]" type="checkbox" /> {{ c.text }}</label>
+                    <button type="button" class="quiet quiet--sm" :disabled="locked" @click="approveClaims(a)">Add to approved facts</button>
+                  </div><button v-if="a.reference?.summary && canWrite" type="button" class="quiet quiet--sm" @click="askSaveStyle({asset_id:a.asset_id}, a.title)">Save as style</button></div>
                 <button type="button" class="upload__x" :disabled="locked" :aria-label="`Remove ${a.title}`" @click="detach(a)">×</button>
               </div>
               <div v-for="u in uploads" :key="u.key" :class="['upload', u.error ? 'upload--error' : '']">
@@ -635,6 +663,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 <button class="send" type="submit" :disabled="locked || !prompt.trim()" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
               </div>
             </form>
+            <p v-if="linkStudying" class="composer-note" role="status">Studying {{ linkStudying }}. This can take up to a minute.</p>
             <p class="composer-note">Planning and text or colour changes are free. Small jobs under 15 credits just run and show their cost; anything more is quoted first. Uploads stay private.</p>
           </div>
           <p v-if="error && (!canWrite || conversation?.archived_at)" class="create-error" role="alert">{{ error }}</p>
@@ -734,9 +763,9 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
       </CreateDialog>
       <CreateDialog :open="linkOpen" title="Use a video as a style reference" @close="closeLink">
         <form class="link-form" @submit.prevent="addLink">
-          <label for="ref-url" class="link-form__label">Link to a public post on X, YouTube or TikTok</label>
+          <label for="ref-url" class="link-form__label">Link to a video post or a web page</label>
           <input id="ref-url" v-model="linkUrl" class="input" type="url" inputmode="url" autocomplete="off" placeholder="https://x.com/…/status/…" :disabled="linkBusy" />
-          <p class="muted link-form__note">We study its pacing, structure and look, and the plan borrows the approach. It is never placed in your video, and its characters, logos and text are not copied.</p>
+          <p class="muted link-form__note">A video post (X, YouTube, TikTok) is studied for pacing, structure and look. A web page is read and captured for its brand look and the claims it makes, which you approve before any appear on screen. Neither is placed in your video. You can also paste links straight into your message.</p>
           <p v-if="linkError" class="create-error" role="alert">{{ linkError }}</p>
           <p v-if="linkBusy" class="muted" role="status">Fetching and studying the video. This can take up to a minute.</p>
           <div class="link-form__actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="linkBusy" @click="closeLink">Cancel</button><button type="submit" class="btn btn--primary btn--sm" :disabled="linkBusy || !linkUrl.trim()">{{ linkBusy ? 'Studying…' : 'Add reference' }}</button></div>
@@ -762,6 +791,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 @media (max-width:560px){.style-row{grid-template-columns:1fr auto auto}.style-row__swatches{display:none}}
 .checks{border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px;color:var(--text-2)}.checks b{font-size:12px;color:var(--text)}.checks ul{margin:6px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:3px}.checks__warn{color:#f5a524}
 .free-plan{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px}.free-plan ul{margin:0;padding-left:16px}.free-plan__swatch{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;border:1px solid var(--line-2)}
+.claims{display:flex;flex-direction:column;gap:3px;margin-top:4px}.claims__row{font-size:11px;color:var(--text-2);display:flex;gap:6px;align-items:flex-start}
 .ref-note{display:block;font-size:11px;color:var(--text-3);margin-top:2px;max-width:420px}
 .fc-shell{--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}
 .agent-main{margin-left:var(--sidebar-width,220px);height:100dvh;display:flex;flex-direction:column;min-width:0}

@@ -66,7 +66,7 @@ class CreateController extends Controller
                 $storage = app(StorageService::class);
                 return ['asset_id'=>$asset->id,'purpose'=>$attachment->purpose,'title'=>$asset->title,'asset_type'=>$asset->asset_type,
                     'attached_at'=>$attachment->created_at,'duration_seconds'=>$asset->duration_seconds,'dimensions'=>$asset->dimensions_json,
-                    'bytes'=>$asset->file_size_bytes,'source'=>data_get($asset->metadata_json,'reference_source'),'reference'=>data_get($asset->metadata_json,'reference_analysis.notes'),'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
+                    'bytes'=>$asset->file_size_bytes,'source'=>data_get($asset->metadata_json,'reference_source'),'reference'=>data_get($asset->metadata_json,'reference_analysis.notes'),'suggested_claims'=>data_get($asset->metadata_json,'reference_analysis.suggested_claims',[]),'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
             })->filter()->values(),
             'revisions' => $revisions,
             'runs' => DB::table('composition_runs')->where('conversation_id', $id)->orderBy('created_at')->get(['id', 'status', 'stage', 'error', 'created_at']),
@@ -141,7 +141,10 @@ class CreateController extends Controller
     public function reference(Request $r, string $id)
     {
         $input = $r->validate(['url' => 'required|string|max:500', 'idempotency_key' => 'required|string|max:128', 'expected_version' => 'required|integer|min:0']);
-        app(\App\Services\Create\References\ReferenceLinkService::class)->add($r->user(), $id, $input['url'], $input['expected_version'], $input['idempotency_key']);
+        // Video posts are studied as style references; any other public page is read and captured.
+        $host = strtolower((string) parse_url(trim($input['url']), PHP_URL_HOST));
+        $service = in_array($host, config('create.reference_hosts'), true) ? \App\Services\Create\References\ReferenceLinkService::class : \App\Services\Create\References\PageReferenceService::class;
+        app($service)->add($r->user(), $id, $input['url'], $input['expected_version'], $input['idempotency_key']);
         return $this->show($r, $id);
     }
 

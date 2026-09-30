@@ -38,6 +38,7 @@ return [
     'reference_daily_limit' => (int) env('CREATE_REFERENCE_DAILY_LIMIT', 20),
     'reference_max_seconds' => 300,
     'ytdlp_path' => env('CREATE_YTDLP_PATH', 'yt-dlp'),
+    'chromium_path' => env('CREATE_CHROMIUM_PATH', 'chromium'),
     'lease_seconds' => 90,
     'input_workspace_bytes' => 1024 * 1024 * 1024,
     'input_file_bytes' => 100 * 1024 * 1024,
