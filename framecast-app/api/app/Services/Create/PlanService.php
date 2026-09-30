@@ -211,7 +211,8 @@ class PlanService
             ->map(fn ($m) => ['kind' => $m['kind'], 'description' => $str($m['description'] ?? '', 200), 'credits' => (int) $known[$m['kind']]['credits']])->take(6)->values()->all();
         // The spoken script: short lines, sized to the video, only when the video should speak.
         $silent = ($ctx['settings']['audio'] ?? 'original') === 'silent';
-        $maxWords = (int) round(max(5, (int) ($ctx['settings']['duration_seconds'] ?? 15)) * 2.8);
+        // Measured: the catalogue voices speak about 2 words a second with pauses; leave 1.5 s at the end.
+        $maxWords = (int) round(max(4, (int) ($ctx['settings']['duration_seconds'] ?? 15) - 1.5) * 2.0);
         $narration = [];
         foreach ((array) ($raw['narration'] ?? []) as $line) {
             $line = $str($line, 160);

@@ -188,6 +188,13 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       state.pending=null;state.messages.push({role:'tool',content:result??{status:state.status}});await save();
       if(state.status!=='running')return state;
     }
+    // Out of calls right after a draft passed every check and was snapshotted:
+    // deliver it rather than discard a valid video, and say review was skipped.
+    if(state.checkedRevision===state.revision&&state.snapshotRevision===state.revision&&state.revision>0&&!state.pending){
+      state.status='preview_ready';
+      state.summary='This version passed every automated check (layout, timing, contrast and grounded numbers). The call limit was reached before the final visual review, so give it a look before posting.';
+      await save();return state;
+    }
     throw Error('Model call limit reached');
   } catch(e) {
     if(e.code==='NOT_STARTED'||e.code==='NOT_SENT')state.pending=null;

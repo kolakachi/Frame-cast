@@ -156,3 +156,16 @@ test('a cut-off reply gets a split-the-work hint and is never replayed in full',
  assert.match(err.hint,/style\.css and main\.js/);
  const hist=promptHistory(state.messages);assert.ok(JSON.stringify(hist).length<3000,'the cut-off reply is summarised');
 });
+test('a draft that passed checks and snapshots is delivered when the call limit is reached',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');
+ const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/lim-');await writeFile(dir+'/index.html','<html></html>');
+ const steps=[{type:'write',path:'index.html',content:'<html><h1>Done</h1></html>'},{type:'preview',times:[1]}];let i=0;
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:2,repairs:3,budgetUsd:0},requireVisualReview:true,
+  tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
+ assert.equal(state.status,'preview_ready');assert.match(state.summary,/visual review/);
+ const dir2=await mkdtemp(tmpdir()+'/lim2-');await writeFile(dir2+'/index.html','<html></html>');let j=0;
+ const failing=await runAgent({stateFile:dir2+'/s.json',workspace:new Workspace(dir2,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[j++])})},context:{brief:'x'},limits:{calls:2,repairs:3,budgetUsd:0},requireVisualReview:true,
+  tools:{check:async()=>({ok:false,diagnostics:{ok:false,errors:[{code:'x'}]}}),snapshot:async()=>({ok:true})}});
+ assert.equal(failing.status,'failed','a draft that failed its checks is never delivered');
+});
