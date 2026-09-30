@@ -9,7 +9,7 @@ import {digest} from './workspace.mjs';
 
 // One owner per local run. Production locking/leases belong to E2.
 export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,requireVisualReview=false,initialImage}) {
-  const cap={calls:12,repairs:2,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
+  const cap={calls:12,repairs:2,elapsedMs:180000,callReserveMs:240000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
   if (![cap.calls,cap.repairs,cap.elapsedMs,cap.contextBytes,cap.maxOutputTokens,cap.totalOutputTokenAllowance,cap.budgetUsd].every(Number.isFinite) || cap.calls<1 || cap.repairs<0 || cap.budgetUsd<0) throw Error('Invalid limits');
   const identity=digest(JSON.stringify({context,skills,cap,provider:provider.id,requireVisualReview}));
   let state;
@@ -25,6 +25,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const gate=briefGate(context);if(gate){Object.assign(state,gate);await save();return state;}
   const timeout=AbortSignal.timeout(Math.max(1,cap.elapsedMs-state.elapsedMs));
   const boundedSignal=signal?AbortSignal.any([signal,timeout]):timeout;
+  // The last draft that passed every check and was snapshotted, kept so a run
+  // that hits its deadline or call limit mid-repair still delivers a valid video.
+  const keepGood=async()=>{if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)return;const files={};for(const f of ['index.html','style.css','main.js']){try{files[f]=await workspace.read(f);}catch{/* not every draft has every file */}}state.lastGood={revision:state.revision,files};};
+  const deliverGood=async why=>{
+    for(const [f,t] of Object.entries(state.lastGood.files))await workspace.write(f,t);
+    state.bundleHash=await workspace.fingerprint();state.revision=state.lastGood.revision;state.checkedRevision=state.snapshotRevision=state.revision;
+    state.status='preview_ready';state.summary=('This is the last version that passed every automated check (layout, timing, contrast and grounded numbers). '+why).slice(0,1900);
+  };
   const bounded = work => new Promise((resolve,reject)=>{
     const abort=()=>reject(Error('Run cancelled or deadline exceeded'));
     boundedSignal.addEventListener('abort',abort,{once:true});
@@ -64,6 +72,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   try {
     while(state.calls<cap.calls) {
       boundedSignal.throwIfAborted();
+      // Never start a model call that may not finish in the time left: a call cut
+      // off mid-flight is paid for and lost. Deliver the last checked draft instead.
+      if(state.lastGood&&cap.elapsedMs-(previousElapsed+Date.now()-started)<(cap.callReserveMs??240000)){await deliverGood('The time limit was near during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}
       await workspace.verifyAssets();
       const prompt=JSON.stringify({context,attachedSnapshot:state.reviewImage ? {revision:state.snapshotRevision,instruction:'The attached image is the current contact sheet. Inspect it now and return visual_review. Do not request another snapshot unless you need different timestamps.'} : null,remainingCalls:cap.calls-state.calls,revision:state.revision,history:promptHistory(state.messages)});
       if(Buffer.byteLength(prompt)+Buffer.byteLength(skills)>cap.contextBytes)throw Error('Context limit reached');
@@ -158,7 +169,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         result=await bounded(()=>tools.check({signal:boundedSignal}));
         if(result.ok){const t=await timing();if(!t.ok)result=t;}
         if(!result.ok)result=repeated(result);else state.lastFindings=null;
-        if(result.ok){state.checkedRevision=state.revision;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;result={...result,providerImage:undefined};}}
+        if(result.ok){state.checkedRevision=state.revision;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;await keepGood();result={...result,providerImage:undefined};}}
         else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
       }
       else if(action.type==='check') {
@@ -170,7 +181,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       } else if(action.type==='snapshot') {
         if(state.checkedRevision!==state.revision)throw Error('Check the current draft before snapshots');
         result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));
-        if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;result={...result,providerImage:undefined};}
+        if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;await keepGood();result={...result,providerImage:undefined};}
       } else if(action.type==='visual_review') {
         if(!reviewImage || state.snapshotRevision!==state.revision)throw Error('Visual review requires current host-provided snapshot');
         state.reviewImage=null;
@@ -185,7 +196,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         // On the last call, a draft that passed every check is delivered with the open issues, not held back.
         if(state.calls>=cap.calls&&state.checkedRevision===state.revision&&state.snapshotRevision===state.revision&&state.revision>0){
           state.status='preview_ready';state.summary=('Draft delivered at the call limit. It passes every automated check; open issues from the last review: '+action.question).slice(0,1900);
-        } else {state.status='needs_input';state.question=action.question;}
+        } else if(state.calls>=cap.calls&&state.lastGood){await deliverGood('The call limit was reached during a repair; open issues from the last review: '+action.question);}
+        else {state.status='needs_input';state.question=action.question;}
       }
       else if(action.type==='propose_media') {state.status='awaiting_media_approval';state.proposal=action.description;}
       await workspace.verifyAssets();boundedSignal.throwIfAborted();
@@ -200,9 +212,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       state.summary='This version passed every automated check (layout, timing, contrast and grounded numbers). The call limit was reached before the final visual review, so give it a look before posting.';
       await save();return state;
     }
+    if(state.lastGood&&!state.pending){await deliverGood('The call limit was reached during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}
     throw Error('Model call limit reached');
   } catch(e) {
     if(e.code==='NOT_STARTED'||e.code==='NOT_SENT')state.pending=null;
+    // Out of time (not cancelled by the user) with no paid call in doubt: deliver the last checked draft.
+    if(timeout.aborted&&!signal?.aborted&&state.lastGood&&state.pending?.kind!=='provider'){
+      state.pending=null;try{await deliverGood('The time limit was reached during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}catch{/* fall through to the failure below */}
+    }
     state.status=state.pending?.kind==='provider'?'needs_attention':boundedSignal.aborted?'cancelled':'failed';
     if(e.code==='BUDGET_EXHAUSTED'){state.pending=null;state.status='budget_exhausted';state.reason=e.message;await save();return state;}
     state.failureDetail=e.message;
