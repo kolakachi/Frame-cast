@@ -135,3 +135,13 @@ test('edit-only runs must patch, while redesigns may rewrite',async()=>{
   if(expectRewrite)assert.equal(first.revision,1);else{assert.match(first.error,/patch actions/);assert.match(await readFile(dir+'/index.html','utf8'),/Old/);}
  }
 });
+test('the same findings after a repair come back with a plain note to change approach',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');
+ const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/rep-');await writeFile(dir+'/index.html','<html></html>');
+ const ws=new Workspace(dir,[]);const steps=[{type:'check'},{type:'check'},{type:'needs_input',question:'stop'}];let i=0;
+ const fail={ok:false,diagnostics:{ok:false,errors:[{code:'content_overlap',selector:'#hook span'}]}};
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:ws,provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:5,repairs:4,budgetUsd:0},tools:{check:async()=>fail}});
+ const [first,second]=state.messages.filter(m=>m.role==='tool').map(m=>m.content);
+ assert.equal(first.diagnostics.repeated,undefined);assert.equal(second.diagnostics.repeated,true);assert.match(second.diagnostics.note,/data-layout-allow-overlap/);
+});

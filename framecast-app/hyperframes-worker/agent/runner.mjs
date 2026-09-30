@@ -29,6 +29,17 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     boundedSignal.addEventListener('abort',abort,{once:true});
     Promise.resolve().then(()=>{boundedSignal.throwIfAborted();return work();}).then(resolve,reject).finally(()=>boundedSignal.removeEventListener('abort',abort));
   });
+  // When a repair leaves the same findings in place, say so plainly; the usual
+  // cause is intentional layering (animated words, stacked cards) that must be
+  // declared rather than rewritten again.
+  const repeated=result=>{
+    const errs=result?.diagnostics?.errors;if(!Array.isArray(errs)||!errs.length)return result;
+    const key=JSON.stringify(errs.map(e=>[e.code,e.selector]).sort());
+    const again=state.lastFindings===key;state.lastFindings=key;
+    if(!again)return result;
+    const overlap=errs.some(e=>/overlap|occlu/.test(e.code||''));
+    return {...result,diagnostics:{...result.diagnostics,repeated:true,note:'These exact findings survived your last repair. Do not rewrite the same code again.'+(overlap?' If the overlap is intended (per-word or per-letter animation, stacked layers), add data-layout-allow-overlap (or data-layout-allow-occlusion) to the containing element instead.':' Change approach or remove the element.')}};
+  };
   // Timing rules the renderer cannot see: spoken cues and media shorter than its slot.
   const timing=async()=>{
     if(!tools.timeline)return {ok:true};
@@ -140,12 +151,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       else if(action.type==='preview') {
         result=await bounded(()=>tools.check({signal:boundedSignal}));
         if(result.ok){const t=await timing();if(!t.ok)result=t;}
+        if(!result.ok)result=repeated(result);else state.lastFindings=null;
         if(result.ok){state.checkedRevision=state.revision;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;result={...result,providerImage:undefined};}}
         else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
       }
       else if(action.type==='check') {
         result=await bounded(()=>tools.check({signal:boundedSignal}));
         if(result.ok){const t=await timing();if(!t.ok)result=t;}
+        if(!result.ok)result=repeated(result);else state.lastFindings=null;
         if(result.ok)state.checkedRevision=state.revision;
         else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
       } else if(action.type==='snapshot') {
