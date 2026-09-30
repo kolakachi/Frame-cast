@@ -478,6 +478,15 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(409, fn () => $service->closeSettled($run2->id, true));
     }
 
+    public function test_a_long_finished_summary_is_kept_whole_on_the_version_and_shortened_for_the_run_stage(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $summary = str_repeat('Long visual review sentence. ', 60);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => $summary, 'bundle' => ['index.html' => '<html></html>']], 'private/v1.mp4', 'h');
+        $this->assertLessThanOrEqual(255, mb_strlen(DB::table('composition_runs')->where('id', $run->id)->value('stage')), 'Postgres varchar(255)');
+        $this->assertSame($summary, DB::table('composition_revisions')->where('run_id', $run->id)->value('summary'));
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

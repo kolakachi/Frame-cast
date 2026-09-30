@@ -249,7 +249,7 @@ class RunService
                 if (! $conflict) DB::table('create_conversations')->where('id', $c->id)->update(['head_revision_id' => $revision, 'version' => $c->version + 1, 'updated_at' => now()]);
             }
             DB::table('composition_runs')->where('id', $id)->update([
-                'status' => $status, 'stage' => $result['summary'], 'error' => $status === 'preview_ready' ? null : $result['summary'],
+                'status' => $status, 'stage' => mb_substr((string) $result['summary'], 0, 250), 'error' => $status === 'preview_ready' ? null : $result['summary'],
                 'result_hash' => $fingerprint, 'updated_at' => now(),
             ]);
             if ($status === 'needs_attention') {
