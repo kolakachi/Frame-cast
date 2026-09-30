@@ -36,12 +36,21 @@ class PlanMediaExecutor
 
     private function stock(string $kind, string $q, bool $portrait, string $dir): array
     {
-        $m = app(VisualProviderAdapter::class)->match(Str::limit($q, 80, ''), $portrait ? 'portrait' : 'landscape', $kind === 'stock_video' ? 'stock_clip' : 'image_montage');
+        $m = app(VisualProviderAdapter::class)->match(self::searchTerms($q), $portrait ? 'portrait' : 'landscape', $kind === 'stock_video' ? 'stock_clip' : 'image_montage');
         if (($m['provider_key'] ?? '') === 'placeholder' || empty($m['asset_url'])) throw new RuntimeException('No stock match was found for this item.');
         $video = $kind === 'stock_video';
         $path = $this->fetch((string) $m['asset_url'], $dir.'/stock.'.($video ? 'mp4' : 'jpg'));
         return ['path' => $path, 'mime' => $video ? 'video/mp4' : 'image/jpeg', 'title' => 'Stock · '.Str::limit($q, 60, '…'),
             'provider_id' => substr(($m['provider_key'] ?? 'stock').'-'.($m['provider_asset_id'] ?? Str::uuid()), 0, 150)];
+    }
+
+    /** Stock search works on a few subject words, not a shot description. */
+    public static function searchTerms(string $q): string
+    {
+        $skip = ['vertical', 'horizontal', 'portrait', 'landscape', 'slow', 'motion', 'slowmotion', 'fast', 'shot', 'footage', 'clip', 'video', 'photo', 'image', 'stock', 'licensed',
+            'background', 'close', 'closeup', 'up', 'macro', 'dark', 'bright', 'moody', 'cinematic', 'aerial', 'wide', 'tight', 'the', 'a', 'an', 'of', 'with', 'over', 'on', 'in', 'and', 'for', 'at', 'to', 'into', 'from', 'being', 'its', 'their', 'our'];
+        $words = array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($q)), fn ($w) => $w !== '' && ! in_array($w, $skip, true)));
+        return implode(' ', array_slice($words, 0, 4)) ?: Str::limit($q, 60, '');
     }
 
     private function aiImage(string $prompt, array $ctx, string $dir): array

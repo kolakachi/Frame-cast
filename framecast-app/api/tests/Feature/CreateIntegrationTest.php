@@ -391,6 +391,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($image['file']['sha256'], $this->runs->inputFile($run2->id, $claim2['lease_token'], $image['file']['asset_id'])['sha256']);
         $service->produce($run2->id, $claim2['lease_token'], 2);
         $this->assertSame(['ai_image', 'stock_image', 'voiceover', 'voiceover'], $calls, 'the image was not made twice');
+        $this->assertSame('cold brew pour ice', \App\Services\Create\PlanMediaExecutor::searchTerms('Vertical slow-motion cold brew pour over ice, dark background'));
     }
 
     private function brief(): object
