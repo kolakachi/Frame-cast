@@ -20,6 +20,8 @@ return [
     // separate approval, after provider consent in the conversation.
     'auto_run_credits' => (int) env('CREATE_AUTO_RUN_CREDITS', 15),
     'auto_run_daily_limit' => (int) env('CREATE_AUTO_RUN_DAILY_LIMIT', 20),
+    // Paid runs a workspace may start per day (free edits excluded).
+    'run_daily_limit' => (int) env('CREATE_RUN_DAILY_LIMIT', 10),
     'free_edit_daily_limit' => (int) env('CREATE_FREE_EDIT_DAILY_LIMIT', 60),
     // Build agent provider for paid local runs: replicate (Sonnet 4.5) or
     // anthropic (Claude API through the app's gateway).
