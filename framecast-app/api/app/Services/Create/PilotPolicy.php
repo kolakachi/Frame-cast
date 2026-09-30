@@ -38,7 +38,10 @@ class PilotPolicy
     }
 
     public static function ceiling(array $policy): int
-    { return array_sum(array_map(fn($p)=>$p['cost_limit_microusd']*$p['max_calls'],$policy)); }
+    {
+        // Plan items have exact catalogue prices, so their ceiling is their total at the peg, not the priciest item times the count.
+        return array_sum(array_map(fn($p)=>isset($p['total_credits'])?$p['total_credits']*4000:$p['cost_limit_microusd']*$p['max_calls'],$policy));
+    }
 
     /** Caller holds pool/workspace locks. Global lock also serializes distinct workspaces. */
     public static function admit(array $policy): void
