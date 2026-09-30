@@ -41,6 +41,7 @@ class PlanMediaService
                 $made = app(PlanMediaExecutor::class)->produce($item['kind'], $item['description'], $this->context($run, $input), $dir);
             } catch (\Throwable $e) {
                 // Nothing usable was made, so nothing is charged. The build goes on without it.
+                report($e);
                 $id = 'pm-failed-'.Str::uuid();
                 $attempts->bindPrediction($runId, $lease, $attempt['id'], $id);
                 $receipt = new VerifiedAttemptReceipt($attempt['id'], 'failed', $id, 0, 'pilot-tariff:catalogue; not produced');

@@ -149,9 +149,12 @@ class PlanMediaExecutor
         $keep = ' Same character exactly: same body shape, colours, face, details and texture. Full body, plain flat cream background, centred, nothing else in frame.';
         $files = [];
         foreach ($poses as $i => $pose) {
-            $r = $nano->generate('The character from the reference image, '.$pose.'.'.$keep, '3d', '1:1', ['reference_image_url' => $refUrl]);
+            // A dropped connection mid-sheet shouldn't lose the poses already paid for.
+            $r = retry(3, fn () => $nano->generate('The character from the reference image, '.$pose.'.'.$keep, '3d', '1:1', ['reference_image_url' => $refUrl]),
+                3000, fn ($e) => $e instanceof \Illuminate\Http\Client\ConnectionException);
             $src = $r['image_url'] ?? $this->replicateUpload(base64_decode((string) ($r['image_b64'] ?? '')), 'image/png');
-            $cut = $this->replicate('851-labs/background-remover', ['image' => $src, 'format' => 'png', 'background_type' => 'rgba']);
+            $cut = retry(3, fn () => $this->replicate('851-labs/background-remover', ['image' => $src, 'format' => 'png', 'background_type' => 'rgba']),
+                3000, fn ($e) => $e instanceof \Illuminate\Http\Client\ConnectionException);
             $path = $this->fetch($cut, $dir.'/pose-'.$i.'.png');
             $files[] = ['path' => $path, 'title' => $name.' · '.Str::limit($pose, 40, '…'), 'pose' => $pose];
         }
