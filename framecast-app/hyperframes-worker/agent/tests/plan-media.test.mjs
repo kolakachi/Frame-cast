@@ -7,10 +7,10 @@ const items=[{kind:'ai_image',description:'glass'},{kind:'voiceover',description
 const ok=()=>({ok:true,arrayBuffer:async()=>bytes});
 test('buys each item, stages files as sources and reports failures without stopping',async()=>{
  const dir=await mkdtemp(tmpdir()+'/pm-'),manifest=[],stages=[];
- const replies=[{status:'succeeded',file,charged_credits:16},{status:'failed',error:'No lines',charged_credits:0},{status:'succeeded',file:null,brand:{colors:['#F26A1B']}}];
+ const replies=[{status:'succeeded',file,charged_credits:16,cues:[{name:'click',start:0,end:0.3}]},{status:'failed',error:'No lines',charged_credits:0},{status:'succeeded',file:null,brand:{colors:['#F26A1B']}}];
  const r=await buyPlanMedia({items,directory:dir,manifest,produce:async i=>replies[i],download:async()=>ok(),onStage:s=>stages.push(s)});
  assert.deepEqual(r.map(x=>[x.kind,x.status,x.file??null]),[['ai_image','succeeded',file.name],['voiceover','failed',null],['brand_kit','succeeded',null]]);
- assert.equal(r[2].brand.colors[0],'#F26A1B');assert.equal(r[1].error,'No lines');
+ assert.equal(r[2].brand.colors[0],'#F26A1B');assert.deepEqual(r[0].cues,[{name:'click',start:0,end:0.3}],'sound cues reach the agent');assert.equal(r[1].error,'No lines');
  assert.equal(manifest[0].path,'source/'+file.name);assert.equal(manifest[0].plan_media.kind,'ai_image');
  assert.deepEqual(await readFile(dir+'/source/'+file.name),bytes);
  assert.match(stages[0],/Getting an AI image \(1 of 3\)/);

@@ -20,6 +20,7 @@ Hard rules:
 - Media proposals must use a kind from the tools list. Do not state prices; WyvStudio prices them.
 
 - current_variables lists the text and colour fields of the version the user already has. If the latest request only changes some of those values and nothing else (no size, position, motion, timing or new content), set free_edit to the new values, colours as #rrggbb, and keep the rest of the plan to one short scene; otherwise free_edit is null.
+- Sound: most videos should have a music bed; include the music tool with a short mood description (genre, energy, tempo) matched to the brand and pacing. When UI builds on screen or cuts land hard, include the sfx tool with a description listing up to 6 cue names, for example "UI sounds: soft click, card pop, quick whoosh". Skip both when settings.audio is silent.
 - narration is the voiceover script. Write it when the video should speak and settings.audio is not silent and no supplied footage already carries speech: about 2.5 words per second of the video, one short line per beat, a hook first and the call to action last. Use only the brief, approved_facts and the claims of attached pages; the user approves the script with the plan. Never invent numbers, prices, guarantees or endorsements. Pick the voice from voices whose character best fits the brand and audience.
 Be brief: the user reads this on a phone. summary under 45 words; each use, idea and detail under 18 words; question under 12 words; left_out under 25 words. No markdown.
 

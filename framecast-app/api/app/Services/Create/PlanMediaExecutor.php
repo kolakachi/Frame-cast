@@ -17,7 +17,7 @@ use RuntimeException;
  */
 class PlanMediaExecutor
 {
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'brand_kit'];
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'brand_kit'];
 
     /** @return array{path:string,mime:string,title:string,provider_id:string,note?:string,brand?:array} */
     public function produce(string $kind, string $description, array $ctx, string $dir): array
@@ -29,6 +29,8 @@ class PlanMediaExecutor
             'animate_image' => $this->animate($description, $ctx, $dir),
             'voiceover', 'cloned_voiceover' => $this->voice($kind, $ctx, $dir),
             'library_music' => $this->music($description, $ctx, $dir),
+            'music' => $this->generatedMusic($description, $ctx, $dir),
+            'sfx' => $this->soundSheet($description, $dir),
             'brand_kit' => $this->brand($ctx, $dir),
             default => throw new RuntimeException('This plan item cannot be made here.'),
         };
@@ -104,6 +106,61 @@ class PlanMediaExecutor
             [$path, $mime] = [$wav, 'audio/x-wav'];
         }
         return ['path' => $path, 'mime' => $mime, 'title' => 'Narration · '.Str::limit($text, 60, '…'), 'provider_id' => 'tts-'.Str::uuid()];
+    }
+
+    /** An original instrumental bed from ElevenLabs Music, one second longer than the video. */
+    private function generatedMusic(string $description, array $ctx, string $dir): array
+    {
+        $seconds = max(5, (int) ($ctx['duration_seconds'] ?? 15)) + 1;
+        $url = $this->replicate('elevenlabs/music', ['prompt' => Str::limit('Instrumental background music for a short video: '.$description.'. No vocals, steady energy, clean ending.', 900, ''),
+            'music_length_ms' => $seconds * 1000, 'force_instrumental' => true, 'output_format' => 'mp3_high_quality']);
+        $path = $this->fetch($url, $dir.'/music.mp3');
+        return ['path' => $path, 'mime' => (new \finfo(FILEINFO_MIME_TYPE))->file($path), 'title' => 'Music · '.Str::limit($description, 60, '…'), 'provider_id' => 'music-'.Str::uuid()];
+    }
+
+    /**
+     * One Stable Audio file holding every cue, separated by silence, then
+     * mapped into cues by silence detection. One $0.20 call instead of one per cue.
+     */
+    private function soundSheet(string $description, string $dir): array
+    {
+        $names = array_values(array_slice(array_filter(array_map('trim', preg_split('/[,;\n]+/', preg_replace('/^[^:]*:\s*/', '', $description)))), 0, 6)) ?: ['soft UI click', 'quick whoosh', 'light pop'];
+        $url = $this->replicate('stability-ai/stable-audio-2.5', ['prompt' => 'A sequence of '.count($names).' separate, short, clean sound effects with one second of silence between them, in this order: '.implode('; ', $names).'. No music, no voice.',
+            'duration' => (int) min(20, count($names) * 2 + 1), 'steps' => 8]);
+        $raw = $this->fetch($url, $dir.'/sfx.audio');
+        $wav = $dir.'/sfx.wav';
+        if (! Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $raw, '-ac', '2', '-ar', '44100', $wav])->successful()) throw new RuntimeException('The sound effects could not be prepared.');
+        $r = Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-nostats', '-i', $wav, '-af', 'silencedetect=n=-40dB:d=0.25', '-f', 'null', '-']);
+        preg_match_all('/silence_(start|end): ([0-9.]+)/', $r->errorOutput().$r->output(), $m, PREG_SET_ORDER);
+        $d = Process::timeout(20)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $wav]);
+        $total = (float) trim($d->output());
+        $sounds = []; $at = 0.0;
+        foreach ($m as $e) {
+            if ($e[1] === 'start') { if ((float) $e[2] - $at >= 0.08) $sounds[] = [round($at, 2), round((float) $e[2], 2)]; }
+            else $at = (float) $e[2];
+        }
+        if ($total - $at >= 0.08) $sounds[] = [round($at, 2), round($total, 2)];
+        if (! $sounds) throw new RuntimeException('No distinct sound effects were produced.');
+        $cues = array_map(fn ($s, $i) => ['name' => $names[$i] ?? 'sound '.($i + 1), 'start' => $s[0], 'end' => $s[1]], array_slice($sounds, 0, 6), array_keys(array_slice($sounds, 0, 6)));
+        return ['path' => $wav, 'mime' => 'audio/x-wav', 'title' => 'Sound effects · '.implode(', ', array_slice($names, 0, 3)), 'provider_id' => 'sfx-'.Str::uuid(), 'cues' => $cues];
+    }
+
+    /** Run an official Replicate model and return its output URL. */
+    private function replicate(string $model, array $input): string
+    {
+        $token = (string) config('services.replicate.api_token');
+        if ($token === '') throw new RuntimeException('The media provider is not configured.');
+        $http = fn () => Http::withToken($token)->acceptJson()->timeout(90);
+        $p = $http()->withHeaders(['Prefer' => 'wait=60'])->post('https://api.replicate.com/v1/models/'.$model.'/predictions', ['input' => $input])->json();
+        $deadline = time() + 240;
+        while (in_array($p['status'] ?? '', ['starting', 'processing'], true) && time() < $deadline) {
+            sleep(2);
+            $p = $http()->get('https://api.replicate.com/v1/predictions/'.($p['id'] ?? ''))->json();
+        }
+        if (($p['status'] ?? '') !== 'succeeded') throw new RuntimeException('The '.explode('/', $model)[1].' model did not finish: '.(($p['error'] ?? null) ? mb_substr((string) $p['error'], 0, 120) : ($p['status'] ?? 'no response')).'.');
+        $out = is_array($p['output'] ?? null) ? ($p['output'][0] ?? null) : ($p['output'] ?? null);
+        if (! is_string($out) || ! str_starts_with($out, 'https://')) throw new RuntimeException('The model returned no audio.');
+        return $out;
     }
 
     /** Apply the workspace's pronunciations to spoken text only (whole words, any case). */

@@ -588,6 +588,40 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('Try Weave Studio, then Weave Studio again. WyvStudioX stays.', \App\Services\Create\PlanMediaExecutor::pronounce('Try wyvstudio, then WyvStudio again. WyvStudioX stays.', $this->workspace->id), 'whole words only, any case');
     }
 
+    public function test_music_and_a_sound_sheet_are_generated_priced_and_cut_into_cues(): void
+    {
+        $this->assertSame(34, \App\Services\Create\CapabilityCatalogue::musicCredits(15));
+        $this->assertSame(65, \App\Services\Create\CapabilityCatalogue::musicCredits(30), 'music is priced by length');
+        config(['services.replicate.api_token' => 'r8-test']);
+        $sheet = file_get_contents(base_path('tests/Fixtures/create/sfx-sheet.wav'));
+        Http::fake([
+            'https://api.replicate.com/v1/models/elevenlabs/music/predictions' => Http::response(['id' => 'p1', 'status' => 'succeeded', 'output' => 'https://replicate.delivery/music.mp3']),
+            'https://api.replicate.com/v1/models/stability-ai/stable-audio-2.5/predictions' => Http::response(['id' => 'p2', 'status' => 'processing']),
+            'https://api.replicate.com/v1/predictions/p2' => Http::response(['id' => 'p2', 'status' => 'succeeded', 'output' => 'https://replicate.delivery/sfx.wav']),
+            'https://replicate.delivery/music.mp3' => Http::response($sheet),
+            'https://replicate.delivery/sfx.wav' => Http::response($sheet),
+        ]);
+        $exec = app(\App\Services\Create\PlanMediaExecutor::class);
+        $dir = sys_get_temp_dir().'/audio-'.\Illuminate\Support\Str::uuid(); mkdir($dir);
+        $music = $exec->produce('music', 'Upbeat electronic, 118 bpm', ['workspace_id' => $this->workspace->id, 'duration_seconds' => 15], $dir);
+        $this->assertFileExists($music['path']);
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'elevenlabs/music') && $r['input']['music_length_ms'] === 16000 && $r['input']['force_instrumental'] === true);
+        $sfx = $exec->produce('sfx', 'UI sounds: soft click, card pop, quick whoosh', ['workspace_id' => $this->workspace->id], $dir);
+        $this->assertSame(['soft click', 'card pop', 'quick whoosh'], array_column($sfx['cues'], 'name'));
+        $this->assertEqualsWithDelta(0.0, $sfx['cues'][0]['start'], 0.05);
+        $this->assertEqualsWithDelta(1.3, $sfx['cues'][1]['start'], 0.05);
+        $this->assertEqualsWithDelta(2.6, $sfx['cues'][2]['start'], 0.05);
+    }
+
+    public function test_a_failed_audio_generation_is_reported_not_charged(): void
+    {
+        config(['services.replicate.api_token' => 'r8-test']);
+        Http::fake(['https://api.replicate.com/*' => Http::response(['id' => 'p3', 'status' => 'failed', 'error' => 'Prompt rejected'])]);
+        $dir = sys_get_temp_dir().'/audio-'.\Illuminate\Support\Str::uuid(); mkdir($dir);
+        try { app(\App\Services\Create\PlanMediaExecutor::class)->produce('music', 'x', ['workspace_id' => $this->workspace->id, 'duration_seconds' => 15], $dir); $this->fail('Expected a failure'); }
+        catch (\RuntimeException $e) { $this->assertStringContainsString('Prompt rejected', $e->getMessage()); }
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

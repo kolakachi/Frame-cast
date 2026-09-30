@@ -169,7 +169,8 @@ class ConversationService
                 $plan = PlanService::forQuote($c);
                 $planMedia = $paid && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition' && $plan
                     ? collect($plan['media'] ?? [])->filter(fn ($m) => in_array($m['kind'] ?? '', PlanMediaExecutor::KINDS, true))->take(6)
-                        ->map(fn ($m) => ['kind' => $m['kind'], 'description' => (string) $m['description'], 'credits' => (int) (CapabilityCatalogue::credits($m['kind'], (int) $user->workspace_id) ?? 0)])->values()->all()
+                        ->map(fn ($m) => ['kind' => $m['kind'], 'description' => (string) $m['description'],
+                        'credits' => $m['kind'] === 'music' ? CapabilityCatalogue::musicCredits((int) ($settings['duration_seconds'] ?? 15)) : (int) (CapabilityCatalogue::credits($m['kind'], (int) $user->workspace_id) ?? 0)])->values()->all()
                     : [];
                 if ($planMedia) {
                     $top = max(array_column($planMedia, 'credits'));

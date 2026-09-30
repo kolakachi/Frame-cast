@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class CapabilityCatalogue
 {
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'brand_kit',
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'brand_kit',
         'transcript', 'stabilize', 'remove_silence', 'clean_audio', 'loudness', 'speed', 'crop', 'grade', 'trim'];
 
     public static function forWorkspace(int $workspaceId): array
@@ -25,6 +25,10 @@ class CapabilityCatalogue
             ['kind' => 'ai_image', 'what' => 'A new generated image or scene background', 'credits' => app(ImageAdapterFactory::class)->costFor(null)],
             ['kind' => 'animate_image', 'what' => 'A 5-second generated motion clip from a still', 'credits' => CreditService::animationCost('quick', '480p', 5)],
             ['kind' => 'voiceover', 'what' => 'Narration of approved lines in a catalogue voice, per line', 'credits' => CreditService::TTS_GEMINI],
+            // Generated audio on Replicate, priced at the usual peg (cost / $0.004):
+            // ElevenLabs Music is $0.0083 per second of output; Stable Audio 2.5 is $0.20 a file.
+            ['kind' => 'music', 'what' => 'An original instrumental music bed made for this video, sized to its length', 'credits' => self::musicCredits(15)],
+            ['kind' => 'sfx', 'what' => 'A set of up to 6 short sound effects (clicks, whooshes, pops) for on-screen beats', 'credits' => self::SFX_CREDITS],
             // library_music is withheld: the workspace library holds placeholder
             // tracks, not licensed music (2026-10-01). Restore once real tracks exist.
             ['kind' => 'brand_kit', 'what' => "The workspace's brand colours, fonts and logo", 'credits' => 0],
@@ -43,6 +47,14 @@ class CapabilityCatalogue
             $tools[] = ['kind' => 'cloned_voiceover', 'what' => "Narration in the workspace's own cloned voice, per line", 'credits' => CreditService::TTS_CLONE];
         }
         return $tools;
+    }
+
+    public const SFX_CREDITS = 50;
+
+    /** One second of padding so the bed covers the whole video. */
+    public static function musicCredits(int $seconds): int
+    {
+        return (int) ceil((max(5, $seconds) + 1) * 0.0083 / 0.004);
     }
 
     public static function brandKits(int $workspaceId): array
