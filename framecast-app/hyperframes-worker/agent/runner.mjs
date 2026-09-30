@@ -2,6 +2,7 @@ import {readFile,writeFile,rename} from 'node:fs/promises';
 import {parseAction,hostPolicy} from './protocol.mjs';
 import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
 import {rowsOf,timingFindings} from './timing-check.mjs';
+import {numberFindings} from './grounding-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
 import {digest} from './workspace.mjs';
@@ -40,11 +41,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     const overlap=errs.some(e=>/overlap|occlu/.test(e.code||''));
     return {...result,diagnostics:{...result.diagnostics,repeated:true,note:'These exact findings survived your last repair. Do not rewrite the same code again.'+(overlap?' If the overlap is intended (per-word or per-letter animation, stacked layers), add data-layout-allow-overlap (or data-layout-allow-occlusion) to the containing element instead.':' Change approach or remove the element.')}};
   };
+  // Words the user approved or wrote; numbers on screen must come from here.
+  const allowedText=()=>[context.brief,...(context.messages||[]).filter(m=>m.role==='user').map(m=>m.content),...(context.approvedFacts||[]),
+    ...(context.plan?.on_screen_copy||[]),...(context.plan?.narration||[]),context.settings?.caption_text||''].join('\n');
   // Timing rules the renderer cannot see: spoken cues and media shorter than its slot.
   const timing=async()=>{
     if(!tools.timeline)return {ok:true};
     const html=await workspace.read('index.html').catch(()=>'');
-    if(!/<(video|audio)\b|data-spoken/.test(html))return {ok:true};
+    if(!/<(video|audio)\b|data-spoken/.test(html)){const n=numberFindings(html,allowedText());return n.length?{ok:false,diagnostics:{ok:false,errors:n}}:{ok:true};}
     const tl=await bounded(()=>tools.timeline({signal:boundedSignal}));
     if(!tl?.ok)return {ok:true};
     const rows=rowsOf(tl.diagnostics);
@@ -54,6 +58,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       state.durations[r.src]=Number(p?.info?.duration)||null;
     }
     const errors=timingFindings({rows,html,durations:state.durations,transcripts:state.transcripts||{}});
+    errors.push(...numberFindings(html,allowedText()));
     return errors.length?{ok:false,diagnostics:{ok:false,errors}}:{ok:true};
   };
   try {
