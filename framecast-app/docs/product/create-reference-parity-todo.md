@@ -52,10 +52,10 @@ Every video type needs this, so it goes first.
 
 ## Slice B: music and sound effects (Q7)
 
-- [x] **Decide the music source.** Owner: ElevenLabs. Used through the existing Replicate account (`elevenlabs/music`, $0.0083 per second of output); no new key needed. This is the owner's decision. Recommendation: ElevenLabs Music for a generated bed per video, commercial use on a paid plan. Alternatives: Stable Audio 2.5, Soundstripe, or a bought royalty-free pack.
+- [x] **Decide the music source.** Owner: ElevenLabs. Used through the existing Replicate account (`elevenlabs/music`, $0.0083 per second of output); no new key needed. Commercial terms for ElevenLabs output bought through Replicate still need the owner's check.
 - [x] **Music in the plan.** A `music` catalogue item generated to the video's length and mood, priced from measured cost, and bought under the one approval.
-- [x] **Sound effects.** Built on Stable Audio 2.5 on Replicate ($0.20 a file): one sound sheet of up to 6 one-shot cues, cut into cues by silence detection. ElevenLabs Sound Effects is not on Replicate. An `sfx` item for up to 6 short cues such as clicks, whooshes and pops. Candidate: ElevenLabs Sound Effects. The agent places them on UI beats.
-- [x] **Mixing.** Music ducks under the voice by 10 to 14 dB. The final mix is levelled by the existing delivery loudness step. A check fails if speech is masked.
+- [x] **Sound effects.** Built on Stable Audio 2.5 on Replicate ($0.20 a file): one sound sheet of up to 6 one-shot cues, cut into cues by silence detection. ElevenLabs Sound Effects is not on Replicate. The agent places the cues on UI beats.
+- [~] **Mixing.** Music sits at a fixed 0.18 volume under the voice (about 15 dB down) and the final mix is levelled to −14 LUFS. Not built yet: true ducking that follows the voice, and a check that fails when music masks speech.
 - [ ] **Library music.** Re-enable it in Create only once licensed tracks exist; it is withheld today.
 - **Done when:** a build has voice, music and at least three timed sound effects, the delivery check reads −14 LUFS ±1, and speech stays intelligible.
 - **Status 2026-10-01: done.** Run `cd2312b0` had voice, a music bed under the whole video, and three real cues (0.36 to 0.48 s) placed four times. Speech transcribed cleanly over the music. Fixes found on the way:
