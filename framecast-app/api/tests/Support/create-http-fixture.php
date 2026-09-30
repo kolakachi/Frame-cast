@@ -12,7 +12,8 @@ config(['database.default' => 'sqlite', 'database.connections.sqlite.database' =
 if(in_array(getenv('CREATE_LIVE_PILOT'),['e3-2026-09-29','e3-opus-2026-09-29'],true)) {
     // Explicit opt-in for the user-approved additional $5. Persistent DB plus a
     // separate host budget prevent allowance reset by test-container recreation.
-    config(['create.mode'=>'agent','create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>getenv('CREATE_LIVE_PILOT'),'create.pilot_budget_microusd'=>5000000]);
+    // The Opus campaign is $6: $5 plus $1 the owner added on 2026-10-01.
+    config(['create.mode'=>'agent','create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>getenv('CREATE_LIVE_PILOT'),'create.pilot_budget_microusd'=>getenv('CREATE_LIVE_PILOT')==='e3-opus-2026-09-29'?6000000:5000000]);
 } else \Illuminate\Support\Facades\Http::preventStrayRequests();
 \Illuminate\Support\Facades\Redis::shouldReceive('get')->andReturn(null);
 class CreateHttpFixtureSchema { use \Tests\Support\BuildsDeveloperSchema; public function build(): void { $this->buildDeveloperSchema(); } }

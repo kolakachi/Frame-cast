@@ -24,7 +24,8 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  let call=0;
  const accountedProvider={id:provider.id,maxCallUsd:provider.maxCallUsd,complete:async args=>{
   if(provider.prepareImage && args.image)args={...args,image:await provider.prepareImage(args.image,args.signal)};
-  if(provider.reserve)await provider.reserve();
+  // A failed reservation means no call was started: nothing to reconcile.
+  if(provider.reserve)try{await provider.reserve();}catch(e){if(e.code!=='BUDGET_EXHAUSTED')e.code='NOT_STARTED';throw e;}
   return accountedCall({
   key:'agent-'+(++call),kind:'agent',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:args.image??null},begin,settle,
   execute:attemptId=>provider.complete({...args,attemptId,recordPrediction:args.onPrediction,onPrediction:async id=>{
