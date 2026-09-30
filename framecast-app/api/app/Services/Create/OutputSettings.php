@@ -8,7 +8,7 @@ class OutputSettings
         'audio'=>'sometimes|in:original,silent','captions'=>'sometimes|in:off,provided',
         'caption_text'=>'nullable|string|max:4000','approved_facts'=>'sometimes|array|max:20',
         'approved_facts.*'=>'string|max:500', 'output_kind'=>'sometimes|in:video,image','video_mode'=>'sometimes|in:composition,animate_image',
-        'origin_conversation_id'=>'sometimes|uuid','origin_revision_id'=>'sometimes|uuid',
+        'origin_conversation_id'=>'sometimes|uuid','origin_revision_id'=>'sometimes|uuid','style_id'=>'sometimes|nullable|uuid',
     ]; }
     public static function normalize(array $input): array {
         abort_if(array_diff(array_keys($input),array_filter(array_keys(self::rules()),fn($k)=>!str_contains($k,'.'))),422,'Unsupported output setting.');

@@ -50,7 +50,7 @@ const panelTab = ref('details'), panelHeading = ref(null)
 let panelReturnFocus = null
 function togglePanel() { if (details.value) { closePanel(); return } panelReturnFocus = document.activeElement; openSettings(); nextTick(() => panelHeading.value?.focus()) }
 function closePanel() { details.value = false; nextTick(() => panelReturnFocus?.focus?.()) }
-function onKey(e) { if (e.key === 'Escape' && details.value && !delivery.value && !showHistory.value && !libraryOpen.value && !linkOpen.value && !compareOpen.value) closePanel() }
+function onKey(e) { if (e.key === 'Escape' && details.value && !delivery.value && !showHistory.value && !libraryOpen.value && !linkOpen.value && !stylesOpen.value && !styleSave.value && !compareOpen.value) closePanel() }
 function time(value) { return value ? new Date(value).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '' }
 function sizeLabel(a) {
   const d = a.dimensions || {}, dims = d.width && d.height ? `${d.width}×${d.height}` : ''
@@ -212,10 +212,25 @@ async function refresh() {
   data.value = result.data.data
   if(previousTitle !== data.value.conversation.title) rename.value = data.value.conversation.title
 }
+// Saved styles: the look of a finished version or a studied reference, kept only when asked.
+const styles = ref([]), pendingStyleId = ref(''), stylesOpen = ref(false), styleSave = ref(null), styleName = ref(''), styleEdits = ref({})
+const currentStyleId = computed(() => { try { return conversation.value ? (JSON.parse(conversation.value.settings_json || '{}').style_id || '') : pendingStyleId.value } catch { return '' } })
+async function loadStyles() { try { styles.value = (await api.get('/create/styles')).data.data || [] } catch { /* optional */ } }
+async function chooseStyle(value) {
+  if(!conversation.value) { pendingStyleId.value = value; return }
+  await guarded(async () => { await api.patch(base(),{expected_version:conversation.value.version,settings:{style_id:value || null}}); quote.value = null; await refresh() })
+}
+function askSaveStyle(target, suggested) { styleSave.value = target; styleName.value = suggested || ''; }
+async function confirmSaveStyle() {
+  if(!styleSave.value || !styleName.value.trim()) return
+  await guarded(async () => { await api.post('/create/styles',{name:styleName.value.trim(),...styleSave.value}); styleSave.value = null; await loadStyles() })
+}
+async function renameStyle(s) { const name = (styleEdits.value[s.id] ?? s.name).trim(); if(!name || name === s.name) return; await guarded(async () => { await api.patch(`/create/styles/${s.id}`,{name}); await loadStyles() }) }
+async function deleteStyle(s) { await guarded(async () => { await api.delete(`/create/styles/${s.id}`); if(currentStyleId.value === s.id) { if(conversation.value) await chooseStyle(''); else pendingStyleId.value = '' } await loadStyles() }) }
 async function ensureConversation() {
   if(id.value) return id.value
   const draft = prompt.value
-  const c = (await api.post('/create/conversations',{output_kind:outputKind.value})).data.data
+  const c = (await api.post('/create/conversations',{output_kind:outputKind.value,...(pendingStyleId.value ? {style_id:pendingStyleId.value} : {})})).data.data
   persistDraft(c.id,draft); persistDraft(null,'')
   await router.replace({name:'create',params:{conversationId:c.id}}); persistDraft(null,''); await refresh()
   return c.id
@@ -348,6 +363,7 @@ watch(id, async (value, old) => {
 })
 watch(() => auth.user?.workspace_id, () => window.location.assign('/create'))
 onMounted(async () => {
+  loadStyles()
   window.addEventListener('keydown', onKey)
   if (!workspaceStore.usage && auth.user?.workspace_id) workspaceStore.load(auth.user.workspace_id).catch(() => {})
   prompt.value = readDraft(id.value)
@@ -551,7 +567,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             <div v-if="uploads.length || pendingAttachments.length" class="attached">
               <div v-for="a in pendingAttachments" :key="'a' + a.asset_id" class="upload">
                 <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
-                <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small><small v-if="a.reference?.summary" class="ref-note">{{ a.reference.summary }}</small></div>
+                <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small><small v-if="a.reference?.summary" class="ref-note">{{ a.reference.summary }}</small><button v-if="a.reference?.summary && canWrite" type="button" class="quiet quiet--sm" @click="askSaveStyle({asset_id:a.asset_id}, a.title)">Save as style</button></div>
                 <button type="button" class="upload__x" :disabled="locked" :aria-label="`Remove ${a.title}`" @click="detach(a)">×</button>
               </div>
               <div v-for="u in uploads" :key="u.key" :class="['upload', u.error ? 'upload--error' : '']">
@@ -574,6 +590,8 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 <button type="button" class="quiet" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV. Up to 20 files, 100 MB each and 200 MB total." @click="fileInput.click()">+ Attach</button>
                 <button type="button" class="quiet" :disabled="locked" @click="showLibrary">From library</button>
                 <button type="button" class="quiet" :disabled="locked" title="A public post from X, YouTube or TikTok, used as a style reference" @click="openLink">From a link</button>
+                <label v-if="styles.length" class="style-pick"><span class="sr-only">Style</span><select :value="currentStyleId" :disabled="locked" aria-label="Saved style" @change="chooseStyle($event.target.value)"><option value="">No saved style</option><option v-for="s in styles" :key="s.id" :value="s.id">Style: {{ s.name }}</option></select></label>
+                <button v-if="styles.length" type="button" class="quiet" @click="stylesOpen = true">Manage styles</button>
                 <span v-if="!conversation" class="seg" role="group" aria-label="What to make"><button type="button" :aria-pressed="outputKind === 'video'" @click="outputKind = 'video'">Video</button><button type="button" :aria-pressed="outputKind === 'image'" @click="outputKind = 'image'">Image</button></span>
                 <button class="send" type="submit" :disabled="locked || !prompt.trim()" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
               </div>
@@ -632,6 +650,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 <span class="version__row"><span><b>Version {{ r.number }}</b><small>{{ date(r.created_at) }} · {{ r.restored_from_id ? 'restored' : r.conflict ? 'saved draft' : 'built' }}</small></span><span v-if="r.id === conversation.head_revision_id" class="status status--ok">CURRENT</span><span v-else-if="r.id === currentRevision?.id" class="status status--neutral">VIEWING</span></span>
               </button>
               <p v-if="!revisions.length" class="muted">Your first result will appear here.</p>
+              <button v-if="currentRevision && canWrite" type="button" class="btn btn--ghost btn--sm" @click="askSaveStyle({conversation_id:id, revision_id:currentRevision.id}, (conversation.title || 'Style') + ' · v' + currentRevision.number)">Save this version's look as a style</button>
             </section>
             <section v-if="revisions.some(r => r.export_job_id || r.output_asset_id)">
               <h3>SAVED</h3>
@@ -653,6 +672,26 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
           <router-link v-for="c in g.items" :key="c.id" :class="['session', c.id === id ? 'is-current' : '']" :to="{name:'create',params:{conversationId:c.id}}" @click="showHistory = false"><span class="session__thumb" /><div><b>{{ c.title }}</b><small>{{ c.last_message || 'Add your first brief or attachment' }}</small><span :class="['status', state(c) === 'working' ? 'status--info' : state(c) === 'needs' ? 'status--warn' : state(c) === 'done' ? 'status--ok' : 'status--neutral']">{{ stateLabel(c).toUpperCase() }}</span></div><time>{{ date(c.updated_at) }}</time></router-link>
         </template>
         <small class="muted">Showing up to 100 matching conversations.</small>
+      </CreateDialog>
+      <CreateDialog :open="!!styleSave" title="Save as a style" @close="styleSave = null">
+        <form class="link-form" @submit.prevent="confirmSaveStyle">
+          <label for="style-name" class="link-form__label">Name</label>
+          <input id="style-name" v-model="styleName" class="input" maxlength="80" autocomplete="off" />
+          <p class="muted link-form__note">Saves the palette, type, motion and pacing so new creations in this workspace can use them. Nothing else is copied. You can rename or delete it any time.</p>
+          <div class="link-form__actions"><button type="button" class="btn btn--ghost btn--sm" @click="styleSave = null">Cancel</button><button type="submit" class="btn btn--primary btn--sm" :disabled="busy || !styleName.trim()">Save style</button></div>
+        </form>
+      </CreateDialog>
+      <CreateDialog :open="stylesOpen" title="Saved styles" @close="stylesOpen = false">
+        <p v-if="!styles.length" class="muted">No saved styles yet.</p>
+        <div v-for="s in styles" :key="s.id" class="style-row">
+          <div class="style-row__swatches" aria-hidden="true"><span v-for="c in s.style.palette" :key="c" :style="{background:c}" /></div>
+          <div class="style-row__body">
+            <input v-model="styleEdits[s.id]" class="input" :placeholder="s.name" :aria-label="`Rename ${s.name}`" maxlength="80" @keydown.enter.prevent="renameStyle(s)" />
+            <small class="muted">{{ s.style.summary || s.style.look || 'Saved look' }} · from a {{ s.source }} · v{{ s.version }}</small>
+          </div>
+          <button type="button" class="btn btn--ghost btn--sm" :disabled="busy || !(styleEdits[s.id] ?? '').trim()" @click="renameStyle(s)">Rename</button>
+          <button type="button" class="btn btn--ghost btn--sm" :disabled="busy" :aria-label="`Delete ${s.name}`" @click="deleteStyle(s)">Delete</button>
+        </div>
       </CreateDialog>
       <CreateDialog :open="linkOpen" title="Use a video as a style reference" @close="closeLink">
         <form class="link-form" @submit.prevent="addLink">
@@ -676,6 +715,12 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 <style scoped>
 /* Tokens from the approved create-ui mockup, on the app's own accent. */
 .link-form{display:flex;flex-direction:column;gap:10px}.link-form__label{font-size:13px;color:var(--text-2)}.link-form__note{font-size:12px;line-height:1.45;margin:0}.link-form__actions{display:flex;justify-content:flex-end;gap:8px}
+.style-pick select{background:transparent;border:1px solid var(--line-2);color:var(--text-2);border-radius:8px;padding:4px 8px;font-size:12px;max-width:180px}
+.quiet--sm{font-size:11px;padding:2px 0;margin-top:2px}
+.style-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.style-row__swatches{display:flex;gap:3px}.style-row__swatches span{width:14px;height:14px;border-radius:4px;border:1px solid var(--line-2)}
+.style-row__body{display:flex;flex-direction:column;gap:4px;min-width:0}
+@media (max-width:560px){.style-row{grid-template-columns:1fr auto auto}.style-row__swatches{display:none}}
 .ref-note{display:block;font-size:11px;color:var(--text-3);margin-top:2px;max-width:420px}
 .fc-shell{--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}
 .agent-main{margin-left:var(--sidebar-width,220px);height:100dvh;display:flex;flex-direction:column;min-width:0}

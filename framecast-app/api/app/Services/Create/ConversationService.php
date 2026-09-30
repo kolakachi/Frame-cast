@@ -184,6 +184,7 @@ class ConversationService
                     'media_input'=>$mediaInput,
                     'plan'=>$plan,
                     'plan_media'=>$planMedia,
+                    'style'=>StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id),
                     'settings' => $settings, 'mode' => $paid ? 'agent' : 'fixture'];
                 return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $user->workspace_id,
                     'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => array_sum(array_map(fn($p)=>$p['total_credits'] ?? $p['credits']*$p['max_calls'],$policy)),

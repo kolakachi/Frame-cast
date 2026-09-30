@@ -147,7 +147,7 @@ class PlanService
         })->filter()->values()->all();
         return [
             'messages' => DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'content'])->map(fn ($m) => (array) $m)->all(),
-            'files' => $files, 'settings' => $settings, 'approved_facts' => $settings['approved_facts'] ?? [],
+            'files' => $files, 'settings' => $settings, 'house_style' => StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id), 'approved_facts' => $settings['approved_facts'] ?? [],
             'tools' => CapabilityCatalogue::forWorkspace((int) $user->workspace_id), 'brand_kits' => CapabilityCatalogue::brandKits((int) $user->workspace_id),
             // The user's edits to the last plan are their decisions; a new plan starts from them.
             'previous_plan' => ($prev = DB::table('create_plans')->where('conversation_id', $c->id)->orderByDesc('created_at')->first())

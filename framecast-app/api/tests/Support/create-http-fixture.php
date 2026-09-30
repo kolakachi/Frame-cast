@@ -34,6 +34,7 @@ if (! \Illuminate\Support\Facades\Schema::hasTable('create_conversations')) {
 }
 // Added after the first harness databases existed; additive and idempotent.
 if (! \Illuminate\Support\Facades\Schema::hasTable('create_plans')) (require database_path('migrations/2026_09_30_120000_create_create_plans.php'))->up();
+if (! \Illuminate\Support\Facades\Schema::hasTable('create_styles')) (require database_path('migrations/2026_10_01_130000_create_create_styles.php'))->up();
 if (! \Illuminate\Support\Facades\Schema::hasTable('create_plan_media')) (require database_path('migrations/2026_10_01_120000_create_create_plan_media.php'))->up();
 if (! \Illuminate\Support\Facades\Schema::hasColumn('create_conversations', 'provider_consent_at')) (require database_path('migrations/2026_09_30_130000_add_create_provider_consent.php'))->up();
 $app->instance(\App\Http\Middleware\AuthenticateWithJwt::class, new class extends \App\Http\Middleware\AuthenticateWithJwt {

@@ -42,7 +42,9 @@ class CreateController extends Controller
 
     public function store(Request $r)
     {
-        return response()->json(['data'=>$this->service->create($r->user(),$r->validate(\App\Services\Create\OutputSettings::rules()))],201);
+        $settings = $r->validate(\App\Services\Create\OutputSettings::rules());
+        abort_if(!empty($settings['style_id']) && !DB::table('create_styles')->where('workspace_id',$r->user()->workspace_id)->where('id',$settings['style_id'])->exists(),422,'That style no longer exists.');
+        return response()->json(['data'=>$this->service->create($r->user(),$settings)],201);
     }
 
     public function show(Request $r, string $id)
@@ -83,6 +85,7 @@ class CreateController extends Controller
             if(isset($input['settings'])) {
                 abort_if($c->archived_at || DB::table('composition_runs')->where('conversation_id',$id)->whereIn('status',ConversationService::ACTIVE)->exists(),409,'Wait for the current creation before changing settings.');
                 $settings=\App\Services\Create\OutputSettings::normalize(array_merge(json_decode($c->settings_json,true),$input['settings']));
+                abort_if(!empty($settings['style_id']) && !DB::table('create_styles')->where('workspace_id',$r->user()->workspace_id)->where('id',$settings['style_id'])->exists(),422,'That style no longer exists.');
                 abort_unless($settings['output_kind']===(json_decode($c->settings_json,true)['output_kind']??'video'),422,'Start a new conversation for a different output type.');
                 $changes['settings_json']=json_encode($settings);
             }
@@ -108,6 +111,31 @@ class CreateController extends Controller
             'reuse_confirmed'=>'exclude_unless:purpose,source|required|accepted']);
         app(AttachmentUploadService::class)->upload($r->user(),$id,$r->file('asset_file'),$input['purpose'],$input['idempotency_key'],$input['expected_version']);
         return $this->show($r,$id);
+    }
+
+    public function styles(Request $r)
+    {
+        return response()->json(['data' => app(\App\Services\Create\StyleService::class)->list($r->user())]);
+    }
+
+    public function saveStyle(Request $r)
+    {
+        $input = $r->validate(['name' => 'required|string|max:80', 'conversation_id' => 'required_with:revision_id|uuid', 'revision_id' => 'required_without:asset_id|uuid', 'asset_id' => 'required_without:revision_id|integer|min:1']);
+        $styles = app(\App\Services\Create\StyleService::class);
+        return response()->json(['data' => isset($input['revision_id']) ? $styles->fromRevision($r->user(), $input['conversation_id'], $input['revision_id'], $input['name'])
+            : $styles->fromReference($r->user(), (int) $input['asset_id'], $input['name'])], 201);
+    }
+
+    public function updateStyle(Request $r, string $styleId)
+    {
+        $input = $r->validate(['name' => 'sometimes|required|string|max:80', 'style' => 'sometimes|array', 'style.palette' => 'sometimes|array|max:5', 'style.borrow' => 'sometimes|array|max:4', 'style.avoid_copying' => 'sometimes|array|max:6']);
+        return response()->json(['data' => app(\App\Services\Create\StyleService::class)->update($r->user(), $styleId, $input)]);
+    }
+
+    public function deleteStyle(Request $r, string $styleId)
+    {
+        app(\App\Services\Create\StyleService::class)->delete($r->user(), $styleId);
+        return response()->json(['data' => ['deleted' => true]]);
     }
 
     public function reference(Request $r, string $id)

@@ -36,6 +36,7 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_09_30_120000_create_create_plans.php'))->up();
         (require database_path('migrations/2026_09_30_130000_add_create_provider_consent.php'))->up();
         (require database_path('migrations/2026_10_01_120000_create_create_plan_media.php'))->up();
+        (require database_path('migrations/2026_10_01_130000_create_create_styles.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -392,6 +393,40 @@ class CreateIntegrationTest extends TestCase
         $service->produce($run2->id, $claim2['lease_token'], 2);
         $this->assertSame(['ai_image', 'stock_image', 'voiceover', 'voiceover'], $calls, 'the image was not made twice');
         $this->assertSame('cold brew pour ice', \App\Services\Create\PlanMediaExecutor::searchTerms('Vertical slow-motion cold brew pour over ice, dark background'));
+    }
+
+    public function test_saved_styles_come_from_a_version_or_a_reference_and_steer_later_quotes(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $html = '<html data-composition-variables=\'[{"id":"color_background","type":"color","label":"Background","default":"#F2EDE4"},{"id":"color_accent","type":"color","label":"Accent","default":"#E07A52"},{"id":"headline","type":"string","label":"Headline","default":"Hi"}]\'><style>h1{font-family:"Inter", sans-serif}</style></html>';
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => $html]], 'private/v1.mp4', 'h');
+        $rev = $this->conversations->conversation($this->owner, $c->id)->head_revision_id;
+        $styles = app(\App\Services\Create\StyleService::class);
+        $fromVersion = $styles->fromRevision($this->owner, $c->id, $rev, 'Paper warm');
+        $this->assertSame(['#F2EDE4', '#E07A52'], $fromVersion['style']['palette']);
+        $this->assertSame('Inter', $fromVersion['style']['type']);
+
+        $ref = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'title' => 'X · DreW', 'storage_url' => 'create-upload://x', 'status' => 'active',
+            'metadata_json' => ['reference_analysis' => ['average_shot_seconds' => 2.7, 'notes' => ['summary' => 'Calm, epic, calm.', 'palette' => ['#2A2766', 'nope'], 'borrow' => ['Bookend the montage'], 'avoid_copying' => ['The box character']]]]]);
+        $fromRef = $styles->fromReference($this->owner, $ref->id, 'Cosmic montage');
+        $this->assertSame([['#2A2766'], 2.7], [$fromRef['style']['palette'], $fromRef['style']['average_shot_seconds']]);
+        $other = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'title' => 'plain', 'storage_url' => 'create-upload://y', 'status' => 'active']);
+        $this->rejected(422, fn () => $styles->fromReference($this->owner, $other->id, 'x'));
+
+        $edited = $styles->update($this->owner, $fromRef['id'], ['name' => 'Cosmic', 'style' => ['motion' => 'Springy hops']]);
+        $this->assertSame([2, 'Cosmic', 'Springy hops', ['#2A2766']], [$edited['version'], $edited['name'], $edited['style']['motion'], $edited['style']['palette']]);
+
+        // Choosing it on a conversation freezes it into the next quote; a style from another workspace is refused.
+        $v = $this->conversations->conversation($this->owner, $c->id)->version;
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $this->actingAs($this->owner)->patchJson('/api/v1/create/conversations/'.$c->id, ['expected_version' => $v, 'settings' => ['style_id' => (string) \Illuminate\Support\Str::uuid()]])->assertStatus(422);
+        $this->actingAs($this->owner)->patchJson('/api/v1/create/conversations/'.$c->id, ['expected_version' => $v, 'settings' => ['style_id' => $fromRef['id']]])->assertOk();
+        $q = $this->conversations->quote($this->owner, $c->id, $v + 1);
+        $this->assertSame(['Cosmic', 2], [$q->payload_json['style']['name'], $q->payload_json['style']['version']]);
+
+        $styles->delete($this->owner, $fromVersion['id']);
+        $this->assertSame(['Cosmic'], array_column($styles->list($this->owner), 'name'));
+        $this->rejected(404, fn () => $styles->delete($this->owner, $fromVersion['id']));
     }
 
     private function brief(): object

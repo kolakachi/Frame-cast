@@ -227,6 +227,10 @@ Route::prefix('v1')->group(function (): void {
             $controller = \App\Http\Controllers\Api\V1\Create\CreateController::class;
             Route::get('/capabilities', [$controller, 'capabilities']);
             Route::get('/conversations', [$controller, 'index']);
+            Route::get('/styles', [$controller, 'styles']);
+            Route::post('/styles', [$controller, 'saveStyle']);
+            Route::patch('/styles/{styleId}', [$controller, 'updateStyle'])->whereUuid('styleId');
+            Route::delete('/styles/{styleId}', [$controller, 'deleteStyle'])->whereUuid('styleId');
             Route::post('/conversations', [$controller, 'store']);
             Route::get('/conversations/{id}', [$controller, 'show']);
             Route::patch('/conversations/{id}', [$controller, 'update']);
