@@ -13,7 +13,10 @@ export class AnthropicGatewayProvider {
     if(!Number.isInteger(maxTokens)||maxTokens<256||maxTokens>8192)throw Error('Output token limit outside the gateway bounds');
     if(image&&(!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(image)||image.length>1400000))throw Error('Only inline PNG or JPEG review images are sent');
     signal?.throwIfAborted();
-    const out=await this.call(attemptId,{prompt,system,max_tokens:maxTokens,image:image??null});
+    let out;
+    // The app says so when Anthropic was never reached: nothing to reconcile.
+    try{out=await this.call(attemptId,{prompt,system,max_tokens:maxTokens,image:image??null});}
+    catch(e){if(/nothing was sent/i.test(String(e.message)))e.code='NOT_SENT';throw e;}
     if(out?.status!=='succeeded'||!/^[a-zA-Z0-9_-]+$/.test(out.message_id??'')||typeof out.text!=='string')throw Error('Gateway returned no usable answer');
     await recordPrediction(out.message_id);
     return {text:out.text,predictionId:out.message_id,metrics:out.usage??{},actualCostUsd:out.cost_microusd/1e6,stopReason:out.stop_reason??null};

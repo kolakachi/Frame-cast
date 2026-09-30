@@ -1233,6 +1233,34 @@ class CreateIntegrationTest extends TestCase
             ->assertOk()->assertJsonPath('data.text','ok')->assertJsonPath('data.message_id','msg_02def');
     }
 
+    public function test_gateway_retries_a_failed_connection_and_records_an_unreachable_call_as_not_sent(): void
+    {
+        [, , $run]=$this->admitted(); $claim=$this->runs->claim(); $attempts=app(\App\Services\Create\AttemptService::class);
+        $input=json_decode($run->input_json,true);$input['mode']='agent';
+        $input['execution_policy']['agent']=['provider'=>'anthropic','model'=>'claude-opus-5-5','credits'=>75,'cost_limit_microusd'=>300000,'max_calls'=>3];
+        DB::table('composition_runs')->where('id',$run->id)->update(['input_json'=>json_encode($input)]);
+        DB::table('api_operations')->where('id',$run->operation_id)->update(['authorized_credits'=>225,'reserved_credits'=>225]);
+        $this->workspace->update(['credits_monthly'=>1000]);
+        config(['create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>'test-pilot','create.pilot_budget_microusd'=>5000000,'services.anthropic.key'=>'test-key']);
+        $call=['prompt'=>'p','system'=>'s','max_tokens'=>1024,'image'=>null];
+        $hash=hash('sha256',json_encode(['prompt'=>'p','system'=>'s','maxTokens'=>1024,'image'=>null],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
+        $gateway=app(\App\Services\Create\AnthropicGateway::class);
+        $tries=0;
+        Http::fake(function () use (&$tries) {
+            if (++$tries === 1) throw new \Illuminate\Http\Client\ConnectionException('cURL error 28: Failed to connect to api.anthropic.com port 443 after 10000 ms');
+            return Http::response(['id'=>'msg_ok','content'=>[['type'=>'text','text'=>'ok']],'usage'=>['input_tokens'=>100,'output_tokens'=>10]]);
+        });
+        $a=$attempts->begin($run->id,$claim['lease_token'],'agent-1','agent',$hash);
+        $this->assertSame('ok',$gateway->complete($run->id,$claim['lease_token'],$a['id'],$call)['text'],'a blip is retried');
+        $this->assertSame(2,$tries);
+        Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('cURL error 7: Failed to connect to api.anthropic.com'));
+        $b=$attempts->begin($run->id,$claim['lease_token'],'agent-2','agent',$hash);
+        $this->rejected(503,fn()=>$gateway->complete($run->id,$claim['lease_token'],$b['id'],$call));
+        $row=DB::table('composition_attempts')->where('id',$b['id'])->first();
+        $this->assertSame(['failed',0],[$row->status,(int)$row->charged_credits],'never sent, never charged, nothing held');
+        $this->assertFalse(\App\Services\Create\AttemptService::unresolved($run->id));
+    }
+
     public function test_pilot_policy_switches_the_build_agent_to_the_claude_gateway(): void
     {
         $this->pilot(); config(['create.agent_provider'=>'replicate']);

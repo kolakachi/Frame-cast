@@ -8,6 +8,7 @@ export async function accountedCall({key,kind,input,begin,settle,execute,receipt
  let output;
  try{output=await execute(attempt.id);}
  catch(error){
+  if(error.code==='NOT_SENT')throw error; // settled as not sent by the app; nothing to reconcile
   try{await settle(attempt.id,{status:'unknown'});}catch{/* durable started receipt still retains the hold */}
   error.code='ATTEMPT_NEEDS_ATTENTION';
   throw error;

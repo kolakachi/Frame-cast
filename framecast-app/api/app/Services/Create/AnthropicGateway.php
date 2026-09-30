@@ -2,6 +2,7 @@
 namespace App\Services\Create;
 
 use Illuminate\Support\Facades\{DB, Http};
+use Illuminate\Support\Str;
 
 /**
  * The build agent's Claude API calls go through the app, not the worker. The
@@ -30,17 +31,33 @@ class AnthropicGateway
         // Opus can take over two minutes to write a full composition with its thinking.
         set_time_limit(320);
         $attempts = app(AttemptService::class);
-        try {
-            $response = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])
-                ->acceptJson()->timeout(280)->post('https://api.anthropic.com/v1/messages', [
-                    'model' => $attempt->model, 'max_tokens' => (int) $input['max_tokens'],
-                    'output_config' => ['effort' => (string) config('create.agent_effort', 'medium')],
-                    'system' => [['type' => 'text', 'text' => $input['system'], 'cache_control' => ['type' => 'ephemeral']]],
-                    'messages' => [['role' => 'user', 'content' => $content]],
-                ]);
-        } catch (\Throwable $e) {
+        $body = ['model' => $attempt->model, 'max_tokens' => (int) $input['max_tokens'],
+            'output_config' => ['effort' => (string) config('create.agent_effort', 'medium')],
+            'system' => [['type' => 'text', 'text' => $input['system'], 'cache_control' => ['type' => 'ephemeral']]],
+            'messages' => [['role' => 'user', 'content' => $content]]];
+        // A failure to connect means nothing was sent, so it is safe to try again.
+        $response = null; $notSent = false;
+        for ($try = 1; $try <= 3 && ! $response; $try++) {
+            try {
+                $response = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])
+                    ->acceptJson()->connectTimeout(10)->timeout(280)->post('https://api.anthropic.com/v1/messages', $body);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Create gateway call did not complete', ['run' => $runId, 'attempt' => $attemptId, 'try' => $try, 'error' => mb_substr(get_class($e).': '.$e->getMessage(), 0, 300)]);
+                $notSent = (bool) preg_match('/Failed to connect|Could not resolve|Connection refused|Couldn.t connect|Resolving timed out/i', $e->getMessage());
+                if (! $notSent) break;
+                if ($try < 3) usleep(1_500_000 * $try);
+            }
+        }
+        if (! $response && $notSent) {
+            // Never reached Anthropic: record it as not sent, charge nothing.
+            $id = 'not-sent-'.Str::uuid();
+            $attempts->bindPrediction($runId, $lease, $attemptId, $id);
+            $receipt = new VerifiedAttemptReceipt($attemptId, 'failed', $id, 0, 'pilot-tariff:2026-09-30; anthropic could not be reached, request never sent');
+            $attempts->settle($runId, $lease, $attemptId, $receipt->result(), $receipt);
+            abort(503, 'Anthropic could not be reached; nothing was sent or charged. Try again shortly.');
+        }
+        if (! $response) {
             // Sent or not is unknown: keep the hold and let reconciliation decide.
-            \Illuminate\Support\Facades\Log::warning('Create gateway call did not complete', ['run' => $runId, 'attempt' => $attemptId, 'error' => mb_substr(get_class($e).': '.$e->getMessage(), 0, 300)]);
             $attempts->settle($runId, $lease, $attemptId, ['status' => 'unknown']);
             abort(502, 'The model call did not complete. The run needs a recovery check; nothing is repeated automatically.');
         }

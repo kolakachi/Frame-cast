@@ -190,7 +190,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     }
     throw Error('Model call limit reached');
   } catch(e) {
-    if(e.code==='NOT_STARTED')state.pending=null;
+    if(e.code==='NOT_STARTED'||e.code==='NOT_SENT')state.pending=null;
     state.status=state.pending?.kind==='provider'?'needs_attention':boundedSignal.aborted?'cancelled':'failed';
     if(e.code==='BUDGET_EXHAUSTED'){state.pending=null;state.status='budget_exhausted';state.reason=e.message;await save();return state;}
     state.failureDetail=e.message;
