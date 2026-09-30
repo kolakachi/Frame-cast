@@ -328,3 +328,14 @@ Built and tested this session: slice 7 (plan media under one approval), timing c
 - **The correction did not finish.** It rewrote the draft on the cut clip, re-timed "Save 20" to 6.08 s and "Order today" to 8.12 s, and passed preview and the timing checks. It stopped at call 8 when the $6 cap was reached, before its visual review and render.
 - **Cost of a correction.** Opus rebuilt the whole composition rather than editing the text, which makes a small correction about as expensive as a first build. A targeted edit mode, or routing text and colour asks to the free edit, would cut this sharply.
 - **Status.** E4 is functionally complete. The final correction render is unproven for lack of test budget; about $0.50 more would finish it.
+
+### Quality fixes and the third correction attempt (2026-10-01)
+
+- **Built.**
+  - Six SIL OFL font families are in the sandbox (Inter, Anton, Bebas Neue, Playfair Display, Space Grotesk, Caveat), verified rendering at true weights.
+  - A one-step `tighten` media edit applies the transcript's filler and false-start cuts without clipping kept words.
+  - Text and colour-only requests are planned as a free edit, validated against the version's real fields, with "Apply for free" on the plan card.
+  - Edits of an existing version must patch, not rewrite, unless the request is a redesign.
+  - API 721 passed with 1 skipped; worker 90 passed; web build passed.
+- **Live test with $0.50 more (cap $6.50).** Version 1 did not finish. The synthetic take is a brown gradient with a voice and no face, so Opus's visual review kept judging the speaker "not visible" against the plan's keep-as-is note and rebuilt. It hit the cap at call 11 ($0.39). The correction and free-edit steps had no version to act on; the planner correctly proposed no free edit.
+- **Conclusion.** The remaining proof needs a real talking-head clip. The synthetic one misleads visual review. The code paths are covered by tests; the live proof of a patch-mode correction and a free edit from the plan is still open.
