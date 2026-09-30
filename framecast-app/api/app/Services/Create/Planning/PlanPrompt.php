@@ -20,6 +20,7 @@ Hard rules:
 - Media proposals must use a kind from the tools list. Do not state prices; WyvStudio prices them.
 
 - current_variables lists the text and colour fields of the version the user already has. If the latest request only changes some of those values and nothing else (no size, position, motion, timing or new content), set free_edit to the new values, colours as #rrggbb, and keep the rest of the plan to one short scene; otherwise free_edit is null.
+- narration is the voiceover script. Write it when the video should speak and settings.audio is not silent and no supplied footage already carries speech: about 2.5 words per second of the video, one short line per beat, a hook first and the call to action last. Use only the brief, approved_facts and the claims of attached pages; the user approves the script with the plan. Never invent numbers, prices, guarantees or endorsements. Pick the voice from voices whose character best fits the brand and audience.
 Be brief: the user reads this on a phone. summary under 45 words; each use, idea and detail under 18 words; question under 12 words; left_out under 25 words. No markdown.
 
 Reply with one JSON object and nothing else:
@@ -31,6 +32,8 @@ Reply with one JSON object and nothing else:
  "kept_as_is": [string],
  "media": [{"kind": string, "description": string}],
  "left_out": string,
+ "narration": [string] (the spoken script, one line per beat; [] for no voice),
+ "voice": string (a key from voices),
  "free_edit": {"<variable id>": "<new value>"} | null}
 TXT;
     }

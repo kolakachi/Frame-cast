@@ -8,6 +8,7 @@ import FinishedVideoPlayer from '../components/FinishedVideoPlayer.vue'
 import UiSelect from '../components/UiSelect.vue'
 import CreateDialog from '../components/create/CreateDialog.vue'
 import ThinkingLine from '../components/create/ThinkingLine.vue'
+import { VOICE_DESCRIPTIONS, voiceHeadline } from '../lib/voices.js'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 
@@ -123,19 +124,27 @@ watch(() => data.value?.plans, list => {
   for (const p of list || []) {
     if (p.status !== 'proposed' || p.stale || planDrafts.value[p.id]) continue
     const sel = p.plan.selections
-    planDrafts.value[p.id] = { callouts: [...sel.callouts], choices: { ...sel.choices }, kept: [...sel.kept] }
+    planDrafts.value[p.id] = { callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', choices: { ...sel.choices }, kept: [...sel.kept] }
   }
 }, { immediate: true })
 function draftFor(p) { return planDrafts.value[p.id] || p.plan.selections }
 function planDirty(p) {
   const d = planDrafts.value[p.id]; if (!d) return false
   const sel = p.plan.selections
-  return JSON.stringify([d.callouts.map(t => t.trim()).filter(Boolean), d.choices, [...d.kept].sort()]) !== JSON.stringify([sel.callouts, sel.choices, [...sel.kept].sort()])
+  return JSON.stringify([d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.choices, [...d.kept].sort()]) !== JSON.stringify([sel.callouts, sel.narration || [], sel.voice || '', sel.choices, [...sel.kept].sort()])
 }
 function optionCredits(p) {
   const d = planDrafts.value[p.id] || p.plan.selections
   const media = (p.plan.media || []).reduce((n, m) => n + (m.credits || 0), 0)
   return media + (p.plan.decisions || []).reduce((n, dec) => n + ((dec.options.find(o => o.id === d.choices[dec.id]) || {}).credits || 0), 0)
+}
+// Voices for the script, described in plain words (see lib/voices.js).
+function voiceOptions(current) {
+  const keys = Object.keys(VOICE_DESCRIPTIONS)
+  const list = keys.map(k => ({ key: k, label: `${voiceHeadline({ provider_voice_key: k })} · ${k}` }))
+  if (current === 'clone') list.unshift({ key: 'clone', label: 'Your cloned voice' })
+  else if (current && !keys.includes(current)) list.unshift({ key: current, label: current })
+  return list
 }
 function toggleKept(p, item) { const d = draftFor(p); d.kept = d.kept.includes(item) ? d.kept.filter(k => k !== item) : [...d.kept, item] }
 async function makePlan() {
@@ -152,7 +161,7 @@ async function makePlan() {
 }
 async function savePlanEdits(p) {
   const d = draftFor(p)
-  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, callouts: d.callouts.map(t => t.trim()).filter(Boolean), choices: d.choices, kept: d.kept })
+  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), choices: d.choices, kept: d.kept })
   const next = { ...planDrafts.value }; delete next[p.id]; planDrafts.value = next; quote.value = null; await refresh()
 }
 async function reviewPlanCost(p) {
@@ -499,6 +508,17 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                           <span class="claims__note">Only the words here appear on screen.{{ planByMessage[m.id].plan.left_out ? ' ' + planByMessage[m.id].plan.left_out : '' }}</span>
                         </div>
                         <p v-else-if="planByMessage[m.id].plan.left_out" class="muted plan-note">{{ planByMessage[m.id].plan.left_out }}</p>
+                        <div v-if="(planByMessage[m.id].plan.narration || []).length || (draftFor(planByMessage[m.id]).narration || []).length" class="claims">
+                          <span class="claims__label">VOICEOVER SCRIPT · EDIT BEFORE APPROVING</span>
+                          <div v-for="(t, i) in draftFor(planByMessage[m.id]).narration" :key="'n' + i" class="claim"><span class="claim__n">{{ i + 1 }}</span><input v-model="draftFor(planByMessage[m.id]).narration[i]" class="input" maxlength="160" :aria-label="`Spoken line ${i + 1}`" :disabled="!canWrite" /><button type="button" class="upload__x" :aria-label="`Remove spoken line ${i + 1}`" :disabled="!canWrite" @click="draftFor(planByMessage[m.id]).narration.splice(i, 1)">×</button></div>
+                          <button v-if="canWrite && draftFor(planByMessage[m.id]).narration.length < 8" type="button" class="quiet quiet--sm" @click="draftFor(planByMessage[m.id]).narration.push('')">+ Add a spoken line</button>
+                          <label class="voice-pick"><span class="muted">Voice</span>
+                            <select v-model="draftFor(planByMessage[m.id]).voice" :disabled="!canWrite" aria-label="Voice for the script">
+                              <option v-for="v in voiceOptions(draftFor(planByMessage[m.id]).voice)" :key="v.key" :value="v.key">{{ v.label }}</option>
+                            </select>
+                          </label>
+                          <span class="claims__note">Only these words are spoken. Approving the plan approves this script.</span>
+                        </div>
                         <div v-for="dec in planByMessage[m.id].plan.decisions" :key="dec.id" class="decision">
                           <b>{{ dec.question }}</b>
                           <label v-for="o in dec.options" :key="o.id" class="choice"><input v-model="draftFor(planByMessage[m.id]).choices[dec.id]" type="radio" :name="`${planByMessage[m.id].id}-${dec.id}`" :value="o.id" :disabled="!canWrite" /><div><b>{{ o.label }} <span :class="['tier', o.kind === 'media' ? 'tier--media' : 'tier--free']">{{ o.kind === 'media' ? `~${o.credits} CREDITS` : 'INCLUDED' }}</span></b><p>{{ o.detail }}</p></div></label>
@@ -808,6 +828,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .checks{border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px;color:var(--text-2)}.checks b{font-size:12px;color:var(--text)}.checks ul{margin:6px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:3px}.checks__warn{color:#f5a524}
 .free-plan{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px}.free-plan ul{margin:0;padding-left:16px}.free-plan__swatch{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;border:1px solid var(--line-2)}
 .claims{display:flex;flex-direction:column;gap:3px;margin-top:4px}.claims__row{font-size:11px;color:var(--text-2);display:flex;gap:6px;align-items:flex-start}
+.voice-pick{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:4px}.voice-pick select{background:transparent;border:1px solid var(--line-2);color:var(--text-2);border-radius:8px;padding:4px 8px;font-size:12px}
 .ref-note{display:block;font-size:11px;color:var(--text-3);margin-top:2px;max-width:420px}
 .fc-shell{--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}
 .agent-main{margin-left:var(--sidebar-width,220px);height:100dvh;display:flex;flex-direction:column;min-width:0}

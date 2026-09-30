@@ -80,11 +80,13 @@ class PlanMediaExecutor
     /** Narrates the approved on-screen lines; the plan never invents spoken claims. */
     private function voice(string $kind, array $ctx, string $dir): array
     {
-        $text = trim(implode('. ', array_map(fn ($l) => rtrim(trim((string) $l), '.'), $ctx['approved_copy'] ?? [])));
+        // The approved script, or the approved on-screen lines when there is no script.
+        $lines = ! empty($ctx['narration']) ? $ctx['narration'] : ($ctx['approved_copy'] ?? []);
+        $text = trim(implode(' ', array_map(fn ($l) => preg_match('/[.!?…]$/u', trim((string) $l)) ? trim((string) $l) : trim((string) $l).'.', $lines)));
         if ($text === '') throw new RuntimeException('Narration needs approved lines. Add the exact words to say and plan again.');
         $opts = ['provider' => 'gemini'];
-        $voice = 'Kore';
-        if ($kind === 'cloned_voiceover') {
+        $voice = \App\Services\Generation\TTS\GeminiVoices::resolve($ctx['voice'] ?? null);
+        if ($kind === 'cloned_voiceover' || ($ctx['voice'] ?? null) === 'clone') {
             $profile = VoiceProfile::where('workspace_id', $ctx['workspace_id'])->where('is_cloned', true)->latest('id')->first();
             $sample = $profile?->source_asset_id ? Asset::find($profile->source_asset_id) : null;
             if (! $profile || ! $sample?->storage_url) throw new RuntimeException('No cloned voice is ready in this workspace.');
@@ -130,6 +132,15 @@ class PlanMediaExecutor
 
     private function fetch(string $url, string $path): string
     {
+        // Our own storage (minio://, b2://): read it directly, never over HTTP.
+        $storage = app(StorageService::class);
+        if ($storage->isManagedUrl($url)) {
+            $bytes = $storage->get($url);
+            if (! is_string($bytes) || $bytes === '') throw new RuntimeException('The media file could not be read from storage.');
+            file_put_contents($path, $bytes);
+            if (filesize($path) > (int) config('create.input_file_bytes')) throw new RuntimeException('The media file is larger than 100 MB.');
+            return $path;
+        }
         abort_unless(str_starts_with($url, 'https://') || app()->environment(['local', 'testing']), 422, 'Media must come from a secure address.');
         $r = Http::timeout(120)->get($url);
         if (! $r->successful() || strlen($r->body()) === 0) throw new RuntimeException('The media file could not be downloaded.');

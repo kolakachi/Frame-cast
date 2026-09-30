@@ -83,6 +83,14 @@ class PlanService
                 $sel['callouts'] = array_values(array_filter(array_map(fn ($t) => mb_substr(trim((string) $t), 0, 120), (array) $input['callouts']), fn ($t) => $t !== ''));
                 abort_if(count($sel['callouts']) > 6, 422, 'Use at most six callouts.');
             }
+            if (array_key_exists('narration', $input)) {
+                $sel['narration'] = array_values(array_filter(array_map(fn ($t) => mb_substr(trim((string) $t), 0, 160), (array) $input['narration']), fn ($t) => $t !== ''));
+                abort_if(count($sel['narration']) > 8, 422, 'Use at most eight narration lines.');
+            }
+            if (array_key_exists('voice', $input)) {
+                abort_unless(\App\Services\Generation\TTS\GeminiVoices::isGeminiVoice((string) $input['voice']) || $input['voice'] === 'clone', 422, 'Choose one of the listed voices.');
+                $sel['voice'] = (string) $input['voice'];
+            }
             foreach ((array) ($input['choices'] ?? []) as $decision => $option) {
                 $d = collect($plan['decisions'])->firstWhere('id', $decision);
                 abort_unless($d && collect($d['options'])->firstWhere('id', $option), 422, 'Choose one of the offered options.');
@@ -109,7 +117,7 @@ class PlanService
         if (! $row || (new self(app(ConversationService::class)))->stale($row, $c)) return null;
         $p = json_decode($row->plan_json, true); $s = $p['selections'];
         return ['plan_id' => $row->id, 'summary' => $p['summary'], 'reused' => $p['reused'], 'scenes' => $p['scenes'],
-            'on_screen_copy' => $s['callouts'], 'kept_as_is' => $s['kept'],
+            'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
             'media' => $p['media'], 'left_out' => $p['left_out']];
     }
@@ -154,6 +162,9 @@ class PlanService
                 ? array_map(fn ($d) => ['id' => $d['id'], 'type' => $d['type'], 'label' => $d['label'] ?? $d['id'], 'current' => $d['default'] ?? null],
                     array_values(array_filter(CompositionVariables::declarations((string) (json_decode($head, true)['index.html'] ?? '')), fn ($d) => in_array($d['type'] ?? '', ['string', 'color'], true))))
                 : [],
+            // Voices the narration may use: the catalogue by character, plus the workspace's own clone.
+            'voices' => array_merge(array_map(fn ($k) => ['key' => $k, 'character' => \App\Services\Generation\TTS\GeminiVoices::VOICES[$k], 'gender' => \App\Services\Generation\TTS\GeminiVoices::gender($k)], array_keys(\App\Services\Generation\TTS\GeminiVoices::VOICES)),
+                \Illuminate\Support\Facades\Schema::hasTable('voice_profiles') && DB::table('voice_profiles')->where('workspace_id', $user->workspace_id)->where('is_cloned', true)->exists() ? [['key' => 'clone', 'character' => "The workspace's own cloned voice", 'gender' => '']] : []),
             'files' => $files, 'settings' => $settings, 'house_style' => StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id), 'approved_facts' => $settings['approved_facts'] ?? [],
             'tools' => CapabilityCatalogue::forWorkspace((int) $user->workspace_id), 'brand_kits' => CapabilityCatalogue::brandKits((int) $user->workspace_id),
             // The user's edits to the last plan are their decisions; a new plan starts from them.
@@ -198,9 +209,28 @@ class PlanService
         $kept = collect((array) ($raw['kept_as_is'] ?? []))->map(fn ($t) => $str($t, 80))->filter()->unique()->take(8)->values()->all();
         $media = collect((array) ($raw['media'] ?? []))->filter(fn ($m) => is_array($m) && $known->has($m['kind'] ?? ''))
             ->map(fn ($m) => ['kind' => $m['kind'], 'description' => $str($m['description'] ?? '', 200), 'credits' => (int) $known[$m['kind']]['credits']])->take(6)->values()->all();
-        $plan = ['summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions,
+        // The spoken script: short lines, sized to the video, only when the video should speak.
+        $silent = ($ctx['settings']['audio'] ?? 'original') === 'silent';
+        $maxWords = (int) round(max(5, (int) ($ctx['settings']['duration_seconds'] ?? 15)) * 2.8);
+        $narration = [];
+        foreach ((array) ($raw['narration'] ?? []) as $line) {
+            $line = $str($line, 160);
+            if ($line === '' || count($narration) >= 8) continue;
+            $words = str_word_count(implode(' ', [...$narration, $line]));
+            if ($words > $maxWords) break;
+            $narration[] = $line;
+        }
+        if ($silent) $narration = [];
+        $voiceKeys = array_column($ctx['voices'] ?? [], 'key');
+        $voice = in_array($raw['voice'] ?? null, $voiceKeys, true) ? $raw['voice'] : \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE;
+        // A script needs a voice to say it: make sure the plan buys one.
+        if ($narration && ! collect($media)->contains(fn ($m) => in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true))) {
+            $kind = $voice === 'clone' && $known->has('cloned_voiceover') ? 'cloned_voiceover' : 'voiceover';
+            if ($known->has($kind)) $media[] = ['kind' => $kind, 'description' => 'Narration of the approved script', 'credits' => (int) $known[$kind]['credits']];
+        }
+        $plan = ['summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions, 'narration' => $narration, 'voice' => $voice,
             'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300),
-            'selections' => ['callouts' => $callouts, 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
+            'selections' => ['callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
         // A text/colour-only request becomes a free edit, validated against the real fields.
         $free = [];
         if (is_array($raw['free_edit'] ?? null) && ! empty($ctx['current_variables'])) {

@@ -184,7 +184,8 @@ class CreateController extends Controller
     public function selectPlan(Request $r, string $id, string $planId)
     {
         $input = $r->validate(['expected_version' => 'required|integer|min:0', 'callouts' => 'sometimes|array|max:6', 'callouts.*' => 'nullable|string|max:120',
-            'choices' => 'sometimes|array|max:3', 'choices.*' => 'string|max:32', 'kept' => 'sometimes|array|max:8', 'kept.*' => 'string|max:80']);
+            'choices' => 'sometimes|array|max:3', 'choices.*' => 'string|max:32', 'kept' => 'sometimes|array|max:8', 'kept.*' => 'string|max:80',
+            'narration' => 'sometimes|array|max:8', 'narration.*' => 'nullable|string|max:160', 'voice' => 'sometimes|string|max:40']);
         return response()->json(['data' => app(\App\Services\Create\PlanService::class)->select($r->user(), $id, $planId, $input['expected_version'], $input)]);
     }
 

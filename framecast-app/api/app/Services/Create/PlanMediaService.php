@@ -70,7 +70,8 @@ class PlanMediaService
         $images = collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')
             ->map(fn ($f) => Storage::disk('local')->path($f['storage_path']))->filter(fn ($p) => is_file($p))->values()->all();
         return ['workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
-            'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images];
+            'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images,
+            'narration' => $input['plan']['narration'] ?? [], 'voice' => $input['plan']['voice'] ?? null];
     }
 
     private function record(object $run, string $planId, int $index, array $item, string $hash, string $status, ?array $record, int $credits, ?string $error): void
